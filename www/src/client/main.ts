@@ -1,6 +1,7 @@
 import { initTabs, runVisiblePanels } from "./tabs.ts";
 import { initLicenseForm } from "./license.ts";
 import { initTrace } from "./trace.ts";
+import { initPricing } from "./pricing.ts";
 
 function initMenu(): void {
   const button = document.querySelector<HTMLButtonElement>(".menu-toggle");
@@ -43,3 +44,4 @@ initTabs();
 runVisiblePanels();
 initTrace();
 initLicenseForm();
+initPricing();

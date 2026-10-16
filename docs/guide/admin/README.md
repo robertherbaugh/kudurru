@@ -35,6 +35,7 @@ command line, the guide shows the command.
 | Answer a user who asks for a site | [Chapter 6](06-access-requests.md#answer-a-request) |
 | Make a local name, for example `nas.home.arpa` | [Chapter 7](07-zones-and-upstreams.md#create-a-primary-zone) |
 | Change the DNS servers that kudurru asks | [Chapter 7](07-zones-and-upstreams.md#create-an-upstream-group) |
+| Find answers without a DNS provider, with DNSSEC | [Chapter 7](07-zones-and-upstreams.md#resolve-names-from-the-root-servers) |
 | Give a colleague access | [Chapter 9](09-people-and-tokens.md) |
 | Recover a lost admin password | [Chapter 11](11-maintenance.md#recover-a-lost-admin-password) |
 | Back up kudurru | [Chapter 11](11-maintenance.md#back-up) |

@@ -116,6 +116,138 @@ func (e CatalogueSourceInfoId) Valid() bool {
 	}
 }
 
+// Defines values for DHCPConfigManagement.
+const (
+	DHCPConfigManagementApi  DHCPConfigManagement = "api"
+	DHCPConfigManagementFile DHCPConfigManagement = "file"
+)
+
+// Valid indicates whether the value is a known member of the DHCPConfigManagement enum.
+func (e DHCPConfigManagement) Valid() bool {
+	switch e {
+	case DHCPConfigManagementApi:
+		return true
+	case DHCPConfigManagementFile:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DHCPImportRequestFormat.
+const (
+	DHCPImportRequestFormatDnsmasq DHCPImportRequestFormat = "dnsmasq"
+	DHCPImportRequestFormatNative  DHCPImportRequestFormat = "native"
+)
+
+// Valid indicates whether the value is a known member of the DHCPImportRequestFormat enum.
+func (e DHCPImportRequestFormat) Valid() bool {
+	switch e {
+	case DHCPImportRequestFormatDnsmasq:
+		return true
+	case DHCPImportRequestFormatNative:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DHCPLeaseState.
+const (
+	DHCPLeaseStateBound    DHCPLeaseState = "bound"
+	DHCPLeaseStateDeclined DHCPLeaseState = "declined"
+	DHCPLeaseStateOffered  DHCPLeaseState = "offered"
+)
+
+// Valid indicates whether the value is a known member of the DHCPLeaseState enum.
+func (e DHCPLeaseState) Valid() bool {
+	switch e {
+	case DHCPLeaseStateBound:
+		return true
+	case DHCPLeaseStateDeclined:
+		return true
+	case DHCPLeaseStateOffered:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DHCPLeaseIdentityKind.
+const (
+	DHCPLeaseIdentityKindClientId DHCPLeaseIdentityKind = "client-id"
+	DHCPLeaseIdentityKindMac      DHCPLeaseIdentityKind = "mac"
+)
+
+// Valid indicates whether the value is a known member of the DHCPLeaseIdentityKind enum.
+func (e DHCPLeaseIdentityKind) Valid() bool {
+	switch e {
+	case DHCPLeaseIdentityKindClientId:
+		return true
+	case DHCPLeaseIdentityKindMac:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DHCPLeaseRecordState.
+const (
+	DHCPLeaseRecordStateBound    DHCPLeaseRecordState = "bound"
+	DHCPLeaseRecordStateDeclined DHCPLeaseRecordState = "declined"
+	DHCPLeaseRecordStateOffered  DHCPLeaseRecordState = "offered"
+)
+
+// Valid indicates whether the value is a known member of the DHCPLeaseRecordState enum.
+func (e DHCPLeaseRecordState) Valid() bool {
+	switch e {
+	case DHCPLeaseRecordStateBound:
+		return true
+	case DHCPLeaseRecordStateDeclined:
+		return true
+	case DHCPLeaseRecordStateOffered:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DHCPScopeSummaryManagement.
+const (
+	DHCPScopeSummaryManagementApi  DHCPScopeSummaryManagement = "api"
+	DHCPScopeSummaryManagementFile DHCPScopeSummaryManagement = "file"
+)
+
+// Valid indicates whether the value is a known member of the DHCPScopeSummaryManagement enum.
+func (e DHCPScopeSummaryManagement) Valid() bool {
+	switch e {
+	case DHCPScopeSummaryManagementApi:
+		return true
+	case DHCPScopeSummaryManagementFile:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DHCPSetupManagedBy.
+const (
+	DHCPSetupManagedByApi  DHCPSetupManagedBy = "api"
+	DHCPSetupManagedByFile DHCPSetupManagedBy = "file"
+)
+
+// Valid indicates whether the value is a known member of the DHCPSetupManagedBy enum.
+func (e DHCPSetupManagedBy) Valid() bool {
+	switch e {
+	case DHCPSetupManagedByApi:
+		return true
+	case DHCPSetupManagedByFile:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DNSQueryRequestProto.
 const (
 	DNSQueryRequestProtoDoh  DNSQueryRequestProto = "doh"
@@ -407,6 +539,24 @@ func (e IdentityProviderInfoSource) Valid() bool {
 	case IdentityProviderInfoSourceConfig:
 		return true
 	case IdentityProviderInfoSourceObject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MigrationRequestSource.
+const (
+	MigrationRequestSourcePihole     MigrationRequestSource = "pihole"
+	MigrationRequestSourceTechnitium MigrationRequestSource = "technitium"
+)
+
+// Valid indicates whether the value is a known member of the MigrationRequestSource enum.
+func (e MigrationRequestSource) Valid() bool {
+	switch e {
+	case MigrationRequestSourcePihole:
+		return true
+	case MigrationRequestSourceTechnitium:
 		return true
 	default:
 		return false
@@ -1349,6 +1499,27 @@ func (e AddDomainsParamsKind) Valid() bool {
 	}
 }
 
+// Defines values for ListDHCPLeasesParamsState.
+const (
+	ListDHCPLeasesParamsStateBound    ListDHCPLeasesParamsState = "bound"
+	ListDHCPLeasesParamsStateDeclined ListDHCPLeasesParamsState = "declined"
+	ListDHCPLeasesParamsStateOffered  ListDHCPLeasesParamsState = "offered"
+)
+
+// Valid indicates whether the value is a known member of the ListDHCPLeasesParamsState enum.
+func (e ListDHCPLeasesParamsState) Valid() bool {
+	switch e {
+	case ListDHCPLeasesParamsStateBound:
+		return true
+	case ListDHCPLeasesParamsStateDeclined:
+		return true
+	case ListDHCPLeasesParamsStateOffered:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListQueriesParamsStatusClass.
 const (
 	ListQueriesParamsStatusClassBlocked   ListQueriesParamsStatusClass = "blocked"
@@ -2040,6 +2211,318 @@ type CreatedToken struct {
 	Token string `json:"token"`
 }
 
+// DHCPBootProfile defines model for DHCPBootProfile.
+type DHCPBootProfile struct {
+	Architecture   int32   `json:"architecture"`
+	BootFile       *string `json:"bootFile,omitempty"`
+	BootServer     *string `json:"bootServer,omitempty"`
+	BootServerName *string `json:"bootServerName,omitempty"`
+}
+
+// DHCPClasslessRoute defines model for DHCPClasslessRoute.
+type DHCPClasslessRoute struct {
+	Destination string `json:"destination"`
+	Router      string `json:"router"`
+}
+
+// DHCPConfig defines model for DHCPConfig.
+type DHCPConfig struct {
+	EnvLocked    []string             `json:"envLocked"`
+	Etag         string               `json:"etag"`
+	Management   DHCPConfigManagement `json:"management"`
+	Node         string               `json:"node"`
+	Options      DHCPPoolOptions      `json:"options"`
+	Reservations []DHCPReservation    `json:"reservations"`
+	Revision     string               `json:"revision"`
+	Scope        string               `json:"scope"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs   float64      `json:"took_ms"`
+	Topology DHCPTopology `json:"topology"`
+}
+
+// DHCPConfigManagement defines model for DHCPConfig.Management.
+type DHCPConfigManagement string
+
+// DHCPExport defines model for DHCPExport.
+type DHCPExport struct {
+	Document DHCPLeaseDocument `json:"document"`
+	Node     string            `json:"node"`
+	Scope    string            `json:"scope"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// DHCPFailover defines model for DHCPFailover.
+type DHCPFailover struct {
+	Bootstrap     bool                `json:"bootstrap"`
+	CaFile        string              `json:"caFile"`
+	CertFile      string              `json:"certFile"`
+	ClusterID     string              `json:"clusterID"`
+	Enabled       bool                `json:"enabled"`
+	KeyFile       string              `json:"keyFile"`
+	ListenAddress string              `json:"listenAddress"`
+	NodeID        string              `json:"nodeID"`
+	Peers         *[]DHCPFailoverPeer `json:"peers"`
+}
+
+// DHCPFailoverPeer defines model for DHCPFailoverPeer.
+type DHCPFailoverPeer struct {
+	Address string  `json:"address"`
+	ApiURL  *string `json:"apiURL,omitempty"`
+	Id      string  `json:"id"`
+}
+
+// DHCPImportRequest defines model for DHCPImportRequest.
+type DHCPImportRequest struct {
+	Data   string                  `json:"data"`
+	Format DHCPImportRequestFormat `json:"format"`
+}
+
+// DHCPImportRequestFormat defines model for DHCPImportRequest.Format.
+type DHCPImportRequestFormat string
+
+// DHCPImportResult defines model for DHCPImportResult.
+type DHCPImportResult struct {
+	Imported       int64  `json:"imported"`
+	Node           string `json:"node"`
+	Scope          string `json:"scope"`
+	SkippedExpired int64  `json:"skippedExpired"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs    float64 `json:"took_ms"`
+	Unchanged int64   `json:"unchanged"`
+}
+
+// DHCPInterface defines model for DHCPInterface.
+type DHCPInterface struct {
+	Addresses []string `json:"addresses"`
+	Broadcast bool     `json:"broadcast"`
+	Loopback  bool     `json:"loopback"`
+	Name      string   `json:"name"`
+	Up        bool     `json:"up"`
+}
+
+// DHCPInterfaces defines model for DHCPInterfaces.
+type DHCPInterfaces struct {
+	Items []DHCPInterface `json:"items"`
+	Node  string          `json:"node"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// DHCPLease defines model for DHCPLease.
+type DHCPLease struct {
+	Address   string         `json:"address"`
+	ClientID  string         `json:"clientID"`
+	ExpiresAt time.Time      `json:"expiresAt"`
+	Hostname  string         `json:"hostname"`
+	Mac       string         `json:"mac"`
+	State     DHCPLeaseState `json:"state"`
+}
+
+// DHCPLeaseState defines model for DHCPLease.State.
+type DHCPLeaseState string
+
+// DHCPLeaseDocument defines model for DHCPLeaseDocument.
+type DHCPLeaseDocument struct {
+	ExportedAt time.Time         `json:"exportedAt"`
+	Leases     []DHCPLeaseRecord `json:"leases"`
+	Scope      string            `json:"scope"`
+	Subnet     string            `json:"subnet"`
+	Version    int64             `json:"version"`
+}
+
+// DHCPLeaseIdentity defines model for DHCPLeaseIdentity.
+type DHCPLeaseIdentity struct {
+	Kind  DHCPLeaseIdentityKind `json:"kind"`
+	Value string                `json:"value"`
+}
+
+// DHCPLeaseIdentityKind defines model for DHCPLeaseIdentity.Kind.
+type DHCPLeaseIdentityKind string
+
+// DHCPLeaseRecord defines model for DHCPLeaseRecord.
+type DHCPLeaseRecord struct {
+	Address   string               `json:"address"`
+	ExpiresAt time.Time            `json:"expiresAt"`
+	Hostname  string               `json:"hostname"`
+	Identity  DHCPLeaseIdentity    `json:"identity"`
+	Mac       string               `json:"mac"`
+	State     DHCPLeaseRecordState `json:"state"`
+}
+
+// DHCPLeaseRecordState defines model for DHCPLeaseRecord.State.
+type DHCPLeaseRecordState string
+
+// DHCPLeases defines model for DHCPLeases.
+type DHCPLeases struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string     `json:"continue,omitempty"`
+	Items    []DHCPLease `json:"items"`
+	Node     string      `json:"node"`
+	Scope    string      `json:"scope"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// DHCPPoolOptions defines model for DHCPPoolOptions.
+type DHCPPoolOptions struct {
+	BootFile        *string               `json:"bootFile,omitempty"`
+	BootProfiles    *[]DHCPBootProfile    `json:"bootProfiles,omitempty"`
+	BootServer      *string               `json:"bootServer,omitempty"`
+	BootServerName  *string               `json:"bootServerName,omitempty"`
+	ClasslessRoutes *[]DHCPClasslessRoute `json:"classlessRoutes,omitempty"`
+	DnsServers      []string              `json:"dnsServers"`
+	DnsTTL          string                `json:"dnsTTL"`
+	DomainName      string                `json:"domainName"`
+	DomainSearch    *[]string             `json:"domainSearch,omitempty"`
+	LeaseDuration   string                `json:"leaseDuration"`
+	NtpServers      *[]string             `json:"ntpServers,omitempty"`
+	RangeEnd        string                `json:"rangeEnd"`
+	RangeStart      string                `json:"rangeStart"`
+	RegisterDNS     bool                  `json:"registerDNS"`
+	Router          string                `json:"router"`
+}
+
+// DHCPReservation defines model for DHCPReservation.
+type DHCPReservation struct {
+	Hostname string `json:"hostname"`
+	Ip       string `json:"ip"`
+	Mac      string `json:"mac"`
+}
+
+// DHCPReservations defines model for DHCPReservations.
+type DHCPReservations struct {
+	Etag     string            `json:"etag"`
+	Items    []DHCPReservation `json:"items"`
+	Node     string            `json:"node"`
+	Revision string            `json:"revision"`
+	Scope    string            `json:"scope"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// DHCPScopeServer defines model for DHCPScopeServer.
+type DHCPScopeServer struct {
+	Address string `json:"address"`
+	NodeID  string `json:"nodeID"`
+}
+
+// DHCPScopeSummary defines model for DHCPScopeSummary.
+type DHCPScopeSummary struct {
+	Interface  string                     `json:"interface"`
+	Management DHCPScopeSummaryManagement `json:"management"`
+	Name       string                     `json:"name"`
+	RelayOnly  bool                       `json:"relayOnly"`
+	Revision   string                     `json:"revision"`
+	ServerIP   string                     `json:"serverIP"`
+	Subnet     string                     `json:"subnet"`
+}
+
+// DHCPScopeSummaryManagement defines model for DHCPScopeSummary.Management.
+type DHCPScopeSummaryManagement string
+
+// DHCPSetup defines model for DHCPSetup.
+type DHCPSetup struct {
+	Available           bool               `json:"available"`
+	Enabled             bool               `json:"enabled"`
+	EnvironmentLocked   bool               `json:"environmentLocked"`
+	Etag                string             `json:"etag"`
+	Failover            DHCPFailover       `json:"failover"`
+	FailoverInitialized bool               `json:"failoverInitialized"`
+	ManagedBy           DHCPSetupManagedBy `json:"managedBy"`
+	Node                string             `json:"node"`
+	PendingScopes       []string           `json:"pendingScopes"`
+	RestartRequired     bool               `json:"restartRequired"`
+	Revision            string             `json:"revision"`
+	RuntimeError        string             `json:"runtimeError"`
+	ScopeRevisions      map[string]string  `json:"scopeRevisions"`
+	Scopes              []DHCPSetupScope   `json:"scopes"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs            float64 `json:"took_ms"`
+	UnavailableReason string  `json:"unavailableReason"`
+}
+
+// DHCPSetupManagedBy defines model for DHCPSetup.ManagedBy.
+type DHCPSetupManagedBy string
+
+// DHCPSetupRequest defines model for DHCPSetupRequest.
+type DHCPSetupRequest struct {
+	Adopt          *bool             `json:"adopt,omitempty"`
+	Enabled        bool              `json:"enabled"`
+	Failover       *DHCPFailover     `json:"failover,omitempty"`
+	ScopeRevisions map[string]string `json:"scopeRevisions"`
+	Scopes         []DHCPSetupScope  `json:"scopes"`
+}
+
+// DHCPSetupScope defines model for DHCPSetupScope.
+type DHCPSetupScope struct {
+	BootFile          *string               `json:"bootFile,omitempty"`
+	BootProfiles      *[]DHCPBootProfile    `json:"bootProfiles,omitempty"`
+	BootServer        *string               `json:"bootServer,omitempty"`
+	BootServerName    *string               `json:"bootServerName,omitempty"`
+	ClasslessRoutes   *[]DHCPClasslessRoute `json:"classlessRoutes,omitempty"`
+	ConflictDetection *string               `json:"conflictDetection,omitempty"`
+	DnsServers        []string              `json:"dnsServers"`
+	DnsTTL            string                `json:"dnsTTL"`
+	DomainName        string                `json:"domainName"`
+	DomainSearch      *[]string             `json:"domainSearch,omitempty"`
+	FailoverServers   *[]DHCPScopeServer    `json:"failoverServers,omitempty"`
+	Interface         string                `json:"interface"`
+	LeaseDuration     string                `json:"leaseDuration"`
+	Name              string                `json:"name"`
+	NtpServers        *[]string             `json:"ntpServers,omitempty"`
+	ProbeTimeout      *string               `json:"probeTimeout,omitempty"`
+	RangeEnd          string                `json:"rangeEnd"`
+	RangeStart        string                `json:"rangeStart"`
+	RegisterDNS       bool                  `json:"registerDNS"`
+	RelayOnly         bool                  `json:"relayOnly"`
+	Reservations      []DHCPReservation     `json:"reservations"`
+	Router            string                `json:"router"`
+	ServerIP          string                `json:"serverIP"`
+	Subnet            string                `json:"subnet"`
+	TrustedRelays     []DHCPTrustedRelay    `json:"trustedRelays"`
+}
+
+// DHCPStatus defines model for DHCPStatus.
+type DHCPStatus struct {
+	Available bool               `json:"available"`
+	Enabled   bool               `json:"enabled"`
+	Failover  *ReplicationStatus `json:"failover,omitempty"`
+	Node      string             `json:"node"`
+	Scopes    []DHCPScopeSummary `json:"scopes"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// DHCPTopology defines model for DHCPTopology.
+type DHCPTopology struct {
+	ConflictDetection *string            `json:"conflictDetection,omitempty"`
+	FailoverServers   *[]DHCPScopeServer `json:"failoverServers,omitempty"`
+	Interface         string             `json:"interface"`
+	ProbeTimeout      *string            `json:"probeTimeout,omitempty"`
+	RelayOnly         bool               `json:"relayOnly"`
+	ServerIP          string             `json:"serverIP"`
+	Subnet            string             `json:"subnet"`
+	TrustedRelays     []DHCPTrustedRelay `json:"trustedRelays"`
+}
+
+// DHCPTrustedRelay defines model for DHCPTrustedRelay.
+type DHCPTrustedRelay struct {
+	GatewayIP        string  `json:"gatewayIP"`
+	LinkSelection    *string `json:"linkSelection,omitempty"`
+	ServerIdentifier *string `json:"serverIdentifier,omitempty"`
+	SourceIP         string  `json:"sourceIP"`
+	SourcePort       *int32  `json:"sourcePort,omitempty"`
+}
+
 // DNSFlags defines model for DNSFlags.
 type DNSFlags struct {
 	Aa bool `json:"aa"`
@@ -2083,6 +2566,12 @@ type DNSQueryResult struct {
 	TookMs   float64 `json:"took_ms"`
 	Type     string  `json:"type"`
 	Upstream *string `json:"upstream,omitempty"`
+}
+
+// DhcpReservationInputBody defines model for DhcpReservationInputBody.
+type DhcpReservationInputBody struct {
+	Hostname *string `json:"hostname,omitempty"`
+	Ip       string  `json:"ip"`
 }
 
 // DiagnosisMessage defines model for DiagnosisMessage.
@@ -2690,6 +3179,33 @@ type MePrincipal struct {
 	Name   string   `json:"name"`
 }
 
+// MigrationRequest defines model for MigrationRequest.
+type MigrationRequest struct {
+	// Credential Technitium API token or Pi-hole v6 application password.
+	Credential *string `json:"credential,omitempty"`
+
+	// InsecureSkipVerify Skip source TLS verification for a lab with a self-signed certificate.
+	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
+
+	// LocalZones Pi-hole local DNS suffixes to make authoritative, for example home.arpa.
+	LocalZones *[]string              `json:"localZones,omitempty"`
+	Namespace  *string                `json:"namespace,omitempty"`
+	Source     MigrationRequestSource `json:"source"`
+
+	// Url Source web console URL, including any reverse-proxy prefix.
+	Url string `json:"url"`
+}
+
+// MigrationRequestSource defines model for MigrationRequest.Source.
+type MigrationRequestSource string
+
+// MigrationResult defines model for MigrationResult.
+type MigrationResult struct {
+	Items         []ApplyResult `json:"items"`
+	Settings      *SettingsBody `json:"settings,omitempty"`
+	SettingsError *string       `json:"settingsError,omitempty"`
+}
+
 // Missing defines model for Missing.
 type Missing struct {
 	Resource string `json:"resource"`
@@ -2772,6 +3288,13 @@ type PasswordChangeRequest struct {
 
 	// RevokeTokens Also revoke every API token of the user; a password change alone revokes sessions, not tokens.
 	RevokeTokens *bool `json:"revokeTokens,omitempty"`
+}
+
+// Plan defines model for Plan.
+type Plan struct {
+	Objects  []map[string]interface{} `json:"objects"`
+	Settings map[string]interface{}   `json:"settings"`
+	Warnings []string                 `json:"warnings"`
 }
 
 // Point defines model for Point.
@@ -3147,6 +3670,22 @@ type RefreshBody struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// ReplicationStatus defines model for ReplicationStatus.
+type ReplicationStatus struct {
+	AppliedIndex  int64  `json:"appliedIndex"`
+	ClusterID     string `json:"clusterID"`
+	CommitIndex   int64  `json:"commitIndex"`
+	Enabled       bool   `json:"enabled"`
+	Error         string `json:"error"`
+	Initialized   bool   `json:"initialized"`
+	LastContact   int64  `json:"lastContact"`
+	LeaderAddress string `json:"leaderAddress"`
+	LeaderID      string `json:"leaderID"`
+	NodeID        string `json:"nodeID"`
+	Ready         bool   `json:"ready"`
+	Role          string `json:"role"`
 }
 
 // Request defines model for Request.
@@ -4205,6 +4744,37 @@ type AddDomainsParamsKind string
 // PatchNodeConfigJSONBody defines parameters for PatchNodeConfig.
 type PatchNodeConfigJSONBody map[string]interface{}
 
+// PutDHCPScopeConfigParams defines parameters for PutDHCPScopeConfig.
+type PutDHCPScopeConfigParams struct {
+	IfMatch string `json:"If-Match"`
+}
+
+// ListDHCPLeasesParams defines parameters for ListDHCPLeases.
+type ListDHCPLeasesParams struct {
+	State    *ListDHCPLeasesParamsState `form:"state,omitempty" json:"state,omitempty"`
+	Q        *string                    `form:"q,omitempty" json:"q,omitempty"`
+	Limit    *int64                     `form:"limit,omitempty" json:"limit,omitempty"`
+	Continue *string                    `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
+// ListDHCPLeasesParamsState defines parameters for ListDHCPLeases.
+type ListDHCPLeasesParamsState string
+
+// DeleteDHCPReservationParams defines parameters for DeleteDHCPReservation.
+type DeleteDHCPReservationParams struct {
+	IfMatch string `json:"If-Match"`
+}
+
+// PutDHCPReservationParams defines parameters for PutDHCPReservation.
+type PutDHCPReservationParams struct {
+	IfMatch string `json:"If-Match"`
+}
+
+// PutDHCPSetupParams defines parameters for PutDHCPSetup.
+type PutDHCPSetupParams struct {
+	IfMatch string `json:"If-Match"`
+}
+
 // ListObjectsParams defines parameters for ListObjects.
 type ListObjectsParams struct {
 	// Namespace Only objects in this namespace (namespaced kinds).
@@ -4610,8 +5180,26 @@ type BatchDeleteDnszonesJSONRequestBody = BatchDeleteInputBody
 // AddDomainsJSONRequestBody defines body for AddDomains for application/json ContentType.
 type AddDomainsJSONRequestBody = DomainsRequest
 
+// ApplyMigrationJSONRequestBody defines body for ApplyMigration for application/json ContentType.
+type ApplyMigrationJSONRequestBody = Plan
+
+// PreviewMigrationJSONRequestBody defines body for PreviewMigration for application/json ContentType.
+type PreviewMigrationJSONRequestBody = MigrationRequest
+
 // PatchNodeConfigJSONRequestBody defines body for PatchNodeConfig for application/json ContentType.
 type PatchNodeConfigJSONRequestBody PatchNodeConfigJSONBody
+
+// PutDHCPScopeConfigJSONRequestBody defines body for PutDHCPScopeConfig for application/json ContentType.
+type PutDHCPScopeConfigJSONRequestBody = DHCPPoolOptions
+
+// ImportDHCPLeasesJSONRequestBody defines body for ImportDHCPLeases for application/json ContentType.
+type ImportDHCPLeasesJSONRequestBody = DHCPImportRequest
+
+// PutDHCPReservationJSONRequestBody defines body for PutDHCPReservation for application/json ContentType.
+type PutDHCPReservationJSONRequestBody = DhcpReservationInputBody
+
+// PutDHCPSetupJSONRequestBody defines body for PutDHCPSetup for application/json ContentType.
+type PutDHCPSetupJSONRequestBody = DHCPSetupRequest
 
 // CreateObjectJSONRequestBody defines body for CreateObject for application/json ContentType.
 type CreateObjectJSONRequestBody CreateObjectJSONBody
@@ -5305,6 +5893,42 @@ type ClientInterface interface {
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ApplyMigrationWithBody Apply a reviewed migration preview
+	//
+	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+	ApplyMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyMigration Apply a reviewed migration preview
+	//
+	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+	ApplyMigration(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewMigrationWithBody Preview an API migration from Pi-hole v6 or Technitium
+	//
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+	PreviewMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewMigration Preview an API migration from Pi-hole v6 or Technitium
+	//
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+	PreviewMigration(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// InfoMessages Diagnosis messages (objects, policies, lists, readiness)
 	//
 	// Corresponds with GET /info/messages (the `InfoMessages` operationId).
@@ -5333,6 +5957,106 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /node/config (the `PatchNodeConfig` operationId).
 	PatchNodeConfig(ctx context.Context, body PatchNodeConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDHCPInterfaces IPv4 interfaces on this node
+	//
+	// Corresponds with GET /node/dhcp/v4/interfaces (the `ListDHCPInterfaces` operationId).
+	ListDHCPInterfaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDHCPScopeConfig Effective DHCPv4 scope configuration
+	//
+	// Corresponds with GET /node/dhcp/v4/scopes/{scope}/config (the `GetDHCPScopeConfig` operationId).
+	GetDHCPScopeConfig(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutDHCPScopeConfigWithBody Atomically update DHCPv4 pool options
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/config (the `PutDHCPScopeConfig` operationId).
+	PutDHCPScopeConfigWithBody(ctx context.Context, scope string, params *PutDHCPScopeConfigParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutDHCPScopeConfig Atomically update DHCPv4 pool options
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/config (the `PutDHCPScopeConfig` operationId).
+	PutDHCPScopeConfig(ctx context.Context, scope string, params *PutDHCPScopeConfigParams, body PutDHCPScopeConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportDHCPLeases Export native DHCPv4 lease state
+	//
+	// Corresponds with GET /node/dhcp/v4/scopes/{scope}/export (the `ExportDHCPLeases` operationId).
+	ExportDHCPLeases(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ImportDHCPLeasesWithBody Atomically import native or dnsmasq leases
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /node/dhcp/v4/scopes/{scope}/import (the `ImportDHCPLeases` operationId).
+	ImportDHCPLeasesWithBody(ctx context.Context, scope string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ImportDHCPLeases Atomically import native or dnsmasq leases
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /node/dhcp/v4/scopes/{scope}/import (the `ImportDHCPLeases` operationId).
+	ImportDHCPLeases(ctx context.Context, scope string, body ImportDHCPLeasesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDHCPLeases Live DHCPv4 leases on this node
+	//
+	// Corresponds with GET /node/dhcp/v4/scopes/{scope}/leases (the `ListDHCPLeases` operationId).
+	ListDHCPLeases(ctx context.Context, scope string, params *ListDHCPLeasesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDHCPReservations Effective DHCPv4 reservations
+	//
+	// Corresponds with GET /node/dhcp/v4/scopes/{scope}/reservations (the `ListDHCPReservations` operationId).
+	ListDHCPReservations(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteDHCPReservation Remove a reservation while preserving live leases
+	//
+	// Corresponds with DELETE /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `DeleteDHCPReservation` operationId).
+	DeleteDHCPReservation(ctx context.Context, scope string, mac string, params *DeleteDHCPReservationParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutDHCPReservationWithBody Create or replace a DHCPv4 reservation
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `PutDHCPReservation` operationId).
+	PutDHCPReservationWithBody(ctx context.Context, scope string, mac string, params *PutDHCPReservationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutDHCPReservation Create or replace a DHCPv4 reservation
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `PutDHCPReservation` operationId).
+	PutDHCPReservation(ctx context.Context, scope string, mac string, params *PutDHCPReservationParams, body PutDHCPReservationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDHCPSetup Saved DHCPv4 setup on this node
+	//
+	// Corresponds with GET /node/dhcp/v4/setup (the `GetDHCPSetup` operationId).
+	GetDHCPSetup(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutDHCPSetupWithBody Save DHCPv4 setup for the next restart
+	//
+	// Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /node/dhcp/v4/setup (the `PutDHCPSetup` operationId).
+	PutDHCPSetupWithBody(ctx context.Context, params *PutDHCPSetupParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutDHCPSetup Save DHCPv4 setup for the next restart
+	//
+	// Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /node/dhcp/v4/setup (the `PutDHCPSetup` operationId).
+	PutDHCPSetup(ctx context.Context, params *PutDHCPSetupParams, body PutDHCPSetupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDHCPStatus DHCPv4 scopes on this node
+	//
+	// Corresponds with GET /node/dhcp/v4/status (the `GetDHCPStatus` operationId).
+	GetDHCPStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListNodes Nodes of the cluster
 	//
@@ -7162,6 +7886,82 @@ func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (
 	return c.Client.Do(req)
 }
 
+// ApplyMigrationWithBody Apply a reviewed migration preview
+//
+// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+func (c *Client) ApplyMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyMigrationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyMigration Apply a reviewed migration preview
+//
+// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+func (c *Client) ApplyMigration(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyMigrationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewMigrationWithBody Preview an API migration from Pi-hole v6 or Technitium
+//
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+func (c *Client) PreviewMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewMigrationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewMigration Preview an API migration from Pi-hole v6 or Technitium
+//
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+func (c *Client) PreviewMigration(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewMigrationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // InfoMessages Diagnosis messages (objects, policies, lists, readiness)
 //
 // Corresponds with GET /info/messages (the `InfoMessages` operationId).
@@ -7231,6 +8031,266 @@ func (c *Client) PatchNodeConfigWithBody(ctx context.Context, contentType string
 // Corresponds with PATCH /node/config (the `PatchNodeConfig` operationId).
 func (c *Client) PatchNodeConfig(ctx context.Context, body PatchNodeConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPatchNodeConfigRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDHCPInterfaces IPv4 interfaces on this node
+//
+// Corresponds with GET /node/dhcp/v4/interfaces (the `ListDHCPInterfaces` operationId).
+func (c *Client) ListDHCPInterfaces(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDHCPInterfacesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDHCPScopeConfig Effective DHCPv4 scope configuration
+//
+// Corresponds with GET /node/dhcp/v4/scopes/{scope}/config (the `GetDHCPScopeConfig` operationId).
+func (c *Client) GetDHCPScopeConfig(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDHCPScopeConfigRequest(c.Server, scope)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutDHCPScopeConfigWithBody Atomically update DHCPv4 pool options
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/config (the `PutDHCPScopeConfig` operationId).
+func (c *Client) PutDHCPScopeConfigWithBody(ctx context.Context, scope string, params *PutDHCPScopeConfigParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutDHCPScopeConfigRequestWithBody(c.Server, scope, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutDHCPScopeConfig Atomically update DHCPv4 pool options
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/config (the `PutDHCPScopeConfig` operationId).
+func (c *Client) PutDHCPScopeConfig(ctx context.Context, scope string, params *PutDHCPScopeConfigParams, body PutDHCPScopeConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutDHCPScopeConfigRequest(c.Server, scope, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportDHCPLeases Export native DHCPv4 lease state
+//
+// Corresponds with GET /node/dhcp/v4/scopes/{scope}/export (the `ExportDHCPLeases` operationId).
+func (c *Client) ExportDHCPLeases(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportDHCPLeasesRequest(c.Server, scope)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ImportDHCPLeasesWithBody Atomically import native or dnsmasq leases
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /node/dhcp/v4/scopes/{scope}/import (the `ImportDHCPLeases` operationId).
+func (c *Client) ImportDHCPLeasesWithBody(ctx context.Context, scope string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportDHCPLeasesRequestWithBody(c.Server, scope, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ImportDHCPLeases Atomically import native or dnsmasq leases
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /node/dhcp/v4/scopes/{scope}/import (the `ImportDHCPLeases` operationId).
+func (c *Client) ImportDHCPLeases(ctx context.Context, scope string, body ImportDHCPLeasesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportDHCPLeasesRequest(c.Server, scope, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDHCPLeases Live DHCPv4 leases on this node
+//
+// Corresponds with GET /node/dhcp/v4/scopes/{scope}/leases (the `ListDHCPLeases` operationId).
+func (c *Client) ListDHCPLeases(ctx context.Context, scope string, params *ListDHCPLeasesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDHCPLeasesRequest(c.Server, scope, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDHCPReservations Effective DHCPv4 reservations
+//
+// Corresponds with GET /node/dhcp/v4/scopes/{scope}/reservations (the `ListDHCPReservations` operationId).
+func (c *Client) ListDHCPReservations(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDHCPReservationsRequest(c.Server, scope)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteDHCPReservation Remove a reservation while preserving live leases
+//
+// Corresponds with DELETE /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `DeleteDHCPReservation` operationId).
+func (c *Client) DeleteDHCPReservation(ctx context.Context, scope string, mac string, params *DeleteDHCPReservationParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteDHCPReservationRequest(c.Server, scope, mac, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutDHCPReservationWithBody Create or replace a DHCPv4 reservation
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `PutDHCPReservation` operationId).
+func (c *Client) PutDHCPReservationWithBody(ctx context.Context, scope string, mac string, params *PutDHCPReservationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutDHCPReservationRequestWithBody(c.Server, scope, mac, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutDHCPReservation Create or replace a DHCPv4 reservation
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `PutDHCPReservation` operationId).
+func (c *Client) PutDHCPReservation(ctx context.Context, scope string, mac string, params *PutDHCPReservationParams, body PutDHCPReservationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutDHCPReservationRequest(c.Server, scope, mac, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDHCPSetup Saved DHCPv4 setup on this node
+//
+// Corresponds with GET /node/dhcp/v4/setup (the `GetDHCPSetup` operationId).
+func (c *Client) GetDHCPSetup(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDHCPSetupRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutDHCPSetupWithBody Save DHCPv4 setup for the next restart
+//
+// Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /node/dhcp/v4/setup (the `PutDHCPSetup` operationId).
+func (c *Client) PutDHCPSetupWithBody(ctx context.Context, params *PutDHCPSetupParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutDHCPSetupRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutDHCPSetup Save DHCPv4 setup for the next restart
+//
+// Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /node/dhcp/v4/setup (the `PutDHCPSetup` operationId).
+func (c *Client) PutDHCPSetup(ctx context.Context, params *PutDHCPSetupParams, body PutDHCPSetupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutDHCPSetupRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDHCPStatus DHCPv4 scopes on this node
+//
+// Corresponds with GET /node/dhcp/v4/status (the `GetDHCPStatus` operationId).
+func (c *Client) GetDHCPStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDHCPStatusRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -11579,6 +12639,86 @@ func NewListUsersRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewApplyMigrationRequest calls the generic ApplyMigration builder with application/json body
+func NewApplyMigrationRequest(server string, body ApplyMigrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApplyMigrationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewApplyMigrationRequestWithBody constructs an http.Request for the ApplyMigration method, with any body, and a specified content type
+func NewApplyMigrationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/imports/apply")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewMigrationRequest calls the generic PreviewMigration builder with application/json body
+func NewPreviewMigrationRequest(server string, body PreviewMigrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewMigrationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPreviewMigrationRequestWithBody constructs an http.Request for the PreviewMigration method, with any body, and a specified content type
+func NewPreviewMigrationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/imports/preview")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewInfoMessagesRequest constructs an http.Request for the InfoMessages method
 func NewInfoMessagesRequest(server string) (*http.Request, error) {
 	var err error
@@ -11696,6 +12836,567 @@ func NewPatchNodeConfigRequestWithBody(server string, contentType string, body i
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListDHCPInterfacesRequest constructs an http.Request for the ListDHCPInterfaces method
+func NewListDHCPInterfacesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/interfaces")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDHCPScopeConfigRequest constructs an http.Request for the GetDHCPScopeConfig method
+func NewGetDHCPScopeConfigRequest(server string, scope string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "scope", scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/scopes/%s/config", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutDHCPScopeConfigRequest calls the generic PutDHCPScopeConfig builder with application/json body
+func NewPutDHCPScopeConfigRequest(server string, scope string, params *PutDHCPScopeConfigParams, body PutDHCPScopeConfigJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutDHCPScopeConfigRequestWithBody(server, scope, params, "application/json", bodyReader)
+}
+
+// NewPutDHCPScopeConfigRequestWithBody constructs an http.Request for the PutDHCPScopeConfig method, with any body, and a specified content type
+func NewPutDHCPScopeConfigRequestWithBody(server string, scope string, params *PutDHCPScopeConfigParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "scope", scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/scopes/%s/config", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("If-Match", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewExportDHCPLeasesRequest constructs an http.Request for the ExportDHCPLeases method
+func NewExportDHCPLeasesRequest(server string, scope string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "scope", scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/scopes/%s/export", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewImportDHCPLeasesRequest calls the generic ImportDHCPLeases builder with application/json body
+func NewImportDHCPLeasesRequest(server string, scope string, body ImportDHCPLeasesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewImportDHCPLeasesRequestWithBody(server, scope, "application/json", bodyReader)
+}
+
+// NewImportDHCPLeasesRequestWithBody constructs an http.Request for the ImportDHCPLeases method, with any body, and a specified content type
+func NewImportDHCPLeasesRequestWithBody(server string, scope string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "scope", scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/scopes/%s/import", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListDHCPLeasesRequest constructs an http.Request for the ListDHCPLeases method
+func NewListDHCPLeasesRequest(server string, scope string, params *ListDHCPLeasesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "scope", scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/scopes/%s/leases", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListDHCPReservationsRequest constructs an http.Request for the ListDHCPReservations method
+func NewListDHCPReservationsRequest(server string, scope string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "scope", scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/scopes/%s/reservations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteDHCPReservationRequest constructs an http.Request for the DeleteDHCPReservation method
+func NewDeleteDHCPReservationRequest(server string, scope string, mac string, params *DeleteDHCPReservationParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "scope", scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "mac", mac, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/scopes/%s/reservations/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("If-Match", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewPutDHCPReservationRequest calls the generic PutDHCPReservation builder with application/json body
+func NewPutDHCPReservationRequest(server string, scope string, mac string, params *PutDHCPReservationParams, body PutDHCPReservationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutDHCPReservationRequestWithBody(server, scope, mac, params, "application/json", bodyReader)
+}
+
+// NewPutDHCPReservationRequestWithBody constructs an http.Request for the PutDHCPReservation method, with any body, and a specified content type
+func NewPutDHCPReservationRequestWithBody(server string, scope string, mac string, params *PutDHCPReservationParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "scope", scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "mac", mac, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/scopes/%s/reservations/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("If-Match", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewGetDHCPSetupRequest constructs an http.Request for the GetDHCPSetup method
+func NewGetDHCPSetupRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/setup")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutDHCPSetupRequest calls the generic PutDHCPSetup builder with application/json body
+func NewPutDHCPSetupRequest(server string, params *PutDHCPSetupParams, body PutDHCPSetupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutDHCPSetupRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewPutDHCPSetupRequestWithBody constructs an http.Request for the PutDHCPSetup method, with any body, and a specified content type
+func NewPutDHCPSetupRequestWithBody(server string, params *PutDHCPSetupParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/setup")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("If-Match", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewGetDHCPStatusRequest constructs an http.Request for the GetDHCPStatus method
+func NewGetDHCPStatusRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/node/dhcp/v4/status")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -15582,6 +17283,42 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
 
+	// ApplyMigrationWithBodyWithResponse Apply a reviewed migration preview
+	//
+	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+	ApplyMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error)
+
+	// ApplyMigrationWithResponse Apply a reviewed migration preview
+	//
+	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+	ApplyMigrationWithResponse(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error)
+
+	// PreviewMigrationWithBodyWithResponse Preview an API migration from Pi-hole v6 or Technitium
+	//
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+	PreviewMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error)
+
+	// PreviewMigrationWithResponse Preview an API migration from Pi-hole v6 or Technitium
+	//
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+	PreviewMigrationWithResponse(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error)
+
 	// InfoMessagesWithResponse Diagnosis messages (objects, policies, lists, readiness)
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -15616,6 +17353,122 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /node/config (the `PatchNodeConfig` operationId).
 	PatchNodeConfigWithResponse(ctx context.Context, body PatchNodeConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchNodeConfigResponse, error)
+
+	// ListDHCPInterfacesWithResponse IPv4 interfaces on this node
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /node/dhcp/v4/interfaces (the `ListDHCPInterfaces` operationId).
+	ListDHCPInterfacesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListDHCPInterfacesResponse, error)
+
+	// GetDHCPScopeConfigWithResponse Effective DHCPv4 scope configuration
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /node/dhcp/v4/scopes/{scope}/config (the `GetDHCPScopeConfig` operationId).
+	GetDHCPScopeConfigWithResponse(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*GetDHCPScopeConfigResponse, error)
+
+	// PutDHCPScopeConfigWithBodyWithResponse Atomically update DHCPv4 pool options
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/config (the `PutDHCPScopeConfig` operationId).
+	PutDHCPScopeConfigWithBodyWithResponse(ctx context.Context, scope string, params *PutDHCPScopeConfigParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutDHCPScopeConfigResponse, error)
+
+	// PutDHCPScopeConfigWithResponse Atomically update DHCPv4 pool options
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/config (the `PutDHCPScopeConfig` operationId).
+	PutDHCPScopeConfigWithResponse(ctx context.Context, scope string, params *PutDHCPScopeConfigParams, body PutDHCPScopeConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*PutDHCPScopeConfigResponse, error)
+
+	// ExportDHCPLeasesWithResponse Export native DHCPv4 lease state
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /node/dhcp/v4/scopes/{scope}/export (the `ExportDHCPLeases` operationId).
+	ExportDHCPLeasesWithResponse(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*ExportDHCPLeasesResponse, error)
+
+	// ImportDHCPLeasesWithBodyWithResponse Atomically import native or dnsmasq leases
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /node/dhcp/v4/scopes/{scope}/import (the `ImportDHCPLeases` operationId).
+	ImportDHCPLeasesWithBodyWithResponse(ctx context.Context, scope string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportDHCPLeasesResponse, error)
+
+	// ImportDHCPLeasesWithResponse Atomically import native or dnsmasq leases
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /node/dhcp/v4/scopes/{scope}/import (the `ImportDHCPLeases` operationId).
+	ImportDHCPLeasesWithResponse(ctx context.Context, scope string, body ImportDHCPLeasesJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportDHCPLeasesResponse, error)
+
+	// ListDHCPLeasesWithResponse Live DHCPv4 leases on this node
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /node/dhcp/v4/scopes/{scope}/leases (the `ListDHCPLeases` operationId).
+	ListDHCPLeasesWithResponse(ctx context.Context, scope string, params *ListDHCPLeasesParams, reqEditors ...RequestEditorFn) (*ListDHCPLeasesResponse, error)
+
+	// ListDHCPReservationsWithResponse Effective DHCPv4 reservations
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /node/dhcp/v4/scopes/{scope}/reservations (the `ListDHCPReservations` operationId).
+	ListDHCPReservationsWithResponse(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*ListDHCPReservationsResponse, error)
+
+	// DeleteDHCPReservationWithResponse Remove a reservation while preserving live leases
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `DeleteDHCPReservation` operationId).
+	DeleteDHCPReservationWithResponse(ctx context.Context, scope string, mac string, params *DeleteDHCPReservationParams, reqEditors ...RequestEditorFn) (*DeleteDHCPReservationResponse, error)
+
+	// PutDHCPReservationWithBodyWithResponse Create or replace a DHCPv4 reservation
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `PutDHCPReservation` operationId).
+	PutDHCPReservationWithBodyWithResponse(ctx context.Context, scope string, mac string, params *PutDHCPReservationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutDHCPReservationResponse, error)
+
+	// PutDHCPReservationWithResponse Create or replace a DHCPv4 reservation
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `PutDHCPReservation` operationId).
+	PutDHCPReservationWithResponse(ctx context.Context, scope string, mac string, params *PutDHCPReservationParams, body PutDHCPReservationJSONRequestBody, reqEditors ...RequestEditorFn) (*PutDHCPReservationResponse, error)
+
+	// GetDHCPSetupWithResponse Saved DHCPv4 setup on this node
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /node/dhcp/v4/setup (the `GetDHCPSetup` operationId).
+	GetDHCPSetupWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDHCPSetupResponse, error)
+
+	// PutDHCPSetupWithBodyWithResponse Save DHCPv4 setup for the next restart
+	//
+	// Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /node/dhcp/v4/setup (the `PutDHCPSetup` operationId).
+	PutDHCPSetupWithBodyWithResponse(ctx context.Context, params *PutDHCPSetupParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutDHCPSetupResponse, error)
+
+	// PutDHCPSetupWithResponse Save DHCPv4 setup for the next restart
+	//
+	// Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /node/dhcp/v4/setup (the `PutDHCPSetup` operationId).
+	PutDHCPSetupWithResponse(ctx context.Context, params *PutDHCPSetupParams, body PutDHCPSetupJSONRequestBody, reqEditors ...RequestEditorFn) (*PutDHCPSetupResponse, error)
+
+	// GetDHCPStatusWithResponse DHCPv4 scopes on this node
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /node/dhcp/v4/status (the `GetDHCPStatus` operationId).
+	GetDHCPStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDHCPStatusResponse, error)
 
 	// ListNodesWithResponse Nodes of the cluster
 	//
@@ -22065,6 +23918,200 @@ func (r ListUsersResponse) ContentType() string {
 	return ""
 }
 
+type ApplyMigrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MigrationResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApplyMigrationResponse) GetJSON200() *MigrationResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ApplyMigrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ApplyMigrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ApplyMigrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ApplyMigrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ApplyMigrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ApplyMigrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ApplyMigrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ApplyMigrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ApplyMigrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApplyMigrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApplyMigrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApplyMigrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewMigrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Plan
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewMigrationResponse) GetJSON200() *Plan {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PreviewMigrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PreviewMigrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PreviewMigrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PreviewMigrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PreviewMigrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PreviewMigrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PreviewMigrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PreviewMigrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewMigrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewMigrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewMigrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewMigrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type InfoMessagesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -22405,6 +24452,1177 @@ func (r PatchNodeConfigResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PatchNodeConfigResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDHCPInterfacesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPInterfaces
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDHCPInterfacesResponse) GetJSON200() *DHCPInterfaces {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListDHCPInterfacesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListDHCPInterfacesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListDHCPInterfacesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListDHCPInterfacesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListDHCPInterfacesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListDHCPInterfacesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDHCPInterfacesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDHCPInterfacesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDHCPInterfacesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDHCPInterfacesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetDHCPScopeConfigResponse200Headers the declared response headers of an HTTP 200 response for GetDHCPScopeConfig
+type GetDHCPScopeConfigResponse200Headers struct {
+	ETag *string
+}
+
+type GetDHCPScopeConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPConfig
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetDHCPScopeConfigResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDHCPScopeConfigResponse) GetJSON200() *DHCPConfig {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetDHCPScopeConfigResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDHCPScopeConfigResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetDHCPScopeConfigResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetDHCPScopeConfigResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetDHCPScopeConfigResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetDHCPScopeConfigResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetDHCPScopeConfigResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDHCPScopeConfigResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDHCPScopeConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDHCPScopeConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDHCPScopeConfigResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PutDHCPScopeConfigResponse200Headers the declared response headers of an HTTP 200 response for PutDHCPScopeConfig
+type PutDHCPScopeConfigResponse200Headers struct {
+	ETag *string
+}
+
+type PutDHCPScopeConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPConfig
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *PutDHCPScopeConfigResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON200() *DHCPConfig {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PutDHCPScopeConfigResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PutDHCPScopeConfigResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutDHCPScopeConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutDHCPScopeConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutDHCPScopeConfigResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ExportDHCPLeasesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPExport
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExportDHCPLeasesResponse) GetJSON200() *DHCPExport {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ExportDHCPLeasesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ExportDHCPLeasesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ExportDHCPLeasesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ExportDHCPLeasesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ExportDHCPLeasesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ExportDHCPLeasesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ExportDHCPLeasesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportDHCPLeasesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportDHCPLeasesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportDHCPLeasesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportDHCPLeasesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ImportDHCPLeasesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPImportResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON200() *DHCPImportResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ImportDHCPLeasesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ImportDHCPLeasesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ImportDHCPLeasesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ImportDHCPLeasesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ImportDHCPLeasesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDHCPLeasesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPLeases
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDHCPLeasesResponse) GetJSON200() *DHCPLeases {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListDHCPLeasesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListDHCPLeasesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListDHCPLeasesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListDHCPLeasesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListDHCPLeasesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListDHCPLeasesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListDHCPLeasesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDHCPLeasesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDHCPLeasesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDHCPLeasesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDHCPLeasesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListDHCPReservationsResponse200Headers the declared response headers of an HTTP 200 response for ListDHCPReservations
+type ListDHCPReservationsResponse200Headers struct {
+	ETag *string
+}
+
+type ListDHCPReservationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPReservations
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListDHCPReservationsResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDHCPReservationsResponse) GetJSON200() *DHCPReservations {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListDHCPReservationsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListDHCPReservationsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListDHCPReservationsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListDHCPReservationsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListDHCPReservationsResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListDHCPReservationsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListDHCPReservationsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDHCPReservationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDHCPReservationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDHCPReservationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDHCPReservationsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DeleteDHCPReservationResponse200Headers the declared response headers of an HTTP 200 response for DeleteDHCPReservation
+type DeleteDHCPReservationResponse200Headers struct {
+	ETag *string
+}
+
+type DeleteDHCPReservationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPConfig
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *DeleteDHCPReservationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON200() *DHCPConfig {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteDHCPReservationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteDHCPReservationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteDHCPReservationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteDHCPReservationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteDHCPReservationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PutDHCPReservationResponse200Headers the declared response headers of an HTTP 200 response for PutDHCPReservation
+type PutDHCPReservationResponse200Headers struct {
+	ETag *string
+}
+
+type PutDHCPReservationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPConfig
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *PutDHCPReservationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON200() *DHCPConfig {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PutDHCPReservationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PutDHCPReservationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutDHCPReservationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutDHCPReservationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutDHCPReservationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetDHCPSetupResponse200Headers the declared response headers of an HTTP 200 response for GetDHCPSetup
+type GetDHCPSetupResponse200Headers struct {
+	ETag *string
+}
+
+type GetDHCPSetupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPSetup
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetDHCPSetupResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDHCPSetupResponse) GetJSON200() *DHCPSetup {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetDHCPSetupResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDHCPSetupResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetDHCPSetupResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetDHCPSetupResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetDHCPSetupResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetDHCPSetupResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDHCPSetupResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDHCPSetupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDHCPSetupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDHCPSetupResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PutDHCPSetupResponse200Headers the declared response headers of an HTTP 200 response for PutDHCPSetup
+type PutDHCPSetupResponse200Headers struct {
+	ETag *string
+}
+
+type PutDHCPSetupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPSetup
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *PutDHCPSetupResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON200() *DHCPSetup {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PutDHCPSetupResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PutDHCPSetupResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutDHCPSetupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutDHCPSetupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutDHCPSetupResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDHCPStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DHCPStatus
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDHCPStatusResponse) GetJSON200() *DHCPStatus {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetDHCPStatusResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDHCPStatusResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetDHCPStatusResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetDHCPStatusResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetDHCPStatusResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetDHCPStatusResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDHCPStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDHCPStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDHCPStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDHCPStatusResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -28082,6 +31300,66 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEdit
 	return ParseListUsersResponse(rsp)
 }
 
+// ApplyMigrationWithBodyWithResponse Apply a reviewed migration preview
+//
+// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+func (c *ClientWithResponses) ApplyMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error) {
+	rsp, err := c.ApplyMigrationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyMigrationResponse(rsp)
+}
+
+// ApplyMigrationWithResponse Apply a reviewed migration preview
+//
+// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+func (c *ClientWithResponses) ApplyMigrationWithResponse(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error) {
+	rsp, err := c.ApplyMigration(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyMigrationResponse(rsp)
+}
+
+// PreviewMigrationWithBodyWithResponse Preview an API migration from Pi-hole v6 or Technitium
+//
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+func (c *ClientWithResponses) PreviewMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error) {
+	rsp, err := c.PreviewMigrationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewMigrationResponse(rsp)
+}
+
+// PreviewMigrationWithResponse Preview an API migration from Pi-hole v6 or Technitium
+//
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+func (c *ClientWithResponses) PreviewMigrationWithResponse(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error) {
+	rsp, err := c.PreviewMigration(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewMigrationResponse(rsp)
+}
+
 // InfoMessagesWithResponse Diagnosis messages (objects, policies, lists, readiness)
 //
 // Returns a wrapper object for the known response body format(s).
@@ -28145,6 +31423,218 @@ func (c *ClientWithResponses) PatchNodeConfigWithResponse(ctx context.Context, b
 		return nil, err
 	}
 	return ParsePatchNodeConfigResponse(rsp)
+}
+
+// ListDHCPInterfacesWithResponse IPv4 interfaces on this node
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /node/dhcp/v4/interfaces (the `ListDHCPInterfaces` operationId).
+func (c *ClientWithResponses) ListDHCPInterfacesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListDHCPInterfacesResponse, error) {
+	rsp, err := c.ListDHCPInterfaces(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDHCPInterfacesResponse(rsp)
+}
+
+// GetDHCPScopeConfigWithResponse Effective DHCPv4 scope configuration
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /node/dhcp/v4/scopes/{scope}/config (the `GetDHCPScopeConfig` operationId).
+func (c *ClientWithResponses) GetDHCPScopeConfigWithResponse(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*GetDHCPScopeConfigResponse, error) {
+	rsp, err := c.GetDHCPScopeConfig(ctx, scope, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDHCPScopeConfigResponse(rsp)
+}
+
+// PutDHCPScopeConfigWithBodyWithResponse Atomically update DHCPv4 pool options
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/config (the `PutDHCPScopeConfig` operationId).
+func (c *ClientWithResponses) PutDHCPScopeConfigWithBodyWithResponse(ctx context.Context, scope string, params *PutDHCPScopeConfigParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutDHCPScopeConfigResponse, error) {
+	rsp, err := c.PutDHCPScopeConfigWithBody(ctx, scope, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutDHCPScopeConfigResponse(rsp)
+}
+
+// PutDHCPScopeConfigWithResponse Atomically update DHCPv4 pool options
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/config (the `PutDHCPScopeConfig` operationId).
+func (c *ClientWithResponses) PutDHCPScopeConfigWithResponse(ctx context.Context, scope string, params *PutDHCPScopeConfigParams, body PutDHCPScopeConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*PutDHCPScopeConfigResponse, error) {
+	rsp, err := c.PutDHCPScopeConfig(ctx, scope, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutDHCPScopeConfigResponse(rsp)
+}
+
+// ExportDHCPLeasesWithResponse Export native DHCPv4 lease state
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /node/dhcp/v4/scopes/{scope}/export (the `ExportDHCPLeases` operationId).
+func (c *ClientWithResponses) ExportDHCPLeasesWithResponse(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*ExportDHCPLeasesResponse, error) {
+	rsp, err := c.ExportDHCPLeases(ctx, scope, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportDHCPLeasesResponse(rsp)
+}
+
+// ImportDHCPLeasesWithBodyWithResponse Atomically import native or dnsmasq leases
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /node/dhcp/v4/scopes/{scope}/import (the `ImportDHCPLeases` operationId).
+func (c *ClientWithResponses) ImportDHCPLeasesWithBodyWithResponse(ctx context.Context, scope string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportDHCPLeasesResponse, error) {
+	rsp, err := c.ImportDHCPLeasesWithBody(ctx, scope, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImportDHCPLeasesResponse(rsp)
+}
+
+// ImportDHCPLeasesWithResponse Atomically import native or dnsmasq leases
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /node/dhcp/v4/scopes/{scope}/import (the `ImportDHCPLeases` operationId).
+func (c *ClientWithResponses) ImportDHCPLeasesWithResponse(ctx context.Context, scope string, body ImportDHCPLeasesJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportDHCPLeasesResponse, error) {
+	rsp, err := c.ImportDHCPLeases(ctx, scope, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImportDHCPLeasesResponse(rsp)
+}
+
+// ListDHCPLeasesWithResponse Live DHCPv4 leases on this node
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /node/dhcp/v4/scopes/{scope}/leases (the `ListDHCPLeases` operationId).
+func (c *ClientWithResponses) ListDHCPLeasesWithResponse(ctx context.Context, scope string, params *ListDHCPLeasesParams, reqEditors ...RequestEditorFn) (*ListDHCPLeasesResponse, error) {
+	rsp, err := c.ListDHCPLeases(ctx, scope, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDHCPLeasesResponse(rsp)
+}
+
+// ListDHCPReservationsWithResponse Effective DHCPv4 reservations
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /node/dhcp/v4/scopes/{scope}/reservations (the `ListDHCPReservations` operationId).
+func (c *ClientWithResponses) ListDHCPReservationsWithResponse(ctx context.Context, scope string, reqEditors ...RequestEditorFn) (*ListDHCPReservationsResponse, error) {
+	rsp, err := c.ListDHCPReservations(ctx, scope, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDHCPReservationsResponse(rsp)
+}
+
+// DeleteDHCPReservationWithResponse Remove a reservation while preserving live leases
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `DeleteDHCPReservation` operationId).
+func (c *ClientWithResponses) DeleteDHCPReservationWithResponse(ctx context.Context, scope string, mac string, params *DeleteDHCPReservationParams, reqEditors ...RequestEditorFn) (*DeleteDHCPReservationResponse, error) {
+	rsp, err := c.DeleteDHCPReservation(ctx, scope, mac, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteDHCPReservationResponse(rsp)
+}
+
+// PutDHCPReservationWithBodyWithResponse Create or replace a DHCPv4 reservation
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `PutDHCPReservation` operationId).
+func (c *ClientWithResponses) PutDHCPReservationWithBodyWithResponse(ctx context.Context, scope string, mac string, params *PutDHCPReservationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutDHCPReservationResponse, error) {
+	rsp, err := c.PutDHCPReservationWithBody(ctx, scope, mac, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutDHCPReservationResponse(rsp)
+}
+
+// PutDHCPReservationWithResponse Create or replace a DHCPv4 reservation
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /node/dhcp/v4/scopes/{scope}/reservations/{mac} (the `PutDHCPReservation` operationId).
+func (c *ClientWithResponses) PutDHCPReservationWithResponse(ctx context.Context, scope string, mac string, params *PutDHCPReservationParams, body PutDHCPReservationJSONRequestBody, reqEditors ...RequestEditorFn) (*PutDHCPReservationResponse, error) {
+	rsp, err := c.PutDHCPReservation(ctx, scope, mac, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutDHCPReservationResponse(rsp)
+}
+
+// GetDHCPSetupWithResponse Saved DHCPv4 setup on this node
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /node/dhcp/v4/setup (the `GetDHCPSetup` operationId).
+func (c *ClientWithResponses) GetDHCPSetupWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDHCPSetupResponse, error) {
+	rsp, err := c.GetDHCPSetup(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDHCPSetupResponse(rsp)
+}
+
+// PutDHCPSetupWithBodyWithResponse Save DHCPv4 setup for the next restart
+//
+// Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /node/dhcp/v4/setup (the `PutDHCPSetup` operationId).
+func (c *ClientWithResponses) PutDHCPSetupWithBodyWithResponse(ctx context.Context, params *PutDHCPSetupParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutDHCPSetupResponse, error) {
+	rsp, err := c.PutDHCPSetupWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutDHCPSetupResponse(rsp)
+}
+
+// PutDHCPSetupWithResponse Save DHCPv4 setup for the next restart
+//
+// Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /node/dhcp/v4/setup (the `PutDHCPSetup` operationId).
+func (c *ClientWithResponses) PutDHCPSetupWithResponse(ctx context.Context, params *PutDHCPSetupParams, body PutDHCPSetupJSONRequestBody, reqEditors ...RequestEditorFn) (*PutDHCPSetupResponse, error) {
+	rsp, err := c.PutDHCPSetup(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutDHCPSetupResponse(rsp)
+}
+
+// GetDHCPStatusWithResponse DHCPv4 scopes on this node
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /node/dhcp/v4/status (the `GetDHCPStatus` operationId).
+func (c *ClientWithResponses) GetDHCPStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDHCPStatusResponse, error) {
+	rsp, err := c.GetDHCPStatus(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDHCPStatusResponse(rsp)
 }
 
 // ListNodesWithResponse Nodes of the cluster
@@ -34135,6 +37625,170 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 	return response, nil
 }
 
+// ParseApplyMigrationResponse parses an HTTP response from a ApplyMigrationWithResponse call
+func ParseApplyMigrationResponse(rsp *http.Response) (*ApplyMigrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApplyMigrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MigrationResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewMigrationResponse parses an HTTP response from a PreviewMigrationWithResponse call
+func ParsePreviewMigrationResponse(rsp *http.Response) (*PreviewMigrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewMigrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Plan
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseInfoMessagesResponse parses an HTTP response from a InfoMessagesWithResponse call
 func ParseInfoMessagesResponse(rsp *http.Response) (*InfoMessagesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -34401,6 +38055,1039 @@ func ParsePatchNodeConfigResponse(rsp *http.Response) (*PatchNodeConfigResponse,
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDHCPInterfacesResponse parses an HTTP response from a ListDHCPInterfacesWithResponse call
+func ParseListDHCPInterfacesResponse(rsp *http.Response) (*ListDHCPInterfacesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDHCPInterfacesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPInterfaces
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDHCPScopeConfigResponse parses an HTTP response from a GetDHCPScopeConfigWithResponse call
+func ParseGetDHCPScopeConfigResponse(rsp *http.Response) (*GetDHCPScopeConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDHCPScopeConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetDHCPScopeConfigResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePutDHCPScopeConfigResponse parses an HTTP response from a PutDHCPScopeConfigWithResponse call
+func ParsePutDHCPScopeConfigResponse(rsp *http.Response) (*PutDHCPScopeConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutDHCPScopeConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers PutDHCPScopeConfigResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseExportDHCPLeasesResponse parses an HTTP response from a ExportDHCPLeasesWithResponse call
+func ParseExportDHCPLeasesResponse(rsp *http.Response) (*ExportDHCPLeasesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportDHCPLeasesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPExport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseImportDHCPLeasesResponse parses an HTTP response from a ImportDHCPLeasesWithResponse call
+func ParseImportDHCPLeasesResponse(rsp *http.Response) (*ImportDHCPLeasesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ImportDHCPLeasesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPImportResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDHCPLeasesResponse parses an HTTP response from a ListDHCPLeasesWithResponse call
+func ParseListDHCPLeasesResponse(rsp *http.Response) (*ListDHCPLeasesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDHCPLeasesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPLeases
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDHCPReservationsResponse parses an HTTP response from a ListDHCPReservationsWithResponse call
+func ParseListDHCPReservationsResponse(rsp *http.Response) (*ListDHCPReservationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDHCPReservationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPReservations
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListDHCPReservationsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeleteDHCPReservationResponse parses an HTTP response from a DeleteDHCPReservationWithResponse call
+func ParseDeleteDHCPReservationResponse(rsp *http.Response) (*DeleteDHCPReservationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteDHCPReservationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers DeleteDHCPReservationResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePutDHCPReservationResponse parses an HTTP response from a PutDHCPReservationWithResponse call
+func ParsePutDHCPReservationResponse(rsp *http.Response) (*PutDHCPReservationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutDHCPReservationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers PutDHCPReservationResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetDHCPSetupResponse parses an HTTP response from a GetDHCPSetupWithResponse call
+func ParseGetDHCPSetupResponse(rsp *http.Response) (*GetDHCPSetupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDHCPSetupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPSetup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetDHCPSetupResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePutDHCPSetupResponse parses an HTTP response from a PutDHCPSetupWithResponse call
+func ParsePutDHCPSetupResponse(rsp *http.Response) (*PutDHCPSetupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutDHCPSetupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPSetup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers PutDHCPSetupResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetDHCPStatusResponse parses an HTTP response from a GetDHCPStatusWithResponse call
+func ParseGetDHCPStatusResponse(rsp *http.Response) (*GetDHCPStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDHCPStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DHCPStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

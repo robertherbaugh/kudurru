@@ -19,6 +19,8 @@ import {
   type TraceRow,
 } from "../content.ts";
 import { external, icon, type Assets } from "./layout.ts";
+import { migrationCards } from "./move-over.ts";
+import { useCases } from "./use-case.ts";
 
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
@@ -58,7 +60,7 @@ function hero(version: string): Html {
     <div class="hero-copy">
       <p class="eyebrow mono"><span>Kubernetes-native DNS</span><span>Kudurru Community License</span><span>v${version} “stone”</span></p>
       <h1 id="hero-title">${TAGLINE.slice(0, -1)}<span class="stop">.</span></h1>
-      <p class="lead">kudurru is a DNS server for the networks you run: authoritative zones, a resolver over every encrypted transport, blocking with client groups, and a dashboard that shows why each answer was given. One Go binary, as a single container or as a Kubernetes Deployment with CRDs.</p>
+      <p class="lead">kudurru is a DNS server for the networks you run: authoritative zones, a resolver that forwards over every encrypted transport or resolves from the root with DNSSEC validation, blocking with client groups, and a dashboard that shows why each answer was given. One Go binary, as a single container or as a Kubernetes Deployment with CRDs.</p>
       <div class="actions">
         ${external(DOCS_URL, html`Read the docs ${icon.arrow}`, "btn btn-primary")}
         ${external(REPO_URL, html`${icon.github} Source on GitHub`, "btn btn-ghost")}
@@ -317,6 +319,18 @@ ${pipeline()}
 ${features()}
 ${dashboard(assets)}
 ${deploy(version)}
+<section class="sec migration-section" aria-labelledby="home-migrate-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="sec-label">Move over</p>
+      <h2 id="home-migrate-title">Bring your DNS with you.</h2>
+    </div>
+    <p class="sec-lead">Start with the server you run today. Each guide maps your configuration, explains the gaps and walks through testing before you switch.</p>
+    ${migrationCards()}
+    <p class="migration-sources"><a class="more" href="/move-over/">Compare all four DNS servers ${icon.arrow}</a></p>
+  </div>
+</section>
+${useCases()}
 ${name(assets)}
 ${roadmap()}
 ${closing()}`;

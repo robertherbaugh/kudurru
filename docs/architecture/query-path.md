@@ -67,7 +67,7 @@ NOTAUTH by the transport, also before the pipeline.
 | 4 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced` |
 | 5 | `blocking` | Is the name blocked for this client? | a block answer, a safe-search CNAME; after the next stages return, it checks CNAME targets and IPs in the answer | `blocked_list`, `blocked_exact`, `blocked_regex`, `blocked_cname`, `blocked_safesearch` |
 | 6 | `cache` | Is the answer already known? | a cached, stale or prefetching answer | `cached`, `cached_stale`, `prefetch_refresh` |
-| 7 | `upstream` | Who knows the answer? | always answers (it is the last stage) | `forwarded`, `servfail_upstream`, `timeout_upstream` |
+| 7 | `upstream` | Who knows the answer? | always answers (it is the last stage); a recursive group resolves from the root servers and validates DNSSEC | `forwarded`, `servfail_upstream`, `timeout_upstream`, `dnssec_bogus` |
 
 The order puts the cheap and the certain first. Authoritative answers come
 before blocking, so your own zones are never blocked. Blocking comes before
@@ -145,6 +145,13 @@ sequenceDiagram
     B-->>C: answer
 ```
 
+When the group is recursive (`mode: recursive`), steps 7 and 8 become a
+walk from the root servers with DNSSEC validation
+([recursive groups](upstreams-and-cache.md#recursive-groups)). The status is
+still `forwarded`, the upstream is `default/recursive`, and the query log's
+`dnssec` column records `secure`, `insecure` or `bogus`, for the cached
+copy too.
+
 ### A blocked name
 
 ```mermaid
@@ -210,7 +217,7 @@ use this list (`internal/pipeline/status.go`).
 |---|---|---|
 | answered | `forwarded`, `cached`, `cached_stale`, `authoritative`, `prefetch_refresh`, `special_domain` | `local_record`, `retried`, `in_progress` |
 | blocked | `blocked_list`, `blocked_regex`, `blocked_exact`, `blocked_cname`, `blocked_safesearch`, `blocked_rate_limit` | `blocked_upstream`, `blocked_rpz` |
-| error | `refused_acl`, `dropped`, `servfail_upstream`, `timeout_upstream`, `servfail_unsynced` | `dnssec_bogus` |
+| error | `refused_acl`, `dropped`, `servfail_upstream`, `timeout_upstream`, `servfail_unsynced`, `dnssec_bogus` | none |
 
 ## What the stages read
 
@@ -238,8 +245,18 @@ there.
 ## Not built yet
 
 `local` (custom host records, `.local`/`.onion`/RFC 6303 answers), `rewrite`
-(DNS rewrites, views, DNS64), `dnssec` (validation) and `postprocess`
-(rebinding protection) are planned stages whose names are reserved in
-`pipeline.Order`; no package implements them. NSID is not implemented, and
+(DNS rewrites, views, DNS64), `dnssec` (validation of forwarded answers) and
+`postprocess` (rebinding protection) are planned stages whose names are
+reserved in `pipeline.Order`; no package implements them. Recursive upstream
+groups already answer the RFC 6303 and special-use names themselves and
+validate their own answers inside the upstream stage. NSID is not implemented, and
 the `epoch` in the health TXT is always `0`. The control stage has no
 configuration keys yet, so it only drops malformed queries.
+
+## DHCP lease records (v0.2.0 development)
+
+The authoritative stage can answer A/PTR records from committed in-memory
+[DHCP lease snapshots](dhcp.md#lease-dns-and-policy-names). The optional hook
+runs after the unsynced gate when no zone matches or the match is the
+catch-all root forward zone. Specific configured zones and a primary root
+retain precedence. It does not add a pipeline stage or modify zone contents.

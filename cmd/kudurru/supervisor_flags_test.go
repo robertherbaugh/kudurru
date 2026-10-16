@@ -51,13 +51,13 @@ func TestChartSupervisorArgs(t *testing.T) {
 }
 
 func TestVIPSeparateVRRPInterface(t *testing.T) {
-	out := run(t, "vip", "render", "--vip", "dns-a=10.0.0.53/24@eth1#53", "--vip", "dns-b=10.0.0.54/24@eth2#54", "--vrrp-interface", "eth0", "--unicast-src", "10.30.50.11", "--peers", "10.30.50.12", "--node-count", "2")
+	out := run(t, "vip", "render", "--vip", "dns-a=10.0.0.53/24@eth1#53", "--vip", "dns-b=10.0.0.54/24@eth2#54", "--vrrp-interface", "eth0", "--unicast-src", "198.51.100.11", "--peers", "198.51.100.12", "--node-count", "2")
 	for _, want := range []string{"interface eth0", "10.0.0.53/24 dev eth1", "10.0.0.54/24 dev eth2", "priority 200", "priority 190"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("render lacks %q", want)
 		}
 	}
-	if _, err := runErr("vip", "render", "--vip", "dns=10.0.0.53/24@eth1#53", "--vrrp-interface", "eth0\n}", "--unicast-src", "10.30.50.11", "--peers", "10.30.50.12"); err == nil {
+	if _, err := runErr("vip", "render", "--vip", "dns=10.0.0.53/24@eth1#53", "--vrrp-interface", "eth0\n}", "--unicast-src", "198.51.100.11", "--peers", "198.51.100.12"); err == nil {
 		t.Fatal("unsafe VRRP interface accepted")
 	}
 	// Source discovery uses the VRRP interface even when the VIP device

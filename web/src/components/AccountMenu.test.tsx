@@ -4,7 +4,7 @@ import { useApi } from '../api/context';
 import { describe, expect, it } from 'vitest';
 import { mockDB, signIn } from '../mocks/handlers';
 import { renderWithApp } from '../test/utils';
-import { AccountMenu, isLocalUser, passwordProblems } from './AccountMenu';
+import { AccountMenu, isLocalUser, passwordProblems, principalName } from './AccountMenu';
 
 function fill(dialog: HTMLElement, current: string, next: string, confirm = next) {
   fireEvent.change(within(dialog).getByLabelText(/^Current password/), { target: { value: current } });
@@ -24,6 +24,16 @@ describe('change password', () => {
     expect(isLocalUser({ ...base, principal: { kind: 'User', id: 'local:admin', name: 'admin', groups: [] } })).toBe(true);
     expect(isLocalUser({ ...base, principal: { kind: 'User', id: 'oidc:x', name: 'x', groups: [], provider: 'dex' } })).toBe(false);
     expect(isLocalUser({ ...base, principal: { kind: 'ServiceAccount', id: 'sa:x', name: 'x', groups: [] } })).toBe(false);
+  });
+
+  it('shows an identity provider login without the provider prefix', () => {
+    const base = { roles: [], permissions: {} };
+    const oidc = (name: string) => ({ ...base, principal: { kind: 'User' as const, id: 'oidc:authentik:https%3A%2F%2Fauth.example:sub-1', name, groups: [], provider: 'authentik' } });
+    expect(principalName(oidc('authentik:alice@example.com'))).toBe('alice@example.com');
+    // A custom claimMappings.username.prefix stays: it is not the provider's.
+    expect(principalName(oidc('corp:alice'))).toBe('corp:alice');
+    expect(principalName(oidc('authentik:'))).toBe('authentik:');
+    expect(principalName({ ...base, principal: { kind: 'User', id: 'local:admin', name: 'admin', groups: [], provider: 'local' } })).toBe('admin');
   });
 
   it('changes the password from the account menu', async () => {

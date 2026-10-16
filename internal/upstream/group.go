@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 
 // ErrTimeout is wrapped by errors from exchanges that timed out.
@@ -25,6 +27,9 @@ type Result struct {
 	// "<group>/<server>", the value for pipeline.Response.Upstream.
 	Group, Server, Upstream string
 	RTT                     time.Duration
+	// DNSSEC is the validation state from a recursive group; unknown for
+	// forwarded answers, which kudurru does not validate.
+	DNSSEC recursor.Security
 }
 
 // Error is returned when no server of a group produced a usable answer.
@@ -201,7 +206,7 @@ func (g *Group) exchange(ctx context.Context, msg *dns.Msg) (*Result, error) {
 		}
 		a := g.race(ctx, batch, msg, failure)
 		if a != nil {
-			return &Result{Msg: a.msg, Group: g.name, Server: a.srv.name, Upstream: a.srv.label, RTT: a.rtt}, nil
+			return &Result{Msg: a.msg, Group: g.name, Server: a.srv.name, Upstream: a.srv.label, RTT: a.rtt, DNSSEC: a.sec}, nil
 		}
 	}
 	if len(failure.Errs) == 0 {

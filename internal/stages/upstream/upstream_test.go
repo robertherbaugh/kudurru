@@ -155,7 +155,8 @@ func TestServeFailures(t *testing.T) {
 
 	f.mode.Store(2)
 	resp, _ = s.Serve(request("example.com", true), nil)
-	if resp.Status != pipeline.StatusServfailUpstream || resp.Msg.Rcode != dns.RcodeServerFailure || resp.Upstream != "default/"+f.addr {
+	// The upstream blames DNSSEC (EDE 6), so the status says so.
+	if resp.Status != pipeline.StatusDNSSECBogus || resp.DNSSEC != pipeline.DNSSECBogus || resp.Msg.Rcode != dns.RcodeServerFailure || resp.Upstream != "default/"+f.addr {
 		t.Fatalf("servfail: %v %q", resp.Status, resp.Upstream)
 	}
 	if ede := edeCode(resp.Msg); ede != dns.ExtendedErrorCodeDNSBogus {

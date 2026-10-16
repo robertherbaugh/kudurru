@@ -34,6 +34,19 @@ describe('QueryLogPage', () => {
     expect(a.getAttribute('aria-controls')).not.toBe(b.getAttribute('aria-controls'));
   });
 
+  it('labels a DNSSEC failure of a recursive group and shows the validation state', async () => {
+    const original = mockDB().queries[0]!;
+    const bogus = { ...original, domain: 'dnssec-failed.org', status: 'dnssec_bogus', status_class: 'error' as const, rcode: 'SERVFAIL', upstream: 'resolver/recursive', dnssec: 'bogus', ede: 6 };
+    server.use(http.get(`${API}/queries`, () => HttpResponse.json({ scope: 'cluster', nodes: [{ name: 'node-a', ok: true }], partial: false, queries: [bogus], records_total: 1, records_filtered: 1 })));
+    renderWithApp(<QueryLogPage />, { route: '/queries' });
+    const row = await logRow('dnssec-failed.org');
+    expect(within(row).getByText('DNSSEC bogus')).toBeInTheDocument();
+    fireEvent.keyDown(row, { key: 'Enter' });
+    const why = document.getElementById(row.getAttribute('aria-controls') ?? '')!;
+    expect(within(why).getByText('resolver/recursive')).toBeInTheDocument();
+    expect(within(why).getByText('bogus')).toBeInTheDocument();
+  });
+
   it('pages through the log with the keyset cursor', async () => {
     const seen = spyQueries();
     renderWithApp(<QueryLogPage />, { route: '/queries' });

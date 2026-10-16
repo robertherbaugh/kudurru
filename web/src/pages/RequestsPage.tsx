@@ -119,7 +119,7 @@ function RequestsView() {
     {
       key: 'requestedAt',
       header: 'Requested',
-      width: pixel(110),
+      width: pixel(124),
       renderCell: (r) => (
         <VStack gap={0.5}>
           <Text type="supporting" color="primary" textWrap="nowrap">
@@ -145,18 +145,18 @@ function RequestsView() {
     {
       key: 'block',
       header: 'Why blocked',
-      width: proportional(1.2, { minWidth: 130 }),
+      width: proportional(1.4, { minWidth: 140 }),
       renderCell: (r) => (
         <Text type="supporting" color="primary">
           <WhyBlocked block={r.block} />
         </Text>
       ),
     },
-    { key: 'state', header: 'State', width: pixel(96), renderCell: (r) => <StateBadge state={r.state} /> },
+    { key: 'state', header: 'State', width: pixel(120), renderCell: (r) => <StateBadge state={r.state} /> },
     {
       key: 'actions',
       header: 'Actions',
-      width: pixel(110),
+      width: pixel(136),
       renderCell: (r) => (
         <VStack gap={1} align="start">
           {canDecide && canApprove(r) ? <Button label="Approve" size="sm" variant="primary" onClick={() => setApproving(r)} /> : null}

@@ -17,7 +17,7 @@ dashboard.
 | Zone | A part of the DNS name space for which kudurru gives the answers. |
 | Record | One DNS entry in a zone, for example an `A` record. |
 | Upstream | An external DNS server that kudurru asks when it has no answer. |
-| Upstream group | A named set of upstreams with a strategy and a time limit. |
+| Upstream group | A named set of upstreams with a strategy and a time limit. A recursive group has no upstreams: kudurru asks the root servers itself. |
 | Block page | A web page that a blocked name can lead to. It explains the block. |
 | Request | A message from a user who asks an administrator to allow a blocked name. |
 
@@ -36,7 +36,8 @@ When a client sends a query, kudurru does these steps in this order:
 5. It checks the block lists and the blocked services. If the name matches,
    kudurru gives the block answer of the policy.
 6. It looks in the cache.
-7. It asks an upstream group.
+7. It asks an upstream group. A recursive group finds the answer from the
+   root servers and checks its DNSSEC signatures.
 
 kudurru writes each answer to the query log with the reason. Chapter 3 shows
 how to read the reason.

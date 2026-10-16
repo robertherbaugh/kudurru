@@ -1,22 +1,26 @@
 // Builds the site into a temporary directory and checks the pages: no
-// inline script or style (the CSP in src/headers.ts forbids them), every local link
+// inline executable script or style (JSON-LD is authorized by CSP hashes), every local link
 // and asset exists, every fragment link has a target, images have alt text
 // and dimensions, and external links go where they should.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "../build.ts";
-import { DOCS_URL, REPO_URL } from "../src/content.ts";
-import { headersFile } from "../src/headers.ts";
+import { DEFAULT_LICENSE_API, DOCS_URL, MIGRATION_COMPARISON, REPO_URL, SUPPORT_STARTING_ANNUAL_USD } from "../src/content.ts";
+import { usd } from "../src/pricing.ts";
+import { headersFile, rulesFor } from "../src/headers.ts";
 
 let out: string;
 const pages: Record<string, string> = {};
+const LANDING_PAGES = ["kubernetes-dns/index.html", "network-ad-blocking/index.html", "pi-hole-alternative/index.html"];
+const PAGE_PATHS = ["index.html", "404.html", "move-over/index.html", "enterprise/index.html", ...LANDING_PAGES, "license/index.html", "license/text/index.html", "licenses/index.html"];
 
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "www-build-"));
   await build({ outDir: out, version: "9.8.7" });
-  for (const name of ["index.html", "404.html", "license/index.html", "license/text/index.html", "licenses/index.html"]) {
+  for (const name of PAGE_PATHS) {
     pages[name] = await readFile(join(out, name), "utf8");
   }
 });
@@ -24,11 +28,17 @@ beforeAll(async () => {
 afterAll(() => rm(out, { recursive: true, force: true }));
 
 const attrs = (page: string, attr: string) => [...page.matchAll(new RegExp(`\\s${attr}="([^"]*)"`, "g"))].map((m) => m[1]!);
+const jsonLd = (page: string) => [...page.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
+const scriptHash = (text: string) => "sha256-" + createHash("sha256").update(text).digest("base64");
 
-describe.each(["index.html", "404.html", "license/index.html", "license/text/index.html", "licenses/index.html"])("%s", (name) => {
-  test("no inline scripts, styles or event handlers", () => {
+describe.each(PAGE_PATHS)("%s", (name) => {
+  test("only JSON-LD data blocks may be inline; no styles or event handlers", () => {
     const page = pages[name]!;
     for (const tag of page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
+      if (tag[0].startsWith('<script type="application/ld+json">')) {
+        expect(JSON.parse(tag[1]!)["@context"]).toBe("https://schema.org");
+        continue;
+      }
       expect(tag[0]).toContain(' src="');
       expect(tag[1]!.trim()).toBe("");
     }
@@ -49,12 +59,12 @@ describe.each(["index.html", "404.html", "license/index.html", "license/text/ind
     }
   });
 
-  test("fragment links have targets on the home page", () => {
+  test("fragment links have targets on their page or the home page", () => {
     const home = pages["index.html"]!;
-    const ids = new Set(attrs(home, "id"));
     for (const ref of attrs(pages[name]!, "href").filter((r) => r.includes("#"))) {
       const [path, frag] = ref.split("#");
       if (path !== "" && path !== "/") continue;
+      const ids = new Set(attrs(path === "" ? pages[name]! : home, "id"));
       expect(ids.has(frag!)).toBe(true);
     }
   });
@@ -99,7 +109,128 @@ test("the 404 page is not indexed", () => {
 });
 
 test("the build writes _headers for Cloudflare", async () => {
-  expect(await readFile(join(out, "_headers"), "utf8")).toBe(headersFile());
+  const hashes = [...new Set(Object.values(pages).flatMap(jsonLd).map(scriptHash))];
+  const headers = await readFile(join(out, "_headers"), "utf8");
+  expect(headers).toBe(headersFile(rulesFor(DEFAULT_LICENSE_API, hashes)));
+  expect(headers).not.toContain("unsafe-inline");
+  for (const line of headers.split("\n")) expect(line.length).toBeLessThan(2000);
+});
+
+describe("search discovery", () => {
+  const indexed = PAGE_PATHS.filter((name) => name !== "404.html");
+
+  test("every indexable page has a unique title, description and matching canonical and social URLs", () => {
+    const titles: string[] = [];
+    const descriptions: string[] = [];
+    for (const name of indexed) {
+      const page = pages[name]!;
+      const url = "https://kudurru.io/" + name.replace(/index\.html$/, "");
+      const title = /<title>([^<]+)<\/title>/.exec(page)?.[1];
+      const description = /<meta name="description" content="([^"]+)">/.exec(page)?.[1];
+      expect(title).toBeTruthy();
+      expect(description).toBeTruthy();
+      expect(page.match(/<title>/g)?.length).toBe(1);
+      expect(page.match(/<h1\b/g)?.length).toBe(1);
+      expect(page).toContain(`<link rel="canonical" href="${url}">`);
+      expect(page).toContain(`<meta property="og:url" content="${url}">`);
+      expect(page).toContain(`<meta property="og:title" content="${title}">`);
+      expect(page).toContain(`<meta name="twitter:title" content="${title}">`);
+      expect(page).toContain(`<meta name="twitter:description" content="${description}">`);
+      expect(page).toContain('<meta name="twitter:image" content="https://kudurru.io/brand/kudurru-social.png">');
+      expect(page).toContain("max-image-preview:large");
+      titles.push(title!);
+      descriptions.push(description!);
+    }
+    expect(new Set(titles).size).toBe(indexed.length);
+    expect(new Set(descriptions).size).toBe(indexed.length);
+  });
+
+  test("the sitemap contains exactly the indexable canonical pages, and robots advertises it", async () => {
+    const sitemap = await readFile(join(out, "sitemap.xml"), "utf8");
+    const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]!);
+    expect(locations.sort()).toEqual(indexed.map((name) => "https://kudurru.io/" + name.replace(/index\.html$/, "")).sort());
+    expect(await readFile(join(out, "robots.txt"), "utf8")).toBe("User-agent: *\nAllow: /\n\nSitemap: https://kudurru.io/sitemap.xml\n");
+  });
+
+  test("JSON-LD describes the canonical site and software without invented prices or ratings", () => {
+    for (const name of indexed) {
+      const blocks = jsonLd(pages[name]!);
+      expect(blocks.length).toBe(1);
+      const graph = JSON.parse(blocks[0]!)["@graph"] as {
+        "@type": string;
+        url?: string;
+        softwareVersion?: string;
+        license?: string;
+        itemListElement?: { position: number; item: string }[];
+      }[];
+      const url = "https://kudurru.io/" + name.replace(/index\.html$/, "");
+      expect(graph.find((item) => item["@type"] === "WebPage")?.url).toBe(url);
+      expect(graph.find((item) => item["@type"] === "WebSite")?.url).toBe("https://kudurru.io/");
+      expect(blocks[0]).not.toMatch(/"(?:offers|aggregateRating|review)"/);
+      if (name !== "index.html") {
+        const crumbs = graph.find((item) => item["@type"] === "BreadcrumbList")?.itemListElement ?? [];
+        expect(crumbs[0]?.item).toBe("https://kudurru.io/");
+        expect(crumbs.at(-1)?.item).toBe(url);
+        expect(crumbs.map((item) => item.position)).toEqual(crumbs.map((_, i) => i + 1));
+      } else {
+        const software = graph.find((item) => item["@type"] === "SoftwareApplication");
+        expect(software?.softwareVersion).toBe("9.8.7");
+        expect(software?.license).toBe("https://kudurru.io/license/text/");
+      }
+    }
+    expect(jsonLd(pages["404.html"]!)).toEqual([]);
+  });
+
+  test.each(LANDING_PAGES)("%s structured breadcrumb matches the visible trail", (name) => {
+    const page = pages[name]!;
+    const visibleLabel = /aria-current="page">([^<]+)<\/span>/.exec(page)?.[1];
+    expect(visibleLabel).toBeTruthy();
+    const graph = JSON.parse(jsonLd(page)[0]!)["@graph"] as {
+      "@type": string;
+      itemListElement?: { name: string }[];
+    }[];
+    const trail = graph.find((item) => item["@type"] === "BreadcrumbList")?.itemListElement;
+    expect(trail?.at(-1)?.name).toBe(visibleLabel);
+  });
+
+  test.each(LANDING_PAGES)("%s is discoverable and sends readers to maintained guides", async (name) => {
+    const path = "/" + name.replace(/index\.html$/, "");
+    expect(attrs(pages["index.html"]!, "href")).toContain(path);
+    for (const page of Object.values(pages)) {
+      const footer = /<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(page)?.[1] ?? "";
+      expect(attrs(footer, "href")).toContain(path);
+    }
+    const main = /<main\b[^>]*>([\s\S]*?)<\/main>/.exec(pages[name]!)![1]!;
+    const docsLinks = new Set(attrs(main, "href").filter((href) => href.startsWith(DOCS_URL + "/")));
+    expect(docsLinks.size).toBeGreaterThan(2);
+    for (const href of docsLinks) {
+      const path = new URL(href).pathname.replace(/\/$/, "");
+      const source = path.startsWith("/start/") || path.startsWith("/migrate/") || path.startsWith("/reference/crds/")
+        ? `site/content${path}.md`
+        : `docs${path}.md`;
+      // Section roots such as /reference/crds/ use Hugo's _index.md.
+      const sourcePath = path === "/reference/crds" ? "site/content/reference/crds/_index.md" : source;
+      expect((await stat(join(import.meta.dir, "../..", sourcePath))).isFile()).toBe(true);
+    }
+  });
+
+  test("preview builds opt out of indexing in both HTML and response headers", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "www-preview-"));
+    try {
+      await build({ outDir: dir, version: "9.8.7", noIndex: true });
+      for (const name of PAGE_PATHS) {
+        const page = await readFile(join(dir, name), "utf8");
+        expect(page).toContain('<meta name="robots" content="noindex">');
+        expect(page).not.toContain('rel="canonical"');
+        expect(jsonLd(page)).toEqual([]);
+      }
+      expect(await readFile(join(dir, "_headers"), "utf8")).toContain("  X-Robots-Tag: noindex\n");
+      expect(await readFile(join(dir, "sitemap.xml"), "utf8")).not.toContain("<loc>");
+      expect(await readFile(join(dir, "robots.txt"), "utf8")).toBe("User-agent: *\nAllow: /\n");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 test("fonts are separate hashed files, not data URLs", async () => {
@@ -109,6 +240,98 @@ test("fonts are separate hashed files, not data URLs", async () => {
   const fonts = [...text.matchAll(/url\((\/assets\/[^)]+\.woff2)\)/g)].map((m) => m[1]!);
   expect(fonts.length).toBe(3);
   for (const f of fonts) expect((await stat(join(out, f))).size).toBeGreaterThan(10_000);
+});
+
+describe("the homelab page", () => {
+  test("is linked from every page's nav and footer and listed in the sitemap", async () => {
+    for (const name of PAGE_PATHS) {
+      const page = pages[name]!;
+      const nav = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(page)?.[1] ?? "";
+      const footer = /<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(page)?.[1] ?? "";
+      expect(attrs(nav, "href")).toContain("/move-over/");
+      expect(attrs(footer, "href")).toContain("/move-over/");
+    }
+    expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("<loc>https://kudurru.io/move-over/</loc>");
+  });
+
+  test("renders all five comparison columns and every feature row", () => {
+    const page = pages["move-over/index.html"]!;
+    const headings = [...page.matchAll(/<th scope="col">([^<]*)<\/th>/g)].map((match) => match[1]!);
+    expect(headings).toEqual(["Feature", "Pi-hole", "AdGuard Home", "Technitium", "kudurru v0.1.0"]);
+    const body = /<tbody>([\s\S]*?)<\/tbody>/.exec(page)?.[1] ?? "";
+    const rows = [...body.matchAll(/<tr>([\s\S]*?)<\/tr>/g)];
+    expect(rows).toHaveLength(MIGRATION_COMPARISON.length);
+    for (const row of rows) {
+      expect(row[1]!.match(/<th scope="row">/g)).toHaveLength(1);
+      expect(row[1]!.match(/<td>/g)).toHaveLength(4);
+    }
+  });
+
+  test("offers the comparison and all three migration guides in the home-page section", () => {
+    const section = /<section\b[^>]*aria-labelledby="home-migrate-title"[^>]*>([\s\S]*?)<\/section>/.exec(pages["index.html"]!)?.[1] ?? "";
+    const links = attrs(section, "href");
+    expect(links).toContain("/move-over/");
+    for (const slug of ["pihole", "adguard-home", "technitium"]) {
+      expect(links).toContain(`${DOCS_URL}/migrate/${slug}/`);
+    }
+  });
+});
+
+describe("the enterprise page", () => {
+  test("is linked from the nav and footer of every page and listed in the sitemap", async () => {
+    for (const name of PAGE_PATHS) {
+      const page = pages[name]!;
+      const nav = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(page)?.[1] ?? "";
+      const footer = /<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(page)?.[1] ?? "";
+      expect(attrs(nav, "href")).toContain("/enterprise/");
+      expect(attrs(footer, "href")).toContain("/enterprise/");
+    }
+    expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("<loc>https://kudurru.io/enterprise/</loc>");
+  });
+
+  test("publishes both annual editions, a static calculator example and volume rules", () => {
+    const page = pages["enterprise/index.html"]!;
+    expect(page).toContain("$99<span>/year platform fee</span>");
+    expect(page).toContain("+ $99 / node / year");
+    expect(page).toContain("$499<span>/year platform fee</span>");
+    expect(page).toContain("+ $299 / node / year");
+    expect(page).toContain("billed annually in USD");
+    expect(page).toContain('data-pricing-result>$1,994</p>');
+    expect(page).toContain("$166.17/month, billed annually");
+    expect(page).toContain("$2,326.50");
+    expect(page).toContain("$7,226.50");
+    expect(page).toContain("quoted individually");
+    expect(page).toContain("Community / Homelab");
+    expect(page).toContain("government production use");
+    expect(page).toContain("DNS keeps answering.");
+    expect(page).not.toMatch(/TBD|Proposed pricing|placeholders/);
+  });
+
+  test("offers an email contact for discussing an enterprise deployment", () => {
+    expect(attrs(pages["enterprise/index.html"]!, "href")).toContain("mailto:hello@kudurru.io?subject=kudurru%20Enterprise");
+  });
+
+  test("keeps the public support starting rate aligned with the enterprise docs", async () => {
+    const rate = `${usd(SUPPORT_STARTING_ANNUAL_USD)}/year`;
+    expect(pages["enterprise/index.html"]).toContain(`assistance starts at ${rate}`);
+    const docs = await readFile(join(import.meta.dir, "../../docs/enterprise.md"), "utf8");
+    expect(docs).toContain(`assistance starts at **${rate}**`);
+  });
+
+  test("its documentation links point to existing repository sources", async () => {
+    const main = /<main\b[^>]*>([\s\S]*?)<\/main>/.exec(pages["enterprise/index.html"]!)?.[1] ?? "";
+    const links = new Set(attrs(main, "href").filter((href) => href.startsWith(`${DOCS_URL}/`)));
+    expect(links.size).toBeGreaterThan(0);
+    // Hugo mounts this agreement from the repository root (site/hugo.yaml).
+    const mountedSources: Record<string, string> = {
+      "/project/commercial-license/": "COMMERCIAL_LICENSE_AGREEMENT.md",
+    };
+    for (const href of links) {
+      const path = new URL(href).pathname;
+      const source = mountedSources[path] ?? `docs${path.replace(/\/$/, "")}.md`;
+      expect((await stat(join(import.meta.dir, "../..", source))).isFile()).toBe(true);
+    }
+  });
 });
 
 describe("the license page", () => {
@@ -131,11 +354,13 @@ describe("the license page", () => {
     expect(pages["index.html"]).toContain("a policy beyond the default needs a license key");
   });
 
-  test("below the intro it spans the full width, like its table: only the form's box is narrower", () => {
+  test("places the form alongside the intro and keeps the remaining sections full width", () => {
     const page = pages["license/index.html"]!;
-    expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap narrow">/);
-    expect(page.match(/class="wrap narrow"/g)?.length).toBe(1);
-    expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<form class="licform lic-row"/);
+    expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap lic-intro">/);
+    const intro = page.slice(page.indexOf('aria-labelledby="lic-title"'), page.indexOf("</section>", page.indexOf('aria-labelledby="lic-title"')));
+    expect(intro).toContain('class="lic-intro-copy"');
+    expect(intro).toContain('data-license-form');
+    expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<div class="lic-row">/);
     for (const id of ["lic-req-title", "lic-get-title", "lic-read-title"]) expect(page).toContain(`<h2 id="${id}">`);
     // Using a key on a node is the docs' job, not this page's.
     expect(page).not.toContain("lic-use-title");
@@ -159,9 +384,14 @@ describe("the key request form", () => {
 
   test("has the fields the personal and the business request need", () => {
     const page = pages["license/index.html"]!;
-    for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "company", "business-nodes", "business-use", "website"]) {
+    for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "edition", "company", "business-nodes", "business-use", "website"]) {
       expect(page).toContain(`name="${name}"`);
     }
+    const editions = [...page.matchAll(/<input\b[^>]*\bname="edition"[^>]*>/g)].map((match) => match[0]);
+    expect(editions).toHaveLength(2);
+    expect(editions[0]).toMatch(/type="radio"[^>]*value="core"\s+checked\b/);
+    expect(editions[1]).toMatch(/type="radio"[^>]*value="enterprise"/);
+    expect(editions[1]).not.toMatch(/\bchecked\b/);
     // The server's limits are on the inputs too.
     expect(page).toMatch(/name="personal-use"[^>]*maxlength="1000"/);
     expect(page).toMatch(/name="name"[^>]*maxlength="200"/);

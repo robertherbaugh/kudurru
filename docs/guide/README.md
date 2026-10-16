@@ -19,7 +19,8 @@ administrator of the network decides which names it refuses.
 kudurru has these functions:
 
 - It answers queries for the zones that you own.
-- It sends all other queries to upstream DNS servers.
+- It sends all other queries to upstream DNS servers, or it finds the
+  answers itself from the root servers and checks DNSSEC.
 - It blocks names that are on block lists.
 - It applies different rules to different client groups.
 - It has a dashboard that shows what happens on the network.
@@ -72,3 +73,6 @@ where it matters.
 | Every setting | [Settings reference](../../site/content/reference/configuration.md) |
 | Every command | [Command reference](../../site/content/reference/cli.md) |
 | Move from Pi-hole | [Coming from Pi-hole](../../site/content/migrate/pihole.md) |
+| Move from AdGuard Home | [Coming from AdGuard Home](../../site/content/migrate/adguard-home.md) |
+| Move from Technitium | [Coming from Technitium](../../site/content/migrate/technitium.md) |
+| Switch DNS servers | [Cutover and rollback checklist](../../site/content/migrate/cutover.md) |

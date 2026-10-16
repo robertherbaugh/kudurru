@@ -168,7 +168,11 @@ func startHarness(t *testing.T, opts Options, add func(h *harness)) *harness {
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case <-h.done:
+		case err := <-h.done:
+			if err != nil {
+				// Failure tests assert the error before cleanup.
+				t.Logf("Run returned during cleanup: %v", err)
+			}
 		case <-time.After(10 * time.Second):
 			t.Error("Run did not return")
 		}

@@ -80,7 +80,7 @@ describe('ZoneWizardDialog', () => {
     fireEvent.change(apex, { target: { value: 'Corp.Example.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     const sel = await findSelector(/Upstream group/);
-    await waitFor(() => expect(optionLabels(sel)).toEqual(['Not set (default)', 'default', 'filtered']));
+    await waitFor(() => expect(optionLabels(sel)).toEqual(['Not set (default)', 'default', 'filtered', 'resolver']));
     pick(sel, /^filtered/);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByTestId('zone-review')).toHaveTextContent('corp.example.');

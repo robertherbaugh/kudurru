@@ -11,12 +11,57 @@ kudurru separates three kinds of state, and keeps them apart on purpose:
 This page covers the first two: how an object gets from a writer to every
 node's query path, and how settings reload.
 
+The v0.2.0 development [DHCPv4 server](dhcp.md) adds a separate node-local
+setup registry, `dhcp-settings.json`, and per-scope `dhcp.db`/`dhcp-<name>.db`
+databases. Fresh setup can be entered entirely in the dashboard. Existing host
+`dhcp.*` configuration stays file-owned until explicit adoption; generic
+host-only settings restrictions remain. Any DHCP environment override blocks
+UI setup ownership. Setup saves stage complete scopes for restart and never
+change live listeners or lease state. API-managed scopes keep live options and
+reservations in their lease database. The setup view overlays current values
+only for scopes without pending edits; setup and database revisions prevent
+concurrent changes from being lost. Lease schema v4 retains each scope's setup
+token and adds persistent DNS claims and replica progress. Standalone startup
+applies tokens once, preserving later live edits. Optional three-voter Raft
+replicates DHCP leases and live management independently of object-store
+replication; local setup tokens cannot override established replica settings.
+Keep its Raft directory and hidden DNS claim registry with lease databases.
+Ordinary object backup does not include this state. Committed lease
+snapshots supply DNS and policy names without query-time storage reads.
+
 ![Writers go through one validator into the store; every node's zonecache watches the store and builds the snapshot the pipeline reads; the leader's controller writes status back](diagrams/config-flow.excalidraw.svg)
 
 Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 (interface, drivers, validator, conformance suite), `internal/zonecache`,
 `internal/objects` (the file loader), `internal/bootstrap`,
 `internal/controller`, `internal/config`, `cmd/kudurru/reload.go`.
+
+## API migrations
+
+`internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
+objects, a settings merge patch and conversion warnings. The dashboard's
+Tools wizard uses `POST /imports/preview` and submits the reviewed result to
+`POST /imports/apply`. The CLI's `import pihole|technitium` uses the same
+converter locally; `--apply` sends its preview to the same writer. A preview
+never writes destination state. Both REST routes require `settings.write`,
+because administrators intentionally connect to private source networks.
+This permission grants SSRF-equivalent network access: even a role with
+only `settings.write` can send credentialed requests to caller-selected
+HTTP(S) targets, including loopback, link-local metadata addresses and
+internal services. Source HTTP failure status codes are visible; error
+response bodies are not. Grant the permission only to trusted administrators
+and use network egress controls to restrict which destinations the server
+can reach.
+
+Source credentials exist only during the request: Technitium uses a bearer
+token, Pi-hole an application password and a temporary session that is closed
+after reading. Source redirects are refused, response sizes and request time
+are bounded, and upstream errors never echo credentials or response bodies.
+Import writes use the existing object authorization, schema, ownership and
+license checks. They are not transactional and return a result per object;
+the settings patch is applied only when every object succeeds. Unsupported
+source semantics are reported in the preview. See the
+[migration guides](../../site/content/migrate/_index.md) for supported data.
 
 ## The objects
 
@@ -232,6 +277,7 @@ Settings are not store objects. Each key in the metadata table
 | Scope | Examples | Changed how |
 |---|---|---|
 | node, `hostOnly`, restart | `node.*`, `listeners.*`, `store.*`, `tsigKeys`, `auth.adminSocket.*` | file or environment, then restart; never through the API |
+| node, dedicated DHCP setup | enabled state and complete DHCP scope topology | DHCP setup API/dashboard, explicit file adoption, then restart; generic Settings remains host-only |
 | cluster, hot | `upstreams.*`, `cache.*`, `blocking.enabled/defaultResponse/blockTTL`, `ratelimit.*`, `querylog.privacy/retention` | API, dashboard, settings file; applied without a restart |
 | cluster, restart | `querylog.enabled`, `blocking.initStrategy`, `auth.session.*` | as above, applied at the next start |
 | cluster, `hostOnly` | `auth.identityProviders`, `rbac.bindings` | file or environment only |

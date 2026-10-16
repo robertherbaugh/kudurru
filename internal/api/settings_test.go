@@ -142,11 +142,15 @@ func TestSettingsSchemaMetadata(t *testing.T) {
 		t.Fatalf("ipv4Prefix %+v", p)
 	}
 	g := byPath["upstreams.groups"].Values
-	if g == nil || g.Type != "object" || len(g.Fields) != 3 {
+	if g == nil || g.Type != "object" || len(g.Fields) != 4 {
 		t.Fatalf("upstreams.groups values %+v", g)
 	}
-	servers, strategy := g.Fields[0], g.Fields[1]
-	if servers.Name != "servers" || !servers.Required || servers.Items == nil || servers.Items.Format != "upstream" {
+	mode, servers, strategy := g.Fields[0], g.Fields[1], g.Fields[2]
+	if mode.Name != "mode" || mode.Default != "forward" || len(mode.Enum) != 2 || mode.Enum[1].Value != "recursive" {
+		t.Fatalf("mode %+v", mode)
+	}
+	// Required in forward mode only, which Validate checks.
+	if servers.Name != "servers" || servers.Required || servers.Items == nil || servers.Items.Format != "upstream" {
 		t.Fatalf("servers %+v", servers)
 	}
 	if strategy.Name != "strategy" || len(strategy.Enum) != 4 || strategy.Enum[0].Help == "" || strategy.Default != "parallel_best" {

@@ -128,7 +128,9 @@ func (l *doh3Listener) Serve(ctx context.Context) error {
 		defer cancel()
 		_ = l.srv.Shutdown(sctx)
 		_ = l.Close()
-		<-errCh
+		if err := <-errCh; !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, quic.ErrServerClosed) {
+			return err
+		}
 		return nil
 	case err := <-errCh:
 		_ = l.Close()

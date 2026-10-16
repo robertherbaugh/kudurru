@@ -58,6 +58,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -177,13 +178,22 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	slog.SetDefault(logger)
 	// Settings hot reload (D25): every consumer of a cluster-scope key that
 	// is not restartRequired subscribes to reload (reload.go).
-	reload := config.NewReloadable(cfg)
 	info := version.Get()
 	logger.Info("kudurru starting", "version", info.Version, "commit", info.Commit, "node", cfg.Node.Name, "config", cfg.Source, "store", cfg.Store.Driver)
 
 	if err := os.MkdirAll(cfg.Node.DataDir, 0o750); err != nil {
 		return fmt.Errorf("node.dataDir: %w", err)
 	}
+	cfg, dhcpSetup, dhcpServer, dhcpSetupError, closeDHCP, err := prepareDHCP(cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer closeDHCP()
+	reload := config.NewReloadable(cfg)
+	if dhcpServer != nil {
+		logger.Info("DHCPv4 listeners ready", "scopes", dhcpServer.ScopeNames())
+	}
+	leaseDNS := dhcpLocalRecords(dhcpServer)
 
 	// Metrics registry: build info, Go runtime, process, DNS.
 	reg := prometheus.NewRegistry()
@@ -344,7 +354,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// at runtime from blocking.catalogue.url, plus the opt-in AdGuard
 	// services import (blocking.catalogue.adguardServicesURL).
 	catalogs := catalogue.NewHolder(nil)
-	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: namespace, Services: catalogs}, logger)); err != nil {
+	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: namespace, Services: catalogs, Hostnames: leaseDNS}, logger)); err != nil {
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
@@ -533,7 +543,20 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// Pipeline: ingress → authoritative → cache → upstream, with the log observer.
-	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg)}
+	// One recursive resolver for every recursive group, kept across reloads
+	// so its delegation and key caches survive settings changes.
+	var rec *recursor.Resolver
+	recMetrics := recursor.NewMetrics(reg, func() int {
+		if rec == nil {
+			return 0
+		}
+		return rec.CacheLen()
+	})
+	rec, err = recursor.New(upstream.RecursionFrom(cfg.Upstreams.Recursion), recursor.Options{Logger: logger.With("component", "recursor"), Metrics: recMetrics})
+	if err != nil {
+		return err
+	}
+	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg), Recursor: rec}
 	upSet, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upOpts)
 	if err != nil {
 		return err
@@ -588,6 +611,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 
 	auth := authoritative.New(zoneview.Source{Cache: zc})
 	auth.Metrics = authoritative.NewMetrics(reg)
+	auth.LocalRecords = leaseDNS
 
 	stages := []pipeline.Stage{
 		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
@@ -784,6 +808,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	apiSrv, err := api.New(api.Options{
+		DHCP:            dhcpServer,
+		DHCPSetup:       dhcpSetup,
+		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
@@ -969,6 +996,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	if cfg.BlockPage.Enabled {
 		if err := add("blockpage", false, blockPage.Run); err != nil {
+			return err
+		}
+	}
+	if dhcpServer != nil {
+		if err := add("dhcp", false, dhcpServer.Run); err != nil {
 			return err
 		}
 	}

@@ -59,8 +59,9 @@ logged.
 Time, latency, node, transport, client address, client group, policy, name,
 type, class, rcode, **status**, upstream (`<group>/<server>`), zone, matched
 **list** and **rule**, answer count and a short answer summary, the first
-EDE code, flags (RD, CD, DO, ECS, TC, AD, cached, stale, prefetch) and the
-ECS prefix. The status, list and rule are what let the dashboard explain an
+EDE code, flags (RD, CD, DO, ECS, TC, AD, cached, stale, prefetch), the
+ECS prefix and the DNSSEC state (`secure`, `insecure` or `bogus` for answers
+from recursive groups, cached ones included; `unknown` otherwise). The status, list and rule are what let the dashboard explain an
 answer in one line.
 
 ### Storage and retention
@@ -110,7 +111,7 @@ never client addresses or query names.
 | Family | Examples |
 |---|---|
 | DNS | `kudurru_dns_requests_total{proto,qtype}`, `kudurru_dns_responses_total{proto,rcode,status}`, `kudurru_dns_request_duration_seconds{proto,status_class}`, `kudurru_dns_dropped_total{reason}` |
-| Upstreams and cache | see [upstreams and the cache](upstreams-and-cache.md#metrics) |
+| Upstreams, recursion and cache | see [upstreams and the cache](upstreams-and-cache.md#metrics) (`kudurru_upstream_*`, `kudurru_recursor_*`, `kudurru_cache_*`) |
 | Store and zonecache | `kudurru_store_operations_total`, `kudurru_store_snapshot_age_seconds`, `kudurru_zonecache_rebuild_duration_seconds`, `kudurru_zone_serial`, `kudurru_zone_records` |
 | Control plane | `kudurru_leader`, `kudurru_controller_reconcile_duration_seconds`, `kudurru_objects_diagnoses` |
 | Blocking | `kudurru_blocking_enabled`, `kudurru_blockpage_requests_total` |

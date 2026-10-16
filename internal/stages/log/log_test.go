@@ -173,3 +173,15 @@ func TestZoneNameTypedNil(t *testing.T) {
 		t.Errorf("nil zone: %q", got)
 	}
 }
+
+func TestObserverDNSSEC(t *testing.T) {
+	for _, sec := range []pipeline.DNSSEC{pipeline.DNSSECUnknown, pipeline.DNSSECSecure, pipeline.DNSSECInsecure, pipeline.DNSSECBogus} {
+		rec := &recorder{}
+		o := &Observer{Node: "n", Collector: rec}
+		req := request("www.example.com.", dns.TypeA)
+		o.Observe(req, &pipeline.Response{Msg: reply(req, dns.RcodeSuccess), Status: pipeline.StatusForwarded, Upstream: "default/recursive", DNSSEC: sec}, nil, time.Millisecond)
+		if got := rec.events[0].DNSSEC; got != querylog.DNSSECState(sec) || got.String() != [...]string{"unknown", "secure", "insecure", "bogus"}[sec] {
+			t.Fatalf("%d: logged %v", sec, got)
+		}
+	}
+}

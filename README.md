@@ -7,12 +7,13 @@
 
 > A **kudurru** (koo-DOO-roo) was a Babylonian boundary stone that recorded a land grant and the rights attached to it. The name reflects what a DNS zone represents: authority over a defined space. The original stone was kept in a temple, while the landholder held a clay copy—a fitting inspiration for authoritative DNS and the copies shared through zone transfers. Our release names follow that story: **stone**, **clay copies**, **temple**.
 
-**kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. v0.1.0, **“stone,”** brings authoritative zones, a forwarding resolver, blocking and a dashboard together in one source-available Go binary. These projects helped shape its design:
+**kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. v0.1.0, **“stone,”** brings authoritative zones, a resolver that forwards or resolves from the root servers with DNSSEC validation, blocking and a dashboard together in one source-available Go binary. These projects helped shape its design:
 
 | Inspiration | From | What it means in kudurru v0.1.0 |
 |---|---|---|
 | API-first design and one binary | [Gravity](https://github.com/BeryJu/gravity) | Every node runs the resolver, API and dashboard; Kubernetes replicas share configuration through the apiserver |
 | Authoritative DNS and encrypted transports | [Technitium](https://technitium.com/dns/) | Primary and forward zones, SOA serial management, AXFR/IXFR out, NOTIFY out, TSIG on UDP/TCP/DoT, DoT/DoH/DoQ/DoH3 and per-zone query ACLs |
+| Private recursion | [Unbound](https://nlnetlabs.nl/projects/unbound/about/) | Opt-in recursive upstream groups: QNAME minimization, DNSSEC validation from the root trust anchors, private and special-use names answered locally, no client subnet sent; forwarding stays the default |
 | A clear view of DNS activity | [Pi-hole](https://pi-hole.net/) | Stat tiles, 24 h charts, a query log that explains *why* each answer was given, one-click allow/deny and views across nodes |
 | Powerful blocking | [blocky](https://github.com/0xERR0R/blocky) / [AdGuard Home](https://github.com/AdguardTeam/AdGuardHome) | hosts, domain, adblock and regex lists; client groups; per-group policies and schedules; zero-allocation matchers with a benchmark regression gate |
 | Load balancing at the edge | [dnsdist](https://dnsdist.org) | An optional kudurru supervisor renders, validates and runs dnsdist; authenticated PROXYv2 preserves client IPs on the backend hop |
@@ -44,7 +45,7 @@ Principles that shaped it (the full list is in the [design record](docs/architec
 - **One owner per object.** Objects record who manages them (API, a file, an integration, Kubernetes); writes from another source are rejected.
 - **Serve from memory; degrade, never stop.** The query path never touches the store and keeps answering from the last good snapshot when the store is unreachable.
 - **GPL stays in its own container.** dnsdist and keepalived are supervised, never linked.
-- **Secure by default.** Privileged settings are host-only and can never be set through the API; OIDC logins with no matching role binding are refused, never silently admin.
+- **Secure by default.** Generic Settings keeps privileged host keys read-only. The dedicated DHCP setup API requires explicit ownership and a restart to activate changes; host interfaces and capabilities remain deployment tasks. OIDC logins with no matching role binding are refused, never silently admin.
 
 ## Deployment shapes
 
@@ -102,9 +103,19 @@ and [`deploy/compose/`](deploy/compose/).
 
 | Release | Name | Headline |
 |---|---|---|
-| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
-| v0.2 | clay copies | Secondary/stub zones, RFC 2136, DNSSEC validation, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
+| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
+| v0.2.0 | clay copies | DHCP server support, secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
 | v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
+
+The v0.2.0 development tree includes standalone and three-node quorum DHCPv4 for Linux/SQLite.
+Configure fresh scopes entirely through **DNS → DHCP**, without DHCP YAML;
+existing host setup requires explicit adoption. Enabling, disabling and
+topology changes are saved for restart, while active scope options and
+reservations apply live. Durable lease state and revision checks preserve
+allocations and later live edits across restarts. See the
+[DHCP setup and deployment guide](docs/deploy/dhcp.md) for host networking,
+capabilities, conflict detection, advanced network/boot options and failover
+recovery. DHCP is not included in v0.1.0; DHCPv6 is excluded from this pass.
 
 OIDC, scoped roles, long-term statistics, integrations and the edge need
 the corresponding license entitlements; a free eligible personal key

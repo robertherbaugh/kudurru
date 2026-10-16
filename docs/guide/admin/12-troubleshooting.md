@@ -86,6 +86,9 @@ Use these tools in this order:
 | Queries are slow. | The upstream is slow, or the timeout is long. | Open **Upstreams**. Read **RTT** on the page of the group. Select the strategy **Fastest first**. |
 | A name in your zone does not resolve. | The record or the zone has a problem. | Open the zone. Check that **Ready** shows **Ready**. Check the record. Use **Query (dig)**. |
 | A forward zone does not resolve. | The upstream group of the zone does not answer. | Check the upstream group. |
+| A recursive group shows **resolver in backoff**, and all names get SERVFAIL. | A firewall or the internet provider blocks or redirects port 53. | Let the node send UDP and TCP to port 53 of all addresses. If this is not possible, use the mode **Forward** (Chapter 7). |
+| One name gets SERVFAIL with the status `dnssec_bogus`. | The DNSSEC signatures of the zone are not correct. | Read the extended DNS error in the query log. Query with `dig +cd` to see the data. Tell the owner of the zone. |
+| Local names such as `nas.lan` get NXDOMAIN with a recursive group. | The root servers do not know the names of your router. | Send the local domain of the router to a forwarding group with a conditional rule (Chapter 7). |
 | A zone or record cannot be changed. | The owner is a file or Kubernetes. | Change the file or the resource. |
 | Answers are old after a record change. | A cache keeps the old answer for the TTL. | Wait for the TTL. Use **Tools** > **Response cache** for the cache of kudurru. |
 

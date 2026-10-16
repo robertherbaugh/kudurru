@@ -18,6 +18,7 @@ const NAV = [
   ['/clients', 'Clients'],
   ['/policies', 'Policies'],
   ['/zones', 'Zones'],
+  ['/dhcp', 'DHCP'],
   ['/upstreams', 'Upstreams'],
   ['/nodes', 'Nodes'],
   ['/settings', 'Settings'],

@@ -20,6 +20,9 @@
 # Local build (make docker-hostnetwork):
 #   docker build --build-arg KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<v> \
 #     -t ghcr.io/robertherbaugh/kudurru:<v>-hostnetwork images/hostnetwork
+# For an opt-in DHCP development image, make docker-dhcp also passes
+# DHCP_CAPABILITIES=true to add cap_net_raw to the executable. Both
+# NET_BIND_SERVICE and NET_RAW must then be in the runtime bounding set.
 ARG KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:0.1.0-dev
 
 FROM ${KUDURRU_IMAGE} AS kudurru
@@ -27,10 +30,16 @@ FROM ${KUDURRU_IMAGE} AS kudurru
 # setcap only writes the security.capability extended attribute, so this
 # stage runs on the build platform for every target platform.
 FROM --platform=$BUILDPLATFORM alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0 AS caps
+ARG DHCP_CAPABILITIES=false
 RUN apk add --no-cache libcap-utils
 COPY --from=kudurru /ko-app/kudurru /out/kudurru
-RUN setcap cap_net_bind_service=+ep /out/kudurru \
- && getcap /out/kudurru | grep -q cap_net_bind_service=ep \
+RUN case "$DHCP_CAPABILITIES" in \
+      false) file_caps=cap_net_bind_service=ep ;; \
+      true) file_caps=cap_net_bind_service,cap_net_raw=ep ;; \
+      *) echo "DHCP_CAPABILITIES must be true or false" >&2; exit 1 ;; \
+    esac \
+ && setcap "$file_caps" /out/kudurru \
+ && test "$(getcap /out/kudurru)" = "/out/kudurru $file_caps" \
  && mkdir -p /out/var/lib/kudurru /out/run/kudurru \
  && chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru \
  && chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru

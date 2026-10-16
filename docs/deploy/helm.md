@@ -298,8 +298,8 @@ vip:
     interface: eth1          # virtual addresses
     vrrpInterface: eth0      # advertisements and unicast source discovery
     vips:
-      - {name: dns-a, address: 10.35.10.53/24, vrid: 53}
-      - {name: dns-b, address: 10.35.10.54/24, vrid: 54}
+      - {name: dns-a, address: 192.0.2.53/24, vrid: 53}
+      - {name: dns-b, address: 192.0.2.54/24, vrid: 54}
 ```
 
 The list replaces `vip.address` and `vip.keepalived.vrid`; each entry may
@@ -363,6 +363,7 @@ config:
     upstreams:
       groups:
         default: { servers: ["tls://1.1.1.1", "tls://9.9.9.9"], strategy: parallel_best, timeout: 2s }
+        # default: { mode: recursive }   # resolve from the root servers and validate DNSSEC instead
       conditional: { "corp.example.": internal }
     blocking: { defaultResponse: nxdomain }
 ```
@@ -438,7 +439,11 @@ hostNetwork daemonset mode), the internal listener :8082 only from kudurru
 and edge pods, the API from `networkPolicy.apiFrom` (default: everyone),
 metrics from `networkPolicy.metricsFrom`, probes on :8081, and with
 `blockPage.enabled` the block page ports from everyone. Egress is not
-restricted.
+restricted. If your cluster restricts egress with its own policies (a
+default-deny NetworkPolicy, a CNI egress gateway or firewall), allow the
+kudurru pods UDP and TCP 53 to the upstream servers, or to any address
+(`0.0.0.0/0` and `::/0`) when an upstream group is recursive
+(`mode: recursive`).
 
 ## Block page
 

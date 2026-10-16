@@ -111,6 +111,7 @@ func (s *Stage) Serve(req *pipeline.Request, _ pipeline.Next) (*pipeline.Respons
 		Status:    pipeline.StatusForwarded,
 		Upstream:  res.Upstream,
 		Cacheable: !conditional,
+		DNSSEC:    pipeline.DNSSEC(res.DNSSEC), // same values
 	}, nil
 }
 
@@ -128,7 +129,11 @@ func (s *Stage) failure(req *pipeline.Request, group string, err error) *pipelin
 		m.Rcode = dns.RcodeServerFailure
 		m.Answer, m.Ns = nil, nil
 		upstream.FinishReply(req.Msg, m, -1)
-		return &pipeline.Response{Msg: m, Status: status, Upstream: ue.Upstream}
+		r := &pipeline.Response{Msg: m, Status: status, Upstream: ue.Upstream}
+		if dnssecFailure(m) {
+			r.Status, r.DNSSEC = pipeline.StatusDNSSECBogus, pipeline.DNSSECBogus
+		}
+		return r
 	}
 	r := pipeline.Reply(req, dns.RcodeServerFailure, status)
 	r.Upstream = group
@@ -140,4 +145,26 @@ func (s *Stage) failure(req *pipeline.Request, group string, err error) *pipelin
 	}
 	upstream.AddEDE(r.Msg, code, "")
 	return r
+}
+
+// dnssecFailure reports whether a SERVFAIL carries an extended error that
+// blames DNSSEC validation (RFC 8914 codes 6 to 12): the recursive groups'
+// bogus answers, and validating forwarders that say why.
+func dnssecFailure(m *dns.Msg) bool {
+	opt := m.IsEdns0()
+	if opt == nil {
+		return false
+	}
+	for _, o := range opt.Option {
+		if e, ok := o.(*dns.EDNS0_EDE); ok {
+			switch e.InfoCode {
+			case dns.ExtendedErrorCodeDNSBogus, dns.ExtendedErrorCodeSignatureExpired,
+				dns.ExtendedErrorCodeSignatureNotYetValid, dns.ExtendedErrorCodeDNSKEYMissing,
+				dns.ExtendedErrorCodeRRSIGsMissing, dns.ExtendedErrorCodeNoZoneKeyBitSet,
+				dns.ExtendedErrorCodeNSECMissing:
+				return true
+			}
+		}
+	}
+	return false
 }

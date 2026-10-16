@@ -85,6 +85,23 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/nodes` | Nodes of the cluster | `cluster.read` (cluster) |
 | GET | `/api/v1/nodes/{name}/health` | Readiness detail of one node | `cluster.read` (cluster) |
 
+## dhcp
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| GET | `/api/v1/node/dhcp/v4/interfaces` | IPv4 interfaces on this node | `dhcp.read` (cluster) |
+| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/config` | Effective DHCPv4 scope configuration | `dhcp.read` (cluster) |
+| PUT | `/api/v1/node/dhcp/v4/scopes/{scope}/config` | Atomically update DHCPv4 pool options | `dhcp.write` (cluster) |
+| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/export` | Export native DHCPv4 lease state | `dhcpleases.export` (cluster) |
+| POST | `/api/v1/node/dhcp/v4/scopes/{scope}/import` | Atomically import native or dnsmasq leases | `dhcpleases.import` (cluster) |
+| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/leases` | Live DHCPv4 leases on this node | `dhcpleases.read` (cluster) |
+| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations` | Effective DHCPv4 reservations | `dhcp.read` (cluster) |
+| PUT | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations/{mac}` | Create or replace a DHCPv4 reservation | `dhcp.write` (cluster) |
+| DELETE | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations/{mac}` | Remove a reservation while preserving live leases | `dhcp.delete` (cluster) |
+| GET | `/api/v1/node/dhcp/v4/setup` | Saved DHCPv4 setup on this node | `dhcp.read` (cluster) |
+| PUT | `/api/v1/node/dhcp/v4/setup` | Save DHCPv4 setup for the next restart | `dhcp.write` (cluster) |
+| GET | `/api/v1/node/dhcp/v4/status` | DHCPv4 scopes on this node | `dhcp.read` (cluster) |
+
 ## dnsrecordsets
 
 | Method | Path | Summary | Permission |
@@ -123,6 +140,13 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/iam/rolebindings` | List rolebindings (read-only; the write API is v0.2) | `rolebindings.read` (cluster) |
 | GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts (read-only; the write API is v0.2) | `serviceaccounts.read` (cluster) |
 | GET | `/api/v1/iam/users` | List users (read-only; the write API is v0.2) | `users.read` (cluster) |
+
+## imports
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| POST | `/api/v1/imports/apply` | Apply a reviewed migration preview | `settings.write` (cluster) |
+| POST | `/api/v1/imports/preview` | Preview an API migration from Pi-hole v6 or Technitium | `settings.write` (cluster) |
 
 ## meta
 

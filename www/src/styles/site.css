@@ -705,6 +705,8 @@ main,
 /* Sections */
 .sec {
   position: relative;
+  /* Rail markers extend past .wrap; keep them within narrow viewports. */
+  overflow-x: clip;
   padding-block: var(--sec-pad);
   border-top: 1px solid var(--line);
 }
@@ -1657,13 +1659,512 @@ main,
   color: var(--fg-2);
 }
 
-/* The license page (/license/). The intro keeps the narrow column; the
-   sections below it span the wrap, as the table does. Their headings take
-   the register heading step (.reg-body h3), below the page title: the home
-   page's display size would dwarf it. Below the table each row has its
-   heading in the first column and its text or form in the second, which
-   reaches the table's right edge; paragraphs keep a reading measure and the
-   form's box is 760px. On narrow screens the columns stack. */
+/* Search landing pages share the site's reading layout and link back to
+   setup guides. The same cards make them discoverable from the home page. */
+.use-case-intro .page-title {
+  max-width: 22ch;
+}
+.use-case-intro .lead {
+  max-width: 68ch;
+}
+.use-case-intro .actions {
+  margin-top: 32px;
+}
+.use-case-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 40px;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+.use-case-label {
+  color: var(--fg-2);
+}
+.use-case-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 24px;
+  margin-top: 32px;
+  list-style: none;
+}
+.use-case-links li {
+  display: flex;
+}
+.use-case-links a {
+  display: block;
+  width: 100%;
+  padding: 28px;
+  border: 1px solid var(--line);
+  text-decoration: none;
+}
+.use-case-links a:hover {
+  border-color: var(--clay);
+}
+.use-case-links h3 {
+  font-size: 20px;
+  font-weight: 550;
+}
+.use-case-links p,
+.use-case-questions p {
+  margin-top: 12px;
+  color: var(--fg-2);
+}
+.use-case-links p {
+  font-size: 15px;
+}
+.use-case-questions h3 {
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 550;
+}
+.use-case-questions > div + div {
+  margin-top: 16px;
+}
+.foot-use-cases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  margin-top: 32px;
+  font-size: 13px;
+}
+.foot-use-cases a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}
+.foot-use-cases + .foot-legal {
+  margin-top: 32px;
+}
+
+/* Enterprise: an annual pricing calculator, edition comparison and the
+   same two-column reading layout as the license. */
+.enterprise-intro,
+.enterprise-section {
+  overflow-x: clip;
+}
+.enterprise-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: clamp(32px, 6vw, 88px);
+  align-items: start;
+}
+.enterprise-intro .page-title {
+  margin-top: 24px;
+  font-size: clamp(2.5rem, 4.6vw, 4rem);
+}
+.enterprise-summary {
+  margin-top: 20px;
+  max-width: 58ch;
+  color: var(--fg-2);
+}
+.enterprise-continuity {
+  margin-top: 32px;
+  padding-left: 20px;
+  border-left: 2px solid var(--clay);
+  max-width: 58ch;
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.enterprise-continuity strong {
+  color: var(--fg);
+}
+.enterprise-hero .actions {
+  margin-top: 28px;
+}
+.enterprise-contact p:not(.label) {
+  margin-top: 20px;
+  max-width: 58ch;
+}
+.enterprise-pricing {
+  padding: clamp(24px, 3vw, 40px);
+  background: var(--ink-2);
+  border: 1px solid var(--line-2);
+  border-top: 3px solid var(--clay);
+}
+.enterprise-pricing .label,
+.enterprise-number {
+  color: var(--clay-hi);
+}
+.enterprise-pricing h2,
+.enterprise-section .lic-row h2 {
+  font-size: clamp(1.625rem, 2.6vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+.enterprise-pricing h2 {
+  margin-top: 20px;
+}
+.pricing-controls {
+  display: none;
+  gap: 14px;
+  margin-top: 28px;
+}
+.js .pricing-controls {
+  display: grid;
+}
+.pricing-editions {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.pricing-editions legend {
+  font-size: 13px;
+  color: var(--fg-2);
+  margin-bottom: 8px;
+}
+.pricing-editions label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.pricing-editions label:has(:checked) {
+  border-color: var(--clay-hi);
+  background: var(--ink-3);
+}
+.pricing-editions input {
+  margin: 0;
+  accent-color: var(--clay-hi);
+}
+.pricing-nodes {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.pricing-nodes input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 18px;
+  color: var(--fg);
+  background: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+}
+.enterprise-pricing .pricing-controls .fine {
+  margin: 0;
+}
+.pricing-total {
+  padding-block: 20px 8px;
+  border-top: 1px solid var(--line-2);
+}
+.pricing-total p:first-child {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.pricing-total p:last-child {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.3;
+}
+.enterprise-pricing [data-pricing-message] {
+  margin-top: 8px;
+}
+.enterprise-pricing [hidden] {
+  display: none;
+}
+.enterprise-pricing > p:not(.label) {
+  margin-top: 20px;
+  color: var(--fg-2);
+}
+.enterprise-fees {
+  margin-top: 28px;
+}
+.enterprise-fees > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding-block: 18px;
+  border-top: 1px solid var(--line);
+}
+.enterprise-fees dt {
+  font-size: 14px;
+}
+.enterprise-fees dd {
+  text-align: right;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.enterprise-pricing > .more {
+  margin-top: 24px;
+}
+.enterprise-plans {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 48px;
+  border: 1px solid var(--line-2);
+}
+.enterprise-plan {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  padding: clamp(20px, 2.4vw, 32px);
+  border-top: 3px solid transparent;
+}
+.enterprise-plan + .enterprise-plan {
+  border-left: 1px solid var(--line-2);
+}
+.enterprise-plan-featured {
+  border-top-color: var(--clay-hi);
+  background: var(--ink-2);
+}
+.enterprise-plan .label {
+  min-height: 3em;
+  color: var(--clay-hi);
+}
+.enterprise-plan h3 {
+  margin-top: 16px;
+  font-size: 23px;
+  font-weight: 550;
+  letter-spacing: -0.03em;
+}
+.plan-price {
+  margin-top: 28px;
+  font-size: clamp(2.5rem, 3.6vw, 3.25rem);
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+}
+.plan-price span {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--fg-2);
+}
+.plan-node-price {
+  margin-top: 12px;
+  color: var(--clay-hi);
+  font-size: 15px;
+}
+.plan-description {
+  margin-top: 24px;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.enterprise-plan .points {
+  margin-block: 24px;
+  font-size: 14px;
+}
+.enterprise-plan .fine {
+  margin-top: auto;
+}
+.enterprise-plan .more {
+  margin-top: 24px;
+}
+.enterprise-plan:first-child .more {
+  margin-top: auto;
+}
+.enterprise-comparison {
+  margin-top: 56px;
+}
+.enterprise-comparison table {
+  min-width: 780px;
+}
+.enterprise-section caption {
+  text-align: left;
+  padding-bottom: 16px;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.enterprise-section .lic-row > div {
+  min-width: 0;
+}
+.enterprise-section .lic-row .label + h2 {
+  margin-top: 16px;
+}
+.enterprise-features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 48px 40px;
+  margin-top: 48px;
+}
+.enterprise-features article {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  padding-top: 20px;
+  border-top: 1px solid var(--line-2);
+}
+.enterprise-number {
+  font-size: 12px;
+}
+.enterprise-features h3 {
+  margin-top: 16px;
+  font-size: 21px;
+  font-weight: 560;
+  letter-spacing: -0.025em;
+}
+.enterprise-features h3 + p {
+  margin-block: 12px 20px;
+  color: var(--fg-2);
+  font-size: 15px;
+}
+.enterprise-features .more {
+  margin-top: auto;
+}
+
+/* Migration comparisons share the site's type and table treatments. */
+/* Homelab overview, followed by the migration guides and comparison. */
+.homelab-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: start;
+}
+.homelab-key {
+  padding: clamp(24px, 3vw, 40px);
+  border: 1px solid var(--line-2);
+  border-top: 3px solid var(--clay);
+  background: var(--ink-2);
+}
+.homelab-key .label {
+  color: var(--clay-hi);
+}
+.homelab-key h2 {
+  margin-top: 20px;
+  font-size: clamp(1.625rem, 2.6vw, 2.25rem);
+  line-height: 1.1;
+}
+.homelab-key p:not(.label),
+.homelab-key .points,
+.homelab-key .more {
+  margin-top: 24px;
+}
+.homelab-key p:not(.label) {
+  color: var(--fg-2);
+}
+.homelab-key .more {
+  display: inline-flex;
+}
+.migration-intro .page-title {
+  margin-block: 20px 28px;
+  max-width: 20ch;
+}
+.migration-intro .sec-lead {
+  margin-left: 0;
+}
+.migration-intro .actions,
+.migration-section .actions {
+  margin-top: 32px;
+}
+.migration-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 40px;
+  margin-top: 48px;
+}
+.migration-cards article {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  padding-top: 24px;
+  border-top: 1px solid var(--line-2);
+}
+.migration-cards h3,
+.migration-steps h3 {
+  font-size: 23px;
+  font-weight: 560;
+  letter-spacing: -0.025em;
+  margin-bottom: 16px;
+}
+.migration-cards .label {
+  margin-bottom: 12px;
+}
+.migration-cards p:not(.label),
+.migration-steps p {
+  color: var(--fg-2);
+  font-size: 15px;
+}
+.migration-cards p + p {
+  margin-top: 16px;
+}
+.migration-cards .migration-check {
+  margin-block: 24px;
+}
+.migration-cards .more {
+  margin-top: auto;
+}
+.homelab-features .more,
+.homelab-deploy .more {
+  padding-top: 24px;
+}
+.homelab-deploy {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.migration-table {
+  overflow-x: auto;
+  margin-top: 40px;
+}
+.migration-table table {
+  min-width: 1000px;
+  table-layout: fixed;
+}
+.migration-table caption {
+  color: var(--fg-2);
+  font-size: 13px;
+}
+.migration-table thead th:last-child,
+.migration-table td:last-child {
+  color: var(--paper);
+  background: var(--ink-3);
+  padding-left: 16px;
+}
+.migration-sources {
+  margin-top: 24px;
+  color: var(--fg-2);
+}
+.migration-steps {
+  display: grid;
+  list-style: decimal;
+  gap: 32px;
+  margin-top: 40px;
+  padding-left: 24px;
+  max-width: 80ch;
+}
+.migration-steps li {
+  padding-left: 12px;
+}
+@media (max-width: 1000px) {
+  .homelab-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .migration-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+  }
+}
+
+/* The license page (/license/). The request form sits beside the intro;
+   the comparison table and remaining sections keep the full wrap. */
+.lic-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: clamp(32px, 4vw, 64px);
+  align-items: start;
+}
+.lic-intro-copy p {
+  margin-top: 16px;
+  color: var(--fg-2);
+}
+html:not(.js) .lic-intro {
+  max-width: 760px;
+  grid-template-columns: minmax(0, 1fr);
+}
 .lic-sec h2 + .shapes {
   margin-top: 20px;
 }
@@ -1678,10 +2179,8 @@ main,
   padding-block: 48px;
   border-top: 1px solid var(--line);
 }
-/* The first row has the section's rule above it; without script that is
-   "Get a key", because the form is hidden. */
-.lic-row:first-child,
-html:not(.js) .licform + .lic-row {
+/* The first row has the section's rule above it. */
+.lic-row:first-child {
   padding-top: 0;
   border-top: 0;
 }
@@ -1709,8 +2208,11 @@ html:not(.js) .licform + .lic-row {
 html:not(.js) .licform {
   display: none;
 }
-.licform.lic-row {
-  align-items: start;
+.sec .licform h2 {
+  font-size: clamp(1.625rem, 2.6vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
 }
 .licform-box {
   display: grid;
@@ -1758,7 +2260,10 @@ html:not(.js) .licform {
 .licform-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+}
+.licform [data-panel] > * + * {
+  margin-top: 20px;
 }
 .licform-field {
   display: grid;
@@ -1944,7 +2449,18 @@ html:not(.js) .licform {
   }
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1080px) {
+  .enterprise-hero,
+  .lic-intro {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .enterprise-features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Leave room for the Move over link before using the desktop navigation. */
+@media (max-width: 1180px) {
   .menu-toggle {
     display: inline-flex;
   }
@@ -1988,6 +2504,22 @@ html:not(.js) .licform {
   }
   .nav .gh {
     padding: 8px 14px;
+  }
+}
+
+@media (max-width: 880px) {
+  .enterprise-plans {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .enterprise-plan + .enterprise-plan {
+    border-left: 0;
+    border-top: 1px solid var(--line-2);
+  }
+  .enterprise-plan.enterprise-plan-featured {
+    border-top: 3px solid var(--clay-hi);
+  }
+  .enterprise-plan .label {
+    min-height: 0;
   }
   .sec-head,
   .register,
@@ -2044,6 +2576,10 @@ html:not(.js) .licform {
 }
 
 @media (max-width: 600px) {
+  .enterprise-features {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
   .rails {
     display: none;
   }
@@ -2090,9 +2626,11 @@ html:not(.js) .licform {
   .shapes td:nth-child(3) {
     display: none;
   }
-  /* The license table keeps its four columns: the third is the free key. */
+  /* Comparison tables retain every product and plan on narrow screens. */
   .lic-table th:nth-child(3),
-  .lic-table td:nth-child(3) {
+  .lic-table td:nth-child(3),
+  .migration-table th:nth-child(3),
+  .migration-table td:nth-child(3) {
     display: table-cell;
   }
   .licform-box {

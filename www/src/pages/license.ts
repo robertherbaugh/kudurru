@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_REQUIRED_NOTICE, LICENSE_ROWS, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, LICENSE_SOURCE_URL, REPO_URL, docs } from "../content.ts";
+import { BUSINESS_SUBJECT, COMMERCIAL_PLANS, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_REQUIRED_NOTICE, LICENSE_ROWS, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, LICENSE_SOURCE_URL, REPO_URL, docs } from "../content.ts";
 import { external } from "./layout.ts";
 import type { Rendered } from "../markdown.ts";
 
@@ -11,13 +11,12 @@ const REQUEST_PATH = "/api/v1/public/key-requests"; // the license server's publ
 // The form: a personal request goes to the license server, anything else
 // opens the visitor's mail program (src/client/license.ts). It needs script,
 // so without script the two mail links of the "Get a key" text stand in.
-// It is the first row of its section: the heading in the first column, the
-// fields in a box of form width in the second.
+// It sits beside the introductory text, stacking below it on narrow screens.
 function requestForm(licenseApi: string): Html {
   const endpoint = new URL(REQUEST_PATH, licenseApi).toString();
-  return html`<form class="licform lic-row" data-license-form data-endpoint="${endpoint}" novalidate aria-labelledby="lic-req-title">
-      <h2 id="lic-req-title">Request a key</h2>
+  return html`<form class="licform" data-license-form data-endpoint="${endpoint}" novalidate aria-labelledby="lic-req-title">
       <div class="licform-box">
+        <h2 id="lic-req-title">Request a key</h2>
         <fieldset class="licform-kind">
           <legend>What is it for?</legend>
           <label class="licform-choice"><input type="radio" name="kind" value="personal" checked> <span>Eligible personal, homelab, nonprofit or community-development use under the Community License. Free, up to ${LICENSE_FREE_NODES} nodes.</span></label>
@@ -32,6 +31,10 @@ function requestForm(licenseApi: string): Html {
           <label class="licform-check"><input type="checkbox" name="noncommercial"> <span>I agree and certify this key will only be used for eligible personal, qualifying nonprofit or community-development use in accordance with the license (<a href="${LICENSE_TEXT_PATH}" target="_blank" rel="noopener">Kudurru Community License</a>).</span></label>
         </div>
         <div data-panel="business" hidden>
+          <fieldset>
+            <legend>Edition</legend>
+            ${Object.entries(COMMERCIAL_PLANS).map(([id, plan]) => html`<label class="licform-choice"><input type="radio" name="edition" value="${id}" ${id === "core" ? html`checked` : ""} required> <span>${plan.name}</span></label>`)}
+          </fieldset>
           <div class="licform-grid">
             <label class="licform-field"><span>Business or organization</span><input type="text" name="company" autocomplete="organization" maxlength="160" required></label>
             <label class="licform-field"><span>Number of nodes</span><input type="number" name="business-nodes" min="1" max="10000" inputmode="numeric" required></label>
@@ -51,22 +54,24 @@ function requestForm(licenseApi: string): Html {
     </form>`;
 }
 
-// The intro sits in the narrow column, as on /license/text/. The sections
-// below it span the full width, as the table needs: paragraphs keep their
-// measure and only the form's box is narrower (site.css, "The license page").
+// The intro and request form share the first section. The sections below
+// still span the full width, as the comparison table needs.
 export function license(licenseApi: string): Html {
   const mail = (subject: string) => `mailto:${LICENSE_CONTACT}?subject=${encodeURIComponent(subject)}`;
   return html`<section class="sec" aria-labelledby="lic-title">
-  <div class="wrap narrow">
-    <p class="label">License</p>
-    <h1 id="lic-title" class="page-title">Free at home. A key for more.</h1>
-    <p class="reg-lead">The core DNS server and dashboard use the Kudurru Community License. Personal, household, homelab and qualifying nonprofit use is free under its terms. Isolated development and evaluation are permitted, including for businesses and governments. Business and government production use needs an accepted commercial agreement and Order Form, including for the parts that need no key.</p>
-    <ul class="points">
-      <li><strong>DNS never depends on a key.</strong> Queries are answered the same with a key, with none and with an expired one. A key only changes the number of nodes, the number of policies and the features listed below.</li>
-      <li><strong>A node without a key is a supported way to run.</strong> One node, the default policy, the resolver, the blocking engine, zones, the block page and the dashboard.</li>
-      <li><strong>Keys are checked on the node.</strong> A signature check, no license server, no phone home. An expired key keeps working for 30 days.</li>
-      <li><strong>A free key is for eligible community use only.</strong> It unlocks features; it does not grant business or government production rights or extend an expired agreement.</li>
-    </ul>
+  <div class="wrap lic-intro">
+    <div class="lic-intro-copy">
+      <p class="label">License</p>
+      <h1 id="lic-title" class="page-title">Free at home. A key for more.</h1>
+      <p class="reg-lead">The core DNS server and dashboard use the Kudurru Community License. Personal, household, homelab and qualifying nonprofit use is free under its terms. Isolated development and evaluation are permitted, including for businesses and governments. Business and government production use needs an accepted commercial agreement and Order Form, including for the parts that need no key.</p>
+      <ul class="points">
+        <li><strong>DNS never depends on a key.</strong> Queries are answered the same with a key, with none and with an expired one. A key only changes the number of nodes, the number of policies and the features listed below.</li>
+        <li><strong>A node without a key is a supported way to run.</strong> One node, the default policy, the resolver, the blocking engine, zones, the block page and the dashboard.</li>
+        <li><strong>Keys are checked on the node.</strong> A signature check, no license server, no phone home. An expired key keeps working for 30 days.</li>
+        <li><strong>A free key is for eligible community use only.</strong> It unlocks features; it does not grant business or government production rights or extend an expired agreement.</li>
+      </ul>
+    </div>
+    ${requestForm(licenseApi)}
   </div>
 </section>
 <section class="sec lic-sec" aria-labelledby="lic-table-title">
@@ -88,13 +93,12 @@ export function license(licenseApi: string): Html {
 </section>
 <section class="sec lic-sec" aria-labelledby="lic-get-title">
   <div class="wrap">
-    ${requestForm(licenseApi)}
     <div class="lic-row">
       <h2 id="lic-get-title">Get a key</h2>
       <div class="lic-body">
         <p class="nojs-note">The form needs JavaScript. Without it, write to us:</p>
         <p><strong>A free personal/nonprofit key.</strong> Write to <a href="${mail("Free personal key")}">${LICENSE_CONTACT}</a> with the name to put on it and what you run it for. It covers up to ${LICENSE_FREE_NODES} nodes for eligible community use. Schools and research organizations must meet the Community License's nonprofit eligibility rules.</p>
-        <p><strong>A business, government or MSP.</strong> Write to <a href="${mail("kudurru commercial license")}">${LICENSE_CONTACT}</a> with the organization, the number of nodes and the features you need. The ${external(docs("/project/commercial-license/"), "commercial agreement")} requires an accepted Order Form. A Commercial Core purchase does not automatically include enterprise modules; those must be authorized by the Order Form.</p>
+        <p><strong>A business, government or MSP.</strong> See <a href="/enterprise/">Commercial plans, features and pricing</a>, or write to <a href="${mail("kudurru commercial license")}">${LICENSE_CONTACT}</a> with the organization, the number of nodes and the features you need. The ${external(docs("/project/commercial-license/"), "commercial agreement")} requires an accepted Order Form. A Commercial Core purchase does not automatically include enterprise modules; those must be authorized by the Order Form.</p>
       </div>
     </div>
     <div class="lic-row">

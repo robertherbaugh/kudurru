@@ -29,6 +29,76 @@ export const LICENSE_REQUIRED_NOTICE = "Required Notice: Copyright 2026 Robert H
 // seeds (internal/license CommunityPolicies). A key lifts the limit.
 export const LICENSE_FREE_POLICIES = 1;
 
+// Enterprise overview: keep the feature and pricing summary in step with
+// docs/enterprise.md. Annual list prices are in USD; the Order Form sets scope.
+export const ENTERPRISE_CONTACT_URL = `mailto:${LICENSE_CONTACT}?subject=${encodeURIComponent("kudurru Enterprise")}`;
+export const COMMERCIAL_PLANS = {
+  core: { name: "Commercial Core", platform: 99, perNode: 99 },
+  enterprise: { name: "Enterprise", platform: 499, perNode: 299 },
+} as const;
+export const VOLUME_PRICING = { discountFrom: 25, quoteFrom: 50, discount: 0.1 } as const;
+// Public starting rate from the commercial pricing proposal. Support needs
+// a separate agreement; keep docs/enterprise.md in step with this amount.
+export const SUPPORT_STARTING_ANNUAL_USD = 1200;
+export const COMMERCIAL_COMPARISON = [
+  { what: "Eligible noncommercial use", community: "Yes", core: "Yes", enterprise: "Yes" },
+  { what: "Business and government production rights", community: "No", core: "Yes", enterprise: "Yes" },
+  { what: "Authoritative DNS, forwarding and validating recursive resolver", community: "Yes", core: "Yes", enterprise: "Yes" },
+  { what: "Blocking and encrypted DNS", community: "Yes", core: "Yes", enterprise: "Yes" },
+  { what: "Multiple nodes", community: `Up to ${LICENSE_FREE_NODES} with a free key`, core: "Licensed count", enterprise: "Licensed count" },
+  { what: "OIDC and advanced RBAC", community: "With a free key", core: "No", enterprise: "Included" },
+  { what: "Audit exports and long-term analytics", community: "With a free key", core: "No", enterprise: "Included" },
+  { what: "Advanced policies and unblock requests", community: "With a free key", core: "No", enterprise: "Included" },
+  { what: "dnsdist and keepalived integration", community: "With a free key", core: "No", enterprise: "Included" },
+  { what: "Enterprise integrations", community: "With a free key", core: "No", enterprise: "Included" },
+] as const;
+export const ENTERPRISE_FEATURES = [
+  {
+    title: "Identity and access",
+    body: "OIDC single sign-on, role bindings, zone-scoped roles and Kubernetes RBAC. Give each person and service the permissions they need.",
+    href: "/guide/admin/09-people-and-tokens/",
+  },
+  {
+    title: "An audit trail you can export",
+    body: "Review stored events, see who changed what, and export the audit trail for your own review and retention workflows.",
+    href: "/architecture/observability/#audit",
+  },
+  {
+    title: "Statistics beyond 24 hours",
+    body: "Use long-term rollups to review DNS activity over weeks and months without retaining every individual query.",
+    href: "/guide/admin/03-watch-the-network/",
+  },
+  {
+    title: "Policies for different teams",
+    body: "Create policies beyond the default for client groups and schedules. Let users request access from the block page and review those requests in the dashboard.",
+    href: "/guide/admin/05-groups-clients-policies/",
+  },
+  {
+    title: "An edge with a floating IP",
+    body: "Use the kudurru supervisors for dnsdist load balancing and keepalived virtual IP failover. See backend health and VIP ownership alongside your nodes.",
+    href: "/deploy/compose-ha/",
+  },
+  {
+    title: "DNS records from Kubernetes",
+    body: "Connect external-dns through the webhook provider to manage DNSRecordSet objects. Cloudflare and UniFi integrations remain on the roadmap.",
+    href: "/architecture/configuration-and-store/",
+  },
+] as const;
+
+export const ENTERPRISE_AD_DNS = {
+  release: "v0.2.0",
+  title: "Move DNS off your domain controllers.",
+  body: "The goal is to migrate your Active Directory DNS zones to kudurru and make it the authoritative source, so Windows DNS can be retired on every domain controller. AD DS continues to provide authentication, directory services and Group Policy.",
+  scope: "Initial scope: a single-domain forest, including multiple domain controllers and AD sites.",
+  items: [
+    "Import domain, forest locator (_msdcs) and reverse zones, with a preview before cutover.",
+    "Keep domain controller discovery and LDAP, Kerberos, global catalog and site records current.",
+    "Accept secure DNS registrations from domain controllers, Windows clients and DHCP servers, with ownership rules, aging and scavenging.",
+    "Complete the migration with failover checks and a rollback path, without forwarding the migrated zones back to Windows DNS.",
+  ],
+  href: "/enterprise/#planned-active-directory-dns",
+} as const;
+
 export interface LicenseRow {
   what: string;
   community: string;
@@ -52,7 +122,7 @@ export const LICENSE_ROWS: LicenseRow[] = [
 
 export const TAGLINE = "authority over every zone.";
 export const DESCRIPTION =
-  "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer. Core software under the Kudurru Community License: free for eligible personal and nonprofit use; business and government production needs an agreement.";
+  "Self-hosted DNS for Docker and Kubernetes: authoritative zones, encrypted DNS, network ad blocking and a dashboard that explains every answer. Start with one container.";
 
 export function docs(path = "/"): string {
   return DOCS_URL + path;
@@ -69,7 +139,9 @@ export const NAV: NavLink[] = [
   { label: "Dashboard", href: "#dashboard" },
   { label: "Deploy", href: "#deploy" },
   { label: "Roadmap", href: "#roadmap" },
+  { label: "Homelab", href: "/move-over/" },
   // A page of its own: not prefixed with the home page path like the anchors.
+  { label: "Enterprise", href: "/enterprise/" },
   { label: "License", href: "/license/" },
 ];
 
@@ -150,7 +222,7 @@ export const STAGES: { id: StageId; does: string }[] = [
   { id: "authoritative", does: "Answers names in local zones from an in-memory tree" },
   { id: "blocking", does: "Evaluates the client's merged policies: lists, services, safe search" },
   { id: "cache", does: "Sharded TTL cache with prefetch, serve-stale and in-flight coalescing" },
-  { id: "upstream", does: "Forwards to the client's upstream group over DoT, DoH, DoQ or Do53" },
+  { id: "upstream", does: "Forwards to the client's upstream group over DoT, DoH, DoQ or Do53, or resolves from the root servers with DNSSEC validation" },
   { id: "log", does: "After the chain returns, the observer records the answer and its reason" },
 ];
 
@@ -383,6 +455,7 @@ export const REGISTERS: Register[] = [
     lead: "Do53 over UDP and TCP, DoT, DoH over HTTP/1.1 and HTTP/2, DoQ and DoH3, each with a certificate reloader, in front of one pipeline.",
     points: [
       "Upstream groups with parallel_best, strict, random and rtt_weighted strategies, conditional forwarding, ECS strip, forward or add",
+      "Opt-in recursive groups: resolution from the root servers with QNAME minimization and DNSSEC validation, no client subnet sent",
       "Sharded TTL cache with prefetch, serve-stale (RFC 8767) and in-flight coalescing; it is restored after a restart",
       "SO_REUSEPORT listeners on every core: 53 % more UDP throughput",
       "Per-prefix rate limits that slip TC=1 before they drop",
@@ -557,6 +630,7 @@ export const ROADMAP: Release[] = [
     meaning: "The stone itself: one record of authority.",
     items: [
       "Resolver with DoT, DoH, DoQ and DoH3",
+      "Opt-in recursion with DNSSEC validation",
       "Primary and forward zones, AXFR and IXFR out",
       "Blocking with client groups, services and safe search",
       "Dashboard with long-term views, OIDC and RBAC (a free personal key unlocks them)",
@@ -564,12 +638,14 @@ export const ROADMAP: Release[] = [
     ],
   },
   {
-    version: "v0.2",
+    version: "v0.2.0",
     name: "clay copies",
     meaning: "The landholder's copies: secondaries and followers.",
     items: [
+      "DHCP server support",
       "Secondary and stub zones, RFC 2136",
-      "DNSSEC validation, RPZ feed import",
+      "Active Directory DNS replacement for a single-domain forest",
+      "DNSSEC validation of forwarded answers, RPZ feed import",
       "Cloudflare split-horizon sink, UniFi inventory",
       "Follower-mode HA",
       "dnstap and tracing",
@@ -601,16 +677,19 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     ],
   },
   {
-    title: "Move over",
+    title: "Homelab",
     links: [
+      { label: "DNS for your homelab", href: "/move-over/" },
       { label: "From Pi-hole", href: docs("/migrate/pihole/") },
       { label: "From AdGuard Home", href: docs("/migrate/adguard-home/") },
+      { label: "From Technitium", href: docs("/migrate/technitium/") },
     ],
   },
   {
     title: "Project",
     links: [
       { label: "Source on GitHub", href: REPO_URL },
+      { label: "Enterprise", href: "/enterprise/" },
       { label: "License and keys", href: "/license/" },
       { label: "Releases", href: `${REPO_URL}/releases` },
       { label: "Changelog", href: docs("/project/changelog/") },
@@ -619,3 +698,69 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     ],
   },
 ];
+
+// Homelab capabilities follow the home network and Kubernetes start guides.
+export const HOMELAB_FEATURES = [
+  {
+    title: "Local names for your services",
+    body: "Give your NAS, VMs and self-hosted apps names in your own DNS zones. Manage records in the dashboard or as YAML alongside your other configuration.",
+    href: "/guide/admin/07-zones-and-upstreams/",
+    link: "Set up local DNS",
+  },
+  {
+    title: "Rules for your household",
+    body: "Block ad and tracker domains for devices using your resolver. With a free key, give your kids' devices, IoT subnet and personal devices their own policies and schedules.",
+    href: "/guide/admin/05-groups-clients-policies/",
+    link: "Explore groups and policies",
+  },
+  {
+    title: "See why a request was blocked",
+    body: "The query log shows the client, matching list and rule behind an answer. Allow a domain from the log or pause blocking while you troubleshoot a device.",
+    href: "/guide/admin/03-watch-the-network/",
+    link: "Explore the query log",
+  },
+] as const;
+
+// Migration comparisons describe the 0.1.0 implementation, with planned
+// features labeled explicitly. Keep site/content/migrate in step; sources
+// are linked below.
+export const MIGRATIONS = [
+  {
+    slug: "pihole",
+    name: "Pi-hole",
+    summary: "Keep the lists and local names you trust. Add authoritative zones, encrypted DNS listeners and Kubernetes CRDs.",
+    mapping: "Groups become client groups and policies. Adlists become block lists; local DNS records become zone records.",
+    check: "For v0.1.0, move DHCP to your router first if Pi-hole serves it; DHCP support is planned for v0.2.0. Translate regex extensions and reserve device addresses.",
+    source: "https://docs.pi-hole.net/",
+  },
+  {
+    slug: "adguard-home",
+    name: "AdGuard Home",
+    summary: "Bring your DNS filters, client rules and encrypted upstreams into a server with explicit object ownership and shared Kubernetes configuration.",
+    mapping: "Filters become block and allow lists. Persistent clients become client groups; per-client settings become policies.",
+    check: "Review rule modifiers, global exceptions and DNS rewrites. AdGuard's full filtering syntax is not supported in v0.1.0.",
+    source: "https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration",
+  },
+  {
+    slug: "technitium",
+    name: "Technitium",
+    summary: "Move primary zones, conditional forwarding, blocking and recursive resolution to a Go binary with a dashboard, CLI and Kubernetes API objects.",
+    mapping: "Export primary zones as standard zone files. Recreate conditional forwarders, access controls and blocking policies explicitly.",
+    check: "Inventory DNS Apps, DNSSEC signing and secondary zones. These need a separate service or a later kudurru release. Recursion with DNSSEC validation is an upstream group mode.",
+    source: "https://technitium.com/dns/",
+  },
+] as const;
+
+export const MIGRATION_COMPARISON = [
+  { feature: "DNS filtering", pihole: "Hosts, domains and regex; group assignments", adguard: "Adblock DNS rules, allowlists and client settings", technitium: "Allowed/blocked zones and lists; Advanced Blocking app", kudurru: "Hosts, domains, adblock subset and RE2; client-group policies" },
+  { feature: "Local names and zones", pihole: "Local DNS and CNAME records", adguard: "DNS rewrites", technitium: "Primary, secondary, stub, forwarder and catalog zones", kudurru: "Primary and forward zones; BIND import/export; AXFR/IXFR out" },
+  { feature: "Resolution", pihole: "Forwards to upstreams; recursion with a separate resolver", adguard: "Forwards to upstreams", technitium: "Full recursive resolver or forwarding", kudurru: "Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding" },
+  { feature: "DNSSEC", pihole: "Optional validation", adguard: "Requests DNSSEC data from upstreams", technitium: "Validation and authoritative signing", kudurru: "Validation in recursive upstream groups; no signing in v0.1.0" },
+  { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Use a separate DHCP server in v0.1.0; built-in support planned for v0.2.0" },
+  { feature: "Encrypted DNS listeners", pihole: "Use a separate proxy", adguard: "DoT, DoH and DoQ", technitium: "DoT, DoH and DoQ", kudurru: "DoT, DoH, DoQ and DoH3" },
+  { feature: "Multiple servers", pihole: "Separate instances; external sync tools", adguard: "Separate instances; external sync tools", technitium: "Built-in clustering", kudurru: "Shared Kubernetes store; Compose HA uses shared object files" },
+  { feature: "Kubernetes configuration", pihole: "Container configuration; no native CRDs", adguard: "Container configuration; no native CRDs", technitium: "Container configuration; no native CRDs", kudurru: "Native CRDs, Helm and external-dns webhook" },
+  { feature: "Identity and access", pihole: "Local dashboard login", adguard: "Local users", technitium: "Roles, OIDC and LDAP", kudurru: "Local users; OIDC and scoped roles with a key" },
+  { feature: "Migration input", pihole: "Teleporter backup", adguard: "Configuration and working directory", technitium: "Configuration backup and zone export", kudurru: "Manual configuration; standard BIND zone import only" },
+  { feature: "License", pihole: "Open source; component licenses apply", adguard: "GPL-3.0", technitium: "GPL-3.0", kudurru: "Source available; eligible community use free, commercial production by agreement" },
+] as const;

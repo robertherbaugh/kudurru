@@ -35,11 +35,18 @@ host with `kudurru admin reset-password admin`.
 
 Give the host a fixed address and make it the DNS server your router hands
 out with DHCP (often "DNS server" or "primary DNS" in the router's LAN
-settings). kudurru does not serve DHCP. Check from any device:
+settings). kudurru v0.1.0 does not serve DHCP; DHCP server support is planned
+for v0.2.0. Check from any device:
 
 ```sh
 dig @<host> example.com
 ```
+
+The v0.2.0 DHCPv4 development server is opt-in, with Linux/SQLite standalone
+or three-node quorum operation and dashboard setup. DHCPv6 is excluded. See the
+[planned DHCPv4 scope](/migrate/#planned-dhcpv4-support) and follow
+[PR #66](https://github.com/robertherbaugh/kudurru/pull/66) for development
+and setup documentation. The steps on this page apply to v0.1.0.
 
 ## 4. Blocking
 
@@ -115,7 +122,52 @@ kudurru records add home-example-com nas.home.example.com A 192.168.1.10
 pipeline and prints why it answered the way it did. Zones you already
 keep in BIND format import with `kudurru import bind <zone> -f file.zone`.
 
-## 7. Keep it running
+## 7. Resolve names yourself (optional)
+
+Out of the box kudurru forwards to 1.1.1.1 and 9.9.9.9, so those two
+providers see every name your network looks up. Switch the `default`
+upstream group to recursive mode and kudurru asks the root servers and each
+zone's own name servers instead, and validates DNSSEC on the way; there is
+no need for a separate Unbound. In the dashboard open **DNS** >
+**Upstreams** > `default`, select **Recursive** as the **Mode** and save.
+In YAML, with the router kept for its local names:
+
+```yaml
+upstreams:
+  groups:
+    default: { mode: recursive, timeout: 4s }
+    router:  { servers: ["192.168.1.1:53"] }
+  conditional: { "[/lan/1.168.192.in-addr.arpa/]": router }
+```
+
+- **Privacy.** No single provider sees every name. Each authoritative
+  server still sees the names in its zone and your public address; QNAME
+  minimization keeps the root and TLD servers to the part they need
+  (`com`, then `example.com`). The queries to authoritative servers are
+  plain DNS on port 53, not encrypted, so your ISP can read them. No client
+  subnet is ever sent.
+- **Network.** The host needs outbound UDP **and** TCP port 53 to any
+  address. Where a firewall or the ISP blocks or intercepts port 53, the
+  group's resolver goes into backoff and names fail; keep an encrypted
+  forwarder there instead.
+- **Local names.** The root servers do not know your router's names
+  (`nas.lan`, `fritz.box`): send its domain and your reverse zone to a
+  forwarding group, as above. Private reverse zones and special-use names
+  (`home.arpa`, `local`, `internal`, ...) never leave the network: kudurru
+  answers them with NXDOMAIN unless a rule sends them to the router.
+- **DNSSEC.** An answer that fails validation becomes SERVFAIL with an
+  extended DNS error (6 to 12) and the query-log status `dnssec_bogus`;
+  `dig +cd` still shows the data. Unsigned zones resolve as before.
+- **Speed.** A cold lookup takes a few round trips (about 50 to 500 ms);
+  the cache answers repeats.
+
+The options are the `upstreams.recursion` settings, for example
+[`upstreams.recursion.dnssec`](/reference/configuration/#upstreams.recursion.dnssec).
+The [administrator guide](/guide/admin/07-zones-and-upstreams/#resolve-names-from-the-root-servers)
+walks through it, and the [architecture tour](/architecture/upstreams-and-cache/#recursive-groups)
+explains how it works.
+
+## 8. Keep it running
 
 - **Settings** (upstreams, cache, blocking, query-log privacy and retention,
   rate limiting) change in the dashboard or with `kudurru settings set`; most
@@ -127,5 +179,5 @@ keep in BIND format import with `kudurru import bind <zone> -f file.zone`.
   put dnsdist in front with `deploy/compose/single-edge` (the edge needs a
   [license key](/project/licensing/)); see
   [encrypted transports](/deploy/docker/#encrypted-transports).
-- **Coming from Pi-hole or AdGuard Home?** The [migration guides](/migrate/)
+- **Coming from Pi-hole, AdGuard Home or Technitium?** The [migration guides](/migrate/)
   map their settings onto kudurru objects.

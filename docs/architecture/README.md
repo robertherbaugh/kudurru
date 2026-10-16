@@ -5,6 +5,9 @@ a client's policy is chosen, how configuration travels from a YAML file or
 the dashboard to every node, and how the deployment shapes fit together.
 Every page leads with a picture and then explains it.
 
+The optional [DHCPv4 server](dhcp.md) is a v0.2.0 development feature and
+is labeled separately from the v0.1.0 DNS behavior.
+
 This tour is for contributors and for operators who want to know what
 happens inside. For running kudurru, read the [guide](../guide/README.md)
 and the [deployment docs](../deploy/README.md).
@@ -23,6 +26,7 @@ disagree, these pages follow the code and say so.
 | [Block lists](block-lists.md) | how a list is fetched once by the leader, shared with every node, compiled and swapped in |
 | [Upstreams and the cache](upstreams-and-cache.md) | which upstream group answers, strategies, server health, the cache and serve-stale |
 | [Zones and transfers](zones.md) | authoritative answers, serials, NOTIFY and AXFR/IXFR |
+| [DHCPv4 and leases](dhcp.md) | the optional v0.2.0 server, dashboard setup, staged restart apply, live management and persistent leases |
 | [Configuration and the store](configuration-and-store.md) | the object model, the two store drivers, the write path, the snapshot, leader election and settings |
 | [Deployment shapes](deployment.md) | one container, Kubernetes, compose HA with dnsdist and keepalived, and what happens when something fails |
 | [Access: sign-in, tokens and RBAC](access.md) | principals, the authentication chain, OIDC sign-in, authorization, the node-to-node plane |
@@ -62,7 +66,7 @@ flowchart LR
         api["api + dashboard :8080"]
         ops["health :8081, metrics :9153"]
         internal["node-to-node :8082"]
-        more["settings reload, objects loader,<br/>query log writer, cache sweep and<br/>persist, block page, admin socket,<br/>external-dns webhook, audit shipper,<br/>query-log shipper, central database"]
+        more["settings reload, objects loader,<br/>query log writer, cache sweep and<br/>persist, block page, admin socket,<br/>external-dns webhook, audit shipper,<br/>query-log shipper, central database,<br/>optional DHCPv4 (v0.2.0 development)"]
     end
     subgraph leader["leader only"]
         direction TB
@@ -86,6 +90,8 @@ external-dns webhook, the query log writer, the admin socket). There is no
 | Port | Listener | Who calls it |
 |---|---|---|
 | 53 udp/tcp (5353 behind an edge) | DNS | clients, or dnsdist with PROXYv2 |
+| 67 udp (v0.2.0 development, opt-in) | DHCPv4 scopes | direct clients on UDP 68; trusted relays on their authorized source port |
+| Operator-selected TCP peer port (opt-in) | DHCPv4 quorum | mutually authenticated replication and forwarded management between three voters |
 | 853 tcp / 443 tcp / 853 udp / 443 udp | DoT, DoH, DoQ, DoH3 (off by default) | clients |
 | 8080 | REST API `/api/v1` and the dashboard | browsers, the CLI, automation |
 | 8081 | `/healthz/*`, `/lameduck` (no auth) | probes, `kudurru health`, `kudurru lameduck` |
@@ -103,12 +109,14 @@ code. The main gaps between the two:
 | Planned in the design record | State in the code |
 |---|---|
 | 13 pipeline stages (`local`, `rewrite`, `dnssec`, `postprocess`, …) | 7 stages; the other names are reserved in `pipeline.Order` |
+| a `dnssec` stage that validates every upstream answer | recursive upstream groups validate their own answers (D170); forwarded answers are not validated |
 | `follower` and `raft` store drivers | `kube` and `sqlite` only |
 | scatter-gather across nodes | the node list, the stats and the query log are gathered over `:8082` (or read from the central database with `database.dsn`); `/nodes/{other}/health` returns 501 |
 | cluster-wide temporary disable of blocking | per node, in memory |
 | client match by MAC, hostname, DoT/DoH client ID | match by IP and CIDR (the index supports the rest; no transport fills them in) |
 | `cluster.role: static` read-only twins | no such key; each twin is an independent sqlite node |
 | secondary zones, NOTIFY in, dynamic UPDATE | NOTIMP; kudurru only sends NOTIFY |
+| DHCP server support (v0.2.0) | DHCPv4 in development: Linux/SQLite standalone or three-node quorum failover, dashboard setup, direct/relayed subnets, conflict checks, advanced network/boot options, live management, lease import/export and persistent A/PTR ownership; no DHCP in v0.1.0 |
 | Kubernetes Events from the controller | events are logged only |
 
 The open list lives in [follow-ups](../followups.md).

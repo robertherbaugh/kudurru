@@ -146,7 +146,10 @@ func (c *candidate) run(t *testing.T, a *arena, extra func()) {
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case <-c.runDone:
+		case err := <-c.runDone:
+			if err != nil {
+				t.Errorf("%s: Run: %v", c.id, err)
+			}
 		case <-time.After(30 * time.Second):
 			t.Errorf("%s: Run did not return after cancel", c.id)
 		}

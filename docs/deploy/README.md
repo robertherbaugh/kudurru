@@ -14,6 +14,14 @@ The optional central database for the audit log, query log and statistics of eve
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
+The optional DHCPv4 server in development for v0.2.0: [dhcp.md](dhcp.md).
+
+Built-in DHCPv4 is in development for v0.2.0 in
+[PR #66](https://github.com/robertherbaugh/kudurru/pull/66): Linux/SQLite
+standalone or three-node quorum failover, complete dashboard setup, persistent
+leases/reservations, multiple subnets, trusted relays, conflict checks,
+network/boot options, import/export and local DNS ownership. DHCPv6 is excluded.
+The released v0.1.0 server still requires an external DHCP service.
 
 ## Release artifacts
 
@@ -58,6 +66,7 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
 | Port | Protocol | Purpose |
 |---|---|---|
 | 53 | udp, tcp | DNS (5353 PROXYv2-only behind the dnsdist edge) |
+| 67 | udp | DHCPv4 (optional, v0.2.0 development); replies go to client UDP 68 or the relay's authorized UDP source port |
 | 853 | tcp / udp | DNS over TLS / DNS over QUIC |
 | 443 | tcp / udp | DNS over HTTPS / HTTP/3 |
 | 8080 | tcp | API and UI |
@@ -67,6 +76,13 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
 | 80, 443 | tcp | block page (optional, `listeners.blockPage`; 8090/8493 in the chart and compose containers) |
 | 8888 | tcp | external-dns webhook provider (optional) |
 | 9153 | tcp | Prometheus `/metrics` |
+
+Outbound, a forwarding upstream group needs only its configured servers
+(and the bootstrap resolvers for server host names). A recursive group
+(`mode: recursive`) asks the root and each zone's name servers itself, so it
+needs UDP **and** TCP port 53 to any address, over IPv6 too when the host
+has a route; a firewall, NetworkPolicy or ISP that blocks or intercepts
+port 53 breaks it ([upstreams and the cache](../architecture/upstreams-and-cache.md#recursive-groups)).
 
 ## Secrets
 

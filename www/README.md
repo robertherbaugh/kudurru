@@ -6,8 +6,8 @@ Modification, redistribution and hosting require prior written authorization.
 A Kudurru community or commercial license does not grant those website rights.
 The build and deployment instructions below are for authorized maintainers.
 
-The project website: one page that shows what kudurru does and sends
-readers on to the documentation at [docs.kudurru.io](https://docs.kudurru.io)
+The project website provides an overview, feature comparisons and use-case
+pages. It links to the documentation at [docs.kudurru.io](https://docs.kudurru.io)
 (the Hugo site in [`site/`](../site/README.md)) and to the repository. It is
 built with [Bun](https://bun.sh) and TypeScript and served by Cloudflare
 Workers as static assets: there is no Worker script and no server code.
@@ -25,13 +25,15 @@ Or inside `www/`: `bun install`, `bun run dev`, `bun test`, `bun run build`,
 | Path | What it is |
 |---|---|
 | `src/content.ts` | Every claim, number and link on the page. Claims follow `CHANGELOG.md`, `docs/architecture`, `docs/deploy` and `bench/baseline.txt`; change them here when a feature ships or moves |
+| `src/use-cases.ts` | The Kubernetes DNS, network ad blocking and Pi-hole alternative landing pages, with links to maintained setup and migration guides |
+| `src/seo.ts` | Home search title and JSON-LD for the site, publisher, software and page breadcrumbs |
 | `src/pages/` | The page templates: plain functions returning HTML through the escaping `html` tag in `src/html.ts`, rendered once at build time |
-| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, and the "Request a key" form of `/license/` (`license.ts`). The page is complete without it; without script the form is hidden and the page shows mail links instead |
+| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, the enterprise pricing calculator, and the "Request a key" form of `/license/` (`license.ts`). Pages are complete without it; the calculator shows a static example and the key form shows mail links instead |
 | `src/styles/site.css` | The stylesheet. It imports `branding/tokens.css` |
 | `src/headers.ts` | The response headers (CSP, HSTS, caching), written to `dist/_headers` |
 | `build.ts` | Renders the pages and root Community License, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
 | `wrangler.jsonc` | The Cloudflare Workers configuration: static assets from `dist/`, the 404 page, the `kudurru.io` custom domain |
-| `test/` | `bun test`: escaping, `_headers`, and the built pages (no inline script or style, links, anchors, ARIA references, image attributes) |
+| `test/` | `bun test`: escaping, `_headers`, and the built pages (no inline executable script or style, links, anchors, ARIA references, image attributes, metadata, sitemap and JSON-LD) |
 
 The page uses the brand kit in [`branding`](../branding/README.md): the
 Ink, Clay, Paper and Stone tokens, the supplied logo and mark PNGs unchanged,
@@ -47,9 +49,68 @@ RFC 3849 are documentation placeholders.
 The version on the page (the badge and the `docker run` and Helm commands)
 comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
 
+## Homelab
+
+The Homelab page keeps its existing `/move-over/` URL. It covers local DNS,
+household filtering, Docker and Kubernetes deployment, and free community
+keys, followed by the Pi-hole, AdGuard Home, Technitium and kudurru v0.1.0
+comparison. The home page and footer link to all three migration guides at
+`docs.kudurru.io/migrate/`. Comparison claims and source links live in
+`src/content.ts`; the page template is `src/pages/move-over.ts`. Keep the
+comparison and limitations in step with `site/content/migrate/`, especially
+when deferred features ship. The docs own the configuration examples,
+validation steps, cutover and rollback procedures.
+
+## Search and discovery
+
+The home page and every indexable page have unique titles and descriptions,
+production canonical URLs, Open Graph and Twitter cards, and JSON-LD.
+The software schema follows `VERSION` and links to the real license; it
+does not publish prices, reviews or ratings. Exact SHA-256 hashes authorize
+the JSON-LD blocks in the CSP. Executable scripts remain external, and
+`unsafe-inline` is never enabled.
+
+`build.ts` collects indexable paths when it renders each page, then writes
+the sitemap from that collection. A new page rendered through `writePage`
+is included automatically. The 404 page is excluded. `robots.txt` permits
+crawling and advertises `https://kudurru.io/sitemap.xml`.
+
+The landing pages `/kubernetes-dns/`, `/network-ad-blocking/` and
+`/pi-hole-alternative/` answer different deployment questions and link to
+the corresponding docs. They are linked from the home page, every footer
+and each other. Their current capabilities and limitations follow
+`site/content/start/`, `site/content/migrate/` and the deployment guides;
+keep them current when those change.
+
+For a preview build, set `WWW_NOINDEX=1` (or call `build` with
+`noIndex: true`). This emits a `noindex` meta tag on every page and an
+`X-Robots-Tag: noindex` response header, omits structured data and canonical
+links, and produces an empty sitemap. Crawling remains allowed so search
+engines can read the directive. Set it only on non-production builds.
+
+The account setup, domain checks and ongoing measurement are in the
+[SEO launch guide](SEO.md). Those steps require access to the domain and
+search engine accounts; a site build does not submit a sitemap or verify
+ownership.
+
+## Enterprise
+
+The `/enterprise/` page describes current enterprise capabilities, the
+Commercial Core and Enterprise scopes, node counting and annual USD pricing.
+Commercial Core is $99/year plus $99/node/year; Enterprise is $499/year plus
+$299/node/year. `src/pricing.ts` shares the calculation between the static
+examples and browser calculator: 25–49 nodes receive 10% off node fees,
+and 50+ nodes need a quote. Support is separate. Without JavaScript, the
+calculator shows the five-node Enterprise example and hides its controls.
+Keep `src/content.ts`, `src/pricing.ts` and `src/pages/enterprise.ts` in
+step with the documentation source, [`docs/enterprise.md`](../docs/enterprise.md),
+published at `docs.kudurru.io/enterprise/`. Enterprise inquiries open email
+to `hello@kudurru.io` without submitting a form.
+
 ## The "Request a key" form
 
-`/license/` has a form with two kinds of request. A **personal** request is
+`/license/` has a form beside the introductory text (stacked below it on
+narrow screens), with two kinds of request. A **personal** request is
 sent from the visitor's browser to the license server
 (`POST <origin>/api/v1/public/key-requests` with `name`, `email`, `use` and an
 empty honeypot `website`; the server emails a confirmation link; after the
@@ -57,8 +118,8 @@ visitor confirms, an administrator approves the request and the server emails
 the key; a `202` is the answer to any valid request). A **business or other**
 request is never sent to a server: the browser opens a mail to
 `hello@kudurru.io` with the subject `Business License` and the name, business,
-email, number of nodes and details in the body, and shows the same text to
-copy if no mail program opens.
+email, edition (Commercial Core or Enterprise), number of nodes and details
+in the body, and shows the same text to copy if no mail program opens.
 
 The license server's origin is `https://licenses.kudurru.io` unless
 `WWW_LICENSE_API` names another one at build time (set it in the Cloudflare
@@ -76,7 +137,7 @@ build variables). Three things must agree with it:
 - Every file in `dist/` is a static asset. Requests never run a Worker, so
   they do not count against Worker request limits.
 - `dist/_headers` gives every response the Content-Security-Policy (no
-  inline script or style; the build tests enforce it), HSTS and the
+  inline executable script or style; JSON-LD uses exact hashes), HSTS and the
   hardening headers, and files under `/assets/` (hashed names) a one-year
   immutable cache. Cloudflare compresses responses itself.
 - `not_found_handling: "404-page"` answers unknown paths with `404.html`

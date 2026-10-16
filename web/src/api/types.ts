@@ -12,6 +12,22 @@ import type { components } from './generated';
 
 type S = components['schemas'];
 
+// DHCPv4 setup is node-local; quorum management writes route to its leader.
+export type DHCPFailover = S['DHCPFailover'];
+export type DHCPPoolOptions = S['DHCPPoolOptions'];
+export type DHCPReservation = S['DHCPReservation'];
+export type DHCPScopeSummary = S['DHCPScopeSummary'];
+export type DHCPStatus = S['DHCPStatus'];
+export type DHCPConfig = S['DHCPConfig'];
+export type DHCPLease = S['DHCPLease'];
+export type DHCPLeases = S['DHCPLeases'];
+export type DHCPImportResult = S['DHCPImportResult'];
+export type DHCPExport = S['DHCPExport'];
+export type DHCPSetup = S['DHCPSetup'];
+export type DHCPSetupScope = S['DHCPSetupScope'];
+export type DHCPSetupRequest = S['DHCPSetupRequest'];
+export type DHCPInterfaces = S['DHCPInterfaces'];
+
 // ---------------------------------------------------------------------------
 // Envelopes and errors
 
@@ -1002,3 +1018,6 @@ export type DomainBatch = Omit<S['DomainEntriesBatch'], 'ids'> & { ids: string[]
 
 /** The answer of every write; skipped: policies that should reference a list but are managed elsewhere. */
 export type DomainWriteResult = Omit<S['DomainWriteResult'], 'took_ms'> & { took_ms?: number };
+export type MigrationRequest = S['MigrationRequest'];
+export type MigrationPlan = Omit<S['Plan'], 'objects'> & { objects: AnyObject[] };
+export type MigrationResult = S['MigrationResult'];

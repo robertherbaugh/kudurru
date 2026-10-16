@@ -78,7 +78,7 @@ const baseColumns: TableColumn<Row>[] = [
     key: 'recordCount',
     header: 'Records',
     align: 'end',
-    width: pixel(90),
+    width: pixel(100),
     renderCell: (z) => <Text hasTabularNumbers>{formatExact(z.recordCount)}</Text>,
   },
   {
@@ -87,8 +87,8 @@ const baseColumns: TableColumn<Row>[] = [
     width: pixel(110),
     renderCell: (z) => (z.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />),
   },
-  { key: 'transfer', header: 'Transfers', width: proportional(2, { minWidth: 140 }), renderCell: (z) => <TransferCell z={z} /> },
-  { key: 'managedBy', header: 'Managed by', width: proportional(1.5, { minWidth: 120 }), renderCell: (z) => <ManagedBadge owner={z.managedBy} /> },
+  { key: 'transfer', header: 'Transfers', width: proportional(1.75, { minWidth: 140 }), renderCell: (z) => <TransferCell z={z} /> },
+  { key: 'managedBy', header: 'Managed by', width: proportional(1.5, { minWidth: 120 }), renderCell: (z) => <ManagedBadge owner={z.managedBy} inColumn /> },
 ];
 
 export default function ZonesPage() {
@@ -105,7 +105,7 @@ export default function ZonesPage() {
     {
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
-      width: pixel(96),
+      width: pixel(124),
       renderCell: (z) => (
         <Button
           label="Delete"

@@ -1,7 +1,8 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PROVIDERS, serversFor, transportsOf } from '../lib/upstreamPresets';
-import { bootstrapError, conditionalKeyError, mapPatch, serverError, serverLabel } from '../lib/upstreams';
+import { groupFieldErrors, withMode } from '../components/UpstreamGroup';
+import { bootstrapError, conditionalKeyError, groupPatch, mapPatch, serverError, serverLabel, upstreamsOf, type UpstreamGroupConfig } from '../lib/upstreams';
 import { mockDB } from '../mocks/handlers';
 import { findSelector, getSelector, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
@@ -9,8 +10,14 @@ import UpstreamGroupPage from './UpstreamGroupPage';
 import UpstreamsPage from './UpstreamsPage';
 import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 
-function groups(): Record<string, { servers: string[]; strategy: string; timeout: string }> {
-  return (mockDB().settings.upstreams as { groups: Record<string, { servers: string[]; strategy: string; timeout: string }> }).groups;
+type SavedGroup = { mode?: string; servers?: string[] | null; strategy?: string; timeout?: string };
+
+function groups(): Record<string, SavedGroup> {
+  return (mockDB().settings.upstreams as { groups: Record<string, SavedGroup> }).groups;
+}
+
+function recursion(): Record<string, unknown> {
+  return (mockDB().settings.upstreams as { recursion: Record<string, unknown> }).recursion;
 }
 
 describe('upstream helpers', () => {
@@ -53,6 +60,26 @@ describe('upstream helpers', () => {
     expect(conditionalKeyError('bad..name')).not.toBeNull();
     expect(mapPatch({ a: 1, b: 2 }, { b: 3, c: 4 })).toEqual({ a: null, b: 3, c: 4 });
   });
+
+  it('reads the mode and the recursion options, forward and the defaults when missing', () => {
+    const cfg = upstreamsOf({ settings: { upstreams: { groups: { a: { servers: ['1.1.1.1'] }, b: { mode: 'recursive', servers: null } } } } } as never);
+    expect(cfg.groups.a?.mode).toBe('forward');
+    expect(cfg.groups.b).toEqual({ mode: 'recursive', servers: [], strategy: '', timeout: '' });
+    expect(cfg.recursion).toEqual({ dnssec: true, qnameMinimization: true, ipv6: 'auto', trustAnchors: [], rootHints: [] });
+  });
+
+  it('validates and saves a group by mode, never keeping the other mode\'s fields', () => {
+    const fwd: UpstreamGroupConfig = { mode: 'forward', servers: ['1.1.1.1', ' '], strategy: 'strict', timeout: '2s' };
+    expect(groupFieldErrors({ ...fwd, servers: [] }).servers).toBe('A group needs at least one server');
+    expect(groupFieldErrors({ ...fwd, mode: 'recursive', servers: [] })).toEqual({});
+    expect(groupFieldErrors({ ...fwd, mode: 'recursive' }).servers).toContain('has no servers');
+    expect(groupPatch(fwd)).toEqual({ mode: null, servers: ['1.1.1.1'], strategy: 'strict', timeout: '2s' });
+    expect(groupPatch({ ...fwd, mode: 'recursive', timeout: '4s' })).toEqual({ mode: 'recursive', servers: null, strategy: null, timeout: '4s' });
+    // A timeout at the old mode's default follows the mode; a chosen one stays.
+    expect(withMode(fwd, 'recursive').timeout).toBe('4s');
+    expect(withMode(withMode(fwd, 'recursive'), 'forward').timeout).toBe('2s');
+    expect(withMode({ ...fwd, timeout: '3s' }, 'recursive').timeout).toBe('3s');
+  });
 });
 
 describe('provider presets', () => {
@@ -82,7 +109,22 @@ describe('UpstreamsPage', () => {
     const filtered = screen.getByTestId('group-filtered');
     expect(within(filtered).getByText('Strict order')).toBeInTheDocument();
     expect(await within(filtered).findByText('0 of 1 healthy')).toBeInTheDocument();
+    const resolver = screen.getByTestId('group-resolver');
+    expect(within(resolver).getByText('Recursive')).toBeInTheDocument();
+    expect(within(resolver).getByText('4s')).toBeInTheDocument();
+    expect(await within(resolver).findByText('1 of 1 healthy')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/undefined|NaN/);
+  });
+
+  it('saves the recursion options and links to the rest in Settings', async () => {
+    renderWithApp(<UpstreamsPage />, { route: '/upstreams' });
+    const panel = await screen.findByTestId('recursion');
+    expect(within(panel).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings?view=expert&q=upstreams.recursion');
+    expect(within(panel).queryByText(/No group is recursive yet/)).toBeNull();
+    fireEvent.click(within(panel).getByRole('switch', { name: /DNSSEC validation/ }));
+    pick(getSelector('IPv6 to name servers', panel), 'Off');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(recursion()).toMatchObject({ dnssec: false, qnameMinimization: true, ipv6: 'off' }));
   });
 
   it('turns read-only with the explanation when the settings are managed elsewhere', async () => {
@@ -121,6 +163,34 @@ describe('UpstreamGroupPage', () => {
     expect(screen.getByText(/Every query no policy/)).toBeInTheDocument();
   });
 
+  it('turns a forwarding group recursive without keeping its servers', async () => {
+    renderWithApp(<UpstreamGroupPage params={{ group: 'default' }} />, { route: '/upstreams/default' });
+    await screen.findByText('cloudflare');
+    pick(getSelector('Mode'), 'Recursive');
+    expect(screen.getByText(/starting from the root servers, so no single provider sees every name/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add server' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Strategy' })).toBeNull();
+    expect(getSelector('Timeout')).toHaveTextContent('4 seconds');
+    expect(screen.getByText('For the whole lookup of a name')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(groups().default).toEqual({ mode: 'recursive', timeout: '4s' }));
+  });
+
+  it('shows the recursive resolver as the server of a recursive group', async () => {
+    renderWithApp(<UpstreamGroupPage params={{ group: 'resolver' }} />, { route: '/upstreams/resolver' });
+    const row = (await screen.findByText('Recursive resolver')).closest('tr')!;
+    expect(await within(row).findByText('healthy')).toBeInTheDocument();
+    expect(within(screen.getByTestId('group-state')).getByText('Recursive')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Resolver' })).toBeInTheDocument();
+    pick(getSelector('Mode'), 'Forward');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('A group needs at least one server')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add server' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Servers 1' }), { target: { value: '192.168.1.1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(groups().resolver).toEqual({ servers: ['192.168.1.1'], strategy: 'parallel_best', timeout: '2s' }));
+  });
+
   it('deletes a group with a null in the merge patch after naming its users', async () => {
     mockDB().settings = { ...mockDB().settings, upstreams: { ...(mockDB().settings.upstreams as object), conditional: {} } };
     renderWithApp(<UpstreamGroupPage params={{ group: 'filtered' }} />, { route: '/upstreams/filtered' });
@@ -145,6 +215,8 @@ describe('UpstreamGroupPage', () => {
 describe('UpstreamWizardDialog', () => {
   it('creates a group from a provider preset', async () => {
     renderWithApp(<UpstreamWizardDialog isOpen onClose={() => {}} />, { route: '/upstreams?new=1' });
+    expect(await screen.findByRole('radio', { name: /^Forward/ })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     const quad9 = await screen.findByRole('radio', { name: /^Quad9/ });
     await waitFor(() => expect(quad9).toBeEnabled());
     // Icons from the C4 index where the server has one, monograms elsewhere.
@@ -167,6 +239,7 @@ describe('UpstreamWizardDialog', () => {
 
   it('needs the NextDNS profile ID and validates custom servers and the name', async () => {
     renderWithApp(<UpstreamWizardDialog isOpen onClose={() => {}} />, { route: '/upstreams?new=1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
     fireEvent.click(await screen.findByRole('radio', { name: /^NextDNS/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await screen.findByRole('textbox', { name: /^Profile ID/ });
@@ -186,5 +259,27 @@ describe('UpstreamWizardDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Create group' }));
     await waitFor(() => expect(groups().corp?.servers).toEqual(['10.0.0.53']));
+  });
+
+  it('creates a recursive group without a provider or servers', async () => {
+    renderWithApp(<UpstreamWizardDialog isOpen onClose={() => {}} />, { route: '/upstreams?new=1' });
+    fireEvent.click(await screen.findByRole('radio', { name: /^Recursive/ }));
+    expect(screen.getByText(/needs outbound DNS \(UDP and TCP port 53\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    // Straight to the name and timeout: no provider, servers or strategy.
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+    expect(screen.queryByRole('radio', { name: /^Quad9/ })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Strategy' })).toBeNull();
+    expect(getSelector('Timeout')).toHaveTextContent('4 seconds');
+    // The mock already has a group named resolver, so nothing is suggested.
+    expect(name).toHaveValue('');
+    fireEvent.change(name, { target: { value: 'private' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const review = await screen.findByTestId('upstream-review');
+    expect(review).toHaveTextContent('Recursive, from the root servers with DNSSEC validation');
+    expect(review).toHaveTextContent('4s per lookup');
+    expect(review).not.toHaveTextContent('Strategy');
+    fireEvent.click(screen.getByRole('button', { name: 'Create group' }));
+    await waitFor(() => expect(groups().private).toEqual({ mode: 'recursive', timeout: '4s' }));
   });
 });

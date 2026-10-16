@@ -45,6 +45,8 @@ var SARResources = map[string]string{
 	"blocking":          "blocking",
 	"settings":          "settings",
 	"node":              "nodes",
+	"dhcp":              "dhcp",
+	"dhcpleases":        "dhcpleases",
 	"users":             "users",
 	"groups":            "groups",
 	"serviceaccounts":   "serviceaccounts",

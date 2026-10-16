@@ -1,80 +1,226 @@
 ---
-title: Coming from Pi-hole
+title: Move from Pi-hole to kudurru
 linkTitle: From Pi-hole
-description: Pi-hole's groups, lists, domains and clients map almost one to one onto kudurru's ClientGroup, Policy and BlockList objects.
+description: Import Pi-hole v6 lists, domain rules, groups, upstreams and local DNS through the dashboard wizard or CLI, then validate before switching clients.
 weight: 10
 ---
 
-The dashboard will feel familiar: stat tiles, the 24-hour charts, top lists,
-a query log that says why each answer was given, and one-click allow and
-deny. The difference is underneath. Pi-hole keeps its configuration in
-`pihole.toml` and the gravity database; kudurru keeps it as typed objects
-(the same YAML in Docker and in Kubernetes) plus a settings file, and every
-object records who manages it.
+Move Pi-hole's adlists, domain rules and local DNS into explicit kudurru
+objects. The dashboard provides query explanations and allow/deny actions;
+configuration uses the same object format in standalone and Kubernetes
+installations. This guide targets Pi-hole v6 concepts and kudurru v0.1.0.
 
-There is no Pi-hole importer yet (`kudurru import pihole` is planned, see
-the [migration overview](/migrate/)), so you write the objects once by hand.
-The mapping below is the whole job for most installations.
+**Before you start:** complete [preparation and CLI setup](/migrate/cutover/#prepare).
+Keep Pi-hole serving the network. Use the built-in API importer below to
+move supported configuration directly. The later examples show how to
+recreate or adjust individual objects. Teleporter archives remain backups
+for Pi-hole; kudurru does not restore them.
 
-## Concepts
+## Import directly through the API
 
-| Pi-hole | kudurru | Notes |
+In **Tools**, choose **Import from DNS server**, select **Pi-hole v6**, and
+enter its URL and an **application password** generated in Pi-hole's
+**Settings** > **Web interface / API**. The kudurru server must be able to
+reach that URL. Review the preview and conversion warnings, then choose
+**Import configuration**. No configuration files need to be copied or edited.
+
+The importer transfers adlist URLs, exact and compatible RE2 domain rules,
+enabled switches, domain comments, group assignments, IP/CIDR clients,
+upstreams and local A/AAAA/CNAME records under the selected local suffixes.
+It uses Pi-hole's configured local domain by default; add other local
+suffixes in the wizard if needed. These suffixes become authoritative, so
+missing names beneath them stop forwarding upstream. MAC/hostname clients,
+Pi-hole regex extensions, DHCP and custom dnsmasq behavior require review.
+
+Pi-hole v6 uses an application password to create a temporary API session,
+rather than a permanent v5 API key. kudurru closes that session afterward
+and does not save the password. Application passwords can read settings
+without enabling Pi-hole's application configuration writes.
+
+The CLI provides the same conversion and a direct apply option. Save the
+application password in a protected file, or set `PIHOLE_APP_PASSWORD`:
+
+```sh
+kudurru import pihole --source-url http://pi.hole \
+  --source-key-file ./pihole-app-password --local-zone home.arpa
+kudurru import pihole --source-url http://pi.hole \
+  --source-key-file ./pihole-app-password --local-zone home.arpa --apply
+```
+
+The first command previews; the second writes to the kudurru server selected
+by your CLI context or `--server`. Use `-n` for your default policy's
+namespace. Import replaces matching object names, including `Policy/default`,
+and the default upstream group. Additional policies require an appropriate
+license key. Inspect all results: object writes are not transactional, and
+settings are applied only after all objects succeed. A settings result with
+`persisted: false` needs a [settings file](/reference/configuration/) to
+survive a restart. Complete the validation and cutover checklist afterward.
+
+## Compare the features you use
+
+| Pi-hole | kudurru v0.1.0 | Migration action |
 |---|---|---|
-| Group | a [`ClientGroup`](/reference/crds/clientgroup/) (who) plus a [`Policy`](/reference/crds/policy/) (what applies to them) | The Policy names the group in `clientGroupRefs` and the lists in `blockListRefs` and `allowListRefs`. A Policy other than `Policy/default` needs a [license key](/project/licensing/) |
-| Default group | `ClientGroup/default` and `Policy/default` | Created at the first start; they apply to clients in no other group |
-| Client (IP, subnet, hostname) | an entry of `ClientGroup.spec.clients`: `ip` or `cidr` in v0.1.0 | Hostname, name-pattern, MAC and DoT/DoH client-ID fields are accepted by the schema but have no production inventory or listener source yet; use addresses for matching |
-| List (adlist, allow list) | a [`BlockList`](/reference/crds/blocklist/) with `mode: block` or `mode: allow` and `url` sources | `format: auto` recognises hosts, domains and adblock lists |
-| Domains: exact, wildcard and regex allow / deny | the dashboard's Allowlist and Denylist (per-entry switch, comment, group assignment, added date and origin), `kudurru lists allow <domain>`, `kudurru lists deny <domain>` (`--regex`), or one-click in the query log | Stored in the `ui-allow` / `ui-deny` lists (`ui-allow-<group>` / `ui-deny-<group>` for a group); see docs/deploy/allowlist.md. Up to 1,000 expressions per list |
-| Disabling one domain of an adlist | the list's page → source → Entries: switch the entry off (`spec.sources[].exclude`) | Affects that list only; allow the name to let it through everywhere |
-| Updating gravity (`pihole -g`) | automatic, every `spec.refreshInterval` (default [`blocking.refreshInterval`](/reference/configuration/#blocking.refreshInterval)); `kudurru lists refresh <name>` fetches now | The leader fetches, every replica pulls by digest |
-| Disable blocking for a while | `kudurru blocking disable 5m`, or the dashboard toggle | `blocking enable` ends it early |
-| Blocking mode (NULL, IP, NXDOMAIN, NODATA) | `blockMode` of the Policy, `response` of the BlockList, or [`blocking.defaultResponse`](/reference/configuration/#blocking.defaultResponse): `zeroIP` (default), `customIP`, `nxdomain`, `refused` | `customIP` with an empty address answers NODATA |
-| CNAME inspection | always on: answers are checked as well, including CNAME targets, HTTPS/SVCB targets and the returned addresses | |
-| Local DNS records | records in a primary [`DNSZone`](/reference/crds/dnszone/) of your own, for example `home.arpa.` | `kudurru records add`; a name needs a zone that contains it |
-| Local CNAME records | `CNAME` records in that zone | Answers follow the chain inside the zone |
-| Conditional forwarding | [`upstreams.conditional`](/reference/configuration/#upstreams.conditional) (suffix to upstream group, dnsmasq `[/a/b/]` form accepted), or a `DNSZone` of type `forward` | |
-| Upstream DNS servers | [`upstreams.groups`](/reference/configuration/#upstreams.groups) | Several named groups with a strategy each; a Policy can pick one per client group |
-| Rate limiting | [`ratelimit.*`](/reference/configuration/#ratelimit.enabled): queries per minute per IPv4 /32 and /24 (and IPv6 prefixes) | UDP only; TCP and the encrypted transports are not limited |
-| Privacy level | [`querylog.privacy`](/reference/configuration/#querylog.privacy): `full`, `anonymize_client`, `hide_domains`, `hide_domains_clients`, `nothing` | Applied once, when a query is logged |
-| Long-term data | rollups kept 35 days per minute, 400 days per hour and daily forever; raw rows for [`querylog.retention.raw`](/reference/configuration/#querylog.retention.raw) | The dashboard marks merged top lists as approximate. Statistics older than 24 hours need a [license key](/project/licensing/) |
-| Web interface password | the local `admin` user (reset on the host with `kudurru admin reset-password admin`), other local users, or OIDC login | Roles: viewer, auditor, operator, zone-admin, admin. Roles other than the built-in administrator, and OIDC, need a [license key](/project/licensing/) |
-| Pi-hole API | `/api/v1`, see the [REST API reference](/reference/api/) | A Pi-hole v6 compatible API is planned for v1.0 |
-| Teleporter | `kudurru backup --out file.yaml` and `kudurru restore -f file.yaml` | kudurru's own format, not a Teleporter archive |
-| `pihole.toml` | `kudurru.yaml` and the settings file, see the [settings reference](/reference/configuration/) | |
-| DHCP server | none | Keep DHCP on your router or a DHCP server, and hand out kudurru's address as the DNS server |
-| DNSSEC validation | not yet | Planned for v0.2 |
+| Adlists and group assignments | `BlockList` objects referenced by `Policy` objects | Copy enabled source URLs and record which groups use each list |
+| Default group | Seeded `ClientGroup/default` and `Policy/default` | Update the existing policy in its namespace |
+| Custom groups | `ClientGroup` plus `Policy` | Reference all baseline lists explicitly; additional policies require a key |
+| Clients by IP, network, MAC or hostname | Production matching by IP/CIDR | Reserve addresses and add IPv6 prefixes where needed |
+| Exact, wildcard and regex allow/deny | Structured list entries or **Filtering** > **Allowlist** / **Denylist** | Translate regex syntax and extensions before applying |
+| Local DNS and CNAME records | Primary zones and records | Create the containing zone, then copy records |
+| Conditional forwarding | Named upstream groups and suffix rules, or forward zones | Recreate both local-domain and reverse-DNS routes |
+| Temporary blocking pause | Dashboard toggle or `kudurru blocking disable 5m` | Pause is node-local in v0.1.0; check the node you manage |
+| DHCP | No DHCP server; planned for v0.2.0 | Move DHCP service and reservations before retiring Pi-hole |
+| DNSSEC validation | No local validation | Retain a validating upstream if required; this does not add validation to kudurru |
+| Pi-hole-specific API integrations | kudurru REST API and CLI | Rewrite integrations; no Pi-hole API compatibility layer in v0.1.0 |
+| Teleporter and historical query database | kudurru object backup and separate logs | Keep the source backup/history separately; neither is directly importable |
 
-## A Pi-hole setup as kudurru objects
+See the [four-product comparison](/migrate/#feature-comparison) for resolution,
+encrypted DNS, multiple nodes and licensing.
 
-A household with the default group, a "Kids" group on its own VLAN, one
-extra list and a local name. The `kids` Policy needs a
-[license key](/project/licensing/): without one, kudurru keeps
-`Policy/default` as the only policy and refuses `kids` with
-`license_required`. A free personal key covers a home network.
+## 1. Back up and inventory Pi-hole
+
+1. In Pi-hole's web interface, open **Settings** > **Teleporter** and export
+   a backup. Keep the archive untouched for recovery.
+2. Record the enabled adlist URLs, their group assignments, allow/deny
+   domains, domain types, comments and disabled entries. Preserve the
+   original configuration and data volume with a consistent backup as well.
+3. Record client/group membership, upstreams, conditional forwarding,
+   blocking mode, local A/AAAA and CNAME records, privacy settings and
+   retention. Record any custom dnsmasq settings separately.
+4. If Pi-hole serves DHCP, save the lease range, active leases, reservations,
+   gateway, search domain and lease duration. Plan the [DHCP handoff](#dhcp-handoff).
+5. Capture queries for a known allowed name, blocked name, exception, local
+   alias and reverse lookup from each group. These become your acceptance tests.
+
+Read the [Pi-hole documentation](https://docs.pi-hole.net/) for the backup
+and settings pages in your version. Do not edit the live gravity database
+to perform this migration.
+
+## 2. Recreate lists and the default policy
+
+Save this as `pihole-migration.yaml`. Replace the sample source URL with
+**your enabled adlist URLs**; add one source for each URL. The inline
+`tracker.example` rule gives you a predictable migration test. The allow
+entry demonstrates a name that must resolve despite a blocking match.
 
 ```yaml
 apiVersion: kudurru.io/v1alpha1
 kind: BlockList
-metadata: {name: hagezi-pro, namespace: dns}
+metadata: {name: migrated-ads, namespace: default}
 spec:
   mode: block
   sources:
-    - url: https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.txt
+    - name: adlist
+      url: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+      format: hosts
+    - name: custom-domains
+      entries:
+        - {value: '*.tracker.example', type: wildcard, origin: migrated}
+        - {value: disabled.example, type: exact, enabled: false, origin: migrated}
 ---
 apiVersion: kudurru.io/v1alpha1
-kind: ClientGroup
-metadata: {name: kids, namespace: dns}
+kind: BlockList
+metadata: {name: migrated-allow, namespace: default}
 spec:
-  clients:
-    - {cidr: 192.168.20.0/24, name: Kids VLAN}
+  mode: allow
+  sources:
+    - name: exceptions
+      entries:
+        - value: needed.tracker.example
+          type: exact
+          comment: Keep the required endpoint available
+          origin: migrated
 ---
 apiVersion: kudurru.io/v1alpha1
 kind: Policy
-metadata: {name: kids, namespace: dns}
+metadata: {name: default, namespace: default}
+spec:
+  clientGroupRefs: [default]
+  blockListRefs: [migrated-ads]
+  allowListRefs: [migrated-allow]
+  blockMode: zeroIP
+```
+
+```sh
+kudurru apply -f pihole-migration.yaml
+kudurru get blocklists -o yaml
+kudurru query tracker.example A --client 192.0.2.10
+kudurru query needed.tracker.example A --client 192.0.2.10
+```
+
+The first test must block. The second must show an allow-list decision;
+since `.example` has no public records, an upstream NXDOMAIN is expected
+unless you replace it with a real exception. An allow decision does not
+create a DNS record.
+
+This updates the seeded default policy and replaces its starter-list
+references. Preserve any other settings you already need on that policy.
+No additional policy is necessary for a single filtering profile.
+If your installation uses another namespace, change the examples as
+[described in the checklist](/migrate/cutover/#use-the-right-namespace-and-owner).
+
+### Translate domain rules deliberately
+
+| Pi-hole domain type | kudurru entry | Detail |
+|---|---|---|
+| Exact allow/deny | `type: exact`, `value: ads.example` | Matches only that name |
+| Wildcard allow/deny | `type: wildcard`, `value: '*.ads.example'` | Matches the apex and its subdomains |
+| Regex allow/deny | `type: regex`, `value: '^ads[0-9]+\.'` | Uses RE2; test every migrated expression |
+| Disabled domain | `enabled: false` | Retains the entry without applying it |
+
+Pi-hole regex extensions such as `;querytype=` and `;reply=` do not carry
+over. kudurru counts these extensions as unsupported in regex sources; it
+rejects regex constructs that RE2 cannot compile. Do not remove an extension
+and assume the broader resulting rule is equivalent. Rebuild its intended
+behavior where supported, or retain the original service for that behavior.
+
+Structured entries on your own lists appear in those lists' source entry
+browser. The dedicated Allowlist and Denylist pages manage `ui-*` lists;
+use those pages if you want the same workflow as Pi-hole's Domains page.
+See [allow/deny behavior](/deploy/allowlist/), including per-list exclusions.
+
+## 3. Recreate custom groups
+
+For a group on a kids' VLAN, save the following as `pihole-kids.yaml`.
+Install a suitable [key](/project/licensing/) first: a policy beyond
+`default` is refused with `license_required` without one. Applying a file
+can create some objects before a later object fails; inspect the result.
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: ClientGroup
+metadata: {name: kids, namespace: default}
+spec:
+  clients:
+    - {cidr: 192.168.20.0/24, name: Kids VLAN}
+    - {ip: 192.168.1.40, name: Reserved tablet address}
+---
+apiVersion: kudurru.io/v1alpha1
+kind: Policy
+metadata: {name: kids, namespace: default}
 spec:
   clientGroupRefs: [kids]
-  blockListRefs: [hagezi-pro]
----
+  blockListRefs: [migrated-ads]
+  allowListRefs: [migrated-allow]
+  blockMode: zeroIP
+```
+
+```sh
+kudurru apply -f pihole-kids.yaml
+kudurru query tracker.example A --client 192.168.20.15
+kudurru query needed.tracker.example A --client 192.168.20.15
+```
+
+Add group-specific lists to `kids` as needed. The explicit baseline
+references matter: this group's policy does not inherit the default
+policy. Exact-IP membership also takes precedence over subnet membership;
+check overlapping groups and add the corresponding IPv6 matchers.
+
+## 4. Move local names and upstreams
+
+Create the existing local zone in **DNS** > **Zones** > **New zone**, choosing
+**Primary**, or save and apply `pihole-local-zone.yaml`:
+
+```yaml
 apiVersion: kudurru.io/v1alpha1
 kind: DNSZone
 metadata: {name: home-arpa}
@@ -86,19 +232,54 @@ spec:
 ```
 
 ```sh
-kudurru apply -f pihole-migration.yaml
+kudurru apply -f pihole-local-zone.yaml
+kudurru records add home-arpa ns.home.arpa A 192.0.2.54
 kudurru records add home-arpa nas.home.arpa A 192.168.1.10
-kudurru query doubleclick.net --client 192.168.20.15   # blocked, and by which list and rule
+kudurru records add home-arpa files.home.arpa CNAME nas.home.arpa.
+kudurru query files.home.arpa A
 ```
 
-Write the objects into `objects.d/` instead of applying them if you want
-the files to be the source of truth; they are then read-only in the
-dashboard and re-applied whenever they change.
+Use your current local suffix and addresses. Add AAAA and PTR records where
+you have them. A primary zone answers authoritatively for its entire suffix;
+it does not forward missing names to public DNS, and its answers precede
+blocking. Do not create a broad public zone merely to override one hostname.
+
+In **DNS** > **Upstreams**, set the `default` group to the upstreams Pi-hole
+used. If Pi-hole used a separate Unbound resolver, you can keep it as an
+upstream, or set the `default` group's **Mode** to **Recursive**: kudurru
+then resolves from the root servers itself, with QNAME minimization and
+DNSSEC validation, and needs outbound UDP and TCP port 53
+([trade-offs](/start/home/#7-resolve-names-yourself-optional)). Recreate conditional forwarding for your local suffix and the
+correct `in-addr.arpa` / `ip6.arpa` reverse suffixes. Do not forward back to a
+router whose own DNS forwards to kudurru. See
+[zones and upstreams](/guide/admin/07-zones-and-upstreams/).
+
+Map the blocking response deliberately: Pi-hole's NULL response corresponds
+to `zeroIP`; `nxdomain`, `refused` and `customIP` are also available. Set
+query-log privacy and retention in **Settings** before moving real traffic.
+
+## DHCP handoff
+
+kudurru v0.1.0 has no DHCP server. Built-in DHCP support is planned for
+v0.2.0; the handoff below applies to v0.1.0.
+
+If Pi-hole serves DHCP, prepare your router or another DHCP server with
+the same subnet, gateway, reservations and search domain. Account for active
+leases before choosing the new allocation pool; import leases where
+supported or exclude addresses still leased by Pi-hole. Set kudurru as DNS.
+
+Disable Pi-hole's DHCP service before enabling the replacement on the same
+LAN. Keep Pi-hole's DNS running during this handoff. Renew one client's lease
+and confirm its address, gateway, search domain and DNS. Recreate any dynamic
+local names previously derived from Pi-hole leases using the DHCP server's
+DNS integration, conditional forwarding or explicit records.
 
 ## Switching over
 
-1. Run kudurru on another address next to Pi-hole and apply the objects.
-2. Compare answers for a few clients with `kudurru query <name> --client <address>`.
-3. Point the router's DHCP DNS option at kudurru. Clients move as their
-   leases renew.
-4. Keep Pi-hole until its query log has gone quiet.
+Complete the [validation checklist](/migrate/cutover/#validate), testing at
+least one default client and each custom group. Include UDP/TCP, A/AAAA,
+exceptions, local aliases and reverse DNS. Then follow
+[network cutover](/migrate/cutover/#switch-over), including IPv6 DNS
+advertisements. Keep Pi-hole, its Teleporter backup and the saved DHCP plan
+available until the observation period ends. If checks fail, follow
+[rollback](/migrate/cutover/#roll-back).

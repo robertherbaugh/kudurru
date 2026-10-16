@@ -1,6 +1,7 @@
 // One typed function per /api/v1 route the dashboard uses. Pages call these
 // through the hooks in ./hooks; tests and mocks share the paths.
 import type { ApiClient, Query } from './client';
+import { dhcpEndpoints } from './dhcp';
 import type {
   ApiToken,
   ApplyResult,
@@ -62,6 +63,7 @@ import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntriesPage,
 import type { CatalogueCategory, CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList, UnblockState } from './types';
 import type { ZoneDeleteResult } from './types';
+import type { MigrationPlan, MigrationRequest, MigrationResult } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -89,6 +91,11 @@ export function objectPath(kind: ObjectKind, name: string, namespace?: string): 
 
 export function endpoints(c: ApiClient) {
   return {
+    dhcp: dhcpEndpoints(c),
+    imports: {
+      preview: (request: MigrationRequest) => c.post<MigrationPlan>('/imports/preview', request),
+      apply: (plan: MigrationPlan) => c.post<MigrationResult>('/imports/apply', plan),
+    },
     /** Download URL of a whole object collection (JSON list envelope). */
     objectsURL: (kind: ObjectKind) => c.url(`/objects/${kind}`),
 
