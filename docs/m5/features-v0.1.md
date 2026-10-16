@@ -36,39 +36,20 @@ blocking toggles, remote Edge cache invalidation, IAM write pages and
 transport client IDs. Cluster statistics and the cluster live tail are
 already implemented and are no longer described as deferred.
 
-## Confirmed client-address failure in Talos RC.4
+## Client-address verification
 
-The deployment in namespace `kudurru` uses Services `kudurru-dns-a` and
-`kudurru-dns-b` with DNS VIPs `10.200.200.25` and `10.200.200.26`.
-Both have `externalTrafficPolicy: Local`; their selectors and endpoints
-point directly to kudurru's `dns` pods on port 53. A fresh read-only check
-after the latest rebase still found three RC.4 DNS pods and no edge pods;
-`kudurru-dns` also selects DNS pods.
-This deployed path does not include dnsdist. When Edge is enabled, the
-chart routes its published DNS Service to Edge, and extra VIP Services
-must follow that configuration.
+Before accepting a deployment, verify that distinct devices retain their
+source addresses in the cluster query log, Clients inventory and per-client
+chart. If every query appears to come from a gateway, compare query-log
+entries with packet captures at the receiving interface to locate where
+the original address is lost. Check gateway DNS forwarding, interception,
+source NAT and the return route to the client networks.
 
-An authenticated cluster API read returned 100 recent query rows, all
-with client `10.200.200.1`. The one-hour top-client response had that
-address plus loopback probes. This establishes that the recorded data
-already contains the gateway, before any dashboard rendering.
-
-A 20-second capture on worker `10.30.50.91`'s external DMZ interface
-`ens19` contained 39 packets to VIP `.25`, all with source
-`10.200.200.1`. The simultaneous worker `.92` capture saw no VIP traffic.
-The capture proves the address is already lost before Kubernetes receives
-that traffic. It does not distinguish gateway DNS forwarding, interception
-or source NAT, and it does not establish the behavior of idle VIP `.26`.
-
-The network remedy is to preserve device source addresses on the route to
-the VIPs, with a return route to the device networks. Changing API trusted
-proxies or accepting an arbitrary DNS/HTTP client claim cannot restore an
-address already removed upstream. For deployments intended to use Edge,
-the extra published Services must also select the edge pods.
-
-No production network, Service or workload was changed during this review.
-The investigation used existing configuration, authenticated API reads and
-packet captures. The [client-address runbook](../deploy/runbooks.md#clients-show-only-the-gateway)
+Changing API trusted proxies or accepting an arbitrary DNS/HTTP client
+claim cannot restore an address already removed upstream. When Edge is
+enabled, extra published DNS Services must select the edge pods, as the
+chart's published DNS Service does. The
+[client-address runbook](../deploy/runbooks.md#clients-show-only-the-gateway)
 contains the checks and remediation sequence.
 
 ## Product fixes
@@ -147,14 +128,15 @@ failover is certified by these local checks.
 
 ## Acceptance items recorded at review time
 
-1. Correct the gateway path and verify two distinct device addresses in
-   the cluster query log, Clients inventory and per-client chart for both
-   VIPs over UDP and TCP. Check exact-IP policy isolation and selected-node
-   views. Old gateway rollups are historical data, so use a fresh window.
+1. Verify two distinct device addresses in the cluster query log, Clients
+   inventory and per-client chart for both VIPs over UDP and TCP. Check
+   exact-IP policy isolation and selected-node views. Old gateway rollups
+   are historical data, so use a fresh window.
 2. Verify the separately owned Edge deployment, source identity through
    the authenticated PROXYv2 hop, supervisor health and the keepalived
    failover checks in the release checklist. PRs #50/#51 are merged in the
-   reviewed source; the live deployment still runs RC.4 without Edge.
+   reviewed source; source review alone does not certify the deployed
+   topology or failover behavior.
 3. Complete the licensing/publication checklist, including the standby
    public signing key requested in open question 22. Only
    `kudurru-2026-1.pub` was present at the reviewed baseline; production
