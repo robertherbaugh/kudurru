@@ -125,8 +125,17 @@ function AuditDetails({ event }: { event: AuditRow }) {
   );
 }
 
+/**
+ * Astryx's row expansion gives its chevron column 40 px, less than the
+ * chevron plus the cell padding of the roomier themes (Y2K), which cut the
+ * chevron off.
+ */
+const chevronColumn: TablePlugin<AuditRow> = {
+  transformColumns: (columns) => columns.map((c) => (c.key === '__expansion' ? { ...c, width: pixel(56) } : c)),
+};
+
 const auditColumns: TableColumn<AuditRow>[] = [
-  { key: 'ts', header: 'Time', width: pixel(210), renderCell: (a) => <Text textWrap="nowrap">{formatDateTime(a.ts)}</Text> },
+  { key: 'ts', header: 'Time', width: pixel(236), renderCell: (a) => <Text textWrap="nowrap">{formatDateTime(a.ts)}</Text> },
   { key: 'actor', header: 'Actor', width: proportional(1.5, { minWidth: 120 }), renderCell: (a) => <Text>{actorText(a.actor)}</Text> },
   {
     key: 'action',
@@ -318,7 +327,7 @@ function AuditLog() {
               idKey="rowKey"
               data={events}
               columns={auditColumns}
-              plugins={{ expansion, keyboard }}
+              plugins={{ expansion, chevronColumn, keyboard }}
               emptyState={<Text color="secondary">No audit events{actor || kind ? ' match' : ''}.</Text>}
             />
             <HStack gap={2} wrap="wrap" vAlign="center">
