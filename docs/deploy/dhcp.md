@@ -1,10 +1,10 @@
 # DHCPv4 server
 
-DHCPv4 is a **v0.2.0 development feature**, disabled by default. It supports
+DHCPv4 is included in **v0.1.0**, disabled by default. It supports
 persistent leases and reservations, multiple subnets and trusted relays,
 live API/dashboard management, lease import/export and automatic A/PTR
 records, conflict detection, network boot settings, classless routes, NTP and
-search domains. It is not available in v0.1.0.
+search domains.
 
 Use one Linux host, or the three-node quorum setup below, with
 `store.driver: sqlite`, fixed interface addresses and a persistent

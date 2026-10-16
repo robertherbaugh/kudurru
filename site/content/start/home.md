@@ -35,18 +35,18 @@ host with `kudurru admin reset-password admin`.
 
 Give the host a fixed address and make it the DNS server your router hands
 out with DHCP (often "DNS server" or "primary DNS" in the router's LAN
-settings). kudurru v0.1.0 does not serve DHCP; DHCP server support is planned
-for v0.2.0. Check from any device:
+settings). kudurru v0.1.0 also includes an optional DHCPv4 server if you want
+it to assign addresses. Check from any device:
 
 ```sh
 dig @<host> example.com
 ```
 
-The v0.2.0 DHCPv4 development server is opt-in, with Linux/SQLite standalone
-or three-node quorum operation and dashboard setup. DHCPv6 is excluded. See the
-[planned DHCPv4 scope](/migrate/#planned-dhcpv4-support) and follow
-[PR #66](https://github.com/robertherbaugh/kudurru/pull/66) for development
-and setup documentation. The steps on this page apply to v0.1.0.
+To use kudurru for DHCPv4, follow the [DHCPv4 setup guide](/deploy/dhcp/).
+It supports Linux/SQLite standalone or three-node quorum operation and
+dashboard setup. DHCPv4 is disabled by default; stop the existing DHCPv4
+service before activating it. Keep IPv6 router and DNS advertisements on
+your router; DHCPv6 is not supported.
 
 ## 4. Blocking
 

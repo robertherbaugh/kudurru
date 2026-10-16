@@ -42,7 +42,7 @@ check the version you run.
 | Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
 | Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding |
 | DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | Validation in recursive groups; no signing |
-| DHCP | Built in | Built in | Built in | Use a separate DHCP server; built-in support planned for v0.2.0 |
+| DHCP | Built in | Built in | Built in | Opt-in DHCPv4 on Linux/SQLite; dashboard setup and optional three-node quorum failover; no DHCPv6 |
 | Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
 | Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
 | Kubernetes configuration | Container configuration; no native CRDs | Container configuration; no native CRDs | Container configuration; no native CRDs | Native CRDs, Helm, external-dns webhook |
@@ -60,17 +60,18 @@ A schema field for a future feature does not mean that feature is active.
 In particular, secondary/stub/catalog zones, RFC 2136 updates and general
 per-policy answer rewrites are not implemented in v0.1.0.
 
-### Planned DHCPv4 support
+### DHCPv4 support
 
-Built-in DHCPv4 is in development for v0.2.0 in
-[PR #66](https://github.com/robertherbaugh/kudurru/pull/66). It supports
+Built-in DHCPv4 is included in v0.1.0 and disabled by default. It supports
 standalone Linux/SQLite nodes or a three-node quorum, durable leases and
 reservations, complete dashboard setup, multiple subnets and trusted relays,
 conflict checks, network/boot options, live management, lease import/export
-and persistent local DNS ownership. DHCPv6 is excluded from this pass.
+and persistent local DNS ownership. See the [DHCPv4 deployment guide](/deploy/dhcp/)
+for setup and cutover.
 
-The migration steps here target v0.1.0 and still require an external DHCP
-server. Keep IPv6 router and DNS advertisements on your router.
+You can keep your existing DHCP server or move DHCPv4 to kudurru. Stop the
+old allocator before activating its replacement. DHCPv6 is not supported;
+keep IPv6 router and DNS advertisements on your router.
 
 ### License and deployment choices
 

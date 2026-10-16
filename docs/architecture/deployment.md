@@ -19,7 +19,7 @@ container.
 Operator docs: [deploy/](../deploy/README.md). This page shows how the
 pieces talk to each other.
 
-The v0.2.0 development [DHCPv4 server](dhcp.md) supports a standalone Linux node or three quorum voters
+The v0.1.0 [DHCPv4 server](dhcp.md) supports a standalone Linux node or three quorum voters
 with local SQLite replicas and direct broadcast access or configured trusted
 relays for its subnets. It is opt-in,
 and independent allocators must never share a pool. Configure the explicit

@@ -179,8 +179,13 @@ node.
 ## Point the network at kudurru
 
 Make the devices on your network use kudurru as their DNS server. kudurru
-v0.1.0 does not give out IP addresses. DHCP server support is planned for
-v0.2.0. For v0.1.0, use your router or your DHCP server.
+v0.1.0 can also assign IPv4 addresses with its optional DHCPv4 server.
+This function needs Linux and the SQLite store. It is off by default.
+For setup in the dashboard, read the [DHCPv4 guide](../../deploy/dhcp.md).
+
+DHCPv6 is not supported. Keep IPv6 router and DNS advertisements on your router.
+
+To keep your current DHCP server, use these steps:
 
 1. Open the settings of your router or DHCP server.
 2. Find the setting for the DNS server. It can have the name **DNS server**

@@ -6,41 +6,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
-### Added
-
-- DHCPv4 server for v0.2.0: opt-in Linux/SQLite scopes with durable leases,
-  reservations, multiple subnets and trusted relays. Node-local API and
-  dashboard management apply persisted options live with revision checks.
-  Native/dnsmasq lease import, native export and automatic A/PTR records
-  support cutover and dedicated DHCP domains. Isolated stock-client tests
-  cover acquisition, renewal, restart, release, expiration and exhaustion.
-  Three-node quorum replication provides automatic DHCPv4 failover; DHCPv6 is excluded. See the
-  [DHCP deployment guide](docs/deploy/dhcp.md).
-- Complete DHCPv4 dashboard setup without DHCP YAML: scope creation, interface
-  discovery, topology, enable/disable and explicit adoption of host-file setup.
-  Desired setup is durably saved for restart; environment-owned setup stays
-  locked. Per-scope revisions and durable apply tokens preserve live
-  option/reservation edits and reject stale staged changes. Removed or renamed
-  scopes retain their lease databases. UI-owned DHCP activation errors keep
-  DNS and the dashboard available for repair and revision-conflict recovery.
-
-- Three static DHCP voters with mutual TLS, majority-committed leases and
-  management writes, follower forwarding, leader replacement, snapshot catch-up
-  and recovery fencing. The dashboard configures peers and reports quorum state.
-- Bounded ARP/ICMP pre-offer conflict detection, trusted relay link selection,
-  server-ID override and alternate ports; NTP/search/classless-route options,
-  architecture-specific PXE/HTTP boot settings and client FQDN handling.
-- Persistent earliest-established DHCP DNS name ownership across scopes,
-  reservation precedence and import-safe claim ordering. Lease schema v4 adds
-  claim ranks and replica progress. Indexed transactions and incremental DNS
-  publication reduce 10,000-lease median renewal time from 46.5 ms to 0.35 ms in
-  the comparative FULL-synchronous SQLite fixture.
-
 ## [0.1.0] - 2026-10-16
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or
-validating recursive resolver, blocking and a dashboard in one Go binary.
-Run it as one container or in Kubernetes with CRDs as the configuration
+validating recursive resolver, blocking, optional DHCPv4 and a dashboard in
+one Go binary. Run it as one container or in Kubernetes with CRDs as the configuration
 store.
 
 ### Added
@@ -67,6 +37,35 @@ store.
   150 services in 14 categories supports category blocking and exceptions;
   safe search is available for supported search engines and video sites.
 - An optional block page with access requests and administrator approvals.
+
+#### DHCPv4
+
+- DHCPv4 server: opt-in Linux/SQLite scopes with durable leases,
+  reservations, multiple subnets and trusted relays. Node-local API and
+  dashboard management apply persisted options live with revision checks.
+  Native/dnsmasq lease import, native export and automatic A/PTR records
+  support cutover and dedicated DHCP domains. Isolated stock-client tests
+  cover acquisition, renewal, restart, release, expiration and exhaustion.
+  Three-node quorum replication provides automatic DHCPv4 failover; DHCPv6
+  is excluded. See the [DHCP deployment guide](docs/deploy/dhcp.md).
+- Complete DHCPv4 dashboard setup without DHCP YAML: scope creation, interface
+  discovery, topology, enable/disable and explicit adoption of host-file setup.
+  Desired setup is durably saved for restart; environment-owned setup stays
+  locked. Per-scope revisions and durable apply tokens preserve live
+  option/reservation edits and reject stale staged changes. Removed or renamed
+  scopes retain their lease databases. UI-owned DHCP activation errors keep
+  DNS and the dashboard available for repair and revision-conflict recovery.
+- Three static DHCP voters with mutual TLS, majority-committed leases and
+  management writes, follower forwarding, leader replacement, snapshot catch-up
+  and recovery fencing. The dashboard configures peers and reports quorum state.
+- Bounded ARP/ICMP pre-offer conflict detection, trusted relay link selection,
+  server-ID override and alternate ports; NTP/search/classless-route options,
+  architecture-specific PXE/HTTP boot settings and client FQDN handling.
+- Persistent earliest-established DHCP DNS name ownership across scopes,
+  reservation precedence and import-safe claim ordering. Lease schema v4 adds
+  claim ranks and replica progress. Indexed transactions and incremental DNS
+  publication reduce 10,000-lease median renewal time from 46.5 ms to 0.35 ms in
+  the comparative FULL-synchronous SQLite fixture.
 
 #### Dashboard, API and CLI
 
@@ -189,8 +188,8 @@ and [final feature review](docs/m5/features-v0.1.md).
 
 - Secondary/stub zones, inbound transfers, RFC 2136, DNSSEC validation of
   forwarded answers, Cloudflare/UniFi integrations and follower replication
-  are planned for v0.2. DNSSEC signing and raft replication are planned for
-  v1.0.
+  are planned for v0.2. DNSSEC signing and Raft replication of the DNS
+  object store are planned for v1.0. DHCPv4 quorum replication is included.
 - Recursive groups need outbound UDP and TCP port 53 to any address. They
   do not yet cache NSEC ranges aggressively (RFC 8198), follow root key
   rollovers automatically (RFC 5011; new anchors ship with releases or

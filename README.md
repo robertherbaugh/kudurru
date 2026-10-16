@@ -103,11 +103,11 @@ and [`deploy/compose/`](deploy/compose/).
 
 | Release | Name | Headline |
 |---|---|---|
-| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
-| v0.2.0 | clay copies | DHCP server support, secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
+| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, opt-in DHCPv4 on Linux/SQLite with dashboard setup and three-node quorum failover, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
+| v0.2.0 | clay copies | secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
 | v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
 
-The v0.2.0 development tree includes standalone and three-node quorum DHCPv4 for Linux/SQLite.
+v0.1.0 includes opt-in standalone and three-node quorum DHCPv4 for Linux/SQLite.
 Configure fresh scopes entirely through **DNS → DHCP**, without DHCP YAML;
 existing host setup requires explicit adoption. Enabling, disabling and
 topology changes are saved for restart, while active scope options and
@@ -115,7 +115,7 @@ reservations apply live. Durable lease state and revision checks preserve
 allocations and later live edits across restarts. See the
 [DHCP setup and deployment guide](docs/deploy/dhcp.md) for host networking,
 capabilities, conflict detection, advanced network/boot options and failover
-recovery. DHCP is not included in v0.1.0; DHCPv6 is excluded from this pass.
+recovery. DHCPv4 is disabled by default; DHCPv6 is excluded from this pass.
 
 OIDC, scoped roles, long-term statistics, integrations and the edge need
 the corresponding license entitlements; a free eligible personal key

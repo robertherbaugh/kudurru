@@ -14,14 +14,13 @@ The optional central database for the audit log, query log and statistics of eve
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
-The optional DHCPv4 server in development for v0.2.0: [dhcp.md](dhcp.md).
+The optional DHCPv4 server included in v0.1.0: [dhcp.md](dhcp.md).
 
-Built-in DHCPv4 is in development for v0.2.0 in
-[PR #66](https://github.com/robertherbaugh/kudurru/pull/66): Linux/SQLite
+Built-in DHCPv4 is disabled by default and supports Linux/SQLite
 standalone or three-node quorum failover, complete dashboard setup, persistent
 leases/reservations, multiple subnets, trusted relays, conflict checks,
 network/boot options, import/export and local DNS ownership. DHCPv6 is excluded.
-The released v0.1.0 server still requires an external DHCP service.
+Keep IPv6 router and DNS advertisements on your router.
 
 ## Release artifacts
 
@@ -66,7 +65,7 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
 | Port | Protocol | Purpose |
 |---|---|---|
 | 53 | udp, tcp | DNS (5353 PROXYv2-only behind the dnsdist edge) |
-| 67 | udp | DHCPv4 (optional, v0.2.0 development); replies go to client UDP 68 or the relay's authorized UDP source port |
+| 67 | udp | DHCPv4 (optional, v0.1.0); replies go to client UDP 68 or the relay's authorized UDP source port |
 | 853 | tcp / udp | DNS over TLS / DNS over QUIC |
 | 443 | tcp / udp | DNS over HTTPS / HTTP/3 |
 | 8080 | tcp | API and UI |

@@ -1,7 +1,8 @@
 # DHCPv4 and lease state
 
-DHCPv4 is an optional **v0.2.0 development feature**. v0.1.0 does not serve
-DHCP. It runs on Linux with the SQLite configuration store and supports multiple directly attached and relayed IPv4 subnets. See the
+DHCPv4 is an optional **v0.1.0 feature**, disabled by default. It runs on Linux
+with the SQLite configuration store and supports multiple directly attached
+and relayed IPv4 subnets. See the
 [deployment guide](../deploy/dhcp.md) for configuration and cutover.
 
 ```mermaid

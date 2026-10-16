@@ -1,6 +1,6 @@
 // Everything the pages say. Claims here follow CHANGELOG.md (0.1.0), the
 // docs/architecture, docs/deploy and bench/baseline.txt; when a feature moves between releases,
-// change it here and nowhere else.
+// keep site/content and docs in step with the release scope here.
 
 export const SITE_URL = "https://kudurru.io";
 export const DOCS_URL = "https://docs.kudurru.io";
@@ -478,6 +478,20 @@ export const REGISTERS: Register[] = [
     link: { label: "Lists, groups and policies", href: docs("/guide/admin/05-groups-clients-policies/") },
   },
   {
+    id: "dhcp",
+    label: "DHCPv4",
+    title: "Addresses, leases and local names.",
+    lead: "An opt-in DHCPv4 server on Linux/SQLite assigns addresses on direct or trusted-relay subnets, with persistent leases and reservations.",
+    points: [
+      "Dashboard setup stages scope topology and enable/disable changes for restart; live options and reservations use the active scope API",
+      "Multiple subnets, conflict checks, network/boot options and native/dnsmasq lease import",
+      "Optional A/PTR records in a dedicated DHCP domain, with persistent name ownership",
+      "Optional three-node quorum failover commits lease ownership before replying; DHCPv6 is not supported",
+    ],
+    figure: { value: "3", caption: "voters in the optional quorum failover group" },
+    link: { label: "DHCPv4 setup and cutover", href: docs("/deploy/dhcp/") },
+  },
+  {
     id: "identity",
     label: "Identity",
     title: "OIDC sign-in. Scoped roles.",
@@ -631,6 +645,7 @@ export const ROADMAP: Release[] = [
     items: [
       "Resolver with DoT, DoH, DoQ and DoH3",
       "Opt-in recursion with DNSSEC validation",
+      "Opt-in DHCPv4 on Linux/SQLite, dashboard setup and three-node quorum failover",
       "Primary and forward zones, AXFR and IXFR out",
       "Blocking with client groups, services and safe search",
       "Dashboard with long-term views, OIDC and RBAC (a free personal key unlocks them)",
@@ -642,7 +657,6 @@ export const ROADMAP: Release[] = [
     name: "clay copies",
     meaning: "The landholder's copies: secondaries and followers.",
     items: [
-      "DHCP server support",
       "Secondary and stub zones, RFC 2136",
       "Active Directory DNS replacement for a single-domain forest",
       "DNSSEC validation of forwarded answers, RPZ feed import",
@@ -730,7 +744,7 @@ export const MIGRATIONS = [
     name: "Pi-hole",
     summary: "Keep the lists and local names you trust. Add authoritative zones, encrypted DNS listeners and Kubernetes CRDs.",
     mapping: "Groups become client groups and policies. Adlists become block lists; local DNS records become zone records.",
-    check: "For v0.1.0, move DHCP to your router first if Pi-hole serves it; DHCP support is planned for v0.2.0. Translate regex extensions and reserve device addresses.",
+    check: "If Pi-hole serves DHCP, configure kudurru's opt-in DHCPv4 on Linux/SQLite or keep DHCP on your router. Preserve leases and reservations before switching. Translate regex extensions and reserve device addresses.",
     source: "https://docs.pi-hole.net/",
   },
   {
@@ -756,7 +770,7 @@ export const MIGRATION_COMPARISON = [
   { feature: "Local names and zones", pihole: "Local DNS and CNAME records", adguard: "DNS rewrites", technitium: "Primary, secondary, stub, forwarder and catalog zones", kudurru: "Primary and forward zones; BIND import/export; AXFR/IXFR out" },
   { feature: "Resolution", pihole: "Forwards to upstreams; recursion with a separate resolver", adguard: "Forwards to upstreams", technitium: "Full recursive resolver or forwarding", kudurru: "Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding" },
   { feature: "DNSSEC", pihole: "Optional validation", adguard: "Requests DNSSEC data from upstreams", technitium: "Validation and authoritative signing", kudurru: "Validation in recursive upstream groups; no signing in v0.1.0" },
-  { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Use a separate DHCP server in v0.1.0; built-in support planned for v0.2.0" },
+  { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Opt-in DHCPv4 on Linux/SQLite; dashboard setup and optional three-node quorum failover; no DHCPv6" },
   { feature: "Encrypted DNS listeners", pihole: "Use a separate proxy", adguard: "DoT, DoH and DoQ", technitium: "DoT, DoH and DoQ", kudurru: "DoT, DoH, DoQ and DoH3" },
   { feature: "Multiple servers", pihole: "Separate instances; external sync tools", adguard: "Separate instances; external sync tools", technitium: "Built-in clustering", kudurru: "Shared Kubernetes store; Compose HA uses shared object files" },
   { feature: "Kubernetes configuration", pihole: "Container configuration; no native CRDs", adguard: "Container configuration; no native CRDs", technitium: "Container configuration; no native CRDs", kudurru: "Native CRDs, Helm and external-dns webhook" },

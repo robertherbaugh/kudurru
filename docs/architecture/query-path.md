@@ -253,7 +253,7 @@ validate their own answers inside the upstream stage. NSID is not implemented, a
 the `epoch` in the health TXT is always `0`. The control stage has no
 configuration keys yet, so it only drops malformed queries.
 
-## DHCP lease records (v0.2.0 development)
+## DHCP lease records (v0.1.0)
 
 The authoritative stage can answer A/PTR records from committed in-memory
 [DHCP lease snapshots](dhcp.md#lease-dns-and-policy-names). The optional hook
