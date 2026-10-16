@@ -43,7 +43,7 @@ test('query log sizes fields to their content and gives remaining space to Domai
     }), { message: `clipped non-domain fields at ${width}px` }).toEqual([]);
     widths.push(await table.locator('th').evaluateAll((cells) => cells.map((c) => c.getBoundingClientRect().width)));
     // The Card owns scrolling in both directions, including when long
-    // fields make the table wider than its nominal minimum.
+    // fields make the table wider than the viewport.
     const nestedScrollers = await table.evaluate((t) => {
       const found: string[] = [];
       for (let el = t.parentElement; el && !el.dataset.testid; el = el.parentElement) {
@@ -66,4 +66,17 @@ test('query log sizes fields to their content and gives remaining space to Domai
     const card = await scroller.boundingBox();
     return Math.abs(header!.y - card!.y);
   }, { message: 'header remains pinned during virtual scrolling' }).toBeLessThan(2);
+
+  // Shorter values should fit a compact desktop without a fixed table
+  // minimum forcing otherwise unnecessary horizontal scrolling.
+  await page.unroute(/\/api\/v1\/queries(?:\?|$)/);
+  await page.route(/\/api\/v1\/queries(?:\?|$)/, (route) => route.fulfill({
+    json: { queries: rows.map((r) => ({ ...r, client: { ip: '10.200.200.1' }, node: 'kudurru-01', reply: { type: 'ip', time_ms: 7.8 } })), records_total: rows.length, records_filtered: rows.length },
+  }));
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.reload();
+  await settle(page);
+  await expect(first).toContainText('kudurru-01');
+  await expect.poll(() => scroller.evaluate((el) => el.scrollWidth - el.clientWidth), { message: 'compact table fits available width' }).toBeLessThan(2);
+  await expect(first.getByRole('button', { name: 'Deny', exact: true })).toBeInViewport();
 });

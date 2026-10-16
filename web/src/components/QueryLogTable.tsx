@@ -138,8 +138,6 @@ const COLUMNS: Column[] = [
 ];
 
 const NCOLS = COLUMNS.length + 1;
-/** Below this the table scrolls sideways (structural, px). */
-const TABLE_MIN_WIDTH = 980;
 const ROW_HEIGHT = 34;
 /** The scroll region's height: most of the viewport, capped on tall screens. */
 const SCROLL_HEIGHT = 'min(70vh, 900px)';
@@ -229,7 +227,7 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
           hasHover
           textOverflow="truncate"
           plugins={PLUGINS}
-          style={{ tableLayout: 'auto', inlineSize: '100%', minInlineSize: TABLE_MIN_WIDTH }}
+          style={{ tableLayout: 'auto', inlineSize: '100%' }}
         >
           <TableHeader>
             <TableRow isHeaderRow>
