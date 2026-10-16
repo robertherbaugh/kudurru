@@ -156,7 +156,7 @@ func TestUpstreamReloadIsAllOrNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer set.Close()
+	defer func() { _ = set.Close() }()
 	if rec.Config().DNSSEC || set.Recursor() != rec {
 		t.Fatal("a successful reload must apply the recursion settings")
 	}

@@ -336,8 +336,15 @@ func (r *Resolver) ExchangeValidated(ctx context.Context, req *dns.Msg) (*dns.Ms
 			q.validate = false
 		}
 		a = q.resolve(question.Name, question.Qtype)
-		if a.fail != nil && ctx.Err() != nil {
-			return nil, SecUnknown, ctx.Err()
+		if a.fail != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, SecUnknown, err
+			}
+			// A socket deadline set from ctx can fire a moment before
+			// ctx itself reports it: still the caller's deadline.
+			if d, ok := ctx.Deadline(); ok && !time.Now().Before(d) {
+				return nil, SecUnknown, context.DeadlineExceeded
+			}
 		}
 	}
 	if s.cfg.DNSSEC {
