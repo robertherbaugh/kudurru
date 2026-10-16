@@ -82,12 +82,17 @@ Each setting has a label for each property.
 To use a different input form, click **Edit as JSON**. To go back to the
 default value, click **Reset to default**.
 
-CAUTION: A banner **Kept in memory only** means that the node has no
-settings file. The change is lost at the next restart. Set
-`KUDURRU_SETTINGS_FILE` to keep changes.
+A banner **Kept in memory only** means the change is lost at restart.
+Node-local log changes always have this property. On the v0.2 SQLite path,
+`log.level` changes the actual logger before the API acknowledges it. Only the
+current writable node accepts this change; a follower returns 503 and does not
+forward it to another node.
 
-If a setting needs a restart, the page shows the banner **Restart
-required**. Restart the node. For example, run `docker restart kudurru`.
+`log.format` is a pending request. The running logger keeps its startup format.
+To make that format survive and take effect, update the startup configuration
+before restarting. A **Restart required** banner alone does not mean a
+memory-only request was saved. For legacy cluster settings without a settings
+file, configure `KUDURRU_SETTINGS_FILE` to persist changes.
 
 ### The appearance
 

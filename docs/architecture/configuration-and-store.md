@@ -818,13 +818,21 @@ while holding the complete lease, and applies it after releasing that lease.
 It does not replace captured DNS owners or update the legacy settings file/pointer.
 DNS settings continue to take effect through complete publication.
 
-`GET /node/config` remains a local configuration-document read. Its in-memory
-PATCH can acknowledge node log settings, but the complete SQLite operational
-watcher derives its host inputs from immutable startup configuration. The local
-document therefore does not prove logger adoption or belong to the captured
-HTTP serving image. Unifying node writes, readback and operational acknowledgment
-remains open; replacing this read with startup values alone would hide an
-acknowledged local change.
+`GET /node/config` remains a local configuration-document read. SQLite PATCH
+serializes local changes, remerges only requested `log.level`/`log.format` leaves,
+and reauthorizes the original raw credential for `node.config` in a current no-op
+transaction. After successful admission, it sets the actual logger level and the
+same local document before acknowledging. Cluster refreshes no longer compete
+for logger ownership. No cluster object, serving cut or file is changed.
+
+The minimal command is primary-local: an eligible follower can read its own
+document, but PATCH returns 503 without forwarding to another node. The result
+reports `Persisted=false`. `log.format` records a pending request; the startup
+handler keeps its original format, and restart discards local requests unless
+startup configuration is also changed. Current admission precedes memory
+adoption, so cancellation after admission can return an error after an effect;
+this is not a durable transaction spanning SQLite and the local logger. The
+local document is truthful readback, not part of the captured DNS installation.
 
 Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary

@@ -943,6 +943,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	var dnsQueryCapture pipeline.Capture
 	var canonicalSettings api.CanonicalSettings
+	var nodeConfigCommand api.NodeConfigCommand
 	var objectCommand api.ObjectCommand
 	var objectReads api.ObjectReadSource
 	var infoMessageReads api.InfoMessageReadSource
@@ -1013,6 +1014,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return servingdns.Wrap(lease), err
 		}
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
+		nodeConfigCommand, err = newServingNodeCommand(complete, reload, logLevel)
+		if err != nil {
+			return err
+		}
 		objectReads = servingbuild.NewObjectReads()
 		infoMessageReads = servingbuild.NewInfoMessageReads()
 		sourceBodyReads, err = servingbuild.NewSourceBodyReads(lists)
@@ -1132,7 +1137,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain, DNSQueryCapture: dnsQueryCapture,
-		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
+		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
 		Lists: listResolver, Notifier: manualNotify,
 		Refresher:  listRefresher(membership, fetcher),
@@ -1316,6 +1321,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		// reload callbacks must not replace or close their serving resources.
 		reloadConsumers.upstreams, reloadConsumers.cache, reloadConsumers.cacheStg = nil, nil, nil
 		reloadConsumers.blocking, reloadConsumers.postprocess = nil, nil
+		// The current node command owns local logger adoption. Cluster
+		// operational refreshes must not restore the startup log level.
+		reloadConsumers.level = nil
 		if err := add("serving-settings", false, func(ctx context.Context) error {
 			return complete.runServingReload(ctx, reloadConsumers, rc)
 		}); err != nil {

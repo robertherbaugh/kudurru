@@ -333,6 +333,9 @@ func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch ma
 }
 
 func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, patch map[string]any, ifMatch string) (*settingsOutput, error) {
+	if scope == config.ScopeNode && (s.opts.NodeConfigCommand != nil || s.opts.CanonicalSettings != nil || s.opts.ObjectReads != nil) && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil) {
+		return nil, errUnavailable("current local node command unavailable")
+	}
 	if len(patch) == 0 {
 		return nil, errInvalid("body: an object with the keys to change is required")
 	}
@@ -400,6 +403,29 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		return nil, err
 	}
 	next.EnvLocked, next.Source = cur.EnvLocked, cur.Source
+	if scope == config.ScopeNode && s.opts.NodeConfigCommand != nil {
+		receipt, err := s.opts.NodeConfigCommand(ctx, next, paths)
+		if err != nil {
+			s.recordAction(ctx, "node.config", audit.Resource{Kind: "settings", Name: string(scope)}, err, nil, nil)
+			return nil, storeError(err)
+		}
+		if receipt.Before == nil || receipt.After == nil {
+			return nil, errUnavailable("local node command receipt unavailable")
+		}
+		before, after := map[string]any{}, map[string]any{}
+		old, actual := flatSettings(receipt.Before), flatSettings(receipt.After)
+		for _, p := range paths {
+			before[p], after[p] = old[p], actual[p]
+			if k, _ := config.Lookup(p); k.WriteOnly {
+				before[p], after[p] = Redacted, Redacted
+			}
+		}
+		s.recordAction(ctx, "node.config", audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
+		out := s.settingsBody(receipt.After, scope, paths, restart)
+		persisted := false
+		out.Body.Persisted = &persisted
+		return out, nil
+	}
 	before := map[string]any{}
 	after := map[string]any{}
 	old := flatSettings(cur)

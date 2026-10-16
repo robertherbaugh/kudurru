@@ -259,6 +259,9 @@ type Options struct {
 	// CanonicalSettings replaces cluster settings reads/writes only. It never
 	// updates Reload or the legacy settings file after a canonical commit.
 	CanonicalSettings CanonicalSettings
+	// NodeConfigCommand admits local node PATCHes separately from cluster
+	// settings. It must own the SAME Reload document used for local GETs.
+	NodeConfigCommand NodeConfigCommand
 	// Objects is the file-managed objects loader (CheckAPIWrite for the
 	// ha-static shape, diagnoses for /info/messages).
 	Objects *objects.Loader
