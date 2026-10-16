@@ -103,7 +103,7 @@ and [`deploy/compose/`](deploy/compose/).
 | Release | Name | Headline |
 |---|---|---|
 | v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
-| v0.2.0 | clay copies | DHCP server support, secondary/stub zones, RFC 2136, DNSSEC validation, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
+| v0.2.0 | clay copies | DHCP server support, secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
 | v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
 
 The v0.2.0 development tree includes standalone and three-node quorum DHCPv4 for Linux/SQLite.

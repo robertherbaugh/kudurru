@@ -18,8 +18,8 @@ vip:
     interface: eth1
     vrrpInterface: eth0
     vips:
-      - {name: dns-a, address: 10.35.10.53/24, vrid: 53}
-      - {name: dns-b, address: 10.35.10.54/24, interface: eth2, vrid: 54, preemptDelay: 30}
+      - {name: dns-a, address: 192.0.2.53/24, vrid: 53}
+      - {name: dns-b, address: 192.0.2.54/24, interface: eth2, vrid: 54, preemptDelay: 30}
 `
 	out, err := renderChart(t, values)
 	if err != nil {
@@ -29,7 +29,7 @@ vip:
 	r.checkGeneric(t)
 	pod := mapOf(dig(r.wantEdge(t, "DaemonSet"), "spec", "template"))
 	args := list(r.container(t, pod, "keepalived")["args"])
-	for _, want := range []string{"--vip=dns-a=10.35.10.53/24@eth1#53", "--vip=dns-b=10.35.10.54/24@eth2#54", "--vrrp-interface=eth0", "--preempt-delay=dns-b=30"} {
+	for _, want := range []string{"--vip=dns-a=192.0.2.53/24@eth1#53", "--vip=dns-b=192.0.2.54/24@eth2#54", "--vrrp-interface=eth0", "--preempt-delay=dns-b=30"} {
 		if !slices.Contains(args, any(want)) {
 			t.Errorf("args lack %s: %v", want, args)
 		}
@@ -51,8 +51,8 @@ vip:
 	for name, bad := range map[string]string{
 		"duplicate name":                          strings.Replace(values, "name: dns-b", "name: dns-a", 1),
 		"duplicate VRID":                          strings.Replace(values, "vrid: 54", "vrid: 53", 1),
-		"duplicate address":                       strings.Replace(values, "10.35.10.54/24", "10.35.10.53/24", 1),
-		"duplicate address with different prefix": strings.Replace(values, "10.35.10.54/24", "10.35.10.53/32", 1),
+		"duplicate address":                       strings.Replace(values, "192.0.2.54/24", "192.0.2.53/24", 1),
+		"duplicate address with different prefix": strings.Replace(values, "192.0.2.54/24", "192.0.2.53/32", 1),
 		"VRID out of range":                       strings.Replace(values, "vrid: 54", "vrid: 256", 1),
 		"missing VRID":                            strings.Replace(values, ", vrid: 54", "", 1),
 		"invalid delay":                           strings.Replace(values, "preemptDelay: 30", "preemptDelay: -1", 1),
