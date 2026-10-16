@@ -342,7 +342,7 @@ Added to docs/followups.md:
 
 - `--context` selecting a kubeconfig, so CRD verbs go straight to the
   apiserver (§3.5). Today a context is always a kudurru API endpoint.
-- The remaining §3.5 verbs: `import pihole|adguard|blocky|technitium`,
+- The remaining §3.5 verbs: `import adguard|blocky`,
   `lameduck`, `health --vrrp`, `cluster status|promote|join-token`,
   `integrations …`, and `zones` scoped writes (`PUT/PATCH /zones/{zone}`).
 - Browser (loopback + PKCE) and device-code `login` (§8.3, v0.2).
