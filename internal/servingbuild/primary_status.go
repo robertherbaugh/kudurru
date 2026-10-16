@@ -99,6 +99,13 @@ func (s *PrimaryStatus) Reconcile(ctx context.Context, cached *public.DNSZone) (
 		return false, 0, pr.ErrInvalid
 	}
 	observation, hasLifecycle := owner.Primary().CommittedPrimaryStatus(desired.Name)
+	if primaryStatusSourcePending(desired, observation, hasLifecycle) {
+		// A status write advances the public RV before the driver can align
+		// its lifecycle receipt. Even a current whole image can contain this
+		// intermediate state. Wait without projecting its unavailable route
+		// back into another status RV; DNS admission still fails closed.
+		return false, primaryStatusRetry, nil
+	}
 	status, ready := primaryStatusProjection(desired, owner, observation, hasLifecycle, now)
 	apex, _ := dynamicupdate.CanonicalName(desired.Spec.ZoneName)
 	route := owner.Zones().Zones(now).Match(apex)
@@ -174,6 +181,25 @@ func (s *PrimaryStatus) Reconcile(ctx context.Context, cached *public.DNSZone) (
 		return false, 0, err
 	}
 	return wrote, delay, nil
+}
+
+func primaryStatusSourcePending(desired *public.DNSZone, o pr.PrimaryStatusObservation, exists bool) bool {
+	if !exists || o.Member.Phase != zk.PhaseActive || o.Member.Type != public.ZoneTypePrimary ||
+		o.Source.Removed || !o.ConfigMatchesDesired || o.HeadResourceVersion == "" ||
+		o.Member.Zone.ObjectName != desired.Name || o.Member.Zone.UID != string(desired.UID) {
+		return false
+	}
+	apex, err := dynamicupdate.CanonicalName(desired.Spec.ZoneName)
+	if err != nil || o.Member.Zone.Apex != apex {
+		return false
+	}
+	token, err := primaryzone.SourceToken(desired)
+	// RVs are opaque equality tokens. Matching intent/config permits waiting,
+	// never substitution of a new RV into the captured lifecycle or head.
+	return err == nil && token.ResourceVersion != "" && o.Source.ResourceVersion != "" &&
+		o.Source.ResourceVersion != token.ResourceVersion && o.Source.UID == token.UID &&
+		o.Source.IntentDigest == token.IntentDigest && o.CommittedSource.UID == token.UID &&
+		o.CommittedSource.IntentDigest == token.IntentDigest
 }
 
 func primaryStatusCAS(ctx context.Context, tx *sqlite.CommandTx, desired *public.DNSZone, o pr.PrimaryStatusObservation, exists bool) error {
