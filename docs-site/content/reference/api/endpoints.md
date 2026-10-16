@@ -36,6 +36,10 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | POST | `/api/v1/auth/tokens` | Create a personal API token (the secret is returned once) | authenticated |
 | GET | `/api/v1/auth/tokens/{id}` | Get one API token (someone else's needs tokens.read) | authenticated |
 | DELETE | `/api/v1/auth/tokens/{id}` | Revoke one API token (someone else's needs tokens.delete) | authenticated |
+| GET | `/api/v1/auth/totp` | Own local authenticator status | authenticated |
+| POST | `/api/v1/auth/totp/confirm` | Activate the authenticator and revoke existing sessions | authenticated |
+| POST | `/api/v1/auth/totp/disable` | Disable own authenticator and revoke existing sessions | authenticated |
+| POST | `/api/v1/auth/totp/setup` | Prepare an authenticator (provisioning secret returned once) | authenticated |
 
 ## blocklists
 
@@ -144,10 +148,13 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
-| GET | `/api/v1/iam/identityproviders` | List identityproviders (read-only; the write API is v0.2) | `identityproviders.read` (cluster) |
-| GET | `/api/v1/iam/rolebindings` | List rolebindings (read-only; the write API is v0.2) | `rolebindings.read` (cluster) |
-| GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts (read-only; the write API is v0.2) | `serviceaccounts.read` (cluster) |
-| GET | `/api/v1/iam/users` | List users (read-only; the write API is v0.2) | `users.read` (cluster) |
+| GET | `/api/v1/iam/identityproviders` | List identityproviders | `identityproviders.read` (cluster) |
+| GET | `/api/v1/iam/rolebindings` | List rolebindings | `rolebindings.read` (cluster) |
+| GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts | `serviceaccounts.read` (cluster) |
+| GET | `/api/v1/iam/users` | List users | `users.read` (cluster) |
+| POST | `/api/v1/iam/users` | Create an API-managed local user requiring a password change | `users.write` (cluster) |
+| POST | `/api/v1/iam/users/{name}/password` | Reset an exact API-managed local account's password | `users.write` (cluster) |
+| POST | `/api/v1/iam/users/{name}/totp/recover` | Disable a lost authenticator for an exact account UID | `users.write` (cluster) |
 
 ## imports
 

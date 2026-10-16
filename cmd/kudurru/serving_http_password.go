@@ -56,7 +56,15 @@ func (h *servingHTTP) password(w http.ResponseWriter, r *http.Request) error {
 	var enrollment security.Enrollment
 	var updated auth.Principal
 	err = h.opts.Runtime.currentAuthCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
-		p, err := servingauth.AuthenticateCurrentWithClock(ctx, tx, deps, proof, h.now)
+		var authenticatedAt time.Time
+		clock := func() time.Time {
+			now := h.now()
+			if authenticatedAt.IsZero() {
+				authenticatedAt = now.UTC()
+			}
+			return now
+		}
+		p, err := servingauth.AuthenticateCurrentWithClock(ctx, tx, deps, proof, clock)
 		if err != nil {
 			return err
 		}
@@ -69,6 +77,13 @@ func (h *servingHTTP) password(w http.ResponseWriter, r *http.Request) error {
 		}
 		if string(user.UID) != p.AccountUID || user.Spec.Disabled {
 			return servingauth.ErrCredentials
+		}
+		// Self-service may update explicitly supported local account owners,
+		// preserving ownership. File/controller accounts need their own policy;
+		// a password proof never grants manager adoption or Force.
+		manager := store.ManagedBy(&user)
+		if manager != store.ManagerSystem && manager != store.ManagerAPI {
+			return &auth.Error{Status: http.StatusConflict, Key: "managed_by", Message: "this account's password is managed outside self-service"}
 		}
 		if proof.Kind == servingauth.Cookie {
 			// IssueLocal below checks the new password and consumes the factor ONCE.
@@ -86,9 +101,11 @@ func (h *servingHTTP) password(w http.ResponseWriter, r *http.Request) error {
 				return servingauth.ErrCredentials
 			}
 		}
-		floor := h.now()
+		// Reuse the successful proof's time. A later transient clock regression
+		// must not put the revocation floor before an existing valid session.
+		floor := authenticatedAt
 		user.Spec.PasswordHash, user.Spec.MustChangePassword = hash, false
-		out, err := security.Apply(ctx, tx, &user, store.ApplyOptions{Manager: store.ManagerSystem}, floor)
+		out, err := security.Apply(ctx, tx, &user, store.ApplyOptions{Manager: manager, ExpectedResourceVersion: user.ResourceVersion}, floor)
 		if err != nil {
 			return err
 		}
@@ -108,8 +125,11 @@ func (h *servingHTTP) password(w http.ResponseWriter, r *http.Request) error {
 			}
 			for _, o := range list.Items {
 				t := o.(*internalv1.APIToken)
-				if servingHTTPOwnsToken(p, t) {
-					if err = tx.Delete(ctx, store.KeyOf(t), store.DeleteOptions{Manager: store.ManagerSystem, Force: true}); err != nil {
+				if servingHTTPOwnsLocalUserToken(t, p.Name, p.AccountUID) {
+					if err = tx.Delete(ctx, store.KeyOf(t), store.DeleteOptions{Manager: store.ManagerSystem}); err != nil {
+						if store.IsManagedBy(err) {
+							return &auth.Error{Status: http.StatusConflict, Key: "managed_by", Message: "a personal token is managed outside self-service"}
+						}
 						return err
 					}
 				}
@@ -172,4 +192,12 @@ func (h *servingHTTP) password(w http.ResponseWriter, r *http.Request) error {
 		case <-changed:
 		}
 	}
+}
+
+// servingHTTPOwnsLocalUserToken matches both provider spellings accepted by the
+// local token verifier. Account floors alone cannot revoke personal tokens.
+func servingHTTPOwnsLocalUserToken(token *internalv1.APIToken, name, uid string) bool {
+	owner := token.Spec.Owner
+	return owner.Kind == internalv1.OwnerUser && owner.Namespace == "" && owner.Name == name && owner.UID == uid &&
+		owner.ID == "local:"+name && (owner.Provider == "local" || owner.Provider == "")
 }

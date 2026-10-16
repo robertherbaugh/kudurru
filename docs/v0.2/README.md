@@ -163,7 +163,14 @@ preserving other sessions and rejecting late cleanup from a replaced session.
 Local CLI login accepts an explicit hidden or stdin authenticator code in its
 single password login. Typed credential commands refuse redirects and automatic
 replay; browser/device CLI sign-in remains open.
-Administrative/source writer integration remains open.
+LocalUser creation and exact UID/version administrator password reset now use
+current commands for ordinary API-managed accounts. Reset preserves TOTP and
+deletes exact-owned personal tokens atomically; both flows require the user's
+subsequent password change. Built-in/other-manager targets and remaining IAM
+writers stay separate. Node-local log changes now require current command
+admission and adopt the actual log level before acknowledgment. They remain
+memory-only and primary-local; requested format does not replace the handler.
+Remaining administrative/source writer integration stays open.
 Manual NOTIFY now enqueues or coalesces the exact committed head under current
 admission, without changing records or serial. Signed mounted acceptance covers
 restart, delivery acknowledgment and a later explicit rearm. Other unsafe

@@ -26,7 +26,7 @@ func (h *servingHTTP) iamUsers(w http.ResponseWriter, r *http.Request) error {
 	out := []api.IAMUser{}
 	for _, o := range objects {
 		u := o.(*internalv1.LocalUser)
-		p := api.IAMUser{Name: u.Name, UID: string(u.UID), DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled, MustChangePassword: u.Spec.MustChangePassword, Groups: slices.Clone(u.Spec.Groups)}
+		p := api.IAMUser{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled, MustChangePassword: u.Spec.MustChangePassword, Groups: slices.Clone(u.Spec.Groups)}
 		if u.Status.LastLoginAt != nil {
 			at := u.Status.LastLoginAt.Time
 			p.LastLoginAt = &at

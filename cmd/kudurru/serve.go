@@ -959,6 +959,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		authMux := http.NewServeMux()
 		ids.Register(authMux)
 		registerUnavailableTOTP(authMux)
+		registerUnavailableLocalUsers(authMux)
 		authHandler = authMux
 	}
 	if sql != nil {

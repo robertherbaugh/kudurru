@@ -968,7 +968,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List identityproviders (read-only; the write API is v0.2) */
+        /** List identityproviders */
         get: operations["listIdentityProviders"];
         put?: never;
         post?: never;
@@ -985,7 +985,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List rolebindings (read-only; the write API is v0.2) */
+        /** List rolebindings */
         get: operations["listRoleBindings"];
         put?: never;
         post?: never;
@@ -1002,7 +1002,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List serviceaccounts (read-only; the write API is v0.2) */
+        /** List serviceaccounts */
         get: operations["listServiceAccounts"];
         put?: never;
         post?: never;
@@ -1019,10 +1019,34 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List users (read-only; the write API is v0.2) */
+        /** List users */
         get: operations["listUsers"];
         put?: never;
-        post?: never;
+        /**
+         * Create an API-managed local user requiring a password change
+         * @description Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+         */
+        post: operations["createLocalUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/users/{name}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset an exact API-managed local account's password
+         * @description Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+         */
+        post: operations["resetLocalUserPassword"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2098,6 +2122,14 @@ export interface components {
             status: string;
             type: string;
         };
+        CreateLocalUserRequest: {
+            /** @description Display name; bounded to 256 UTF-8 bytes without control characters. */
+            displayName?: string;
+            /** @description Canonical local username, already normalized as a DNS subdomain. */
+            name: string;
+            /** @description Initial password, at least 8 characters and at most 1024 bytes; never returned or logged. */
+            password: string;
+        };
         CreateTokenRequest: {
             /** @description Free text shown in the token list. */
             description?: string;
@@ -2491,7 +2523,9 @@ export interface components {
             name: string;
             /** Format: date-time */
             passwordChangedAt?: string;
-            /** @description Immutable account identity required for administrator factor recovery. */
+            /** @description Opaque version required for administrator password-reset compare-and-swap. */
+            resourceVersion?: string;
+            /** @description Immutable account identity required for administrator recovery and password reset. */
             uid: string;
         };
         IdentityProviderInfo: {
@@ -3142,6 +3176,14 @@ export interface components {
             method?: string;
             path?: string;
             ua?: string;
+        };
+        ResetLocalUserPasswordRequest: {
+            /** @description Replacement password, at least 8 characters and at most 1024 bytes; never returned or logged. This does not recover a lost authenticator. */
+            newPassword: string;
+            /** @description Exact observed opaque resourceVersion; a conflict requires a fresh read and deliberate request. */
+            resourceVersion: string;
+            /** @description Exact immutable UID from the authorized user inventory. */
+            uid: string;
         };
         Resource: {
             kind: string;
@@ -10377,6 +10419,198 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createLocalUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLocalUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IAMUser"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resetLocalUserPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetLocalUserPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

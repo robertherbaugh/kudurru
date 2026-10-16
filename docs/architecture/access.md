@@ -210,8 +210,40 @@ before touching state, including after awaiting query cancellation. A stale
 postcommit inventory remains pending until a fresh read shows the revocation;
 mutations are never retried automatically.
 
+The password-change floor uses the same successful current-authentication time
+sample. A transient later clock rollback cannot put the floor before an old
+session and silently preserve it; replacement issuance and final original-proof
+checks still use the actual clock.
+
+When own-password change requests token revocation, it matches both supported
+local provider spellings by exact account identity. It deletes system-issued
+tokens without Force; a foreign-manager failure rolls back the password change
+and all staged revocations.
+
 Generic public object writes and canonical settings writes reauthorize the
 original raw proof within the admitted command, including unchanged writes.
+
+`POST /iam/users` creates ordinary API-managed local accounts. The bounded
+request accepts only a canonical name, display name and initial password.
+Hash preparation happens before command pins; current cluster `users.write`
+authorization, CreateOnly, password status and the final staged UID/version
+projection share one transaction. New accounts have no groups or authenticator
+and must change their password. The own-password route preserves explicitly
+supported API/system ownership; it cannot adopt file/controller-managed users.
+
+`POST /iam/users/{name}/password` is an administrator reset of an API-managed,
+non-built-in account. It requires the exact UID and opaque resourceVersion from
+authorized inventory. The transaction preserves the authenticator, replay record
+and disabled state, sets must-change, raises the account floor and revokes every
+exact-owned local personal token, including the legacy empty-provider spelling.
+Account floors alone do not revoke those tokens. An incompatible token manager
+aborts the entire reset; no Force or partial success is used. Self-reset keeps
+the original successful proof's final time checks and clears its cookie after
+commit, without reauthorizing against its own newly raised floor. No replacement
+credential is issued. A stale version requires a fresh read and deliberate
+request; commands are not retried automatically. Kubernetes explicitly returns
+503 for these writes. Profile/groups, disable/delete and other IAM writers remain
+separate work.
 
 SQLite OIDC start/callback routes use the captured browser adapter described
 below; an unavailable capability returns 503 without a legacy Stack fallback.

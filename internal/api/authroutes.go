@@ -89,7 +89,7 @@ func (s *Server) registerAuth() {
 	// them to the caller. A token never carries more than its owner's
 	// bindings (§8.6).
 	tokens := authed
-	factor := func(method, path, id, summary, tag string) huma.Operation {
+	bounded := func(method, path, id, summary, tag string) huma.Operation {
 		op := operation(method, path, id, summary, tag)
 		op.MaxBodyBytes = 16 << 10
 		return op
@@ -104,10 +104,10 @@ func (s *Server) registerAuth() {
 	s.forward(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password (a cookie session gets a new cookie)", "auth"), authed, PasswordChangeRequest{}, SessionInfo{})
 	s.forward(operation(http.MethodGet, "/auth/sessions", "listSessions", "List own enrolled sessions", "auth"), authed, nil, AuthList[SessionRecordInfo]{})
 	s.forward(withStatus(operation(http.MethodDelete, "/auth/sessions/{id}", "revokeSession", "Revoke an enrolled session of the current account", "auth"), http.StatusNoContent), authed, nil, nil)
-	s.forward(factor(http.MethodGet, "/auth/totp", "totpStatus", "Own local authenticator status", "auth"), authed, nil, TOTPStatus{})
-	s.forward(withRateLimit(factor(http.MethodPost, "/auth/totp/setup", "beginTOTP", "Prepare an authenticator (provisioning secret returned once)", "auth")), authed, TOTPProofRequest{}, TOTPSetupResponse{})
-	s.forward(withStatus(withRateLimit(factor(http.MethodPost, "/auth/totp/confirm", "confirmTOTP", "Activate the authenticator and revoke existing sessions", "auth")), http.StatusNoContent), authed, TOTPConfirmRequest{}, nil)
-	s.forward(withStatus(withRateLimit(factor(http.MethodPost, "/auth/totp/disable", "disableTOTP", "Disable own authenticator and revoke existing sessions", "auth")), http.StatusNoContent), authed, TOTPProofRequest{}, nil)
+	s.forward(bounded(http.MethodGet, "/auth/totp", "totpStatus", "Own local authenticator status", "auth"), authed, nil, TOTPStatus{})
+	s.forward(withRateLimit(bounded(http.MethodPost, "/auth/totp/setup", "beginTOTP", "Prepare an authenticator (provisioning secret returned once)", "auth")), authed, TOTPProofRequest{}, TOTPSetupResponse{})
+	s.forward(withStatus(withRateLimit(bounded(http.MethodPost, "/auth/totp/confirm", "confirmTOTP", "Activate the authenticator and revoke existing sessions", "auth")), http.StatusNoContent), authed, TOTPConfirmRequest{}, nil)
+	s.forward(withStatus(withRateLimit(bounded(http.MethodPost, "/auth/totp/disable", "disableTOTP", "Disable own authenticator and revoke existing sessions", "auth")), http.StatusNoContent), authed, TOTPProofRequest{}, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, CreateTokenRequest{}, CreatedToken{})
 	list := operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth")
 	list.Parameters = append(list.Parameters, &huma.Param{Name: "all", In: "query", Description: "true lists every owner's tokens (needs tokens.read).", Schema: &huma.Schema{Type: "boolean"}})
@@ -116,13 +116,19 @@ func (s *Server) registerAuth() {
 	s.forward(withStatus(operation(http.MethodDelete, "/auth/tokens/{id}", "deleteToken", "Revoke one API token (someone else's needs tokens.delete)", "auth"), http.StatusNoContent), tokens, nil, nil)
 	register(s, operation(http.MethodGet, "/auth/me", "me", "The authenticated principal, roles, permissions and CSRF token", "auth"), authed, s.me)
 
-	// IAM, read-only (the write API is v0.2): served by the auth stack.
+	// IAM inventory and explicitly supported commands use the auth handler.
 	iam := func(path, resource, id string, resp any) {
-		s.forward(operation(http.MethodGet, path, id, "List "+resource+" (read-only; the write API is v0.2)", "iam"),
+		s.forward(operation(http.MethodGet, path, id, "List "+resource, "iam"),
 			perm{resource: resource, verb: "read"}, nil, resp)
 	}
 	iam("/iam/users", "users", "listUsers", AuthList[IAMUser]{})
-	s.forward(withStatus(factor(http.MethodPost, "/iam/users/{name}/totp/recover", "recoverTOTP", "Disable a lost authenticator for an exact account UID", "iam"), http.StatusNoContent),
+	createUser := withStatus(bounded(http.MethodPost, "/iam/users", "createLocalUser", "Create an API-managed local user requiring a password change", "iam"), http.StatusCreated)
+	createUser.Description = "Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued."
+	s.forward(createUser, perm{resource: "users", verb: "write"}, CreateLocalUserRequest{}, IAMUser{})
+	resetUser := withStatus(bounded(http.MethodPost, "/iam/users/{name}/password", "resetLocalUserPassword", "Reset an exact API-managed local account's password", "iam"), http.StatusNoContent)
+	resetUser.Description = "Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session."
+	s.forward(resetUser, perm{resource: "users", verb: "write"}, ResetLocalUserPasswordRequest{}, nil)
+	s.forward(withStatus(bounded(http.MethodPost, "/iam/users/{name}/totp/recover", "recoverTOTP", "Disable a lost authenticator for an exact account UID", "iam"), http.StatusNoContent),
 		perm{resource: "users", verb: "write"}, TOTPRecoverRequest{}, nil)
 	iam("/iam/serviceaccounts", "serviceaccounts", "listServiceAccounts", AuthList[ServiceAccountInfo]{})
 	iam("/iam/rolebindings", "rolebindings", "listRoleBindings", AuthList[RoleBindingInfo]{})

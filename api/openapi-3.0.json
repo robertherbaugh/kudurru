@@ -1082,6 +1082,34 @@
         ],
         "type": "object"
       },
+      "CreateLocalUserRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "description": "Display name; bounded to 256 UTF-8 bytes without control characters.",
+            "maxLength": 256,
+            "type": "string"
+          },
+          "name": {
+            "description": "Canonical local username, already normalized as a DNS subdomain.",
+            "maxLength": 253,
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "description": "Initial password, at least 8 characters and at most 1024 bytes; never returned or logged.",
+            "maxLength": 1024,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "name",
+          "password"
+        ],
+        "type": "object"
+      },
       "CreateTokenRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2347,8 +2375,12 @@
             "format": "date-time",
             "type": "string"
           },
+          "resourceVersion": {
+            "description": "Opaque version required for administrator password-reset compare-and-swap.",
+            "type": "string"
+          },
           "uid": {
-            "description": "Immutable account identity required for administrator factor recovery.",
+            "description": "Immutable account identity required for administrator recovery and password reset.",
             "type": "string"
           }
         },
@@ -4227,6 +4259,36 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "ResetLocalUserPasswordRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "newPassword": {
+            "description": "Replacement password, at least 8 characters and at most 1024 bytes; never returned or logged. This does not recover a lost authenticator.",
+            "maxLength": 1024,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          },
+          "resourceVersion": {
+            "description": "Exact observed opaque resourceVersion; a conflict requires a fresh read and deliberate request.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uid": {
+            "description": "Exact immutable UID from the authorized user inventory.",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "resourceVersion",
+          "newPassword"
+        ],
         "type": "object"
       },
       "Resource": {
@@ -14863,7 +14925,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List identityproviders (read-only; the write API is v0.2)",
+        "summary": "List identityproviders",
         "tags": [
           "iam"
         ],
@@ -14949,7 +15011,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List rolebindings (read-only; the write API is v0.2)",
+        "summary": "List rolebindings",
         "tags": [
           "iam"
         ],
@@ -15035,7 +15097,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List serviceaccounts (read-only; the write API is v0.2)",
+        "summary": "List serviceaccounts",
         "tags": [
           "iam"
         ],
@@ -15121,7 +15183,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List users (read-only; the write API is v0.2)",
+        "summary": "List users",
         "tags": [
           "iam"
         ],
@@ -15129,6 +15191,241 @@
           "resource": "users",
           "scope": "cluster",
           "verb": "read"
+        }
+      },
+      "post": {
+        "description": "Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.",
+        "operationId": "createLocalUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLocalUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IAMUser"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create an API-managed local user requiring a password change",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/users/{name}/password": {
+      "post": {
+        "description": "Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.",
+        "operationId": "resetLocalUserPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetLocalUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Reset an exact API-managed local account's password",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
         }
       }
     },

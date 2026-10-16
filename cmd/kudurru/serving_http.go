@@ -68,6 +68,7 @@ func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
 	h.factorLimit = users.NewLimiter(users.LimitPolicy{Failures: 1, Window: time.Second, Lockout: time.Second}, o.Runtime.opts.Now)
 	h.register()
 	h.registerTOTP()
+	h.registerLocalUsers()
 	return h, nil
 }
 func (h *servingHTTP) Middleware(next http.Handler) http.Handler { return h.adapter.Middleware(next) }

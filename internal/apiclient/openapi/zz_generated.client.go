@@ -2096,6 +2096,18 @@ type Condition struct {
 	Type               string    `json:"type"`
 }
 
+// CreateLocalUserRequest defines model for CreateLocalUserRequest.
+type CreateLocalUserRequest struct {
+	// DisplayName Display name; bounded to 256 UTF-8 bytes without control characters.
+	DisplayName *string `json:"displayName,omitempty"`
+
+	// Name Canonical local username, already normalized as a DNS subdomain.
+	Name string `json:"name"`
+
+	// Password Initial password, at least 8 characters and at most 1024 bytes; never returned or logged.
+	Password *string `json:"password,omitempty"`
+}
+
 // CreateTokenRequest defines model for CreateTokenRequest.
 type CreateTokenRequest struct {
 	// Description Free text shown in the token list.
@@ -2564,7 +2576,10 @@ type IAMUser struct {
 	Name               string     `json:"name"`
 	PasswordChangedAt  *time.Time `json:"passwordChangedAt,omitempty"`
 
-	// Uid Immutable account identity required for administrator factor recovery.
+	// ResourceVersion Opaque version required for administrator password-reset compare-and-swap.
+	ResourceVersion *string `json:"resourceVersion,omitempty"`
+
+	// Uid Immutable account identity required for administrator recovery and password reset.
 	Uid string `json:"uid"`
 }
 
@@ -3250,6 +3265,18 @@ type Request struct {
 	Method *string `json:"method,omitempty"`
 	Path   *string `json:"path,omitempty"`
 	Ua     *string `json:"ua,omitempty"`
+}
+
+// ResetLocalUserPasswordRequest defines model for ResetLocalUserPasswordRequest.
+type ResetLocalUserPasswordRequest struct {
+	// NewPassword Replacement password, at least 8 characters and at most 1024 bytes; never returned or logged. This does not recover a lost authenticator.
+	NewPassword *string `json:"newPassword,omitempty"`
+
+	// ResourceVersion Exact observed opaque resourceVersion; a conflict requires a fresh read and deliberate request.
+	ResourceVersion string `json:"resourceVersion"`
+
+	// Uid Exact immutable UID from the authorized user inventory.
+	Uid string `json:"uid"`
 }
 
 // Resource defines model for Resource.
@@ -4816,6 +4843,12 @@ type BatchDeleteDnszonesJSONRequestBody = BatchDeleteInputBody
 // AddDomainsJSONRequestBody defines body for AddDomains for application/json ContentType.
 type AddDomainsJSONRequestBody = DomainsRequest
 
+// CreateLocalUserJSONRequestBody defines body for CreateLocalUser for application/json ContentType.
+type CreateLocalUserJSONRequestBody = CreateLocalUserRequest
+
+// ResetLocalUserPasswordJSONRequestBody defines body for ResetLocalUserPassword for application/json ContentType.
+type ResetLocalUserPasswordJSONRequestBody = ResetLocalUserPasswordRequest
+
 // RecoverTOTPJSONRequestBody defines body for RecoverTOTP for application/json ContentType.
 type RecoverTOTPJSONRequestBody = TOTPRecoverRequest
 
@@ -5563,25 +5596,61 @@ type ClientInterface interface {
 	// Corresponds with GET /edge (the `GetEdge` operationId).
 	GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListIdentityProviders List identityproviders (read-only; the write API is v0.2)
+	// ListIdentityProviders List identityproviders
 	//
 	// Corresponds with GET /iam/identityproviders (the `ListIdentityProviders` operationId).
 	ListIdentityProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListRoleBindings List rolebindings (read-only; the write API is v0.2)
+	// ListRoleBindings List rolebindings
 	//
 	// Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
 	ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListServiceAccounts List serviceaccounts (read-only; the write API is v0.2)
+	// ListServiceAccounts List serviceaccounts
 	//
 	// Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
 	ListServiceAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListUsers List users (read-only; the write API is v0.2)
+	// ListUsers List users
 	//
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateLocalUserWithBody Create an API-managed local user requiring a password change
+	//
+	// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+	CreateLocalUserWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateLocalUser Create an API-managed local user requiring a password change
+	//
+	// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+	CreateLocalUser(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetLocalUserPasswordWithBody Reset an exact API-managed local account's password
+	//
+	// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+	ResetLocalUserPasswordWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetLocalUserPassword Reset an exact API-managed local account's password
+	//
+	// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+	ResetLocalUserPassword(ctx context.Context, name string, body ResetLocalUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RecoverTOTPWithBody Disable a lost authenticator for an exact account UID
 	//
@@ -7553,7 +7622,7 @@ func (c *Client) GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 	return c.Client.Do(req)
 }
 
-// ListIdentityProviders List identityproviders (read-only; the write API is v0.2)
+// ListIdentityProviders List identityproviders
 //
 // Corresponds with GET /iam/identityproviders (the `ListIdentityProviders` operationId).
 func (c *Client) ListIdentityProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7568,7 +7637,7 @@ func (c *Client) ListIdentityProviders(ctx context.Context, reqEditors ...Reques
 	return c.Client.Do(req)
 }
 
-// ListRoleBindings List rolebindings (read-only; the write API is v0.2)
+// ListRoleBindings List rolebindings
 //
 // Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
 func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7583,7 +7652,7 @@ func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEdit
 	return c.Client.Do(req)
 }
 
-// ListServiceAccounts List serviceaccounts (read-only; the write API is v0.2)
+// ListServiceAccounts List serviceaccounts
 //
 // Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
 func (c *Client) ListServiceAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7598,11 +7667,87 @@ func (c *Client) ListServiceAccounts(ctx context.Context, reqEditors ...RequestE
 	return c.Client.Do(req)
 }
 
-// ListUsers List users (read-only; the write API is v0.2)
+// ListUsers List users
 //
 // Corresponds with GET /iam/users (the `ListUsers` operationId).
 func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListUsersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateLocalUserWithBody Create an API-managed local user requiring a password change
+//
+// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+func (c *Client) CreateLocalUserWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateLocalUserRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateLocalUser Create an API-managed local user requiring a password change
+//
+// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+func (c *Client) CreateLocalUser(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateLocalUserRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetLocalUserPasswordWithBody Reset an exact API-managed local account's password
+//
+// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+func (c *Client) ResetLocalUserPasswordWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetLocalUserPasswordRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetLocalUserPassword Reset an exact API-managed local account's password
+//
+// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+func (c *Client) ResetLocalUserPassword(ctx context.Context, name string, body ResetLocalUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetLocalUserPasswordRequest(c.Server, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -12272,6 +12417,93 @@ func NewListUsersRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewCreateLocalUserRequest calls the generic CreateLocalUser builder with application/json body
+func NewCreateLocalUserRequest(server string, body CreateLocalUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateLocalUserRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateLocalUserRequestWithBody constructs an http.Request for the CreateLocalUser method, with any body, and a specified content type
+func NewCreateLocalUserRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/users")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewResetLocalUserPasswordRequest calls the generic ResetLocalUserPassword builder with application/json body
+func NewResetLocalUserPasswordRequest(server string, name string, body ResetLocalUserPasswordJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResetLocalUserPasswordRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewResetLocalUserPasswordRequestWithBody constructs an http.Request for the ResetLocalUserPassword method, with any body, and a specified content type
+func NewResetLocalUserPasswordRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/users/%s/password", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewRecoverTOTPRequest calls the generic RecoverTOTP builder with application/json body
 func NewRecoverTOTPRequest(server string, name string, body RecoverTOTPJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -16369,33 +16601,69 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /edge (the `GetEdge` operationId).
 	GetEdgeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEdgeResponse, error)
 
-	// ListIdentityProvidersWithResponse List identityproviders (read-only; the write API is v0.2)
+	// ListIdentityProvidersWithResponse List identityproviders
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /iam/identityproviders (the `ListIdentityProviders` operationId).
 	ListIdentityProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListIdentityProvidersResponse, error)
 
-	// ListRoleBindingsWithResponse List rolebindings (read-only; the write API is v0.2)
+	// ListRoleBindingsWithResponse List rolebindings
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
 	ListRoleBindingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRoleBindingsResponse, error)
 
-	// ListServiceAccountsWithResponse List serviceaccounts (read-only; the write API is v0.2)
+	// ListServiceAccountsWithResponse List serviceaccounts
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
 	ListServiceAccountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceAccountsResponse, error)
 
-	// ListUsersWithResponse List users (read-only; the write API is v0.2)
+	// ListUsersWithResponse List users
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
+
+	// CreateLocalUserWithBodyWithResponse Create an API-managed local user requiring a password change
+	//
+	// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+	CreateLocalUserWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error)
+
+	// CreateLocalUserWithResponse Create an API-managed local user requiring a password change
+	//
+	// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+	CreateLocalUserWithResponse(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error)
+
+	// ResetLocalUserPasswordWithBodyWithResponse Reset an exact API-managed local account's password
+	//
+	// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+	ResetLocalUserPasswordWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResetLocalUserPasswordResponse, error)
+
+	// ResetLocalUserPasswordWithResponse Reset an exact API-managed local account's password
+	//
+	// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+	ResetLocalUserPasswordWithResponse(ctx context.Context, name string, body ResetLocalUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ResetLocalUserPasswordResponse, error)
 
 	// RecoverTOTPWithBodyWithResponse Disable a lost authenticator for an exact account UID
 	//
@@ -23448,6 +23716,193 @@ func (r ListUsersResponse) ContentType() string {
 	return ""
 }
 
+type CreateLocalUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *IAMUser
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateLocalUserResponse) GetJSON201() *IAMUser {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateLocalUserResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateLocalUserResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateLocalUserResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateLocalUserResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateLocalUserResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateLocalUserResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateLocalUserResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateLocalUserResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateLocalUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateLocalUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateLocalUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateLocalUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResetLocalUserPasswordResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ResetLocalUserPasswordResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResetLocalUserPasswordResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResetLocalUserPasswordResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResetLocalUserPasswordResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type RecoverTOTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -29632,7 +30087,7 @@ func (c *ClientWithResponses) GetEdgeWithResponse(ctx context.Context, reqEditor
 	return ParseGetEdgeResponse(rsp)
 }
 
-// ListIdentityProvidersWithResponse List identityproviders (read-only; the write API is v0.2)
+// ListIdentityProvidersWithResponse List identityproviders
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -29645,7 +30100,7 @@ func (c *ClientWithResponses) ListIdentityProvidersWithResponse(ctx context.Cont
 	return ParseListIdentityProvidersResponse(rsp)
 }
 
-// ListRoleBindingsWithResponse List rolebindings (read-only; the write API is v0.2)
+// ListRoleBindingsWithResponse List rolebindings
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -29658,7 +30113,7 @@ func (c *ClientWithResponses) ListRoleBindingsWithResponse(ctx context.Context, 
 	return ParseListRoleBindingsResponse(rsp)
 }
 
-// ListServiceAccountsWithResponse List serviceaccounts (read-only; the write API is v0.2)
+// ListServiceAccountsWithResponse List serviceaccounts
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -29671,7 +30126,7 @@ func (c *ClientWithResponses) ListServiceAccountsWithResponse(ctx context.Contex
 	return ParseListServiceAccountsResponse(rsp)
 }
 
-// ListUsersWithResponse List users (read-only; the write API is v0.2)
+// ListUsersWithResponse List users
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -29682,6 +30137,66 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseListUsersResponse(rsp)
+}
+
+// CreateLocalUserWithBodyWithResponse Create an API-managed local user requiring a password change
+//
+// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+func (c *ClientWithResponses) CreateLocalUserWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error) {
+	rsp, err := c.CreateLocalUserWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateLocalUserResponse(rsp)
+}
+
+// CreateLocalUserWithResponse Create an API-managed local user requiring a password change
+//
+// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+func (c *ClientWithResponses) CreateLocalUserWithResponse(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error) {
+	rsp, err := c.CreateLocalUser(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateLocalUserResponse(rsp)
+}
+
+// ResetLocalUserPasswordWithBodyWithResponse Reset an exact API-managed local account's password
+//
+// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+func (c *ClientWithResponses) ResetLocalUserPasswordWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResetLocalUserPasswordResponse, error) {
+	rsp, err := c.ResetLocalUserPasswordWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetLocalUserPasswordResponse(rsp)
+}
+
+// ResetLocalUserPasswordWithResponse Reset an exact API-managed local account's password
+//
+// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+func (c *ClientWithResponses) ResetLocalUserPasswordWithResponse(ctx context.Context, name string, body ResetLocalUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ResetLocalUserPasswordResponse, error) {
+	rsp, err := c.ResetLocalUserPassword(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetLocalUserPasswordResponse(rsp)
 }
 
 // RecoverTOTPWithBodyWithResponse Disable a lost authenticator for an exact account UID
@@ -36216,6 +36731,166 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateLocalUserResponse parses an HTTP response from a CreateLocalUserWithResponse call
+func ParseCreateLocalUserResponse(rsp *http.Response) (*CreateLocalUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateLocalUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest IAMUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResetLocalUserPasswordResponse parses an HTTP response from a ResetLocalUserPasswordWithResponse call
+func ParseResetLocalUserPasswordResponse(rsp *http.Response) (*ResetLocalUserPasswordResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResetLocalUserPasswordResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
