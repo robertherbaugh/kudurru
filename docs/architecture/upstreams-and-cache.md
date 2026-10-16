@@ -188,7 +188,7 @@ zone or a conditional rule can send some clients or names to recursion and
 the rest to forwarders. The resolver outlives settings reloads; it drops
 its cache only when `trustAnchors`, `rootHints` or `dnssec` change.
 Forwarding to 1.1.1.1 and 9.9.9.9 stays the default for new installs
-(D169).
+(D170).
 
 ### How a name is resolved
 

@@ -298,8 +298,8 @@ vip:
     interface: eth1          # virtual addresses
     vrrpInterface: eth0      # advertisements and unicast source discovery
     vips:
-      - {name: dns-a, address: 10.35.10.53/24, vrid: 53}
-      - {name: dns-b, address: 10.35.10.54/24, vrid: 54}
+      - {name: dns-a, address: 192.0.2.53/24, vrid: 53}
+      - {name: dns-b, address: 192.0.2.54/24, vrid: 54}
 ```
 
 The list replaces `vip.address` and `vip.keepalived.vrid`; each entry may

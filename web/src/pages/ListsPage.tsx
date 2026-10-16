@@ -137,6 +137,8 @@ export default function ListsPage() {
         { header: 'Mode', cell: (l) => <Badge variant={l.spec.mode === 'allow' ? 'success' : 'error'} label={l.spec.mode ?? 'block'} /> },
         {
           header: 'Sources',
+          // Room for "3 of 4 enabled" on one line.
+          width: proportional(1.5, { minWidth: 120 }),
           cell: (l) => (
             <Tooltip
               content={
@@ -160,7 +162,7 @@ export default function ListsPage() {
         {
           header: 'Health',
           // Room for the longer states ("unavailable, cached", "OK, 12 invalid").
-          width: proportional(1.5, { minWidth: 128 }),
+          width: proportional(1.9, { minWidth: 152 }),
           cell: (l) => {
             const h = listHealth(l);
             return (

@@ -2972,6 +2972,73 @@
         ],
         "type": "object"
       },
+      "MigrationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "description": "Technitium API token or Pi-hole v6 application password.",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "insecureSkipVerify": {
+            "description": "Skip source TLS verification for a lab with a self-signed certificate.",
+            "type": "boolean"
+          },
+          "localZones": {
+            "description": "Pi-hole local DNS suffixes to make authoritative, for example home.arpa.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "pihole",
+              "technitium"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "Source web console URL, including any reverse-proxy prefix.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "url",
+          "credential"
+        ],
+        "type": "object"
+      },
+      "MigrationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApplyResult"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SettingsBody"
+          },
+          "settingsError": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "Missing": {
         "additionalProperties": false,
         "properties": {
@@ -3185,6 +3252,34 @@
         "required": [
           "currentPassword",
           "newPassword"
+        ],
+        "type": "object"
+      },
+      "Plan": {
+        "additionalProperties": false,
+        "properties": {
+          "objects": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "objects",
+          "settings",
+          "warnings"
         ],
         "type": "object"
       },
@@ -14318,6 +14413,240 @@
           "resource": "users",
           "scope": "cluster",
           "verb": "read"
+        }
+      }
+    },
+    "/imports/apply": {
+      "post": {
+        "description": "Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.",
+        "operationId": "applyMigration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Plan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Apply a reviewed migration preview",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/imports/preview": {
+      "post": {
+        "description": "Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.",
+        "operationId": "previewMigration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Preview an API migration from Pi-hole v6 or Technitium",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
         }
       }
     },

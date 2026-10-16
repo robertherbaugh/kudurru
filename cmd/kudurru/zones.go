@@ -471,10 +471,10 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 	return cmd
 }
 
-// newImportCmd is `kudurru import bind <zone> -f file`. Other importers
-// (pihole, adguard, blocky, technitium) are later work packages.
+// newImportCmd includes file-based BIND imports and live API migrations.
 func newImportCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "import", Short: "Import data from other DNS servers"}
 	cmd.AddCommand(newZoneImportCmd(o, "bind <zone> -f file.zone"))
+	cmd.AddCommand(newMigrationCmd(o, "pihole"), newMigrationCmd(o, "technitium"))
 	return cmd
 }

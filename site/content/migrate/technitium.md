@@ -1,7 +1,7 @@
 ---
 title: Move from Technitium to kudurru
 linkTitle: From Technitium
-description: Inventory Technitium dependencies, migrate primary zones through BIND export/import, recreate forwarders and blocking, and validate before a DNS cutover.
+description: Import Technitium primary zones, blocking and forwarders through the dashboard wizard or CLI, review unsupported features, and validate before a DNS cutover.
 weight: 30
 ---
 
@@ -10,6 +10,47 @@ clustering and DNS Apps. kudurru v0.1.0 covers primary zones, forwarding,
 validating recursion, filtering and a dashboard, with native Kubernetes
 objects. Start by deciding
 which Technitium responsibilities can move and which need to stay elsewhere.
+
+## Import directly through the API
+
+In **Tools**, choose **Import from DNS server**, select **Technitium**, and
+enter its console URL and an API token created in Technitium. Review the
+preview and warnings, then choose **Import configuration**. The kudurru
+server reads the source API and writes supported configuration directly;
+no backup files or hand-written manifests are needed.
+
+The importer transfers allowed/blocked names (including subdomains), list
+subscriptions, supported default forwarders and unsigned primary zones
+through Technitium's standard zone export API. It preserves supported zone
+query access rules. Use a token with access to Settings, Allowed, Blocked,
+Zones and each zone to migrate; reading zone options also requires the
+Zones Modify permission in Technitium. Tokens are used as bearer credentials
+and are never stored by kudurru. The API flow was verified with Technitium
+15.6.1; older versions without bearer-token authentication are not supported.
+
+Disabled and signed zones, non-primary zones, catalog-controlled zones and
+zones containing disabled, expiring or app-specific records are skipped
+with warnings. This avoids enabling disabled records, publishing private
+app data or silently dropping DNSSEC. Zone transfers, NOTIFY, DNS Apps,
+Advanced Blocking profiles, outbound proxies and conditional forwarders require separate
+review. Keep those services on Technitium until their replacements are ready.
+
+The CLI supports previews and direct imports too. Save the token in a
+protected file, or set `TECHNITIUM_API_TOKEN`:
+
+```sh
+kudurru import technitium --source-url http://dns.local:5380 \
+  --source-key-file ./technitium-token
+kudurru import technitium --source-url http://dns.local:5380 \
+  --source-key-file ./technitium-token --apply
+```
+
+The first command previews; `--apply` writes to your selected kudurru CLI
+context. Use `-n` for the namespace of your existing default policy. Matching
+object names and the default upstream group are replaced. Read every result:
+writes are not transactional, and settings change only after every object
+succeeds. Complete the validation and cutover checklist afterward. The
+sections below cover manual adjustments and features needing a separate plan.
 
 **Before you start:** complete [preparation and CLI setup](/migrate/cutover/#prepare).
 Keep Technitium serving the network. Its server backups, cluster state and

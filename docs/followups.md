@@ -45,16 +45,16 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Multi-socket listeners for DoT (same code path, left at one socket) and DoQ/DoH3 (needs QUIC connection-ID aware routing) | hardening report | v0.2 (moved from M3: one socket limits throughput only) |
 | Settings hot reload caveats: a `querylog.privacy`/`anonymize`/`exclude.*` reload builds a new privacy transform, so `pseudonym` mode draws a new HMAC key (pseudonyms change at the reload); `cache.maxEntries` growth keeps the shard count chosen at start (very large growth means large shards); `blocking.refreshInterval`, `blocking.allowDegraded`, `querylog.enabled/sink`, `auth.*` still need a restart (restartRequired) | docs/m5/burndown-server.md | v0.2 |
 
-## Recursive resolver (D169)
+## Recursive resolver (D170)
 
 | Item | Source | Target |
 |---|---|---|
-| Aggressive use of DNSSEC-validated NSEC/NSEC3 ranges to answer NXDOMAIN and NODATA from the resolver cache (RFC 8198) | D169 | v0.2 |
-| Automatic root trust-anchor updates (RFC 5011): new anchors come with releases or `upstreams.recursion.trustAnchors` | D169 | v0.2 |
-| Negative trust anchors: a list of zones whose broken DNSSEC is ignored, so an operator can work around a provider's signing outage without turning validation off | D169 | v0.2 |
-| DNSSEC validation of forwarded answers (the `dnssec` stage, §7.1 step 10); only recursive groups validate | D169 | v0.2 |
-| DNS cookies (RFC 7873, RFC 9018) on queries to authoritative servers | D169 | v0.2 |
-| A local copy of the root zone (RFC 8806) for recursive groups | D169 | later |
+| Aggressive use of DNSSEC-validated NSEC/NSEC3 ranges to answer NXDOMAIN and NODATA from the resolver cache (RFC 8198) | D170 | v0.2 |
+| Automatic root trust-anchor updates (RFC 5011): new anchors come with releases or `upstreams.recursion.trustAnchors` | D170 | v0.2 |
+| Negative trust anchors: a list of zones whose broken DNSSEC is ignored, so an operator can work around a provider's signing outage without turning validation off | D170 | v0.2 |
+| DNSSEC validation of forwarded answers (the `dnssec` stage, §7.1 step 10); only recursive groups validate | D170 | v0.2 |
+| DNS cookies (RFC 7873, RFC 9018) on queries to authoritative servers | D170 | v0.2 |
+| A local copy of the root zone (RFC 8806) for recursive groups | D170 | later |
 
 ## API (docs/m3/api.md)
 
@@ -117,7 +117,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Item | Source | Target |
 |---|---|---|
 | `--context` selecting a kubeconfig so CRD verbs go straight to the apiserver (§3.5); a context is always a kudurru API endpoint today | docs/m3/cli.md | v0.2 (moved from M4: a context is a kudurru API endpoint in v0.1) |
-| Remaining §3.5 verbs: `import pihole\|adguard\|blocky\|technitium`, `cluster status\|promote\|join-token`, `integrations …`, zone option writes (`PUT/PATCH /zones/{zone}`) (`lameduck` landed in docs/m5/burndown-server.md, `health --vrrp` in e8b36b4) | docs/m3/cli.md | v0.2 (merged rows) |
+| Remaining §3.5 verbs: `import adguard\|blocky`, `cluster status\|promote\|join-token`, `integrations …`, zone option writes (`PUT/PATCH /zones/{zone}`) (`lameduck` landed in docs/m5/burndown-server.md, `health --vrrp` in e8b36b4; live Pi-hole and Technitium API migrations in D169) | docs/m3/cli.md | v0.2 (merged rows) |
 | Browser (loopback + PKCE) and device-code `kudurru login` (§8.3) | docs/m3/cli.md | v0.2 |
 | CLI conformance test against the real `internal/api` router instead of the fake in `cmd/kudurru/fakeapi_test.go`; document `ApplyResult.errorKey/hint`, the wrapped settings body and the SSE event name in architecture.md §10 | docs/m3/cli.md | v0.2 (moved from M3: test-only) |
 

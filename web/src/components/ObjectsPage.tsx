@@ -160,6 +160,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
 
   // Proportional widths only: a column's minWidth / weight sets the table's
   // minimum width, so the floors stay low enough to fit 1280 px with the sidebar.
+  // Every column keeps 80 px per unit of weight; a larger floor needs a larger weight.
   const tableColumns: TableColumn<Row<T>>[] = [
     {
       key: 'name',
@@ -197,8 +198,8 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
     {
       key: 'managed',
       header: 'Managed by',
-      width: proportional(1.5, { minWidth: 120 }),
-      renderCell: ({ obj: o }) => <ManagedBadge owner={o.metadata.annotations?.[MANAGED_BY]} />,
+      width: proportional(1.25, { minWidth: 100 }),
+      renderCell: ({ obj: o }) => <ManagedBadge owner={o.metadata.annotations?.[MANAGED_BY]} inColumn />,
     },
     {
       key: 'enabled',
@@ -219,7 +220,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
       // Room for Open, and for a row action (Refresh) beside it.
-      width: rowActions ? proportional(2, { minWidth: 160 }) : proportional(0.9, { minWidth: 72 }),
+      width: rowActions ? proportional(2, { minWidth: 160 }) : proportional(1.3, { minWidth: 104 }),
       align: 'end',
       renderCell: ({ obj: o }) => (
         <HStack gap={1} hAlign="end" vAlign="center">

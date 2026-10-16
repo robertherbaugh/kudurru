@@ -16,10 +16,13 @@ before changing a network's DNS.
 | [Technitium](/migrate/technitium/) | Zone export/import, conditional forwarders, allowed/blocked zones, DNS Apps and features to retain elsewhere |
 | [Cutover and rollback checklist](/migrate/cutover/) | Parallel installation, CLI setup, client identity, real DNS tests, IPv4/IPv6 rollout and recovery |
 
-**There is no product configuration importer.** kudurru cannot restore a
-Pi-hole Teleporter archive, `AdGuardHome.yaml` or a Technitium backup.
-`kudurru import bind` imports standard DNS zone files. Recreate other
-settings and objects using the dashboard, CLI or YAML. Migration time
+**Pi-hole v6 and Technitium have built-in API importers.** In **Tools**, choose
+**Import from DNS server** to connect, preview and import directly, or use
+`kudurru import pihole|technitium --source-url URL --apply`. Supported objects
+and upstreams transfer automatically; the preview reports unsupported features.
+kudurru cannot restore a Pi-hole Teleporter archive, `AdGuardHome.yaml` or a
+Technitium backup. `kudurru import bind` imports standard DNS zone files.
+Migration time
 depends on your rules and services; a server that also provides DHCP,
 DNSSEC or app-specific behavior needs more preparation than a basic blocker.
 

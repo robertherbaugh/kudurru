@@ -106,22 +106,22 @@ func TestRenderInvariants(t *testing.T) {
 
 func TestRenderSeparateVRRPInterface(t *testing.T) {
 	c := goldenConfig(t, 0, false)
-	c.VRRPInterface = "ens18"
-	c.VIPs = []VIP{mustVIP(t, "dns=10.200.200.25/32@ens19#53"), mustVIP(t, "dns2=10.200.200.26/32@ens19#54")}
+	c.VRRPInterface = "eth0"
+	c.VIPs = []VIP{mustVIP(t, "dns=192.0.2.53/32@eth1#53"), mustVIP(t, "dns2=192.0.2.54/32@eth1#54")}
 	b, err := Render(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(b)
-	if strings.Count(text, "    interface ens18\n") != 2 || strings.Contains(text, "    interface ens19\n") {
+	if strings.Count(text, "    interface eth0\n") != 2 || strings.Contains(text, "    interface eth1\n") {
 		t.Fatalf("VRRP must use the control interface for both instances:\n%s", text)
 	}
-	for _, want := range []string{"10.200.200.25/32 dev ens19", "10.200.200.26/32 dev ens19", "unicast_src_ip 10.0.0.11"} {
+	for _, want := range []string{"192.0.2.53/32 dev eth1", "192.0.2.54/32 dev eth1", "unicast_src_ip 10.0.0.11"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("render lacks %q", want)
 		}
 	}
-	if strings.Count(text, "    track_interface {\n        ens19\n    }") != 2 {
+	if strings.Count(text, "    track_interface {\n        eth1\n    }") != 2 {
 		t.Fatal("both VIP instances must track the DMZ link")
 	}
 }
@@ -163,7 +163,7 @@ func TestValidate(t *testing.T) {
 		"duplicate address":  func(c *Config) { c.VIPs[1].Prefix = netip.MustParsePrefix("10.0.0.53/32") },
 		"bad index":          func(c *Config) { c.PriorityIndex = 3 },
 		"bad router id":      func(c *Config) { c.RouterID = "node a" },
-		"bad vrrp interface": func(c *Config) { c.VRRPInterface = "ens18\n    priority 255" },
+		"bad vrrp interface": func(c *Config) { c.VRRPInterface = "eth0\n    priority 255" },
 		"quote in path":      func(c *Config) { c.HMACKeyFile = `/x"y` },
 		"no vips":            func(c *Config) { c.VIPs = nil },
 		"bad unicast src":    func(c *Config) { c.UnicastSrc = "eth0" },

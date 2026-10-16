@@ -180,7 +180,7 @@ type Upstreams struct {
 }
 
 // Recursion configures the built-in recursive resolver that upstream
-// groups with mode recursive use (internal/recursor, D169).
+// groups with mode recursive use (internal/recursor, D170).
 type Recursion struct {
 	// DNSSEC validates answers along the chain of trust from the root.
 	DNSSEC bool `koanf:"dnssec" json:"dnssec"`

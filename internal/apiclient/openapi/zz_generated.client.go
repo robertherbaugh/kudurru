@@ -413,6 +413,24 @@ func (e IdentityProviderInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for MigrationRequestSource.
+const (
+	MigrationRequestSourcePihole     MigrationRequestSource = "pihole"
+	MigrationRequestSourceTechnitium MigrationRequestSource = "technitium"
+)
+
+// Valid indicates whether the value is a known member of the MigrationRequestSource enum.
+func (e MigrationRequestSource) Valid() bool {
+	switch e {
+	case MigrationRequestSourcePihole:
+		return true
+	case MigrationRequestSourceTechnitium:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PolicyEffectiveServiceOrigin.
 const (
 	PolicyEffectiveServiceOriginAdguard PolicyEffectiveServiceOrigin = "adguard"
@@ -2690,6 +2708,33 @@ type MePrincipal struct {
 	Name   string   `json:"name"`
 }
 
+// MigrationRequest defines model for MigrationRequest.
+type MigrationRequest struct {
+	// Credential Technitium API token or Pi-hole v6 application password.
+	Credential *string `json:"credential,omitempty"`
+
+	// InsecureSkipVerify Skip source TLS verification for a lab with a self-signed certificate.
+	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
+
+	// LocalZones Pi-hole local DNS suffixes to make authoritative, for example home.arpa.
+	LocalZones *[]string              `json:"localZones,omitempty"`
+	Namespace  *string                `json:"namespace,omitempty"`
+	Source     MigrationRequestSource `json:"source"`
+
+	// Url Source web console URL, including any reverse-proxy prefix.
+	Url string `json:"url"`
+}
+
+// MigrationRequestSource defines model for MigrationRequest.Source.
+type MigrationRequestSource string
+
+// MigrationResult defines model for MigrationResult.
+type MigrationResult struct {
+	Items         []ApplyResult `json:"items"`
+	Settings      *SettingsBody `json:"settings,omitempty"`
+	SettingsError *string       `json:"settingsError,omitempty"`
+}
+
 // Missing defines model for Missing.
 type Missing struct {
 	Resource string `json:"resource"`
@@ -2772,6 +2817,13 @@ type PasswordChangeRequest struct {
 
 	// RevokeTokens Also revoke every API token of the user; a password change alone revokes sessions, not tokens.
 	RevokeTokens *bool `json:"revokeTokens,omitempty"`
+}
+
+// Plan defines model for Plan.
+type Plan struct {
+	Objects  []map[string]interface{} `json:"objects"`
+	Settings map[string]interface{}   `json:"settings"`
+	Warnings []string                 `json:"warnings"`
 }
 
 // Point defines model for Point.
@@ -4610,6 +4662,12 @@ type BatchDeleteDnszonesJSONRequestBody = BatchDeleteInputBody
 // AddDomainsJSONRequestBody defines body for AddDomains for application/json ContentType.
 type AddDomainsJSONRequestBody = DomainsRequest
 
+// ApplyMigrationJSONRequestBody defines body for ApplyMigration for application/json ContentType.
+type ApplyMigrationJSONRequestBody = Plan
+
+// PreviewMigrationJSONRequestBody defines body for PreviewMigration for application/json ContentType.
+type PreviewMigrationJSONRequestBody = MigrationRequest
+
 // PatchNodeConfigJSONRequestBody defines body for PatchNodeConfig for application/json ContentType.
 type PatchNodeConfigJSONRequestBody PatchNodeConfigJSONBody
 
@@ -5304,6 +5362,42 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyMigrationWithBody Apply a reviewed migration preview
+	//
+	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+	ApplyMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyMigration Apply a reviewed migration preview
+	//
+	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+	ApplyMigration(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewMigrationWithBody Preview an API migration from Pi-hole v6 or Technitium
+	//
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+	PreviewMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewMigration Preview an API migration from Pi-hole v6 or Technitium
+	//
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+	PreviewMigration(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// InfoMessages Diagnosis messages (objects, policies, lists, readiness)
 	//
@@ -7152,6 +7246,82 @@ func (c *Client) ListServiceAccounts(ctx context.Context, reqEditors ...RequestE
 // Corresponds with GET /iam/users (the `ListUsers` operationId).
 func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListUsersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyMigrationWithBody Apply a reviewed migration preview
+//
+// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+func (c *Client) ApplyMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyMigrationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyMigration Apply a reviewed migration preview
+//
+// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+func (c *Client) ApplyMigration(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyMigrationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewMigrationWithBody Preview an API migration from Pi-hole v6 or Technitium
+//
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+func (c *Client) PreviewMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewMigrationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewMigration Preview an API migration from Pi-hole v6 or Technitium
+//
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+func (c *Client) PreviewMigration(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewMigrationRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -11579,6 +11749,86 @@ func NewListUsersRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewApplyMigrationRequest calls the generic ApplyMigration builder with application/json body
+func NewApplyMigrationRequest(server string, body ApplyMigrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApplyMigrationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewApplyMigrationRequestWithBody constructs an http.Request for the ApplyMigration method, with any body, and a specified content type
+func NewApplyMigrationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/imports/apply")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewMigrationRequest calls the generic PreviewMigration builder with application/json body
+func NewPreviewMigrationRequest(server string, body PreviewMigrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewMigrationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPreviewMigrationRequestWithBody constructs an http.Request for the PreviewMigration method, with any body, and a specified content type
+func NewPreviewMigrationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/imports/preview")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewInfoMessagesRequest constructs an http.Request for the InfoMessages method
 func NewInfoMessagesRequest(server string) (*http.Request, error) {
 	var err error
@@ -15581,6 +15831,42 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
+
+	// ApplyMigrationWithBodyWithResponse Apply a reviewed migration preview
+	//
+	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+	ApplyMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error)
+
+	// ApplyMigrationWithResponse Apply a reviewed migration preview
+	//
+	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+	ApplyMigrationWithResponse(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error)
+
+	// PreviewMigrationWithBodyWithResponse Preview an API migration from Pi-hole v6 or Technitium
+	//
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+	PreviewMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error)
+
+	// PreviewMigrationWithResponse Preview an API migration from Pi-hole v6 or Technitium
+	//
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+	PreviewMigrationWithResponse(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error)
 
 	// InfoMessagesWithResponse Diagnosis messages (objects, policies, lists, readiness)
 	//
@@ -22065,6 +22351,200 @@ func (r ListUsersResponse) ContentType() string {
 	return ""
 }
 
+type ApplyMigrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MigrationResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApplyMigrationResponse) GetJSON200() *MigrationResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ApplyMigrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ApplyMigrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ApplyMigrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ApplyMigrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ApplyMigrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ApplyMigrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ApplyMigrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ApplyMigrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ApplyMigrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApplyMigrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApplyMigrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApplyMigrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewMigrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Plan
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewMigrationResponse) GetJSON200() *Plan {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PreviewMigrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PreviewMigrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PreviewMigrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PreviewMigrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PreviewMigrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PreviewMigrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PreviewMigrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PreviewMigrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewMigrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewMigrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewMigrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewMigrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type InfoMessagesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -28080,6 +28560,66 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseListUsersResponse(rsp)
+}
+
+// ApplyMigrationWithBodyWithResponse Apply a reviewed migration preview
+//
+// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+func (c *ClientWithResponses) ApplyMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error) {
+	rsp, err := c.ApplyMigrationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyMigrationResponse(rsp)
+}
+
+// ApplyMigrationWithResponse Apply a reviewed migration preview
+//
+// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
+func (c *ClientWithResponses) ApplyMigrationWithResponse(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error) {
+	rsp, err := c.ApplyMigration(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyMigrationResponse(rsp)
+}
+
+// PreviewMigrationWithBodyWithResponse Preview an API migration from Pi-hole v6 or Technitium
+//
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+func (c *ClientWithResponses) PreviewMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error) {
+	rsp, err := c.PreviewMigrationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewMigrationResponse(rsp)
+}
+
+// PreviewMigrationWithResponse Preview an API migration from Pi-hole v6 or Technitium
+//
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
+func (c *ClientWithResponses) PreviewMigrationWithResponse(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error) {
+	rsp, err := c.PreviewMigration(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewMigrationResponse(rsp)
 }
 
 // InfoMessagesWithResponse Diagnosis messages (objects, policies, lists, readiness)
@@ -34115,6 +34655,170 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApplyMigrationResponse parses an HTTP response from a ApplyMigrationWithResponse call
+func ParseApplyMigrationResponse(rsp *http.Response) (*ApplyMigrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApplyMigrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MigrationResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewMigrationResponse parses an HTTP response from a PreviewMigrationWithResponse call
+func ParsePreviewMigrationResponse(rsp *http.Response) (*PreviewMigrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewMigrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Plan
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

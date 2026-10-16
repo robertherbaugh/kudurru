@@ -94,7 +94,7 @@ const COLUMNS: Column[] = [
   {
     id: 'ts',
     header: 'Time',
-    width: 104,
+    width: 128,
     cell: (r) => (
       <Tooltip content={formatDateTime(r.ts)} hasHoverIndication={false}>
         <Text>
@@ -103,8 +103,8 @@ const COLUMNS: Column[] = [
       </Tooltip>
     ),
   },
-  { id: 'status', header: 'Status', width: 140, cell: (r) => <StatusText r={r} /> },
-  { id: 'qtype', header: 'Type', width: 64, cell: (r) => r.qtype },
+  { id: 'status', header: 'Status', width: 148, cell: (r) => <StatusText r={r} /> },
+  { id: 'qtype', header: 'Type', width: 80, cell: (r) => r.qtype },
   {
     id: 'domain',
     header: 'Domain',
@@ -132,20 +132,20 @@ const COLUMNS: Column[] = [
   {
     id: 'reply',
     header: 'Reply',
-    width: 110,
+    width: 124,
     cell: (r) => (
       <Text textWrap="nowrap">
         {r.reply.type} <Text color="secondary">{formatMS(r.reply.time_ms)}</Text>
       </Text>
     ),
   },
-  { id: 'node', header: 'Node', width: 96, cell: (r) => <Text maxLines={1}>{r.node}</Text> },
+  { id: 'node', header: 'Node', width: 108, cell: (r) => <Text maxLines={1}>{r.node}</Text> },
 ];
 
-const ACTIONS_WIDTH = 84;
+const ACTIONS_WIDTH = 108;
 const NCOLS = COLUMNS.length + 1;
 /** Below this the table scrolls sideways (structural, px). */
-const TABLE_MIN_WIDTH = 940;
+const TABLE_MIN_WIDTH = 980;
 const ROW_HEIGHT = 34;
 /** The scroll region's height: most of the viewport, capped on tall screens. */
 const SCROLL_HEIGHT = 'min(70vh, 900px)';

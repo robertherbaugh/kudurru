@@ -8,7 +8,7 @@ import (
 )
 
 // Forged answers built from real, replayable signed records of other
-// names or zones must never validate (review findings, D169).
+// names or zones must never validate (review findings, D170).
 
 func n3set(z *tzone) *nsec3Set {
 	budget := 1000

@@ -1,7 +1,7 @@
 ---
 title: Move from Pi-hole to kudurru
 linkTitle: From Pi-hole
-description: Back up Pi-hole, migrate adlists and domain rules, recreate groups and local DNS, hand off DHCP, and validate the replacement before switching clients.
+description: Import Pi-hole v6 lists, domain rules, groups, upstreams and local DNS through the dashboard wizard or CLI, then validate before switching clients.
 weight: 10
 ---
 
@@ -11,8 +11,50 @@ configuration uses the same object format in standalone and Kubernetes
 installations. This guide targets Pi-hole v6 concepts and kudurru v0.1.0.
 
 **Before you start:** complete [preparation and CLI setup](/migrate/cutover/#prepare).
-Keep Pi-hole serving the network. There is no Teleporter or Pi-hole
-configuration importer; the examples below recreate a small setup manually.
+Keep Pi-hole serving the network. Use the built-in API importer below to
+move supported configuration directly. The later examples show how to
+recreate or adjust individual objects. Teleporter archives remain backups
+for Pi-hole; kudurru does not restore them.
+
+## Import directly through the API
+
+In **Tools**, choose **Import from DNS server**, select **Pi-hole v6**, and
+enter its URL and an **application password** generated in Pi-hole's
+**Settings** > **Web interface / API**. The kudurru server must be able to
+reach that URL. Review the preview and conversion warnings, then choose
+**Import configuration**. No configuration files need to be copied or edited.
+
+The importer transfers adlist URLs, exact and compatible RE2 domain rules,
+enabled switches, domain comments, group assignments, IP/CIDR clients,
+upstreams and local A/AAAA/CNAME records under the selected local suffixes.
+It uses Pi-hole's configured local domain by default; add other local
+suffixes in the wizard if needed. These suffixes become authoritative, so
+missing names beneath them stop forwarding upstream. MAC/hostname clients,
+Pi-hole regex extensions, DHCP and custom dnsmasq behavior require review.
+
+Pi-hole v6 uses an application password to create a temporary API session,
+rather than a permanent v5 API key. kudurru closes that session afterward
+and does not save the password. Application passwords can read settings
+without enabling Pi-hole's application configuration writes.
+
+The CLI provides the same conversion and a direct apply option. Save the
+application password in a protected file, or set `PIHOLE_APP_PASSWORD`:
+
+```sh
+kudurru import pihole --source-url http://pi.hole \
+  --source-key-file ./pihole-app-password --local-zone home.arpa
+kudurru import pihole --source-url http://pi.hole \
+  --source-key-file ./pihole-app-password --local-zone home.arpa --apply
+```
+
+The first command previews; the second writes to the kudurru server selected
+by your CLI context or `--server`. Use `-n` for your default policy's
+namespace. Import replaces matching object names, including `Policy/default`,
+and the default upstream group. Additional policies require an appropriate
+license key. Inspect all results: object writes are not transactional, and
+settings are applied only after all objects succeed. A settings result with
+`persisted: false` needs a [settings file](/reference/configuration/) to
+survive a restart. Complete the validation and cutover checklist afterward.
 
 ## Compare the features you use
 

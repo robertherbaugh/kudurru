@@ -220,7 +220,7 @@ On the owner's hardware:
 - [ ] dnsdist spikes (a) console directives under YAML and (b) PROXYv2 +
       chashed against a real dnsdist, with `kdig +quic/+tls/+https` through
       the edge.
-- [ ] **Recursive groups against the real root servers** (D169):
+- [ ] **Recursive groups against the real root servers** (D170):
       `KUDURRU_LIVE_DNS=1 go test -run TestLiveInternet ./internal/recursor`
       passes, and on a node with `upstreams.groups.default.mode: recursive`
       `dig +dnssec example.com` has the AD flag, `dig dnssec-failed.org`

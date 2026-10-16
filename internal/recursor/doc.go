@@ -1,7 +1,7 @@
 // Package recursor is kudurru's own recursive resolver: it answers a
 // query by walking the DNS tree from the root servers instead of
 // forwarding to a public resolver, and validates the answers with DNSSEC
-// (docs/architecture.md D169, docs/architecture/upstreams-and-cache.md
+// (docs/architecture.md D170, docs/architecture/upstreams-and-cache.md
 // "Recursive groups").
 //
 // An upstream group with mode "recursive" sends its queries here; the
