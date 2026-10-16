@@ -23,7 +23,7 @@ type importApplyOutput struct{ Body *MigrationResult }
 
 func (s *Server) registerImports() {
 	preview := operation(http.MethodPost, "/imports/preview", "previewMigration", "Preview an API migration from Pi-hole v6 or Technitium", "imports")
-	preview.Description = "Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur."
+	preview.Description = "Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur."
 	register(s, preview, perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *importPreviewInput) (*importPreviewOutput, error) {
 		if in.Body.Namespace == "" {
 			in.Body.Namespace = s.opts.DefaultNamespace

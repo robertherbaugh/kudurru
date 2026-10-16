@@ -7,10 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	"github.com/robertherbaugh/kudurru/internal/importers"
+	"github.com/robertherbaugh/kudurru/internal/rbac"
 )
 
-func TestMigrationPreviewRequiresAdminAndDoesNotWrite(t *testing.T) {
+func TestMigrationPreviewRequiresSettingsWriteAndDoesNotWrite(t *testing.T) {
 	calls := 0
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -32,7 +34,16 @@ func TestMigrationPreviewRequiresAdminAndDoesNotWrite(t *testing.T) {
 		}
 	}))
 	defer source.Close()
-	h := newHarness(t)
+	permissions, err := rbac.LoadPermissions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	permissions.Roles["settings-writer"] = []string{"settings.write"}
+	authz, err := rbac.NewBindingAuthorizer(permissions, append(apitest.StandardBindings(), apitest.Grant("settings-writer", "settings-writer")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, func(o *Options) { o.Authorizer = authz })
 	body := importers.MigrationRequest{Source: "technitium", URL: source.URL, Credential: "source-secret", Namespace: "dns"}
 	for _, user := range []string{"viewer", "operator", "zoneadmin"} {
 		h.do(http.MethodPost, "/api/v1/imports/preview", user, body).want(http.StatusForbidden)
@@ -40,7 +51,12 @@ func TestMigrationPreviewRequiresAdminAndDoesNotWrite(t *testing.T) {
 	if calls != 0 {
 		t.Fatal("unauthorized preview contacted the source")
 	}
-	r := h.do(http.MethodPost, "/api/v1/imports/preview", "admin", body).want(http.StatusOK)
+	// This role intentionally has no object permissions, but settings.write
+	// still permits credentialed requests to the loopback source API.
+	r := h.do(http.MethodPost, "/api/v1/imports/preview", "settings-writer", body).want(http.StatusOK)
+	if calls == 0 {
+		t.Fatal("settings.write did not permit loopback source access")
+	}
 	if strings.Contains(r.Body.String(), "source-secret") {
 		t.Fatal("source credential leaked into preview")
 	}
@@ -55,6 +71,15 @@ func TestMigrationPreviewRequiresAdminAndDoesNotWrite(t *testing.T) {
 		t.Fatal("preview wrote destination objects")
 	}
 	var result MigrationResult
+	h.do(http.MethodPost, "/api/v1/imports/apply", "settings-writer", plan).want(http.StatusOK).json(&result)
+	if len(result.Items) != len(plan.Objects) {
+		t.Fatal("missing per-object permission results")
+	}
+	for _, item := range result.Items {
+		if item.Result != ResultError || item.ErrorKey != KeyForbidden {
+			t.Fatalf("settings.write unexpectedly granted object writes: %+v", item)
+		}
+	}
 	h.do(http.MethodPost, "/api/v1/imports/apply", "admin", plan).want(http.StatusOK).json(&result)
 	if len(result.Items) != 3 {
 		t.Fatalf("apply: %+v", result)

@@ -949,7 +949,7 @@ export interface paths {
         put?: never;
         /**
          * Preview an API migration from Pi-hole v6 or Technitium
-         * @description Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+         * @description Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
          */
         post: operations["previewMigration"];
         delete?: never;

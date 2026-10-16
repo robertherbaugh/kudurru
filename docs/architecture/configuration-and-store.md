@@ -27,6 +27,13 @@ Tools wizard uses `POST /imports/preview` and submits the reviewed result to
 converter locally; `--apply` sends its preview to the same writer. A preview
 never writes destination state. Both REST routes require `settings.write`,
 because administrators intentionally connect to private source networks.
+This permission grants SSRF-equivalent network access: even a role with
+only `settings.write` can send credentialed requests to caller-selected
+HTTP(S) targets, including loopback, link-local metadata addresses and
+internal services. Source HTTP failure status codes are visible; error
+response bodies are not. Grant the permission only to trusted administrators
+and use network egress controls to restrict which destinations the server
+can reach.
 
 Source credentials exist only during the request: Technitium uses a bearer
 token, Pi-hole an application password and a temporary session that is closed

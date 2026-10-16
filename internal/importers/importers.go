@@ -53,6 +53,8 @@ const maxResponseBytes = 32 << 20
 // Preview reads a live API. Source network access is intentional (including
 // private LANs); callers must restrict it to administrators. Redirects are
 // refused so credentials cannot be forwarded to another endpoint.
+// The REST settings.write gate grants this network access even when a role
+// has no other administrator permissions; it is not a network sandbox.
 func Preview(ctx context.Context, req MigrationRequest) (*Plan, error) {
 	if req.Source != "pihole" && req.Source != "technitium" {
 		return nil, errors.New("source must be pihole or technitium")

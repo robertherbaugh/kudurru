@@ -5383,7 +5383,7 @@ type ClientInterface interface {
 
 	// PreviewMigrationWithBody Preview an API migration from Pi-hole v6 or Technitium
 	//
-	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5392,7 +5392,7 @@ type ClientInterface interface {
 
 	// PreviewMigration Preview an API migration from Pi-hole v6 or Technitium
 	//
-	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -7296,7 +7296,7 @@ func (c *Client) ApplyMigration(ctx context.Context, body ApplyMigrationJSONRequ
 
 // PreviewMigrationWithBody Preview an API migration from Pi-hole v6 or Technitium
 //
-// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7315,7 +7315,7 @@ func (c *Client) PreviewMigrationWithBody(ctx context.Context, contentType strin
 
 // PreviewMigration Preview an API migration from Pi-hole v6 or Technitium
 //
-// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -15852,7 +15852,7 @@ type ClientWithResponsesInterface interface {
 
 	// PreviewMigrationWithBodyWithResponse Preview an API migration from Pi-hole v6 or Technitium
 	//
-	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -15861,7 +15861,7 @@ type ClientWithResponsesInterface interface {
 
 	// PreviewMigrationWithResponse Preview an API migration from Pi-hole v6 or Technitium
 	//
-	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -28594,7 +28594,7 @@ func (c *ClientWithResponses) ApplyMigrationWithResponse(ctx context.Context, bo
 
 // PreviewMigrationWithBodyWithResponse Preview an API migration from Pi-hole v6 or Technitium
 //
-// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -28609,7 +28609,7 @@ func (c *ClientWithResponses) PreviewMigrationWithBodyWithResponse(ctx context.C
 
 // PreviewMigrationWithResponse Preview an API migration from Pi-hole v6 or Technitium
 //
-// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write because the source can be on a private network. Credentials are never stored. No destination writes occur.
+// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
