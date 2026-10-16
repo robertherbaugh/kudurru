@@ -37,8 +37,8 @@ check the version you run.
 |---|---|---|---|---|
 | Filtering | Hosts, domains, regex and groups | Adblock DNS syntax, allowlists and client settings | Allowed/blocked zones and lists; Advanced Blocking app | Hosts, domains, adblock subset and RE2; client-group policies |
 | Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
-| Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding to named upstream groups; conditional forwarding |
-| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | No validation or signing |
+| Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding |
+| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | Validation in recursive groups; no signing |
 | DHCP | Built in | Built in | Built in | Use a separate DHCP server; built-in support planned for v0.2.0 |
 | Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
 | Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
@@ -47,8 +47,12 @@ check the version you run.
 | License | Open source; component licenses apply | GPL-3.0 | GPL-3.0 | Source available; eligible community use free, commercial production by agreement |
 
 AdGuard Home's DNSSEC option requests DNSSEC records from its upstreams;
-it does not make it a local validating resolver. kudurru can forward to a
-validating resolver, but v0.1.0 does not itself validate answers or sign zones.
+it does not make it a local validating resolver. kudurru v0.1.0 validates
+DNSSEC in upstream groups set to recursive mode, which resolve from the root
+servers instead of forwarding; it does not validate answers from forwarding
+groups (forward to a validating resolver for that) and does not sign zones.
+Forwarding stays the default; see
+[resolving names yourself](/start/home/#7-resolve-names-yourself-optional).
 A schema field for a future feature does not mean that feature is active.
 In particular, secondary/stub/catalog zones, RFC 2136 updates and general
 per-policy answer rewrites are not implemented in v0.1.0.

@@ -79,7 +79,7 @@ export function enterprise(): Html {
         <p class="plan-node-price">+ ${usd(plan.perNode)} / node / year</p>
         <p class="plan-description">${id === "core" ? "Production rights for the core DNS server and dashboard, for businesses and government organizations." : "Everything in Commercial Core, plus all currently shipped enterprise modules in one subscription."}</p>
         <ul class="points">
-          ${id === "core" ? html`<li>Authoritative DNS and forwarding resolver</li><li>Blocking, encrypted DNS and dashboard</li><li>Multiple nodes at your licensed count</li>` : html`<li>OIDC, advanced RBAC and audit exports</li><li>Long-term analytics, advanced policies and unblock requests</li><li>dnsdist, keepalived and enterprise integrations</li>`}
+          ${id === "core" ? html`<li>Authoritative DNS, forwarding and recursive resolver</li><li>Blocking, encrypted DNS and dashboard</li><li>Multiple nodes at your licensed count</li>` : html`<li>OIDC, advanced RBAC and audit exports</li><li>Long-term analytics, advanced policies and unblock requests</li><li>dnsdist, keepalived and enterprise integrations</li>`}
         </ul>
         <p class="fine">${usd(plan.platform + plan.perNode)}/year for 1 production node.</p>
         <a class="more" href="${ENTERPRISE_CONTACT_URL}">Discuss ${plan.name} ${icon.arrow}</a>

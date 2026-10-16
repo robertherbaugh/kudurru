@@ -103,6 +103,7 @@ code. The main gaps between the two:
 | Planned in the design record | State in the code |
 |---|---|
 | 13 pipeline stages (`local`, `rewrite`, `dnssec`, `postprocess`, …) | 7 stages; the other names are reserved in `pipeline.Order` |
+| a `dnssec` stage that validates every upstream answer | recursive upstream groups validate their own answers (D169); forwarded answers are not validated |
 | `follower` and `raft` store drivers | `kube` and `sqlite` only |
 | scatter-gather across nodes | the node list, the stats and the query log are gathered over `:8082` (or read from the central database with `database.dsn`); `/nodes/{other}/health` returns 501 |
 | cluster-wide temporary disable of blocking | per node, in memory |

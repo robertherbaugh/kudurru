@@ -1,12 +1,15 @@
 # Upstreams and the response cache
 
-kudurru is a forwarding resolver. It does not walk the DNS tree itself: a
-name that no local zone answers goes to an **upstream group**, and the
+A name that no local zone answers goes to an **upstream group**. A group
+either forwards to the servers you list (`mode: forward`, the default) or
+walks the DNS tree itself from the root servers and validates DNSSEC
+(`mode: recursive`, see [recursive groups](#recursive-groups)). The
 **response cache** sits in front of the groups so that most queries never
-leave the node. This page follows a forwarded query from the moment the
+leave the node. This page follows such a query from the moment the
 pipeline decides it is not authoritative.
 
 Code: `internal/upstream` (groups, strategies, health, ECS),
+`internal/recursor` (the recursive resolver and DNSSEC validator),
 `internal/cache` (the sharded LRU), `internal/stages/cache` and
 `internal/stages/upstream` (the DNS rules on top), `cmd/kudurru/reload.go`
 (hot reload).
@@ -158,6 +161,187 @@ EDNS option is forwarded. EDNS Client Subnet follows `upstreams.ecs.mode`:
 | `forward` | the client's own ECS option, shortened to at most /24 (IPv4) or /56 (IPv6) |
 | `add` | as `forward`; when the client sent none, a prefix of the client's address, for public unicast addresses only |
 
+Recursive groups never send ECS, whatever the mode.
+
+## Recursive groups
+
+```yaml
+upstreams:
+  groups:
+    default: { mode: recursive }               # no servers; timeout bounds a whole lookup (default 4s)
+    router:  { servers: ["192.168.1.1:53"] }   # mode: forward is the default
+  conditional: { "lan.": router, "[/168.192.in-addr.arpa/]": router }
+  recursion:                                   # shared by every recursive group
+    dnssec: true                               # validate (default)
+    qnameMinimization: true                    # RFC 9156 (default)
+    ipv6: auto                                 # auto | on | off: ask name servers over IPv6
+    trustAnchors: []                           # empty: built-in root KSK-2017 (20326) and KSK-2024 (38696)
+    rootHints: []                              # empty: built-in IANA root server addresses
+```
+
+A recursive group lists no servers (validation rejects it if it does) and
+ignores `strategy`. Every recursive group uses the same resolver, which the
+group wraps as one server named `<group>/recursive` (proto `recursive`), so
+routing, server health, metrics, the query log and the response cache work
+as for any other group. Any group can be recursive: a Policy, a forward
+zone or a conditional rule can send some clients or names to recursion and
+the rest to forwarders. The resolver outlives settings reloads; it drops
+its cache only when `trustAnchors`, `rootHints` or `dnssec` change.
+Forwarding to 1.1.1.1 and 9.9.9.9 stays the default for new installs
+(D169).
+
+### How a name is resolved
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant St as upstream stage
+    participant G as group "default" (recursive)
+    participant C as resolver cache
+    participant R as root server
+    participant T as com server
+    participant E as example.com server
+    St->>G: www.example.com A, timeout 4s for the whole lookup
+    G->>C: closest known delegation?
+    C-->>G: none yet: start at the root (primed from the built-in hints)
+    G->>R: com A (minimized: one label below the root)
+    R-->>G: referral to com, with DS com and its RRSIG
+    G->>T: example.com A (minimized)
+    T-->>G: referral to example.com, with DS example.com (or a signed proof that there is none)
+    G->>E: www.example.com A (full name)
+    E-->>G: A + RRSIG
+    Note over G,E: the DNSKEY sets of ., com and example.com come from<br/>their own servers on first use, then from the cache
+    Note over G: root anchor → DNSKEY . → DS com → DNSKEY com →<br/>DS example.com → DNSKEY example.com → RRSIG over the A records
+    G-->>St: answer, DNSSEC secure, Upstream = "default/recursive"
+```
+
+- **Start.** The resolver begins at the closest delegation it has cached.
+  The root server addresses are built in (IANA's `named.root`, or
+  `rootHints`) and refreshed from the roots at first use (priming,
+  RFC 9609); the result is kept for at most 24 h.
+- **Referrals.** Glue is accepted only for names inside the delegating zone
+  (bailiwick). Name servers without glue are resolved when needed, at most
+  3 per question. CNAME and DNAME chains are followed across zones (at
+  most 12 hops). Answers that come back truncated are asked again over TCP;
+  the EDNS buffer is 1232 bytes.
+- **QNAME minimization** (RFC 9156, relaxed). Each server sees one label
+  more than the zone it serves, asked as type A. After four one-label steps
+  the steps get bigger, with at most 10 per name. Some servers answer
+  NXDOMAIN for a name that only has names below it, so an NXDOMAIN for a
+  minimized name is retried once with the full name.
+- **Picking a name server.** Each server's RTT is tracked; the resolver
+  picks at random among the servers within 100 ms of the fastest, asks
+  servers in backoff last and asks at most 8 per question. A server's timeout is
+  three times its smoothed RTT (150 ms to 2 s; 800 ms when unknown). With
+  `ipv6: auto`, IPv6 addresses are used when the host has a route to the
+  root servers over IPv6.
+- **Anti-spoofing.** Random query IDs and source ports, random letter case
+  in the query name (0x20, with a fallback for servers that do not echo
+  it), a strict match of the question, and bailiwick scrubbing of every
+  section. Loopback name server addresses are never asked.
+
+### Names that never leave the network
+
+The resolver answers these itself, so their queries never reach a root or
+TLD server:
+
+| Names | Answer |
+|---|---|
+| reverse zones of private, loopback, link-local, CGNAT and documentation space (RFC 6303): `10.in-addr.arpa`, `16.172` … `31.172.in-addr.arpa`, `168.192.in-addr.arpa`, `64.100` … `127.100.in-addr.arpa`, `127.in-addr.arpa`, `254.169.in-addr.arpa`, `0.in-addr.arpa`, `d.f.ip6.arpa` (fd00::/8), `8.e.f` … `b.e.f.ip6.arpa` (fe80::/10), `::1`, `2001:db8::/32` and the TEST-NETs | NXDOMAIN |
+| special-use names `home.arpa`, `local`, `test`, `invalid`, `onion`, `alt`, `internal` | NXDOMAIN |
+| `localhost` | 127.0.0.1 and ::1 |
+
+Forward zones and conditional rules are checked before the group is
+chosen, so a rule such as `"[/168.192.in-addr.arpa/home.arpa/]": router`
+still sends those names to the router. Names such as `lan` or `fritz.box`
+are not special-use: without a conditional rule they go to the root
+servers, which answer NXDOMAIN, so route the router's local domain to a
+forwarding group that holds the router.
+
+### DNSSEC validation
+
+```mermaid
+flowchart TD
+    A(["answer from the authoritative server"]) --> ON{"upstreams.recursion.dnssec?"}
+    ON -- "false" --> UNK["state unknown<br/>answer returned"]
+    ON -- "true" --> SIGNED{"zone in a chain of<br/>trust from the root?"}
+    SIGNED -- "a delegation without DS is proven,<br/>or only unsupported algorithms" --> INS["insecure<br/>answer returned, no AD"]
+    SIGNED -- "yes" --> OK{"signatures and denial<br/>proofs check out?"}
+    OK -- "yes" --> SEC["secure<br/>AD for clients that sent DO or AD"]
+    OK -- "no, or records missing" --> CD{"client set CD?"}
+    CD -- "yes" --> CDA["data returned anyway<br/>AD clear"]
+    CD -- "no" --> BOG["SERVFAIL + EDE 6-12<br/>status dnssec_bogus"]
+```
+
+The chain of trust starts at the built-in root trust anchors (KSK-2017 and
+KSK-2024; `trustAnchors` replaces them) and is built lazily, only for zones
+whose data is validated. DS records that came with a referral are kept and
+checked when the zone's keys are first needed; otherwise DS is asked at the
+parent. Positive answers, wildcard expansions, NXDOMAIN and NODATA (NSEC,
+and NSEC3 with opt-out) are proven. Unsigned data below a signed zone is
+insecure only when the delegation without DS is proven, otherwise it is
+bogus.
+
+Algorithms: RSASHA1, RSASHA1-NSEC3-SHA1, RSASHA256, RSASHA512,
+ECDSAP256SHA256, ECDSAP384SHA384 and ED25519; DS digests SHA-1, SHA-256 and
+SHA-384. A zone signed only with other algorithms (ED448, unknown ones) or
+with NSEC3 iterations above 150 (RFC 9276) is treated as insecure.
+
+| Why the answer is bogus | EDE |
+|---|---|
+| no signature verifies | 6 DNSSEC Bogus |
+| signature expired / not yet valid | 7 Signature Expired / 8 Signature Not Yet Valid |
+| no usable DNSKEY for the zone | 9 DNSKEY Missing |
+| signed zone, unsigned data | 10 RRSIGs Missing |
+| no proof that the name or type does not exist | 12 NSEC Missing |
+
+The EDE text names the zone or record that failed. RRSIG, NSEC and NSEC3
+records are returned only to clients that sent DO (or asked for that type). The state (secure,
+insecure, bogus; unknown when validation is off and for forwarded answers)
+is stored with the cached answer and fills the query log's `dnssec`
+column, cache hits included. New root keys arrive with kudurru releases or
+through `trustAnchors`; there is no automatic RFC 5011 rollover.
+
+A SERVFAIL from **any** upstream that carries EDE 6-12, a validating
+forwarder such as 1.1.1.1 included, is logged as `dnssec_bogus` instead of
+`servfail_upstream`. Like other upstream failures, it lets serve-stale
+answer with the cached copy (for a recursive group, one that was validated
+when it was stored).
+
+### Limits per client query
+
+| Limit | Value |
+|---|---|
+| queries to name servers | 120 |
+| nesting depth (name server addresses, keys) | 20 |
+| referral and minimization steps per name | 48 |
+| name servers asked per question | 8 |
+| name servers without glue resolved per question | 3 |
+| CNAME and DNAME hops | 12 |
+| signature checks | 8 per RRset, 96 per query (KeyTrap, CVE-2023-50387) |
+| NSEC3 hash computations | 64 per query (CVE-2023-50868) |
+| the whole lookup | the group `timeout`, 4 s by default (the query deadline is 5 s) |
+
+A lookup that runs out of servers answers SERVFAIL with EDE 22 (No
+Reachable Authority); one that hits a limit answers SERVFAIL with EDE 0 and
+the text "recursion limit reached".
+
+### The resolver cache and health
+
+Delegations, name server addresses and DS and DNSKEY sets live in the
+resolver's own cache: 50,000 entries, TTLs capped at 24 h, failures
+remembered for 30 s. The answers to clients go through the response cache
+below like forwarded ones, with prefetch, serve-stale and coalescing, so a
+repeated name costs no outgoing query. A cold lookup takes a few round
+trips, typically 50 to 500 ms.
+
+The group's single server follows the [health](#server-health) rules:
+after 3 consecutive timeouts `<group>/recursive` is in backoff, and the log
+warns that outbound DNS (UDP and TCP port 53 to the internet) may be
+blocked. Recursion needs that egress to any address; forwarding needs only
+the configured servers. Firewalls, Kubernetes NetworkPolicies and ISPs that
+intercept port 53 break it.
+
 ## The response cache
 
 The cache stores packed answers in a sharded LRU (up to 256 shards, each with
@@ -256,6 +440,8 @@ have come from a server that is no longer configured.
 | hinted group does not exist | SERVFAIL | `servfail_upstream` | 23 Network Error |
 | every server failed, at least one sent SERVFAIL or REFUSED | that message, rcode SERVFAIL | `servfail_upstream` (`timeout_upstream` if every error was a timeout) | the upstream's own |
 | every server failed, none answered | SERVFAIL | `timeout_upstream` / `servfail_upstream` | 22 No Reachable Authority / 23 Network Error |
+| the SERVFAIL carries a DNSSEC EDE (a recursive group's bogus answer, or a validating forwarder's) | SERVFAIL | `dnssec_bogus` | 6-12, from the validator |
+| a recursive lookup found no name server that answers, or hit a limit (the group timeout running out is `timeout_upstream`, above) | SERVFAIL | `servfail_upstream` | 22 No Reachable Authority, or 0 "recursion limit reached" |
 | stale entry, refresh failed or slow | the stale answer, TTL 30 s | `cached_stale` | 3 Stale Answer |
 
 EDE options appear only when the client sent EDNS. A failure on a **miss**
@@ -267,7 +453,9 @@ again on every query.
 
 Every key under `upstreams.*` reloads without a restart. The reloader builds
 a new set of groups, swaps it in atomically, retires the old set after 30 s
-(in-flight queries finish on it) and flushes the cache. Cache settings
+(in-flight queries finish on it) and flushes the cache. The recursive
+resolver is kept across the swap with its own cache; `upstreams.recursion.*`
+is applied to it in place. Cache settings
 reload in place; new limits apply to entries stored from then on.
 
 ## Metrics
@@ -280,6 +468,9 @@ reload in place; new limits apply to entries stored from then on.
 | `kudurru_upstream_errors_total{upstream,error}` | `timeout`, `network`, `refused`, `servfail` |
 | `kudurru_upstream_request_duration_seconds{upstream}` | exchanges that returned a response |
 | `kudurru_upstream_inflight{upstream}` | exchanges in progress |
+| `kudurru_recursor_outgoing_queries_total{result}` | queries recursive groups sent to name servers: `ok`, `timeout`, `error` |
+| `kudurru_recursor_validations_total{result}` | recursive answers by DNSSEC state: `secure`, `insecure`, `bogus`, `unknown` |
+| `kudurru_recursor_cache_entries` | delegations, name server addresses and keys in the resolver cache |
 | `kudurru_cache_entries{kind}` | positive and negative entries, stale ones included |
 | `kudurru_cache_requests_total`, `kudurru_cache_hits_total{kind,stale}` | lookups and hits; bypassed queries are not counted |
 | `kudurru_cache_evictions_total{reason}` | `capacity`, `expired`, `flush` |
