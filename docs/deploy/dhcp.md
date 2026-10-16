@@ -396,15 +396,17 @@ executable and the runtime. `NET_RAW` permits binding to the selected
 interface and opening the ARP/ICMP probe sockets. Adding `--cap-add NET_RAW` alone to the existing
 non-root DNS image does not give its executable that effective capability.
 
-Build the opt-in development image from this checkout:
+Published container images do not include the file capabilities required for
+DHCPv4. Enabling DHCP in the dashboard does not add them. Build a local
+DHCP-capable image from a source checkout:
 
 ```sh
 make docker-dhcp
 ```
 
-This builds `kudurru:dhcp-development` with the executable's file capabilities
-`cap_net_bind_service,cap_net_raw=ep`. The normal images keep their existing
-capabilities. The underlying build option is `DHCP_CAPABILITIES=true` in
+This builds the local image `kudurru:dhcp-development` with the executable's
+file capabilities `cap_net_bind_service,cap_net_raw=ep`. The underlying build
+option is `DHCP_CAPABILITIES=true` in
 `images/hostnetwork/Dockerfile`; it defaults to `false`.
 
 Prepare the secret files described in the [Docker guide](docker.md#docker-run).

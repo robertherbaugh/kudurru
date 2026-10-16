@@ -183,6 +183,12 @@ v0.1.0 can also assign IPv4 addresses with its optional DHCPv4 server.
 This function needs Linux and the SQLite store. It is off by default.
 For setup in the dashboard, read the [DHCPv4 guide](../../deploy/dhcp.md).
 
+For Docker, build a local image from source with the required capabilities.
+The published Docker images do not have these capabilities.
+For a systemd package, add a service drop-in.
+Read [Network and privileges](../../deploy/dhcp.md#network-and-privileges)
+before you turn on DHCPv4.
+
 DHCPv6 is not supported. Keep IPv6 router and DNS advertisements on your router.
 
 To keep your current DHCP server, use these steps:

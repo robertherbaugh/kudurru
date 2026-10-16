@@ -487,6 +487,7 @@ export const REGISTERS: Register[] = [
       "Multiple subnets, conflict checks, network/boot options and native/dnsmasq lease import",
       "Optional A/PTR records in a dedicated DHCP domain, with persistent name ownership",
       "Optional three-node quorum failover commits lease ownership before replying; DHCPv6 is not supported",
+      "Docker requires a local DHCP-capable source build; systemd packages need a capability drop-in",
     ],
     figure: { value: "3", caption: "voters in the optional quorum failover group" },
     link: { label: "DHCPv4 setup and cutover", href: docs("/deploy/dhcp/") },

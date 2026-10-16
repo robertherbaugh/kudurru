@@ -44,7 +44,12 @@ dig @<host> example.com
 
 To use kudurru for DHCPv4, follow the [DHCPv4 setup guide](/deploy/dhcp/).
 It supports Linux/SQLite standalone or three-node quorum operation and
-dashboard setup. DHCPv4 is disabled by default; stop the existing DHCPv4
+dashboard setup. For Docker, build a local DHCP-capable image from source
+with `make docker-dhcp`; the published images lack the required file
+capabilities. Packaged systemd installs need a capability drop-in. Follow
+[Network and privileges](/deploy/dhcp/#network-and-privileges) before setup.
+
+DHCPv4 is disabled by default; stop the existing DHCPv4
 service before activating it. Keep IPv6 router and DNS advertisements on
 your router; DHCPv6 is not supported.
 

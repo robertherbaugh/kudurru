@@ -61,6 +61,7 @@ export function moveOver(): Html {
         <p class="label">Docker &amp; Compose</p>
         <h3>Start with a single host</h3>
         <p>DNS, the dashboard and the API run in one container, with one persistent volume and no separate database. Give the host a stable address. Keep DHCP on your router or configure kudurru's optional DHCPv4 server on Linux/SQLite.</p>
+        <p>DHCPv4 in Docker needs a local DHCP-capable source build; published images lack the required file capabilities. ${external(docs("/deploy/dhcp/#network-and-privileges"), "Check DHCPv4 network and privileges")}.</p>
         ${external(docs("/deploy/docker/"), html`Run with Docker ${icon.arrow}`, "more")}
       </article>
       <article>
