@@ -217,7 +217,7 @@ SQLite OIDC start/callback routes use the captured browser adapter described
 below; an unavailable capability returns 503 without a legacy Stack fallback.
 Startup bootstrap and local admin-socket integration still use the legacy Stack,
 with its provider discovery disabled on SQLite. Completing current admission for
-those administrative paths and CLI login remains open. SQLite also mounts the
+those administrative paths remains open. SQLite also mounts the
 factor management routes described below. Kubernetes retains the legacy Stack
 and its separate verified migration journal gate; its factor management routes
 return 503 until equivalent current commands are available.
@@ -369,7 +369,7 @@ rotation through the actual commit; a time check alone is not that exclusion.
 These owners and commands are tested with real signed JWTs, concurrent concrete
 transactions, rollback, restart, replica installation and promotion. SQLite
 browser login now composes bounded discovery/exchange, durable pending-attempt
-consumption and external enrollment. CLI login and migration of the legacy
+consumption and external enrollment. CLI OIDC login and migration of the legacy
 Kubernetes OIDC adapter remain separate work; that adapter rejects expression
 policies until it adopts this owner.
 
@@ -628,11 +628,21 @@ flowchart LR
 
 ### The CLI
 
-`kudurru login --token kdr_…` stores a token. `kudurru login --username`
-signs in with a password, creates a personal token
-(`kudurru-cli@<host>`), signs out, and stores the token. Tokens go to the
-OS keyring, with a 0600 file as the fallback. Browser and device-code
-sign-in for the CLI are planned for v0.2.
+`kudurru login --token kdr_…` verifies and stores a token. Local username login
+signs in once, creates a personal token (`kudurru-cli@<host>`), attempts session
+logout, verifies the token, and stores it in the OS keyring or a 0600 fallback
+file. An enrolled authenticator uses `--totp` for a hidden terminal prompt or
+`--totp-stdin` for a six-digit code line. Combined password/code stdin uses one
+bounded reader, with the password first. Neither a code-valued flag nor a TOTP
+environment variable is supported, and codes are never persisted.
+
+Typed login, token creation and logout refuse every redirect using a private
+client copy for each dispatch. Generic client requests retain their existing
+policy. The login flow makes no discovery probe, second login or automatic
+mutation retry; printable credential-chain errors use static safe messages.
+A lost response can follow a successful remote commit, so it leaves an uncertain
+outcome requiring explicit inspection. Only a verified personal token is saved.
+Browser and device-code sign-in for the CLI remain planned for v0.2.
 
 ## Authorization
 

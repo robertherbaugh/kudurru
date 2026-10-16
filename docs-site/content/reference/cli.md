@@ -991,6 +991,8 @@ Log in to a kudurru API server and save the endpoint as a named context in ~/.co
 
 With --token the API token is verified (GET /auth/me) and stored. With --username the local password is exchanged for a session (POST /auth/login), which then mints an API token for the CLI (POST /auth/tokens). Tokens go to the OS keyring; when no keyring is available (headless Linux, containers) they are kept in the config file, which is written with mode 0600. Set KUDURRU\_KEYRING=file to skip the keyring.
 
+For an enrolled authenticator, add --totp for a hidden terminal prompt, or --password-stdin --totp-stdin to read password and code as two lines. Codes must contain six ASCII digits. Login is attempted once, without redirects or automatic retries.
+
 ```text
 kudurru login --server https://dns.example [--token kdr_… | --username admin] [flags]
 ```
@@ -1015,6 +1017,9 @@ Flags:
       --token-name string          name of the token minted for the CLI (default
                                    kudurru-cli@<hostname>)
       --token-stdin                read the API token from stdin (keeps it out of the process list)
+      --totp                       prompt for a six-digit authenticator code without echo
+      --totp-stdin                 read the authenticator code from stdin (after the password
+                                   with --password-stdin)
   -u, --username string            local account to log in with
 ```
 
