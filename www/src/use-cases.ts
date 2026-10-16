@@ -76,9 +76,10 @@ export const USE_CASES: readonly UseCase[] = [
         title: "One container, your own resolver",
         paragraphs: [
           "Run kudurru in Docker with a persistent data volume. The container includes DNS, the dashboard and the API; you do not need a separate database. A starter blocklist is embedded, and you can add URL sources or your own entries in hosts, domain, adblock and regex formats.",
-          "Give the host a stable address and configure your router's DHCP settings to advertise it as the DNS server. In v0.1.0, DHCP stays on your router or existing DHCP server; built-in support is planned for v0.2.0. Test with one client before switching the whole network.",
+          "Give the host a stable address and configure your DHCP server to advertise it as the DNS server. v0.1.0 includes opt-in DHCPv4 on Linux/SQLite, with dashboard setup and optional three-node quorum failover. You can also keep DHCP on your router. Test with one client before switching the whole network.",
+          "To serve DHCPv4 in Docker, build a local DHCP-capable image from source with make docker-dhcp; the published images lack the required file capabilities. Packaged systemd installs need a capability drop-in. Follow Network and privileges in the DHCPv4 guide before enabling it.",
         ],
-        link: { label: "Start one Docker container", href: docs("/deploy/docker/") },
+        link: { label: "DHCPv4 network and privileges", href: docs("/deploy/dhcp/#network-and-privileges") },
       },
       {
         title: "Find out why a domain was blocked",
@@ -133,7 +134,8 @@ export const USE_CASES: readonly UseCase[] = [
       {
         title: "Plan a gradual migration",
         paragraphs: [
-          "There is no automatic Pi-hole importer or Teleporter archive import in the current release. Recreate your lists, groups and local records using the migration guide. kudurru v0.1.0 does not provide DHCP; keep that on your router or another DHCP server. Built-in DHCP support is planned for v0.2.0.",
+          "Use the migration guide to transfer your lists, groups and local records. kudurru v0.1.0 includes opt-in DHCPv4 on Linux/SQLite, with dashboard setup, durable leases, reservations and dnsmasq lease import. You can keep DHCP on your router or prepare kudurru before disabling Pi-hole's DHCP service. DHCPv6 is not supported.",
+          "Moving DHCPv4 to kudurru in Docker requires a local source build with extra file capabilities; published images do not include them. Packaged systemd installs need a capability drop-in. The migration guide links to the DHCPv4 network and privilege requirements.",
           "Run kudurru on a separate address beside Pi-hole. Compare answers for representative clients, move a test device, then change the DNS address advertised by DHCP. Keep Pi-hole available until its query log is quiet. If you ran Unbound beside Pi-hole, a recursive upstream group can replace it, with DNSSEC validation. Pi-hole API compatibility is planned for v1.0.",
         ],
         link: { label: "Follow the migration checklist", href: docs("/migrate/pihole/#switching-over") },

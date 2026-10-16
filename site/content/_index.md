@@ -19,7 +19,9 @@ links:
 **v0.1.0 ("stone") · 16 October 2026.** The first release includes the
 resolver (forwarding, or recursive with DNSSEC validation), primary and
 forward zones, outbound zone transfers, blocking, the dashboard and CLI,
-Kubernetes CRDs and Helm charts, and optional edge supervisors. Use `ghcr.io/robertherbaugh/kudurru:0.1.0` for Docker and
+Kubernetes CRDs and Helm charts, optional edge supervisors, and
+[opt-in DHCPv4 on Linux/SQLite](/deploy/dhcp/), with dashboard setup and
+optional three-node quorum failover. Use `ghcr.io/robertherbaugh/kudurru:0.1.0` for Docker and
 `--version 0.1.0` with the Helm charts. See the
 [changelog](/project/changelog/) for the release scope and known limitations,
 or the [release assets](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)

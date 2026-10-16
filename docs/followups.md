@@ -32,7 +32,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| DHCPv4 deployment acceptance with the target router/relay hardware and systemd/container packaging ([procedure](deploy/dhcp.md#first-cutover-and-acceptance)). Disconnected stock-dhcpcd lifecycle, relay and multi-subnet tests pass; production LAN acceptance remains operator-specific | D171–D173 | v0.2.0 |
+| DHCPv4 deployment acceptance with the target router/relay hardware and systemd/container packaging ([procedure](deploy/dhcp.md#first-cutover-and-acceptance)). Disconnected stock-dhcpcd lifecycle, relay and multi-subnet tests pass; production LAN acceptance remains operator-specific | D171–D179 | v0.1.0 deployment acceptance |
 | DHCPv6 protocol coverage and coordinated IPv6 ownership | D176; explicitly excluded by project owner from this DHCPv4 expansion | beyond this DHCPv4 pass |
 | Query-log stats reads over the current hour scan its facts once it has more than 100,000 distinct names (1.8 s at 1M rows at 2,000 q/s): per-domain rollups for shorter buckets, or an HLL sketch per hour for unique domains (docs/m2/querylog.md) | docs/m5/measurements-v0.1.md | v0.2 |
 | Query-log summary and client counts can omit newly written previous-hour events when a one-hour window ends in the first minute of an hour; add deterministic boundary coverage and correct rollup initialization or reads | PR #75 local validation; reproduced on `origin/main` with `TestClusterStatsMerge` and a window ending at HH:00:30 | Next query-log correctness pass |

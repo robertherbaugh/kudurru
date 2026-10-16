@@ -11,7 +11,7 @@ kudurru separates three kinds of state, and keeps them apart on purpose:
 This page covers the first two: how an object gets from a writer to every
 node's query path, and how settings reload.
 
-The v0.2.0 development [DHCPv4 server](dhcp.md) adds a separate node-local
+The v0.1.0 [DHCPv4 server](dhcp.md) adds a separate node-local
 setup registry, `dhcp-settings.json`, and per-scope `dhcp.db`/`dhcp-<name>.db`
 databases. Fresh setup can be entered entirely in the dashboard. Existing host
 `dhcp.*` configuration stays file-owned until explicit adoption; generic

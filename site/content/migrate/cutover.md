@@ -161,9 +161,10 @@ OS secure DNS deliberately; an external DoH provider bypasses these servers.
    `kudurru backup --out before-cutover.yaml`. Save settings, certificates and
    credentials separately; an object backup is not a full data-volume backup.
 2. If the old DNS server provides DHCP, complete the DHCP handoff described
-   in its migration guide. kudurru v0.1.0 provides no DHCP service; support is
-   planned for v0.2.0. Preserve address reservations, lease ranges, gateway
-   and search-domain options.
+   in its migration guide. kudurru v0.1.0 includes opt-in DHCPv4 on
+   Linux/SQLite; use the [DHCPv4 deployment guide](/deploy/dhcp/) or keep
+   your existing DHCP server. Preserve address reservations, active leases,
+   lease ranges, gateway and search-domain options.
 3. Change DHCPv4's DNS option to kudurru. Also update DHCPv6 and router
    advertisements (RDNSS), including mesh routers or access points that
    advertise their own DNS settings. Review static devices and VPN profiles.
