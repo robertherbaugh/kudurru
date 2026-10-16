@@ -33,6 +33,30 @@ deployments.
 Cloudflare split-horizon and UniFi inventory integrations are planned;
 they are not current capabilities.
 
+## Planned: Active Directory DNS
+
+Planned for **v0.2.0**, AD DNS replacement targets an existing single-domain
+forest, including multiple domain controllers and AD sites. The goal is to
+make kudurru the authoritative source for the migrated zones so Windows DNS
+can remain stopped on every domain controller. AD DS continues to provide
+authentication, directory services, Group Policy, and directory replication.
+
+The planned scope includes:
+
+- Discovery and import of domain, forest locator (`_msdcs`), and reverse
+  zones, with previews and comparisons before authority transfers.
+- Ongoing DC discovery and LDAP, Kerberos, global catalog, and site-specific
+  records, maintained through secure registrations from DCs and members.
+- Secure Windows client and DHCP registrations, record ownership rules,
+  aging, and scavenging.
+- Durable updates, replication, failover, diagnostics, backup/restore, and
+  a controlled cutover and rollback path.
+
+Completion requires Windows qualification with all DC DNS services stopped
+and no DNS forwarding or update proxy back to them for the migrated zones.
+This is planned work; the current release does not provide complete AD DNS
+replacement.
+
 ## Pricing
 
 Both commercial editions are billed **annually in USD**. Each subscription

@@ -85,6 +85,20 @@ export const ENTERPRISE_FEATURES = [
   },
 ] as const;
 
+export const ENTERPRISE_AD_DNS = {
+  release: "v0.2.0",
+  title: "Move DNS off your domain controllers.",
+  body: "The goal is to migrate your Active Directory DNS zones to kudurru and make it the authoritative source, so Windows DNS can be retired on every domain controller. AD DS continues to provide authentication, directory services and Group Policy.",
+  scope: "Initial scope: a single-domain forest, including multiple domain controllers and AD sites.",
+  items: [
+    "Import domain, forest locator (_msdcs) and reverse zones, with a preview before cutover.",
+    "Keep domain controller discovery and LDAP, Kerberos, global catalog and site records current.",
+    "Accept secure DNS registrations from domain controllers, Windows clients and DHCP servers, with ownership rules, aging and scavenging.",
+    "Complete the migration with failover checks and a rollback path, without forwarding the migrated zones back to Windows DNS.",
+  ],
+  href: "/enterprise/#planned-active-directory-dns",
+} as const;
+
 export interface LicenseRow {
   what: string;
   community: string;
@@ -629,6 +643,7 @@ export const ROADMAP: Release[] = [
     meaning: "The landholder's copies: secondaries and followers.",
     items: [
       "Secondary and stub zones, RFC 2136",
+      "Active Directory DNS replacement for a single-domain forest",
       "DNSSEC validation of forwarded answers, RPZ feed import",
       "Cloudflare split-horizon sink, UniFi inventory",
       "Follower-mode HA",
