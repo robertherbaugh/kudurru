@@ -128,11 +128,19 @@ function AuditDetails({ event }: { event: AuditRow }) {
 /**
  * Astryx's row expansion gives its chevron column 40 px, less than the
  * chevron plus the cell padding of the roomier themes (Y2K), which cut the
- * chevron off.
+ * chevron off. useTableRowExpansion has no width option, so this wraps the
+ * plugin's own transformColumns (no dependency on plugin order) and finds the
+ * column by Astryx's internal key "__expansion"; AuditPage.test pins the
+ * rendered width, so a renamed key fails there instead of silently.
  */
-const chevronColumn: TablePlugin<AuditRow> = {
-  transformColumns: (columns) => columns.map((c) => (c.key === '__expansion' ? { ...c, width: pixel(56) } : c)),
-};
+export const CHEVRON_COLUMN_WIDTH = 56;
+function withWideChevron<T extends Record<string, unknown>>(expansion: TablePlugin<T>): TablePlugin<T> {
+  return {
+    ...expansion,
+    transformColumns: (columns) =>
+      (expansion.transformColumns?.(columns) ?? columns).map((c) => (c.key === '__expansion' ? { ...c, width: pixel(CHEVRON_COLUMN_WIDTH) } : c)),
+  };
+}
 
 const auditColumns: TableColumn<AuditRow>[] = [
   { key: 'ts', header: 'Time', width: pixel(236), renderCell: (a) => <Text textWrap="nowrap">{formatDateTime(a.ts)}</Text> },
@@ -224,13 +232,14 @@ function AuditLog() {
     () => (q.data?.pages.flatMap((p) => p.items) ?? []).map((a, i) => ({ ...a, rowKey: a.uid ?? (a.id !== undefined ? String(a.id) : `${a.ts}-${i}`) })),
     [q.data],
   );
-  const expansion = useTableRowExpansion<AuditRow>({
+  const rowExpansion = useTableRowExpansion<AuditRow>({
     expandedKeys,
     onToggle: toggle,
     getRowKey: (event) => event.rowKey,
     renderExpanded: (event) => <AuditDetails event={event} />,
     hasRowClickExpansion: true,
   });
+  const expansion = useMemo(() => withWideChevron(rowExpansion), [rowExpansion]);
   const keyboard: TablePlugin<AuditRow> = {
     transformBodyRow: (props, event, index) => ({
       ...props,
@@ -327,7 +336,7 @@ function AuditLog() {
               idKey="rowKey"
               data={events}
               columns={auditColumns}
-              plugins={{ expansion, chevronColumn, keyboard }}
+              plugins={{ expansion, keyboard }}
               emptyState={<Text color="secondary">No audit events{actor || kind ? ' match' : ''}.</Text>}
             />
             <HStack gap={2} wrap="wrap" vAlign="center">
