@@ -49,10 +49,12 @@ RFC 3849 are documentation placeholders.
 The version on the page (the badge and the `docker run` and Helm commands)
 comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
 
-## Move over
+## Homelab
 
-`/move-over/` compares Pi-hole, AdGuard Home, Technitium and kudurru v0.1.0.
-The home page and footer link to all three migration guides at
+The Homelab page keeps its existing `/move-over/` URL. It covers local DNS,
+household filtering, Docker and Kubernetes deployment, and free community
+keys, followed by the Pi-hole, AdGuard Home, Technitium and kudurru v0.1.0
+comparison. The home page and footer link to all three migration guides at
 `docs.kudurru.io/migrate/`. Comparison claims and source links live in
 `src/content.ts`; the page template is `src/pages/move-over.ts`. Keep the
 comparison and limitations in step with `site/content/migrate/`, especially
@@ -107,7 +109,8 @@ to `hello@kudurru.io` without submitting a form.
 
 ## The "Request a key" form
 
-`/license/` has a form with two kinds of request. A **personal** request is
+`/license/` has a form beside the introductory text (stacked below it on
+narrow screens), with two kinds of request. A **personal** request is
 sent from the visitor's browser to the license server
 (`POST <origin>/api/v1/public/key-requests` with `name`, `email`, `use` and an
 empty honeypot `website`; the server emails a confirmation link; after the
@@ -115,8 +118,8 @@ visitor confirms, an administrator approves the request and the server emails
 the key; a `202` is the answer to any valid request). A **business or other**
 request is never sent to a server: the browser opens a mail to
 `hello@kudurru.io` with the subject `Business License` and the name, business,
-email, number of nodes and details in the body, and shows the same text to
-copy if no mail program opens.
+email, edition (Commercial Core or Enterprise), number of nodes and details
+in the body, and shows the same text to copy if no mail program opens.
 
 The license server's origin is `https://licenses.kudurru.io` unless
 `WWW_LICENSE_API` names another one at build time (set it in the Cloudflare

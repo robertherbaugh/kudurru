@@ -25,7 +25,8 @@ DNSSEC or app-specific behavior needs more preparation than a basic blocker.
 
 ## Feature comparison
 
-Built-in capabilities unless stated otherwise. Reviewed October 15, 2026
+Built-in capabilities unless stated otherwise; planned features are labeled
+explicitly. Reviewed October 16, 2026
 against the [Pi-hole documentation](https://docs.pi-hole.net/),
 [AdGuard Home configuration reference](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration),
 [Technitium feature list](https://technitium.com/dns/) and
@@ -51,6 +52,18 @@ validating resolver, but v0.1.0 does not itself validate answers or sign zones.
 A schema field for a future feature does not mean that feature is active.
 In particular, secondary/stub/catalog zones, RFC 2136 updates and general
 per-policy answer rewrites are not implemented in v0.1.0.
+
+### Planned DHCPv4 support
+
+Built-in DHCPv4 is in development for v0.2.0 in
+[PR #66](https://github.com/robertherbaugh/kudurru/pull/66). It supports
+standalone Linux/SQLite nodes or a three-node quorum, durable leases and
+reservations, complete dashboard setup, multiple subnets and trusted relays,
+conflict checks, network/boot options, live management, lease import/export
+and persistent local DNS ownership. DHCPv6 is excluded from this pass.
+
+The migration steps here target v0.1.0 and still require an external DHCP
+server. Keep IPv6 router and DNS advertisements on your router.
 
 ### License and deployment choices
 

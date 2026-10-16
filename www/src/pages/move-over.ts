@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { MIGRATIONS, MIGRATION_COMPARISON, docs } from "../content.ts";
+import { HOMELAB_FEATURES, LICENSE_FREE_NODES, MIGRATIONS, MIGRATION_COMPARISON, docs } from "../content.ts";
 import { external, icon } from "./layout.ts";
 
 export function migrationCards(): Html {
@@ -16,16 +16,71 @@ export function migrationCards(): Html {
 }
 
 export function moveOver(): Html {
-  return html`<section class="sec migration-intro" aria-labelledby="move-title">
+  return html`<section class="sec migration-intro" aria-labelledby="homelab-title">
   <div class="wrap">
-    <p class="label">Move over to kudurru</p>
-    <h1 id="move-title" class="page-title">Keep your DNS rules.<br>Choose your next server.</h1>
-    <p class="sec-lead">Coming from Pi-hole, AdGuard Home or Technitium? Compare what carries over, check the differences, then rebuild your configuration alongside the server you already run.</p>
-    <div class="actions">
-      <a class="btn btn-primary" href="#comparison-title">Compare features ${icon.arrow}</a>
-      ${external(docs("/migrate/cutover/"), "Read the migration checklist", "btn btn-ghost")}
+    <div class="homelab-hero">
+      <div>
+        <p class="label">DNS for your homelab</p>
+        <h1 id="homelab-title" class="page-title">Your network.<br>Your DNS rules.</h1>
+        <p class="sec-lead">Local names for your services, ad blocking for your household, and a dashboard that explains every answer. Run kudurru on the hardware you already have, in one container or your Kubernetes cluster.</p>
+        <div class="actions">
+          ${external(docs("/start/home/"), html`Set up your home network ${icon.arrow}`, "btn btn-primary")}
+          <a class="btn btn-ghost" href="#homelab-migrate-title">Moving an existing setup? ${icon.arrow}</a>
+        </div>
+      </div>
+      <aside class="homelab-key" aria-labelledby="homelab-key-title">
+        <p class="label">Community / Homelab</p>
+        <h2 id="homelab-key-title">Free for your homelab.</h2>
+        <p>Eligible personal and household use is free under the Kudurru Community License. Start with one node, the default policy and the built-in administrator, without a key.</p>
+        <ul class="points">
+          <li>A free key covers up to ${LICENSE_FREE_NODES} nodes</li>
+          <li>Add policies for different devices and subnets</li>
+          <li>Unlock OIDC, long-term statistics and the dnsdist / keepalived edge</li>
+        </ul>
+        <a class="more" href="/license/">Request a free key ${icon.arrow}</a>
+        <p class="fine">Running DNS for a business or government? <a href="/enterprise/">Explore commercial licensing ${icon.arrow}</a></p>
+      </aside>
     </div>
+    <div class="migration-cards homelab-features">
+      ${HOMELAB_FEATURES.map((feature) => html`<article>
+        <h3>${feature.title}</h3>
+        <p>${feature.body}</p>
+        ${external(docs(feature.href), html`${feature.link} ${icon.arrow}`, "more")}
+      </article>`)}
+    </div>
+  </div>
+</section>
+<section class="sec migration-section" aria-labelledby="homelab-deploy-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="sec-label">Make it yours</p>
+      <h2 id="homelab-deploy-title">One container.<br>Or the cluster you built.</h2>
+    </div>
+    <div class="migration-cards homelab-deploy">
+      <article>
+        <p class="label">Docker &amp; Compose</p>
+        <h3>Start with a single host</h3>
+        <p>DNS, the dashboard and the API run in one container, with one persistent volume and no separate database. Give the host a stable address and keep DHCP on your router.</p>
+        ${external(docs("/deploy/docker/"), html`Run with Docker ${icon.arrow}`, "more")}
+      </article>
+      <article>
+        <p class="label">Kubernetes &amp; Helm</p>
+        <h3>Keep your DNS in Git</h3>
+        <p>Manage zones, records and filtering as Kubernetes resources. Deploy with Helm and sync configuration with your GitOps tool. Start with one replica; a free key covers up to ${LICENSE_FREE_NODES} nodes.</p>
+        ${external(docs("/start/kubernetes/"), html`Deploy with Helm ${icon.arrow}`, "more")}
+      </article>
+    </div>
+  </div>
+</section>
+<section class="sec migration-section" aria-labelledby="homelab-migrate-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="sec-label">Moving your existing setup</p>
+      <h2 id="homelab-migrate-title">Bring your DNS with you.</h2>
+    </div>
+    <p class="sec-lead">Already running Pi-hole, AdGuard Home or Technitium? Keep the lists and local names you rely on. Each guide maps your configuration and explains what changes before you switch your home network.</p>
     ${migrationCards()}
+    <div class="actions"><a class="btn btn-ghost" href="#comparison-title">Compare all four DNS servers ${icon.arrow}</a></div>
   </div>
 </section>
 <section class="sec migration-section" aria-labelledby="comparison-title">
@@ -37,13 +92,13 @@ export function moveOver(): Html {
     <p class="sec-lead">kudurru v0.1.0 combines authoritative DNS, forwarding, filtering and a dashboard. Check the features you depend on before moving a working network.</p>
     <div class="shapes migration-table" role="region" aria-labelledby="comparison-title" tabindex="0">
       <table>
-        <caption>Built-in capabilities unless stated otherwise. Comparison reviewed October 15, 2026; other projects evolve independently.</caption>
+        <caption>Built-in capabilities unless stated otherwise; planned features are labeled explicitly. Comparison reviewed October 16, 2026; other projects evolve independently.</caption>
         <thead><tr><th scope="col">Feature</th><th scope="col">Pi-hole</th><th scope="col">AdGuard Home</th><th scope="col">Technitium</th><th scope="col">kudurru v0.1.0</th></tr></thead>
         <tbody>${MIGRATION_COMPARISON.map((r) => html`<tr><th scope="row">${r.feature}</th><td>${r.pihole}</td><td>${r.adguard}</td><td>${r.technitium}</td><td>${r.kudurru}</td></tr>`)}</tbody>
       </table>
     </div>
+    <p class="fine migration-sources">Built-in DHCPv4 is in development for v0.2.0, with dashboard setup and optional three-node quorum failover on Linux/SQLite. ${external("https://github.com/robertherbaugh/kudurru/pull/66", html`Follow DHCP development in PR #66 ${icon.arrow}`)}.</p>
     <p class="fine migration-sources">Sources: ${MIGRATIONS.map((m, i) => html`${i ? " · " : ""}${external(m.source, m.name)}`)} · ${external(docs("/project/changelog/"), "kudurru changelog")}. ${external(docs("/migrate/"), "Detailed mappings and limitations in the docs")}.</p>
-    <p class="migration-note">Without a key, kudurru supports one node, the default policy and the built-in administrator. A free key for eligible community use unlocks additional policies and up to three nodes. Business and government production use needs a commercial agreement. <a href="/license/">Review licensing and request a key ${icon.arrow}</a></p>
   </div>
 </section>
 <section class="sec migration-section" aria-labelledby="migration-path-title">

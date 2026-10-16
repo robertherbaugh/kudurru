@@ -42,6 +42,12 @@ for v0.2.0. Check from any device:
 dig @<host> example.com
 ```
 
+The v0.2.0 DHCPv4 development server is opt-in, with Linux/SQLite standalone
+or three-node quorum operation and dashboard setup. DHCPv6 is excluded. See the
+[planned DHCPv4 scope](/migrate/#planned-dhcpv4-support) and follow
+[PR #66](https://github.com/robertherbaugh/kudurru/pull/66) for development
+and setup documentation. The steps on this page apply to v0.1.0.
+
 ## 4. Blocking
 
 Lists are `BlockList` objects: URLs or inline entries in hosts, domains,

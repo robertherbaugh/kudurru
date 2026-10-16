@@ -16,6 +16,13 @@ Allowlist, Denylist and switching single entries of any list off: [allowlist.md]
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
 The optional DHCPv4 server in development for v0.2.0: [dhcp.md](dhcp.md).
 
+Built-in DHCPv4 is in development for v0.2.0 in
+[PR #66](https://github.com/robertherbaugh/kudurru/pull/66): Linux/SQLite
+standalone or three-node quorum failover, complete dashboard setup, persistent
+leases/reservations, multiple subnets, trusted relays, conflict checks,
+network/boot options, import/export and local DNS ownership. DHCPv6 is excluded.
+The released v0.1.0 server still requires an external DHCP service.
+
 ## Release artifacts
 
 v0.1.0 ("stone"), dated 16 October 2026, is the first release. Its
@@ -59,7 +66,7 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
 | Port | Protocol | Purpose |
 |---|---|---|
 | 53 | udp, tcp | DNS (5353 PROXYv2-only behind the dnsdist edge) |
-| 67 | udp | DHCPv4 (optional, v0.2.0 development); replies go to client UDP 68 or trusted relay UDP 67 |
+| 67 | udp | DHCPv4 (optional, v0.2.0 development); replies go to client UDP 68 or the relay's authorized UDP source port |
 | 853 | tcp / udp | DNS over TLS / DNS over QUIC |
 | 443 | tcp / udp | DNS over HTTPS / HTTP/3 |
 | 8080 | tcp | API and UI |

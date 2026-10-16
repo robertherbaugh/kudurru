@@ -242,7 +242,7 @@ test("fonts are separate hashed files, not data URLs", async () => {
   for (const f of fonts) expect((await stat(join(out, f))).size).toBeGreaterThan(10_000);
 });
 
-describe("the move-over page", () => {
+describe("the homelab page", () => {
   test("is linked from every page's nav and footer and listed in the sitemap", async () => {
     for (const name of PAGE_PATHS) {
       const page = pages[name]!;
@@ -354,11 +354,13 @@ describe("the license page", () => {
     expect(pages["index.html"]).toContain("a policy beyond the default needs a license key");
   });
 
-  test("below the intro it spans the full width, like its table: only the form's box is narrower", () => {
+  test("places the form alongside the intro and keeps the remaining sections full width", () => {
     const page = pages["license/index.html"]!;
-    expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap narrow">/);
-    expect(page.match(/class="wrap narrow"/g)?.length).toBe(1);
-    expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<form class="licform lic-row"/);
+    expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap lic-intro">/);
+    const intro = page.slice(page.indexOf('aria-labelledby="lic-title"'), page.indexOf("</section>", page.indexOf('aria-labelledby="lic-title"')));
+    expect(intro).toContain('class="lic-intro-copy"');
+    expect(intro).toContain('data-license-form');
+    expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<div class="lic-row">/);
     for (const id of ["lic-req-title", "lic-get-title", "lic-read-title"]) expect(page).toContain(`<h2 id="${id}">`);
     // Using a key on a node is the docs' job, not this page's.
     expect(page).not.toContain("lic-use-title");
@@ -382,9 +384,14 @@ describe("the key request form", () => {
 
   test("has the fields the personal and the business request need", () => {
     const page = pages["license/index.html"]!;
-    for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "company", "business-nodes", "business-use", "website"]) {
+    for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "edition", "company", "business-nodes", "business-use", "website"]) {
       expect(page).toContain(`name="${name}"`);
     }
+    const editions = [...page.matchAll(/<input\b[^>]*\bname="edition"[^>]*>/g)].map((match) => match[0]);
+    expect(editions).toHaveLength(2);
+    expect(editions[0]).toMatch(/type="radio"[^>]*value="core"\s+checked\b/);
+    expect(editions[1]).toMatch(/type="radio"[^>]*value="enterprise"/);
+    expect(editions[1]).not.toMatch(/\bchecked\b/);
     // The server's limits are on the inputs too.
     expect(page).toMatch(/name="personal-use"[^>]*maxlength="1000"/);
     expect(page).toMatch(/name="name"[^>]*maxlength="200"/);
