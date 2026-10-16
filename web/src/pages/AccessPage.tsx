@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
 import { useFeature } from '../api/hooks';
 import type { ApiToken, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
-import { ChangePasswordButton } from '../components/AccountMenu';
+import { ChangePasswordButton, principalName } from '../components/AccountMenu';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
 import { EnumSelect, type EnumOption } from '../components/fields/EnumSelect';
@@ -42,7 +42,7 @@ function Me() {
   const { data } = useSession();
   if (!data) return null;
   return (
-    <Panel title={`Signed in as ${data.principal.name}`} headingId="me-title" actions={<ChangePasswordButton />}>
+    <Panel title={`Signed in as ${principalName(data)}`} headingId="me-title" actions={<ChangePasswordButton />}>
       <Text type="supporting" color="primary" as="p">
         {data.principal.kind} <Code size="inherit">{data.principal.id}</Code>
         {data.principal.groups?.length ? `, groups ${data.principal.groups.join(', ')}` : ''}
@@ -186,7 +186,7 @@ function Tokens() {
     {
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
-      width: pixel(96),
+      width: pixel(128),
       renderCell: (t) => <Button label="Revoke" size="sm" variant="ghost" onClick={() => del.mutate(t.id)} />,
     },
   ];
@@ -293,7 +293,7 @@ const userColumns: TableColumn<UserRow>[] = [
   {
     key: 'passwordChangedAt',
     header: 'Password changed',
-    width: proportional(1, { minWidth: 130 }),
+    width: proportional(1.5, { minWidth: 192 }),
     renderCell: (u) => <Text size="sm">{u.passwordChangedAt ? formatRelative(u.passwordChangedAt) : '–'}</Text>,
   },
 ];
@@ -314,7 +314,7 @@ const serviceAccountColumns: TableColumn<ServiceAccountRow>[] = [
     ),
   },
   { key: 'description', header: 'Description', width: proportional(2, { minWidth: 160 }), renderCell: (s) => <Text size="sm">{s.description || '–'}</Text> },
-  { key: 'tokens', header: 'Tokens', align: 'end', width: pixel(84), renderCell: (s) => <Text hasTabularNumbers>{s.tokens}</Text> },
+  { key: 'tokens', header: 'Tokens', align: 'end', width: pixel(96), renderCell: (s) => <Text hasTabularNumbers>{s.tokens}</Text> },
 ];
 
 const bindingColumns: TableColumn<BindingRow>[] = [
