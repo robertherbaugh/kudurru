@@ -12,6 +12,8 @@ import (
 
 	proxy "github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/miekg/dns"
+
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 
 // Options are the process-level dependencies of a Set.
@@ -26,6 +28,10 @@ type Options struct {
 	RootCAs *x509.CertPool
 	// Now is the clock used for backoff; nil means time.Now.
 	Now func() time.Time
+	// Recursor answers the recursive groups. The caller keeps it across
+	// reloads (with its caches) and applies Config.Recursion with
+	// Reconfigure; nil makes New build one the Set owns.
+	Recursor *recursor.Resolver
 }
 
 // Set is the immutable collection of groups built from one configuration.
@@ -36,6 +42,9 @@ type Set struct {
 	ecs         ECSConfig
 	metrics     *Metrics
 	bootstrap   []proxy.Upstream
+	// rec answers recursive groups; ownRec when New built it.
+	rec    *recursor.Resolver
+	ownRec bool
 }
 
 // New builds every group and its servers. Nothing is dialed: dnsproxy
@@ -88,10 +97,39 @@ func New(cfg Config, opts Options) (*Set, error) {
 		if g.strategy == "" {
 			g.strategy = ParallelBest
 		}
+		s.groups[name] = g
+		if gc.Recursive {
+			if g.timeout <= 0 {
+				g.timeout = DefaultRecursiveTimeout
+			}
+			g.strategy = Strict
+			if s.rec == nil {
+				s.rec = opts.Recursor
+				if s.rec == nil {
+					r, err := recursor.New(cfg.Recursion, recursor.Options{Logger: logger})
+					if err != nil {
+						_ = s.Close()
+						return nil, fmt.Errorf("upstream: group %q: %w", name, err)
+					}
+					s.rec, s.ownRec = r, true
+				}
+			}
+			srv := &server{name: RecursiveServer, proto: RecursiveServer, u: s.rec, hc: cfg.Health, now: now}
+			srv.label = name + "/" + srv.name
+			srv.setMetrics(opts.Metrics)
+			srv.onChange = func(label string, healthy bool) {
+				if healthy {
+					logger.Info("recursive resolver recovered", "upstream", label)
+				} else {
+					logger.Warn("recursive resolver in backoff after consecutive timeouts; is outbound DNS (port 53) to the internet blocked?", "upstream", label, "failures", cfg.Health.Failures)
+				}
+			}
+			g.servers = append(g.servers, srv)
+			continue
+		}
 		if g.timeout <= 0 {
 			g.timeout = DefaultTimeout
 		}
-		s.groups[name] = g
 		seen := map[string]bool{}
 		for _, entry := range gc.Servers {
 			display, addr := splitName(entry)
@@ -243,13 +281,23 @@ func (s *Set) Status() []ServerStatus {
 	return out
 }
 
+// Recursor returns the resolver of the recursive groups, nil when there
+// are none.
+func (s *Set) Recursor() *recursor.Resolver { return s.rec }
+
 // Close releases every connection. Metric series stay; see CloseReplacedBy.
 func (s *Set) Close() error {
 	var errs []error
 	for _, g := range s.groups {
 		for _, srv := range g.servers {
+			if srv.proto == RecursiveServer {
+				continue
+			}
 			errs = append(errs, srv.u.Close())
 		}
+	}
+	if s.ownRec {
+		errs = append(errs, s.rec.Close())
 	}
 	for _, b := range s.bootstrap {
 		errs = append(errs, b.Close())

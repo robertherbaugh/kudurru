@@ -13,6 +13,8 @@ import (
 	proxy "github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 
 // server is one configured upstream with its health state.
@@ -115,6 +117,7 @@ type attempt struct {
 	msg *dns.Msg
 	err error
 	rtt time.Duration
+	sec recursor.Security
 }
 
 // errRcode marks a response whose rcode makes it unusable (SERVFAIL,
@@ -136,7 +139,7 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 		s.mInflight.Inc()
 	}
 	start := time.Now()
-	resp, err := s.do(ctx, m)
+	resp, sec, err := s.do(ctx, m)
 	if err == nil && resp != nil && resp.Rcode == dns.RcodeRefused && s.proto == "dot" && ctx.Err() == nil {
 		// Some DoT servers limit each connection: Cloudflare's 1.1.1.1
 		// answers a burst of about 30 queries on one TLS connection, then
@@ -148,7 +151,7 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 			s.mRequests.Inc()
 		}
 		_ = s.u.Close()
-		resp, err = s.do(ctx, m)
+		resp, sec, err = s.do(ctx, m)
 	}
 	rtt := time.Since(start)
 	if s.mInflight != nil {
@@ -157,7 +160,7 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 			s.countResponse(resp.Rcode)
 		}
 	}
-	a := attempt{srv: s, msg: resp, err: err, rtt: rtt}
+	a := attempt{srv: s, msg: resp, err: err, rtt: rtt, sec: sec}
 	if err == nil && resp == nil {
 		a.err = errors.New("upstream: empty response")
 	}
@@ -210,7 +213,13 @@ func (s *server) countResponse(rcode int) {
 // plain transport only honours its own timeout, so without this a race
 // loser or a query past its deadline would hold the caller. The abandoned
 // exchange finishes in the background within the per-server timeout.
-func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, error) {
+//
+// The recursive resolver honours ctx itself and reports the DNSSEC state
+// of its answer.
+func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, recursor.Security, error) {
+	if r, ok := s.u.(*recursor.Resolver); ok {
+		return r.ExchangeValidated(ctx, m)
+	}
 	type result struct {
 		msg *dns.Msg
 		err error
@@ -223,9 +232,9 @@ func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, error) {
 	}()
 	select {
 	case r := <-ch:
-		return r.msg, r.err
+		return r.msg, recursor.SecUnknown, r.err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, recursor.SecUnknown, ctx.Err()
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 
 // DefaultGroup is the group used when neither a Request.UpstreamGroup hint
@@ -88,8 +89,12 @@ type GroupConfig struct {
 	// (else the address as written) is what metrics and the query log show.
 	Servers  []string
 	Strategy Strategy
-	// Timeout bounds one exchange with one server (default 2 s).
+	// Timeout bounds one exchange with one server (default 2 s); for a
+	// recursive group the whole lookup (default 4 s).
 	Timeout time.Duration
+	// Recursive groups have no servers: the built-in resolver
+	// (internal/recursor) walks the DNS tree from the root servers.
+	Recursive bool
 }
 
 // Config describes every group of a node.
@@ -103,10 +108,20 @@ type Config struct {
 	Conditional map[string]string
 	ECS         ECSConfig
 	Health      HealthConfig
+	// Recursion configures the resolver of recursive groups.
+	Recursion recursor.Config
 }
 
 // DefaultTimeout is the per-server exchange timeout when a group sets none.
 const DefaultTimeout = 2 * time.Second
+
+// DefaultRecursiveTimeout bounds one recursive lookup when a recursive
+// group sets no timeout; it stays below the 5 s query deadline.
+const DefaultRecursiveTimeout = 4 * time.Second
+
+// RecursiveServer is the server name of a recursive group in metrics, the
+// query log ("<group>/recursive") and Status.
+const RecursiveServer = "recursive"
 
 // ConfigFrom converts the settings section into a Config.
 func ConfigFrom(c config.Upstreams) Config {
@@ -114,6 +129,7 @@ func ConfigFrom(c config.Upstreams) Config {
 		Groups:      make(map[string]GroupConfig, len(c.Groups)),
 		Bootstrap:   append([]string(nil), c.Bootstrap...),
 		Conditional: make(map[string]string, len(c.Conditional)),
+		Recursion:   RecursionFrom(c.Recursion),
 		ECS: ECSConfig{
 			Mode:       ECSMode(c.ECS.Mode),
 			IPv4Prefix: c.ECS.IPv4Prefix,
@@ -122,15 +138,29 @@ func ConfigFrom(c config.Upstreams) Config {
 	}
 	for name, g := range c.Groups {
 		out.Groups[name] = GroupConfig{
-			Servers:  append([]string(nil), g.Servers...),
-			Strategy: Strategy(g.Strategy),
-			Timeout:  g.Timeout.Std(),
+			Servers:   append([]string(nil), g.Servers...),
+			Strategy:  Strategy(g.Strategy),
+			Timeout:   g.Timeout.Std(),
+			Recursive: g.Mode == config.UpstreamModeRecursive,
 		}
 	}
 	for k, v := range c.Conditional {
 		out.Conditional[k] = v
 	}
 	return out
+}
+
+// RecursionFrom converts the upstreams.recursion settings.
+func RecursionFrom(c config.Recursion) recursor.Config {
+	rc := recursor.DefaultConfig()
+	rc.DNSSEC = c.DNSSEC
+	rc.QNAMEMinimization = c.QNAMEMinimization
+	if c.IPv6 != "" {
+		rc.IPv6 = recursor.IPv6Mode(c.IPv6)
+	}
+	rc.TrustAnchors = append([]string(nil), c.TrustAnchors...)
+	rc.RootHints = append([]string(nil), c.RootHints...)
+	return rc
 }
 
 // withDefaults fills zero values.
@@ -173,7 +203,10 @@ func (c Config) Validate() error {
 		if n == "" {
 			errs = append(errs, errors.New("upstream: group name is empty"))
 		}
-		if len(g.Servers) == 0 {
+		switch {
+		case g.Recursive && len(g.Servers) > 0:
+			errs = append(errs, fmt.Errorf("upstream: recursive group %q lists servers", n))
+		case !g.Recursive && len(g.Servers) == 0:
 			errs = append(errs, fmt.Errorf("upstream: group %q has no servers", n))
 		}
 		if !g.Strategy.Valid() {
@@ -194,5 +227,20 @@ func (c Config) Validate() error {
 	if _, err := newSuffixMap(c.Conditional, c.Groups); err != nil {
 		errs = append(errs, err)
 	}
+	if c.hasRecursive() {
+		if err := c.Recursion.Validate(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	return errors.Join(errs...)
+}
+
+// hasRecursive reports whether any group resolves recursively.
+func (c Config) hasRecursive() bool {
+	for _, g := range c.Groups {
+		if g.Recursive {
+			return true
+		}
+	}
+	return false
 }

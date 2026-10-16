@@ -62,6 +62,11 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 			t.level.Set(parseLevel(next.Log.Level))
 		}
 		if config.ChangedUnder(changed, "upstreams") && t.upstreams != nil {
+			if t.upOpts.Recursor != nil && config.ChangedUnder(changed, "upstreams.recursion") {
+				if err := t.upOpts.Recursor.Reconfigure(upstream.RecursionFrom(next.Upstreams.Recursion)); err != nil {
+					log.Error("recursion settings not applied", "err", err)
+				}
+			}
 			set, err := upstream.New(upstream.ConfigFrom(next.Upstreams), t.upOpts)
 			if err != nil {
 				log.Error("upstream settings not applied", "err", err)

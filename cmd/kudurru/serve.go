@@ -58,6 +58,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -533,7 +534,20 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// Pipeline: ingress → authoritative → cache → upstream, with the log observer.
-	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg)}
+	// One recursive resolver for every recursive group, kept across reloads
+	// so its delegation and key caches survive settings changes.
+	var rec *recursor.Resolver
+	recMetrics := recursor.NewMetrics(reg, func() int {
+		if rec == nil {
+			return 0
+		}
+		return rec.CacheLen()
+	})
+	rec, err = recursor.New(upstream.RecursionFrom(cfg.Upstreams.Recursion), recursor.Options{Logger: logger.With("component", "recursor"), Metrics: recMetrics})
+	if err != nil {
+		return err
+	}
+	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg), Recursor: rec}
 	upSet, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upOpts)
 	if err != nil {
 		return err

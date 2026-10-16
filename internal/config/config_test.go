@@ -277,3 +277,60 @@ objects:
 		}
 	}
 }
+
+// TestRecursiveGroupReplacesDefault: a group defined in the file replaces
+// the built-in default group instead of inheriting its servers.
+func TestRecursiveGroupReplacesDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kudurru.yaml")
+	if err := os.WriteFile(path, []byte(`
+listeners:
+  dns: [{ address: "127.0.0.1:5353" }]
+upstreams:
+  groups:
+    default: { mode: recursive }
+    lan: { servers: ["192.168.1.1"] }
+  conditional: { "lan.": lan }
+  recursion: { ipv6: off }
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := cfg.Upstreams.Groups["default"]
+	if d.Mode != UpstreamModeRecursive || len(d.Servers) != 0 || d.Strategy != "" || d.Timeout != 0 {
+		t.Fatalf("default group %+v", d)
+	}
+	r := cfg.Upstreams.Recursion
+	if !r.DNSSEC || !r.QNAMEMinimization || r.IPv6 != "off" {
+		t.Fatalf("recursion defaults %+v", r)
+	}
+
+	// Without a default group of its own the file keeps the built-in one.
+	if err := os.WriteFile(path, []byte("listeners: { dns: [{ address: \"127.0.0.1:5353\" }] }\nupstreams: { groups: { lan: { mode: recursive } } }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Upstreams.Groups["default"].Servers; len(got) != 2 {
+		t.Fatalf("built-in default group lost: %v", got)
+	}
+	for _, bad := range []string{
+		"upstreams: { groups: { default: { mode: recursive, servers: [\"1.1.1.1\"] } } }",
+		"upstreams: { groups: { default: { mode: forward } } }",
+		"upstreams: { groups: { default: { mode: iterative } } }",
+		"upstreams: { recursion: { trustAnchors: [\"not a DS\"] } }",
+		"upstreams: { recursion: { ipv6: sometimes } }",
+	} {
+		if err := os.WriteFile(path, []byte("listeners: { dns: [{ address: \"127.0.0.1:5353\" }] }\n"+bad+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(path, nil); err == nil {
+			t.Errorf("accepted %s", bad)
+		}
+	}
+}
