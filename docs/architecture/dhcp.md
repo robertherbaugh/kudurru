@@ -23,6 +23,9 @@ flowchart LR
     response --> client
     db -->|"Publish committed state"| snapshot["Immutable bound-lease snapshot"]
     snapshot --> dns["Authoritative local-record hook<br/>A/PTR and policy hostnames"]
+    leases -->|"Packet handler/storage failure"| dropped["ERROR log; drop packet<br/>DNS stays available"]
+    dropped -->|"Next packet or retry"| service
+    service -->|"Unexpected runtime socket failure"| fatal["Fatal runnable error"]
 ```
 
 `cmd/kudurru/serve.go` opens the setup manager, selects the startup registry,
@@ -108,7 +111,8 @@ service exists. Setup responses describe desired state separately. A UI-owned
 startup failure appears in `runtimeError`; setup remains available and
 restart-required so an administrator can correct it, save and restart. This
 does not cover corrupt registry files or environment conflicts that prevent
-opening the setup manager.
+opening the setup manager. `runtimeError` reports startup activation failures
+only; it is not a live packet/storage health signal.
 
 ## Wire behavior
 
@@ -135,6 +139,22 @@ DECLINE quarantines its address for ten minutes. Unknown INIT-REBOOT or
 renewal requests do not acquire leases. INFORM returns options without an
 allocation. Address conflict probing is not implemented.
 
+Option 12 hostnames are advisory: trailing NUL bytes are stripped, and an
+empty or unusable name is ignored without blocking address allocation.
+Malformed option framing is still rejected. Operator-configured names remain
+strictly validated.
+
+### Packet failure isolation
+
+After successful startup, a lease-handler or storage failure logs at ERROR
+and drops only that packet, without sending a successful lease reply for the
+failed operation. Later requests and client retries continue in both file-
+and UI-owned scopes. This keeps optional DHCP storage failures from stopping
+core DNS ([D173](../architecture.md#16-decision-log)). Existing network timeout
+and ICMP exceptions remain per-packet; unexpected socket failures remain fatal.
+Startup ownership and activation rules are unchanged. Live packet failures
+are diagnosed through logs, not the startup-only setup `runtimeError` field.
+
 ## Persistent state and transfer
 
 The default scope uses `dhcp.db`; named scopes use `dhcp-<name>.db` under
@@ -145,6 +165,13 @@ adds the applied setup token to that state. Migration from earlier versions,
 staged settings and live-state validation are transactional. Failed seeding or
 incompatible live state rolls back the migration and seed, allowing corrected
 configuration to recover.
+
+Each successful store transaction, including listing and export, reads the
+scope's live leases twice and rebuilds the DNS snapshot under the store lock.
+Large lease sets or frequent listing/export can delay allocation and renewal;
+DNS and policy hostname lookups still read memory without accessing SQLite.
+Large-pool capacity has not been benchmarked; validate expected lease counts
+and request rates before deployment.
 
 A directory lock prevents parallel services from allocating from independent
 scope registries. Removed or renamed scope databases remain locked and are
@@ -167,6 +194,11 @@ and unsupported infinite leases reject the entire import. dnsmasq export at
 the store boundary refuses states it cannot represent. The HTTP/dashboard
 export uses native JSON to preserve holds and quarantine.
 
+dnsmasq hostname fields use the same advisory-name normalization as option 12;
+unusable names are omitted without rejecting an otherwise valid lease. Native
+JSON remains strict and lossless: invalid hostnames reject the import rather
+than being normalized. Other invalid records still reject either import.
+
 ## Lease DNS and policy names
 
 With `registerDNS: true`, a scope owns a dedicated `domainName` and answers
@@ -177,6 +209,16 @@ lease life. Release, decline, import and management changes update snapshots
 immediately. Reservation hostnames take precedence over client names; duplicate
 names and conflicts with reserved names are suppressed. Offers, quarantine,
 expired leases and malformed or outside-domain hostnames produce no records.
+
+Client names and MAC addresses are unauthenticated. Multiple live bindings
+claiming an unreserved name suppress A/PTR records and hostname/nameGlob policy
+matches for all claimants, including across scopes sharing a domain. A second
+client can therefore deny service to another client's unreserved name until
+the conflict clears, or claim an unused name. Configure reservation hostnames
+for stable name ownership, including while the device is offline, but MAC
+reservations do not prevent impersonation. Treat client names as advisory;
+enforce required restrictions with IP/network policies and a restrictive
+default policy, since losing a hostname match can select a fallback policy.
 
 The optional `authoritative.Stage.LocalRecords` hook runs after the unsynced
 gate when no zone matches, or when the match is exactly the root forward zone

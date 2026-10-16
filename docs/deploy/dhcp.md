@@ -230,14 +230,43 @@ reservations and import leases. Custom roles use `dhcp.read/write/delete`
 and `dhcpleases.read/export/import`. Existing session, CSRF and audit rules
 apply.
 
+### Diagnose packet failures after startup
+
+After DHCP starts successfully, a lease-handler or storage failure is logged
+at ERROR and only the affected packet is dropped. No successful lease reply
+is sent for the failed operation. The listener continues handling later
+requests and client retries in both file- and dashboard-owned scopes, so a
+DHCP storage failure does not stop core DNS. Check the server logs, disk space,
+database filesystem availability and write permissions; restore storage access
+and let clients retry.
+
+Network timeouts and ICMP errors retain their existing per-packet handling.
+Unexpected socket failures remain fatal. Startup rules above are unchanged:
+file-owned startup failures remain fatal, and recoverable dashboard-owned
+activation failures leave the repair UI available. The setup `runtimeError`
+field reports startup activation failures only, not live packet/storage health.
+
 ## Automatic lease DNS
 
 Set `registerDNS: true` and use a dedicated domain such as `lan.home.arpa`.
 A bound lease named `laptop` answers at `laptop.lan.home.arpa` and has a PTR
 record. Reservation hostnames override client-supplied names. Offers,
 quarantined or expired addresses have no records. Duplicate hostnames are
-suppressed; a reserved hostname cannot be claimed by another client, even
-when the reserved device is offline.
+suppressed; a reserved hostname is protected from claims by a different MAC,
+even when the reserved device is offline.
+
+DHCP names and MAC addresses are unauthenticated. A second client can obtain
+a lease with the same unreserved name and deny service to that name: all
+claimants lose their A/PTR records and hostname/nameGlob policy matches until
+the conflict clears, including across scopes sharing a domain. Clients can
+also claim unused names. Use reservation hostnames for stable names, but MAC
+reservations do not prevent impersonation. Enforce required restrictions with
+IP/network policies and a restrictive default policy; hostname matching is
+advisory, and a missing match can select a fallback policy.
+
+Option 12 hostnames have trailing NUL bytes stripped. Empty or unusable names
+are ignored, so an otherwise valid DHCP request can still obtain a lease.
+Malformed option framing and invalid configured reservation names are rejected.
 
 **Do not create a configured zone covering the DHCP domain.** Specific
 primary or forward zones retain precedence, including their negative answers.
@@ -330,6 +359,11 @@ lifetime even when DHCP is disabled. Saves use atomic replacement and file
 and directory synchronization; they do not rewrite YAML or mutate live lease
 databases.
 
+Listing and export share the store lock with allocations and rebuild the DNS
+snapshot. Large lease sets or frequent refreshes can delay allocation and
+renewal; large-pool capacity has not been benchmarked. Validate your expected
+lease count and request rate before deployment.
+
 Lease schema version 3 stores the last applied setup token. At startup, a new
 token must match its expected database revision and preserve live ownership;
 the settings, revision and token commit together. Matching tokens retain later
@@ -372,6 +406,11 @@ imported, unchanged and expired/skipped counts. It cannot replace live
 ownership, shorten expiration or conflict with reservations. Any invalid row
 rejects the entire import. Unsupported infinite leases are rejected. Import
 works in file management mode because it changes runtime allocations only.
+
+dnsmasq hostname fields follow the same normalization as option 12: trailing
+NULs are stripped and unusable names are omitted. Native JSON stays strict and
+lossless, rejecting invalid hostnames instead of normalizing them. Other
+invalid records still reject the entire import in either format.
 
 The public export uses native JSON; it preserves holds and quarantine that a
 dnsmasq lease file cannot represent. Import does not configure network options
