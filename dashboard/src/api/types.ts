@@ -426,6 +426,8 @@ export interface CreatedToken extends ApiToken {
 /** Body of POST /auth/password (stack PasswordRequest). */
 export type PasswordChangeRequest = S['PasswordChangeRequest'];
 
+export type SessionRecordInfo = S['SessionRecordInfo'];
+
 export type TOTPStatus = S['TOTPStatus'];
 export type TOTPProofRequest = S['TOTPProofRequest'];
 export type TOTPConfirmRequest = S['TOTPConfirmRequest'];

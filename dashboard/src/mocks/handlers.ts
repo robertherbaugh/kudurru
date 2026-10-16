@@ -22,6 +22,7 @@ import type {
   Policy,
   QueryRow,
   SourceStatus,
+  SessionRecordInfo,
   StatusClass,
   TopDim,
   TopItem,
@@ -58,6 +59,21 @@ let db: MockDB = createDB();
 // UI fixtures only: fixed codes deliberately do not model cryptographic authority.
 const mockFactors = new Set<string>();
 const mockSetups = new Map<string, { challenge: string; expiresAt: string }>();
+// Safe UI fixtures only. Production ownership is the server's immutable UID check.
+const mockSessions = new Map<string, SessionRecordInfo[]>();
+
+function ownSessions(username: string): SessionRecordInfo[] {
+  let rows = mockSessions.get(username);
+  if (!rows) {
+    const issued = db.now - 60_000;
+    rows = [
+      { id: `mock-session-${username}-other`, issuedAt: new Date(issued + 30_000).toISOString(), expiresAt: new Date(issued + 43_200_000).toISOString(), idleExpiresAt: new Date(issued + 1_800_000).toISOString(), current: false, revoked: false },
+      { id: `mock-session-${username}-current`, issuedAt: new Date(issued).toISOString(), expiresAt: new Date(issued + 43_200_000).toISOString(), idleExpiresAt: new Date(issued + 1_800_000).toISOString(), current: true, revoked: false },
+    ];
+    mockSessions.set(username, rows);
+  }
+  return rows;
+}
 
 /** Resets the database to the fixtures (tests call it in beforeEach). */
 export function resetDB(now?: number): MockDB {
@@ -65,6 +81,7 @@ export function resetDB(now?: number): MockDB {
   resetDHCP();
   mockFactors.clear();
   mockSetups.clear();
+  mockSessions.clear();
   return db;
 }
 
@@ -751,6 +768,16 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${B}/auth/me`, () => (db.session ? ok({ ...me() }) : fail(401, 'unauthenticated', 'No session'))),
+  http.get(`${B}/auth/sessions`, () => db.session ? ok({ items: structuredClone(ownSessions(db.session.user.username)) }) : fail(401, 'unauthenticated', 'No session')),
+  http.delete(`${B}/auth/sessions/:id`, ({ request, params }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'No session');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'CSRF required');
+    const row = ownSessions(db.session.user.username).find((s) => s.id === params.id);
+    if (!row) return fail(404, 'not_found', 'Session not found');
+    row.revoked = true;
+    if (row.current) db.session = null;
+    return new HttpResponse(null, { status: 204 });
+  }),
   http.post(`${B}/auth/password`, async ({ request }) => {
     if (!db.session) return fail(401, 'unauthenticated', 'Sign in to continue');
     if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'Missing or wrong X-Kudurru-CSRF header');

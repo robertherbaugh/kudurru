@@ -20,6 +20,7 @@ import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
 import { useFeature } from '../api/hooks';
 import type { ApiToken, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
 import { AuthenticatorPanel, RecoverAuthenticatorButton } from '../components/access/Authenticators';
+import { SessionsPanel } from '../components/access/Sessions';
 import { ChangePasswordButton, principalName } from '../components/AccountMenu';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
@@ -487,6 +488,7 @@ export default function AccessPage() {
         <>
           <Me />
           <AuthenticatorPanel />
+          <SessionsPanel />
           <Tokens />
         </>
       ) : null}

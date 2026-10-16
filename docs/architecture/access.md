@@ -201,7 +201,16 @@ its original deadlines at final commit, and seals only from a published view
 containing that enrollment. Password changes raise revocation floors and can
 revoke tokens atomically with replacement enrollment. Session responses expose
 only the identifier, timestamps and current/revoked flags for the exact account
-UID. Generic public object writes and canonical settings writes reauthorize the
+UID. The Access page lists those browser sessions and revokes an explicitly
+selected identifier. Revoking another session preserves the caller. Revoking
+the current session clears local authentication and cached answers after 204,
+without a second logout request; it does not claim to clear the HttpOnly cookie.
+Late responses and cancellation cleanup check the original session lifetime
+before touching state, including after awaiting query cancellation. A stale
+postcommit inventory remains pending until a fresh read shows the revocation;
+mutations are never retried automatically.
+
+Generic public object writes and canonical settings writes reauthorize the
 original raw proof within the admitted command, including unchanged writes.
 
 SQLite OIDC start/callback routes use the captured browser adapter described
