@@ -140,6 +140,12 @@ type BlockingReadSource interface {
 	BlockingState(context.Context, time.Time) (configured, enabled bool, disabledUntil time.Time, err error)
 }
 
+// UpstreamReadSource samples local operational health on the original complete
+// request's retained routes. Counter values are not frozen serving metadata.
+type UpstreamReadSource interface {
+	UpstreamStates(context.Context) ([]upstream.ServerStatus, error)
+}
+
 // ZoneReadSource reads actual serving data from the original complete HTTP
 // request lease. Objects/models are immutable and valid only within the handler.
 // ReadZone distinguishes a missing desired key (store.ErrNotFound) from present
@@ -282,6 +288,9 @@ type Options struct {
 	// BlockingReads replaces blocking GETs with original complete-cut reads.
 	// Nil preserves the legacy node-local toggle projection.
 	BlockingReads BlockingReadSource
+	// UpstreamReads replaces local upstream health reads with original routes.
+	// Nil preserves legacy live-stage status sampling.
+	UpstreamReads UpstreamReadSource
 	// ObjectCommand admits canonical object writes in the supplied current
 	// transaction. Nil retains the legacy object-management implementation.
 	ObjectCommand ObjectCommand
