@@ -163,6 +163,29 @@ func TestPiHoleBlockingModes(t *testing.T) {
 	}
 }
 
+func TestPiHoleCNAMETTL(t *testing.T) {
+	for _, ttl := range []string{"60", " 60 ", "60abc", "60 extra", "60.5", "-1", "", " ", "9999999999999999999999999999"} {
+		t.Run(ttl, func(t *testing.T) {
+			cfg := fmt.Sprintf(`{"blocking":{"active":true,"mode":"NULL"},"domain":{"name":"home.arpa"},"cnameRecords":[%q]}`, "files.home.arpa,nas.home.arpa,"+ttl)
+			srv := piHoleSource(t, cfg)
+			p, err := Preview(context.Background(), MigrationRequest{Source: "pihole", URL: srv.URL, Credential: "test-password"})
+			if strings.TrimSpace(ttl) != "60" {
+				if err == nil || !strings.Contains(err.Error(), "invalid Pi-hole CNAME TTL") {
+					t.Fatalf("invalid TTL accepted: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := json.Marshal(p.Objects)
+			if !strings.Contains(string(b), `"recordTTL":60`) || !strings.Contains(string(b), `"recordType":"CNAME"`) {
+				t.Fatal("CNAME TTL was not preserved")
+			}
+		})
+	}
+}
+
 func TestTechnitiumExportsAndErrors(t *testing.T) {
 	failExport := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

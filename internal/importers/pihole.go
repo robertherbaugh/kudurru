@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -302,9 +303,11 @@ func (p *Plan) piLocal(req MigrationRequest, cfg piDNS) error {
 		}
 		ttl := 300
 		if len(parts) == 3 {
-			if _, err := fmt.Sscanf(parts[2], "%d", &ttl); err != nil || ttl < 0 {
+			parsedTTL, err := strconv.Atoi(strings.TrimSpace(parts[2]))
+			if err != nil || parsedTTL < 0 {
 				return fmt.Errorf("invalid Pi-hole CNAME TTL")
 			}
+			ttl = parsedTTL
 		}
 		if err := add(strings.TrimSpace(parts[0]), "CNAME", dns.Fqdn(strings.TrimSpace(parts[1])), ttl); err != nil {
 			return err
