@@ -620,8 +620,8 @@ function digAnswer(req: DnsQueryRequest): DnsQueryResult {
 }
 
 /** The upstream groups of the cluster settings (a map keyed by group name). */
-function upstreamGroups(): Record<string, { servers?: string[]; strategy?: string; timeout?: string }> {
-  return (getPath(db.settings, 'upstreams.groups') as Record<string, { servers?: string[] }> | undefined) ?? {};
+function upstreamGroups(): Record<string, { mode?: string; servers?: string[] | null; strategy?: string; timeout?: string }> {
+  return (getPath(db.settings, 'upstreams.groups') as Record<string, { servers?: string[] | null }> | undefined) ?? {};
 }
 
 /** The display label of a server entry ("name=addr" → name). */
@@ -1292,9 +1292,10 @@ export const handlers = [
     if (g) return g;
     const url = new URL(request.url);
     const top = topFrom('upstreams', false, 10, seriesTotals().total / db.queries.length);
-    // servers[]: the live health of every configured server (not windowed).
+    // servers[]: the live health of every configured server (not windowed);
+    // a recursive group reports its resolver as the server "recursive".
     const servers = Object.entries(upstreamGroups()).flatMap(([group, g], gi) =>
-      (g.servers ?? []).map((entry, i) => {
+      (g.mode === 'recursive' ? ['recursive'] : (g.servers ?? [])).map((entry, i) => {
         const down = gi === 1 && i === 0 && group !== 'default';
         return {
           group,
@@ -1719,9 +1720,14 @@ const STRATEGIES = ['', 'parallel_best', 'strict', 'random', 'rtt_weighted'];
 
 /** What internal/upstream Config.Validate refuses, in its words. */
 function validateUpstreams(settings: Record<string, unknown>): string | null {
-  const groups = (getPath(settings, 'upstreams.groups') as Record<string, { servers?: string[]; strategy?: string }> | undefined) ?? {};
+  const groups = (getPath(settings, 'upstreams.groups') as Record<string, { mode?: string; servers?: string[] | null; strategy?: string }> | undefined) ?? {};
   if (!groups.default) return 'upstreams: upstream: group "default" is required';
   for (const [n, g] of Object.entries(groups)) {
+    if (g.mode === 'recursive') {
+      if (g.servers?.length) return `upstreams.groups[${n}].servers: a recursive group asks the root servers itself; remove the servers or use mode forward`;
+      continue;
+    }
+    if (g.mode && g.mode !== 'forward') return `upstreams.groups[${n}].mode: "${g.mode}" is not allowed`;
     if (!g.servers?.length) return `upstreams: upstream: group "${n}" has no servers`;
     if (!STRATEGIES.includes(g.strategy ?? '')) return `upstreams: upstream: group "${n}": unknown strategy "${g.strategy}"`;
   }

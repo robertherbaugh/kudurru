@@ -1,8 +1,9 @@
 // One upstream group (/upstreams/:group): its current state (servers
-// healthy now, strategy, timeout, traffic), each server's health, RTT and
-// 24 h traffic, the typed settings with their own Save, what uses the
-// group (policies, forward zones, conditional rules) and Delete. A group
-// that something still names cannot silently disappear: Delete lists them.
+// healthy now, strategy or Recursive, timeout, traffic), each server's (or
+// the recursive resolver's) health, RTT and 24 h traffic, the typed
+// settings with their own Save, what uses the group (policies, forward
+// zones, conditional rules) and Delete. A group that something still names
+// cannot silently disappear: Delete lists them.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -19,10 +20,10 @@ import { ErrorBanner, errorText, Loading } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
-import { GroupFields, groupFieldErrors, healthSummary, ServersTable, strategyLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
+import { GroupFields, groupFieldErrors, healthSummary, resolutionLabel, ServersTable, trafficFor, useUpstreams } from '../components/UpstreamGroup';
 import { formatExact } from '../lib/format';
 import { useNavigate } from '../lib/router';
-import { DEFAULT_GROUP, type UpstreamGroupConfig } from '../lib/upstreams';
+import { DEFAULT_GROUP, groupPatch, serverEntries, timeoutOf, type UpstreamGroupConfig } from '../lib/upstreams';
 import type { PageProps } from '../routes';
 
 /** Group names in the page title keep the heading size in the code font. */
@@ -70,7 +71,7 @@ export default function UpstreamGroupPage({ params }: PageProps) {
   const [creating, setCreating] = useState(false);
   const gKey = JSON.stringify(g ?? null);
   useEffect(() => {
-    setDraft(g ? { ...g, strategy: g.strategy || 'parallel_best', timeout: g.timeout || '2s' } : null);
+    setDraft(g ? { ...g, strategy: g.strategy || 'parallel_best', timeout: timeoutOf(g) } : null);
     setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the saved group changes
   }, [gKey]);
@@ -99,20 +100,22 @@ export default function UpstreamGroupPage({ params }: PageProps) {
 
   const servers = u.stats.data?.servers;
   const traffic = u.stats.data?.upstreams;
-  const h = healthSummary(servers, name, g.servers);
-  const queries = g.servers.reduce((sum, e) => sum + (trafficFor(traffic, name, e)?.total ?? 0), 0);
-  const saved = { ...g, strategy: g.strategy || 'parallel_best', timeout: g.timeout || '2s' };
+  const recursive = g.mode === 'recursive';
+  const h = healthSummary(servers, name, serverEntries(g));
+  const queries = serverEntries(g).reduce((sum, e) => sum + (trafficFor(traffic, name, e)?.total ?? 0), 0);
+  const saved = { ...g, strategy: g.strategy || 'parallel_best', timeout: timeoutOf(g) };
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   const save = async () => {
-    const clean = { ...draft, servers: draft.servers.map((s) => s.trim()).filter(Boolean) };
+    // The draft keeps a forwarding group's servers while Recursive is picked, so switching back restores them; they are not saved.
+    const clean = draft.mode === 'recursive' ? { ...draft, servers: [] } : { ...draft, servers: draft.servers.map((s) => s.trim()).filter(Boolean) };
     const e = groupFieldErrors(clean);
     setErrors(e);
     if (Object.keys(e).length) return;
     setBusy(true);
     setSaveErr(undefined);
     try {
-      await u.save({ groups: { [name]: clean } }, `Group ${name}`);
+      await u.save({ groups: { [name]: groupPatch(clean) } }, `Group ${name}`);
     } catch (err) {
       setSaveErr(errorText(err));
     } finally {
@@ -149,9 +152,14 @@ export default function UpstreamGroupPage({ params }: PageProps) {
         meta={
           <HStack gap={2} vAlign="center" wrap="wrap" data-testid="group-state">
             {name === DEFAULT_GROUP ? <Badge variant="neutral" label="default" /> : null}
-            <Badge variant="blue" label={strategyLabel(g.strategy)} />
+            <Badge variant="blue" label={resolutionLabel(g)} />
             {h.known === 0 ? (
               <Text type="supporting">no health data yet</Text>
+            ) : recursive ? (
+              <HStack gap={2} vAlign="center">
+                <StatusDot variant={h.healthy ? 'success' : 'error'} label={h.healthy ? 'resolver healthy' : 'resolver in backoff'} />
+                <Text size="sm">{h.healthy ? 'resolver healthy' : 'resolver in backoff'}</Text>
+              </HStack>
             ) : (
               <HStack gap={2} vAlign="center">
                 <StatusDot variant={h.healthy === h.known ? 'success' : h.healthy === 0 ? 'error' : 'warning'} label={`${h.healthy} of ${h.known} healthy`} />
@@ -161,7 +169,7 @@ export default function UpstreamGroupPage({ params }: PageProps) {
               </HStack>
             )}
             <Text type="supporting">
-              {g.servers.length} server{g.servers.length === 1 ? '' : 's'} · timeout {g.timeout || '2s'} · {formatExact(queries)} queries in 24 h
+              {recursive ? 'from the root servers' : `${g.servers.length} server${g.servers.length === 1 ? '' : 's'}`} · timeout {timeoutOf(g)} · {formatExact(queries)} queries in 24 h
             </Text>
           </HStack>
         }
@@ -184,12 +192,28 @@ export default function UpstreamGroupPage({ params }: PageProps) {
       ) : null}
       {u.stats.error ? <ErrorBanner error={u.stats.error} title="Upstream health is unavailable" /> : null}
 
-      <Panel title="Servers" aria-label="Servers">
+      <Panel title={recursive ? 'Resolver' : 'Servers'} aria-label={recursive ? 'Resolver' : 'Servers'}>
+        {recursive && h.known > 0 && h.healthy === 0 ? (
+          <Banner
+            status="warning"
+            title="The resolver gets no answers"
+            description="Recursion needs outbound UDP and TCP port 53 to the internet; a firewall, a Kubernetes NetworkPolicy or an ISP that intercepts port 53 blocks it."
+          />
+        ) : null}
         <ServersTable name={name} g={g} servers={servers} traffic={traffic} />
       </Panel>
 
       <Panel title="Settings">
         <GroupFields value={draft} onChange={setDraft} errors={errors} isDisabled={!u.canWrite} />
+        {draft.mode === 'recursive' ? (
+          <Text as="p" type="supporting">
+            DNSSEC validation, QNAME minimization and IPv6 apply to every recursive group; set them under Recursion on the{' '}
+            <Link href="/upstreams" hasUnderline>
+              Upstreams page
+            </Link>
+            .
+          </Text>
+        ) : null}
         {saveErr ? <Banner status="error" title="The server rejected the change" description={saveErr} /> : null}
         {dirty ? (
           <HStack gap={2} vAlign="center" wrap="wrap">

@@ -28,6 +28,7 @@ import { formatError } from '../components/fields/formats';
 import { SelectField } from '../components/fields/SelectField';
 import { CheckboxField, TextField } from '../components/fields/TextField';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
+import { statusLabel } from '../components/QueryLogTable';
 
 const DIG_TYPES = ['A', 'AAAA', 'HTTPS', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'SRV', 'PTR', 'CAA', 'SVCB', 'DS', 'DNSKEY'];
 const DIG_PROTOS: { value: DnsProto; label: string }[] = [
@@ -145,7 +146,7 @@ function Dig() {
         // The e2e specs read the result as the panel's last polite live region.
         <VStack gap={2} aria-live="polite" data-testid="dig-result">
           <HStack gap={2} vAlign="center" wrap="wrap">
-            <Badge variant={r.status_class === 'blocked' ? 'error' : r.status_class === 'error' ? 'warning' : 'success'} label={r.status.replace(/_/g, ' ')} />
+            <Badge variant={r.status_class === 'blocked' ? 'error' : r.status_class === 'error' ? 'warning' : 'success'} label={statusLabel(r)} />
             <Text type="code">{r.rcode}</Text>
             <Text type="code" size="sm">
               {r.name} {r.type}

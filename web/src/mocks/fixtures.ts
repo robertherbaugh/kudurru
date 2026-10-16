@@ -115,7 +115,7 @@ const BLOCKED_DOMAINS: { domain: string; list: string; rule: string; status: str
 ];
 const LOCAL_NAMES = ['nas.home.arpa', 'homeassistant.home.arpa', 'printer.home.arpa', 'grafana.example.internal', 'git.example.internal'];
 /** Upstream labels as the query log writes them: group/server (the display name when set). */
-export const UPSTREAMS = ['default/cloudflare', 'default/quad9', 'filtered/https://dns.google/dns-query'];
+export const UPSTREAMS = ['default/cloudflare', 'default/quad9', 'filtered/https://dns.google/dns-query', 'resolver/recursive'];
 const QTYPES = ['A', 'A', 'A', 'AAAA', 'AAAA', 'HTTPS', 'PTR', 'TXT', 'SRV', 'MX'];
 const PROTOS = ['udp', 'udp', 'udp', 'tcp', 'dot', 'doh'];
 
@@ -587,16 +587,21 @@ export function makeQueryRow(id: number, ts: number, r: () => number, node = 'ku
       ...(cname ? { cname } : {}),
     };
   }
-  const timeout = r() < 0.5;
+  const slow = r() < 0.5;
+  const upstream = pick(r, UPSTREAMS);
+  // The recursive group validates DNSSEC: its failures are bogus answers (EDE 6).
+  const bogus = upstream.endsWith('/recursive');
+  const timeout = slow && !bogus;
   return {
     ...base,
     domain,
-    status: timeout ? 'timeout_upstream' : 'servfail_upstream',
+    status: timeout ? 'timeout_upstream' : bogus ? 'dnssec_bogus' : 'servfail_upstream',
     status_class: 'error',
     rcode: 'SERVFAIL',
     reply: { type: 'servfail', time_ms: timeout ? 2000 : 30 + r() * 30 },
-    upstream: pick(r, UPSTREAMS),
-    ede: timeout ? 22 : 23,
+    upstream,
+    ede: timeout ? 22 : bogus ? 6 : 23,
+    ...(bogus ? { dnssec: 'bogus' } : {}),
   };
 }
 
@@ -706,6 +711,8 @@ const CLUSTER_VALUES: Record<string, unknown> = {
   'upstreams.groups': {
     default: { servers: ['cloudflare=tls://1.1.1.1:853', 'quad9=tls://9.9.9.9:853'], strategy: 'parallel_best', timeout: '2s' },
     filtered: { servers: ['https://dns.google/dns-query'], strategy: 'strict', timeout: '3s' },
+    // GET /settings renders a recursive group's missing servers as null.
+    resolver: { mode: 'recursive', servers: null, strategy: '', timeout: '4s' },
   },
   'upstreams.conditional': { 'corp.example': 'filtered' },
   'blocking.defaultResponse': 'zeroIP',

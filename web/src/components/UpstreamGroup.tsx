@@ -1,8 +1,9 @@
 // Pieces shared by the Upstreams list, the group page (/upstreams/:group)
-// and the new-group wizard: the typed group fields (servers as rows with
-// per-entry validation, strategy as an EnumSelect with help, timeout with
-// presets), the per-server health/RTT/traffic table, and the hooks that
-// read and write upstreams.* with PATCH /settings.
+// and the new-group wizard: the typed group fields (mode, servers as rows
+// with per-entry validation, strategy as an EnumSelect with help, timeout
+// with presets; a recursive group has no servers or strategy), the
+// per-server health/RTT/traffic table (one "recursive" row for a recursive
+// group), and the hooks that read and write upstreams.* with PATCH /settings.
 import { Grid } from '@astryxdesign/core/Grid';
 import { Link } from '@astryxdesign/core/Link';
 import { HStack } from '@astryxdesign/core/Stack';
@@ -15,7 +16,20 @@ import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
 import type { SettingsBody, UpstreamItem, UpstreamServer } from '../api/types';
 import { formatExact, formatMS, formatRelative } from '../lib/format';
-import { serverError, serverLabel, splitServerName, STRATEGIES, timeoutError, upstreamsOf, type UpstreamGroupConfig } from '../lib/upstreams';
+import {
+  defaultTimeout,
+  RECURSIVE_SERVER,
+  serverEntries,
+  serverError,
+  serverLabel,
+  splitServerName,
+  STRATEGIES,
+  timeoutError,
+  UPSTREAM_MODES,
+  upstreamsOf,
+  type UpstreamGroupConfig,
+  type UpstreamMode,
+} from '../lib/upstreams';
 import { DurationField, durationPresets } from './fields/DurationField';
 import { EnumSelect } from './fields/EnumSelect';
 import { listError, StringListField } from './fields/StringListField';
@@ -25,9 +39,17 @@ export const CLUSTER_SCOPE = { scope: 'cluster' } as const;
 
 export const TIMEOUT_PRESETS = durationPresets(['500ms', '1s', '2s', '3s', '5s', '10s']);
 
+/** A recursive lookup takes a few round trips; the query deadline is 5s. */
+export const RECURSIVE_TIMEOUT_PRESETS = durationPresets(['2s', '3s', '4s', '5s']);
+
 /** The strategy label for a group ("" is the default, parallel_best). */
 export function strategyLabel(s: string): string {
   return STRATEGIES.find((x) => x.value === (s || 'parallel_best'))?.label ?? s;
+}
+
+/** How a group resolves, for lists and headers: "Recursive", or its strategy. */
+export function resolutionLabel(g: UpstreamGroupConfig): string {
+  return g.mode === 'recursive' ? 'Recursive' : strategyLabel(g.strategy);
 }
 
 /** Live health of a configured server entry of a group. */
@@ -55,13 +77,17 @@ export function healthSummary(servers: UpstreamServer[] | undefined, group: stri
   return { healthy, known };
 }
 
-/** Validates the group fields; keys are field names. */
+/** Validates the group fields like the server does; keys are field names. */
 export function groupFieldErrors(g: UpstreamGroupConfig): Record<string, string> {
   const e: Record<string, string> = {};
   const servers = g.servers.map((s) => s.trim()).filter(Boolean);
-  if (servers.length === 0) e.servers = 'A group needs at least one server';
-  const le = listError(servers, serverError);
-  if (le) e.servers = le;
+  if (g.mode === 'recursive') {
+    if (servers.length) e.servers = 'A recursive group asks the root servers itself and has no servers';
+  } else {
+    if (servers.length === 0) e.servers = 'A group needs at least one server';
+    const le = listError(servers, serverError);
+    if (le) e.servers = le;
+  }
   const te = timeoutError(g.timeout);
   if (te) e.timeout = te;
   return e;
@@ -98,7 +124,7 @@ const num = (text: string) => <Text hasTabularNumbers>{text}</Text>;
 
 export function ServersTable({ name, g, servers, traffic }: { name: string; g: UpstreamGroupConfig; servers: UpstreamServer[] | undefined; traffic: UpstreamItem[] | null | undefined }) {
   const now = Date.now();
-  const rows: ServerRow[] = g.servers.map((entry) => {
+  const rows: ServerRow[] = serverEntries(g).map((entry) => {
     const { name: display, addr } = splitServerName(entry);
     return { entry, display, addr, h: healthFor(servers, name, entry), t: trafficFor(traffic, name, entry) };
   });
@@ -107,14 +133,20 @@ export function ServersTable({ name, g, servers, traffic }: { name: string; g: U
       key: 'entry',
       header: 'Server',
       width: proportional(3, { minWidth: 200 }),
-      renderCell: (r) => (
-        <HStack gap={1} vAlign="center" wrap="wrap">
-          {r.display ? <Text weight="semibold">{r.display}</Text> : null}
-          <Text type="code" size="sm" maxLines={2} wordBreak="break-all">
-            {r.addr}
-          </Text>
-        </HStack>
-      ),
+      renderCell: (r) =>
+        g.mode === 'recursive' && r.entry === RECURSIVE_SERVER ? (
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            <Text weight="semibold">Recursive resolver</Text>
+            <Text type="supporting">from the root servers</Text>
+          </HStack>
+        ) : (
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            {r.display ? <Text weight="semibold">{r.display}</Text> : null}
+            <Text type="code" size="sm" maxLines={2} wordBreak="break-all">
+              {r.addr}
+            </Text>
+          </HStack>
+        ),
     },
     { key: 'health', header: 'Health', width: proportional(2, { minWidth: 140 }), renderCell: (r) => <HealthCell h={r.h} now={now} /> },
     { key: 'rtt', header: 'RTT', align: 'end', width: pixel(90), renderCell: (r) => num(r.h && r.h.rtt_ms > 0 ? formatMS(r.h.rtt_ms) : '–') },
@@ -146,20 +178,40 @@ export interface GroupFieldsProps {
   isDisabled?: boolean;
   /** Hide the servers (the wizard edits them on their own step). */
   serversHidden?: boolean;
+  /** Hide the mode (the wizard asks for it on its first step). */
+  modeHidden?: boolean;
 }
 
-export function GroupFields({ value, onChange, errors = {}, isDisabled, serversHidden }: GroupFieldsProps) {
+/**
+ * Switches a group's mode. The servers and strategy stay in the draft so
+ * switching back restores them (groupPatch leaves them out of a recursive
+ * group); a timeout still at the old mode's default moves to the new one's.
+ */
+export function withMode(g: UpstreamGroupConfig, mode: UpstreamMode): UpstreamGroupConfig {
+  const timeout = !g.timeout || g.timeout === defaultTimeout(g.mode) ? defaultTimeout(mode) : g.timeout;
+  return { ...g, mode, timeout };
+}
+
+export function GroupFields({ value, onChange, errors = {}, isDisabled, serversHidden, modeHidden }: GroupFieldsProps) {
+  const recursive = value.mode === 'recursive';
   return (
     <>
-      {serversHidden ? null : <ServersField value={value.servers} onChange={(servers) => onChange({ ...value, servers })} error={errors.servers} isDisabled={isDisabled} />}
+      {modeHidden ? null : (
+        <EnumSelect label="Mode" value={value.mode} options={[...UPSTREAM_MODES]} onChange={(m) => onChange(withMode(value, m as UpstreamMode))} isDisabled={isDisabled} />
+      )}
+      {serversHidden || recursive ? null : (
+        <ServersField value={value.servers} onChange={(servers) => onChange({ ...value, servers })} error={errors.servers} isDisabled={isDisabled} />
+      )}
       <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
-        <EnumSelect label="Strategy" value={value.strategy || 'parallel_best'} options={[...STRATEGIES]} onChange={(strategy) => onChange({ ...value, strategy })} isDisabled={isDisabled} />
+        {recursive ? null : (
+          <EnumSelect label="Strategy" value={value.strategy || 'parallel_best'} options={[...STRATEGIES]} onChange={(strategy) => onChange({ ...value, strategy })} isDisabled={isDisabled} />
+        )}
         <DurationField
           label="Timeout"
-          description="Per server and query"
-          value={value.timeout || '2s'}
+          description={recursive ? 'For the whole lookup of a name' : 'Per server and query'}
+          value={value.timeout || defaultTimeout(value.mode)}
           onChange={(timeout) => onChange({ ...value, timeout })}
-          presets={TIMEOUT_PRESETS}
+          presets={recursive ? RECURSIVE_TIMEOUT_PRESETS : TIMEOUT_PRESETS}
           isDisabled={isDisabled}
           error={errors.timeout}
         />

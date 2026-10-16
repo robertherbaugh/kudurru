@@ -2414,10 +2414,28 @@
         "type": "object",
         "fields": [
           {
+            "name": "mode",
+            "label": "Mode",
+            "help": "forward (default) sends queries to the servers below; recursive resolves names itself from the root servers, so no single provider sees every name, and validates DNSSEC (see upstreams.recursion).",
+            "type": "string",
+            "default": "forward",
+            "enum": [
+              {
+                "value": "forward",
+                "label": "Forward",
+                "help": "Send queries to the servers you list, such as your ISP, Cloudflare or Quad9."
+              },
+              {
+                "value": "recursive",
+                "label": "Recursive",
+                "help": "Resolve names from the root servers with kudurru's own resolver and validate DNSSEC; no single provider sees every name."
+              }
+            ]
+          },
+          {
             "name": "servers",
             "label": "Servers",
-            "help": "DNS servers this group forwards to, e.g. 1.1.1.1, tls://dns.quad9.net or https://dns.google/dns-query. A bare address uses plain DNS on port 53; tls://, https://, quic://, h3:// and sdns:// stamps encrypt the queries. Prefix a display name with name=, e.g. cloudflare=tls://1.1.1.1.",
-            "required": true,
+            "help": "DNS servers this group forwards to, e.g. 1.1.1.1, tls://dns.quad9.net or https://dns.google/dns-query. A bare address uses plain DNS on port 53; tls://, https://, quic://, h3:// and sdns:// stamps encrypt the queries. Prefix a display name with name=, e.g. cloudflare=tls://1.1.1.1. Required in forward mode; a recursive group has none.",
             "type": "string[]",
             "items": {
               "type": "string",
@@ -2427,7 +2445,7 @@
           {
             "name": "strategy",
             "label": "Strategy",
-            "help": "How the servers are picked for each query; parallel_best suits most setups.",
+            "help": "How the servers are picked for each query; parallel_best suits most setups. Forward mode only.",
             "type": "string",
             "default": "parallel_best",
             "enum": [
@@ -2456,17 +2474,107 @@
           {
             "name": "timeout",
             "label": "Timeout",
-            "help": "How long to wait for one server's answer before trying another, e.g. 2s; raise it for slow or distant servers.",
+            "help": "How long to wait for one server's answer before trying another, e.g. 2s; raise it for slow or distant servers. In recursive mode it bounds the whole lookup of a name (default 4s).",
             "type": "duration",
             "default": "2s",
             "presets": [
               "500ms",
               "1s",
               "2s",
+              "4s",
               "5s"
             ]
           }
         ]
+      }
+    },
+    {
+      "path": "upstreams.recursion.dnssec",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Check DNSSEC signatures on answers from recursive groups, from the root trust anchors down. Forged or broken answers in signed zones become SERVFAIL (status dnssec_bogus) instead of reaching devices; unsigned zones still resolve. Clients that set the CD bit get the data anyway.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "DNSSEC validation",
+      "group": "Upstreams"
+    },
+    {
+      "path": "upstreams.recursion.ipv6",
+      "type": "string",
+      "scope": "cluster",
+      "default": "auto",
+      "help": "Whether recursive groups ask name servers over IPv6. auto (default) does when this host has an IPv6 route to the root servers.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "IPv6 to name servers",
+      "group": "Upstreams",
+      "enum": [
+        {
+          "value": "auto",
+          "label": "Auto",
+          "help": "Use IPv6 when the host has an IPv6 route to the root servers."
+        },
+        {
+          "value": "on",
+          "label": "On",
+          "help": "Always ask IPv6 name servers too."
+        },
+        {
+          "value": "off",
+          "label": "Off",
+          "help": "Ask name servers over IPv4 only."
+        }
+      ]
+    },
+    {
+      "path": "upstreams.recursion.qnameMinimization",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Send each name server only as much of the name as it needs (QNAME minimization, RFC 9156): the root servers learn com, not www.example.com. Recursive groups only.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "QNAME minimization",
+      "group": "Upstreams"
+    },
+    {
+      "path": "upstreams.recursion.rootHints",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Addresses of the root servers recursive groups start from, e.g. 198.41.0.4; empty (the default) uses the built-in IANA list. Only for a private root or a lab.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Root hints",
+      "group": "Upstreams",
+      "items": {
+        "type": "string",
+        "format": "ip"
+      }
+    },
+    {
+      "path": "upstreams.recursion.trustAnchors",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Root DS records DNSSEC validation trusts, e.g. 20326 8 2 E06D44B8...; empty (the default) uses the built-in KSK-2017 and KSK-2024 anchors from IANA. Only for a root key rollover the built-in list does not know yet, or for a private root.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Root trust anchors",
+      "group": "Upstreams",
+      "items": {
+        "type": "string"
       }
     }
   ]
