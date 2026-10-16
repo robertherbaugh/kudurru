@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { COMMERCIAL_COMPARISON, COMMERCIAL_PLANS, ENTERPRISE_CONTACT_URL, ENTERPRISE_FEATURES, LICENSE_FREE_NODES, SUPPORT_STARTING_ANNUAL_USD, VOLUME_PRICING, docs } from "../content.ts";
+import { COMMERCIAL_COMPARISON, COMMERCIAL_PLANS, ENTERPRISE_AD_DNS, ENTERPRISE_CONTACT_URL, ENTERPRISE_FEATURES, LICENSE_FREE_NODES, SUPPORT_STARTING_ANNUAL_USD, VOLUME_PRICING, docs } from "../content.ts";
 import { annualPrice, usd } from "../pricing.ts";
 import { external, icon } from "./layout.ts";
 
@@ -134,6 +134,24 @@ export function enterprise(): Html {
         <p>${feature.body}</p>
         ${external(docs(feature.href), html`Read the docs ${icon.arrow}`, "more")}
       </article>`)}
+    </div>
+  </div>
+</section>
+<section class="sec enterprise-section" aria-labelledby="enterprise-ad-dns-title">
+  <div class="wrap">
+    <div class="lic-row">
+      <div>
+        <p class="label">Planned for ${ENTERPRISE_AD_DNS.release}</p>
+        <h2 id="enterprise-ad-dns-title">${ENTERPRISE_AD_DNS.title}</h2>
+      </div>
+      <div class="lic-body">
+        <p>${ENTERPRISE_AD_DNS.body}</p>
+        <ul class="points">
+          ${ENTERPRISE_AD_DNS.items.map((item) => html`<li>${item}</li>`)}
+        </ul>
+        <p class="fine">${ENTERPRISE_AD_DNS.scope}</p>
+        ${external(docs(ENTERPRISE_AD_DNS.href), html`Read the migration scope ${icon.arrow}`, "more")}
+      </div>
     </div>
   </div>
 </section>
