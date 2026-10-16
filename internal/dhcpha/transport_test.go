@@ -127,7 +127,9 @@ func TestTrackedConnectionIdleLifetimeAndRequestDeadline(t *testing.T) {
 			t.Fatal("active transfer lost its connection slot")
 		}
 		_ = c.Close()
-		<-reading
+		if err := <-reading; err != nil {
+			t.Fatal(err)
+		}
 	})
 	t.Run("caller deadline stays shorter", func(t *testing.T) {
 		a, b := net.Pipe()

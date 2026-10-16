@@ -43,7 +43,8 @@ func clusterFixture(t *testing.T) *testCluster {
 			t.Fatal(err)
 		}
 		peers[i] = Peer{ID: fmt.Sprintf("node%d", i+1), Address: l.Addr().String()}
-		_ = l.Close()
+		// Reserve each port until all peers have distinct addresses.
+		defer func() { _ = l.Close() }()
 	}
 	servers := []dhcp.ScopeServer{{NodeID: "node1", Address: netip.MustParseAddr("192.0.2.2")}, {NodeID: "node2", Address: netip.MustParseAddr("192.0.2.3")}, {NodeID: "node3", Address: netip.MustParseAddr("192.0.2.4")}}
 	for i := range c.nodes {

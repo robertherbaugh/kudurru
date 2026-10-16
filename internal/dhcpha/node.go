@@ -50,7 +50,7 @@ type Node struct {
 	proposalMu    sync.Mutex // prevents worker registration after Close starts waiting
 	lastSuccess   atomic.Int64
 	closed        atomic.Bool
-	stopRequested chan error
+	stopRequested chan struct{}
 }
 
 // Status reports local replication health. Ready is a recent observation;
@@ -143,7 +143,7 @@ func Open(cfg Config, stores map[string]*dhcp.LeaseStore) (*Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dhcp HA: open durable Raft store: %w", err)
 	}
-	n := &Node{cfg: cfg, disk: disk, proposals: make(chan struct{}, 1), management: make(chan struct{}, 2), done: make(chan struct{}), stopRequested: make(chan error, 1)}
+	n := &Node{cfg: cfg, disk: disk, proposals: make(chan struct{}, 1), management: make(chan struct{}, 2), done: make(chan struct{}), stopRequested: make(chan struct{}, 1)}
 	fail := func(err error) (*Node, error) { _ = n.Close(); return nil, err }
 	logger := hclog.New(&hclog.LoggerOptions{Name: "dhcp-raft", Output: io.Discard, Level: hclog.Warn})
 	snaps, err := raft.NewFileSnapshotStore(cfg.DataDir, 3, io.Discard)
@@ -192,7 +192,7 @@ func Open(cfg Config, stores map[string]*dhcp.LeaseStore) (*Node, error) {
 	n.fsm.stop = func(err error) {
 		cfg.Logger.Error("DHCP replica stopped after storage failure; DNS remains available", "node", cfg.NodeID, "error", err)
 		select {
-		case n.stopRequested <- err:
+		case n.stopRequested <- struct{}{}:
 		default:
 		}
 	}

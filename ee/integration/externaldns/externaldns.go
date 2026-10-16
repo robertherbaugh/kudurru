@@ -216,7 +216,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		err := srv.Shutdown(sctx)
-		<-errCh
+		if serveErr := <-errCh; !errors.Is(serveErr, http.ErrServerClosed) {
+			return errors.Join(err, serveErr)
+		}
 		return err
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {

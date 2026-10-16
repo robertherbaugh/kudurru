@@ -38,7 +38,12 @@ func startServer(t *testing.T, chain *pipeline.Chain) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- s.Start(ctx) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Start: %v", err)
+		}
+	})
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if a := s.Addrs(); a["udp"] != "" && a["tcp"] != "" {

@@ -247,7 +247,9 @@ func (l *dnsListener) Serve(ctx context.Context) error {
 		}
 		wg.Wait()
 		for ; running > 0; running-- {
-			<-errCh
+			if err := <-errCh; first == nil {
+				first = err
+			}
 		}
 		_ = l.Close()
 		return first

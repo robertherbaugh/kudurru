@@ -25,14 +25,22 @@ func TestDHCPFailoverSetupRuntime(t *testing.T) {
 	ctx := context.Background()
 	peers := make([]config.DHCPFailoverPeer, 3)
 	servers := make([]config.DHCPScopeServer, 3)
+	var listeners [3]net.Listener
 	for i := range peers {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
 		peers[i] = config.DHCPFailoverPeer{ID: fmt.Sprintf("node%d", i+1), Address: listener.Addr().String()}
-		_ = listener.Close()
+		listeners[i] = listener
+		t.Cleanup(func() { _ = listener.Close() })
 		servers[i] = config.DHCPScopeServer{NodeID: peers[i].ID, Address: fmt.Sprintf("192.0.2.%d", i+2)}
+	}
+	// Release the reserved ports only after all peers have distinct addresses.
+	for _, listener := range listeners {
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var configs [3]*config.Config
 	var nodes [3]*setupAcceptanceRuntime
