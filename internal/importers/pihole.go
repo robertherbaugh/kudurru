@@ -111,7 +111,7 @@ func (c *sourceClient) pihole(ctx context.Context, req MigrationRequest, p *Plan
 	}
 	mode := v1alpha1.BlockResponse("zeroIP")
 	switch cfg.Config.DNS.Blocking.Mode {
-	case "NXDOMAIN":
+	case "NX":
 		mode = "nxdomain"
 	case "NULL":
 	default:

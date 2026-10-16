@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestPiHolePreservesGroupsListsAndLocalDNS(t *testing.T) {
 			"/lists":      `{"lists":[{"id":4,"address":"https://example.net/hosts","type":"block","groups":[0,1],"enabled":false},{"id":5,"address":"https://example.net/allow","type":"allow","groups":[1],"enabled":true}]}`,
 			"/domains":    `{"domains":[{"domain":"ads.example","type":"deny","kind":"exact","enabled":false,"groups":[0,1],"comment":"keep disabled"},{"domain":"needed.example","type":"allow","kind":"exact","enabled":true,"groups":[1]},{"domain":"ads;querytype=A","type":"deny","kind":"regex","enabled":true,"groups":[0]},{"domain":"(?=bad)","type":"deny","kind":"regex","enabled":true,"groups":[0]}]}`,
 			"/clients":    `{"clients":[{"client":"192.0.2.5","groups":[1],"comment":"tablet"},{"client":"2001:db8::/64","groups":[1]},{"client":"192.0.2.6","groups":[2]},{"client":"aa:bb:cc:dd:ee:ff","groups":[1]}]}`,
-			"/config/dns": `{"config":{"dns":{"upstreams":["192.0.2.53#5353"],"hosts":["192.0.2.10 nas.home.arpa","2001:db8::10 nas.home.arpa"],"cnameRecords":["files.home.arpa,nas.home.arpa,60"],"domain":{"name":"home.arpa"},"blockTTL":2,"blocking":{"active":true,"mode":"NXDOMAIN"}}}}`,
+			"/config/dns": `{"config":{"dns":{"upstreams":["192.0.2.53#5353"],"hosts":["192.0.2.10 nas.home.arpa","2001:db8::10 nas.home.arpa"],"cnameRecords":["files.home.arpa,nas.home.arpa,60"],"domain":{"name":"home.arpa"},"blockTTL":2,"blocking":{"active":true,"mode":"NX"}}}}`,
 		}[strings.TrimPrefix(r.URL.Path, "/proxy/api")]
 		if !ok {
 			t.Errorf("unexpected endpoint %s", r.URL)
@@ -93,6 +94,72 @@ func TestPiHolePreservesGroupsListsAndLocalDNS(t *testing.T) {
 	}
 	if !strings.Contains(text, "Skipped regex") || !strings.Contains(text, "Skipped client") {
 		t.Error("missing unsupported-conversion warnings")
+	}
+}
+
+func piHoleSource(t *testing.T, dnsConfig string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth":
+			if r.Method == http.MethodDelete {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			_, _ = fmt.Fprint(w, `{"session":{"valid":true,"sid":"test-session"}}`)
+		case "/api/groups":
+			_, _ = fmt.Fprint(w, `{"groups":[{"id":0,"name":"Default","enabled":true}]}`)
+		case "/api/lists":
+			_, _ = fmt.Fprint(w, `{"lists":[]}`)
+		case "/api/domains":
+			_, _ = fmt.Fprint(w, `{"domains":[]}`)
+		case "/api/clients":
+			_, _ = fmt.Fprint(w, `{"clients":[]}`)
+		case "/api/config/dns":
+			_, _ = fmt.Fprintf(w, `{"config":{"dns":%s}}`, dnsConfig)
+		default:
+			t.Errorf("unexpected endpoint %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestPiHoleBlockingModes(t *testing.T) {
+	for _, tc := range []struct {
+		mode, want string
+		warn       bool
+	}{
+		{"NX", "nxdomain", false},
+		{"NULL", "zeroIP", false},
+		{"IP", "zeroIP", true},
+		{"IP_NODATA_AAAA", "zeroIP", true},
+		{"NODATA", "zeroIP", true},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			srv := piHoleSource(t, fmt.Sprintf(`{"blockTTL":2,"blocking":{"active":true,"mode":%q}}`, tc.mode))
+			p, err := Preview(context.Background(), MigrationRequest{Source: "pihole", URL: srv.URL, Credential: "test-password"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, obj := range p.Objects {
+				if obj["kind"] == "Policy" {
+					found = true
+					if mode := obj["spec"].(map[string]any)["blockMode"]; mode != tc.want {
+						t.Errorf("blockMode=%v, want %s", mode, tc.want)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("missing imported policy")
+			}
+			warn := slices.ContainsFunc(p.Warnings, func(s string) bool { return strings.Contains(s, "blocking response needs manual review") })
+			if warn != tc.warn {
+				t.Errorf("blocking warning=%v, want %v", warn, tc.warn)
+			}
+		})
 	}
 }
 
