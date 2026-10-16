@@ -92,11 +92,12 @@ export function moveOver(): Html {
     <p class="sec-lead">kudurru v0.1.0 combines authoritative DNS, forwarding, filtering and a dashboard. Check the features you depend on before moving a working network.</p>
     <div class="shapes migration-table" role="region" aria-labelledby="comparison-title" tabindex="0">
       <table>
-        <caption>Built-in capabilities unless stated otherwise. Comparison reviewed October 15, 2026; other projects evolve independently.</caption>
+        <caption>Built-in capabilities unless stated otherwise; planned features are labeled explicitly. Comparison reviewed October 16, 2026; other projects evolve independently.</caption>
         <thead><tr><th scope="col">Feature</th><th scope="col">Pi-hole</th><th scope="col">AdGuard Home</th><th scope="col">Technitium</th><th scope="col">kudurru v0.1.0</th></tr></thead>
         <tbody>${MIGRATION_COMPARISON.map((r) => html`<tr><th scope="row">${r.feature}</th><td>${r.pihole}</td><td>${r.adguard}</td><td>${r.technitium}</td><td>${r.kudurru}</td></tr>`)}</tbody>
       </table>
     </div>
+    <p class="fine migration-sources">Built-in DHCPv4 is planned for v0.2.0, initially on standalone Linux nodes using SQLite. ${external("https://github.com/robertherbaugh/kudurru/pull/66", html`Follow DHCP development in PR #66 ${icon.arrow}`)}.</p>
     <p class="fine migration-sources">Sources: ${MIGRATIONS.map((m, i) => html`${i ? " · " : ""}${external(m.source, m.name)}`)} · ${external(docs("/project/changelog/"), "kudurru changelog")}. ${external(docs("/migrate/"), "Detailed mappings and limitations in the docs")}.</p>
   </div>
 </section>
