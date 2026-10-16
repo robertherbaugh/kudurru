@@ -1,8 +1,9 @@
-// Upstreams: the resolver groups kudurru forwards to (upstreams.groups) as
-// a table whose rows open the group's page (/upstreams/:group) with its
-// servers' live health and traffic; new groups are created with the wizard
-// in a modal (?new=1). Bootstrap resolvers, conditional forwarding and EDNS
-// Client Subnet are edited here. Everything is a cluster setting written
+// Upstreams: the resolver groups kudurru forwards to or resolves with
+// recursively (upstreams.groups) as a table whose rows open the group's
+// page (/upstreams/:group) with its servers' live health and traffic; new
+// groups are created with the wizard in a modal (?new=1). Bootstrap
+// resolvers, EDNS Client Subnet, the recursive resolver's options
+// (upstreams.recursion) and conditional forwarding are edited here. Everything is a cluster setting written
 // with PATCH /settings (a JSON merge patch); in Kubernetes the settings
 // ConfigMap owns them and the pages are read-only.
 import { Badge } from '@astryxdesign/core/Badge';
@@ -24,11 +25,24 @@ import { EnumSelect } from '../components/fields/EnumSelect';
 import { NumberField, numberError } from '../components/fields/NumberField';
 import { cleanList, StringListField } from '../components/fields/StringListField';
 import { TextField } from '../components/fields/TextField';
-import { healthSummary, strategyLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
+import { SwitchField } from '../components/fields/TextField';
+import { healthSummary, resolutionLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
 import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 import { formatExact } from '../lib/format';
 import { useNewParam } from '../lib/router';
-import { bootstrapError, conditionalKeyError, DEFAULT_GROUP, ECS_MODES, groupNames, mapPatch, type UpstreamGroupConfig, type UpstreamsConfig } from '../lib/upstreams';
+import {
+  bootstrapError,
+  conditionalKeyError,
+  DEFAULT_GROUP,
+  ECS_MODES,
+  groupNames,
+  mapPatch,
+  RECURSION_IPV6,
+  serverEntries,
+  timeoutOf,
+  type UpstreamGroupConfig,
+  type UpstreamsConfig,
+} from '../lib/upstreams';
 
 export { healthFor, strategyLabel, trafficFor } from '../components/UpstreamGroup';
 
@@ -61,8 +75,14 @@ const GROUP_COLUMNS: TableColumn<GroupRow>[] = [
       </HStack>
     ),
   },
-  { key: 'strategy', header: 'Strategy', width: proportional(2, { minWidth: 140 }), renderCell: (r) => <Badge variant="blue" label={strategyLabel(r.g.strategy)} /> },
-  { key: 'servers', header: 'Servers', align: 'end', width: pixel(100), renderCell: (r) => <Text hasTabularNumbers>{r.g.servers.length}</Text> },
+  { key: 'strategy', header: 'Strategy', width: proportional(2, { minWidth: 140 }), renderCell: (r) => <Badge variant="blue" label={resolutionLabel(r.g)} /> },
+  {
+    key: 'servers',
+    header: 'Servers',
+    align: 'end',
+    width: pixel(100),
+    renderCell: (r) => (r.g.mode === 'recursive' ? <Text color="secondary">–</Text> : <Text hasTabularNumbers>{r.g.servers.length}</Text>),
+  },
   {
     key: 'health',
     header: 'Health',
@@ -80,15 +100,15 @@ const GROUP_COLUMNS: TableColumn<GroupRow>[] = [
       ),
   },
   { key: 'queries', header: 'Queries (24 h)', align: 'end', width: pixel(160), renderCell: (r) => <Text hasTabularNumbers>{formatExact(r.queries)}</Text> },
-  { key: 'timeout', header: 'Timeout', width: pixel(108), renderCell: (r) => <Text>{r.g.timeout || '2s'}</Text> },
+  { key: 'timeout', header: 'Timeout', width: pixel(108), renderCell: (r) => <Text>{timeoutOf(r.g)}</Text> },
 ];
 
 function GroupsTable({ cfg, servers, traffic }: { cfg: UpstreamsConfig; servers: UpstreamServer[] | undefined; traffic: UpstreamItem[] | null | undefined }) {
   const rows = groupNames(cfg).flatMap((n): GroupRow[] => {
     const g = cfg.groups[n];
     if (!g) return [];
-    const h = healthSummary(servers, n, g.servers);
-    const queries = g.servers.reduce((sum, e) => sum + (trafficFor(traffic, n, e)?.total ?? 0), 0);
+    const h = healthSummary(servers, n, serverEntries(g));
+    const queries = serverEntries(g).reduce((sum, e) => sum + (trafficFor(traffic, n, e)?.total ?? 0), 0);
     return [{ name: n, g, healthy: h.healthy, known: h.known, queries }];
   });
   return (
@@ -266,7 +286,7 @@ function EcsPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: b
     }
   };
   return (
-    <Panel title="EDNS Client Subnet" description="Whether upstreams learn which network a query came from (RFC 7871). Strip is the privacy default.">
+    <Panel title="EDNS Client Subnet" description="Whether upstreams learn which network a query came from (RFC 7871). Strip is the privacy default; recursive groups never send one.">
       <EnumSelect label="Mode" value={mode} options={ECS_OPTIONS} isDisabled={!canWrite} onChange={setMode} />
       {mode !== 'strip' ? (
         <HStack gap={2} vAlign="end" wrap="wrap">
@@ -274,6 +294,67 @@ function EcsPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: b
           <NumberField label="IPv6 prefix" value={v6} onChange={setV6} min={0} max={128} isDisabled={!canWrite} help="Longest prefix sent" />
         </HStack>
       ) : null}
+      {err ? <Banner status="error" title="The server rejected the change" description={err} /> : null}
+      {dirty ? (
+        <HStack gap={2} vAlign="center" wrap="wrap">
+          <Button label="Save" size="sm" variant="primary" isLoading={busy} onClick={() => void save()} />
+        </HStack>
+      ) : null}
+    </Panel>
+  );
+}
+
+const IPV6_OPTIONS = RECURSION_IPV6.map((m) => ({ value: m.value, label: m.label, help: m.help }));
+
+/** upstreams.recursion: what every recursive group does; trust anchors and root hints stay on the Settings page. */
+function RecursionPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: boolean; onSave: Save }) {
+  const [dnssec, setDnssec] = useState(cfg.recursion.dnssec);
+  const [qmin, setQmin] = useState(cfg.recursion.qnameMinimization);
+  const [ipv6, setIPv6] = useState(cfg.recursion.ipv6);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string>();
+  useEffect(() => {
+    setDnssec(cfg.recursion.dnssec);
+    setQmin(cfg.recursion.qnameMinimization);
+    setIPv6(cfg.recursion.ipv6);
+  }, [cfg.recursion]);
+  const used = Object.values(cfg.groups).some((g) => g.mode === 'recursive');
+  const dirty = dnssec !== cfg.recursion.dnssec || qmin !== cfg.recursion.qnameMinimization || ipv6 !== cfg.recursion.ipv6;
+  const custom = cfg.recursion.trustAnchors.length > 0 || cfg.recursion.rootHints.length > 0;
+  const save = async () => {
+    setBusy(true);
+    setErr(undefined);
+    try {
+      await onSave({ recursion: { dnssec, qnameMinimization: qmin, ipv6 } }, 'Recursion');
+    } catch (x) {
+      setErr(errorText(x));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Panel title="Recursion" description="How groups in recursive mode resolve names from the root servers." data-testid="recursion">
+      {used ? null : (
+        <Text as="p" type="supporting">
+          No group is recursive yet; these apply once one is.
+        </Text>
+      )}
+      <SwitchField
+        label="DNSSEC validation"
+        help="Answers that fail validation become SERVFAIL (status dnssec bogus); unsigned zones still resolve."
+        value={dnssec}
+        onChange={setDnssec}
+        isDisabled={!canWrite}
+      />
+      <SwitchField label="QNAME minimization" help="Each name server sees only as much of the name as it needs (RFC 9156)." value={qmin} onChange={setQmin} isDisabled={!canWrite} />
+      <EnumSelect label="IPv6 to name servers" value={ipv6} options={IPV6_OPTIONS} isDisabled={!canWrite} onChange={setIPv6} />
+      <Text as="p" type="supporting">
+        {custom ? 'Custom root trust anchors or root hints are set' : 'Built-in root trust anchors and root hints'}; change them in{' '}
+        <Link href="/settings?view=expert&q=upstreams.recursion" hasUnderline>
+          Settings
+        </Link>
+        .
+      </Text>
       {err ? <Banner status="error" title="The server rejected the change" description={err} /> : null}
       {dirty ? (
         <HStack gap={2} vAlign="center" wrap="wrap">
@@ -294,7 +375,7 @@ export default function UpstreamsPage() {
         title="Upstreams"
         description={
           <>
-            The resolvers kudurru forwards to. Policies and forward zones pick a group by name; everything else uses <Code size="inherit">default</Code>. Health is this
+            The resolvers kudurru forwards to, or its own recursive resolver. Policies and forward zones pick a group by name; everything else uses <Code size="inherit">default</Code>. Health is this
             node's view right now; traffic covers the last 24 hours.
           </>
         }
@@ -323,6 +404,7 @@ export default function UpstreamsPage() {
           <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
             <BootstrapPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
             <EcsPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
+            <RecursionPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
           </Grid>
           <ConditionalPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
         </>

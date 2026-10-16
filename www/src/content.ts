@@ -43,7 +43,7 @@ export const SUPPORT_STARTING_ANNUAL_USD = 1200;
 export const COMMERCIAL_COMPARISON = [
   { what: "Eligible noncommercial use", community: "Yes", core: "Yes", enterprise: "Yes" },
   { what: "Business and government production rights", community: "No", core: "Yes", enterprise: "Yes" },
-  { what: "Authoritative DNS and forwarding resolver", community: "Yes", core: "Yes", enterprise: "Yes" },
+  { what: "Authoritative DNS, forwarding and validating recursive resolver", community: "Yes", core: "Yes", enterprise: "Yes" },
   { what: "Blocking and encrypted DNS", community: "Yes", core: "Yes", enterprise: "Yes" },
   { what: "Multiple nodes", community: `Up to ${LICENSE_FREE_NODES} with a free key`, core: "Licensed count", enterprise: "Licensed count" },
   { what: "OIDC and advanced RBAC", community: "With a free key", core: "No", enterprise: "Included" },
@@ -222,7 +222,7 @@ export const STAGES: { id: StageId; does: string }[] = [
   { id: "authoritative", does: "Answers names in local zones from an in-memory tree" },
   { id: "blocking", does: "Evaluates the client's merged policies: lists, services, safe search" },
   { id: "cache", does: "Sharded TTL cache with prefetch, serve-stale and in-flight coalescing" },
-  { id: "upstream", does: "Forwards to the client's upstream group over DoT, DoH, DoQ or Do53" },
+  { id: "upstream", does: "Forwards to the client's upstream group over DoT, DoH, DoQ or Do53, or resolves from the root servers with DNSSEC validation" },
   { id: "log", does: "After the chain returns, the observer records the answer and its reason" },
 ];
 
@@ -455,6 +455,7 @@ export const REGISTERS: Register[] = [
     lead: "Do53 over UDP and TCP, DoT, DoH over HTTP/1.1 and HTTP/2, DoQ and DoH3, each with a certificate reloader, in front of one pipeline.",
     points: [
       "Upstream groups with parallel_best, strict, random and rtt_weighted strategies, conditional forwarding, ECS strip, forward or add",
+      "Opt-in recursive groups: resolution from the root servers with QNAME minimization and DNSSEC validation, no client subnet sent",
       "Sharded TTL cache with prefetch, serve-stale (RFC 8767) and in-flight coalescing; it is restored after a restart",
       "SO_REUSEPORT listeners on every core: 53 % more UDP throughput",
       "Per-prefix rate limits that slip TC=1 before they drop",
@@ -629,6 +630,7 @@ export const ROADMAP: Release[] = [
     meaning: "The stone itself: one record of authority.",
     items: [
       "Resolver with DoT, DoH, DoQ and DoH3",
+      "Opt-in recursion with DNSSEC validation",
       "Primary and forward zones, AXFR and IXFR out",
       "Blocking with client groups, services and safe search",
       "Dashboard with long-term views, OIDC and RBAC (a free personal key unlocks them)",
@@ -643,7 +645,7 @@ export const ROADMAP: Release[] = [
       "DHCP server support",
       "Secondary and stub zones, RFC 2136",
       "Active Directory DNS replacement for a single-domain forest",
-      "DNSSEC validation, RPZ feed import",
+      "DNSSEC validation of forwarded answers, RPZ feed import",
       "Cloudflare split-horizon sink, UniFi inventory",
       "Follower-mode HA",
       "dnstap and tracing",
@@ -742,9 +744,9 @@ export const MIGRATIONS = [
   {
     slug: "technitium",
     name: "Technitium",
-    summary: "Move primary zones, conditional forwarding and blocking to a Go binary with a dashboard, CLI and Kubernetes API objects.",
+    summary: "Move primary zones, conditional forwarding, blocking and recursive resolution to a Go binary with a dashboard, CLI and Kubernetes API objects.",
     mapping: "Export primary zones as standard zone files. Recreate conditional forwarders, access controls and blocking policies explicitly.",
-    check: "Inventory DNS Apps, recursive resolution, DNSSEC and secondary zones. These need a separate service or a later kudurru release.",
+    check: "Inventory DNS Apps, DNSSEC signing and secondary zones. These need a separate service or a later kudurru release. Recursion with DNSSEC validation is an upstream group mode.",
     source: "https://technitium.com/dns/",
   },
 ] as const;
@@ -752,8 +754,8 @@ export const MIGRATIONS = [
 export const MIGRATION_COMPARISON = [
   { feature: "DNS filtering", pihole: "Hosts, domains and regex; group assignments", adguard: "Adblock DNS rules, allowlists and client settings", technitium: "Allowed/blocked zones and lists; Advanced Blocking app", kudurru: "Hosts, domains, adblock subset and RE2; client-group policies" },
   { feature: "Local names and zones", pihole: "Local DNS and CNAME records", adguard: "DNS rewrites", technitium: "Primary, secondary, stub, forwarder and catalog zones", kudurru: "Primary and forward zones; BIND import/export; AXFR/IXFR out" },
-  { feature: "Resolution", pihole: "Forwards to upstreams; recursion with a separate resolver", adguard: "Forwards to upstreams", technitium: "Full recursive resolver or forwarding", kudurru: "Forwards to named upstream groups; conditional forwarding" },
-  { feature: "DNSSEC", pihole: "Optional validation", adguard: "Requests DNSSEC data from upstreams", technitium: "Validation and authoritative signing", kudurru: "No validation or signing in v0.1.0" },
+  { feature: "Resolution", pihole: "Forwards to upstreams; recursion with a separate resolver", adguard: "Forwards to upstreams", technitium: "Full recursive resolver or forwarding", kudurru: "Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding" },
+  { feature: "DNSSEC", pihole: "Optional validation", adguard: "Requests DNSSEC data from upstreams", technitium: "Validation and authoritative signing", kudurru: "Validation in recursive upstream groups; no signing in v0.1.0" },
   { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Use a separate DHCP server in v0.1.0; built-in support planned for v0.2.0" },
   { feature: "Encrypted DNS listeners", pihole: "Use a separate proxy", adguard: "DoT, DoH and DoQ", technitium: "DoT, DoH and DoQ", kudurru: "DoT, DoH, DoQ and DoH3" },
   { feature: "Multiple servers", pihole: "Separate instances; external sync tools", adguard: "Separate instances; external sync tools", technitium: "Built-in clustering", kudurru: "Shared Kubernetes store; Compose HA uses shared object files" },

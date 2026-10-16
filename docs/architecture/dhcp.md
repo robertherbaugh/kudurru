@@ -227,7 +227,7 @@ After successful startup, a lease-handler or storage failure logs at ERROR
 and drops only that packet, without sending a successful lease reply for the
 failed operation. Later requests and client retries continue in both file-
 and UI-owned scopes. This keeps optional DHCP storage failures from stopping
-core DNS ([D174](../architecture.md#16-decision-log)). Existing network timeout
+core DNS ([D175](../architecture.md#16-decision-log)). Existing network timeout
 and ICMP exceptions remain per-packet; unexpected socket failures remain fatal.
 Startup ownership and activation rules are unchanged. Live packet failures
 are diagnosed through logs, not the startup-only setup `runtimeError` field.
@@ -384,7 +384,7 @@ no new allocation or renewal success; existing DNS snapshots remain readable
 and expire in memory. A fatal local SQLite apply failure fences that replica
 and stops its voting, allowing the other two to continue. The node does not
 pretend an unapplied command succeeded. Ordinary packet/probe failures retain
-D174 isolation, and unexpected DHCP socket failures remain fatal.
+D175 isolation, and unexpected DHCP socket failures remain fatal.
 
 Setup stays node-local. Before initial bootstrap, the sole bootstrap node may
 apply its staged seed with the expected-revision check. After identity exists,

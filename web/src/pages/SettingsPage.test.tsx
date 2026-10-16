@@ -201,6 +201,7 @@ describe('SettingsPage', () => {
     const summary = await waitFor(() => within(row('upstreams.groups')).getByTestId('groups-summary'));
     expect(within(summary).getByRole('link', { name: 'default' })).toHaveAttribute('href', '/upstreams/default');
     expect(within(summary).getByRole('link', { name: 'Edit on the Upstreams page' })).toHaveAttribute('href', '/upstreams');
+    expect(within(summary).getByText('recursive, from the root servers')).toBeInTheDocument();
     expect(within(row('blocking.enabled')).getByRole('switch')).toBeChecked();
     expect(within(row('querylog.enabled')).getByRole('switch')).toBeChecked();
     expect(within(row('cache.maxEntries')).getByRole('spinbutton')).toHaveValue('100000');
@@ -249,6 +250,20 @@ describe('SettingsPage', () => {
     renderWithApp(<SettingsPage />, { route: '/settings?view=expert&q=bootstrap resolvers' });
     await waitFor(() => row('upstreams.bootstrap'));
     expect(document.querySelectorAll('[data-configkey]')).toHaveLength(1);
+  });
+
+  it('renders the recursion keys the Upstreams page links to from the schema', async () => {
+    renderWithApp(<SettingsPage />, { route: '/settings?view=expert&q=upstreams.recursion' });
+    await waitFor(() => row('upstreams.recursion.dnssec'));
+    expect([...document.querySelectorAll('[data-configkey]')].map((e) => e.getAttribute('data-configkey'))).toEqual([
+      'upstreams.recursion.dnssec',
+      'upstreams.recursion.ipv6',
+      'upstreams.recursion.qnameMinimization',
+      'upstreams.recursion.rootHints',
+      'upstreams.recursion.trustAnchors',
+    ]);
+    expect(within(row('upstreams.recursion.dnssec')).getByRole('switch')).toBeChecked();
+    expect(within(row('upstreams.recursion.dnssec')).getByRole('link', { name: 'Also on the Upstreams page' })).toHaveAttribute('href', '/upstreams');
   });
 
   it('shows the block page section with the HTTPS caveat and a sandboxed preview', async () => {

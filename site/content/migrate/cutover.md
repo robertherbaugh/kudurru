@@ -18,6 +18,8 @@ advertisements until the replacement passes the validation checks.
 2. Inventory services beyond blocking: DHCP, DNSSEC, recursive resolution,
    secondary zones, dynamic updates, encrypted endpoints and plugin behavior.
    Choose a replacement for every feature kudurru v0.1.0 does not provide.
+   Recursion and DNSSEC validation are available in upstream groups set to
+   `mode: recursive`; DNSSEC signing is not.
 3. Give kudurru a fixed address on a separate host or VM. Two servers cannot
    bind the same address and port. If you use one host, configure separate
    bind addresses or publish different test ports explicitly. The examples
@@ -145,6 +147,7 @@ response codes and intended filtering rather than identical output.
 | Schedules and safe search, if used | Expected behavior inside and outside each time window and for the supported engines |
 | Encrypted DNS, if used | Actual client connects using the configured hostname, certificate, port and protocol |
 | IPv6 client DNS | Real queries reach kudurru and match the intended IPv6 group |
+| Recursive group, if used | `dig @192.0.2.54 isc.org A +dnssec` has the `ad` flag; a name in your router's local domain resolves through its conditional rule; the group's resolver is healthy on **Upstreams** (outbound UDP/TCP 53 is open) |
 
 Set one test device's DNS to kudurru while the rest of the network uses the
 old server. Test normal browsing, work VPNs, streaming, local applications

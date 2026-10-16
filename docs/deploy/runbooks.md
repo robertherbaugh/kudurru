@@ -236,6 +236,32 @@ when it overflows).
 this node can use (during a rolling upgrade): upgrade the node. It keeps its
 data locally until then.
 
+## Recursive group gets no answers
+
+Symptoms: every name routed to a recursive group (`mode: recursive`) gets
+SERVFAIL with EDE 22 (No Reachable Authority) and status
+`timeout_upstream`, the group's page shows the
+resolver in backoff, `kudurru_upstream_healthy{upstream="<group>/recursive"}`
+is 0 (`KudurruUpstreamUnhealthy`), the log warns "recursive resolver in
+backoff: lookups time out and no authoritative server has answered
+recently; check that outbound DNS (UDP and TCP port 53) to the internet is
+allowed", and `kudurru_recursor_outgoing_queries_total` grows only with
+`result="timeout"` or `"error"`. Timeouts for a few names whose own name
+servers are dead do not cause backoff while other lookups succeed.
+
+1. From the node, ask a root server directly over UDP and TCP:
+   `dig @198.41.0.4 . NS +norec` and the same with `+tcp`. A timeout means
+   outbound port 53 is blocked: open UDP and TCP 53 to any address in the
+   firewall, the cloud security group or the cluster's egress policy.
+2. If the answer does not come from the root server (for example
+   `dig @198.41.0.4 id.server CH TXT` names your ISP's resolver), the ISP
+   intercepts port 53. Recursion cannot work there; set the group back to
+   forwarding, preferably over DoT or DoH.
+3. If only IPv6 fails, set `upstreams.recursion.ipv6: off`.
+
+A single name with SERVFAIL and status `dnssec_bogus` is not this case: the
+zone's DNSSEC is broken (the EDE text names it), and `dig +cd` shows the data.
+
 ## AuditLog CRD missing
 
 Symptom: the log line "the AuditLog CRD is not installed" and each replica's

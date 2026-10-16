@@ -246,7 +246,10 @@ blocking. Do not create a broad public zone merely to override one hostname.
 
 In **DNS** > **Upstreams**, set the `default` group to the upstreams Pi-hole
 used. If Pi-hole used a separate Unbound resolver, you can keep it as an
-upstream. Recreate conditional forwarding for your local suffix and the
+upstream, or set the `default` group's **Mode** to **Recursive**: kudurru
+then resolves from the root servers itself, with QNAME minimization and
+DNSSEC validation, and needs outbound UDP and TCP port 53
+([trade-offs](/start/home/#7-resolve-names-yourself-optional)). Recreate conditional forwarding for your local suffix and the
 correct `in-addr.arpa` / `ip6.arpa` reverse suffixes. Do not forward back to a
 router whose own DNS forwards to kudurru. See
 [zones and upstreams](/guide/admin/07-zones-and-upstreams/).

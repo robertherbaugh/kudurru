@@ -21,7 +21,7 @@ deployments.
 
 | Capability | What it provides | Details |
 |---|---|---|
-| Core DNS and dashboard | Authoritative zones, forwarding, encrypted DNS transports, blocking, the query log and short-term statistics | [Architecture overview](architecture/README.md) |
+| Core DNS and dashboard | Authoritative zones, forwarding, recursion with DNSSEC validation, encrypted DNS transports, blocking, the query log and short-term statistics | [Architecture overview](architecture/README.md) |
 | Multiple nodes and policies | The agreed node allowance, plus policies beyond the default for client groups and schedules | [Groups, clients and policies](guide/admin/05-groups-clients-policies.md) |
 | Identity and access | OIDC single sign-on, role bindings, zone-scoped roles and Kubernetes RBAC | [People, roles and tokens](guide/admin/09-people-and-tokens.md) |
 | Audit trail | Stored events, review of changes and audit export | [Audit](architecture/observability.md#audit) |

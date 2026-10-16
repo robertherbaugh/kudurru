@@ -60,7 +60,7 @@ function hero(version: string): Html {
     <div class="hero-copy">
       <p class="eyebrow mono"><span>Kubernetes-native DNS</span><span>Kudurru Community License</span><span>v${version} “stone”</span></p>
       <h1 id="hero-title">${TAGLINE.slice(0, -1)}<span class="stop">.</span></h1>
-      <p class="lead">kudurru is a DNS server for the networks you run: authoritative zones, a resolver over every encrypted transport, blocking with client groups, and a dashboard that shows why each answer was given. One Go binary, as a single container or as a Kubernetes Deployment with CRDs.</p>
+      <p class="lead">kudurru is a DNS server for the networks you run: authoritative zones, a resolver that forwards over every encrypted transport or resolves from the root with DNSSEC validation, blocking with client groups, and a dashboard that shows why each answer was given. One Go binary, as a single container or as a Kubernetes Deployment with CRDs.</p>
       <div class="actions">
         ${external(DOCS_URL, html`Read the docs ${icon.arrow}`, "btn btn-primary")}
         ${external(REPO_URL, html`${icon.github} Source on GitHub`, "btn btn-ghost")}

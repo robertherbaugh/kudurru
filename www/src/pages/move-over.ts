@@ -22,7 +22,7 @@ export function moveOver(): Html {
       <div>
         <p class="label">DNS for your homelab</p>
         <h1 id="homelab-title" class="page-title">Your network.<br>Your DNS rules.</h1>
-        <p class="sec-lead">Local names for your services, ad blocking for your household, and a dashboard that explains every answer. Run kudurru on the hardware you already have, in one container or your Kubernetes cluster.</p>
+        <p class="sec-lead">Local names for your services, ad blocking for your household, an optional validating resolver that asks the root servers itself instead of one provider, and a dashboard that explains every answer. Run kudurru on the hardware you already have, in one container or your Kubernetes cluster.</p>
         <div class="actions">
           ${external(docs("/start/home/"), html`Set up your home network ${icon.arrow}`, "btn btn-primary")}
           <a class="btn btn-ghost" href="#homelab-migrate-title">Moving an existing setup? ${icon.arrow}</a>
@@ -89,7 +89,7 @@ export function moveOver(): Html {
       <p class="sec-label">Feature comparison</p>
       <h2 id="comparison-title">Know what changes.</h2>
     </div>
-    <p class="sec-lead">kudurru v0.1.0 combines authoritative DNS, forwarding, filtering and a dashboard. Check the features you depend on before moving a working network.</p>
+    <p class="sec-lead">kudurru v0.1.0 combines authoritative DNS, forwarding or validating recursion, filtering and a dashboard. Check the features you depend on before moving a working network.</p>
     <div class="shapes migration-table" role="region" aria-labelledby="comparison-title" tabindex="0">
       <table>
         <caption>Built-in capabilities unless stated otherwise; planned features are labeled explicitly. Comparison reviewed October 16, 2026; other projects evolve independently.</caption>

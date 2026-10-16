@@ -73,7 +73,9 @@ function GroupsSummary({ value }: { value: unknown }) {
               </Text>
             </Link>{' '}
             <Text type="supporting">
-              {cfg.groups[n]?.servers.length ?? 0} server{cfg.groups[n]?.servers.length === 1 ? '' : 's'}, {strategyLabelOf(cfg.groups[n]?.strategy ?? '')}
+              {cfg.groups[n]?.mode === 'recursive'
+                ? 'recursive, from the root servers'
+                : `${cfg.groups[n]?.servers.length ?? 0} server${cfg.groups[n]?.servers.length === 1 ? '' : 's'}, ${strategyLabelOf(cfg.groups[n]?.strategy ?? '')}`}
             </Text>
           </Text>
         ))}

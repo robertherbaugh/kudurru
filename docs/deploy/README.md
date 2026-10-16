@@ -77,6 +77,13 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
 | 8888 | tcp | external-dns webhook provider (optional) |
 | 9153 | tcp | Prometheus `/metrics` |
 
+Outbound, a forwarding upstream group needs only its configured servers
+(and the bootstrap resolvers for server host names). A recursive group
+(`mode: recursive`) asks the root and each zone's name servers itself, so it
+needs UDP **and** TCP port 53 to any address, over IPv6 too when the host
+has a route; a firewall, NetworkPolicy or ISP that blocks or intercepts
+port 53 breaks it ([upstreams and the cache](../architecture/upstreams-and-cache.md#recursive-groups)).
+
 ## Secrets
 
 The binary reads secrets from files named by environment variables, never

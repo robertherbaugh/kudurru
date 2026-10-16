@@ -28,7 +28,7 @@ export const USE_CASES: readonly UseCase[] = [
     title: "Kubernetes DNS server with CRDs & Helm | kudurru",
     description: "Manage DNS zones, records and blocking as Kubernetes CRDs. Deploy kudurru with Helm and keep answering DNS queries through control plane outages.",
     heading: "Kubernetes DNS you manage with kubectl.",
-    intro: "Run authoritative DNS, a forwarding resolver and network ad blocking in your cluster. kudurru stores configuration in Kubernetes custom resources, so zones, records and policies fit the same Git review and deployment workflow as your applications.",
+    intro: "Run authoritative DNS, a forwarding or validating recursive resolver and network ad blocking in your cluster. kudurru stores configuration in Kubernetes custom resources, so zones, records and policies fit the same Git review and deployment workflow as your applications.",
     summary: "Manage zones and policies as CRDs, deploy with Helm, and serve DNS from memory on every replica.",
     action: { label: "Deploy with Helm", href: docs("/start/kubernetes/") },
     sections: [
@@ -99,6 +99,7 @@ export const USE_CASES: readonly UseCase[] = [
     ],
     questions: [
       { question: "Do I need to install an app on every device?", answer: "No app is needed for clients that use the DNS server advertised by your router. Devices with their own DNS or VPN settings may need additional configuration." },
+      { question: "Can kudurru resolve names without Cloudflare or Quad9?", answer: "Yes. Set an upstream group to recursive mode and kudurru asks the root servers and each domain's own name servers, with QNAME minimization and DNSSEC validation, so no single provider sees every name. Those servers still see the names they serve and your public address, and the queries travel as plain DNS on port 53, which your network must allow. Forwarding stays the default." },
       { question: "Is kudurru free for a home network?", answer: "Eligible personal use is free under the Kudurru Community License. One node with the default policy works without a key. A free personal key unlocks additional policies and licensed features for up to three nodes. Business and government production use requires a commercial agreement." },
     ],
   },
@@ -133,7 +134,7 @@ export const USE_CASES: readonly UseCase[] = [
         title: "Plan a gradual migration",
         paragraphs: [
           "There is no automatic Pi-hole importer or Teleporter archive import in the current release. Recreate your lists, groups and local records using the migration guide. kudurru v0.1.0 does not provide DHCP; keep that on your router or another DHCP server. Built-in DHCP support is planned for v0.2.0.",
-          "Run kudurru on a separate address beside Pi-hole. Compare answers for representative clients, move a test device, then change the DNS address advertised by DHCP. Keep Pi-hole available until its query log is quiet. DNSSEC validation is planned for v0.2, and Pi-hole API compatibility is planned for v1.0.",
+          "Run kudurru on a separate address beside Pi-hole. Compare answers for representative clients, move a test device, then change the DNS address advertised by DHCP. Keep Pi-hole available until its query log is quiet. If you ran Unbound beside Pi-hole, a recursive upstream group can replace it, with DNSSEC validation. Pi-hole API compatibility is planned for v1.0.",
         ],
         link: { label: "Follow the migration checklist", href: docs("/migrate/pihole/#switching-over") },
       },

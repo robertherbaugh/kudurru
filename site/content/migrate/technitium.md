@@ -7,7 +7,8 @@ weight: 30
 
 Technitium combines authoritative DNS, recursive resolution, blocking, DHCP,
 clustering and DNS Apps. kudurru v0.1.0 covers primary zones, forwarding,
-filtering and a dashboard, with native Kubernetes objects. Start by deciding
+validating recursion, filtering and a dashboard, with native Kubernetes
+objects. Start by deciding
 which Technitium responsibilities can move and which need to stay elsewhere.
 
 ## Import directly through the API
@@ -62,8 +63,8 @@ interchange format.
 |---|---|---|
 | Primary zones and standard DNS records | Primary `DNSZone` and `DNSRecordSet` | Export zone files, import and compare records |
 | Conditional Forwarder zones / `FWD` behavior | Forward `DNSZone` or suffix-to-upstream-group rule | Recreate forwarding explicitly; `FWD` is not a portable record |
-| Full recursive resolution | Forwarding resolver | Select upstream resolvers, or keep Technitium/Unbound for recursion |
-| DNSSEC validation and signing | Neither implemented | Retain a validating/signing service if required |
+| Full recursive resolution | Upstream group with `mode: recursive` (QNAME minimization) | Set `default` (or a Policy's group) to recursive; allow outbound UDP/TCP 53 |
+| DNSSEC validation and signing | Validation in recursive groups; no signing | Retain a signing service for signed zones; forwarded answers are not validated |
 | Secondary, stub and catalog zones | Deferred | Keep the existing service; do not apply schema-only zone types |
 | Zone transfer and NOTIFY | Outbound AXFR/IXFR, TSIG and NOTIFY | Recreate ACLs, keys and destinations; inbound secondary service is deferred |
 | RFC 2136 dynamic updates | Deferred | Keep the updater's DNS target or change automation to kudurru's API/external-dns webhook |
@@ -187,9 +188,25 @@ upstreams:
 ```
 
 Replace these with your approved resolvers. If you depended on Technitium
-for full recursion, point `default` at a resolver that still provides it.
-An upstream validator can enforce its own DNSSEC policy, but kudurru does
-not validate the returned chain itself.
+for full recursion, make `default` recursive instead and keep the `corp`
+group for the private suffix:
+
+```yaml
+upstreams:
+  groups:
+    default: { mode: recursive, timeout: 4s }   # no servers: resolves from the root, validates DNSSEC
+    corp:
+      servers: ["192.168.50.10:53", "192.168.50.11:53"]
+      strategy: strict
+```
+
+Recursion needs outbound UDP and TCP port 53 to any address. kudurru
+validates DNSSEC only in recursive groups; a forwarding group passes on what
+its upstream returns, so an upstream validator enforces its own policy. In
+either mode, a SERVFAIL that carries a DNSSEC extended DNS error (6 to 12)
+is logged as `dnssec_bogus`. See
+[resolving names yourself](/start/home/#7-resolve-names-yourself-optional)
+for the privacy trade-offs.
 
 Save this as `technitium-forward.yaml` for a private corporate suffix:
 
