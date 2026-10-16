@@ -378,7 +378,7 @@ function IssueLicenseWizard({
               fe.edited('features');
             }}
             showErrors={showErrors.limits}
-            lockedAllReason={plan === 'personal' ? 'A personal key always carries every feature.' : undefined}
+            lockedAllReason={plan === 'personal' ? 'A personal key always carries all features available to Personal.' : undefined}
             error={fe.field('features')}
           />
         </VStack>

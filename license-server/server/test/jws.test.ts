@@ -73,6 +73,21 @@ describe('Go escaping', () => {
 
 describe('signer refusals', () => {
   const base: Claims = { jti: 'lic_AAAAAAAAAAAA', iss: 'kudurru', sub: 'Hank', plan: 'personal', nodes: 3, iat: 100, exp: 200 };
+  test.each(['personal', 'business', 'trial'] as const)('%s branding is refused at the final signer', async (plan) => {
+    const claims: Claims = { ...base, plan, features: ['branding'] };
+    expect(() => assertSignable(GOLDEN.kid, claims)).toThrow('custom branding requires the Enterprise plan');
+    await expect(signCompact(await goldenKey(), GOLDEN.kid, claims)).rejects.toThrow('custom branding requires the Enterprise plan');
+  });
+
+  test('Enterprise unrestricted and explicit branding keys can be signed', async () => {
+    for (const features of [undefined, ['branding']] as const) {
+      const claims: Claims = { ...base, plan: 'enterprise' };
+      if (features !== undefined) claims.features = features;
+      const token = await signCompact(await goldenKey(), GOLDEN.kid, claims);
+      expect((await verify(token, keyring)).claims).toEqual(claims);
+    }
+  });
+
   test.each([
     ['features: []', { features: [] }, 'never empty'],
     ['nbf', { nbf: 50 }, 'nbf'],
