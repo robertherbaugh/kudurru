@@ -447,11 +447,27 @@ sequenceDiagram
     C->>L: final save (5 s limit)
 ```
 
-The cache is per node and so is a flush. `POST /api/v1/cache/flush` empties
-the whole cache, or one name across the common query types. Deleting a zone
-flushes its apex, approving an unblock request flushes the name, and any
-change under `upstreams.*` flushes everything, because a cached answer may
-have come from a server that is no longer configured.
+The cache is per node and so is a flush. In complete SQLite serving,
+`POST /api/v1/cache/flush` empties the whole cache or one exact name across all
+resolution scopes, types, classes, DO/CD flags and ECS subnets. A named flush
+preserves descendants and suffix lookalikes; an explicit `.` removes only the
+root name. Results report the canonical name and the actual number removed under
+the cache locks. Even a flush that finds no entry advances the invalidation
+generation, so an older detached fill cannot repopulate the cache afterward.
+New queries can fill it again after invalidation.
+
+The original HTTP proof must pass a current no-op transaction for cluster
+`cache.flush`, including final deadline and writer checks. Only then does the
+command invalidate the same cache used by DNS, outside transaction and dependency
+pins. This admission is primary-local: followers return 503 without forwarding
+to another node's cache. Local memory invalidation cannot be rolled back; a
+cancellation or writer loss after admission may return an error after entries
+were removed. Audit records retain that count. No configuration or durable
+generation changes, and no publication acknowledgment is required.
+
+The legacy Kubernetes route retains its existing common-type name invalidation.
+Zone deletion and settings changes have their own cache invalidation paths;
+unconverted SQLite unblock-request mutations remain unavailable.
 
 ## When the answer is an error
 

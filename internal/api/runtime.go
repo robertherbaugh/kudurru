@@ -52,8 +52,8 @@ type setBlockingInput struct {
 
 type flushInput struct {
 	Body *struct {
-		// Name flushes only this name (every common type, with and without
-		// DO/CD); absent flushes the whole cache.
+		// Name flushes only this exact name; absent flushes the whole cache.
+		// Complete serving includes every scope, type, class, flag and subnet.
 		Name string `json:"name,omitempty"`
 	}
 	Name string `query:"name" doc:"Same as the body field."`
@@ -219,6 +219,33 @@ var flushTypes = []uint16{
 }
 
 func (s *Server) flushCache(ctx context.Context, in *flushInput) (*flushOutput, error) {
+	if s.opts.CacheFlushCommand != nil {
+		name := in.Name
+		if in.Body != nil && in.Body.Name != "" {
+			name = in.Body.Name
+		}
+		if name != "" {
+			if len(name) > 1024 || strings.TrimSpace(name) == "" {
+				return nil, errInvalid("name: invalid domain name")
+			}
+			name = dns.CanonicalName(strings.TrimSpace(name))
+			if _, ok := dns.IsDomainName(name); !ok {
+				return nil, errInvalid("name: invalid domain name")
+			}
+		}
+		removed, err := s.opts.CacheFlushCommand(ctx, name)
+		if removed < 0 && err == nil {
+			err = errUnavailable("invalid cache flush receipt")
+		}
+		s.recordAction(ctx, "cache.flush", audit.Resource{Kind: "cache", Name: name}, err, nil, map[string]any{"flushed": removed})
+		if err != nil {
+			return nil, storeError(err)
+		}
+		return &flushOutput{Body: &FlushResult{Flushed: removed, Name: name, Node: s.opts.NodeName}}, nil
+	}
+	if s.opts.CanonicalSettings != nil || s.opts.DNSQueryCapture != nil || s.opts.ObjectReads != nil || s.opts.ObjectCommand != nil {
+		return nil, errUnavailable("current local cache command unavailable")
+	}
 	if s.opts.ResponseCache == nil {
 		return nil, errNotImplemented("the response cache")
 	}

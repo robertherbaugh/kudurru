@@ -146,6 +146,11 @@ Source-entry PATCH now edits inline values, structured switches and URL/ConfigMa
 exclusions in one current object command, including authorization and ownership
 checks on no-ops. Actual mounted acceptance covers publication and restart.
 Query-log allow/deny actions remain gated with the unconverted domain writer.
+Local cache flushes now require current raw-proof admission before invalidating
+the DNS cache. Exact-name removal includes all resolution scopes and ECS variants,
+counts actual removals, and fences detached fills even when no entry exists.
+Native DNS/HTTP acceptance proves a scoped cached answer is fetched again after
+the flush. Admission remains primary-local; follower-local administration is open.
 Built-in HTTP DNS queries retain the original authenticated installation through
 the DNS pipeline instead of acquiring a newer bundle. Captured serving messages
 on `/info/messages` use original policy, list and zone availability; process

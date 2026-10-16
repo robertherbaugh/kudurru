@@ -262,6 +262,8 @@ type Options struct {
 	// NodeConfigCommand admits local node PATCHes separately from cluster
 	// settings. It must own the SAME Reload document used for local GETs.
 	NodeConfigCommand NodeConfigCommand
+	// CacheFlushCommand admits invalidation of the SAME cache used by DNS.
+	CacheFlushCommand CacheFlushCommand
 	// Objects is the file-managed objects loader (CheckAPIWrite for the
 	// ha-static shape, diagnoses for /info/messages).
 	Objects *objects.Loader

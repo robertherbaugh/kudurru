@@ -944,6 +944,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var dnsQueryCapture pipeline.Capture
 	var canonicalSettings api.CanonicalSettings
 	var nodeConfigCommand api.NodeConfigCommand
+	var cacheFlushCommand api.CacheFlushCommand
 	var objectCommand api.ObjectCommand
 	var objectReads api.ObjectReadSource
 	var infoMessageReads api.InfoMessageReadSource
@@ -1016,6 +1017,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
 		nodeConfigCommand, err = newServingNodeCommand(complete, reload, logLevel)
+		if err != nil {
+			return err
+		}
+		cacheFlushCommand, err = newServingCacheCommand(complete, rc)
 		if err != nil {
 			return err
 		}
@@ -1137,7 +1142,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
-		ResponseCache: rc, Chain: chain, DNSQueryCapture: dnsQueryCapture,
+		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, Chain: chain, DNSQueryCapture: dnsQueryCapture,
 		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
 		Lists: listResolver, Notifier: manualNotify,

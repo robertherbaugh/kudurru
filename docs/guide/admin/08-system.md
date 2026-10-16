@@ -159,6 +159,13 @@ kudurru keeps answers in a cache. To remove them:
 
 The role Operator or Admin is necessary.
 
+On SQLite, a named flush removes that exact name across all cached query variants,
+including earlier resolution scopes. It preserves names below it. The result
+counts entries removed; new queries may cache answers again. This command is
+currently available on the primary only. A follower returns 503 and does not
+forward the request, because that would clear a different node's cache. If a
+request fails after admission, entries may already have been cleared.
+
 ### Doctor
 
 1. Click **Run checks** in the section **Doctor**.

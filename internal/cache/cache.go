@@ -403,9 +403,16 @@ func (c *Cache) Delete(k Key) {
 
 // Flush removes every entry.
 func (c *Cache) Flush() {
+	c.FlushCount()
+}
+
+// FlushCount removes every entry and returns the number actually removed.
+// It fences earlier detached fills even when the cache is already empty.
+func (c *Cache) FlushCount() int {
 	c.publication.Lock()
 	defer c.publication.Unlock()
 	c.generation.Add(1)
+	total := 0
 	for i := range c.shards {
 		sh := &c.shards[i]
 		sh.mu.Lock()
@@ -418,8 +425,52 @@ func (c *Cache) Flush() {
 		sh.mu.Unlock()
 		for kind, n := range counts {
 			c.m.evictedN(ReasonFlush, Kind(kind), n) //nolint:gosec // 0 or 1
+			total += n
 		}
 	}
+	return total
+}
+
+// FlushName removes the exact name across all scopes, types, classes, flags and
+// ECS subnets, including stale entries. Case and a final dot are normalized;
+// root means only root, and an empty name does nothing. Valid no-op names still
+// fence earlier detached fills. Like FlushZone, this rare action scans the cache.
+func (c *Cache) FlushName(name string) int {
+	if name == "" {
+		return 0
+	}
+	// Match MakeKey's ASCII-only folding; other DNS label bytes are opaque.
+	normalized := []byte(name)
+	for i, b := range normalized {
+		if b >= 'A' && b <= 'Z' {
+			normalized[i] = b + ('a' - 'A')
+		}
+	}
+	if normalized[len(normalized)-1] != '.' {
+		normalized = append(normalized, '.')
+	}
+	name = string(normalized)
+	c.publication.Lock()
+	defer c.publication.Unlock()
+	c.generation.Add(1)
+	total := 0
+	for i := range c.shards {
+		sh := &c.shards[i]
+		var counts [2]int
+		sh.mu.Lock()
+		for key, e := range sh.m {
+			if parts, ok := key.Parts(); ok && parts.Name == name {
+				counts[e.kind]++
+				sh.remove(e)
+			}
+		}
+		sh.mu.Unlock()
+		for kind, n := range counts {
+			c.m.evictedN(ReasonFlush, Kind(kind), n) //nolint:gosec // 0 or 1
+			total += n
+		}
+	}
+	return total
 }
 
 // FlushZone removes every entry whose name is apex or below it (any type,
