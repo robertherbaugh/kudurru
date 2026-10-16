@@ -323,7 +323,12 @@ func TestServerWithProxy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- s.Start(ctx) }()
-	defer func() { cancel(); <-done }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Start: %v", err)
+		}
+	}()
 	deadline := time.Now().Add(2 * time.Second)
 	for len(s.Addrs()) < 2 && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)

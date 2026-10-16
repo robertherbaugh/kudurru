@@ -24,7 +24,12 @@ func TestExtraLists(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- rep.r.Run(ctx) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run: %v", err)
+		}
+	})
 
 	waitFor := func(what string, ok func() bool) {
 		t.Helper()
