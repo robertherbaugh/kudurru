@@ -4,6 +4,26 @@ Notable changes to kudurru, following [Keep a Changelog](https://keepachangelog.
 and [Semantic Versioning](https://semver.org/). Until v1.0, the
 `kudurru.io/v1alpha1` API may change between minor releases.
 
+## [Unreleased]
+
+### Added
+
+- DHCPv4 server for v0.2.0: opt-in Linux/SQLite scopes with durable leases,
+  reservations, multiple subnets and trusted relays. Node-local API and
+  dashboard management apply persisted options live with revision checks.
+  Native/dnsmasq lease import, native export and automatic A/PTR records
+  support cutover and dedicated DHCP domains. Isolated stock-client tests
+  cover acquisition, renewal, restart, release, expiration and exhaustion.
+  DHCPv6 and multi-node failover remain deferred. See the
+  [DHCP deployment guide](docs/deploy/dhcp.md).
+- Complete DHCPv4 dashboard setup without DHCP YAML: scope creation, interface
+  discovery, topology, enable/disable and explicit adoption of host-file setup.
+  Desired setup is durably saved for restart; environment-owned setup stays
+  locked. Per-scope revisions and lease schema v3 apply tokens preserve live
+  option/reservation edits and reject stale staged changes. Removed or renamed
+  scopes retain their lease databases. UI-owned DHCP activation errors keep
+  DNS and the dashboard available for repair and revision-conflict recovery.
+
 ## [0.1.0] - 2026-10-16
 
 **“stone” — the first release.** Authoritative DNS, a forwarding resolver,

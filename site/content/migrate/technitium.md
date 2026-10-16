@@ -29,7 +29,7 @@ interchange format.
 | Allowed/blocked zones and URL lists | Allow/block `BlockList` objects and policies | Convert entries and attach lists explicitly |
 | Advanced Blocking DNS App | Client groups, policy lists, schedules, service blocking and safe search | Rebuild supported behavior; app configuration is not imported |
 | `APP`, `ANAME`, split-horizon or other app-specific behavior | No Technitium app runtime; no general per-client answer rewrites | Replace each dependency explicitly before moving affected zones |
-| DHCP | No DHCP server | Hand off leases, reservations and DNS updates separately |
+| DHCP | No DHCP server; planned for v0.2.0 | Hand off leases, reservations and DNS updates separately |
 | Clustering | Kubernetes shared store, or file-managed Compose HA | Choose a kudurru deployment; Technitium cluster membership does not transfer |
 | OIDC, LDAP, local users and permissions | Local users, OIDC and scoped roles; no native LDAP | Recreate credentials and grants; OIDC/scoped roles require a key |
 

@@ -18,6 +18,8 @@ resources:
   blocking: [read, toggle]
   settings: [read, write]
   node: [config]
+  dhcp: [read, write, delete]
+  dhcpleases: [read, import, export]
   users: [read, write, delete]
   groups: [read, write, delete]
   serviceaccounts: [read, write, delete]
@@ -42,6 +44,7 @@ roles:
     - clients.read
     - blocking.read
     - settings.read
+    - dhcp.read
     - tokens.own
   auditor:
     - zones.read
@@ -54,6 +57,9 @@ roles:
     - clients.read
     - blocking.read
     - settings.read
+    - dhcp.read
+    - dhcpleases.read
+    - dhcpleases.export
     - querylog.read
     - querylog.export
     - audit.read
@@ -73,6 +79,9 @@ roles:
     - clients.*
     - blocking.*
     - settings.read
+    - dhcp.read
+    - dhcpleases.read
+    - dhcpleases.export
     - querylog.read
     - unblockrequests.*
     - tokens.own

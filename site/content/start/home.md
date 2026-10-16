@@ -35,7 +35,8 @@ host with `kudurru admin reset-password admin`.
 
 Give the host a fixed address and make it the DNS server your router hands
 out with DHCP (often "DNS server" or "primary DNS" in the router's LAN
-settings). kudurru does not serve DHCP. Check from any device:
+settings). kudurru v0.1.0 does not serve DHCP; DHCP server support is planned
+for v0.2.0. Check from any device:
 
 ```sh
 dig @<host> example.com

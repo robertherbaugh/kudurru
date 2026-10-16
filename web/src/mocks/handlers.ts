@@ -49,6 +49,7 @@ import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
+import { dhcpHandlers, resetDHCP } from './dhcp';
 import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
@@ -57,6 +58,7 @@ let db: MockDB = createDB();
 /** Resets the database to the fixtures (tests call it in beforeEach). */
 export function resetDB(now?: number): MockDB {
   db = createDB(now);
+  resetDHCP();
   return db;
 }
 
@@ -107,6 +109,8 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   blocking: ['read', 'toggle'],
   settings: ['read', 'write'],
   node: ['config'],
+  dhcp: ['read', 'write', 'delete'],
+  dhcpleases: ['read', 'import', 'export'],
   users: ['read', 'write', 'delete'],
   groups: ['read', 'write', 'delete'],
   serviceaccounts: ['read', 'write', 'delete'],
@@ -123,7 +127,7 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
 /** The viewer role of permissions.yaml plus querylog.read (the mock "viewer"). */
 const VIEWER = [
   'zones.read', 'records.read', 'stats.read', 'cache.read', 'blocklists.read', 'policies.read', 'clientgroups.read',
-  'clients.read', 'blocking.read', 'settings.read', 'tokens.own', 'querylog.read', 'cluster.read',
+  'clients.read', 'blocking.read', 'settings.read', 'tokens.own', 'querylog.read', 'cluster.read', 'dhcp.read',
 ];
 
 /** The permission matrix GET /auth/me returns for a set of roles. */
@@ -138,7 +142,10 @@ export function permissions(roles: string[]): Record<string, string[]> {
     (out[r] ??= []).push(v);
   }
   // The auditor role reads unblock requests but cannot decide them.
-  if (roles.includes('auditor')) out.unblockrequests = ['read'];
+  if (roles.includes('auditor')) {
+    out.unblockrequests = ['read'];
+    out.dhcpleases = ['read', 'export'];
+  }
   return out;
 }
 
@@ -709,6 +716,7 @@ let tailTimer = 0;
 // ---------------------------------------------------------------------------
 
 export const handlers = [
+  ...dhcpHandlers(guard),
   // auth ------------------------------------------------------------------
   http.get(`${B}/auth/status`, () =>
     ok({

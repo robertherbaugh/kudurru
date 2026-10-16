@@ -38,7 +38,7 @@ check the version you run.
 | Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
 | Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding to named upstream groups; conditional forwarding |
 | DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | No validation or signing |
-| DHCP | Built in | Built in | Built in | Use a separate DHCP server |
+| DHCP | Built in | Built in | Built in | Use a separate DHCP server; built-in support planned for v0.2.0 |
 | Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
 | Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
 | Kubernetes configuration | Container configuration; no native CRDs | Container configuration; no native CRDs | Container configuration; no native CRDs | Native CRDs, Helm, external-dns webhook |

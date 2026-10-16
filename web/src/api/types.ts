@@ -12,6 +12,21 @@ import type { components } from './generated';
 
 type S = components['schemas'];
 
+// DHCPv4 management is local to the connected node.
+export type DHCPPoolOptions = S['DHCPPoolOptions'];
+export type DHCPReservation = S['DHCPReservation'];
+export type DHCPScopeSummary = S['DHCPScopeSummary'];
+export type DHCPStatus = S['DHCPStatus'];
+export type DHCPConfig = S['DHCPConfig'];
+export type DHCPLease = S['DHCPLease'];
+export type DHCPLeases = S['DHCPLeases'];
+export type DHCPImportResult = S['DHCPImportResult'];
+export type DHCPExport = S['DHCPExport'];
+export type DHCPSetup = S['DHCPSetup'];
+export type DHCPSetupScope = S['DHCPSetupScope'];
+export type DHCPSetupRequest = S['DHCPSetupRequest'];
+export type DHCPInterfaces = S['DHCPInterfaces'];
+
 // ---------------------------------------------------------------------------
 // Envelopes and errors
 

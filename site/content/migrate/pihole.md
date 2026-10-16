@@ -26,7 +26,7 @@ configuration importer; the examples below recreate a small setup manually.
 | Local DNS and CNAME records | Primary zones and records | Create the containing zone, then copy records |
 | Conditional forwarding | Named upstream groups and suffix rules, or forward zones | Recreate both local-domain and reverse-DNS routes |
 | Temporary blocking pause | Dashboard toggle or `kudurru blocking disable 5m` | Pause is node-local in v0.1.0; check the node you manage |
-| DHCP | No DHCP server | Move DHCP service and reservations before retiring Pi-hole |
+| DHCP | No DHCP server; planned for v0.2.0 | Move DHCP service and reservations before retiring Pi-hole |
 | DNSSEC validation | No local validation | Retain a validating upstream if required; this does not add validation to kudurru |
 | Pi-hole-specific API integrations | kudurru REST API and CLI | Rewrite integrations; no Pi-hole API compatibility layer in v0.1.0 |
 | Teleporter and historical query database | kudurru object backup and separate logs | Keep the source backup/history separately; neither is directly importable |
@@ -214,6 +214,9 @@ to `zeroIP`; `nxdomain`, `refused` and `customIP` are also available. Set
 query-log privacy and retention in **Settings** before moving real traffic.
 
 ## DHCP handoff
+
+kudurru v0.1.0 has no DHCP server. Built-in DHCP support is planned for
+v0.2.0; the handoff below applies to v0.1.0.
 
 If Pi-hole serves DHCP, prepare your router or another DHCP server with
 the same subnet, gateway, reservations and search domain. Account for active

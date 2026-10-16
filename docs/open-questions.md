@@ -19,7 +19,7 @@ These were the decisions the architecture left to the project owner. Answers are
 | 3 | **Sessions.** Sealed cookies in v0.1 for both modes; SQLite session store in v0.2 for Docker; optional external store for Kubernetes in v1.0. | 2026-10-10 | D54 |
 | 4 | **Kubernetes as a DNS data source.** `external` zones from Ingress, Gateway API routes and LoadBalancer Services in v0.2; `cluster.local` stays with CoreDNS before 1.x. | 2026-10-10 | D64 |
 | 5 | **Blocked-services and safe-search data.** A kudurru-owned, permissively licensed catalogue in a separate data repository, shipped in **v0.1** (M2). | 2026-10-10 | D60; revised by D120 (embedded catalogue in v0.1, the data repository waits for the owner) |
-| 6 | **DHCP.** Out of scope for 1.0; candidate for 2.0. | 2026-10-10 | D52 |
+| 6 | **DHCP.** Server support planned for v0.2.0; v0.1.0 uses an external DHCP server. | 2026-10-15 (revised) | D169, supersedes D42/D52 |
 | 7 | **Default block response.** `zeroIP` with a 10 minute TTL and EDE 15. | 2026-10-10 | D58 |
 | 8 | **Query log defaults.** Privacy `full`, raw rows 30 days up to 10 GiB, answer summary only in `full`, rollups 35 d / 400 d / forever. | 2026-10-10 | D59 |
 | 9 | **Cloudflare ownership marker.** Record comment `kudurru:owner=<clusterID>` plus a tag when the plan allows; external-dns heritage TXT records are read for adoption, never written. | 2026-10-10 | D62 |

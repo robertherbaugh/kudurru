@@ -11,6 +11,20 @@ kudurru separates three kinds of state, and keeps them apart on purpose:
 This page covers the first two: how an object gets from a writer to every
 node's query path, and how settings reload.
 
+The v0.2.0 development [DHCPv4 server](dhcp.md) adds a separate node-local
+setup registry, `dhcp-settings.json`, and per-scope `dhcp.db`/`dhcp-<name>.db`
+databases. Fresh setup can be entered entirely in the dashboard. Existing host
+`dhcp.*` configuration stays file-owned until explicit adoption; generic
+host-only settings restrictions remain. Any DHCP environment override blocks
+UI setup ownership. Setup saves stage complete scopes for restart and never
+change live listeners or lease state. API-managed scopes keep live options and
+reservations in their lease database. The setup view overlays current values
+only for scopes without pending edits; setup and database revisions prevent
+concurrent changes from being lost. Lease schema v3 applies each scope's setup
+token once, preserving later live edits. All of this state stays on one SQLite
+node, outside store replication and ordinary object backup. Committed lease
+snapshots supply DNS and policy names without query-time storage reads.
+
 ![Writers go through one validator into the store; every node's zonecache watches the store and builds the snapshot the pipeline reads; the leader's controller writes status back](diagrams/config-flow.excalidraw.svg)
 
 Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
@@ -232,6 +246,7 @@ Settings are not store objects. Each key in the metadata table
 | Scope | Examples | Changed how |
 |---|---|---|
 | node, `hostOnly`, restart | `node.*`, `listeners.*`, `store.*`, `tsigKeys`, `auth.adminSocket.*` | file or environment, then restart; never through the API |
+| node, dedicated DHCP setup | enabled state and complete DHCP scope topology | DHCP setup API/dashboard, explicit file adoption, then restart; generic Settings remains host-only |
 | cluster, hot | `upstreams.*`, `cache.*`, `blocking.enabled/defaultResponse/blockTTL`, `ratelimit.*`, `querylog.privacy/retention` | API, dashboard, settings file; applied without a restart |
 | cluster, restart | `querylog.enabled`, `blocking.initStrategy`, `auth.session.*` | as above, applied at the next start |
 | cluster, `hostOnly` | `auth.identityProviders`, `rbac.bindings` | file or environment only |

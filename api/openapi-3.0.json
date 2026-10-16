@@ -1122,6 +1122,792 @@
         ],
         "type": "object"
       },
+      "DHCPConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "envLocked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "etag": {
+            "type": "string"
+          },
+          "management": {
+            "enum": [
+              "file",
+              "api"
+            ],
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/components/schemas/DHCPPoolOptions"
+          },
+          "reservations": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPReservation"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "topology": {
+            "$ref": "#/components/schemas/DHCPTopology"
+          }
+        },
+        "required": [
+          "node",
+          "scope",
+          "management",
+          "revision",
+          "etag",
+          "topology",
+          "options",
+          "reservations",
+          "envLocked",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPExport": {
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/DHCPLeaseDocument"
+          },
+          "node": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node",
+          "scope",
+          "document",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "native",
+              "dnsmasq"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "data"
+        ],
+        "type": "object"
+      },
+      "DHCPImportResult": {
+        "additionalProperties": false,
+        "properties": {
+          "imported": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "node": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "skippedExpired": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "unchanged": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "node",
+          "scope",
+          "imported",
+          "unchanged",
+          "skippedExpired",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPInterface": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "broadcast": {
+            "type": "boolean"
+          },
+          "loopback": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "up": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "addresses",
+          "up",
+          "broadcast",
+          "loopback"
+        ],
+        "type": "object"
+      },
+      "DHCPInterfaces": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPInterface"
+            },
+            "type": "array"
+          },
+          "node": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node",
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPLease": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "clientID": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "offered",
+              "bound",
+              "declined"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "clientID",
+          "mac",
+          "hostname",
+          "state",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "DHCPLeaseDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "exportedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "leases": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPLeaseRecord"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "scope",
+          "subnet",
+          "exportedAt",
+          "leases"
+        ],
+        "type": "object"
+      },
+      "DHCPLeaseIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "mac",
+              "client-id"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ],
+        "type": "object"
+      },
+      "DHCPLeaseRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/DHCPLeaseIdentity"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "offered",
+              "bound",
+              "declined"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "identity",
+          "mac",
+          "hostname",
+          "expiresAt",
+          "state"
+        ],
+        "type": "object"
+      },
+      "DHCPLeases": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPLease"
+            },
+            "type": "array"
+          },
+          "node": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node",
+          "scope",
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPPoolOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "dnsServers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 63,
+            "minItems": 1,
+            "type": "array"
+          },
+          "dnsTTL": {
+            "type": "string"
+          },
+          "domainName": {
+            "type": "string"
+          },
+          "leaseDuration": {
+            "type": "string"
+          },
+          "rangeEnd": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "rangeStart": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "registerDNS": {
+            "type": "boolean"
+          },
+          "router": {
+            "format": "ipv4",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rangeStart",
+          "rangeEnd",
+          "router",
+          "dnsServers",
+          "domainName",
+          "leaseDuration",
+          "registerDNS",
+          "dnsTTL"
+        ],
+        "type": "object"
+      },
+      "DHCPReservation": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "ip": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mac",
+          "ip",
+          "hostname"
+        ],
+        "type": "object"
+      },
+      "DHCPReservations": {
+        "additionalProperties": false,
+        "properties": {
+          "etag": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPReservation"
+            },
+            "type": "array"
+          },
+          "node": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node",
+          "scope",
+          "revision",
+          "etag",
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPScopeSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "interface": {
+            "type": "string"
+          },
+          "management": {
+            "enum": [
+              "file",
+              "api"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "relayOnly": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "serverIP": {
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "management",
+          "revision",
+          "interface",
+          "serverIP",
+          "subnet",
+          "relayOnly"
+        ],
+        "type": "object"
+      },
+      "DHCPSetup": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environmentLocked": {
+            "type": "boolean"
+          },
+          "etag": {
+            "type": "string"
+          },
+          "managedBy": {
+            "enum": [
+              "file",
+              "api"
+            ],
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "pendingScopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "restartRequired": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "runtimeError": {
+            "type": "string"
+          },
+          "scopeRevisions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPSetupScope"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "unavailableReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "enabled",
+          "managedBy",
+          "environmentLocked",
+          "restartRequired",
+          "available",
+          "unavailableReason",
+          "runtimeError",
+          "revision",
+          "etag",
+          "scopes",
+          "scopeRevisions",
+          "pendingScopes",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPSetupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "adopt": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "scopeRevisions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPSetupScope"
+            },
+            "maxItems": 256,
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "scopes",
+          "scopeRevisions"
+        ],
+        "type": "object"
+      },
+      "DHCPSetupScope": {
+        "additionalProperties": false,
+        "properties": {
+          "dnsServers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 63,
+            "minItems": 1,
+            "type": "array"
+          },
+          "dnsTTL": {
+            "type": "string"
+          },
+          "domainName": {
+            "type": "string"
+          },
+          "interface": {
+            "type": "string"
+          },
+          "leaseDuration": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 63,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rangeEnd": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "rangeStart": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "registerDNS": {
+            "type": "boolean"
+          },
+          "relayOnly": {
+            "type": "boolean"
+          },
+          "reservations": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPReservation"
+            },
+            "type": "array"
+          },
+          "router": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "serverIP": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
+          },
+          "trustedRelays": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPTrustedRelay"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "interface",
+          "serverIP",
+          "subnet",
+          "relayOnly",
+          "trustedRelays",
+          "rangeStart",
+          "rangeEnd",
+          "router",
+          "dnsServers",
+          "domainName",
+          "leaseDuration",
+          "registerDNS",
+          "dnsTTL",
+          "reservations"
+        ],
+        "type": "object"
+      },
+      "DHCPStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "node": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPScopeSummary"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node",
+          "enabled",
+          "available",
+          "scopes",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPTopology": {
+        "additionalProperties": false,
+        "properties": {
+          "interface": {
+            "type": "string"
+          },
+          "relayOnly": {
+            "type": "boolean"
+          },
+          "serverIP": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
+          },
+          "trustedRelays": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPTrustedRelay"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "interface",
+          "serverIP",
+          "subnet",
+          "relayOnly",
+          "trustedRelays"
+        ],
+        "type": "object"
+      },
+      "DHCPTrustedRelay": {
+        "additionalProperties": false,
+        "properties": {
+          "gatewayIP": {
+            "format": "ipv4",
+            "type": "string"
+          },
+          "sourceIP": {
+            "format": "ipv4",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceIP",
+          "gatewayIP"
+        ],
+        "type": "object"
+      },
       "DNSFlags": {
         "additionalProperties": false,
         "properties": {
@@ -1269,6 +2055,22 @@
           "latency_ms",
           "node",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "DhcpReservationInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "ip": {
+            "format": "ipv4",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ip"
         ],
         "type": "object"
       },
@@ -14549,6 +15351,1474 @@
           "resource": "node",
           "scope": "cluster",
           "verb": "config"
+        }
+      }
+    },
+    "/node/dhcp/v4/interfaces": {
+      "get": {
+        "operationId": "listDHCPInterfaces",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPInterfaces"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "IPv4 interfaces on this node",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/node/dhcp/v4/scopes/{scope}/config": {
+      "get": {
+        "operationId": "getDHCPScopeConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPConfig"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Effective DHCPv4 scope configuration",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "put": {
+        "operationId": "putDHCPScopeConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DHCPPoolOptions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPConfig"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Atomically update DHCPv4 pool options",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/node/dhcp/v4/scopes/{scope}/export": {
+      "get": {
+        "operationId": "exportDHCPLeases",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPExport"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Export native DHCPv4 lease state",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcpleases",
+          "scope": "cluster",
+          "verb": "export"
+        }
+      }
+    },
+    "/node/dhcp/v4/scopes/{scope}/import": {
+      "post": {
+        "operationId": "importDHCPLeases",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DHCPImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPImportResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Atomically import native or dnsmasq leases",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcpleases",
+          "scope": "cluster",
+          "verb": "import"
+        }
+      }
+    },
+    "/node/dhcp/v4/scopes/{scope}/leases": {
+      "get": {
+        "operationId": "listDHCPLeases",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "enum": [
+                "offered",
+                "bound",
+                "declined"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPLeases"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Live DHCPv4 leases on this node",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcpleases",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/node/dhcp/v4/scopes/{scope}/reservations": {
+      "get": {
+        "operationId": "listDHCPReservations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPReservations"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Effective DHCPv4 reservations",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/node/dhcp/v4/scopes/{scope}/reservations/{mac}": {
+      "delete": {
+        "operationId": "deleteDHCPReservation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mac",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPConfig"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Remove a reservation while preserving live leases",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "delete"
+        }
+      },
+      "put": {
+        "operationId": "putDHCPReservation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mac",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DhcpReservationInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPConfig"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create or replace a DHCPv4 reservation",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/node/dhcp/v4/setup": {
+      "get": {
+        "operationId": "getDHCPSetup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPSetup"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Saved DHCPv4 setup on this node",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "put": {
+        "description": "Persists desired setup without changing running listeners or lease stores. Every saved scope must be complete, even when DHCP is disabled. File ownership requires explicit adoption.",
+        "operationId": "putDHCPSetup",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DHCPSetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPSetup"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Save DHCPv4 setup for the next restart",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/node/dhcp/v4/status": {
+      "get": {
+        "operationId": "getDHCPStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DHCPStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "DHCPv4 scopes on this node",
+        "tags": [
+          "dhcp"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },

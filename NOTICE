@@ -22,6 +22,10 @@ This product includes software developed by third parties under their own
 (permissive) licenses, which are not changed by the license above.
 Attributions are added to this file as the dependencies land:
 
+- insomniacslk/dhcp (https://github.com/insomniacslk/dhcp), BSD-3-Clause,
+  Copyright (c) 2018 Andrea Barberio: DHCPv4 packet encoding and decoding.
+  kudurru's lease allocation and server behavior are implemented from the
+  DHCP specifications; no code from copyleft DHCP servers is used.
 - blocky (https://github.com/0xERR0R/blocky), Apache-2.0: matcher and list
   pipeline designs (string caches, suffix sets, list fetch/refresh strategy).
   internal/blocking/matcher adapts the design of blocky v0.35.0

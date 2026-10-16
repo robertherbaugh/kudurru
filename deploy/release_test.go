@@ -239,7 +239,10 @@ func TestDockerfile(t *testing.T) {
 	// The -hostnetwork variant: the ko binary with the file capability, on
 	// the base of the kudurru ko entry.
 	hn := string(readRepoFile(t, "images/hostnetwork/Dockerfile"))
-	for _, want := range []string{"FROM " + base["kudurru"] + "\n", "COPY --from=kudurru /ko-app/kudurru", "setcap cap_net_bind_service=+ep", "USER 65532:65532", `ENTRYPOINT ["/ko-app/kudurru"]`} {
+	for _, want := range []string{"FROM " + base["kudurru"] + "\n", "COPY --from=kudurru /ko-app/kudurru",
+		"ARG DHCP_CAPABILITIES=false", "false) file_caps=cap_net_bind_service=ep", "true) file_caps=cap_net_bind_service,cap_net_raw=ep",
+		`setcap "$file_caps" /out/kudurru`, `test "$(getcap /out/kudurru)" = "/out/kudurru $file_caps"`,
+		"USER 65532:65532", `ENTRYPOINT ["/ko-app/kudurru"]`} {
 		if !strings.Contains(hn, want) {
 			t.Errorf("images/hostnetwork/Dockerfile lacks %q", want)
 		}
