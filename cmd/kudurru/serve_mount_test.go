@@ -48,6 +48,7 @@ func TestRunServeSQLiteCompletePrimaryUpdateRestart(t *testing.T) {
 	}
 	for _, obj := range []store.Object{
 		&public.Policy{ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "default"}},
+		&public.Policy{ObjectMeta: metav1.ObjectMeta{Name: "mounted-diagnosis", Namespace: "default"}, Spec: public.PolicySpec{ClientGroupRefs: []string{"absent-mounted-group"}}},
 		&public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "mounted-source", Namespace: "default"}, Spec: public.BlockListSpec{Sources: []public.ListSource{{Name: "entries", Format: "domains", Inline: []string{"blocked.example", "excluded.example"}, Exclude: []string{"excluded.example"}}}}},
 		&public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home"}, Spec: public.DNSZoneSpec{
 			ZoneName: "example.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns.example."},
@@ -413,6 +414,47 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 	}
 	if !found {
 		t.Fatalf("record listing omitted the dynamic UPDATE: %s", raw)
+	}
+	code, raw = request(http.MethodGet, "/info/messages", "")
+	var messages api.List[api.DiagnosisMessage]
+	if code != http.StatusOK || json.Unmarshal(raw, &messages) != nil {
+		t.Fatalf("mounted captured diagnoses failed (status %d)", code)
+	}
+	found = false
+	for _, message := range messages.Items {
+		if message.Source == "policy" && message.Reason == "MissingReference" && message.Object == "Policy/default/mounted-diagnosis" {
+			found = message.Severity == "warning" && message.Node == cfg.Node.Name
+		}
+	}
+	if !found {
+		t.Fatal("mounted captured diagnoses omitted the original policy's missing reference")
+	}
+	// The built-in query must receive the original HTTP serving lease. In
+	// complete mode a missing bridge fails closed, even with a usable Chain.
+	for _, query := range []struct{ name, address string }{
+		{"dynamic.example.", "192.0.2.33"},
+		{"http.example.", "192.0.2.44"},
+	} {
+		body, err := json.Marshal(api.DNSQueryRequest{Name: query.name, Type: "A", Client: "127.0.0.1", Proto: "udp"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		code, raw := request(http.MethodPost, "/dns/query", string(body))
+		var answer api.DNSQueryResult
+		if code != http.StatusOK || json.Unmarshal(raw, &answer) != nil {
+			t.Fatalf("mounted built-in query failed (status %d)", code)
+		}
+		if answer.Rcode != "NOERROR" || answer.Status != "authoritative" || answer.Error != "" || !answer.Flags.AA || len(answer.Answer) != 1 {
+			t.Fatalf("mounted built-in query lost committed authority: %+v", answer)
+		}
+		rr, err := dns.NewRR(answer.Answer[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, ok := rr.(*dns.A)
+		if !ok || a.Hdr.Name != query.name || a.A.String() != query.address || answer.Client != "127.0.0.1" || answer.Node != cfg.Node.Name {
+			t.Fatalf("mounted built-in query changed committed record or caller metadata: %+v", answer)
+		}
 	}
 	if code, _ := request(http.MethodPatch, "/settings", `{"cache":{"maxEntries":99}}`); code != 403 {
 		t.Fatal("viewer token reached settings mutation", code)

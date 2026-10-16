@@ -247,6 +247,10 @@ var protoByName = map[string]pipeline.Proto{
 }
 
 func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutput, error) {
+	complete := s.opts.DNSQueryCapture != nil || s.opts.ObjectReads != nil || s.opts.CanonicalSettings != nil
+	if complete && (s.opts.DNSQueryCapture == nil || s.opts.Chain == nil) {
+		return nil, errUnavailable("the original DNS serving generation is unavailable")
+	}
 	if s.opts.Chain == nil {
 		return nil, errNotImplemented("the DNS pipeline")
 	}
@@ -287,6 +291,16 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 		// Synthetic: the caller chooses the client address, so the log
 		// stage must not record this as that client's traffic.
 		Client: pipeline.Client{Addr: netip.AddrPortFrom(client, 0), Proto: proto, ClientID: "api-dig", Synthetic: true},
+	}
+	if s.opts.DNSQueryCapture != nil {
+		lease, err := s.opts.DNSQueryCapture(preq)
+		if lease != nil {
+			defer lease.Release() // response cleanup below must finish first
+		}
+		if err != nil || lease == nil {
+			return nil, errUnavailable("the original DNS serving generation is unavailable")
+		}
+		preq.Serving = lease
 	}
 	resp, err := s.opts.Chain.Serve(preq)
 	defer func() { resp.Close() }() // nil-safe, including error and unused stream responses

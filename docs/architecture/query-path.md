@@ -41,6 +41,23 @@ Every transport ends in one handler that stamps `Received` and a 5 s
 deadline, runs the chain and writes the reply. DoH, DoQ and DoH3 give the
 pipeline a fresh message ID, because their clients send ID 0.
 
+### Built-in HTTP query
+
+On SQLite, `POST /dns/query` clones the complete lease already retained by HTTP
+authentication. Root composition wraps that clone for the DNS pipeline, which
+uses it without capturing another publication. Policy, committed zone records,
+lists and resolver membership therefore come from the same installation as the
+authorized HTTP request. CNAME and DNS64 subqueries inherit it. Missing, released
+or canceled request ownership returns 503; the handler closes any response or
+unused transfer before releasing its clone.
+
+The caller-selected address and protocol remain synthetic diagnostic inputs.
+They confer no verified TSIG identity, and the query log does not record them as
+client traffic. Absolute data expiry is checked at execution time. Latency,
+cache hits and remote DNS answers are current observations using the retained
+resources, rather than historical answers frozen by the lease. Legacy Kubernetes
+construction keeps its existing independent DNS capture.
+
 ### Who is the client? (PROXYv2)
 
 When dnsdist fronts kudurru, the real client address arrives in a PROXYv2

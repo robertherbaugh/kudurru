@@ -243,6 +243,10 @@ type Options struct {
 	ResponseCache *cache.Cache
 	// Chain runs POST /dns/query in-process.
 	Chain *pipeline.Chain
+	// DNSQueryCapture clones the original HTTP request's complete cut for a
+	// synthetic query. Ownership transfers even when a lease accompanies an
+	// error. Complete mounts require it; nil preserves legacy query capture.
+	DNSQueryCapture pipeline.Capture
 	// Config is the effective configuration (settings routes, listener);
 	// Settings persists PATCH /settings (cluster scope; PATCH /node/config
 	// changes stay in memory). Reload, when set, is the live configuration:
@@ -282,6 +286,8 @@ type Options struct {
 	// ObjectReads replaces generic object GETs with original complete-cut reads.
 	// Nil preserves the legacy store-backed paths, including Kubernetes.
 	ObjectReads ObjectReadSource
+	// InfoMessageReads projects serving diagnoses from the original request cut.
+	InfoMessageReads InfoMessageReadSource
 	// SourceBodyReads opens exact captured source receipts for entries GETs.
 	// Complete mode requires ObjectReads too; neither path uses live fallback.
 	SourceBodyReads SourceBodyReadSource

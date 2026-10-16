@@ -70,6 +70,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
+	"github.com/robertherbaugh/kudurru/internal/servingdns"
+	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -939,9 +941,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if complete != nil {
 		settingsManager = nil
 	}
+	var dnsQueryCapture pipeline.Capture
 	var canonicalSettings api.CanonicalSettings
 	var objectCommand api.ObjectCommand
 	var objectReads api.ObjectReadSource
+	var infoMessageReads api.InfoMessageReadSource
 	var sourceBodyReads api.SourceBodyReadSource
 	var policyListReads api.PolicyListReadSource
 	var blockingReads api.BlockingReadSource
@@ -1004,8 +1008,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		authorizer, roles = httpAuth.Authorizer(), httpAuth.Roles
 		authHandler = httpAuth.Handler()
+		dnsQueryCapture = func(req *pipeline.Request) (pipeline.ServingLease, error) {
+			lease, err := servinghttp.CloneLease(req.Ctx)
+			return servingdns.Wrap(lease), err
+		}
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
 		objectReads = servingbuild.NewObjectReads()
+		infoMessageReads = servingbuild.NewInfoMessageReads()
 		sourceBodyReads, err = servingbuild.NewSourceBodyReads(lists)
 		if err != nil {
 			return err
@@ -1119,10 +1128,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
-		SourceBodyReads: sourceBodyReads,
-		Querylog:        qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
+		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads,
+		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
-		ResponseCache: rc, Chain: chain,
+		ResponseCache: rc, Chain: chain, DNSQueryCapture: dnsQueryCapture,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
 		Lists: listResolver, Notifier: manualNotify,

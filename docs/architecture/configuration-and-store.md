@@ -817,6 +817,15 @@ capacity. This watcher subscribes before capture, detaches the configuration
 while holding the complete lease, and applies it after releasing that lease.
 It does not replace captured DNS owners or update the legacy settings file/pointer.
 DNS settings continue to take effect through complete publication.
+
+`GET /node/config` remains a local configuration-document read. Its in-memory
+PATCH can acknowledge node log settings, but the complete SQLite operational
+watcher derives its host inputs from immutable startup configuration. The local
+document therefore does not prove logger adoption or belong to the captured
+HTTP serving image. Unifying node writes, readback and operational acknowledgment
+remains open; replacing this read with startup values alone would hide an
+acknowledged local change.
+
 Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary
 limitation remains: a former primary can acknowledge writes until it learns of

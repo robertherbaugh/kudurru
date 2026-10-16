@@ -107,6 +107,10 @@ A reproduced startup deadlock is corrected: the driver now admits ancestors
 before advancing a preparing child to fencing. Actual controller/driver tests
 cover startup and fresh-runtime recovery from the exact durable parent-fencing
 head and child-preparing checkpoint, retaining all witness and publication gates.
+Lifecycle callback validation also treats nil and empty parent lists as the same
+empty durable value; successful SQLite transitions no longer report a false
+failure after copy/JSON normalization. Nonempty obligations and all other result
+fields still require exact equality.
 Earlier active-child and mounted publication timeouts remain unattributed; this
 correction does not establish their cause.
 The root runtime assembly is mounted on SQLite DNS listeners; Kubernetes
@@ -138,6 +142,10 @@ Source-entry GETs now use captured inline/structured values or verify the exact
 captured digest's bounded cached body. Missing old bytes return 503; pagination
 binds the original generation and query, and uncaptured local fetch times are
 omitted. RPZ feeds remain a separate diagnostic surface.
+Built-in HTTP DNS queries retain the original authenticated installation through
+the DNS pipeline instead of acquiring a newer bundle. Captured serving messages
+on `/info/messages` use original policy, list and zone availability; process
+health and loader observations remain explicitly current diagnostics.
 Blocking toggle commands update that same canonical state and acknowledge its
 actual publication; a committed-but-unacknowledged response identifies the saved
 receipt. Absolute deadlines survive restart without renewal.
@@ -152,6 +160,9 @@ the Access page adds manual-key enrollment/replacement, removal and exact-UID
 administrator recovery, with component-local secrets and canceled-session
 cleanup. It also lists and individually revokes the account's browser sessions,
 preserving other sessions and rejecting late cleanup from a replaced session.
+Local CLI login accepts an explicit hidden or stdin authenticator code in its
+single password login. Typed credential commands refuse redirects and automatic
+replay; browser/device CLI sign-in remains open.
 Administrative/source writer integration remains open.
 Manual NOTIFY now enqueues or coalesces the exact committed head under current
 admission, without changing records or serial. Signed mounted acceptance covers
