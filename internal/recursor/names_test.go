@@ -37,14 +37,14 @@ func TestNameHelpers(t *testing.T) {
 		t.Fatal("first step adds one label")
 	}
 	// After four one-label steps the rest is split so the name takes at
-	// most maxMinimiseStep queries.
+	// most maxMinimizeStep queries.
 	n, known := 0, "."
 	name := "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa."
 	for known != name {
 		known = nextMinimized(known, name, n)
 		n++
 	}
-	if n > maxMinimiseStep+1 {
+	if n > maxMinimizeStep+1 {
 		t.Fatalf("%d steps", n)
 	}
 	r := randomizeCase("www.example.com.", func() uint64 { return 0xAAAAAAAAAAAAAAAA })

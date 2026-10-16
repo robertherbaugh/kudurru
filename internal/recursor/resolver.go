@@ -151,8 +151,8 @@ const (
 	maxSigBudget    = 96  // signature checks per client query
 	maxNSEC3Hashes  = 64  // NSEC3 name hashes per client query
 	maxNSEC3Iter    = 150 // more iterations make a zone insecure (RFC 9276)
-	maxMinimiseOne  = 4   // RFC 9156 MINIMISE_ONE_LAB
-	maxMinimiseStep = 10  // RFC 9156 MAX_MINIMISE_COUNT
+	maxMinimizeOne  = 4   // RFC 9156 MINIMISE_ONE_LAB
+	maxMinimizeStep = 10  // RFC 9156 MAX_MINIMISE_COUNT
 	maxCutProbes    = 8   // DS probes looking for an insecure delegation
 )
 
@@ -673,15 +673,15 @@ func (q *query) iterate(name string, qtype uint16) (*response, error) {
 
 // nextMinimized is the next name to ask for under RFC 9156 §2.3: one more
 // label for the first steps, then bigger steps so a long name takes at
-// most maxMinimiseStep queries.
+// most maxMinimizeStep queries.
 func nextMinimized(known, name string, steps int) string {
-	if steps >= maxMinimiseStep {
+	if steps >= maxMinimizeStep {
 		return name
 	}
 	add := 1
-	if steps >= maxMinimiseOne {
+	if steps >= maxMinimizeOne {
 		remaining := labels(name) - labels(known)
-		left := maxMinimiseStep - steps
+		left := maxMinimizeStep - steps
 		add = max(1, (remaining+left-1)/left)
 	}
 	return suffixLabels(name, labels(known)+add)
