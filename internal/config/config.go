@@ -43,6 +43,7 @@ type Config struct {
 	Cache     Cache              `koanf:"cache" json:"cache"`
 	Blocking  Blocking           `koanf:"blocking" json:"blocking"`
 	BlockPage BlockPage          `koanf:"blockPage" json:"blockPage"`
+	Branding  Branding           `koanf:"branding" json:"branding"`
 	// UnblockRequests configures the block page's request form.
 	UnblockRequests UnblockRequests  `koanf:"unblockRequests" json:"unblockRequests"`
 	Querylog        Querylog         `koanf:"querylog" json:"querylog"`
@@ -632,6 +633,7 @@ func (c *Config) Validate() error {
 	}
 	errs = append(errs, c.Blocking.validate()...)
 	errs = append(errs, c.validateBlockPage()...)
+	errs = append(errs, c.Branding.Validate())
 	errs = append(errs, c.validateUnblockRequests()...)
 	errs = append(errs, c.Querylog.validate()...)
 	errs = append(errs, c.validateAudit()...)

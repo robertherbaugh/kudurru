@@ -36,21 +36,27 @@ quote. Support contracts are separate.
 
 A **license key** unlocks what a single free node does not have:
 
-| | No key (community) | Personal/nonprofit key (free) | Business key |
-|---|---|---|---|
-| DNS answering, blocking, zones, the block page, the dashboard, short-term statistics, API tokens, the built-in administrator | Yes | Yes | Yes |
-| Nodes in one cluster | 1 | up to 3 | as agreed |
-| Policies | 1 (the seeded default) | unlimited | unlimited |
-| Roles beyond the one built-in administrator: role bindings, zone-scoped roles, Kubernetes RBAC (`ee/rbac`) | No | Yes | Yes* |
-| OIDC single sign-on (`ee/oidc`) | No | Yes | Yes* |
-| The audit trail: stored events, `GET /audit`, export (`ee/auditstore`); the audit log lines are always written | No | Yes | Yes* |
-| Long-term statistics: any window older than 24 hours (`ee/longterm`) | No | Yes | Yes* |
-| Unblock requests: the block page's request form and the review of requests (the block page itself is free) | No | Yes | Yes* |
-| dnsdist and keepalived edge, VIP (`ee/edge`) | No | Yes | Yes* |
-| Integrations, such as the external-dns webhook (`ee/integration`) | No | Yes | Yes* |
-| Business or government production use | No | No | Only as granted by the agreement |
+| | No key (community) | Personal/nonprofit key (free) | Business key | Enterprise key |
+|---|---|---|---|---|
+| DNS answering, blocking, zones, the block page, the dashboard, short-term statistics, API tokens, the built-in administrator | Yes | Yes | Yes | Yes |
+| Nodes in one cluster | 1 | up to 3 | as agreed | as agreed |
+| Policies | 1 (the seeded default) | unlimited | unlimited | unlimited |
+| Roles beyond the one built-in administrator: role bindings, zone-scoped roles, Kubernetes RBAC (`ee/rbac`) | No | Yes | Yes* | Yes* |
+| OIDC single sign-on (`ee/oidc`) | No | Yes | Yes* | Yes* |
+| The audit trail: stored events, `GET /audit`, export (`ee/auditstore`); the audit log lines are always written | No | Yes | Yes* | Yes* |
+| Long-term statistics: any window older than 24 hours (`ee/longterm`) | No | Yes | Yes* | Yes* |
+| Unblock requests: the block page's request form and the review of requests (the block page itself is free) | No | Yes | Yes* | Yes* |
+| dnsdist and keepalived edge, VIP (`ee/edge`) | No | Yes | Yes* | Yes* |
+| Integrations, such as the external-dns webhook (`ee/integration`) | No | Yes | Yes* | Yes* |
+| Custom branding: name, logos, browser icon and accent color (`ee/branding`) | No | No | No | Yes* |
+| Business or government production use | No | No | Only as granted by the agreement | Only as granted by the agreement |
 
 \* If included in commercial license agreement.
+
+Custom branding requires the Enterprise plan; Personal, Business and Trial keys
+never unlock it, even if their feature list includes `branding`. An Enterprise
+key with a restricted feature list must include it. Saved customization remains
+configured on downgrade, while the default kudurru presentation returns.
 
 Free personal/nonprofit keys are only for eligible community use. A key
 records an entitlement; it does not replace the license or agreement. A

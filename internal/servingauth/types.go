@@ -37,7 +37,18 @@ type Schema struct {
 
 // LicensePolicy is an explicit immutable management entitlement decision.
 // It has no effect on DNS readiness or DNS components.
-type LicensePolicy struct{ RBAC, Providers bool }
+type LicensePolicy struct {
+	RBAC, Providers bool
+	// Branding is the original host's Enterprise entitlement, bounded by its
+	// original capture clock and exclusive absolute grace deadline. Replacement
+	// never changes a held view; current commands retain separate host pins.
+	Branding                    bool
+	BrandingFrom, BrandingUntil time.Time
+	// Requests is the original unblock-workflow entitlement for captured inert
+	// previews. Actual unblock mutations retain their separate command admission.
+	Requests                    bool
+	RequestsFrom, RequestsUntil time.Time
+}
 
 // Dependencies contains host-prepared policy and pure cryptographic resources.
 // Identity is host-issued; ExpectedIdentity is the publisher's captured cursor.

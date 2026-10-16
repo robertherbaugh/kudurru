@@ -55,7 +55,12 @@ type Status struct {
 }
 
 // Allows reports whether the status grants f.
-func (s Status) Allows(f Feature) bool { return slices.Contains(s.Features, f) }
+func (s Status) Allows(f Feature) bool {
+	if f == FeatureBranding && (s.Plan != PlanEnterprise || s.State != StateActive && s.State != StateGrace) {
+		return false
+	}
+	return slices.Contains(s.Features, f)
+}
 
 // Manager holds the node's key and evaluates it against a clock. The zero
 // value and a nil *Manager are the community license.

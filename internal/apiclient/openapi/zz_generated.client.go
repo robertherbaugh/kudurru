@@ -1872,6 +1872,17 @@ type BlockingState struct {
 // BlockingStateScope defines model for BlockingState.Scope.
 type BlockingStateScope string
 
+// BrandingInfo defines model for BrandingInfo.
+type BrandingInfo struct {
+	AccentColor string     `json:"accentColor"`
+	Enabled     bool       `json:"enabled"`
+	Favicon     string     `json:"favicon"`
+	LogoDark    string     `json:"logoDark"`
+	LogoLight   string     `json:"logoLight"`
+	Name        string     `json:"name"`
+	ValidUntil  *time.Time `json:"validUntil,omitempty"`
+}
+
 // CatalogueCategory defines model for CatalogueCategory.
 type CatalogueCategory struct {
 	Description *string `json:"description,omitempty"`
@@ -5318,6 +5329,11 @@ type ClientInterface interface {
 	// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
 	PreviewBlockPage(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetBranding Public Enterprise branding, or the built-in presentation
+	//
+	// Corresponds with GET /branding (the `GetBranding` operationId).
+	GetBranding(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// FlushCacheWithBody Flush the response cache (or one name)
 	//
 	// Takes any type of body and a specified content type.
@@ -6914,6 +6930,21 @@ func (c *Client) BatchDeleteBlocklists(ctx context.Context, body BatchDeleteBloc
 // Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
 func (c *Client) PreviewBlockPage(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewBlockPageRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetBranding Public Enterprise branding, or the built-in presentation
+//
+// Corresponds with GET /branding (the `GetBranding` operationId).
+func (c *Client) GetBranding(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBrandingRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -10778,6 +10809,33 @@ func NewPreviewBlockPageRequest(server string, params *PreviewBlockPageParams) (
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetBrandingRequest constructs an http.Request for the GetBranding method
+func NewGetBrandingRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/branding")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -16287,6 +16345,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
 	PreviewBlockPageWithResponse(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*PreviewBlockPageResponse, error)
 
+	// GetBrandingWithResponse Public Enterprise branding, or the built-in presentation
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /branding (the `GetBranding` operationId).
+	GetBrandingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetBrandingResponse, error)
+
 	// FlushCacheWithBodyWithResponse Flush the response cache (or one name)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -20614,6 +20679,82 @@ func (r PreviewBlockPageResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PreviewBlockPageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetBrandingResponse200Headers the declared response headers of an HTTP 200 response for GetBranding
+type GetBrandingResponse200Headers struct {
+	CacheControl *string
+}
+
+type GetBrandingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *BrandingInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetBrandingResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetBrandingResponse) GetJSON200() *BrandingInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetBrandingResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetBrandingResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetBrandingResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetBrandingResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetBrandingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetBrandingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBrandingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBrandingResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -29521,6 +29662,19 @@ func (c *ClientWithResponses) PreviewBlockPageWithResponse(ctx context.Context, 
 	return ParsePreviewBlockPageResponse(rsp)
 }
 
+// GetBrandingWithResponse Public Enterprise branding, or the built-in presentation
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /branding (the `GetBranding` operationId).
+func (c *ClientWithResponses) GetBrandingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetBrandingResponse, error) {
+	rsp, err := c.GetBranding(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBrandingResponse(rsp)
+}
+
 // FlushCacheWithBodyWithResponse Flush the response cache (or one name)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -34074,6 +34228,73 @@ func ParsePreviewBlockPageResponse(rsp *http.Response) (*PreviewBlockPageRespons
 				return nil, err
 			}
 			headers.XFrameOptions = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetBrandingResponse parses an HTTP response from a GetBrandingWithResponse call
+func ParseGetBrandingResponse(rsp *http.Response) (*GetBrandingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBrandingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BrandingInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetBrandingResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
 		}
 		response.Headers200 = &headers
 	}

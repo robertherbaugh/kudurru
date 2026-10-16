@@ -15,6 +15,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/settings"
+	"github.com/robertherbaugh/kudurru/internal/license"
 )
 
 // Redacted replaces writeOnly values in settings responses.
@@ -369,6 +370,9 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	var restart []string
 	for _, p := range paths {
 		k, _ := config.Lookup(p)
+		if strings.HasPrefix(p, "branding.") && !canonical && (s.opts.License == nil || !s.opts.License.Status().Allows(license.FeatureBranding)) {
+			return nil, brandingLicenseRequired()
+		}
 		switch {
 		case k.HostOnly:
 			return nil, newError(http.StatusBadRequest, KeyHostOnly, p+" is hostOnly and can only be set in the config file or environment on the host",

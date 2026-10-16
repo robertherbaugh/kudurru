@@ -174,6 +174,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
+| GET | `/api/v1/branding` | Public Enterprise branding, or the built-in presentation | public |
 | GET | `/api/v1/version` | Build information of this node | public |
 
 ## objects

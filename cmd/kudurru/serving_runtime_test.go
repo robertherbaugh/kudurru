@@ -154,7 +154,12 @@ func TestServingRuntimeActualElectorNativeUpdateAndJoinedShutdown(t *testing.T) 
 			}
 		}, nil)
 	}()
-	t.Cleanup(func() { cancelWriter(); <-writerDone })
+	t.Cleanup(func() {
+		cancelWriter()
+		if err := <-writerDone; err != nil && !errors.Is(err, context.Canceled) {
+			t.Errorf("shutdown: %v", err)
+		}
+	})
 	awaitServingRuntime(t, s, func() bool {
 		lease, err := s.publisher.CaptureHTTP(t.Context())
 		if err != nil {
@@ -203,7 +208,12 @@ func TestServingRuntimeActualElectorNativeUpdateAndJoinedShutdown(t *testing.T) 
 	ctx, stop := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- f.listeners.Run(ctx) }()
-	t.Cleanup(func() { stop(); <-done })
+	t.Cleanup(func() {
+		stop()
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			t.Errorf("shutdown: %v", err)
+		}
+	})
 	awaitServingRuntime(t, s, func() bool { ready, _ := f.listeners.Ready(); return ready })
 	for _, tcp := range []bool{false, true} {
 		answer, err := f.exchange(primaryUpdateMessage("example.", "complete.example.", true), tcp)
@@ -357,7 +367,12 @@ func TestServingRuntimeActualFollowerRestartAndOriginalPromotion(t *testing.T) {
 			}
 		}, nil)
 	}()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			t.Errorf("shutdown: %v", err)
+		}
+	})
 	awaitServingRuntime(t, s, func() bool {
 		lease, err := s.publisher.CaptureHTTP(t.Context())
 		if err != nil {

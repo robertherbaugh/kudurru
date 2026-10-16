@@ -98,6 +98,7 @@ const (
 	GroupCache        = "Cache"
 	GroupBlocking     = "Blocking"
 	GroupBlockPage    = "Block page"
+	GroupBranding     = "Branding"
 	GroupQuerylog     = "Query log"
 	GroupDatabase     = "Central database"
 	GroupRateLimit    = "Rate limiting"
@@ -109,7 +110,7 @@ const (
 
 // Groups lists the UI sections in display order.
 var Groups = []string{
-	GroupNode, GroupListeners, GroupDHCP, GroupUpstreams, GroupDNSSEC, GroupResponse, GroupCache, GroupBlocking, GroupBlockPage, GroupQuerylog, GroupDatabase,
+	GroupNode, GroupListeners, GroupDHCP, GroupUpstreams, GroupDNSSEC, GroupResponse, GroupCache, GroupBlocking, GroupBlockPage, GroupBranding, GroupQuerylog, GroupDatabase,
 	GroupRateLimit, GroupSecurity, GroupZones, GroupIntegrations, GroupLogging,
 }
 
@@ -247,6 +248,11 @@ var (
 // Schema is the settings metadata table. Every leaf of Config must have an
 // entry; TestSchemaMatchesConfig enforces it.
 var Schema = []Key{
+	{Path: "branding.name", Type: TypeString, Scope: ScopeCluster, Default: "", Label: "Organization name", Group: GroupBranding, Help: "Public display name on the dashboard, sign-in and block page. Enterprise only. At most 80 characters; empty uses kudurru. Saved branding is retained when the license no longer permits it."},
+	{Path: "branding.logoLight", Type: TypeString, Scope: ScopeCluster, Default: "", Label: "Light logo", Group: GroupBranding, Help: "Static PNG data URL for light surfaces, at most 64 KiB decoded and 1024 pixels per dimension. Enterprise only. Empty uses the dark logo if supplied, otherwise built-in artwork. Upload through the Branding editor; remote URLs and SVG are not accepted."},
+	{Path: "branding.logoDark", Type: TypeString, Scope: ScopeCluster, Default: "", Label: "Dark logo", Group: GroupBranding, Help: "Static PNG data URL for dark surfaces, at most 64 KiB decoded and 1024 pixels per dimension. Enterprise only. Empty uses the light logo if supplied, otherwise built-in artwork. Upload through the Branding editor; remote URLs and SVG are not accepted."},
+	{Path: "branding.favicon", Type: TypeString, Scope: ScopeCluster, Default: "", Label: "Favicon", Group: GroupBranding, Help: "Static PNG data URL for the browser icon, at most 64 KiB decoded and 256 pixels per dimension. Enterprise only. Empty uses the built-in icon. Upload through the Branding editor."},
+	{Path: "branding.accentColor", Type: TypeString, Scope: ScopeCluster, Default: "", Label: "Accent color", Group: GroupBranding, Help: "Six-digit hexadecimal accent color, e.g. #2457A6, for the dashboard and block page. Enterprise only. Accessible text and interaction colors are derived from it; empty keeps the selected theme's accent."},
 	{Path: "response.dns64.prefix", Type: TypeString, Scope: ScopeCluster, Default: "", Help: "Synthesize IPv6 answers from IPv4 for a NAT64 network. Empty disables DNS64. Use your router's IPv6 /32, /40, /48, /56, /64 or /96 translation prefix, e.g. 64:ff9b::/96. Only AAAA NODATA answers are synthesized; queries requesting DNSSEC proofs keep the original response. A Policy can override this for selected clients.", Label: "DNS64 prefix", Group: GroupResponse},
 	{Path: "response.dns64.excludeDomains", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Domains and descendants excluded from DNS64, e.g. internal.example. At most 256. Both the question and the final alias target are checked.", Label: "DNS64 excluded domains", Group: GroupResponse, Items: &Shape{Type: TypeString, Format: FormatDomain}},
 	{Path: "response.dns64.excludeIPv4", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "IPv4 networks excluded from DNS64, e.g. 192.168.0.0/16. At most 256 canonical CIDRs. Excluded addresses never become synthetic IPv6 answers.", Label: "DNS64 excluded IPv4 networks", Group: GroupResponse, Items: &Shape{Type: TypeString, Format: FormatCIDR}},

@@ -24,6 +24,13 @@ func Settings() (apiextensionsv1.JSONSchemaProps, error) {
 			return root, fmt.Errorf("%s: %w", k.Path, err)
 		}
 		s.Description = k.Help
+		switch k.Path {
+		case "branding.logoLight", "branding.logoDark", "branding.favicon":
+			// Only these fields carry bounded image data. Keep the ordinary
+			// settings string cap for every other field.
+			n := int64(config.BrandingImageDataURLBytes)
+			s.MaxLength = &n
+		}
 		insert(&root, strings.Split(k.Path, "."), s)
 	}
 	return root, nil
@@ -49,7 +56,8 @@ func shape(s config.Shape) (apiextensionsv1.JSONSchemaProps, error) {
 	case config.TypeString, config.TypeDuration, config.TypeBytes:
 		out.Type = "string"
 		// String bounds also make future admission CEL costs finite. Settings
-		// strings carry addresses/patterns, never entire lists or secret data.
+		// strings usually carry addresses/patterns; image fields have an exact
+		// encoded-size override in Settings.
 		n := int64(8192)
 		out.MaxLength = &n
 	case config.TypeInt:

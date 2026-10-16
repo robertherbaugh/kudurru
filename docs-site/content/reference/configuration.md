@@ -47,6 +47,16 @@ privileged behavior). *restart* keys take effect after a restart (in
 Kubernetes the chart rolls the pods); every other key is applied while the
 server runs. *write-only* keys are never returned by the API.
 
+## branding
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="branding.name"></a>`branding.name` | `string` | (empty) | cluster | **Organization name.** Public display name on the dashboard, sign-in and block page. Enterprise only. At most 80 characters; empty uses kudurru. Saved branding is retained when the license no longer permits it.<br>Environment: `KUDURRU_BRANDING__NAME` |
+| <a id="branding.logoLight"></a>`branding.logoLight` | `string` | (empty) | cluster | **Light logo.** Static PNG data URL for light surfaces, at most 64 KiB decoded and 1024 pixels per dimension. Enterprise only. Empty uses the dark logo if supplied, otherwise built-in artwork. Upload through the Branding editor; remote URLs and SVG are not accepted.<br>Environment: `KUDURRU_BRANDING__LOGOLIGHT` |
+| <a id="branding.logoDark"></a>`branding.logoDark` | `string` | (empty) | cluster | **Dark logo.** Static PNG data URL for dark surfaces, at most 64 KiB decoded and 1024 pixels per dimension. Enterprise only. Empty uses the light logo if supplied, otherwise built-in artwork. Upload through the Branding editor; remote URLs and SVG are not accepted.<br>Environment: `KUDURRU_BRANDING__LOGODARK` |
+| <a id="branding.favicon"></a>`branding.favicon` | `string` | (empty) | cluster | **Favicon.** Static PNG data URL for the browser icon, at most 64 KiB decoded and 256 pixels per dimension. Enterprise only. Empty uses the built-in icon. Upload through the Branding editor.<br>Environment: `KUDURRU_BRANDING__FAVICON` |
+| <a id="branding.accentColor"></a>`branding.accentColor` | `string` | (empty) | cluster | **Accent color.** Six-digit hexadecimal accent color, e.g. #2457A6, for the dashboard and block page. Enterprise only. Accessible text and interaction colors are derived from it; empty keeps the selected theme's accent.<br>Environment: `KUDURRU_BRANDING__ACCENTCOLOR` |
+
 ## response
 
 | Key | Type | Default | Scope | Description |

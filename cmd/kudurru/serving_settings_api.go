@@ -35,16 +35,7 @@ func (s *servingRuntime) Settings(ctx context.Context) (*config.Config, error) {
 	if err != nil {
 		return nil, currentCommandAPIError(err)
 	}
-	settings, err := view.Settings()
-	if err != nil {
-		return nil, currentCommandAPIError(err)
-	}
-	document, err := servingSettingsDocument(settings)
-	if err != nil {
-		return nil, err
-	}
-	prepared, _, err := config.ApplyClusterDocument(s.opts.Config, document)
-	return prepared, err
+	return s.settingsFromView(view)
 }
 
 // WriteSettings accepts the API's validated next values only for named public
@@ -69,6 +60,23 @@ func (s *servingRuntime) WriteSettings(ctx context.Context, next *config.Config,
 	}
 	attrs := rbac.Attributes{Resource: "settings", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}
 	err := s.currentCommand(ctx, attrs, func(ctx context.Context, tx *sqlite.CommandTx, _ auth.Principal) error {
+		for _, path := range changed {
+			if !strings.HasPrefix(path, "branding.") {
+				continue
+			}
+			view, err := servinghttp.Component[*servingauth.View](ctx, "auth")
+			if err != nil {
+				return err
+			}
+			check := func(context.Context) error { return brandingWriteCheck(view, s.opts.Now()) }
+			if err := check(ctx); err != nil {
+				return err
+			}
+			if err := tx.RequireCommitCheck(check); err != nil {
+				return err
+			}
+			break
+		}
 		var settings public.Kudurru
 		if err := tx.Get(ctx, store.Key{Kind: "Kudurru", Name: "default"}, &settings); err != nil {
 			return err

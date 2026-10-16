@@ -69,6 +69,41 @@ func (v *View) Settings() (*publicv1.Kudurru, error) {
 	return v.cut.objects[store.Key{Kind: "Kudurru", Name: "default"}].(*publicv1.Kudurru).DeepCopy(), nil
 }
 
+// BrandingAllowed evaluates only this view's original immutable entitlement.
+// At its absolute deadline or a regressed clock the caller uses default branding.
+// It neither captures a successor license nor reads a live manager or settings.
+func (v *View) BrandingAllowed(now time.Time) (bool, error) {
+	allowed, _, err := v.BrandingValidity(now)
+	return allowed, err
+}
+
+// BrandingValidity also returns the original exclusive absolute deadline for
+// an allowed decision, including when no custom branding has been configured.
+// Denial returns a zero deadline; replacement cannot renew a held view's window.
+func (v *View) BrandingValidity(now time.Time) (bool, time.Time, error) {
+	if v == nil || v.released.Load() {
+		return false, time.Time{}, ErrInvalid
+	}
+	p := v.license
+	if p.Branding && !p.BrandingFrom.IsZero() && p.BrandingUntil.After(p.BrandingFrom) &&
+		!now.Before(p.BrandingFrom) && now.Before(p.BrandingUntil) {
+		return true, p.BrandingUntil, nil
+	}
+	return false, time.Time{}, nil
+}
+
+// UnblockRequestsAllowed evaluates the original finite workflow entitlement
+// for an inert captured preview. It grants no mutation authority and does not
+// consult the live block page, request service or license manager.
+func (v *View) UnblockRequestsAllowed(now time.Time) (bool, error) {
+	if v == nil || v.released.Load() {
+		return false, ErrInvalid
+	}
+	p := v.license
+	return p.Requests && !p.RequestsFrom.IsZero() && p.RequestsUntil.After(p.RequestsFrom) &&
+		!now.Before(p.RequestsFrom) && now.Before(p.RequestsUntil), nil
+}
+
 // Release retires this owner reference. Root must release only after last lease.
 func (v *View) Release() {
 	if v != nil {
@@ -83,6 +118,12 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 		return nil, err
 	}
 	if cut == nil || deps.Identity == "" || deps.Identity != deps.ExpectedIdentity {
+		return nil, ErrDependency
+	}
+	if deps.License.Branding && (deps.License.BrandingFrom.IsZero() || !deps.License.BrandingUntil.After(deps.License.BrandingFrom)) {
+		return nil, ErrDependency
+	}
+	if deps.License.Requests && (deps.License.RequestsFrom.IsZero() || !deps.License.RequestsUntil.After(deps.License.RequestsFrom)) {
 		return nil, ErrDependency
 	}
 	if err := validateDependencies(deps); err != nil {

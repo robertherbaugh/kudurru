@@ -273,6 +273,46 @@ spec:
                         maxLength: 8192
                         type: string
                     type: object
+                  branding:
+                    properties:
+                      accentColor:
+                        description: 'Six-digit hexadecimal accent color, e.g. #2457A6,
+                          for the dashboard and block page. Enterprise only. Accessible
+                          text and interaction colors are derived from it; empty keeps
+                          the selected theme''s accent.'
+                        maxLength: 8192
+                        type: string
+                      favicon:
+                        description: Static PNG data URL for the browser icon, at
+                          most 64 KiB decoded and 256 pixels per dimension. Enterprise
+                          only. Empty uses the built-in icon. Upload through the Branding
+                          editor.
+                        maxLength: 87406
+                        type: string
+                      logoDark:
+                        description: Static PNG data URL for dark surfaces, at most
+                          64 KiB decoded and 1024 pixels per dimension. Enterprise
+                          only. Empty uses the light logo if supplied, otherwise built-in
+                          artwork. Upload through the Branding editor; remote URLs
+                          and SVG are not accepted.
+                        maxLength: 87406
+                        type: string
+                      logoLight:
+                        description: Static PNG data URL for light surfaces, at most
+                          64 KiB decoded and 1024 pixels per dimension. Enterprise
+                          only. Empty uses the dark logo if supplied, otherwise built-in
+                          artwork. Upload through the Branding editor; remote URLs
+                          and SVG are not accepted.
+                        maxLength: 87406
+                        type: string
+                      name:
+                        description: Public display name on the dashboard, sign-in
+                          and block page. Enterprise only. At most 80 characters;
+                          empty uses kudurru. Saved branding is retained when the
+                          license no longer permits it.
+                        maxLength: 8192
+                        type: string
+                    type: object
                   cache:
                     properties:
                       maxEntries:

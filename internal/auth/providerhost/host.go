@@ -117,6 +117,14 @@ func (o *Owner) Host(ctx context.Context, r *providerregistry.Registry) (provide
 	deps.ExpectedIdentity = m.identity
 	deps.ConfigProviders = canonical
 	deps.License = servingauth.LicensePolicy{RBAC: g.license.Status().Allows(license.FeatureRBAC), Providers: allowed}
+	if g.license.Status().Allows(license.FeatureBranding) {
+		deps.License.Branding = true
+		deps.License.BrandingFrom, deps.License.BrandingUntil = g.license.Validity()
+	}
+	if g.license.Status().Allows(license.FeatureRequests) {
+		deps.License.Requests = true
+		deps.License.RequestsFrom, deps.License.RequestsUntil = g.license.Validity()
+	}
 	var once sync.Once
 	var released atomic.Bool
 	return providercoordinator.HostCapture{Identity: m.identity, Providers: m.providers, Auth: deps, ValidUntil: g.until,

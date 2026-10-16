@@ -259,6 +259,8 @@ type Options struct {
 	// CanonicalSettings replaces cluster settings reads/writes only. It never
 	// updates Reload or the legacy settings file after a canonical commit.
 	CanonicalSettings CanonicalSettings
+	// BrandingReads projects public branding from the original serving cut.
+	BrandingReads BrandingReadSource
 	// NodeConfigCommand admits local node PATCHes separately from cluster
 	// settings. It must own the SAME Reload document used for local GETs.
 	NodeConfigCommand NodeConfigCommand

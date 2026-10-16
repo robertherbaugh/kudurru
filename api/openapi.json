@@ -540,6 +540,42 @@
         ],
         "type": "object"
       },
+      "BrandingInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "accentColor": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "favicon": {
+            "type": "string"
+          },
+          "logoDark": {
+            "type": "string"
+          },
+          "logoLight": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "validUntil": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "name",
+          "logoLight",
+          "logoDark",
+          "favicon",
+          "accentColor"
+        ],
+        "type": "object"
+      },
       "CatalogueCategory": {
         "additionalProperties": false,
         "properties": {
@@ -11415,6 +11451,75 @@
           "scope": "cluster",
           "verb": "read"
         }
+      }
+    },
+    "/branding": {
+      "get": {
+        "operationId": "getBranding",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingInfo"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Public Enterprise branding, or the built-in presentation",
+        "tags": [
+          "meta"
+        ],
+        "x-kudurru-permission": "public"
       }
     },
     "/cache/flush": {

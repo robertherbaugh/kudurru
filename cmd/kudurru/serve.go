@@ -25,6 +25,7 @@ import (
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/dashboard"
 	"github.com/robertherbaugh/kudurru/ee/auditstore"
+	"github.com/robertherbaugh/kudurru/ee/branding"
 	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/api"
@@ -38,6 +39,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
+	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
@@ -256,6 +258,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	licSources := license.DefaultSources(licenseKey, cfg.Node.DataDir, os.Getenv)
 	if err := lic.Load(licSources); err != nil {
 		logger.Warn("license key", "error", err)
+	}
+	if cfg.Branding != (config.Branding{}) && !lic.Allows(license.FeatureBranding) {
+		logger.Warn("custom branding is inactive: an Enterprise license including branding is required; using built-in presentation")
 	}
 	reg.MustRegister(license.NewCollector(lic))
 
@@ -777,7 +782,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, lic, reg, logger)
+	var brandCache branding.PageCache
+	var brandSource []func(context.Context) (*blockpage.Branding, error)
+	if sql != nil {
+		brandSource = append(brandSource, func(ctx context.Context) (*blockpage.Branding, error) {
+			return complete.captureBlockPageBranding(ctx, &brandCache)
+		})
+	}
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, lic, reg, logger, brandSource...)
 	if err != nil {
 		return err
 	}
@@ -943,6 +955,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	var dnsQueryCapture pipeline.Capture
 	var canonicalSettings api.CanonicalSettings
+	var brandingReads api.BrandingReadSource
+	var blockPagePreview api.BlockPagePreviewer = blockPage
 	var nodeConfigCommand api.NodeConfigCommand
 	var cacheFlushCommand api.CacheFlushCommand
 	var objectCommand api.ObjectCommand
@@ -1016,6 +1030,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return servingdns.Wrap(lease), err
 		}
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
+		brandingReads = complete.Branding
+		blockPagePreview = servingBrandingPreview{runtime: complete, server: blockPage, cache: &brandCache}
 		nodeConfigCommand, err = newServingNodeCommand(complete, reload, logLevel)
 		if err != nil {
 			return err
@@ -1139,7 +1155,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
-		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads,
+		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, Chain: chain, DNSQueryCapture: dnsQueryCapture,
@@ -1157,7 +1173,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 		DefaultNamespace: namespace,
 		Catalogue:        catalogSource,
-		BlockPage:        blockPage,
+		BlockPage:        blockPagePreview,
 		Unblock:          unblockBook,
 	})
 	if err != nil {
