@@ -1,6 +1,6 @@
 ---
 title: kudurru
-description: "A Kubernetes-native DNS server that also runs as one container: authoritative zones with real serials and transfers, a forwarding resolver with DoT, DoH and DoQ, blocking with client groups, a dashboard that explains every answer, and OIDC with RBAC."
+description: "A Kubernetes-native DNS server that also runs as one container: authoritative zones with real serials and transfers, a resolver that forwards over DoT, DoH and DoQ or resolves from the root with DNSSEC validation, blocking with client groups, a dashboard that explains every answer, and OIDC with RBAC."
 actions:
   - {label: Get started, page: /start, primary: true}
   - {label: Run one container, page: /deploy/docker}
@@ -17,9 +17,9 @@ links:
 ## Status
 
 **v0.1.0 ("stone") · 16 October 2026.** The first release includes the
-resolver, primary and forward zones, outbound zone transfers, blocking,
-the dashboard and CLI, Kubernetes CRDs and Helm charts, and optional edge
-supervisors. Use `ghcr.io/robertherbaugh/kudurru:0.1.0` for Docker and
+resolver (forwarding, or recursive with DNSSEC validation), primary and
+forward zones, outbound zone transfers, blocking, the dashboard and CLI,
+Kubernetes CRDs and Helm charts, and optional edge supervisors. Use `ghcr.io/robertherbaugh/kudurru:0.1.0` for Docker and
 `--version 0.1.0` with the Helm charts. See the
 [changelog](/project/changelog/) for the release scope and known limitations,
 or the [release assets](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)

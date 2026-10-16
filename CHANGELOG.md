@@ -6,9 +6,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [0.1.0] - 2026-10-16
 
-**“stone” — the first release.** Authoritative DNS, a forwarding resolver,
-blocking and a dashboard in one Go binary. Run it as one container or in
-Kubernetes with CRDs as the configuration store.
+**“stone” — the first release.** Authoritative DNS, a forwarding or
+validating recursive resolver, blocking and a dashboard in one Go binary.
+Run it as one container or in Kubernetes with CRDs as the configuration
+store.
 
 ### Added
 
@@ -21,6 +22,13 @@ Kubernetes with CRDs as the configuration store.
   Outbound AXFR/IXFR and NOTIFY; TSIG on UDP, TCP and DoT.
 - Upstream groups, conditional forwarding and ECS controls; a persistent
   TTL cache with prefetch, serve-stale and in-flight request coalescing.
+- An opt-in recursive resolver: an upstream group with `mode: recursive`
+  resolves names from the root servers with QNAME minimization and DNSSEC
+  validation (bogus answers become SERVFAIL with an extended DNS error and
+  the `dnssec_bogus` status), never sends a client subnet and answers
+  private reverse zones and special-use names such as `home.arpa` locally.
+  Settings are under `upstreams.recursion`; forwarding to 1.1.1.1 and
+  9.9.9.9 stays the default.
 - Hosts, domain, adblock and regex lists, allow/deny entries, per-source
   switches and exceptions, CNAME inspection and an embedded starter list.
 - IP/CIDR client groups with merged policies and schedules. A catalog of
@@ -147,9 +155,15 @@ and [final feature review](docs/m5/features-v0.1.md).
 
 ### Known limitations
 
-- Secondary/stub zones, inbound transfers, RFC 2136, DNSSEC validation,
-  Cloudflare/UniFi integrations and follower replication are planned for
-  v0.2. DNSSEC signing and raft replication are planned for v1.0.
+- Secondary/stub zones, inbound transfers, RFC 2136, DNSSEC validation of
+  forwarded answers, Cloudflare/UniFi integrations and follower replication
+  are planned for v0.2. DNSSEC signing and raft replication are planned for
+  v1.0.
+- Recursive groups need outbound UDP and TCP port 53 to any address. They
+  do not yet cache NSEC ranges aggressively (RFC 8198), follow root key
+  rollovers automatically (RFC 5011; new anchors ship with releases or
+  `upstreams.recursion.trustAnchors`), support negative trust anchors or
+  DNS cookies, or serve a local copy of the root zone (RFC 8806).
 - Client matching uses IP/CIDR. MAC, hostname and DoT/DoH client-ID fields
   have no production inventory or listener source yet; preserve device
   source addresses through gateways and load balancers.

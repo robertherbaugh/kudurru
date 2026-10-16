@@ -20,6 +20,7 @@ those changes; the separately owned Edge implementation is unchanged here.
 | DNS | UDP/TCP, DoT, DoH, DoQ, DoH3; authenticated PROXYv2; ingress limits | Existing transport and forgery tests pass. Real-client acceptance remains a deployment gate below. |
 | Client identity and policy | IP/CIDR groups, merged policies, schedules, safe search and blocked services | Listener identity is address-based. Client ID, MAC and hostname matchers have no production listener/inventory source. Release claims now say so. |
 | Blocking and upstreams | Lists, allow/deny entries, CNAME blocking, block page and requests, upstream groups and conditional forwarding | Existing stage, policy, listfetcher and upstream suites cover these paths. |
+| Recursive resolution (D170) | Opt-in `mode: recursive` upstream groups: iteration from the root, QNAME minimization, locally answered special-use names, DNSSEC validation with EDE on bogus answers | Added on release day. `internal/recursor` tests run against an in-memory signed hierarchy (NSEC, NSEC3, opt-out, wildcards, DNAME, glueless delegations, spoofing, NXNS and KeyTrap limits) under the race detector; the opt-in live test and a `dig` run against the built binary passed against the real root servers. Live checks remain a gate in the release checklist. |
 | Cache | TTL, prefetch, serve-stale, persistence and flushing | Existing cache and pipeline tests cover serving and restart behavior. |
 | Authoritative DNS | Primary and forward zones, records, AXFR/IXFR out, TSIG and NOTIFY out | Duplicate apexes previously prevented all zone views from rebuilding. The fix isolates the conflict and preserves unrelated zones. |
 | Configuration and store | SQLite or Kubernetes, CRDs, settings reload, file objects, bootstrap and saved snapshots | An actual Kubernetes outage startup regression was reproduced and fixed, including deferred identity initialization. |
@@ -31,7 +32,7 @@ those changes; the separately owned Edge implementation is unchanged here.
 | Edge and VIPs | dnsdist/keepalived supervisors, discovery and VIP availability | Separately owned PRs #50/#51 are merged and included after rebase. Deployment identity and real failover acceptance remain required. |
 
 Explicit deferrals remain: follower/raft stores, SQLite cluster membership,
-DNSSEC, secondary/stub zones and RFC 2136, remote node health, cluster-wide
+DNSSEC signing and validation of forwarded answers, secondary/stub zones and RFC 2136, remote node health, cluster-wide
 blocking toggles, remote Edge cache invalidation, IAM write pages and
 transport client IDs. Cluster statistics and the cluster live tail are
 already implemented and are no longer described as deferred.

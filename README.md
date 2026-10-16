@@ -7,12 +7,13 @@
 
 > A **kudurru** (koo-DOO-roo) was a Babylonian boundary stone that recorded a land grant and the rights attached to it. The name reflects what a DNS zone represents: authority over a defined space. The original stone was kept in a temple, while the landholder held a clay copy—a fitting inspiration for authoritative DNS and the copies shared through zone transfers. Our release names follow that story: **stone**, **clay copies**, **temple**.
 
-**kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. v0.1.0, **“stone,”** brings authoritative zones, a forwarding resolver, blocking and a dashboard together in one source-available Go binary. These projects helped shape its design:
+**kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. v0.1.0, **“stone,”** brings authoritative zones, a resolver that forwards or resolves from the root servers with DNSSEC validation, blocking and a dashboard together in one source-available Go binary. These projects helped shape its design:
 
 | Inspiration | From | What it means in kudurru v0.1.0 |
 |---|---|---|
 | API-first design and one binary | [Gravity](https://github.com/BeryJu/gravity) | Every node runs the resolver, API and dashboard; Kubernetes replicas share configuration through the apiserver |
 | Authoritative DNS and encrypted transports | [Technitium](https://technitium.com/dns/) | Primary and forward zones, SOA serial management, AXFR/IXFR out, NOTIFY out, TSIG on UDP/TCP/DoT, DoT/DoH/DoQ/DoH3 and per-zone query ACLs |
+| Private recursion | [Unbound](https://nlnetlabs.nl/projects/unbound/about/) | Opt-in recursive upstream groups: QNAME minimization, DNSSEC validation from the root trust anchors, private and special-use names answered locally, no client subnet sent; forwarding stays the default |
 | A clear view of DNS activity | [Pi-hole](https://pi-hole.net/) | Stat tiles, 24 h charts, a query log that explains *why* each answer was given, one-click allow/deny and views across nodes |
 | Powerful blocking | [blocky](https://github.com/0xERR0R/blocky) / [AdGuard Home](https://github.com/AdguardTeam/AdGuardHome) | hosts, domain, adblock and regex lists; client groups; per-group policies and schedules; zero-allocation matchers with a benchmark regression gate |
 | Load balancing at the edge | [dnsdist](https://dnsdist.org) | An optional kudurru supervisor renders, validates and runs dnsdist; authenticated PROXYv2 preserves client IPs on the backend hop |
@@ -102,8 +103,8 @@ and [`deploy/compose/`](deploy/compose/).
 
 | Release | Name | Headline |
 |---|---|---|
-| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
-| v0.2 | clay copies | Secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
+| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
+| v0.2 | clay copies | Secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
 | v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
 
 OIDC, scoped roles, long-term statistics, integrations and the edge need

@@ -620,3 +620,35 @@ func edeCode(m *dns.Msg) uint16 {
 	}
 	return 0xffff
 }
+
+func TestKeepsDNSSECState(t *testing.T) {
+	h := newHarness(t, nil)
+	fwd := forwarded("192.0.2.1", 300)
+	h.up.set(func(req *pipeline.Request) (*pipeline.Response, error) {
+		r, err := fwd(req)
+		r.DNSSEC = pipeline.DNSSECSecure
+		return r, err
+	})
+	if r := h.serve(request("secure.example", dns.TypeA, 1)); r.DNSSEC != pipeline.DNSSECSecure {
+		t.Fatalf("miss: %d", r.DNSSEC)
+	}
+	r := h.serve(request("secure.example", dns.TypeA, 2))
+	if r.Status != pipeline.StatusCached || r.DNSSEC != pipeline.DNSSECSecure {
+		t.Fatalf("hit: %v %d", r.Status, r.DNSSEC)
+	}
+	for _, rr := range r.Msg.Extra {
+		if opt, ok := rr.(*dns.OPT); ok {
+			for _, o := range opt.Option {
+				if o.Option() == dnssecOption {
+					t.Fatal("the private option must not reach clients")
+				}
+			}
+		}
+	}
+	// Answers kudurru did not validate stay unknown.
+	h.up.set(forwarded("192.0.2.2", 300))
+	h.serve(request("plain.example", dns.TypeA, 3))
+	if r := h.serve(request("plain.example", dns.TypeA, 4)); r.DNSSEC != pipeline.DNSSECUnknown {
+		t.Fatalf("unvalidated: %d", r.DNSSEC)
+	}
+}

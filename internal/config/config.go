@@ -7,14 +7,18 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/knadh/koanf/maps"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 
 // EnvPrefix is the prefix of every kudurru environment variable. Variables
@@ -172,6 +176,25 @@ type Upstreams struct {
 	Bootstrap   []string                 `koanf:"bootstrap" json:"bootstrap"`
 	Conditional map[string]string        `koanf:"conditional" json:"conditional"`
 	ECS         ECS                      `koanf:"ecs" json:"ecs"`
+	Recursion   Recursion                `koanf:"recursion" json:"recursion"`
+}
+
+// Recursion configures the built-in recursive resolver that upstream
+// groups with mode recursive use (internal/recursor, D170).
+type Recursion struct {
+	// DNSSEC validates answers along the chain of trust from the root.
+	DNSSEC bool `koanf:"dnssec" json:"dnssec"`
+	// QNAMEMinimization sends each name server only the labels it needs
+	// (RFC 9156).
+	QNAMEMinimization bool `koanf:"qnameMinimization" json:"qnameMinimization"`
+	// IPv6 is auto (use IPv6 name servers when the host has an IPv6
+	// route), on or off.
+	IPv6 string `koanf:"ipv6" json:"ipv6"`
+	// TrustAnchors replace the built-in root DS records; empty keeps them.
+	TrustAnchors []string `koanf:"trustAnchors" json:"trustAnchors"`
+	// RootHints replace the built-in root server addresses; empty keeps
+	// them.
+	RootHints []string `koanf:"rootHints" json:"rootHints"`
 }
 
 // ECS configures EDNS Client Subnet (RFC 7871) on upstream queries.
@@ -218,6 +241,9 @@ type CacheServeStale struct {
 
 // UpstreamGroup is a named set of servers with a strategy.
 type UpstreamGroup struct {
+	// Mode is forward (the default: ask Servers) or recursive (resolve
+	// from the root servers with the built-in resolver; no Servers).
+	Mode     string   `koanf:"mode" json:"mode,omitempty"`
 	Servers  []string `koanf:"servers" json:"servers"`
 	Strategy string   `koanf:"strategy" json:"strategy"`
 	Timeout  Duration `koanf:"timeout" json:"timeout"`
@@ -402,6 +428,36 @@ type Log struct {
 	Format string `koanf:"format" json:"format"`
 }
 
+// mergeLayer merges a configuration layer into the layers below it like
+// koanf does, except that an upstream group the layer defines replaces the
+// group of the same name below instead of inheriting its fields: a file
+// with default: {mode: recursive} must not inherit the default group's
+// servers.
+func mergeLayer(src, dest map[string]any) error {
+	if groups, ok := subMap(src, "upstreams", "groups"); ok {
+		if below, ok := subMap(dest, "upstreams", "groups"); ok {
+			for name := range groups {
+				delete(below, name)
+			}
+		}
+	}
+	maps.Merge(src, dest)
+	return nil
+}
+
+// subMap returns the nested map at path in m.
+func subMap(m map[string]any, path ...string) (map[string]any, bool) {
+	cur := m
+	for _, p := range path {
+		next, ok := cur[p].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		cur = next
+	}
+	return cur, true
+}
+
 // Load reads defaults, then the file (if path is non-empty), then the
 // settings file (settingsFile or KUDURRU_SETTINGS_FILE, cluster-scope keys
 // only), then the environment overrides, and validates the result.
@@ -411,7 +467,7 @@ func Load(path string, environ []string) (*Config, error) {
 		return nil, fmt.Errorf("config: defaults: %w", err)
 	}
 	if path != "" {
-		if err := k.Load(file.Provider(path), yaml.Parser()); err != nil {
+		if err := k.Load(file.Provider(path), yaml.Parser(), koanf.WithMergeFunc(mergeLayer)); err != nil {
 			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
 	}
@@ -425,11 +481,11 @@ func Load(path string, environ []string) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := k.Load(confmap.Provider(layer, "."), nil); err != nil {
+		if err := k.Load(confmap.Provider(layer, "."), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
 			return nil, fmt.Errorf("config: settings file %s: %w", settingsPath, err)
 		}
 	}
-	if err := k.Load(confmap.Provider(overrides, "."), nil); err != nil {
+	if err := k.Load(confmap.Provider(overrides, "."), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)
 	}
 
@@ -437,6 +493,7 @@ func Load(path string, environ []string) (*Config, error) {
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("config: decode: %w", err)
 	}
+	cfg.Upstreams.normalize()
 	cfg.EnvLocked = locked
 	cfg.Source = path
 	cfg.SettingsFile = settingsPath
@@ -467,6 +524,7 @@ func (c *Config) Validate() error {
 	if _, ok := c.Upstreams.Groups["default"]; !ok {
 		errs = append(errs, errors.New("upstreams.groups.default is required"))
 	}
+	errs = append(errs, c.Upstreams.validate()...)
 	errs = append(errs, c.Cache.validate()...)
 	errs = append(errs, c.Blocking.validate()...)
 	errs = append(errs, c.validateBlockPage()...)
@@ -630,4 +688,74 @@ func coerce(t Type, v string) (any, error) {
 	default:
 		return v, nil
 	}
+}
+
+// Upstream group modes.
+const (
+	UpstreamModeForward   = "forward"
+	UpstreamModeRecursive = "recursive"
+)
+
+// Defaults of a group's own fields. A group in a file or settings layer
+// replaces the built-in group of the same name (mergeLayer), so the fields
+// it leaves out are filled here; internal/upstream uses the same values.
+const (
+	DefaultUpstreamStrategy = "parallel_best"
+	// DefaultUpstreamTimeout bounds one exchange with one server.
+	DefaultUpstreamTimeout = 2 * time.Second
+	// DefaultRecursiveTimeout bounds one recursive lookup; it stays below
+	// the 5 s query deadline.
+	DefaultRecursiveTimeout = 4 * time.Second
+)
+
+// normalize fills the fields a group left out with the values it runs
+// with, so the effective configuration (dashboard, GET /settings, config
+// show) matches what the upstream groups do.
+func (u *Upstreams) normalize() {
+	for name, g := range u.Groups {
+		switch g.Mode {
+		case UpstreamModeRecursive:
+			if g.Timeout == 0 {
+				g.Timeout = Duration(DefaultRecursiveTimeout)
+			}
+		default:
+			if g.Strategy == "" {
+				g.Strategy = DefaultUpstreamStrategy
+			}
+			if g.Timeout == 0 {
+				g.Timeout = Duration(DefaultUpstreamTimeout)
+			}
+		}
+		u.Groups[name] = g
+	}
+}
+
+// validate checks what the group shape cannot: a forwarding group needs
+// servers and a recursive group has none.
+func (u Upstreams) validate() []error {
+	var errs []error
+	names := make([]string, 0, len(u.Groups))
+	for n := range u.Groups {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		g := u.Groups[n]
+		switch g.Mode {
+		case UpstreamModeRecursive:
+			if len(g.Servers) > 0 {
+				errs = append(errs, fmt.Errorf("upstreams.groups[%s].servers: a recursive group asks the root servers itself; remove the servers or use mode forward", n))
+			}
+		case "", UpstreamModeForward:
+			if len(g.Servers) == 0 {
+				errs = append(errs, &FieldError{Path: "upstreams.groups[" + n + "].servers", Message: msgRequired})
+			}
+		}
+	}
+	if len(u.Recursion.TrustAnchors) > 0 {
+		if _, err := recursor.ParseTrustAnchors(u.Recursion.TrustAnchors); err != nil {
+			errs = append(errs, fmt.Errorf("upstreams.recursion.trustAnchors: %w", err))
+		}
+	}
+	return errs
 }

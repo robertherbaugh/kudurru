@@ -39,6 +39,8 @@ test('the upstream wizard creates a group from a provider preset', async ({ page
   await main(page).getByRole('button', { name: 'New group' }).click();
   await expect(page).toHaveURL(/\/upstreams\?new=1$/);
   await expect(page.getByRole('dialog', { name: 'New upstream group' })).toBeVisible();
+  await expect(main(page).getByRole('radio', { name: /^Forward/ })).toBeChecked();
+  await main(page).getByRole('button', { name: 'Next' }).click();
   await main(page).getByRole('radio', { name: /^Quad9/ }).check();
   await main(page).getByRole('button', { name: 'Next' }).click();
   await choose(main(page).getByRole('combobox', { name: 'Transport' }), 'DNS over TLS (DoT)');

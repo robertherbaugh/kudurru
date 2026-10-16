@@ -232,6 +232,7 @@ func TestRestartRequired(t *testing.T) {
 	hot := map[string]bool{"log.level": true}
 	for _, p := range []string{
 		"upstreams.groups", "upstreams.bootstrap", "upstreams.conditional", "upstreams.ecs.mode", "upstreams.ecs.ipv4Prefix", "upstreams.ecs.ipv6Prefix",
+		"upstreams.recursion.dnssec", "upstreams.recursion.qnameMinimization", "upstreams.recursion.ipv6", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints",
 		"cache.maxEntries", "cache.minTTL", "cache.maxTTL", "cache.negativeTTL", "cache.prefetch.threshold", "cache.prefetch.window",
 		"cache.serveStale.ttl", "cache.serveStale.answerTTL", "cache.serveStale.maxWait",
 		"blocking.enabled", "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP.v4", "blocking.customIP.v6",

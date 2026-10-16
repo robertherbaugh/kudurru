@@ -54,9 +54,9 @@ export interface QueryLogTableProps {
   emptyMessage?: string | undefined;
 }
 
-/** The status label shown in the table: "blocked (denylist)" style. */
-export function statusLabel(r: QueryRow): string {
-  return r.status.replace(/_/g, ' ');
+/** The status label shown in the table: "blocked list", "DNSSEC bogus". */
+export function statusLabel(r: Pick<QueryRow, 'status'>): string {
+  return r.status.replace(/_/g, ' ').replace(/^dnssec\b/, 'DNSSEC');
 }
 
 /** The query class colour (theme tokens --q-*). */

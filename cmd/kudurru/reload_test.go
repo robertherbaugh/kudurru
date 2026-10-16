@@ -14,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
@@ -121,5 +122,42 @@ func TestSettingsWriter(t *testing.T) {
 	}
 	if back.Cache.MaxEntries != 1234 || back.Log.Level != "info" {
 		t.Fatalf("persisted %d %q", back.Cache.MaxEntries, back.Log.Level)
+	}
+}
+
+// TestUpstreamReloadIsAllOrNothing: when the new upstream groups are
+// invalid, the recursion settings that came with them are not applied to
+// the shared resolver either (review of PR #73).
+func TestUpstreamReloadIsAllOrNothing(t *testing.T) {
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := recursor.New(upstream.RecursionFrom(cfg.Upstreams.Recursion), recursor.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := upstream.Options{Logger: slog.New(slog.DiscardHandler), Recursor: rec}
+	changed := []string{"upstreams.groups", "upstreams.recursion.dnssec"}
+
+	bad := *cfg
+	bad.Upstreams.Groups = map[string]config.UpstreamGroup{"default": {Mode: config.UpstreamModeForward}} // no servers
+	bad.Upstreams.Recursion.DNSSEC = false
+	if _, err := buildUpstreams(&bad, changed, opts); err == nil {
+		t.Fatal("a group without servers was accepted")
+	}
+	if !rec.Config().DNSSEC {
+		t.Fatal("a failed reload changed the resolver")
+	}
+
+	good := bad
+	good.Upstreams.Groups = map[string]config.UpstreamGroup{"default": {Mode: config.UpstreamModeRecursive}}
+	set, err := buildUpstreams(&good, changed, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = set.Close() }()
+	if rec.Config().DNSSEC || set.Recursor() != rec {
+		t.Fatal("a successful reload must apply the recursion settings")
 	}
 }
