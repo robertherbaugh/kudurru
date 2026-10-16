@@ -5,8 +5,8 @@
 // expanding a row keeps scrolling smooth; spacer bodies stand in for the
 // rows above and below the window. The Card around the Table is the
 // virtualiser's scroll element, both ways; a plugin keeps the Table's own
-// (sideways) scroll region at least as wide as the table, so it never
-// becomes a scroll container and the sticky header cells stick to the Card.
+// (sideways) scroll region from becoming a nested scroll container, so
+// the sticky header cells stick to the Card.
 //
 // Keyboard: rows are focusable; Enter or Space toggles the "why" row,
 // ArrowUp/ArrowDown move between rows.
@@ -85,8 +85,6 @@ function StatusText({ r, children }: { r: QueryRow; children?: ReactNode }) {
 interface Column {
   id: string;
   header: string;
-  /** Structural width in px; the domain column takes the rest. */
-  width?: number;
   cell: (r: QueryRow) => ReactNode;
 }
 
@@ -94,17 +92,16 @@ const COLUMNS: Column[] = [
   {
     id: 'ts',
     header: 'Time',
-    width: 128,
     cell: (r) => (
       <Tooltip content={formatDateTime(r.ts)} hasHoverIndication={false}>
-        <Text>
+        <Text textWrap="nowrap">
           <time dateTime={r.ts}>{formatTime(r.ts)}</time>
         </Text>
       </Tooltip>
     ),
   },
-  { id: 'status', header: 'Status', width: 148, cell: (r) => <StatusText r={r} /> },
-  { id: 'qtype', header: 'Type', width: 80, cell: (r) => r.qtype },
+  { id: 'status', header: 'Status', cell: (r) => <StatusText r={r} /> },
+  { id: 'qtype', header: 'Type', cell: (r) => r.qtype },
   {
     id: 'domain',
     header: 'Domain',
@@ -117,32 +114,29 @@ const COLUMNS: Column[] = [
   {
     id: 'client',
     header: 'Client',
-    width: 150,
     cell: (r) =>
       r.client.name ? (
         <Tooltip content={r.client.ip} hasHoverIndication={false}>
-          <Text maxLines={1} hasTruncateTooltip={false}>
+          <Text textWrap="nowrap">
             {r.client.name}
           </Text>
         </Tooltip>
       ) : (
-        <Text maxLines={1}>{r.client.ip}</Text>
+        <Text textWrap="nowrap">{r.client.ip}</Text>
       ),
   },
   {
     id: 'reply',
     header: 'Reply',
-    width: 124,
     cell: (r) => (
       <Text textWrap="nowrap">
         {r.reply.type} <Text color="secondary">{formatMS(r.reply.time_ms)}</Text>
       </Text>
     ),
   },
-  { id: 'node', header: 'Node', width: 108, cell: (r) => <Text maxLines={1}>{r.node}</Text> },
+  { id: 'node', header: 'Node', cell: (r) => <Text textWrap="nowrap">{r.node}</Text> },
 ];
 
-const ACTIONS_WIDTH = 108;
 const NCOLS = COLUMNS.length + 1;
 /** Below this the table scrolls sideways (structural, px). */
 const TABLE_MIN_WIDTH = 980;
@@ -150,22 +144,29 @@ const ROW_HEIGHT = 34;
 /** The scroll region's height: most of the viewport, capped on tall screens. */
 const SCROLL_HEIGHT = 'min(70vh, 900px)';
 
-const headerCell = (width: number | undefined): CSSProperties => ({
+/** Compact, content-sized fields; only Domain may shrink and truncate. */
+const cellStyle = (id?: string): CSSProperties => ({
+  paddingInline: 'var(--spacing-2)',
+  ...(id === 'domain'
+    ? { minInlineSize: '12ch' }
+    : { inlineSize: '1%', maxInlineSize: 'none', whiteSpace: 'nowrap', overflow: 'visible' }),
+});
+
+const headerCell = (id?: string): CSSProperties => ({
+  ...cellStyle(id),
   position: 'sticky',
   insetBlockStart: 0,
   zIndex: 1,
   background: 'var(--color-background-card)',
-  // Truncating cells carry max-inline-size: 0; a fixed column needs its own.
-  ...(width ? { inlineSize: width, maxInlineSize: width } : {}),
 });
 
 /**
- * The Table's sideways scroll region as wide as the table: it stays
- * overflow: clip (no scroll container), so the Card scrolls both ways and
- * the sticky header cells stick to it.
+ * Size the Table's wrapper to its content minimum, so wide fields scroll
+ * with the Card instead of creating a second scroll container that would
+ * capture sticky headers.
  */
 const wideRegion: TablePlugin<Record<string, unknown>> = {
-  transformScrollWrapper: (p) => ({ ...p, htmlProps: { ...p.htmlProps, style: { ...p.htmlProps.style, minInlineSize: TABLE_MIN_WIDTH } } }),
+  transformScrollWrapper: (p) => ({ ...p, htmlProps: { ...p.htmlProps, style: { ...p.htmlProps.style, minInlineSize: 'max-content' } } }),
 };
 const PLUGINS = { wideRegion };
 
@@ -228,16 +229,16 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
           hasHover
           textOverflow="truncate"
           plugins={PLUGINS}
-          style={{ tableLayout: 'fixed', inlineSize: '100%', minInlineSize: TABLE_MIN_WIDTH }}
+          style={{ tableLayout: 'auto', inlineSize: '100%', minInlineSize: TABLE_MIN_WIDTH }}
         >
           <TableHeader>
             <TableRow isHeaderRow>
               {COLUMNS.map((c) => (
-                <TableHeaderCell key={c.id} scope="col" style={headerCell(c.width)}>
+                <TableHeaderCell key={c.id} scope="col" style={headerCell(c.id)}>
                   {c.header}
                 </TableHeaderCell>
               ))}
-              <TableHeaderCell scope="col" style={headerCell(ACTIONS_WIDTH)}>
+              <TableHeaderCell scope="col" style={headerCell()}>
                 <VisuallyHidden>Actions</VisuallyHidden>
               </TableHeaderCell>
             </TableRow>
@@ -251,9 +252,9 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
               <TableBody key={vi.key} data-index={vi.index} ref={virtualizer.measureElement}>
                 <LogRow r={r} index={vi.index} open={open} isNew={!!fresh?.has(queryIdentity(r))} onToggle={toggle} onKeyDown={onRowKey}>
                   {COLUMNS.map((c) => (
-                    <TableCell key={c.id}>{c.cell(r)}</TableCell>
+                    <TableCell key={c.id} style={cellStyle(c.id)}>{c.cell(r)}</TableCell>
                   ))}
-                  <TableCell>
+                  <TableCell style={cellStyle()}>
                     {onAction ? (
                       r.status_class === 'blocked' ? (
                         <Button
