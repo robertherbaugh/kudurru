@@ -109,7 +109,8 @@ to `hello@kudurru.io` without submitting a form.
 
 ## The "Request a key" form
 
-`/license/` has a form with two kinds of request. A **personal** request is
+`/license/` has a form beside the introductory text (stacked below it on
+narrow screens), with two kinds of request. A **personal** request is
 sent from the visitor's browser to the license server
 (`POST <origin>/api/v1/public/key-requests` with `name`, `email`, `use` and an
 empty honeypot `website`; the server emails a confirmation link; after the
@@ -117,8 +118,8 @@ visitor confirms, an administrator approves the request and the server emails
 the key; a `202` is the answer to any valid request). A **business or other**
 request is never sent to a server: the browser opens a mail to
 `hello@kudurru.io` with the subject `Business License` and the name, business,
-email, number of nodes and details in the body, and shows the same text to
-copy if no mail program opens.
+email, edition (Commercial Core or Enterprise), number of nodes and details
+in the body, and shows the same text to copy if no mail program opens.
 
 The license server's origin is `https://licenses.kudurru.io` unless
 `WWW_LICENSE_API` names another one at build time (set it in the Cloudflare

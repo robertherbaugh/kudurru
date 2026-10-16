@@ -2149,13 +2149,22 @@ main,
   }
 }
 
-/* The license page (/license/). The intro keeps the narrow column; the
-   sections below it span the wrap, as the table does. Their headings take
-   the register heading step (.reg-body h3), below the page title: the home
-   page's display size would dwarf it. Below the table each row has its
-   heading in the first column and its text or form in the second, which
-   reaches the table's right edge; paragraphs keep a reading measure and the
-   form's box is 760px. On narrow screens the columns stack. */
+/* The license page (/license/). The request form sits beside the intro;
+   the comparison table and remaining sections keep the full wrap. */
+.lic-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: clamp(32px, 4vw, 64px);
+  align-items: start;
+}
+.lic-intro-copy p {
+  margin-top: 16px;
+  color: var(--fg-2);
+}
+html:not(.js) .lic-intro {
+  max-width: 760px;
+  grid-template-columns: minmax(0, 1fr);
+}
 .lic-sec h2 + .shapes {
   margin-top: 20px;
 }
@@ -2170,10 +2179,8 @@ main,
   padding-block: 48px;
   border-top: 1px solid var(--line);
 }
-/* The first row has the section's rule above it; without script that is
-   "Get a key", because the form is hidden. */
-.lic-row:first-child,
-html:not(.js) .licform + .lic-row {
+/* The first row has the section's rule above it. */
+.lic-row:first-child {
   padding-top: 0;
   border-top: 0;
 }
@@ -2201,8 +2208,11 @@ html:not(.js) .licform + .lic-row {
 html:not(.js) .licform {
   display: none;
 }
-.licform.lic-row {
-  align-items: start;
+.sec .licform h2 {
+  font-size: clamp(1.625rem, 2.6vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
 }
 .licform-box {
   display: grid;
@@ -2250,7 +2260,10 @@ html:not(.js) .licform {
 .licform-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+}
+.licform [data-panel] > * + * {
+  margin-top: 20px;
 }
 .licform-field {
   display: grid;
@@ -2437,7 +2450,8 @@ html:not(.js) .licform {
 }
 
 @media (max-width: 1080px) {
-  .enterprise-hero {
+  .enterprise-hero,
+  .lic-intro {
     grid-template-columns: minmax(0, 1fr);
   }
   .enterprise-features {
