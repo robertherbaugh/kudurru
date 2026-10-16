@@ -37,14 +37,21 @@ func clusterFixture(t *testing.T) *testCluster {
 	c := &testCluster{t: t}
 	root := t.TempDir()
 	peers := make([]Peer, 3)
+	var listeners [3]net.Listener
 	for i := range peers {
 		l, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
 		peers[i] = Peer{ID: fmt.Sprintf("node%d", i+1), Address: l.Addr().String()}
-		// Reserve each port until all peers have distinct addresses.
-		defer func() { _ = l.Close() }()
+		listeners[i] = l
+		t.Cleanup(func() { _ = l.Close() })
+	}
+	// Release the reserved ports only after all peers have distinct addresses.
+	for _, l := range listeners {
+		if err := l.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	servers := []dhcp.ScopeServer{{NodeID: "node1", Address: netip.MustParseAddr("192.0.2.2")}, {NodeID: "node2", Address: netip.MustParseAddr("192.0.2.3")}, {NodeID: "node3", Address: netip.MustParseAddr("192.0.2.4")}}
 	for i := range c.nodes {
