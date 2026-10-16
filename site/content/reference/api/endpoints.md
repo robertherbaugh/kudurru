@@ -89,6 +89,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
+| GET | `/api/v1/node/dhcp/v4/interfaces` | IPv4 interfaces on this node | `dhcp.read` (cluster) |
 | GET | `/api/v1/node/dhcp/v4/scopes/{scope}/config` | Effective DHCPv4 scope configuration | `dhcp.read` (cluster) |
 | PUT | `/api/v1/node/dhcp/v4/scopes/{scope}/config` | Atomically update DHCPv4 pool options | `dhcp.write` (cluster) |
 | GET | `/api/v1/node/dhcp/v4/scopes/{scope}/export` | Export native DHCPv4 lease state | `dhcpleases.export` (cluster) |
@@ -97,6 +98,8 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations` | Effective DHCPv4 reservations | `dhcp.read` (cluster) |
 | PUT | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations/{mac}` | Create or replace a DHCPv4 reservation | `dhcp.write` (cluster) |
 | DELETE | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations/{mac}` | Remove a reservation while preserving live leases | `dhcp.delete` (cluster) |
+| GET | `/api/v1/node/dhcp/v4/setup` | Saved DHCPv4 setup on this node | `dhcp.read` (cluster) |
+| PUT | `/api/v1/node/dhcp/v4/setup` | Save DHCPv4 setup for the next restart | `dhcp.write` (cluster) |
 | GET | `/api/v1/node/dhcp/v4/status` | DHCPv4 scopes on this node | `dhcp.read` (cluster) |
 
 ## dnsrecordsets
