@@ -1,8 +1,12 @@
 package dhcp
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"sync"
@@ -214,9 +218,9 @@ func TestServerCancelsStorageWork(t *testing.T) {
 	}
 }
 
-func TestServerTransportAndStorageFailures(t *testing.T) {
+func TestServerTransportFailures(t *testing.T) {
 	fatal := errors.New("injected failure")
-	for _, kind := range []string{"read", "write", "deadline", "short write", "storage"} {
+	for _, kind := range []string{"read", "write", "deadline", "short write"} {
 		t.Run(kind, func(t *testing.T) {
 			conn := newServerConn()
 			backend := &protocolLeases{lease: Lease{Address: netip.MustParseAddr("192.0.2.10")}}
@@ -231,8 +235,6 @@ func TestServerTransportAndStorageFailures(t *testing.T) {
 				conn.deadlineErr = fatal
 			case "short write":
 				conn.shortWrite = true
-			case "storage":
-				backend.err = fatal
 			}
 			conn.input <- input
 			server := &Server{cfg: protocolConfig(), conn: conn, leases: backend}
@@ -245,6 +247,113 @@ func TestServerTransportAndStorageFailures(t *testing.T) {
 				t.Fatal("failed server left socket open")
 			}
 		})
+	}
+}
+
+type failOnceLeases struct {
+	protocolLeases
+	failure error
+}
+
+func (s *failOnceLeases) Offer(_ context.Context, client Client, address netip.Addr) (Lease, error) {
+	s.record("offer", client, address)
+	if s.calls == 1 {
+		return Lease{}, s.failure
+	}
+	return s.lease, nil
+}
+
+func (s *failOnceLeases) Acknowledge(_ context.Context, client Client, address netip.Addr, mode RequestMode) (Lease, error) {
+	s.record("ack", client, address)
+	s.mode = mode
+	if s.calls == 1 {
+		return Lease{}, s.failure
+	}
+	return s.lease, nil
+}
+
+func TestServiceStorageFailureDoesNotStopService(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		message   dhcpv4.MessageType
+		response  dhcpv4.MessageType
+		operation string
+	}{
+		{"discover", dhcpv4.MessageTypeDiscover, dhcpv4.MessageTypeOffer, "offer"},
+		{"request", dhcpv4.MessageTypeRequest, dhcpv4.MessageTypeAck, "ack"},
+	} {
+		for _, failure := range []error{errors.New("lease storage unavailable"), fmt.Errorf("lease storage: %w", syscall.EACCES)} {
+			t.Run(tc.name+"/"+failure.Error(), func(t *testing.T) {
+				cfg := protocolConfig()
+				svc := serviceForTest(t, cfg)
+				backend := &failOnceLeases{
+					protocolLeases: protocolLeases{lease: Lease{Address: cfg.RangeStart}},
+					failure:        failure,
+				}
+				svc.scopes["default"].leases = backend
+				conn := newServerConn()
+				svc.listeners[0].listen = func(Config) (net.PacketConn, error) { return conn, nil }
+				var logs bytes.Buffer
+				svc.listeners[0].logger = slog.New(slog.NewJSONHandler(&logs, nil))
+				if err := svc.Listen(); err != nil {
+					t.Fatal(err)
+				}
+
+				packet := clientPacket(tc.message)
+				if tc.message == dhcpv4.MessageTypeRequest {
+					packet.UpdateOption(dhcpv4.OptServerIdentifier(net.IP(cfg.ServerIP.AsSlice())))
+					packet.UpdateOption(dhcpv4.OptRequestedIPAddress(net.IP(cfg.RangeStart.AsSlice())))
+				}
+				conn.input <- serverDatagram{wire: packet.ToBytes(), source: packetSource(packet)}
+				packet.TransactionID[3]++
+				conn.input <- serverDatagram{wire: packet.ToBytes(), source: packetSource(packet)}
+				socketFailure := errors.New("listening socket failed")
+				conn.input <- serverDatagram{err: socketFailure}
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				if err := svc.Run(ctx); !errors.Is(err, socketFailure) || errors.Is(err, failure) {
+					t.Fatalf("want terminal socket failure after storage recovery, got %v", err)
+				}
+				if backend.calls != 2 || backend.operation != tc.operation {
+					t.Fatalf("later packet did not reach storage: calls=%d operation=%s", backend.calls, backend.operation)
+				}
+				if tc.message == dhcpv4.MessageTypeRequest && backend.mode != Selecting {
+					t.Fatalf("request mode = %v, want Selecting", backend.mode)
+				}
+				if len(conn.writes) != 1 {
+					t.Fatalf("want only recovered packet's reply, got %d replies", len(conn.writes))
+				}
+				written := <-conn.writes
+				reply, err := dhcpv4.FromBytes(written.wire)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if reply.MessageType() != tc.response || reply.TransactionID != packet.TransactionID ||
+					!reply.YourIPAddr.Equal(net.IP(cfg.RangeStart.AsSlice())) {
+					t.Fatalf("unexpected recovery reply: %v", reply)
+				}
+				destination, ok := written.source.(*net.UDPAddr)
+				if !ok || destination.Port != clientPort || !destination.IP.Equal(net.IPv4bcast) {
+					t.Fatalf("unexpected reply destination: %v", written.source)
+				}
+				var record struct {
+					Level     string `json:"level"`
+					Error     string `json:"error"`
+					Interface string `json:"interface"`
+				}
+				if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &record); err != nil {
+					t.Fatalf("want one storage failure log: %v; logs=%s", err, logs.String())
+				}
+				if record.Level != "ERROR" || record.Error != failure.Error() || record.Interface != cfg.Interface {
+					t.Fatalf("storage failure was not visible at error level: %+v", record)
+				}
+				select {
+				case <-conn.closed:
+				default:
+					t.Fatal("terminal socket failure left listener open")
+				}
+			})
+		}
 	}
 }
 

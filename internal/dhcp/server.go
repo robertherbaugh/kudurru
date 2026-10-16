@@ -81,8 +81,8 @@ func (s *Server) Listen() error {
 
 // Run processes packets serially, bounding memory, storage concurrency, and
 // each packet's processing time. Cancellation closes the socket to unblock I/O.
-// Socket and unexpected storage errors are fatal, so a failed DHCP service is
-// visible to the supervising process instead of silently losing requests.
+// Handler failures drop only the affected packet and are logged; unexpected
+// socket failures remain fatal to the supervising process.
 func (s *Server) Run(ctx context.Context) error {
 	s.mu.Lock()
 	if s.closed {
@@ -137,7 +137,21 @@ func (s *Server) Run(ctx context.Context) error {
 			handler = s.dispatch
 		}
 		reply, destination, err := handler(packetCtx, buf[:n], peer)
-		if err == nil && reply != nil && packetCtx.Err() == nil {
+		if err != nil {
+			cancel()
+			if s.stopped(ctx) {
+				return nil
+			}
+			level := slog.LevelError
+			if errors.Is(err, context.DeadlineExceeded) {
+				level = slog.LevelDebug
+			}
+			if s.logger != nil {
+				s.logger.Log(ctx, level, "DHCP packet dropped", "interface", s.cfg.Interface, "error", err)
+			}
+			continue
+		}
+		if reply != nil && packetCtx.Err() == nil {
 			deadline, _ := packetCtx.Deadline()
 			if err = conn.SetWriteDeadline(deadline); err == nil {
 				var written int
