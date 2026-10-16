@@ -288,6 +288,8 @@ type Options struct {
 	// BlockingReads replaces blocking GETs with original complete-cut reads.
 	// Nil preserves the legacy node-local toggle projection.
 	BlockingReads BlockingReadSource
+	// BlockingCommand replaces legacy toggle mutation with a current command.
+	BlockingCommand BlockingCommand
 	// UpstreamReads replaces local upstream health reads with original routes.
 	// Nil preserves legacy live-stage status sampling.
 	UpstreamReads UpstreamReadSource

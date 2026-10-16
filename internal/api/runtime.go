@@ -180,6 +180,9 @@ func (s *Server) getBlocking(ctx context.Context, _ *struct{}) (*blockingOutput,
 }
 
 func (s *Server) setBlocking(ctx context.Context, in *setBlockingInput) (*blockingOutput, error) {
+	if s.opts.BlockingCommand != nil || s.opts.CanonicalSettings != nil || s.opts.ObjectCommand != nil || s.opts.BlockingReads != nil {
+		return s.setBlockingCommand(ctx, in)
+	}
 	if s.opts.Blocking == nil {
 		return nil, errNotImplemented("the blocking toggle")
 	}

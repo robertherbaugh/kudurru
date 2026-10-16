@@ -63,35 +63,47 @@ func (s *servingRuntime) currentCommand(ctx context.Context, attrs rbac.Attribut
 // verify their raw proof and current account authority before reading private
 // data, mutating state, or returning a deduplicated result.
 func (s *servingRuntime) currentAuthCommand(ctx context.Context, fn func(context.Context, *sqlite.CommandTx, servingauth.Dependencies) error) error {
+	_, err := s.currentAuthCommandThen(ctx, fn, nil)
+	return err
+}
+
+// currentAuthCommandThen retains the same writer binding through a synchronous
+// postcommit observation outside all transaction and dependency pins. committed
+// reports actual command completion, including a no-op, even when publication
+// acknowledgment fails or the original writer is canceled after commit.
+func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(context.Context, *sqlite.CommandTx, servingauth.Dependencies) error, after func(context.Context, serving.TermActivation) error) (committed bool, err error) {
 	if s == nil || ctx == nil || fn == nil {
-		return serving.ErrComponents
+		return false, serving.ErrComponents
 	}
 	status := s.primary.driver.Status()
 	if !status.Running {
-		return replication.ErrFenced
+		return false, replication.ErrFenced
 	}
 	writer := s.primary.writer.active.Load()
 	ctx, release, err := s.primary.writer.bind(ctx, status.Writer)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer release()
 	target := serving.TermActivation{Term: status.Writer.Term, Incarnation: status.Writer.Incarnation}
-	check := func(ctx context.Context) error {
+	checkWriter := func(ctx context.Context) error {
 		// Read the original episode directly: its cancellation can precede
 		// propagation through bind's AfterFunc to this request context.
 		if !s.primary.writer.current(writer) {
 			return replication.ErrFenced
 		}
-		if err := s.writerCurrent(ctx, target); err != nil {
+		return s.writerCurrent(ctx, target)
+	}
+	check := func(ctx context.Context) error {
+		if err := checkWriter(ctx); err != nil {
 			return err
 		}
 		return servinghttp.CheckWriter(ctx, s.publisher, target)
 	}
 	if err := check(ctx); err != nil {
-		return err
+		return false, err
 	}
-	return s.providers.WithCommand(ctx, target, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+	err = s.providers.WithCommand(ctx, target, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		if err := check(ctx); err != nil {
 			return err
 		}
@@ -100,4 +112,19 @@ func (s *servingRuntime) currentAuthCommand(ctx context.Context, fn func(context
 		}
 		return fn(ctx, tx, deps)
 	})
+	if err != nil {
+		return false, err
+	}
+	if after == nil {
+		return true, nil
+	}
+	// Our own commit can supersede the request's HTTP lease. Only the original
+	// writer episode and target remain admission constraints on acknowledgment.
+	if err := checkWriter(ctx); err != nil {
+		return true, err
+	}
+	if err := after(ctx, target); err != nil {
+		return true, err
+	}
+	return true, checkWriter(ctx)
 }

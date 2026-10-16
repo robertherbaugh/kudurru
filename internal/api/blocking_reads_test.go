@@ -108,7 +108,7 @@ func TestCapturedBlockingGETFailureAndCancellationNeverFallback(t *testing.T) {
 	}
 }
 
-func TestCapturedBlockingGETDoesNotChangePOSTOrLegacy(t *testing.T) {
+func TestCapturedBlockingGETRequiresCurrentPOSTAndPreservesLegacy(t *testing.T) {
 	stage, err := blockingstage.New(blockingstage.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -122,11 +122,15 @@ func TestCapturedBlockingGETDoesNotChangePOSTOrLegacy(t *testing.T) {
 	})
 	var state BlockingState
 	h.do(http.MethodGet, "/api/v1/dns/blocking", "zoneadmin", nil).want(http.StatusForbidden)
+	h.do(http.MethodPost, "/api/v1/dns/blocking", "operator", map[string]any{"blocking": false}).want(http.StatusServiceUnavailable)
+	if !stage.Enabled() {
+		t.Fatal("missing current command changed the legacy toggle")
+	}
+	h.srv.opts.BlockingReads = nil
 	h.do(http.MethodPost, "/api/v1/dns/blocking", "operator", map[string]any{"blocking": false}).want(http.StatusOK).json(&state)
 	if state.Blocking || state.Scope != "node" || stage.Enabled() {
 		t.Fatal("read capability changed legacy POST", state)
 	}
-	h.srv.opts.BlockingReads = nil
 	h.do(http.MethodGet, "/api/v1/dns/blocking", "viewer", nil).want(http.StatusOK).json(&state)
 	if state.Blocking || state.Scope != "node" {
 		t.Fatal("nil capability changed legacy GET", state)
