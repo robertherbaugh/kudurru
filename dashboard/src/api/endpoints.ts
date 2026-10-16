@@ -3,6 +3,7 @@
 import type { ApiClient, Query } from './client';
 import { dhcpEndpoints } from './dhcp';
 import type {
+  BrandingInfo,
   ApiToken,
   ApplyResult,
   AuditPage,
@@ -109,6 +110,7 @@ export function endpoints(c: ApiClient) {
       existing: () => c.get<ListEnvelope<MigrationAuthorityChange>>('/imports/existing'),
       adopt: (zones: MigrationAuthorityChange[]) => c.post<MigrationResult>('/imports/adopt', { zones }),
     },
+    branding: { get: (signal?: AbortSignal) => c.get<BrandingInfo>('/branding', undefined, signal) },
     /** Download URL of a whole object collection (JSON list envelope). */
     objectsURL: (kind: ObjectKind) => c.url(`/objects/${kind}`),
 

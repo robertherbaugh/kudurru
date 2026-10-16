@@ -14,12 +14,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi, useApiContext } from '../api/context';
+import { useBranding } from '../lib/branding';
 import { BrandLogo } from '../components/BrandLogo';
 import { errorText } from '../components/Feedback';
 import { TextField } from '../components/fields/TextField';
 import { useLocation } from '../lib/router';
 
 export function LoginPage() {
+  const brand = useBranding();
   const api = useApi();
   const { setCsrf } = useApiContext();
   const qc = useQueryClient();
@@ -65,7 +67,7 @@ export function LoginPage() {
       <Card width="100%" maxWidth={420} padding={6}>
         <VStack gap={4}>
           <VStack gap={2}>
-            <BrandLogo tagline alt="kudurru: authority over every zone." />
+            <BrandLogo tagline alt={brand.name === 'kudurru' ? 'kudurru: authority over every zone.' : brand.name} />
             <Heading level={1}>Sign in</Heading>
           </VStack>
           {status.data?.hasDefaultCredentials ? (

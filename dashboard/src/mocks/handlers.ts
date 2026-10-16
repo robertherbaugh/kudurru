@@ -47,6 +47,7 @@ import {
   unattachedOf,
   WriteError,
 } from './domains';
+import { brandingAccentValid, brandingNameValid, brandingPNGValid } from '../lib/brandingAssets';
 import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
@@ -55,7 +56,13 @@ import { dhcpHandlers, resetDHCP } from './dhcp';
 import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
-let db: MockDB = createDB();
+const BRAND_FIELDS = ['name', 'logoLight', 'logoDark', 'favicon', 'accentColor'] as const;
+function addBrandingFixture(value: MockDB) {
+  value.settings.branding = Object.fromEntries(BRAND_FIELDS.map((f) => [f, '']));
+  for (const field of BRAND_FIELDS) value.schema.push({ path: `branding.${field}`, scope: 'cluster', type: 'string', default: '', help: 'Enterprise custom branding', hostOnly: false, envLocked: false, restartRequired: false, writeOnly: false });
+  return value;
+}
+let db: MockDB = addBrandingFixture(createDB());
 // UI fixtures only: fixed codes deliberately do not model cryptographic authority.
 const mockFactors = new Set<string>();
 const mockSetups = new Map<string, { challenge: string; expiresAt: string }>();
@@ -77,7 +84,7 @@ function ownSessions(username: string): SessionRecordInfo[] {
 
 /** Resets the database to the fixtures (tests call it in beforeEach). */
 export function resetDB(now?: number): MockDB {
-  db = createDB(now);
+  db = addBrandingFixture(createDB(now));
   resetDHCP();
   mockFactors.clear();
   mockSetups.clear();
@@ -1518,6 +1525,12 @@ export const handlers = [
     });
   }),
 
+  // Public presentation must work before authentication.
+  http.get(`${B}/branding`, () => {
+    const enabled = db.license.plan === 'enterprise' && (db.license.state === 'active' || db.license.state === 'grace');
+    const brand = db.settings.branding as Record<string, string>;
+    return ok(enabled ? { enabled, ...brand, name: brand.name || 'kudurru', validUntil: new Date(Date.now() + 30_000).toISOString() } : { enabled: false, name: 'kudurru', logoLight: '', logoDark: '', favicon: '', accentColor: '' });
+  }),
   // settings ----------------------------------------------------------------
   http.post(`${B}/settings/sections/:section/ownership/:action`, async ({ request, params }) => {
     const g = guard(request, 'settings', 'write'); if (g) return g;
@@ -1555,7 +1568,12 @@ export const handlers = [
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
     const unknown = changed.find((p) => !db.schema.some((k) => k.path === p));
     if (unknown) return fail(400, 'invalid', `unknown settings key ${unknown}`);
+    if (changed.some((p) => p.startsWith('branding.')) && !(db.license.plan === 'enterprise' && (db.license.state === 'active' || db.license.state === 'grace'))) return fail(402, 'license_required', 'Custom branding requires Enterprise.');
     const next = withDefaults(mergePatch(db.settings, patch), patch, changed);
+    if (changed.some((p) => p.startsWith('branding.'))) {
+      const b = next.branding as Record<string, unknown>;
+      if (!b || BRAND_FIELDS.some((f) => typeof b[f] !== 'string') || !brandingNameValid(b.name as string) || !brandingAccentValid(b.accentColor as string) || !brandingPNGValid(b.logoLight as string) || !brandingPNGValid(b.logoDark as string) || !brandingPNGValid(b.favicon as string, 256)) return fail(400, 'invalid', 'Invalid branding.');
+    }
     const bad1 = validateSchema(next, changed);
     if (bad1) return fail(400, 'invalid', bad1.message, bad1.hint, undefined, [bad1.field]);
     const invalid = validateUpstreams(next) ?? validateBlockPage(next);

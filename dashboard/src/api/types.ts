@@ -1027,3 +1027,6 @@ export type MigrationResult = S['MigrationResult'];
 export type MigrationRun = S['MigrationRun'];
 export type MigrationCutoverPlan = S['MigrationCutoverPlan'];
 export type MigrationAuthorityChange = S['MigrationAuthorityChange'];
+
+/** Public Enterprise presentation; no license or account details. */
+export type BrandingInfo = S['BrandingInfo'];
