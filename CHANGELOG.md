@@ -10,8 +10,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or
 validating recursive resolver, blocking, optional DHCPv4 and a dashboard in
-one Go binary. Run it as one container or in Kubernetes with CRDs as the configuration
-store.
+one Go binary. Run it as one container or in Kubernetes with CRDs as the
+configuration store.
 
 ### Added
 
@@ -62,10 +62,10 @@ store.
   server-ID override and alternate ports; NTP/search/classless-route options,
   architecture-specific PXE/HTTP boot settings and client FQDN handling.
 - Persistent earliest-established DHCP DNS name ownership across scopes,
-  reservation precedence and import-safe claim ordering. Lease schema v4 adds
-  claim ranks and replica progress. Indexed transactions and incremental DNS
-  publication reduce 10,000-lease median renewal time from 46.5 ms to 0.35 ms in
-  the comparative FULL-synchronous SQLite fixture.
+  with reservation precedence and import-safe claim ordering. Indexed lease
+  transactions and incremental DNS publication keep renewals fast: median
+  renewal time is 0.35 ms at 10,000 leases in the FULL-synchronous SQLite
+  fixture.
 
 #### Dashboard, API and CLI
 
