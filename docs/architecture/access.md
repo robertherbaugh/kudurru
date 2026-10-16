@@ -113,8 +113,10 @@ Explicit TLS/origin policy, bounded document parsing and absolute resource
 freshness apply to discovery and JWKS refresh. Transient failures can retain only
 an unchanged resource until its original deadline; security mismatches retire it.
 Unknown token keys never initiate discovery. These resource and transaction
-adapters are tested with real TLS, SQLite and the publisher. SQLite startup now
-mounts the coordinator and captured local HTTP routes; browser OIDC remains open.
+adapters are tested with real TLS, SQLite and the publisher. SQLite startup mounts
+the coordinator, captured local HTTP routes and browser OIDC. Browser exchange
+uses an explicit credential-bound handle from the same published resource lease;
+it does not perform discovery or select a newer provider during a request.
 
 Host-only `auth.providerResources` settings now declare explicit network origins,
 local exceptions, asymmetric JWT algorithms, system trust and extra CA files.
@@ -202,21 +204,25 @@ only the identifier, timestamps and current/revoked flags for the exact account
 UID. Generic public object writes and canonical settings writes reauthorize the
 original raw proof within the admitted command, including unchanged writes.
 
-OIDC start/callback routes return 503 until a captured browser provider adapter is
-mounted; they never fall back to the legacy Stack. Startup bootstrap and local
-admin-socket integration still use the legacy Stack, with its provider discovery
-disabled on SQLite. Completing current admission for those administrative paths,
-public TOTP enrollment/recovery, browser OIDC and CLI login remains open. The
-request diagrams below describe the legacy Kubernetes stack; its migration
-admission remains a separate verified journal gate.
+SQLite OIDC start/callback routes use the captured browser adapter described
+below; an unavailable capability returns 503 without a legacy Stack fallback.
+Startup bootstrap and local admin-socket integration still use the legacy Stack,
+with its provider discovery disabled on SQLite. Completing current admission for
+those administrative paths and CLI login remains open. SQLite also mounts the
+factor management routes described below. Kubernetes retains the legacy Stack
+and its separate verified migration journal gate; its factor management routes
+return 503 until equivalent current commands are available.
 
 SQLite startup initializes the explicit empty security manifest under its writer
 fence and validates owner rows on later writes/replica installation. Existing
 history is preserved; an absent root beside other auth rows is an error.
-Startup explicitly upgrades complete version 1 or 2 manifests to version 3,
+Startup explicitly upgrades complete version 1, 2 or 3 manifests to version 4,
 preserving every session, replay row and revocation floor and advancing the
-security epoch once. Version 3 explicitly inventories external identities and
-sessions. Version 1 or empty-state initialization rejects legacy account seeds
+security epoch once. Version 3 introduced external identities and sessions;
+version 4 adds the mandatory pending browser-attempt inventory. Replication
+requires the `auth-browser-attempts-v1` feature, so receivers without this support
+reject these images. Coordinated upgrades must account for that compatibility
+boundary. Version 1 or empty-state initialization rejects legacy account seeds
 without replay authority, including disabled accounts; the version 2 upgrade
 preserves supported active factors. Startup never silently adopts or clears a
 seed. Other security owners' rows remain intact.
@@ -251,7 +257,37 @@ the seed, replay consumption and session revocation together. Rotation preserves
 the old replay floor; removal and recovery retain the disabled replay row. Recovery
 separately requires current users/write permission and the exact target UID.
 Concurrent confirmation can enroll once; failed callbacks consume nothing.
-Public routes, shared rate limiting and UI remain part of production integration.
+Clock-aware commands retain the same verified credential or decoded challenge
+bounds through final commit, including no-ops. Their final checks read only
+memory, context and actual time; they never consume a second code.
+
+SQLite exposes own status at `GET /auth/totp` and setup, confirmation and removal
+at `POST /auth/totp/{setup,confirm,disable}`. These routes require a current local
+enrolled cookie; mutations also verify the current password and existing factor.
+Administrator recovery uses `POST /iam/users/{name}/totp/recover` with the exact
+UID returned by authorized IAM reads. It reauthorizes the original raw proof for
+cluster `users.write` inside the complete current command. Requests are bounded
+and reject duplicate or unknown fields, and factor attempts share login's rate
+limiter. Setup discloses its secret only after successful commit and a final
+deadline check, with private response headers. Confirmation and removal clear
+the cookie after commit and require a fresh login; self-target recovery does too.
+The consumed confirmation code cannot be reused for login.
+
+Dashboard login and password change accept an optional six-digit authenticator
+code, preserve leading zeros and clear it after submission. They do not retry
+factor-bearing mutations. The Access page provides a three-step enrollment and
+replacement wizard with a manual key, plus removal and administrator recovery
+dialogs. Local enrollment requires a local cookie session; recovery also permits
+external cookie administrators with cluster `users.write`. Recovery binds the
+selected account name and UID and checks a fresh inventory before submission.
+An account replacement requires explicit reselection.
+
+Passwords, codes and setup secrets remain in the mounted component, outside
+query and mutation caches. Closing a pending dialog aborts the request and
+reports an unknown outcome; it never retries the mutation. Successful
+confirmation, removal and self-recovery clear the session, CSRF value and cached
+answers without a second logout. Canceled session reads cannot restore old
+CSRF state after cleanup. No external QR service receives provisioning material.
 
 ```mermaid
 flowchart LR
@@ -322,10 +358,11 @@ rolls back the entire enrollment. The outer resource pin still excludes provider
 rotation through the actual commit; a time check alone is not that exclusion.
 
 These owners and commands are tested with real signed JWTs, concurrent concrete
-transactions, rollback, restart, replica installation and promotion. Network
-discovery/exchange, preauth consumption and browser/CLI mounting remain separate
-work; the existing production OIDC adapter rejects expression policies until it
-adopts this owner.
+transactions, rollback, restart, replica installation and promotion. SQLite
+browser login now composes bounded discovery/exchange, durable pending-attempt
+consumption and external enrollment. CLI login and migration of the legacy
+Kubernetes OIDC adapter remain separate work; that adapter rejects expression
+policies until it adopts this owner.
 
 ## Principals
 
@@ -397,8 +434,11 @@ address for 5 minutes after 5 failures, and an account for 15 minutes after
 
 ### OIDC in the browser
 
-kudurru is a confidential client (backend for frontend): the browser never
-sees a token, only a sealed cookie.
+kudurru is a confidential client: the browser receives a sealed session cookie,
+not provider tokens. On SQLite, background discovery prepares the exact accepted
+provider capability before a request starts. Start commits a random pending
+attempt bound to provider UID, spec/resource identity, redirect, client and the
+preauth payload hash, then seals from a published view containing that row.
 
 ```mermaid
 sequenceDiagram
@@ -407,25 +447,40 @@ sequenceDiagram
     participant K as kudurru API
     participant I as identity provider
     B->>K: GET /api/v1/auth/oidc/{idp}/start?next=/zones
-    K->>K: discovery (lazy), state, nonce, PKCE verifier
+    K->>K: capture provider; generate state, nonce and PKCE verifier
+    K->>K: current command commits pending attempt
+    K->>K: published view seals exact pending row
     K-->>B: 302 to IdP + sealed pre-auth cookie (10 min, single use)
     B->>I: authorize (code, S256 challenge, nonce)
     I-->>B: 302 /callback?code&state
     B->>K: GET /api/v1/auth/oidc/{idp}/callback
-    K->>K: open pre-auth cookie, check state
-    K->>I: exchange code + verifier + client secret
+    K->>K: original view checks pre-auth cookie, state and pending row
+    K->>I: bounded code exchange outside owner/transaction guards
     I-->>K: ID token
     K->>K: verify signature, aud, azp, nonce, at_hash
     K->>K: claims → username (prefix) and groups (prefix)
-    K->>K: bindings for the user and groups → grants<br/>(none: defaultRole, or 403 no_bindings)
-    K-->>B: Set-Cookie session (sealed) + 302 next
+    K->>K: current command consumes pending row and enrolls session atomically
+    K->>K: published view seals exact enrollment
+    K-->>B: Set-Cookie session + 302 next
     B->>K: GET /api/v1/auth/me → principal, permissions, CSRF token
 ```
 
-OIDC users are not stored. Their grants are resolved at sign-in and frozen
-in the session; deleting or narrowing a binding revokes frozen grants on the
-next request. There is no refresh token: the session lasts 12 hours, or
-30 minutes without activity.
+The pending inventory allows at most 256 attempts, each valid for ten minutes.
+Missing, consumed or expired rows deny callbacks, including after restart,
+promotion or garbage collection. Callback consumes the exact row in the same
+command as external enrollment; failure rolls both changes back. The exchange
+supports S256 and `client_secret_basic`, enforces the original resource and
+credential identity before and after I/O, and performs no automatic retries or
+redirect following. No refresh token is retained. Provider receipt profile
+`provider-metadata/v2-browser` requires fresh authority admission; identical-byte
+withdrawal/reactivation cannot revive a preauth cookie across its provider floor.
+
+SQLite stores independent external identity and enrollment records. Grants are
+frozen at sign-in and intersected with current authority on every request. The
+legacy Kubernetes stack does not store OIDC users. Session defaults remain twelve
+hours absolute and thirty minutes idle; current settings and durable revocation
+floors govern SQLite enrollments. Startup provider resets can revoke old sessions
+and pending browser attempts even when the configuration bytes are unchanged.
 
 Stored providers can read only exact file paths granted by the operator in
 `credentials.allowedFiles`. This node setting is host-only and requires a

@@ -941,6 +941,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	var canonicalSettings api.CanonicalSettings
 	var objectCommand api.ObjectCommand
+	var objectReads api.ObjectReadSource
+	var policyListReads api.PolicyListReadSource
+	var blockingReads api.BlockingReadSource
+	var blockingCommand api.BlockingCommand
+	var upstreamReads api.UpstreamReadSource
+	var zoneCommand api.ZoneCommand
+	catalogSource := catalogueAPI(catalogs, catRefreshers)
 	if sql == nil {
 		authMux := http.NewServeMux()
 		ids.Register(authMux)
@@ -989,12 +996,20 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		if err != nil {
 			return err
 		}
+		httpAuth.opts.ProviderHandler = httpAuth.CapturedBrowserHandler()
 		authenticate = func(next http.Handler) http.Handler {
 			return httpAuth.Middleware(servingMutationRoutes(next))
 		}
 		authorizer, roles = httpAuth.Authorizer(), httpAuth.Roles
 		authHandler = httpAuth.Handler()
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
+		objectReads = servingbuild.NewObjectReads()
+		policyListReads = servingbuild.NewPolicyListReads()
+		blockingReads = servingbuild.NewBlockingReads()
+		blockingCommand = complete.BlockingCommand
+		upstreamReads = servingbuild.NewUpstreamReads()
+		zoneCommand = complete.ZoneCommand
+		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
 	}
 
 	// The optional central database (D158): opened here, connected and
@@ -1095,7 +1110,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, PolicyListReads: policyListReads,
+		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
@@ -1112,7 +1128,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		UIHandler:   dashboard.Handler(dashboard.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 		DefaultNamespace: namespace,
-		Catalogue:        catalogueAPI(catalogs, catRefreshers),
+		Catalogue:        catalogSource,
 		BlockPage:        blockPage,
 		Unblock:          unblockBook,
 	})

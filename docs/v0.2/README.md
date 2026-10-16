@@ -103,6 +103,11 @@ the lifecycle source cannot expose old configuration. Pending DNSRecordSet-only
 edits retain the last committed records until reconciliation.
 Captured primary routing, admission and publication diagnostics also agree at
 the earliest ancestor expiry, including after durable restore and parent refresh.
+A separate startup liveness case remains under investigation: introducing a
+parent with an expiring static record before its child boundary is admitted can
+leave both lifecycles waiting on conflicts. Admitting an empty parent before
+adding the record passes the existing expiry tests; that does not close the
+simultaneous startup case.
 The root runtime assembly is mounted on SQLite DNS listeners; Kubernetes
 barriers and authenticated forwarding remain in progress.
 The combined root assembly now runs provider acquisition/publication on every
@@ -118,9 +123,31 @@ publication. Real HTTP/SQLite merge, reset, no-op and stale-request tests pass;
 the SQLite route is now mounted. Captured local login/password/token/session
 routes, generic current object writes, committed zone diagnostics and operational
 settings observation are also mounted. Actual server tests combine signed
-UDP/TCP UPDATE, HTTP commands, exports and restart. Browser OIDC, public TOTP
-management, compound zone mutations and administrative/source writer integration
-remain open.
+UDP/TCP UPDATE, HTTP commands, exports and restart. Generic public object GETs
+and compiled blocklist search now retain the original HTTP image, including
+permissions, list contents and generation-bound pagination. Catalog GETs use the
+original blocking view and actual acquired provenance. Policy state combines
+original objects, canonical settings and catalog with actual compiled text/RPZ
+counts and exact expiry; desired status remains a historical receipt. Other
+public reads are migrating through their specific captured owners. Blocking GETs
+use the original canonical settings and absolute timer, including exact expiry.
+Upstream health samples keep original resolver membership while allowing its
+local operational counters to advance.
+Blocking toggle commands update that same canonical state and acknowledge its
+actual publication; a committed-but-unacknowledged response identifies the saved
+receipt. Absolute deadlines survive restart without renewal.
+Browser OIDC is mounted with exact leased provider exchange and transactional
+pending-attempt consumption; security root v4 requires the new replication
+feature. Compound zone record edits, BIND import and cascade deletion now use
+one current command with complete scope checks, including dry runs and no-ops;
+mounted server restart acceptance passes. Public TOTP status, setup, confirmation,
+removal and exact-UID administrator recovery now use current commands with final
+credential/challenge deadline checks. Login/password forms accept factor codes;
+the Access page adds manual-key enrollment/replacement, removal and exact-UID
+administrator recovery, with component-local secrets and canceled-session
+cleanup. Administrative/source writer integration remains open.
+Manual NOTIFY and other unsafe convenience mutations without current admission
+return 503 explicitly.
 Root request contexts retain the original elector token and cancellation, and
 complete runtime owners retain the exact prepared keyring installation for
 notification admission. Captured secondary NOTIFY accepts authorized refresh
@@ -158,9 +185,9 @@ an older prepared candidate. Immutable license cuts preserve replacement and
 original deadline checks through complete commands. The provider host now retains
 explicit entitlement continuity, local trust/credential/auth-key policy, and
 follower taint baselines. Root static preparation and key exclusion use actual
-loaded capabilities. Production host/coordinator mounting, route adoption,
-enrollment/recovery UI and wider IAM/session acceptance
-remain open.
+loaded capabilities. Production host/coordinator and browser route mounting now
+use those owners; CLI login, remaining route adoption and
+wider IAM/session acceptance remain open.
 
 The integration host and private ledger now fence per-instance execution,
 preserve operation intent and partial receipts, and enforce durable request

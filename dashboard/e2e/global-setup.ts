@@ -33,14 +33,42 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
       throw new Error(`${bin} embeds the placeholder dashboard: run \`make dashboard-build\` before building it (or \`make dashboard-e2e\`)`);
     }
 
-    const login = await api.post('/api/v1/auth/login', { data: { username: ADMIN_USER, password: adminPassword } });
-    if (!login.ok()) throw new Error(`login failed: ${login.status()} ${await login.text()}`);
+    // Ops readiness precedes complete HTTP publication. Only this exact
+    // middleware refusal occurs before login admission or credential work;
+    // never repeat a handler failure or an uncertain transport outcome.
+    const loginDeadline = Date.now() + 30_000;
+    for (let attempt = 0; ; attempt++) {
+      const login = await api.post('/api/v1/auth/login', {
+        data: { username: ADMIN_USER, password: adminPassword },
+        timeout: Math.max(1, loginDeadline - Date.now()),
+      });
+      if (login.ok()) { await login.dispose(); break; }
+      const status = login.status();
+      const headers = login.headers();
+      const body = await login.body();
+      let key: unknown;
+      if (body.length <= 4096) {
+        try { key = (JSON.parse(body.toString()) as { error?: { key?: unknown } }).error?.key; } catch { /* Refuse malformed errors. */ }
+      }
+      await login.dispose();
+      if (status !== 503 || key !== 'generation_pending' || headers['set-cookie'] || headers.location || attempt >= 19 || Date.now() >= loginDeadline) {
+        throw new Error(`login failed: HTTP ${status}, pre-handler generation pending=${key === 'generation_pending'}`);
+      }
+      await sleep(Math.min(1000, loginDeadline - Date.now()));
+    }
     fs.mkdirSync(path.dirname(STORAGE_STATE), { recursive: true });
     await api.storageState({ path: STORAGE_STATE });
 
     // Real traffic from 127.0.0.1: local zone, blocked and recursive names.
-    const local = await query(server.dns, ZONE.host);
-    if (!local.a.includes(ZONE.hostA)) throw new Error(`${ZONE.host}: want A ${ZONE.hostA}, got ${JSON.stringify(local)}`);
+    // HTTP readiness does not acknowledge a desired primary's head. Wait for
+    // its actual DNS publication before using it to seed query-log assertions.
+    const zoneDeadline = Date.now() + 30_000;
+    for (;;) {
+      const local = await query(server.dns, ZONE.host);
+      if (local.rcode === 0 && local.a.includes(ZONE.hostA)) break;
+      if (Date.now() >= zoneDeadline) throw new Error(`${ZONE.host}: want A ${ZONE.hostA}, got ${JSON.stringify(local)}`);
+      await sleep(250);
+    }
     const recursive = await query(server.dns, 'www.example.com');
     if (!recursive.a.includes(UPSTREAM_A)) throw new Error(`www.example.com: want A ${UPSTREAM_A} from the stub upstream, got ${JSON.stringify(recursive)}`);
     const names = [ZONE.host, `www.${ZONE.object}`, BLOCKLIST.blocked, `cdn.${BLOCKLIST.blocked}`, BLOCKLIST.alsoBlocked, 'www.example.com', 'example.org'];

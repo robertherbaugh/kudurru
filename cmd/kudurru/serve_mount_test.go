@@ -47,6 +47,7 @@ func TestRunServeSQLiteCompletePrimaryUpdateRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, obj := range []store.Object{
+		&public.Policy{ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "default"}},
 		&public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home"}, Spec: public.DNSZoneSpec{
 			ZoneName: "example.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns.example."},
 			Policy: public.ZonePolicy{Notify: public.NotifyNone, Update: public.AccessAllow, UpdatePolicies: []public.UpdatePolicy{{TSIGKeyRef: "updates", Name: "*.example.", Types: []string{"A"}}}},
@@ -277,6 +278,26 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 	if me.Principal.Name != "admin" || len(me.Roles) == 0 {
 		t.Fatal("mounted /me lost captured grants")
 	}
+	var catalog api.CatalogueInfo
+	client.call(http.MethodGet, "/catalogue", nil, http.StatusOK, &catalog)
+	if catalog.Origin == "" || catalog.Digest == "" || catalog.Services == 0 || len(catalog.Sources) == 0 || catalog.Refresh != nil {
+		t.Fatal("mounted catalog lost captured contents/provenance or sampled live refresh status")
+	}
+	var policyState api.PolicyState
+	client.call(http.MethodGet, "/policies/default/default/state", nil, http.StatusOK, &policyState)
+	if policyState.Policy != "default/default" || !policyState.Enabled || !policyState.Active || policyState.Lists == nil || policyState.Services == nil {
+		t.Fatal("mounted policy state lost captured default policy or complete diagnostics")
+	}
+	var blocking api.BlockingState
+	client.call(http.MethodGet, "/dns/blocking", nil, http.StatusOK, &blocking)
+	if blocking.Scope != "cluster" || blocking.Configured != cfg.Blocking.Enabled || blocking.Blocking != blocking.Configured || blocking.Until != nil || blocking.Timer != nil {
+		t.Fatal("mounted blocking state did not come from the canonical publication")
+	}
+	var upstreams api.UpstreamsBody
+	client.call(http.MethodGet, "/stats/upstreams", nil, http.StatusOK, &upstreams)
+	if len(upstreams.Servers) == 0 {
+		t.Fatal("mounted upstream diagnostics omitted the captured resolver set")
+	}
 	var sessions api.AuthList[api.SessionRecordInfo]
 	client.call(http.MethodGet, "/auth/sessions", nil, 200, &sessions)
 	current := ""
@@ -289,14 +310,18 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 		t.Fatal("mounted session inventory lacks the actual enrollment")
 	}
 	if restart == 0 {
-		// Compound convenience routes must never reach their legacy live-Store
-		// writers merely because ordinary single-object admission is mounted.
+		// Convenience routes without current admission must never reach their
+		// legacy live-Store writers because other commands are mounted.
 		blocked := *client
 		blocked.http = &http.Client{Jar: jar, Timeout: 5 * time.Second}
-		blocked.call(http.MethodDelete, "/zones/home", nil, 503, nil)
-		blocked.call(http.MethodPost, "/zones/home/records", map[string]any{"dnsName": "escape.example.", "recordType": "A", "targets": []string{"192.0.2.99"}}, 503, nil)
-		blocked.call(http.MethodDelete, "/zones/home/records/seed.example/A", nil, 503, nil)
-		blocked.call(http.MethodPost, "/zones/home/import", nil, 503, nil)
+		blocked.call(http.MethodPost, "/zones/home/notify", nil, 503, nil)
+		// These legacy aliases can write several lists/policies or return an
+		// unchecked no-op. They need their own admitted command adapters.
+		blocked.call(http.MethodPost, "/allowlist", map[string]any{"values": []string{"escape.example"}}, 503, nil)
+		blocked.call(http.MethodPost, "/denylist:batch", nil, 503, nil)
+		blocked.call(http.MethodPost, "/domains/allow/exact", nil, 503, nil)
+		blocked.call(http.MethodPatch, "/blocklists/default/starter/sources/0/entries", map[string]any{}, 503, nil)
+		blocked.call(http.MethodPost, "/unblockrequests/default/request/approve", nil, 503, nil)
 		var created api.CreatedToken
 		client.call(http.MethodPost, "/auth/tokens", api.CreateTokenRequest{Description: "mounted", ExpiresIn: "1h", Scopes: []string{"viewer"}}, 201, &created)
 		token = created.Token
@@ -314,6 +339,22 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 		}
 	}
 	awaitMountedDNS(t, cfg, "http.example.", "192.0.2.44")
+	var desiredRecords api.ObjectList
+	client.call(http.MethodGet, "/objects/dnsrecordsets?namespace=default", nil, 200, &desiredRecords)
+	foundDesired := false
+	for _, record := range desiredRecords.Items {
+		if metadata, ok := record["metadata"].(map[string]any); ok && metadata["name"] == "http" && metadata["uid"] != "" {
+			foundDesired = true
+		}
+	}
+	if !foundDesired {
+		t.Fatal("mounted captured object list lost the committed record")
+	}
+	var record map[string]any
+	client.call(http.MethodGet, "/objects/dnsrecordsets/default/http", nil, 200, &record)
+	if record["metadata"].(map[string]any)["name"] != "http" {
+		t.Fatal("mounted captured object detail changed identity")
+	}
 	var settings api.SettingsBody
 	client.call(http.MethodGet, "/settings", nil, 200, &settings)
 	if settings.Settings["cache"].(map[string]any)["maxEntries"] != float64(42) {
@@ -374,20 +415,50 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 
 func awaitMountedDNS(t *testing.T, cfg *config.Config, name, address string) {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	awaitMountedDNSResult(t, cfg, name, address, func(answer *dns.Msg) bool {
+		if answer.Rcode != dns.RcodeSuccess || len(answer.Answer) != 1 {
+			return false
+		}
+		rr, ok := answer.Answer[0].(*dns.A)
+		return ok && rr.A.String() == address
+	})
+}
+
+func awaitMountedDNSAbsent(t *testing.T, cfg *config.Config, name string) {
+	t.Helper()
+	awaitMountedDNSResult(t, cfg, name, "NXDOMAIN", func(answer *dns.Msg) bool {
+		return answer.Rcode == dns.RcodeNameError && len(answer.Answer) == 0
+	})
+}
+
+func awaitMountedDNSResult(t *testing.T, cfg *config.Config, name, expected string, matches func(*dns.Msg) bool) {
+	t.Helper()
+	// Complete publication can require another bounded driver attempt after a
+	// concurrent status update. Allow those attempts under race instrumentation;
+	// the production operation deadlines and all serving assertions stay intact.
+	started := time.Now()
+	deadline := started.Add(time.Minute)
 	client := &dns.Client{Timeout: 200 * time.Millisecond}
 	for {
 		query := new(dns.Msg)
 		query.SetQuestion(name, dns.TypeA)
 		answer, _, err := client.Exchange(query, cfg.Listeners.DNS[0].Address)
 		ready := offlineHTTPStatus(cfg.Listeners.Ops.Address, "/healthz/ready")
-		if err == nil && answer.Rcode == dns.RcodeSuccess && answer.Authoritative && len(answer.Answer) == 1 && ready == http.StatusOK {
-			if rr, ok := answer.Answer[0].(*dns.A); ok && rr.A.String() == address {
-				return
+		if err == nil && answer != nil && answer.Authoritative && matches(answer) && ready == http.StatusOK {
+			if elapsed := time.Since(started); elapsed > 5*time.Second {
+				t.Logf("mounted DNS published %s after %s", name, elapsed.Round(time.Millisecond))
 			}
+			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("mounted DNS never reached %s=%s: answer=%v err=%v readiness=%d", name, address, answer, err, ready)
+			var health string
+			response, healthErr := (&http.Client{Timeout: time.Second}).Get("http://" + cfg.Listeners.Ops.Address + "/healthz/ready")
+			if healthErr == nil {
+				body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+				_ = response.Body.Close()
+				health = string(body)
+			}
+			t.Fatalf("mounted DNS never reached %s=%s: answer=%v err=%v readiness=%d details=%q", name, expected, answer, err, ready, health)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

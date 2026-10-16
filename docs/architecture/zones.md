@@ -654,6 +654,14 @@ the final status transaction. It preserves unrelated status fields and never
 allocates a serial. Status-only source changes converge to a no-op.
 
 Pending complete publication defers status without changing the source RV.
+Status-only source alignment also defers for one second when the captured
+active primary, source and committed receipt retain the same UID and intent,
+the committed configuration still matches, and the source RV differs from the
+current public object's RV. Writing unavailable status during that interval
+would advance the RV again and keep the controller and driver chasing each
+other. The driver aligns the source before normal status projection resumes.
+This wait preserves historical status; it does not make an unavailable DNS cut
+ready or replace any captured source, head or expiry evidence.
 The controller retains desired-record conflict diagnostics, but delegates primary
 status when the capability is installed. Kubernetes and unconfigured controllers
 retain their existing behavior. The adapter and controller have actual SQLite,
@@ -672,11 +680,12 @@ available until reconciliation. It neither mixes desired records into the old
 head nor acknowledges their publication. Dynamic records, ownership reservations
 and child boundaries survive the static replacement.
 
-## Not built yet
+## Remaining work
 
-Dynamic UPDATE (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
-UPDATE reaches its reserved authoritative callback, which answers NOTIMP until
-the atomic update handler is installed. Unknown opcodes remain NOTIMP.
+Catalog zones and DNSSEC signing remain planned. SQLite mounts the atomic
+RFC 2136 handler and durable primary history described above; Kubernetes update
+barriers and authenticated HA forwarding remain integration work. Unknown DNS
+opcodes remain NOTIMP.
 
 ### Captured HTTP diagnostics
 

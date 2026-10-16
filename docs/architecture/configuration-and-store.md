@@ -628,6 +628,74 @@ changes the independent reload pointer. Actual HTTP/SQLite tests cover these
 paths. SQLite `serve.go` mounts this adapter with the complete HTTP owner;
 Kubernetes retains its existing settings writer.
 
+SQLite generic public object GETs and their aliases read the original HTTP
+lease's object set. Detail responses retain that object's UID and resourceVersion;
+record permissions use its captured zone reference. Pagination binds the complete
+generation and normalized query, applies authorization before cursor keys, and
+returns 409 when a later request changes either binding. It does not keep old
+images alive across page requests. Compiled blocklist search uses the same
+captured list bodies and modes; missing compiled data returns 503 even if a live
+cache or inline source could answer. Kubernetes keeps the existing read path.
+
+Catalog GETs read the original blocking view, report actual acquired base/import
+provenance, and omit live refresher status. Services, categories and safe-search
+entries use that same catalog; missing owners return 503 without a Holder
+fallback. Policy state uses the original objects, canonical settings, catalog and
+compiled list owners together. Text/RPZ counts describe acquired data; RPZ expiry
+clears readiness without erasing diagnostic counts. The desired object's
+Conditions remain historical receipts. Schedules and expiry share one observation
+time; traffic statistics remain explicitly historical query-log reads. Public
+reads are still migrating route by route: enabling these capabilities does not
+convert the remaining runtime diagnostics or live list-source body readers.
+
+Blocking GETs use the original blocking view's canonical settings and absolute
+deadline at one observation time. A held request keeps its original state after
+a replacement; exact timer expiry reenables blocking without writing a new
+receipt. Configured-off and indefinitely disabled states omit a resume timer.
+These cluster-scoped responses never fall back to the legacy local toggle.
+
+Blocking POSTs reauthorize the original proof for cluster `blocking.toggle` and
+update only `Kudurru/default.status.blocking` in the current command. No-ops retain
+the same final credential and writer checks. A 200 response waits for a complete
+publication containing the exact committed settings UID, resourceVersion and
+status, then evaluates its blocking view at one response time. The original
+writer binding remains in force during this observation, outside transaction and
+dependency locks. If commit succeeds but publication cannot be acknowledged, 503
+includes a `committed: true` hint and the exact receipt; it does not imply rollback.
+
+Persisted deadlines have whole-second precision. Relative timers round up to the
+next UTC second, adding less than one second; fractional absolute `until` values
+are rejected. Neither publication waits nor restart renews the deadline. Enabling
+the toggle clears its temporary disable but does not override configured-off
+blocking settings.
+
+Upstream diagnostics retain the original request's resolver-set membership and
+sample that set's local health, failures, backoff and RTT. Those operational
+counters can advance during a held request; they are not frozen publication
+metadata. Local, central-history and self-shard stats paths use this same reader.
+A failed local sample remains an explicit failed node in partial cluster results;
+remote peer samples and traffic history retain their separate scopes.
+
+SQLite zone record upsert/removal, BIND import and cascading zone deletion now
+plan and apply within one current command. Each plan seals the original
+transaction, target and complete permission set. Imports require zone creation
+permission only when creating a zone, and record deletion permission when
+removing stale API-owned import chunks. Cascade and dry runs check every current
+reference and owner before staging any change. Even an unchanged write, dry run
+or missing-result response crosses current proof and final-time admission. Cache
+flush and aggregate audit reporting occur after the command; per-object durable
+audit remains transactional. Actual server tests cover native DNS publication
+and restart after these commands.
+
+SQLite temporarily returns 503 for unsafe convenience writes without complete
+current admission: manual NOTIFY, domain/allowlist/denylist mutations, inline source
+entry edits and unblock-request actions. Generic object commands remain available.
+These gates prevent legacy helpers from writing outside current authorization or
+returning an unchecked no-op; they are explicit remaining integration work.
+Generic apply/batch-delete retains its independent per-item result contract. All
+items retain the original HTTP lease, so a first commit can make later items
+stale; no successor capture or atomic-batch guarantee is implied.
+
 
 ## Complete serving publication
 
