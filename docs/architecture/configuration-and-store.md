@@ -646,7 +646,7 @@ clears readiness without erasing diagnostic counts. The desired object's
 Conditions remain historical receipts. Schedules and expiry share one observation
 time; traffic statistics remain explicitly historical query-log reads. Public
 reads are still migrating route by route: enabling these capabilities does not
-convert the remaining runtime diagnostics or live list-source body readers.
+convert the remaining runtime diagnostics.
 
 Blocking GETs use the original blocking view's canonical settings and absolute
 deadline at one observation time. A held request keeps its original state after
@@ -669,6 +669,17 @@ are rejected. Neither publication waits nor restart renews the deadline. Enablin
 the toggle clears its temporary disable but does not override configured-off
 blocking settings.
 
+Source-entry GETs authorize the original BlockList and retain its inline values,
+structured entries, parser settings and exclusions. URL and ConfigMap bodies
+open only the digest named by that captured source's receipt. The adapter verifies
+the regular file, exact size and full SHA256 before parsing, with a 64 MiB body
+cap and the existing four concurrent scan slots. Cache replacement preserves an
+already open descriptor, but may discard a digest before it is opened; that
+request returns 503 instead of reading a newer body. These responses omit the
+uncaptured local fetch time. RPZ feeds are not line-source bodies and return 422.
+Continuation tokens bind the exact generation, object UID/RV, source, parser
+inputs and query; changed observations require restarting pagination.
+
 Upstream diagnostics retain the original request's resolver-set membership and
 sample that set's local health, failures, backoff and RTT. Those operational
 counters can advance during a held request; they are not frozen publication
@@ -688,7 +699,7 @@ audit remains transactional. Actual server tests cover native DNS publication
 and restart after these commands.
 
 SQLite temporarily returns 503 for unsafe convenience writes without complete
-current admission: manual NOTIFY, domain/allowlist/denylist mutations, inline source
+current admission: domain/allowlist/denylist mutations, inline source
 entry edits and unblock-request actions. Generic object commands remain available.
 These gates prevent legacy helpers from writing outside current authorization or
 returning an unchecked no-op; they are explicit remaining integration work.

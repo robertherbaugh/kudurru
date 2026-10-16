@@ -32,12 +32,12 @@ func servingUnconvertedMutation(method, requestPath string) bool {
 	parts := strings.Split(relative, "/")
 	switch parts[0] {
 	case "zones":
-		// Only these four registered routes use the complete ZoneCommand.
-		// NOTIFY still needs its own durable current-intent adapter.
+		// These registered routes use complete current commands, including
+		// the durable intent adapter for manual NOTIFY.
 		switch {
 		case method == http.MethodDelete && len(parts) == 2:
 			return false
-		case method == http.MethodPost && len(parts) == 3 && (parts[2] == "records" || parts[2] == "import"):
+		case method == http.MethodPost && len(parts) == 3 && (parts[2] == "records" || parts[2] == "import" || parts[2] == "notify"):
 			return false
 		case method == http.MethodDelete && len(parts) == 5 && parts[2] == "records":
 			return false

@@ -569,6 +569,7 @@ flowchart LR
     Bound --> Compose
     Compose --> Bundle["Whole serving bundle publication"]
     Driver["Exact admitted writer + bounded lifecycle driver"] --> Image
+    Manual["Current HTTP NOTIFY intent"] --> Image
     Bundle --> Ack["Exact member + current routing acknowledgment"]
     Ack --> Driver
 ```
@@ -592,9 +593,18 @@ Diagnostics cannot change the wire result even if their callback panics.
 The command assembly binds these adapters to the original elected SQLite writer,
 complete leases and the same current keyring/policy guard. SQLite `serve.go`
 mounts it into the actual DNS listeners, with the complete driver owning automatic
-NOTIFY and the controller using committed status. Manual NOTIFY remains unavailable
-until it can create a fresh durable intent. Authenticated HA forwarding remains
-in progress. The Kubernetes test
+NOTIFY and the controller using committed status. Manual NOTIFY uses the original
+HTTP lease and raw `zones.transfer` proof to enqueue the exact committed head in
+one fenced transaction. An already pending intent coalesces without a write;
+an acknowledged head is rearmed by changing only its commit and notification
+sequence fields. Records, serial, root digest, receipts and expiry are unchanged.
+Policy-none requests remain checked no-ops. A 202 response means durable acceptance,
+not delivery or publication acknowledgment. The background sender delivers after
+complete publication and acknowledges by exact head CAS; pending intent survives
+restart. Response targets list configured literal addresses, while name-server
+recipient resolution remains background work outside command locks.
+
+Authenticated HA forwarding remains in progress. The Kubernetes test
 adapter exercises exact-object CAS without claiming a multi-object transaction;
 production Kubernetes UPDATE and durable NOTIFY require their own admission
 barriers. Receipt capacity remains finite with no automatic eviction.
@@ -707,8 +717,7 @@ lease and include only available authoritative copies. Record and owner-name
 counts come from that exact model. Held reads retain their original generation
 and still enforce absolute inherited expiry.
 
-Compound convenience writes (zone cascade deletion, single-record edits/deletes,
-imports and manual NOTIFY) currently return 503 on the complete SQLite mount.
-They need one current compound command or durable notification intent; calling
-their legacy live-store helpers would bypass the new admission contract. Generic
-single-object writes remain available. Kubernetes retains its existing routes.
+Zone cascade deletion, single-record edits/deletes and imports use one current
+compound command on SQLite. Manual NOTIFY uses the durable intent path described
+above. Generic single-object writes retain their current command admission.
+Kubernetes retains its existing routes.

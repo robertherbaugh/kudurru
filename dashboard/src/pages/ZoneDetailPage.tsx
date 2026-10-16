@@ -193,7 +193,7 @@ function ZoneDetail({ zone }: { zone: string }) {
   const notifyM = useMutation({
     mutationFn: () => api.zones.notify(zone),
     onSuccess: (r) => {
-      notify.success(r.targets.length ? `NOTIFY sent to ${r.targets.join(', ')}` : 'No NOTIFY targets configured');
+      notify.success(r.targets.length ? `NOTIFY accepted; configured targets: ${r.targets.join(', ')}` : 'NOTIFY request accepted');
       invalidate();
     },
     onError: (err) => notify.error(err, 'NOTIFY failed'),

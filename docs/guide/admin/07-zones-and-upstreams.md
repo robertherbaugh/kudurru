@@ -267,7 +267,12 @@ The page has these functions:
 - **Edit** and **Delete** in a row change or remove one record.
 - **Import BIND** adds the records of a BIND zone file.
 - **Export** downloads the zone in BIND format.
-- **Send NOTIFY** tells the secondary servers of the zone to fetch it.
+- **Send NOTIFY** queues a notification for the zone's committed serial. On
+  SQLite, success confirms durable acceptance; delivery happens in the
+  background and pending requests survive restart. Repeating a request while
+  one is pending coalesces it. A later request after acknowledgment sends the
+  same serial again without editing records. The zone's NOTIFY policy still
+  controls its recipients; `none` performs no delivery.
 
 ### Import a zone file
 

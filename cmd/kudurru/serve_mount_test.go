@@ -48,6 +48,7 @@ func TestRunServeSQLiteCompletePrimaryUpdateRestart(t *testing.T) {
 	}
 	for _, obj := range []store.Object{
 		&public.Policy{ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "default"}},
+		&public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "mounted-source", Namespace: "default"}, Spec: public.BlockListSpec{Sources: []public.ListSource{{Name: "entries", Format: "domains", Inline: []string{"blocked.example", "excluded.example"}, Exclude: []string{"excluded.example"}}}}},
 		&public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home"}, Spec: public.DNSZoneSpec{
 			ZoneName: "example.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns.example."},
 			Policy: public.ZonePolicy{Notify: public.NotifyNone, Update: public.AccessAllow, UpdatePolicies: []public.UpdatePolicy{{TSIGKeyRef: "updates", Name: "*.example.", Types: []string{"A"}}}},
@@ -283,6 +284,11 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 	if catalog.Origin == "" || catalog.Digest == "" || catalog.Services == 0 || len(catalog.Sources) == 0 || catalog.Refresh != nil {
 		t.Fatal("mounted catalog lost captured contents/provenance or sampled live refresh status")
 	}
+	var sourceEntries api.SourceEntries
+	client.call(http.MethodGet, "/blocklists/default/mounted-source/sources/entries/entries", nil, http.StatusOK, &sourceEntries)
+	if sourceEntries.Kind != "inline" || sourceEntries.Total != 2 || sourceEntries.Excluded != 1 || len(sourceEntries.Items) != 2 || sourceEntries.Items[0].Value != "blocked.example" || !sourceEntries.Items[0].Enabled || sourceEntries.Items[1].Enabled || sourceEntries.Fetched != nil || sourceEntries.Stale {
+		t.Fatal("mounted source GET lost captured values/exclusions or invented fetch provenance")
+	}
 	var policyState api.PolicyState
 	client.call(http.MethodGet, "/policies/default/default/state", nil, http.StatusOK, &policyState)
 	if policyState.Policy != "default/default" || !policyState.Enabled || !policyState.Active || policyState.Lists == nil || policyState.Services == nil {
@@ -310,11 +316,15 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 		t.Fatal("mounted session inventory lacks the actual enrollment")
 	}
 	if restart == 0 {
+		var notify api.NotifyResult
+		client.call(http.MethodPost, "/zones/home/notify", nil, http.StatusAccepted, &notify)
+		if notify.Zone != "home" || len(notify.Targets) != 0 {
+			t.Fatal("policy-none NOTIFY lost its current no-op result")
+		}
 		// Convenience routes without current admission must never reach their
 		// legacy live-Store writers because other commands are mounted.
 		blocked := *client
 		blocked.http = &http.Client{Jar: jar, Timeout: 5 * time.Second}
-		blocked.call(http.MethodPost, "/zones/home/notify", nil, 503, nil)
 		// These legacy aliases can write several lists/policies or return an
 		// unchecked no-op. They need their own admitted command adapters.
 		blocked.call(http.MethodPost, "/allowlist", map[string]any{"values": []string{"escape.example"}}, 503, nil)

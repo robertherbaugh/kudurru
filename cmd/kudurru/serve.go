@@ -942,11 +942,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var canonicalSettings api.CanonicalSettings
 	var objectCommand api.ObjectCommand
 	var objectReads api.ObjectReadSource
+	var sourceBodyReads api.SourceBodyReadSource
 	var policyListReads api.PolicyListReadSource
 	var blockingReads api.BlockingReadSource
 	var blockingCommand api.BlockingCommand
 	var upstreamReads api.UpstreamReadSource
 	var zoneCommand api.ZoneCommand
+	var zoneNotifyCommand api.ZoneNotifyCommand
 	catalogSource := catalogueAPI(catalogs, catRefreshers)
 	if sql == nil {
 		authMux := http.NewServeMux()
@@ -1004,11 +1006,16 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		authHandler = httpAuth.Handler()
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
 		objectReads = servingbuild.NewObjectReads()
+		sourceBodyReads, err = servingbuild.NewSourceBodyReads(lists)
+		if err != nil {
+			return err
+		}
 		policyListReads = servingbuild.NewPolicyListReads()
 		blockingReads = servingbuild.NewBlockingReads()
 		blockingCommand = complete.BlockingCommand
 		upstreamReads = servingbuild.NewUpstreamReads()
 		zoneCommand = complete.ZoneCommand
+		zoneNotifyCommand = complete.ZoneNotifyCommand
 		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
 	}
 
@@ -1111,8 +1118,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, PolicyListReads: policyListReads,
-		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads,
-		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
+		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
+		SourceBodyReads: sourceBodyReads,
+		Querylog:        qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,

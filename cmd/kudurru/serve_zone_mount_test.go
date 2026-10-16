@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
@@ -112,21 +111,9 @@ func TestRunServeSQLiteCompoundZoneCommands(t *testing.T) {
 			for _, key := range []string{"dnszones/compound", "dnsrecordsets/default/api-compound", "dnsrecordsets/default/import-compound-1"} {
 				client.call(http.MethodGet, "/objects/"+key, nil, http.StatusNotFound, nil)
 			}
-		}
-		// The admitted four operations do not open legacy manual NOTIFY.
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, client.base+"/zones/compound/notify", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("X-Kudurru-CSRF", client.csrf)
-		res, err := (&http.Client{Jar: jar, Timeout: 5 * time.Second}).Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, _ = io.Copy(io.Discard, res.Body)
-		_ = res.Body.Close()
-		if res.StatusCode != http.StatusServiceUnavailable {
-			t.Fatal("unconverted NOTIFY was not gated", res.StatusCode)
+			client.call(http.MethodPost, "/zones/compound/notify", nil, http.StatusNotFound, nil)
+		} else {
+			client.call(http.MethodPost, "/zones/compound/notify", nil, http.StatusAccepted, nil)
 		}
 		stop()
 	}

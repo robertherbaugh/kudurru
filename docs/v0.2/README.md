@@ -134,6 +134,10 @@ public reads are migrating through their specific captured owners. Blocking GETs
 use the original canonical settings and absolute timer, including exact expiry.
 Upstream health samples keep original resolver membership while allowing its
 local operational counters to advance.
+Source-entry GETs now use captured inline/structured values or verify the exact
+captured digest's bounded cached body. Missing old bytes return 503; pagination
+binds the original generation and query, and uncaptured local fetch times are
+omitted. RPZ feeds remain a separate diagnostic surface.
 Blocking toggle commands update that same canonical state and acknowledge its
 actual publication; a committed-but-unacknowledged response identifies the saved
 receipt. Absolute deadlines survive restart without renewal.
@@ -146,9 +150,13 @@ removal and exact-UID administrator recovery now use current commands with final
 credential/challenge deadline checks. Login/password forms accept factor codes;
 the Access page adds manual-key enrollment/replacement, removal and exact-UID
 administrator recovery, with component-local secrets and canceled-session
-cleanup. Administrative/source writer integration remains open.
-Manual NOTIFY and other unsafe convenience mutations without current admission
-return 503 explicitly.
+cleanup. It also lists and individually revokes the account's browser sessions,
+preserving other sessions and rejecting late cleanup from a replaced session.
+Administrative/source writer integration remains open.
+Manual NOTIFY now enqueues or coalesces the exact committed head under current
+admission, without changing records or serial. Signed mounted acceptance covers
+restart, delivery acknowledgment and a later explicit rearm. Other unsafe
+convenience mutations without current admission return 503 explicitly.
 Root request contexts retain the original elector token and cancellation, and
 complete runtime owners retain the exact prepared keyring installation for
 notification admission. Captured secondary NOTIFY accepts authorized refresh
