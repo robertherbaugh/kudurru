@@ -94,7 +94,7 @@ func TestLeaseTransferMergePreservesBindingAndExpiry(t *testing.T) {
 }
 
 func TestLeaseTransferRejectsConflictsAtomically(t *testing.T) {
-	for _, test := range []string{"different-owner", "same-client-two-addresses", "duplicate-input", "quarantine", "reservation", "outside-pool", "invalid-identity", "wrong-scope", "unknown-field", "trailing-document", "write-failure", "commit-failure"} {
+	for _, test := range []string{"different-owner", "same-client-two-addresses", "duplicate-input", "quarantine", "reservation", "outside-pool", "invalid-identity", "invalid-hostname", "wrong-scope", "unknown-field", "trailing-document", "write-failure", "commit-failure"} {
 		t.Run(test, func(t *testing.T) {
 			cfg := leaseTestConfig()
 			cfg.Reservations = []Reservation{{MAC: leaseTestClient(9).MAC, IP: cfg.RangeEnd}}
@@ -118,6 +118,8 @@ func TestLeaseTransferRejectsConflictsAtomically(t *testing.T) {
 				records = append(records, transferTestRecord(3, netip.MustParseAddr("192.0.2.80"), l.ExpiresAt))
 			case "invalid-identity":
 				records[0].Identity = LeaseIdentity{Kind: "client-id", Value: "not-base64"}
+			case "invalid-hostname":
+				records[0].Hostname = "invalid name"
 			case "write-failure":
 				leaseTestSQL(t, s, `CREATE TRIGGER fail_transfer BEFORE INSERT ON leases BEGIN SELECT RAISE(ABORT,'injected'); END`)
 			case "commit-failure":
@@ -174,6 +176,36 @@ func TestLeaseTransferDNSMasqCompatibility(t *testing.T) {
 	}
 }
 
+func TestLeaseTransferDNSMasqAdvisoryHostname(t *testing.T) {
+	for _, tc := range []struct {
+		name, hostname, want string
+	}{
+		{"trailing NULs", "workstation\x00\x00", "workstation"},
+		{"unknown", "*", ""},
+		{"NULs only", "\x00", ""},
+		{"embedded NUL", "work\x00station", ""},
+		{"underscore", "ESP_1A2B3C", ""},
+		{"non ASCII", "caf\u00e9", ""},
+		{"oversized label", strings.Repeat("a", 64), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := leaseTestOpen(t, leaseTestConfig())
+			expiration := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
+			data := fmt.Sprintf("%d %s 192.0.2.10 %s *\n%d %s 192.0.2.11 ordinary *\n",
+				expiration.Unix(), leaseTestClient(1).MAC, tc.hostname,
+				expiration.Unix(), leaseTestClient(2).MAC)
+			result, err := s.Import(context.Background(), "dnsmasq", []byte(data))
+			if err != nil || result.Imported != 2 {
+				t.Fatalf("hostname prevented import: %+v %v", result, err)
+			}
+			leases := leaseTestList(t, s)
+			if len(leases) != 2 || leases[0].Hostname != tc.want || leases[1].Hostname != "ordinary" || !leases[0].ExpiresAt.Equal(expiration) {
+				t.Fatalf("imported leases: %+v, want first hostname %q", leases, tc.want)
+			}
+		})
+	}
+}
+
 func TestLeaseTransferRejectsMalformedAndBoundedInput(t *testing.T) {
 	s, _ := leaseTestOpen(t, leaseTestConfig())
 	for _, line := range []string{
@@ -183,7 +215,6 @@ func TestLeaseTransferRejectsMalformedAndBoundedInput(t *testing.T) {
 		"9999999999 02:00:00:00:00:01 192.0.2.10 host 0:ab",
 		"9999999999 02:00:00:00:00:01 192.0.2.10 host zz:ab",
 		"9999999999 02:00:00:00:00:01 192.0.2.10 host 01",
-		"9999999999 02:00:00:00:00:01 192.0.2.10 bad_name *",
 		strings.Repeat("x", 4097),
 	} {
 		if _, err := s.Import(context.Background(), "dnsmasq", []byte(line)); !errors.Is(err, ErrInvalidImport) {

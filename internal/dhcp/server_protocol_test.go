@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -291,8 +292,6 @@ func TestProtocolStrictValidation(t *testing.T) {
 			p.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClientIdentifier, make([]byte, 256)))
 		}},
 		{"empty parameter list", func(p *dhcpv4.DHCPv4) { p.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionParameterRequestList, []byte{})) }},
-		{"hostname control", func(p *dhcpv4.DHCPv4) { p.UpdateOption(dhcpv4.OptHostName("bad\nname")) }},
-		{"hostname invalid", func(p *dhcpv4.DHCPv4) { p.UpdateOption(dhcpv4.OptHostName("bad name")) }},
 		{"DISCOVER ciaddr", func(p *dhcpv4.DHCPv4) { p.ClientIPAddr = net.IP{192, 0, 2, 10} }},
 		{"DISCOVER server", func(p *dhcpv4.DHCPv4) { p.UpdateOption(dhcpv4.OptServerIdentifier(net.IP{192, 0, 2, 1})) }},
 		{"REQUEST missing address", func(p *dhcpv4.DHCPv4) { p.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeRequest)) }},
@@ -328,6 +327,46 @@ func TestProtocolStrictValidation(t *testing.T) {
 			reply, _ := protocolReply(t, server, packet)
 			if reply != nil || backend.calls != 0 {
 				t.Fatalf("invalid packet processed: reply %v, calls %d", reply, backend.calls)
+			}
+		})
+	}
+}
+
+func TestProtocolAdvisoryHostname(t *testing.T) {
+	for _, tc := range []struct {
+		name, hostname, want string
+	}{
+		{"valid", "workstation", "workstation"},
+		{"trailing NULs", "workstation\x00\x00", "workstation"},
+		{"empty", "", ""},
+		{"NULs only", "\x00\x00", ""},
+		{"embedded NUL", "work\x00station", ""},
+		{"space", "bad name", ""},
+		{"underscore", "ESP_1A2B3C", ""},
+		{"control", "bad\nname", ""},
+		{"non ASCII", "caf\u00e9", ""},
+		{"oversized label", strings.Repeat("a", 64), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := protocolConfig()
+			store, _ := leaseTestOpen(t, cfg)
+			server := &Server{cfg: cfg, leases: store}
+			discover := clientPacket(dhcpv4.MessageTypeDiscover, dhcpv4.OptHostName(tc.hostname))
+			offer, _ := protocolReply(t, server, discover)
+			if offer == nil || offer.MessageType() != dhcpv4.MessageTypeOffer {
+				t.Fatalf("hostname prevented offer: %v", offer)
+			}
+			request := clientPacket(dhcpv4.MessageTypeRequest,
+				dhcpv4.OptRequestedIPAddress(offer.YourIPAddr),
+				dhcpv4.OptServerIdentifier(net.IP(cfg.ServerIP.AsSlice())),
+				dhcpv4.OptHostName(tc.hostname))
+			ack, _ := protocolReply(t, server, request)
+			if ack == nil || ack.MessageType() != dhcpv4.MessageTypeAck || !ack.YourIPAddr.Equal(offer.YourIPAddr) {
+				t.Fatalf("hostname prevented acknowledgment: %v", ack)
+			}
+			leases := leaseTestList(t, store)
+			if len(leases) != 1 || leases[0].State != "bound" || leases[0].Hostname != tc.want {
+				t.Fatalf("stored leases: %+v, want bound hostname %q", leases, tc.want)
 			}
 		})
 	}

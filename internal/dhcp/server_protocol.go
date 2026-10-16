@@ -32,7 +32,7 @@ func (s *Server) handlePacket(ctx context.Context, wire []byte, source *net.UDPA
 	if server.IsValid() && server != s.cfg.ServerIP {
 		return nil, nil, nil
 	}
-	client := Client{MAC: request.ClientHWAddr.String(), Hostname: request.HostName()}
+	client := Client{MAC: request.ClientHWAddr.String(), Hostname: normalizeClientHostname(request.HostName())}
 	if id := options.Get(dhcpv4.OptionClientIdentifier); id != nil {
 		// Preserve every byte of the opaque option in a stable printable
 		// identity. Empty ID lets the store use its distinct MAC namespace.
@@ -368,16 +368,6 @@ func validClientOptions(options dhcpv4.Options) bool {
 	}
 	if value, present := options[dhcpv4.OptionParameterRequestList.Code()]; present && (len(value) == 0 || len(value) > 255) {
 		return false
-	}
-	if value, present := options[dhcpv4.OptionHostName.Code()]; present {
-		if len(value) == 0 || !validHostname(string(value)) {
-			return false
-		}
-		for _, character := range value {
-			if character < 0x20 || character > 0x7e {
-				return false
-			}
-		}
 	}
 	return true
 }

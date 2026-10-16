@@ -193,6 +193,17 @@ func canonicalMAC(s string) (string, error) {
 	return m.String(), nil
 }
 
+// normalizeClientHostname accepts advisory names from DHCP clients and dnsmasq
+// imports. RFC 2132 permits trailing NULs; other unusable names are omitted
+// without preventing address allocation. Operator-supplied names stay strict.
+func normalizeClientHostname(s string) string {
+	s = strings.TrimRight(s, "\x00")
+	if !validHostname(s) {
+		return ""
+	}
+	return s
+}
+
 func validHostname(s string) bool {
 	if s == "" {
 		return true

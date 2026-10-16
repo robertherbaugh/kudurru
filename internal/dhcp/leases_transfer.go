@@ -161,10 +161,7 @@ func decodeDNSMasq(data []byte) ([]LeaseRecord, error) {
 		if err != nil || !address.Is4() {
 			return nil, fmt.Errorf("%w: dnsmasq line %d must contain IPv4", ErrInvalidImport, line)
 		}
-		hostname := fields[3]
-		if hostname == "*" {
-			hostname = ""
-		}
+		hostname := normalizeClientHostname(fields[3])
 		identity := LeaseIdentity{Kind: "mac", Value: mac}
 		if fields[4] != "*" {
 			parts := strings.Split(fields[4], ":")

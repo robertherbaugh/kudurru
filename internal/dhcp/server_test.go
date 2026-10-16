@@ -258,9 +258,9 @@ func TestServerMalformedTrafficDoesNotStopService(t *testing.T) {
 	conn.input <- serverDatagram{wire: []byte("malformed"), source: packetSource(packet)}
 	conn.input <- serverDatagram{wire: packet.ToBytes(), source: &net.IPAddr{IP: net.IPv4zero}}
 	conn.input <- serverDatagram{err: &net.OpError{Op: "read", Net: "udp", Err: syscall.ECONNREFUSED}}
-	packet.UpdateOption(dhcpv4.OptHostName("bad name"))
+	packet.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClientIdentifier, []byte{1}))
 	conn.input <- serverDatagram{wire: packet.ToBytes(), source: packetSource(packet)}
-	packet.DeleteOption(dhcpv4.OptionHostName)
+	packet.DeleteOption(dhcpv4.OptionClientIdentifier)
 	conn.input <- serverDatagram{wire: packet.ToBytes(), source: packetSource(packet)}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
