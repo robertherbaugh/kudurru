@@ -13,6 +13,7 @@ if [[ ${1:-} != --private-lab ]]; then
   [[ -n $client_path && -x $client_path ]] || { echo 'Set DHCPCD to a stock dhcpcd executable (BSD-2-Clause).' >&2; exit 1; }
   client=$(realpath "$client_path")
   repo=$(cd -- "$(dirname -- "$0")/../.." && pwd)
+  mkdir -p -- "$repo/.context"
   output=$(mktemp -d "$repo/.context/dhcp-acceptance.XXXXXX")
   # Run a fixed script snapshot so edits in the shared workspace cannot alter
   # the commands of an acceptance run that is already in progress.
