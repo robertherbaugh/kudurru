@@ -1018,3 +1018,6 @@ export type DomainBatch = Omit<S['DomainEntriesBatch'], 'ids'> & { ids: string[]
 
 /** The answer of every write; skipped: policies that should reference a list but are managed elsewhere. */
 export type DomainWriteResult = Omit<S['DomainWriteResult'], 'took_ms'> & { took_ms?: number };
+export type MigrationRequest = S['MigrationRequest'];
+export type MigrationPlan = Omit<S['Plan'], 'objects'> & { objects: AnyObject[] };
+export type MigrationResult = S['MigrationResult'];

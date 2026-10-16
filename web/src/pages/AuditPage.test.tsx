@@ -5,7 +5,7 @@ import { mockDB } from '../mocks/handlers';
 import { getSelector, pick } from '../test/controls';
 import { server } from '../test/setup';
 import { renderWithApp } from '../test/utils';
-import AuditPage from './AuditPage';
+import AuditPage, { CHEVRON_COLUMN_WIDTH } from './AuditPage';
 
 describe('AuditPage', () => {
   it('sorts oldest first on the server and pages toward newer events', async () => {
@@ -71,6 +71,15 @@ describe('AuditPage', () => {
     expect(screen.queryByRole('group', { name: 'Audit event details for apitoken.delete abcdefgh2345' })).toBeNull();
     pick(getSelector('Kind'), 'APIToken');
     await waitFor(() => expect(within(screen.getByRole('table', { name: 'Audit entries' })).getAllByRole('row')).toHaveLength(2));
+  });
+
+  it('widens the row expansion chevron column so roomier themes do not cut it off', async () => {
+    renderWithApp(<AuditPage />, { route: '/audit' });
+    const table = await screen.findByRole('table', { name: 'Audit entries' });
+    await within(table).findAllByRole('button', { name: /expand row/i });
+    // The chevron column comes first; its width is set on the header cell.
+    const first = within(table).getAllByRole('columnheader')[0]!;
+    expect(first.style.width).toBe(`${CHEVRON_COLUMN_WIDTH}px`);
   });
 
   it('toggles details and navigates rows with the query-table keyboard controls', async () => {

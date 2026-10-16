@@ -32,8 +32,8 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| DHCPv4 deployment acceptance with the target router/relay hardware and systemd/container packaging ([procedure](deploy/dhcp.md#first-cutover-and-acceptance)). Disconnected stock-dhcpcd lifecycle, relay and multi-subnet tests pass; production LAN acceptance remains operator-specific | D169–D171 | v0.2.0 |
-| DHCPv6 protocol coverage and coordinated IPv6 ownership | D174; explicitly excluded by project owner from this DHCPv4 expansion | beyond this DHCPv4 pass |
+| DHCPv4 deployment acceptance with the target router/relay hardware and systemd/container packaging ([procedure](deploy/dhcp.md#first-cutover-and-acceptance)). Disconnected stock-dhcpcd lifecycle, relay and multi-subnet tests pass; production LAN acceptance remains operator-specific | D170–D172 | v0.2.0 |
+| DHCPv6 protocol coverage and coordinated IPv6 ownership | D175; explicitly excluded by project owner from this DHCPv4 expansion | beyond this DHCPv4 pass |
 | Query-log stats reads over the current hour scan its facts once it has more than 100,000 distinct names (1.8 s at 1M rows at 2,000 q/s): per-domain rollups for shorter buckets, or an HLL sketch per hour for unique domains (docs/m2/querylog.md) | docs/m5/measurements-v0.1.md | v0.2 |
 | Blocking: `$important`/`$badfilter` (considered for v0.1 in the policy package and left to the v0.2 modifier slow path, §7.3; v0.1 counts them unsupported) | blocking spike, policy report | v0.2 |
 | Config keys for the control stage (`control.allowedNetworks`, `control.blockedQTypes`) and additional hostname sources (`policy.HostnameResolver`: reverse PTR cache and UniFi; DHCP lease names are implemented) for hostname/nameGlob client matchers | policy report | v0.2 (moved from M3 / v0.2: new configuration surface, not an exit criterion) |
@@ -108,7 +108,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Item | Source | Target |
 |---|---|---|
 | `--context` selecting a kubeconfig so CRD verbs go straight to the apiserver (§3.5); a context is always a kudurru API endpoint today | docs/m3/cli.md | v0.2 (moved from M4: a context is a kudurru API endpoint in v0.1) |
-| Remaining §3.5 verbs: `import pihole\|adguard\|blocky\|technitium`, `cluster status\|promote\|join-token`, `integrations …`, zone option writes (`PUT/PATCH /zones/{zone}`) (`lameduck` landed in docs/m5/burndown-server.md, `health --vrrp` in e8b36b4) | docs/m3/cli.md | v0.2 (merged rows) |
+| Remaining §3.5 verbs: `import adguard\|blocky`, `cluster status\|promote\|join-token`, `integrations …`, zone option writes (`PUT/PATCH /zones/{zone}`) (`lameduck` landed in docs/m5/burndown-server.md, `health --vrrp` in e8b36b4; live Pi-hole and Technitium API migrations in D169) | docs/m3/cli.md | v0.2 (merged rows) |
 | Browser (loopback + PKCE) and device-code `kudurru login` (§8.3) | docs/m3/cli.md | v0.2 |
 | CLI conformance test against the real `internal/api` router instead of the fake in `cmd/kudurru/fakeapi_test.go`; document `ApplyResult.errorKey/hint`, the wrapped settings body and the SSE event name in architecture.md §10 | docs/m3/cli.md | v0.2 (moved from M3: test-only) |
 

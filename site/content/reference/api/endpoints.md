@@ -141,6 +141,13 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts (read-only; the write API is v0.2) | `serviceaccounts.read` (cluster) |
 | GET | `/api/v1/iam/users` | List users (read-only; the write API is v0.2) | `users.read` (cluster) |
 
+## imports
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| POST | `/api/v1/imports/apply` | Apply a reviewed migration preview | `settings.write` (cluster) |
+| POST | `/api/v1/imports/preview` | Preview an API migration from Pi-hole v6 or Technitium | `settings.write` (cluster) |
+
 ## meta
 
 | Method | Path | Summary | Permission |

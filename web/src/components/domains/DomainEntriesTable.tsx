@@ -71,7 +71,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
     {
       key: 'value',
       header: 'Domain',
-      width: proportional(3, { minWidth: 190 }),
+      width: proportional(2.5, { minWidth: 190 }),
       renderCell: (e) => <DomainCell e={e} />,
     },
     ...(showAction
@@ -79,7 +79,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
           {
             key: 'action',
             header: 'Action',
-            width: pixel(76),
+            width: pixel(88),
             renderCell: (e: DomainEntry) => <Badge variant={e.action === 'allow' ? 'success' : 'error'} label={e.action} />,
           },
         ]
@@ -87,7 +87,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
     {
       key: 'type',
       header: 'Type',
-      width: pixel(96),
+      width: pixel(112),
       renderCell: (e) =>
         e.kind === 'exception' ? (
           <VStack gap={0.5} align="start">
@@ -101,13 +101,13 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
     {
       key: 'scope',
       header: 'Applies to',
-      width: proportional(1.25, { minWidth: 100 }),
+      width: proportional(1.5, { minWidth: 120 }),
       renderCell: (e) => <ScopeCell e={e} />,
     },
     {
       key: 'comment',
       header: 'Comment',
-      width: proportional(2, { minWidth: 130 }),
+      width: proportional(1.75, { minWidth: 130 }),
       renderCell: (e) => <CommentCell e={e} locked={e.kind === 'exception' || !!lockReason(e, canWrite)} onSave={(c) => onComment(e, c)} />,
     },
     {
@@ -139,7 +139,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
     {
       key: 'actions',
       header: 'Actions',
-      width: pixel(84),
+      width: pixel(96),
       renderCell: (e) => {
         const why = lockReason(e, canWrite);
         return (

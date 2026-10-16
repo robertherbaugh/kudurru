@@ -34,6 +34,16 @@ cluster or zone scope), and a role binding grants roles that carry those
 permissions: viewer, auditor, operator, zone-admin and admin. A 403 names the
 missing permission in `error.missing`.
 
+The `settings.write` permission also allows API migration previews to send
+credentialed requests from the kudurru server to caller-selected HTTP(S)
+targets. Loopback, link-local metadata addresses and internal services are
+reachable; there is no destination network filter. This is SSRF-equivalent
+network access even for a role without other administrator permissions.
+Source HTTP failure status codes are returned, but error response bodies
+and credentials are not exposed. Grant this permission only to trusted
+administrators and use network egress controls to restrict reachable
+destinations.
+
 ## Responses
 
 - **Objects** (`/objects/{kind}/...`, `/apply`) are Kubernetes-shaped

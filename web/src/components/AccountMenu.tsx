@@ -25,6 +25,26 @@ export function isLocalUser(me: Me | null | undefined): boolean {
   return me.principal.provider ? me.principal.provider === 'local' : me.principal.id.startsWith('local:');
 }
 
+/**
+ * The name to show for the principal: an identity provider login without
+ * the "<provider>:" prefix kudurru puts on its username by default
+ * (claimMappings.username.prefix), so "authentik:alice" shows as "alice".
+ * Role bindings still name the prefixed username.
+ */
+export function principalName(me: Me): string {
+  const { name, provider } = me.principal;
+  if (!provider || provider === 'local' || me.principal.kind !== 'User') return name;
+  const bare = name.startsWith(`${provider}:`) ? name.slice(provider.length + 1) : '';
+  return bare || name;
+}
+
+/** How the principal signed in, for the account link's tooltip. */
+function signedInVia(me: Me): string {
+  if (isLocalUser(me)) return 'Local account';
+  if (me.principal.kind === 'User' && me.principal.provider) return `Signed in with ${me.principal.provider}`;
+  return me.principal.kind;
+}
+
 /** Client-side checks; the server repeats them. */
 export function passwordProblems(current: string, next: string, confirm: string): Record<string, string> {
   const e: Record<string, string> = {};
@@ -150,8 +170,8 @@ export function AccountMenu() {
   if (!data) return null;
   return (
     <HStack gap={1} vAlign="center">
-      <Link href="/access" color="inherit" size="sm" tooltip={`${data.principal.kind} ${data.principal.id}; roles: ${data.roles.join(', ') || 'none'}`}>
-        {data.principal.name}
+      <Link href="/access" color="inherit" size="sm" tooltip={`${signedInVia(data)}; roles: ${data.roles.join(', ') || 'none'}`}>
+        {principalName(data)}
       </Link>
       <ChangePasswordButton iconOnly />
       <Button

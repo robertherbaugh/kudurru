@@ -146,6 +146,7 @@ export default function ClientsPage() {
       key: 'count',
       header: 'Queries (24 h)',
       align: 'end',
+      width: proportional(2.2, { minWidth: 160 }),
       renderCell: (c) => (
         <Link href={`/queries?client=${encodeURIComponent(c.key)}`} color="inherit" hasUnderline>
           <Text type="inherit" hasTabularNumbers>

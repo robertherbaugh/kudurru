@@ -171,7 +171,7 @@ export default function NodesPage() {
       width: proportional(1, { minWidth: 90 }),
       renderCell: (n) => (n.leader ? <Badge variant="blue" label="leader" /> : <Text color="secondary">follower</Text>),
     },
-    { key: 'snapshotAge', header: 'Snapshot age', width: proportional(1, { minWidth: 100 }), renderCell: (n) => <Text>{n.snapshotAge ?? '–'}</Text> },
+    { key: 'snapshotAge', header: 'Snapshot age', width: proportional(1.35, { minWidth: 148 }), renderCell: (n) => <Text>{n.snapshotAge ?? '–'}</Text> },
     {
       key: 'health',
       header: <VisuallyHidden>Health</VisuallyHidden>,
