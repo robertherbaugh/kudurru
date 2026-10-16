@@ -103,11 +103,12 @@ the lifecycle source cannot expose old configuration. Pending DNSRecordSet-only
 edits retain the last committed records until reconciliation.
 Captured primary routing, admission and publication diagnostics also agree at
 the earliest ancestor expiry, including after durable restore and parent refresh.
-A separate startup liveness case remains under investigation: introducing a
-parent with an expiring static record before its child boundary is admitted can
-leave both lifecycles waiting on conflicts. Admitting an empty parent before
-adding the record passes the existing expiry tests; that does not close the
-simultaneous startup case.
+A reproduced startup deadlock is corrected: the driver now admits ancestors
+before advancing a preparing child to fencing. Actual controller/driver tests
+cover startup and fresh-runtime recovery from the exact durable parent-fencing
+head and child-preparing checkpoint, retaining all witness and publication gates.
+Earlier active-child and mounted publication timeouts remain unattributed; this
+correction does not establish their cause.
 The root runtime assembly is mounted on SQLite DNS listeners; Kubernetes
 barriers and authenticated forwarding remain in progress.
 The combined root assembly now runs provider acquisition/publication on every

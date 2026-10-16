@@ -237,16 +237,6 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 	}
 	// Source identity refresh and late ancestry are separate durable CAS steps.
 	// Primary Reconcile captures its own complete actual zone/RRset/policy read.
-	if l.Spec.Phase == zk.PhasePreparing {
-		next := l.DeepCopy()
-		next.Spec.Sequence++
-		next.Spec.Phase = zk.PhaseFencing
-		_, err := d.o.Runtime.Transition(ctx, l, next)
-		if err == nil {
-			d.Wake()
-		}
-		return err
-	}
 	for _, apex := range ancestorNames(l.Spec.Zone.Apex) {
 		desired := all.byApex[apex]
 		if desired == nil || desired.Spec.Type != public.ZoneTypePrimary {
@@ -274,6 +264,16 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 			}
 			return err
 		}
+	}
+	if l.Spec.Phase == zk.PhasePreparing {
+		next := l.DeepCopy()
+		next.Spec.Sequence++
+		next.Spec.Phase = zk.PhaseFencing
+		_, err := d.o.Runtime.Transition(ctx, l, next)
+		if err == nil {
+			d.Wake()
+		}
+		return err
 	}
 	if l.Spec.Type == public.ZoneTypePrimary {
 		if l.Spec.Phase == zk.PhaseFencing {

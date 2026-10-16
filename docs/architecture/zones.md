@@ -574,6 +574,14 @@ flowchart LR
 ```
 
 The driver and complete publisher are exercised together on actual SQLite.
+The driver admits newly required primary ancestors before moving a preparing
+child to fencing. The existing admission step installs the parent's boundary
+and persists the child's exact witness; attempting the phase change first would
+leave the child waiting for a witness and the parent waiting for that child.
+Startup and fresh-runtime restore tests cover the durable parent-fencing/head-1
+and child-preparing checkpoint. Both routes remain unavailable until their
+existing witness, activation and complete-publication barriers pass.
+
 Native UDP/TCP/DoT UPDATE callbacks use the original verified request, select the
 exact SOA apex, and return success only after complete publication. A committed
 mutation whose publication fails returns SERVFAIL; retrying the retained original
