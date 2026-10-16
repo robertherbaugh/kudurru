@@ -268,6 +268,9 @@ func sameStrings(a, b []string) bool {
 	return true
 }
 
+// Config returns the configuration in effect.
+func (r *Resolver) Config() Config { return r.set.Load().cfg }
+
 // Flush drops every cached delegation, address and key.
 func (r *Resolver) Flush() { r.cache.flush() }
 

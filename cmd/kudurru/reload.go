@@ -62,12 +62,7 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 			t.level.Set(parseLevel(next.Log.Level))
 		}
 		if config.ChangedUnder(changed, "upstreams") && t.upstreams != nil {
-			if t.upOpts.Recursor != nil && config.ChangedUnder(changed, "upstreams.recursion") {
-				if err := t.upOpts.Recursor.Reconfigure(upstream.RecursionFrom(next.Upstreams.Recursion)); err != nil {
-					log.Error("recursion settings not applied", "err", err)
-				}
-			}
-			set, err := upstream.New(upstream.ConfigFrom(next.Upstreams), t.upOpts)
+			set, err := buildUpstreams(next, changed, t.upOpts)
 			if err != nil {
 				log.Error("upstream settings not applied", "err", err)
 			} else {
@@ -174,4 +169,29 @@ func settingsWriter(cfg *config.Config) api.SettingsWriter {
 		}
 		return config.WriteSettingsFile(path, values)
 	})
+}
+
+// buildUpstreams builds the upstream set for next and, when the recursion
+// settings changed, applies them to the shared resolver, in that order:
+// a reload that fails leaves the running set and the resolver as they
+// were, so the two never disagree.
+func buildUpstreams(next *config.Config, changed []string, opts upstream.Options) (*upstream.Set, error) {
+	rc := upstream.RecursionFrom(next.Upstreams.Recursion)
+	reconf := opts.Recursor != nil && config.ChangedUnder(changed, "upstreams.recursion")
+	if reconf {
+		if err := rc.Validate(); err != nil {
+			return nil, err
+		}
+	}
+	set, err := upstream.New(upstream.ConfigFrom(next.Upstreams), opts)
+	if err != nil {
+		return nil, err
+	}
+	if reconf {
+		if err := opts.Recursor.Reconfigure(rc); err != nil {
+			_ = set.Close()
+			return nil, err
+		}
+	}
+	return set, nil
 }
