@@ -582,6 +582,10 @@ leave the child waiting for a witness and the parent waiting for that child.
 Startup and fresh-runtime restore tests cover the durable parent-fencing/head-1
 and child-preparing checkpoint. Both routes remain unavailable until their
 existing witness, activation and complete-publication barriers pass.
+Lifecycle result validation treats an empty parent list and nil as the same
+durable value, since copying and JSON omit the empty list. This avoids reporting
+a failed transition after a successful CAS. All populated parent obligations and
+the rest of the returned spec still require exact equality with admitted intent.
 
 Native UDP/TCP/DoT UPDATE callbacks use the original verified request, select the
 exact SOA apex, and return success only after complete publication. A committed

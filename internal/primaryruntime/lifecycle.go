@@ -96,11 +96,25 @@ func (r *Runtime) Transition(ctx context.Context, current, next *zk.ZoneLifecycl
 	if err != nil {
 		return nil, err
 	}
-	if out == nil || out.Validate() != nil || out.ResourceVersion == "" || !reflect.DeepEqual(out.Spec, next.Spec) {
+	if out == nil || out.Validate() != nil || out.ResourceVersion == "" || !sameLifecycleSpec(out.Spec, next.Spec) {
 		return nil, ErrInvalid
 	}
 	return out.DeepCopy(), nil
 }
+
+// DeepCopy and durable JSON omit empty Parents. That representation change
+// cannot make an already committed CAS fail its result check. Every nonempty
+// obligation and all other spec fields still require exact equality.
+func sameLifecycleSpec(a, b zk.ZoneLifecycleSpec) bool {
+	if len(a.Parents) == 0 {
+		a.Parents = nil
+	}
+	if len(b.Parents) == 0 {
+		b.Parents = nil
+	}
+	return reflect.DeepEqual(a, b)
+}
+
 func copyLifecycle(l *zk.ZoneLifecycle) *zk.ZoneLifecycle { return l.DeepCopy() }
 func nextPhase(l *zk.ZoneLifecycle, phase string) (*zk.ZoneLifecycle, error) {
 	if l == nil || l.Spec.Sequence == math.MaxUint64 {
