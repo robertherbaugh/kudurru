@@ -387,6 +387,11 @@ describe("the key request form", () => {
     for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "edition", "company", "business-nodes", "business-use", "website"]) {
       expect(page).toContain(`name="${name}"`);
     }
+    const editions = [...page.matchAll(/<input\b[^>]*\bname="edition"[^>]*>/g)].map((match) => match[0]);
+    expect(editions).toHaveLength(2);
+    expect(editions[0]).toMatch(/type="radio"[^>]*value="core"\s+checked\b/);
+    expect(editions[1]).toMatch(/type="radio"[^>]*value="enterprise"/);
+    expect(editions[1]).not.toMatch(/\bchecked\b/);
     // The server's limits are on the inputs too.
     expect(page).toMatch(/name="personal-use"[^>]*maxlength="1000"/);
     expect(page).toMatch(/name="name"[^>]*maxlength="200"/);
