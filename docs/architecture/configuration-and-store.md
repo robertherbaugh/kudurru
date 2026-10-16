@@ -18,6 +18,26 @@ Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 `internal/objects` (the file loader), `internal/bootstrap`,
 `internal/controller`, `internal/config`, `cmd/kudurru/reload.go`.
 
+## API migrations
+
+`internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
+objects, a settings merge patch and conversion warnings. The dashboard's
+Tools wizard uses `POST /imports/preview` and submits the reviewed result to
+`POST /imports/apply`. The CLI's `import pihole|technitium` uses the same
+converter locally; `--apply` sends its preview to the same writer. A preview
+never writes destination state. Both REST routes require `settings.write`,
+because administrators intentionally connect to private source networks.
+
+Source credentials exist only during the request: Technitium uses a bearer
+token, Pi-hole an application password and a temporary session that is closed
+after reading. Source redirects are refused, response sizes and request time
+are bounded, and upstream errors never echo credentials or response bodies.
+Import writes use the existing object authorization, schema, ownership and
+license checks. They are not transactional and return a result per object;
+the settings patch is applied only when every object succeeds. Unsupported
+source semantics are reported in the preview. See the
+[migration guides](../../site/content/migrate/_index.md) for supported data.
+
 ## The objects
 
 All kinds share `kudurru.io/v1alpha1`. Public kinds are CRDs in Kubernetes;

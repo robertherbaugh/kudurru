@@ -665,6 +665,62 @@ Flags:
       --origin string     zone apex, to create the DNSZone when it does not exist yet
 ```
 
+### kudurru import pihole
+
+Connect to the source API using its v6 application password. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to import directly into the selected kudurru server using its normal validation, ownership and license checks. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
+
+```text
+kudurru import pihole --source-url URL [flags]
+```
+
+Examples:
+
+```sh
+kudurru import pihole --source-url http://dns.local --source-key-file ./source-key
+kudurru import pihole --source-url http://dns.local --source-key-file ./source-key --apply
+```
+
+Flags:
+
+```text
+      --apply                             apply the converted configuration directly to kudurru
+      --dry-run                           preview only (the default)
+      --local-zone strings                local DNS suffixes to make authoritative (default:
+                                          Pi-hole's local domain)
+      --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
+                                          self-signed certificate
+      --source-key-file string            file containing the source v6 application password
+                                          (otherwise $PIHOLE_APP_PASSWORD)
+      --source-url string                 source console URL (including any reverse-proxy prefix)
+```
+
+### kudurru import technitium
+
+Connect to the source API using its API token. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to import directly into the selected kudurru server using its normal validation, ownership and license checks. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
+
+```text
+kudurru import technitium --source-url URL [flags]
+```
+
+Examples:
+
+```sh
+kudurru import technitium --source-url http://dns.local --source-key-file ./source-key
+kudurru import technitium --source-url http://dns.local --source-key-file ./source-key --apply
+```
+
+Flags:
+
+```text
+      --apply                             apply the converted configuration directly to kudurru
+      --dry-run                           preview only (the default)
+      --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
+                                          self-signed certificate
+      --source-key-file string            file containing the source API token (otherwise
+                                          $TECHNITIUM_API_TOKEN)
+      --source-url string                 source console URL (including any reverse-proxy prefix)
+```
+
 ## kudurru lameduck
 
 Put the local kudurru into lameduck through the ops listener (POST /lameduck, loopback only) and wait for the duration, if one is given, so the edge's health checks (dnsdist must-resolve on health.kudurru.internal., every second) and the Kubernetes endpoints take the node out before it stops. Queries that still arrive are answered. --cancel leaves lameduck.

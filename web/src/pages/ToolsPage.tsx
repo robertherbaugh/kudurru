@@ -28,6 +28,7 @@ import { formatError } from '../components/fields/formats';
 import { SelectField } from '../components/fields/SelectField';
 import { CheckboxField, TextField } from '../components/fields/TextField';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
+import { MigrationImport } from '../components/wizards/MigrationWizard';
 
 const DIG_TYPES = ['A', 'AAAA', 'HTTPS', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'SRV', 'PTR', 'CAA', 'SVCB', 'DS', 'DNSKEY'];
 const DIG_PROTOS: { value: DnsProto; label: string }[] = [
@@ -397,6 +398,7 @@ export default function ToolsPage() {
         <FlushCache />
         <Doctor />
       </Grid>
+      <MigrationImport />
       <ApplyYAML />
       <Exports />
     </Page>

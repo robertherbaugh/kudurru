@@ -102,6 +102,7 @@ func (s *Server) registerRoutes() {
 	s.registerMeta()
 	s.registerAuth()
 	s.registerObjects()
+	s.registerImports()
 	s.registerZones()
 	s.registerLists()
 	s.registerDomainLists()
