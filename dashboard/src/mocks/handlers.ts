@@ -55,11 +55,16 @@ import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } fro
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
 let db: MockDB = createDB();
+// UI fixtures only: fixed codes deliberately do not model cryptographic authority.
+const mockFactors = new Set<string>();
+const mockSetups = new Map<string, { challenge: string; expiresAt: string }>();
 
 /** Resets the database to the fixtures (tests call it in beforeEach). */
 export function resetDB(now?: number): MockDB {
   db = createDB(now);
   resetDHCP();
+  mockFactors.clear();
+  mockSetups.clear();
   return db;
 }
 
@@ -733,10 +738,11 @@ export const handlers = [
     }),
   ),
   http.post(`${B}/auth/login`, async ({ request }) => {
-    const body = (await request.json()) as { username?: string; password?: string };
+    const body = (await request.json()) as { username?: string; password?: string; totpCode?: string };
     if (!body.username || !body.password) return fail(400, 'invalid', 'username and password are required');
     const user = db.users.find((u) => u.username === body.username && u.password === body.password);
     if (!user) return fail(401, 'unauthenticated', 'invalid username or password');
+    if (mockFactors.has(user.username) && body.totpCode !== '123456') return fail(401, 'unauthenticated', 'Authenticator code required');
     db.session = { user };
     return ok({ ...me() });
   }),
@@ -756,9 +762,48 @@ export const handlers = [
     if (next === body.currentPassword) return fail(400, 'invalid', 'newPassword: must differ from the current password');
     const u = db.session.user;
     if (body.currentPassword !== u.password) return fail(403, 'forbidden', 'the current password is wrong');
+    if (mockFactors.has(u.username) && body.totpCode !== '123456') return fail(401, 'unauthenticated', 'Authenticator code required');
     u.password = next;
     u.mustChangePassword = false;
     return ok({ ...me() });
+  }),
+  http.get(`${B}/auth/totp`, () => db.session ? ok({ enabled: mockFactors.has(db.session.user.username) }) : fail(401, 'unauthenticated', 'No session')),
+  http.post(`${B}/auth/totp/:action`, async ({ request, params }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'No session');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'CSRF required');
+    const user = db.session.user;
+    if (user.mustChangePassword) return fail(403, 'forbidden', 'Password change required');
+    const action = String(params.action);
+    if (!['setup', 'confirm', 'disable'].includes(action)) return fail(404, 'not_found', 'Unknown factor action');
+    const body = await request.json() as Record<string, unknown>;
+    const keys = action === 'confirm' ? ['currentPassword', 'totpCode', 'challenge', 'code'] : ['currentPassword', 'totpCode'];
+    if (Object.keys(body).some((key) => !keys.includes(key))) return fail(400, 'invalid', 'Unexpected field');
+    if (body.currentPassword !== user.password || (mockFactors.has(user.username) && body.totpCode !== '123456')) return fail(401, 'unauthenticated', 'Proof not accepted');
+    if (action === 'setup') {
+      const candidate = { challenge: `mock-challenge-${crypto.randomUUID()}`, expiresAt: new Date(Date.now() + 300_000).toISOString() };
+      mockSetups.set(user.username, candidate);
+      return ok({ ...candidate, secret: 'JBSWY3DPEHPK3PXP', otpauthURI: 'otpauth://totp/kudurru:mock?secret=JBSWY3DPEHPK3PXP&issuer=kudurru' });
+    }
+    if (action === 'confirm') {
+      const candidate = mockSetups.get(user.username);
+      if (!candidate || candidate.challenge !== body.challenge || Date.parse(candidate.expiresAt) <= Date.now()) return fail(409, 'conflict', 'Setup changed');
+      if (body.code !== '123456') return fail(401, 'unauthenticated', 'New code not accepted');
+      mockFactors.add(user.username);
+    } else mockFactors.delete(user.username);
+    mockSetups.delete(user.username);
+    db.session = null;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.post(`${B}/iam/users/:name/totp/recover`, async ({ request, params }) => {
+    const denied = guard(request, 'users', 'write');
+    if (denied) return denied;
+    const name = String(params.name);
+    const body = await request.json() as Record<string, unknown>;
+    if (Object.keys(body).length !== 1 || typeof body.uid !== 'string') return fail(400, 'invalid', 'UID required');
+    if (!db.users.some((u) => u.username === name) || body.uid !== `mock-user-${name}`) return fail(409, 'conflict', 'Account changed');
+    mockFactors.delete(name); mockSetups.delete(name);
+    if (db.session?.user.username === name) db.session = null;
+    return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${B}/auth/oidc/:idp/start`, ({ params }) => fail(501, 'not_implemented', `The mock cannot redirect to ${String(params.idp)}`)),
   http.get(`${B}/auth/tokens`, ({ request }) => guard(request, 'tokens', 'own') ?? ok({ items: db.tokens, continue: '' })),

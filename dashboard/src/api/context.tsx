@@ -88,12 +88,16 @@ export function useSession() {
   const { api, setCsrf } = useApiContext();
   const q = useQuery({
     queryKey: qk.me,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       try {
         const me = await api.auth.me();
+        // Query cancellation also retires this read's CSRF side effect, even
+        // when its HTTP response arrives after session cleanup.
+        signal.throwIfAborted();
         setCsrf(me.csrf);
         return me;
       } catch (err) {
+        if (signal.aborted) throw err;
         if (err instanceof ApiError && err.status === 401) {
           setCsrf(undefined);
           return null;
@@ -141,6 +145,7 @@ export function useSignOut(): () => Promise<void> {
     try {
       await api.auth.logout();
     } finally {
+      await qc.cancelQueries();
       setCsrf(undefined);
       // Signed out first, so the session gate renders the login page; then
       // drop every other cached answer. qc.clear() would also remove the

@@ -9,6 +9,11 @@ import type {
   AuditQuery,
   AuditVerification,
   AuthStatus,
+  TOTPStatus,
+  TOTPProofRequest,
+  TOTPSetupResponse,
+  TOTPConfirmRequest,
+  TOTPRecoverRequest,
   BlockingState,
   ClientsResult,
   ClientTimeseries,
@@ -108,6 +113,10 @@ export function endpoints(c: ApiClient) {
 
     auth: {
       status: () => c.get<AuthStatus>('/auth/status'),
+      totp: (signal?: AbortSignal) => c.request<TOTPStatus>('GET', '/auth/totp', { signal }),
+      beginTOTP: (req: TOTPProofRequest, signal?: AbortSignal) => c.request<TOTPSetupResponse>('POST', '/auth/totp/setup', { body: req, signal }),
+      confirmTOTP: (req: TOTPConfirmRequest, signal?: AbortSignal) => c.request<void>('POST', '/auth/totp/confirm', { body: req, signal }),
+      disableTOTP: (req: TOTPProofRequest, signal?: AbortSignal) => c.request<void>('POST', '/auth/totp/disable', { body: req, signal }),
       me: () => c.get<Me>('/auth/me'),
       login: (username: string, password: string, totpCode?: string) => c.post<Me>('/auth/login', { username, password, ...(totpCode ? { totpCode } : {}) }),
       logout: () => c.post<void>('/auth/logout'),
@@ -261,6 +270,7 @@ export function endpoints(c: ApiClient) {
     },
 
     iam: {
+      recoverTOTP: (name: string, req: TOTPRecoverRequest, signal?: AbortSignal) => c.request<void>('POST', `/iam/users/${enc(name)}/totp/recover`, { body: req, signal }),
       users: () => c.get<IamList<IamUser>>('/iam/users'),
       serviceAccounts: () => c.get<IamList<IamServiceAccount>>('/iam/serviceaccounts'),
       roleBindings: () => c.get<IamList<IamRoleBinding>>('/iam/rolebindings'),
