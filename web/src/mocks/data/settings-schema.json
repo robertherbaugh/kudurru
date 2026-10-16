@@ -2549,7 +2549,7 @@
       "type": "string[]",
       "scope": "cluster",
       "default": [],
-      "help": "Addresses of the root servers recursive groups start from, e.g. 198.41.0.4; empty (the default) uses the built-in IANA list. Only for a private root or a lab.",
+      "help": "Addresses of the root servers recursive groups start from, e.g. 198.41.0.4; empty (the default) uses the built-in IANA list. Only for a private root or a lab: with custom hints, name servers on private and link-local addresses are asked too, which the public tree never allows.",
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,

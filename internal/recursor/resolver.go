@@ -162,6 +162,10 @@ type settings struct {
 	anchors []*dns.DS
 	hints   *zoneCut
 	v6      bool
+	// internalOK lets name servers have private, link-local and shared
+	// addresses: only with operator-supplied root hints, i.e. a private
+	// DNS tree.
+	internalOK bool
 	// gen changes with the trust anchors, root hints or validation, and
 	// is part of every cache key (key).
 	gen uint64
@@ -233,7 +237,7 @@ func (r *Resolver) Reconfigure(cfg Config) error {
 		return err
 	}
 	hints, _ := ParseRootHints(cfg.RootHints) // validated above
-	s := &settings{cfg: cfg, anchors: ds, hints: hintCut(hints)}
+	s := &settings{cfg: cfg, anchors: ds, hints: hintCut(hints), internalOK: len(hints) > 0}
 	switch cfg.IPv6 {
 	case IPv6On:
 		s.v6 = true
@@ -899,21 +903,59 @@ func (q *query) cutAddrs(cut *zoneCut, resolve bool) []netip.AddrPort {
 }
 
 // usable drops addresses the resolver must not or cannot ask.
+//
+// Name-server addresses come from untrusted glue and lookups: with the
+// public root, a zone could otherwise delegate to 169.254.169.254, 10.x
+// or fd00:: hosts and have the resolver probe the local network on its
+// behalf. Such addresses are asked only in a private tree (custom root
+// hints).
 func (q *query) usable(in []netip.AddrPort) []netip.AddrPort {
 	out := in[:0]
 	for _, a := range in {
-		ip := a.Addr()
+		ip := a.Addr().Unmap()
 		switch {
 		case !ip.IsValid(), ip.IsUnspecified(), ip.IsMulticast():
 			continue
 		case ip.IsLoopback() && !q.r.allowLoopback:
 			continue
-		case ip.Is6() && !ip.Is4In6() && !q.s.v6:
+		case !ip.IsLoopback() && internalAddr(ip) && !q.s.internalOK:
+			continue
+		case ip.Is6() && !q.s.v6:
 			continue
 		}
-		out = append(out, a)
+		out = append(out, netip.AddrPortFrom(ip, a.Port()))
 	}
 	return out
+}
+
+// Address ranges that are not on the public internet, besides loopback.
+var (
+	thisNetwork = netip.MustParsePrefix("0.0.0.0/8")     // RFC 1122
+	sharedSpace = netip.MustParsePrefix("100.64.0.0/10") // RFC 6598 (CGNAT)
+	ietfV4      = netip.MustParsePrefix("192.0.0.0/24")  // RFC 6890
+	testNet1    = netip.MustParsePrefix("192.0.2.0/24")  // RFC 5737
+	testNet2    = netip.MustParsePrefix("198.51.100.0/24")
+	testNet3    = netip.MustParsePrefix("203.0.113.0/24")
+	benchmark   = netip.MustParsePrefix("198.18.0.0/15")  // RFC 2544
+	reservedV4  = netip.MustParsePrefix("240.0.0.0/4")    // RFC 1112
+	siteLocal   = netip.MustParsePrefix("fec0::/10")      // RFC 3879
+	discardV6   = netip.MustParsePrefix("100::/64")       // RFC 6666
+	docV6       = netip.MustParsePrefix("2001:db8::/32")  // RFC 3849
+	nat64Local  = netip.MustParsePrefix("64:ff9b:1::/48") // RFC 8215
+)
+
+// internalAddr reports whether ip belongs to a private, link-local,
+// shared, documentation or otherwise non-public range.
+func internalAddr(ip netip.Addr) bool {
+	if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() {
+		return true
+	}
+	for _, p := range []netip.Prefix{thisNetwork, sharedSpace, ietfV4, testNet1, testNet2, testNet3, benchmark, reservedV4, siteLocal, discardV6, docV6, nat64Local} {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveAddrs looks up a name server's addresses (not validated: they

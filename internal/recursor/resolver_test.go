@@ -666,3 +666,38 @@ func TestLimitFailuresNotCached(t *testing.T) {
 	m, sec := ask(t, r, "www.glueless.org", dns.TypeA)
 	want(t, m, sec, dns.RcodeSuccess, SecSecure, "192.0.2.60")
 }
+
+func TestInternalNameServersSkipped(t *testing.T) {
+	// With the public root hints, glue or lookups that point a zone at
+	// private, link-local or shared addresses are never asked: a remote
+	// zone must not make the resolver probe the local network.
+	r, err := New(Config{IPv6: IPv6On}, Options{Exchanger: newFakeNet()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := r.newQuery(context.Background(), r.set.Load())
+	var in []netip.AddrPort
+	for _, s := range []string{
+		"10.0.0.1", "172.16.5.5", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.1.2.3", "198.18.0.1",
+		"fd00::1", "fe80::1", "::ffff:10.1.1.1", "::ffff:169.254.169.254", "2001:db8::1",
+		"192.0.2.53", "193.0.14.129", "2001:7fd::1", "::ffff:198.41.0.4",
+	} {
+		in = append(in, netip.AddrPortFrom(netip.MustParseAddr(s), 53))
+	}
+	var got []string
+	for _, a := range q.usable(in) {
+		got = append(got, a.Addr().String())
+	}
+	if want := []string{"193.0.14.129", "2001:7fd::1", "198.41.0.4"}; !slices.Equal(got, want) {
+		t.Fatalf("usable %v, want %v", got, want)
+	}
+	// A private tree (custom root hints) may use internal addresses.
+	r, err = New(Config{IPv6: IPv6On, RootHints: []string{"10.0.0.1"}}, Options{Exchanger: newFakeNet()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q = r.newQuery(context.Background(), r.set.Load())
+	if len(q.usable([]netip.AddrPort{netip.MustParseAddrPort("10.0.0.2:53")})) != 1 {
+		t.Fatal("custom hints must allow private name servers")
+	}
+}

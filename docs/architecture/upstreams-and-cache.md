@@ -239,6 +239,12 @@ sequenceDiagram
   in the query name (0x20, with a fallback for servers that do not echo
   it), a strict match of the question, and bailiwick scrubbing of every
   section. Loopback name server addresses are never asked.
+- **No probing of the local network.** With the built-in root hints, name
+  server addresses in private, link-local, CGNAT, documentation and other
+  non-public ranges (after unmapping `::ffff:` forms) are dropped, so a
+  remote zone cannot delegate to `169.254.169.254` or `10.x` and make
+  kudurru query hosts inside your network. Custom `rootHints` describe a
+  private tree and allow them.
 
 ### Names that never leave the network
 
