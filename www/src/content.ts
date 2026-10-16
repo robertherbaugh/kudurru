@@ -125,7 +125,7 @@ export const NAV: NavLink[] = [
   { label: "Dashboard", href: "#dashboard" },
   { label: "Deploy", href: "#deploy" },
   { label: "Roadmap", href: "#roadmap" },
-  { label: "Move over", href: "/move-over/" },
+  { label: "Homelab", href: "/move-over/" },
   // A page of its own: not prefixed with the home page path like the anchors.
   { label: "Enterprise", href: "/enterprise/" },
   { label: "License", href: "/license/" },
@@ -659,9 +659,9 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     ],
   },
   {
-    title: "Move over",
+    title: "Homelab",
     links: [
-      { label: "Compare features", href: "/move-over/" },
+      { label: "DNS for your homelab", href: "/move-over/" },
       { label: "From Pi-hole", href: docs("/migrate/pihole/") },
       { label: "From AdGuard Home", href: docs("/migrate/adguard-home/") },
       { label: "From Technitium", href: docs("/migrate/technitium/") },
@@ -681,8 +681,31 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
   },
 ];
 
-// Migration comparisons describe the 0.1.0 implementation, not schema-only
-// features. Keep site/content/migrate in step; sources are linked below.
+// Homelab capabilities follow the home network and Kubernetes start guides.
+export const HOMELAB_FEATURES = [
+  {
+    title: "Local names for your services",
+    body: "Give your NAS, VMs and self-hosted apps names in your own DNS zones. Manage records in the dashboard or as YAML alongside your other configuration.",
+    href: "/guide/admin/07-zones-and-upstreams/",
+    link: "Set up local DNS",
+  },
+  {
+    title: "Rules for your household",
+    body: "Block ad and tracker domains for devices using your resolver. With a free key, give your kids' devices, IoT subnet and personal devices their own policies and schedules.",
+    href: "/guide/admin/05-groups-clients-policies/",
+    link: "Explore groups and policies",
+  },
+  {
+    title: "See why a request was blocked",
+    body: "The query log shows the client, matching list and rule behind an answer. Allow a domain from the log or pause blocking while you troubleshoot a device.",
+    href: "/guide/admin/03-watch-the-network/",
+    link: "Explore the query log",
+  },
+] as const;
+
+// Migration comparisons describe the 0.1.0 implementation, with planned
+// features labeled explicitly. Keep site/content/migrate in step; sources
+// are linked below.
 export const MIGRATIONS = [
   {
     slug: "pihole",
@@ -715,7 +738,7 @@ export const MIGRATION_COMPARISON = [
   { feature: "Local names and zones", pihole: "Local DNS and CNAME records", adguard: "DNS rewrites", technitium: "Primary, secondary, stub, forwarder and catalog zones", kudurru: "Primary and forward zones; BIND import/export; AXFR/IXFR out" },
   { feature: "Resolution", pihole: "Forwards to upstreams; recursion with a separate resolver", adguard: "Forwards to upstreams", technitium: "Full recursive resolver or forwarding", kudurru: "Forwards to named upstream groups; conditional forwarding" },
   { feature: "DNSSEC", pihole: "Optional validation", adguard: "Requests DNSSEC data from upstreams", technitium: "Validation and authoritative signing", kudurru: "No validation or signing in v0.1.0" },
-  { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Use your router or a separate DHCP server" },
+  { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Use a separate DHCP server in v0.1.0; built-in support planned for v0.2.0" },
   { feature: "Encrypted DNS listeners", pihole: "Use a separate proxy", adguard: "DoT, DoH and DoQ", technitium: "DoT, DoH and DoQ", kudurru: "DoT, DoH, DoQ and DoH3" },
   { feature: "Multiple servers", pihole: "Separate instances; external sync tools", adguard: "Separate instances; external sync tools", technitium: "Built-in clustering", kudurru: "Shared Kubernetes store; Compose HA uses shared object files" },
   { feature: "Kubernetes configuration", pihole: "Container configuration; no native CRDs", adguard: "Container configuration; no native CRDs", technitium: "Container configuration; no native CRDs", kudurru: "Native CRDs, Helm and external-dns webhook" },

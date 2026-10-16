@@ -2017,6 +2017,38 @@ main,
 }
 
 /* Migration comparisons share the site's type and table treatments. */
+/* Homelab overview, followed by the migration guides and comparison. */
+.homelab-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: start;
+}
+.homelab-key {
+  padding: clamp(24px, 3vw, 40px);
+  border: 1px solid var(--line-2);
+  border-top: 3px solid var(--clay);
+  background: var(--ink-2);
+}
+.homelab-key .label {
+  color: var(--clay-hi);
+}
+.homelab-key h2 {
+  margin-top: 20px;
+  font-size: clamp(1.625rem, 2.6vw, 2.25rem);
+  line-height: 1.1;
+}
+.homelab-key p:not(.label),
+.homelab-key .points,
+.homelab-key .more {
+  margin-top: 24px;
+}
+.homelab-key p:not(.label) {
+  color: var(--fg-2);
+}
+.homelab-key .more {
+  display: inline-flex;
+}
 .migration-intro .page-title {
   margin-block: 20px 28px;
   max-width: 20ch;
@@ -2065,6 +2097,13 @@ main,
 .migration-cards .more {
   margin-top: auto;
 }
+.homelab-features .more,
+.homelab-deploy .more {
+  padding-top: 24px;
+}
+.homelab-deploy {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .migration-table {
   overflow-x: auto;
   margin-top: 40px;
@@ -2087,13 +2126,6 @@ main,
   margin-top: 24px;
   color: var(--fg-2);
 }
-.migration-note {
-  max-width: 85ch;
-  margin-top: 32px;
-  padding-left: 24px;
-  border-left: 2px solid var(--clay);
-  color: var(--fg-2);
-}
 .migration-steps {
   display: grid;
   list-style: decimal;
@@ -2104,6 +2136,11 @@ main,
 }
 .migration-steps li {
   padding-left: 12px;
+}
+@media (max-width: 1000px) {
+  .homelab-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 @media (max-width: 760px) {
   .migration-cards {

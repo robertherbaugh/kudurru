@@ -49,10 +49,12 @@ RFC 3849 are documentation placeholders.
 The version on the page (the badge and the `docker run` and Helm commands)
 comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
 
-## Move over
+## Homelab
 
-`/move-over/` compares Pi-hole, AdGuard Home, Technitium and kudurru v0.1.0.
-The home page and footer link to all three migration guides at
+The Homelab page keeps its existing `/move-over/` URL. It covers local DNS,
+household filtering, Docker and Kubernetes deployment, and free community
+keys, followed by the Pi-hole, AdGuard Home, Technitium and kudurru v0.1.0
+comparison. The home page and footer link to all three migration guides at
 `docs.kudurru.io/migrate/`. Comparison claims and source links live in
 `src/content.ts`; the page template is `src/pages/move-over.ts`. Keep the
 comparison and limitations in step with `site/content/migrate/`, especially

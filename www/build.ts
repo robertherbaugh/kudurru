@@ -160,9 +160,9 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
     "move-over/index.html",
     {
       path: "/move-over/",
-      title: "Move from Pi-hole, AdGuard Home or Technitium · kudurru",
-      description: "Compare Pi-hole, AdGuard Home, Technitium and kudurru, with migration guides for filters, client policies, zones and a tested DNS cutover.",
-      breadcrumb: "Move over",
+      title: "Homelab DNS for your home network · kudurru",
+      description: "Self-host DNS for your homelab: local service names, household ad blocking and Docker or Kubernetes deployment. Start free, with guides for moving your existing setup.",
+      breadcrumb: "Homelab",
       body: moveOver(),
       assets,
     },
