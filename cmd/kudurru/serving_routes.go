@@ -46,8 +46,11 @@ func servingUnconvertedMutation(method, requestPath string) bool {
 		}
 	case "domains", "allowlist", "denylist", "allowlist:batch", "denylist:batch", "unblockrequests":
 		return true
+	case "queries":
+		// Query actions delegate to the same legacy domain-list mutator.
+		return method == http.MethodPost && len(parts) == 3 && parts[2] == "actions"
 	case "blocklists":
-		return len(parts) == 6 && parts[3] == "sources" && parts[5] == "entries"
+		return method != http.MethodPatch && len(parts) == 6 && parts[3] == "sources" && parts[5] == "entries"
 	default:
 		return false
 	}

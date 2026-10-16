@@ -680,6 +680,17 @@ uncaptured local fetch time. RPZ feeds are not line-source bodies and return 422
 Continuation tokens bind the exact generation, object UID/RV, source, parser
 inputs and query; changed observations require restarting pagination.
 
+Source-entry PATCH uses the existing current object command for one transaction:
+it reauthorizes the original raw proof, reads the exact list and source, checks
+If-Match and ownership, then validates and stages the edit. Inline additions and
+removals, structured enable switches, and URL/ConfigMap exclusions retain their
+existing parser semantics. No-ops also check current authority, manager ownership
+and final credential/writer validity. Bootstrap lists follow the same API
+takeover rule as whole-object PUT. RPZ feeds return 422. Cache effects run only
+after commit, and no failed command retries against a successor or a live Store.
+The returned resourceVersion identifies the durable edit; serving reads observe
+it after complete publication.
+
 Upstream diagnostics retain the original request's resolver-set membership and
 sample that set's local health, failures, backoff and RTT. Those operational
 counters can advance during a held request; they are not frozen publication
@@ -699,8 +710,8 @@ audit remains transactional. Actual server tests cover native DNS publication
 and restart after these commands.
 
 SQLite temporarily returns 503 for unsafe convenience writes without complete
-current admission: domain/allowlist/denylist mutations, inline source
-entry edits and unblock-request actions. Generic object commands remain available.
+current admission: domain/allowlist/denylist mutations, query-log allow/deny
+actions and unblock-request actions. Generic object commands remain available.
 These gates prevent legacy helpers from writing outside current authorization or
 returning an unchecked no-op; they are explicit remaining integration work.
 Generic apply/batch-delete retains its independent per-item result contract. All

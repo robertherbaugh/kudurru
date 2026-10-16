@@ -142,6 +142,10 @@ Source-entry GETs now use captured inline/structured values or verify the exact
 captured digest's bounded cached body. Missing old bytes return 503; pagination
 binds the original generation and query, and uncaptured local fetch times are
 omitted. RPZ feeds remain a separate diagnostic surface.
+Source-entry PATCH now edits inline values, structured switches and URL/ConfigMap
+exclusions in one current object command, including authorization and ownership
+checks on no-ops. Actual mounted acceptance covers publication and restart.
+Query-log allow/deny actions remain gated with the unconverted domain writer.
 Built-in HTTP DNS queries retain the original authenticated installation through
 the DNS pipeline instead of acquiring a newer bundle. Captured serving messages
 on `/info/messages` use original policy, list and zone availability; process

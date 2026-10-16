@@ -419,6 +419,9 @@ func (s *Server) patchSourceEntries(ctx context.Context, in *patchSourceEntriesI
 	if len(b.Add) == 0 && len(b.Remove) == 0 && len(b.Enable) == 0 && len(b.Disable) == 0 {
 		return nil, errInvalid("body: add, remove, enable or disable at least one entry")
 	}
+	if s.opts.ObjectCommand != nil {
+		return s.commandPatchSourceEntries(ctx, in)
+	}
 	k, _ := kindByPlural("blocklists")
 	for attempt := 1; ; attempt++ {
 		bl, err := s.getBlockList(ctx, in.Namespace, in.Name)
