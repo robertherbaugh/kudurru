@@ -12,11 +12,11 @@ import {
 
 const personal: Fields = {
   kind: "personal", name: "Homelab Hank", email: "hank@example.org", use: "DNS for my home network",
-  company: "", nodes: "", noncommercial: true, website: "",
+  company: "", nodes: "", edition: "core", noncommercial: true, website: "",
 };
 const business: Fields = {
   kind: "business", name: "Ada Admin", email: "ada@example.com", use: "OIDC and the audit trail, by January",
-  company: "Example GmbH", nodes: "12", noncommercial: false, website: "",
+  company: "Example GmbH", nodes: "12", edition: "enterprise", noncommercial: false, website: "",
 };
 
 const reply = (status: number, body?: unknown, headers: Record<string, string> = {}) =>
@@ -119,9 +119,9 @@ describe("the personal request", () => {
 describe("the business request", () => {
   test("puts every field in the mail body, nothing else", () => {
     expect(businessBody(business)).toBe(
-      "Name: Ada Admin\nBusiness: Example GmbH\nEmail: ada@example.com\nNodes: 12\n\nDetails:\nOIDC and the audit trail, by January",
+      "Name: Ada Admin\nBusiness: Example GmbH\nEmail: ada@example.com\nEdition: Enterprise\nNodes: 12\n\nDetails:\nOIDC and the audit trail, by January",
     );
-    expect(businessBody({ ...business, use: "" })).toBe("Name: Ada Admin\nBusiness: Example GmbH\nEmail: ada@example.com\nNodes: 12");
+    expect(businessBody({ ...business, edition: "core", use: "" })).toBe("Name: Ada Admin\nBusiness: Example GmbH\nEmail: ada@example.com\nEdition: Commercial Core\nNodes: 12");
   });
 
   test("opens hello@kudurru.io with the subject Business License", () => {

@@ -5,6 +5,9 @@
 // visitor did not see. The functions at the top are pure and tested; the
 // page wiring (initLicenseForm) is at the bottom.
 
+import { COMMERCIAL_PLANS } from "../content.ts";
+import type { CommercialEdition } from "../pricing.ts";
+
 export const CONTACT = "hello@kudurru.io";
 export const BUSINESS_SUBJECT = "Business License";
 export const PERSONAL_SUBJECT = "Free personal key";
@@ -20,6 +23,7 @@ export interface Fields {
   company: string;
   // Business only: a personal key always covers the personal maximum.
   nodes: string;
+  edition: CommercialEdition;
   noncommercial: boolean;
   // The honeypot: a person leaves it empty.
   website: string;
@@ -74,6 +78,7 @@ export function businessBody(f: Fields): string {
     `Name: ${f.name.trim()}`,
     `Business: ${f.company.trim()}`,
     `Email: ${f.email.trim()}`,
+    `Edition: ${COMMERCIAL_PLANS[f.edition].name}`,
     `Nodes: ${Number(f.nodes)}`,
   ];
   const details = f.use.trim();
@@ -146,6 +151,7 @@ function read(form: HTMLFormElement): Fields {
     use: panel(kind, "use"),
     company: get("company"),
     nodes: get("business-nodes"),
+    edition: get("edition") as CommercialEdition,
     noncommercial: (form.elements.namedItem("noncommercial") as HTMLInputElement | null)?.checked ?? false,
     website: get("website"),
   };

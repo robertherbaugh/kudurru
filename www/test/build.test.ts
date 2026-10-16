@@ -354,11 +354,13 @@ describe("the license page", () => {
     expect(pages["index.html"]).toContain("a policy beyond the default needs a license key");
   });
 
-  test("below the intro it spans the full width, like its table: only the form's box is narrower", () => {
+  test("places the form alongside the intro and keeps the remaining sections full width", () => {
     const page = pages["license/index.html"]!;
-    expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap narrow">/);
-    expect(page.match(/class="wrap narrow"/g)?.length).toBe(1);
-    expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<form class="licform lic-row"/);
+    expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap lic-intro">/);
+    const intro = page.slice(page.indexOf('aria-labelledby="lic-title"'), page.indexOf("</section>", page.indexOf('aria-labelledby="lic-title"')));
+    expect(intro).toContain('class="lic-intro-copy"');
+    expect(intro).toContain('data-license-form');
+    expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<div class="lic-row">/);
     for (const id of ["lic-req-title", "lic-get-title", "lic-read-title"]) expect(page).toContain(`<h2 id="${id}">`);
     // Using a key on a node is the docs' job, not this page's.
     expect(page).not.toContain("lic-use-title");
@@ -382,7 +384,7 @@ describe("the key request form", () => {
 
   test("has the fields the personal and the business request need", () => {
     const page = pages["license/index.html"]!;
-    for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "company", "business-nodes", "business-use", "website"]) {
+    for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "edition", "company", "business-nodes", "business-use", "website"]) {
       expect(page).toContain(`name="${name}"`);
     }
     // The server's limits are on the inputs too.

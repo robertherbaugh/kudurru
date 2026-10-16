@@ -154,7 +154,8 @@ as `/project/license/` and `/project/licensing/`); the dashboard, the README and
 the key form link to them. The public page is [kudurru.io/license](https://kudurru.io/license)
 (`www/src/pages/license.ts`, content in `www/src/content.ts`); its "Request a
 key" form sends a personal request to the license server and opens a mail to
-hello@kudurru.io for anything else (`www/README.md`, "The Request a key form"), and the
+hello@kudurru.io for anything else, including the selected Commercial Core or
+Enterprise edition (`www/README.md`, "The Request a key form"), and the
 administrator guide has a chapter on it (`docs/guide/admin/13-license.md`).
 
 ## Test builds
