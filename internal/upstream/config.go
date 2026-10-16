@@ -113,11 +113,11 @@ type Config struct {
 }
 
 // DefaultTimeout is the per-server exchange timeout when a group sets none.
-const DefaultTimeout = 2 * time.Second
+const DefaultTimeout = config.DefaultUpstreamTimeout
 
 // DefaultRecursiveTimeout bounds one recursive lookup when a recursive
 // group sets no timeout; it stays below the 5 s query deadline.
-const DefaultRecursiveTimeout = 4 * time.Second
+const DefaultRecursiveTimeout = config.DefaultRecursiveTimeout
 
 // RecursiveServer is the server name of a recursive group in metrics, the
 // query log ("<group>/recursive") and Status.

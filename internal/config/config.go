@@ -493,6 +493,7 @@ func Load(path string, environ []string) (*Config, error) {
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("config: decode: %w", err)
 	}
+	cfg.Upstreams.normalize()
 	cfg.EnvLocked = locked
 	cfg.Source = path
 	cfg.SettingsFile = settingsPath
@@ -694,6 +695,40 @@ const (
 	UpstreamModeForward   = "forward"
 	UpstreamModeRecursive = "recursive"
 )
+
+// Defaults of a group's own fields. A group in a file or settings layer
+// replaces the built-in group of the same name (mergeLayer), so the fields
+// it leaves out are filled here; internal/upstream uses the same values.
+const (
+	DefaultUpstreamStrategy = "parallel_best"
+	// DefaultUpstreamTimeout bounds one exchange with one server.
+	DefaultUpstreamTimeout = 2 * time.Second
+	// DefaultRecursiveTimeout bounds one recursive lookup; it stays below
+	// the 5 s query deadline.
+	DefaultRecursiveTimeout = 4 * time.Second
+)
+
+// normalize fills the fields a group left out with the values it runs
+// with, so the effective configuration (dashboard, GET /settings, config
+// show) matches what the upstream groups do.
+func (u *Upstreams) normalize() {
+	for name, g := range u.Groups {
+		switch g.Mode {
+		case UpstreamModeRecursive:
+			if g.Timeout == 0 {
+				g.Timeout = Duration(DefaultRecursiveTimeout)
+			}
+		default:
+			if g.Strategy == "" {
+				g.Strategy = DefaultUpstreamStrategy
+			}
+			if g.Timeout == 0 {
+				g.Timeout = Duration(DefaultUpstreamTimeout)
+			}
+		}
+		u.Groups[name] = g
+	}
+}
 
 // validate checks what the group shape cannot: a forwarding group needs
 // servers and a recursive group has none.
