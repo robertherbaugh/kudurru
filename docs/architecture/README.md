@@ -90,7 +90,8 @@ external-dns webhook, the query log writer, the admin socket). There is no
 | Port | Listener | Who calls it |
 |---|---|---|
 | 53 udp/tcp (5353 behind an edge) | DNS | clients, or dnsdist with PROXYv2 |
-| 67 udp (v0.2.0 development, opt-in) | DHCPv4 scopes | direct clients on UDP 68; trusted relays on UDP 67 |
+| 67 udp (v0.2.0 development, opt-in) | DHCPv4 scopes | direct clients on UDP 68; trusted relays on their authorized source port |
+| Operator-selected TCP peer port (opt-in) | DHCPv4 quorum | mutually authenticated replication and forwarded management between three voters |
 | 853 tcp / 443 tcp / 853 udp / 443 udp | DoT, DoH, DoQ, DoH3 (off by default) | clients |
 | 8080 | REST API `/api/v1` and the dashboard | browsers, the CLI, automation |
 | 8081 | `/healthz/*`, `/lameduck` (no auth) | probes, `kudurru health`, `kudurru lameduck` |
@@ -114,7 +115,7 @@ code. The main gaps between the two:
 | client match by MAC, hostname, DoT/DoH client ID | match by IP and CIDR (the index supports the rest; no transport fills them in) |
 | `cluster.role: static` read-only twins | no such key; each twin is an independent sqlite node |
 | secondary zones, NOTIFY in, dynamic UPDATE | NOTIMP; kudurru only sends NOTIFY |
-| DHCP server support (v0.2.0) | DHCPv4 in development: one Linux/SQLite node, dashboard setup with restart-required topology, direct/relayed subnets, live management, lease import/export and A/PTR records; no DHCP in v0.1.0 |
+| DHCP server support (v0.2.0) | DHCPv4 in development: Linux/SQLite standalone or three-node quorum failover, dashboard setup, direct/relayed subnets, conflict checks, advanced network/boot options, live management, lease import/export and persistent A/PTR ownership; no DHCP in v0.1.0 |
 | Kubernetes Events from the controller | events are logged only |
 
 The open list lives in [follow-ups](../followups.md).

@@ -32,6 +32,7 @@ func leaseTestOffer(t *testing.T, s *LeaseStore, c Client, ip netip.Addr) Lease 
 	if err != nil {
 		t.Fatal(err)
 	}
+	l.GrantedDuration = 0 // Helpers compare persisted state, not response metadata.
 	return l
 }
 
@@ -42,6 +43,7 @@ func leaseTestBind(t *testing.T, s *LeaseStore, c Client) Lease {
 	if err != nil {
 		t.Fatal(err)
 	}
+	l.GrantedDuration = 0 // Helpers compare persisted state, not response metadata.
 	return l
 }
 
@@ -75,7 +77,7 @@ func TestLeaseOfferBindingAndExpiry(t *testing.T) {
 	}
 	now = now.Add(time.Hour)
 	rediscover := leaseTestOffer(t, s, c, cfg.RangeStart)
-	if rediscover != bound {
+	if leasePersistent(rediscover) != leasePersistent(bound) {
 		t.Fatalf("DISCOVER changed live binding: %+v -> %+v", bound, rediscover)
 	}
 	renewed, err := s.Acknowledge(context.Background(), c, bound.Address, Renewing)
@@ -314,3 +316,5 @@ func TestLeaseCancellationAndClosedStore(t *testing.T) {
 		t.Fatal("closed store accepted operation")
 	}
 }
+
+func leasePersistent(l Lease) Lease { l.GrantedDuration = 0; return l }

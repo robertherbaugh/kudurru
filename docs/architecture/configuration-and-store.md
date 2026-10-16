@@ -20,9 +20,13 @@ UI setup ownership. Setup saves stage complete scopes for restart and never
 change live listeners or lease state. API-managed scopes keep live options and
 reservations in their lease database. The setup view overlays current values
 only for scopes without pending edits; setup and database revisions prevent
-concurrent changes from being lost. Lease schema v3 applies each scope's setup
-token once, preserving later live edits. All of this state stays on one SQLite
-node, outside store replication and ordinary object backup. Committed lease
+concurrent changes from being lost. Lease schema v4 retains each scope's setup
+token and adds persistent DNS claims and replica progress. Standalone startup
+applies tokens once, preserving later live edits. Optional three-voter Raft
+replicates DHCP leases and live management independently of object-store
+replication; local setup tokens cannot override established replica settings.
+Keep its Raft directory and hidden DNS claim registry with lease databases.
+Ordinary object backup does not include this state. Committed lease
 snapshots supply DNS and policy names without query-time storage reads.
 
 ![Writers go through one validator into the store; every node's zonecache watches the store and builds the snapshot the pipeline reads; the leader's controller writes status back](diagrams/config-flow.excalidraw.svg)

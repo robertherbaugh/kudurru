@@ -2193,6 +2193,20 @@ type CreatedToken struct {
 	Token string `json:"token"`
 }
 
+// DHCPBootProfile defines model for DHCPBootProfile.
+type DHCPBootProfile struct {
+	Architecture   int32   `json:"architecture"`
+	BootFile       *string `json:"bootFile,omitempty"`
+	BootServer     *string `json:"bootServer,omitempty"`
+	BootServerName *string `json:"bootServerName,omitempty"`
+}
+
+// DHCPClasslessRoute defines model for DHCPClasslessRoute.
+type DHCPClasslessRoute struct {
+	Destination string `json:"destination"`
+	Router      string `json:"router"`
+}
+
 // DHCPConfig defines model for DHCPConfig.
 type DHCPConfig struct {
 	EnvLocked    []string             `json:"envLocked"`
@@ -2220,6 +2234,26 @@ type DHCPExport struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// DHCPFailover defines model for DHCPFailover.
+type DHCPFailover struct {
+	Bootstrap     bool                `json:"bootstrap"`
+	CaFile        string              `json:"caFile"`
+	CertFile      string              `json:"certFile"`
+	ClusterID     string              `json:"clusterID"`
+	Enabled       bool                `json:"enabled"`
+	KeyFile       string              `json:"keyFile"`
+	ListenAddress string              `json:"listenAddress"`
+	NodeID        string              `json:"nodeID"`
+	Peers         *[]DHCPFailoverPeer `json:"peers"`
+}
+
+// DHCPFailoverPeer defines model for DHCPFailoverPeer.
+type DHCPFailoverPeer struct {
+	Address string  `json:"address"`
+	ApiURL  *string `json:"apiURL,omitempty"`
+	Id      string  `json:"id"`
 }
 
 // DHCPImportRequest defines model for DHCPImportRequest.
@@ -2319,14 +2353,21 @@ type DHCPLeases struct {
 
 // DHCPPoolOptions defines model for DHCPPoolOptions.
 type DHCPPoolOptions struct {
-	DnsServers    []string `json:"dnsServers"`
-	DnsTTL        string   `json:"dnsTTL"`
-	DomainName    string   `json:"domainName"`
-	LeaseDuration string   `json:"leaseDuration"`
-	RangeEnd      string   `json:"rangeEnd"`
-	RangeStart    string   `json:"rangeStart"`
-	RegisterDNS   bool     `json:"registerDNS"`
-	Router        string   `json:"router"`
+	BootFile        *string               `json:"bootFile,omitempty"`
+	BootProfiles    *[]DHCPBootProfile    `json:"bootProfiles,omitempty"`
+	BootServer      *string               `json:"bootServer,omitempty"`
+	BootServerName  *string               `json:"bootServerName,omitempty"`
+	ClasslessRoutes *[]DHCPClasslessRoute `json:"classlessRoutes,omitempty"`
+	DnsServers      []string              `json:"dnsServers"`
+	DnsTTL          string                `json:"dnsTTL"`
+	DomainName      string                `json:"domainName"`
+	DomainSearch    *[]string             `json:"domainSearch,omitempty"`
+	LeaseDuration   string                `json:"leaseDuration"`
+	NtpServers      *[]string             `json:"ntpServers,omitempty"`
+	RangeEnd        string                `json:"rangeEnd"`
+	RangeStart      string                `json:"rangeStart"`
+	RegisterDNS     bool                  `json:"registerDNS"`
+	Router          string                `json:"router"`
 }
 
 // DHCPReservation defines model for DHCPReservation.
@@ -2348,6 +2389,12 @@ type DHCPReservations struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// DHCPScopeServer defines model for DHCPScopeServer.
+type DHCPScopeServer struct {
+	Address string `json:"address"`
+	NodeID  string `json:"nodeID"`
+}
+
 // DHCPScopeSummary defines model for DHCPScopeSummary.
 type DHCPScopeSummary struct {
 	Interface  string                     `json:"interface"`
@@ -2364,18 +2411,20 @@ type DHCPScopeSummaryManagement string
 
 // DHCPSetup defines model for DHCPSetup.
 type DHCPSetup struct {
-	Available         bool               `json:"available"`
-	Enabled           bool               `json:"enabled"`
-	EnvironmentLocked bool               `json:"environmentLocked"`
-	Etag              string             `json:"etag"`
-	ManagedBy         DHCPSetupManagedBy `json:"managedBy"`
-	Node              string             `json:"node"`
-	PendingScopes     []string           `json:"pendingScopes"`
-	RestartRequired   bool               `json:"restartRequired"`
-	Revision          string             `json:"revision"`
-	RuntimeError      string             `json:"runtimeError"`
-	ScopeRevisions    map[string]string  `json:"scopeRevisions"`
-	Scopes            []DHCPSetupScope   `json:"scopes"`
+	Available           bool               `json:"available"`
+	Enabled             bool               `json:"enabled"`
+	EnvironmentLocked   bool               `json:"environmentLocked"`
+	Etag                string             `json:"etag"`
+	Failover            DHCPFailover       `json:"failover"`
+	FailoverInitialized bool               `json:"failoverInitialized"`
+	ManagedBy           DHCPSetupManagedBy `json:"managedBy"`
+	Node                string             `json:"node"`
+	PendingScopes       []string           `json:"pendingScopes"`
+	RestartRequired     bool               `json:"restartRequired"`
+	Revision            string             `json:"revision"`
+	RuntimeError        string             `json:"runtimeError"`
+	ScopeRevisions      map[string]string  `json:"scopeRevisions"`
+	Scopes              []DHCPSetupScope   `json:"scopes"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs            float64 `json:"took_ms"`
@@ -2389,33 +2438,45 @@ type DHCPSetupManagedBy string
 type DHCPSetupRequest struct {
 	Adopt          *bool             `json:"adopt,omitempty"`
 	Enabled        bool              `json:"enabled"`
+	Failover       *DHCPFailover     `json:"failover,omitempty"`
 	ScopeRevisions map[string]string `json:"scopeRevisions"`
 	Scopes         []DHCPSetupScope  `json:"scopes"`
 }
 
 // DHCPSetupScope defines model for DHCPSetupScope.
 type DHCPSetupScope struct {
-	DnsServers    []string           `json:"dnsServers"`
-	DnsTTL        string             `json:"dnsTTL"`
-	DomainName    string             `json:"domainName"`
-	Interface     string             `json:"interface"`
-	LeaseDuration string             `json:"leaseDuration"`
-	Name          string             `json:"name"`
-	RangeEnd      string             `json:"rangeEnd"`
-	RangeStart    string             `json:"rangeStart"`
-	RegisterDNS   bool               `json:"registerDNS"`
-	RelayOnly     bool               `json:"relayOnly"`
-	Reservations  []DHCPReservation  `json:"reservations"`
-	Router        string             `json:"router"`
-	ServerIP      string             `json:"serverIP"`
-	Subnet        string             `json:"subnet"`
-	TrustedRelays []DHCPTrustedRelay `json:"trustedRelays"`
+	BootFile          *string               `json:"bootFile,omitempty"`
+	BootProfiles      *[]DHCPBootProfile    `json:"bootProfiles,omitempty"`
+	BootServer        *string               `json:"bootServer,omitempty"`
+	BootServerName    *string               `json:"bootServerName,omitempty"`
+	ClasslessRoutes   *[]DHCPClasslessRoute `json:"classlessRoutes,omitempty"`
+	ConflictDetection *string               `json:"conflictDetection,omitempty"`
+	DnsServers        []string              `json:"dnsServers"`
+	DnsTTL            string                `json:"dnsTTL"`
+	DomainName        string                `json:"domainName"`
+	DomainSearch      *[]string             `json:"domainSearch,omitempty"`
+	FailoverServers   *[]DHCPScopeServer    `json:"failoverServers,omitempty"`
+	Interface         string                `json:"interface"`
+	LeaseDuration     string                `json:"leaseDuration"`
+	Name              string                `json:"name"`
+	NtpServers        *[]string             `json:"ntpServers,omitempty"`
+	ProbeTimeout      *string               `json:"probeTimeout,omitempty"`
+	RangeEnd          string                `json:"rangeEnd"`
+	RangeStart        string                `json:"rangeStart"`
+	RegisterDNS       bool                  `json:"registerDNS"`
+	RelayOnly         bool                  `json:"relayOnly"`
+	Reservations      []DHCPReservation     `json:"reservations"`
+	Router            string                `json:"router"`
+	ServerIP          string                `json:"serverIP"`
+	Subnet            string                `json:"subnet"`
+	TrustedRelays     []DHCPTrustedRelay    `json:"trustedRelays"`
 }
 
 // DHCPStatus defines model for DHCPStatus.
 type DHCPStatus struct {
 	Available bool               `json:"available"`
 	Enabled   bool               `json:"enabled"`
+	Failover  *ReplicationStatus `json:"failover,omitempty"`
 	Node      string             `json:"node"`
 	Scopes    []DHCPScopeSummary `json:"scopes"`
 
@@ -2425,17 +2486,23 @@ type DHCPStatus struct {
 
 // DHCPTopology defines model for DHCPTopology.
 type DHCPTopology struct {
-	Interface     string             `json:"interface"`
-	RelayOnly     bool               `json:"relayOnly"`
-	ServerIP      string             `json:"serverIP"`
-	Subnet        string             `json:"subnet"`
-	TrustedRelays []DHCPTrustedRelay `json:"trustedRelays"`
+	ConflictDetection *string            `json:"conflictDetection,omitempty"`
+	FailoverServers   *[]DHCPScopeServer `json:"failoverServers,omitempty"`
+	Interface         string             `json:"interface"`
+	ProbeTimeout      *string            `json:"probeTimeout,omitempty"`
+	RelayOnly         bool               `json:"relayOnly"`
+	ServerIP          string             `json:"serverIP"`
+	Subnet            string             `json:"subnet"`
+	TrustedRelays     []DHCPTrustedRelay `json:"trustedRelays"`
 }
 
 // DHCPTrustedRelay defines model for DHCPTrustedRelay.
 type DHCPTrustedRelay struct {
-	GatewayIP string `json:"gatewayIP"`
-	SourceIP  string `json:"sourceIP"`
+	GatewayIP        string  `json:"gatewayIP"`
+	LinkSelection    *string `json:"linkSelection,omitempty"`
+	ServerIdentifier *string `json:"serverIdentifier,omitempty"`
+	SourceIP         string  `json:"sourceIP"`
+	SourcePort       *int32  `json:"sourcePort,omitempty"`
 }
 
 // DNSFlags defines model for DNSFlags.
@@ -3551,6 +3618,22 @@ type RefreshBody struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// ReplicationStatus defines model for ReplicationStatus.
+type ReplicationStatus struct {
+	AppliedIndex  int64  `json:"appliedIndex"`
+	ClusterID     string `json:"clusterID"`
+	CommitIndex   int64  `json:"commitIndex"`
+	Enabled       bool   `json:"enabled"`
+	Error         string `json:"error"`
+	Initialized   bool   `json:"initialized"`
+	LastContact   int64  `json:"lastContact"`
+	LeaderAddress string `json:"leaderAddress"`
+	LeaderID      string `json:"leaderID"`
+	NodeID        string `json:"nodeID"`
+	Ready         bool   `json:"ready"`
+	Role          string `json:"role"`
 }
 
 // Request defines model for Request.

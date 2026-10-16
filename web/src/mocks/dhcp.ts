@@ -1,7 +1,8 @@
 import { http, HttpResponse } from 'msw';
-import type { DHCPConfig, DHCPLease, DHCPPoolOptions, DHCPReservation, DHCPSetup, DHCPSetupRequest } from '../api/types';
+import type { DHCPConfig, DHCPFailover, DHCPLease, DHCPPoolOptions, DHCPReservation, DHCPSetup, DHCPSetupRequest, DHCPStatus } from '../api/types';
 
-export interface DHCPMock { setup?: DHCPSetup; enabled: boolean; config: DHCPConfig; leases: DHCPLease[] }
+export interface DHCPMock { setup?: DHCPSetup; failoverStatus?: DHCPStatus['failover']; enabled: boolean; config: DHCPConfig; leases: DHCPLease[] }
+export const disabledFailover = (): DHCPFailover => ({ enabled: false, clusterID: '', nodeID: '', listenAddress: '', peers: [], bootstrap: false, caFile: '', certFile: '', keyFile: '' });
 function fixture(): DHCPMock {
   return {
     enabled: true,
@@ -22,7 +23,7 @@ export const mockDHCP = () => state;
 export const resetDHCP = () => { state = fixture(); };
 
 export function mockDHCPSetup(): DHCPSetup {
-  return state.setup ?? { node: state.config.node, took_ms: 1, enabled: state.enabled, managedBy: state.config.management,
+  return state.setup ?? { node: state.config.node, took_ms: 1, enabled: state.enabled, managedBy: state.config.management, failover: disabledFailover(), failoverInitialized: false,
     available: true, unavailableReason: '', runtimeError: '', environmentLocked: state.config.envLocked.length > 0, restartRequired: false,
     revision: '1', etag: '"setup-1"', scopeRevisions: { default: state.config.revision }, pendingScopes: [],
     scopes: [{ name: state.config.scope, ...state.config.topology, ...state.config.options, reservations: state.config.reservations }] };
@@ -58,13 +59,13 @@ export function dhcpHandlers(guard: Guard) {
       if (current.managedBy === 'file' && !body.adopt) return fail(409, 'managed_by', 'Adopt the file setup first');
       if (current.environmentLocked) return fail(409, 'env_locked', 'Remove DHCP environment overrides');
       if (body.enabled && !body.scopes.length) return fail(400, 'invalid', 'Enabled DHCP needs a scope');
-      state.setup = { ...current, enabled: body.enabled, scopes: body.scopes, managedBy: 'api', restartRequired: true,
+      state.setup = { ...current, enabled: body.enabled, scopes: body.scopes, failover: body.failover ?? current.failover, managedBy: 'api', restartRequired: true,
         revision: String(Number(current.revision) + 1), etag: `"setup-${Number(current.revision) + 1}"`,
         pendingScopes: body.scopes.filter((s) => current.pendingScopes.includes(s.name) || JSON.stringify(s) !== JSON.stringify(current.scopes.find((x) => x.name === s.name))).map((s) => s.name) };
       return HttpResponse.json(state.setup);
     }),
     http.get(`${base}/status`, ({ request }) => guard(request, 'dhcp', 'read') ?? HttpResponse.json({ node: state.config.node, enabled: state.enabled, available: state.enabled,
-      scopes: [{ name: state.config.scope, management: state.config.management, revision: state.config.revision, ...state.config.topology }], took_ms: 1 })),
+      scopes: [{ name: state.config.scope, management: state.config.management, revision: state.config.revision, ...state.config.topology }], failover: state.failoverStatus, took_ms: 1 })),
     http.get(`${path}/config`, ({ request, params }) => check(request, params.scope, 'dhcp', 'read') ?? HttpResponse.json(state.config, { headers: { ETag: state.config.etag } })),
     http.put(`${path}/config`, async ({ request, params }) => {
       const error = check(request, params.scope, 'dhcp', 'write') ?? change(request);

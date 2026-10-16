@@ -26,6 +26,7 @@ type LeaseSettings struct {
 	Options           PoolOptions
 	Reservations      []Reservation
 	AppliedSetupToken string
+	ReplicaIndex      uint64
 }
 
 // OpenLeasesForSetup applies a scope's staged configuration once. The matching
@@ -33,13 +34,23 @@ type LeaseSettings struct {
 // match the captured revision; desired settings, live-state validation and the
 // new token commit in one schema transaction, before returning any allocator.
 func OpenLeasesForSetup(path string, cfg Config, token string, expectedRevision uint64) (*LeaseStore, error) {
+	return openLeasesForSetupMode(path, cfg, token, expectedRevision, false)
+}
+
+// OpenReplicaLeasesForSetup is only for the explicitly designated bootstrap
+// source before its first consensus seed. Existing applied ownership rejects
+// all local staging, even when a setup token happens to match.
+func OpenReplicaLeasesForSetup(path string, cfg Config, token string, expectedRevision uint64) (*LeaseStore, error) {
+	return openLeasesForSetupMode(path, cfg, token, expectedRevision, true)
+}
+func openLeasesForSetupMode(path string, cfg Config, token string, expectedRevision uint64, replica bool) (*LeaseStore, error) {
 	if token == "" || len(token) > 128 || strings.ContainsAny(token, "\x00\r\n") {
 		return nil, fmt.Errorf("dhcp: invalid setup token")
 	}
 	if cfg.Management != "api" {
 		return nil, fmt.Errorf("dhcp: UI setup requires management=api")
 	}
-	return openLeases(path, cfg, &leaseSetup{token: token, expected: expectedRevision})
+	return openLeasesMode(path, cfg, &leaseSetup{token: token, expected: expectedRevision}, replica)
 }
 
 func (s *LeaseStore) applySetup(tx *sql.Tx, revision uint64) (Config, uint64, error) {
@@ -123,6 +134,11 @@ func readLeaseSettings(ctx context.Context, tx *sql.Tx) (LeaseSettings, error) {
 		return LeaseSettings{}, nil
 	}
 	var settings LeaseSettings
+	if version >= 4 {
+		if err := tx.QueryRowContext(ctx, "SELECT applied_index FROM lease_replica WHERE singleton=1").Scan(&settings.ReplicaIndex); err != nil {
+			return LeaseSettings{}, err
+		}
+	}
 	var options, reservations string
 	query := "SELECT revision, options, reservations FROM lease_settings WHERE singleton=1"
 	dest := []any{&settings.Revision, &options, &reservations}
@@ -132,7 +148,7 @@ func readLeaseSettings(ctx context.Context, tx *sql.Tx) (LeaseSettings, error) {
 	}
 	err = tx.QueryRowContext(ctx, query).Scan(dest...)
 	if errors.Is(err, sql.ErrNoRows) {
-		return LeaseSettings{}, nil
+		return settings, nil
 	}
 	if err != nil {
 		return LeaseSettings{}, err

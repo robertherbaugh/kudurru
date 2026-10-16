@@ -1156,6 +1156,45 @@
         ],
         "type": "object"
       },
+      "DHCPBootProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "architecture": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootFile": {
+            "type": "string"
+          },
+          "bootServer": {
+            "type": "string"
+          },
+          "bootServerName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "architecture"
+        ],
+        "type": "object"
+      },
+      "DHCPClasslessRoute": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "type": "string"
+          },
+          "router": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "destination",
+          "router"
+        ],
+        "type": "object"
+      },
       "DHCPConfig": {
         "additionalProperties": false,
         "properties": {
@@ -1239,6 +1278,75 @@
           "scope",
           "document",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "DHCPFailover": {
+        "additionalProperties": false,
+        "properties": {
+          "bootstrap": {
+            "type": "boolean"
+          },
+          "caFile": {
+            "type": "string"
+          },
+          "certFile": {
+            "type": "string"
+          },
+          "clusterID": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "keyFile": {
+            "type": "string"
+          },
+          "listenAddress": {
+            "type": "string"
+          },
+          "nodeID": {
+            "type": "string"
+          },
+          "peers": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPFailoverPeer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "clusterID",
+          "nodeID",
+          "listenAddress",
+          "peers",
+          "bootstrap",
+          "caFile",
+          "certFile",
+          "keyFile"
+        ],
+        "type": "object"
+      },
+      "DHCPFailoverPeer": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "apiURL": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "address"
         ],
         "type": "object"
       },
@@ -1522,6 +1630,33 @@
       "DHCPPoolOptions": {
         "additionalProperties": false,
         "properties": {
+          "bootFile": {
+            "type": "string"
+          },
+          "bootProfiles": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPBootProfile"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "bootServer": {
+            "type": "string"
+          },
+          "bootServerName": {
+            "type": "string"
+          },
+          "classlessRoutes": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPClasslessRoute"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "dnsServers": {
             "items": {
               "type": "string"
@@ -1536,8 +1671,26 @@
           "domainName": {
             "type": "string"
           },
+          "domainSearch": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "leaseDuration": {
             "type": "string"
+          },
+          "ntpServers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "rangeEnd": {
             "format": "ipv4",
@@ -1625,6 +1778,22 @@
         ],
         "type": "object"
       },
+      "DHCPScopeServer": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "nodeID": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeID",
+          "address"
+        ],
+        "type": "object"
+      },
       "DHCPScopeSummary": {
         "additionalProperties": false,
         "properties": {
@@ -1680,6 +1849,12 @@
           "etag": {
             "type": "string"
           },
+          "failover": {
+            "$ref": "#/components/schemas/DHCPFailover"
+          },
+          "failoverInitialized": {
+            "type": "boolean"
+          },
           "managedBy": {
             "enum": [
               "file",
@@ -1727,6 +1902,8 @@
           }
         },
         "required": [
+          "failover",
+          "failoverInitialized",
           "node",
           "enabled",
           "managedBy",
@@ -1753,6 +1930,9 @@
           "enabled": {
             "type": "boolean"
           },
+          "failover": {
+            "$ref": "#/components/schemas/DHCPFailover"
+          },
           "scopeRevisions": {
             "additionalProperties": {
               "type": "string"
@@ -1777,6 +1957,36 @@
       "DHCPSetupScope": {
         "additionalProperties": false,
         "properties": {
+          "bootFile": {
+            "type": "string"
+          },
+          "bootProfiles": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPBootProfile"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "bootServer": {
+            "type": "string"
+          },
+          "bootServerName": {
+            "type": "string"
+          },
+          "classlessRoutes": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPClasslessRoute"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "conflictDetection": {
+            "type": "string"
+          },
           "dnsServers": {
             "items": {
               "type": "string"
@@ -1791,6 +2001,24 @@
           "domainName": {
             "type": "string"
           },
+          "domainSearch": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "failoverServers": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPScopeServer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "interface": {
             "type": "string"
           },
@@ -1800,6 +2028,18 @@
           "name": {
             "maxLength": 63,
             "minLength": 1,
+            "type": "string"
+          },
+          "ntpServers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "probeTimeout": {
             "type": "string"
           },
           "rangeEnd": {
@@ -1868,6 +2108,9 @@
           "enabled": {
             "type": "boolean"
           },
+          "failover": {
+            "$ref": "#/components/schemas/ReplicationStatus"
+          },
           "node": {
             "type": "string"
           },
@@ -1895,7 +2138,22 @@
       "DHCPTopology": {
         "additionalProperties": false,
         "properties": {
+          "conflictDetection": {
+            "type": "string"
+          },
+          "failoverServers": {
+            "items": {
+              "$ref": "#/components/schemas/DHCPScopeServer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "interface": {
+            "type": "string"
+          },
+          "probeTimeout": {
             "type": "string"
           },
           "relayOnly": {
@@ -1931,9 +2189,20 @@
             "format": "ipv4",
             "type": "string"
           },
+          "linkSelection": {
+            "type": "string"
+          },
+          "serverIdentifier": {
+            "type": "string"
+          },
           "sourceIP": {
             "format": "ipv4",
             "type": "string"
+          },
+          "sourcePort": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -5040,6 +5309,67 @@
         "required": [
           "list",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "ReplicationStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "appliedIndex": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clusterID": {
+            "type": "string"
+          },
+          "commitIndex": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "initialized": {
+            "type": "boolean"
+          },
+          "lastContact": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "leaderAddress": {
+            "type": "string"
+          },
+          "leaderID": {
+            "type": "string"
+          },
+          "nodeID": {
+            "type": "string"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "nodeID",
+          "clusterID",
+          "role",
+          "leaderID",
+          "leaderAddress",
+          "ready",
+          "initialized",
+          "appliedIndex",
+          "commitIndex",
+          "lastContact",
+          "error"
         ],
         "type": "object"
       },

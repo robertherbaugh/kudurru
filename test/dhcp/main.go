@@ -31,13 +31,20 @@ func configs() []dhcp.Config {
 	makeScope := func(name, iface, prefix, server, router, start, end string) dhcp.Config {
 		return dhcp.Config{Name: name, Interface: iface, Subnet: netip.MustParsePrefix(prefix), ServerIP: addr(server), Router: addr(router), RangeStart: addr(start), RangeEnd: addr(end), DNSServers: []netip.Addr{addr(server)}, DomainName: name + ".example", LeaseDuration: time.Minute}
 	}
-	a := makeScope("default", "sa", "192.0.2.0/24", "192.0.2.1", "192.0.2.1", "192.0.2.10", "192.0.2.11")
+	a := makeScope("default", "sa", "192.0.2.0/24", "192.0.2.1", "192.0.2.1", "192.0.2.9", "192.0.2.11")
+	a.NTPServers = []netip.Addr{a.ServerIP}
+	a.DomainSearch = []string{"default.example", "lab.example"}
+	a.ClasslessRoutes = []dhcp.ClasslessRoute{{Destination: netip.MustParsePrefix("0.0.0.0/0"), Router: a.Router}, {Destination: netip.MustParsePrefix("10.123.0.0/16"), Router: a.Router}}
+	a.BootServer, a.BootServerName, a.BootFile = a.ServerIP, "boot.default.example", "netboot.efi"
 	b := makeScope("second", "sb", "198.18.0.0/24", "198.18.0.1", "198.18.0.1", "198.18.0.10", "198.18.0.11")
 	b.Reservations = []dhcp.Reservation{{MAC: "02:00:00:00:02:01", IP: addr("198.18.0.50"), Hostname: "reserved"}}
 	transit := makeScope("transit", "st", "198.51.100.0/24", "198.51.100.2", "198.51.100.1", "198.51.100.100", "198.51.100.101")
-	remote := makeScope("remote", "st", "203.0.113.0/24", "198.51.100.2", "203.0.113.1", "203.0.113.10", "203.0.113.11")
+	// The same source/giaddr can authorize distinct links. This mapping also
+	// excludes immutable relay/override infrastructure from the transit pool.
+	transit.TrustedRelays = []dhcp.TrustedRelay{{SourceIP: addr("198.51.100.1"), GatewayIP: addr("198.51.100.1"), SourcePort: 1067, LinkSelection: addr("198.51.100.1"), ServerIdentifier: addr("198.51.100.3")}}
+	remote := makeScope("remote", "st", "203.0.113.0/24", "198.51.100.2", "203.0.113.1", "203.0.113.9", "203.0.113.11")
 	remote.RelayOnly = true
-	remote.TrustedRelays = []dhcp.TrustedRelay{{SourceIP: addr("198.51.100.1"), GatewayIP: addr("203.0.113.1")}}
+	remote.TrustedRelays = []dhcp.TrustedRelay{{SourceIP: addr("198.51.100.1"), GatewayIP: addr("198.51.100.1"), SourcePort: 1067, LinkSelection: addr("203.0.113.1"), ServerIdentifier: addr("198.51.100.3")}}
 	return []dhcp.Config{a, b, transit, remote}
 }
 
@@ -53,6 +60,9 @@ func writeJSON(root *os.Root, value any) error {
 }
 
 func serve(ctx context.Context, dir string) error {
+	if err := checkCapabilities(); err != nil {
+		return err
+	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return err
@@ -143,15 +153,53 @@ func relay(ctx context.Context) error {
 	if sockErr != nil {
 		return sockErr
 	}
+	uplink, err := net.ListenUDP("udp4", &net.UDPAddr{Port: 1067})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = uplink.Close() }()
+	upstream := ipv4.NewPacketConn(uplink)
+	if err = upstream.SetControlMessage(ipv4.FlagInterface, true); err != nil {
+		return err
+	}
 	packet := ipv4.NewPacketConn(conn)
 	if err = packet.SetControlMessage(ipv4.FlagInterface, true); err != nil {
 		return err
 	}
-	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close(); _ = uplink.Close() })
 	defer stop()
-	buffer := make([]byte, 4097)
+	type received struct {
+		wire   []byte
+		cm     *ipv4.ControlMessage
+		source net.Addr
+		err    error
+	}
+	incoming := make(chan received, 2)
+	for _, socket := range []*ipv4.PacketConn{packet, upstream} {
+		go func() {
+			buffer := make([]byte, 4097)
+			for {
+				n, cm, source, err := socket.ReadFrom(buffer)
+				select {
+				case incoming <- received{append([]byte(nil), buffer[:max(n, 0)]...), cm, source, err}:
+				case <-ctx.Done():
+					return
+				}
+				if err != nil {
+					return
+				}
+			}
+		}()
+	}
 	for {
-		n, cm, source, err := packet.ReadFrom(buffer)
+		var event received
+		select {
+		case event = <-incoming:
+		case <-ctx.Done():
+			return nil
+		}
+		buffer, cm, source, err := event.wire, event.cm, event.source, event.err
+		n := len(buffer)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -178,16 +226,16 @@ func relay(ctx context.Context) error {
 			}
 			msg.HopCount++
 			if msg.GatewayIPAddr.IsUnspecified() {
-				msg.GatewayIPAddr = net.IP{203, 0, 113, 1}
+				msg.GatewayIPAddr = net.IP{198, 51, 100, 1}
 			}
-			msg.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionRelayAgentInformation, []byte{1, 3, 'l', 'a', 'b', 2, 2, 0, 1}))
+			msg.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionRelayAgentInformation, []byte{1, 3, 'l', 'a', 'b', 2, 2, 0, 1, 5, 4, 203, 0, 113, 1, 11, 4, 198, 51, 100, 3, 19, 0}))
 			destination = &net.UDPAddr{IP: net.IP{198, 51, 100, 2}, Port: 67}
 			control.Src, control.IfIndex = net.IP{198, 51, 100, 1}, up.Index
 		case dhcpv4.OpcodeBootReply:
-			if cm.IfIndex != up.Index || peer.Port != 67 || !peer.IP.Equal(net.IP{198, 51, 100, 2}) || !msg.GatewayIPAddr.Equal(net.IP{203, 0, 113, 1}) {
+			if cm.IfIndex != up.Index || peer.Port != 67 || !peer.IP.Equal(net.IP{198, 51, 100, 2}) || !msg.GatewayIPAddr.Equal(net.IP{198, 51, 100, 1}) {
 				continue
 			}
-			if got := msg.Options.Get(dhcpv4.OptionRelayAgentInformation); len(got) != 9 {
+			if got := msg.Options.Get(dhcpv4.OptionRelayAgentInformation); len(got) != 23 {
 				return errors.New("relay option was not echoed")
 			}
 			msg.DeleteOption(dhcpv4.OptionRelayAgentInformation)
@@ -196,7 +244,11 @@ func relay(ctx context.Context) error {
 		default:
 			continue
 		}
-		if _, err = packet.WriteTo(msg.ToBytes(), control, destination); err != nil {
+		output := packet
+		if msg.OpCode == dhcpv4.OpcodeBootRequest {
+			output = upstream
+		}
+		if _, err = output.WriteTo(msg.ToBytes(), control, destination); err != nil {
 			return err
 		}
 	}
@@ -224,10 +276,15 @@ func main() {
 		err = serve(ctx, os.Args[2])
 	case "relay":
 		err = relay(ctx)
+	case "capabilities":
+		err = checkCapabilities()
+		if err == nil {
+			fmt.Println("PASS uid65532, exact effective/permitted/bounding capabilities, no-new-privileges, AF_PACKET socket")
+		}
 	default:
 		err = fmt.Errorf("unknown fixture mode %q", os.Args[1])
 	}
-	if err != nil {
+	if err != nil && (ctx.Err() == nil || !errors.Is(err, ctx.Err())) {
 		log.Fatal(err)
 	}
 }

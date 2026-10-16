@@ -14,7 +14,7 @@ import (
 )
 
 func testDHCP() DHCP {
-	return DHCP{
+	return DHCP{ConflictDetection: "auto", NTPServers: []string{}, DomainSearch: []string{}, ClasslessRoutes: []DHCPClasslessRoute{}, BootProfiles: []DHCPBootProfile{}, FailoverServers: []DHCPScopeServer{}, Failover: DHCPFailover{Peers: []DHCPFailoverPeer{}},
 		Management: "file", DNSTTL: Duration(30 * time.Second), Scopes: []DHCPScope{}, TrustedRelays: []DHCPTrustedRelay{},
 		Enabled: true, Interface: "eth0", ServerIP: "192.168.1.2", Subnet: "192.168.1.0/24",
 		RangeStart: "192.168.1.100", RangeEnd: "192.168.1.200", Router: "192.168.1.1",
@@ -28,7 +28,7 @@ func TestDHCPDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := DHCP{Management: "file", DNSTTL: Duration(30 * time.Second), Scopes: []DHCPScope{}, TrustedRelays: []DHCPTrustedRelay{}, LeaseDuration: Duration(12 * time.Hour), DNSServers: []string{}, Reservations: []DHCPReservation{}}
+	want := DHCP{ConflictDetection: "auto", NTPServers: []string{}, DomainSearch: []string{}, ClasslessRoutes: []DHCPClasslessRoute{}, BootProfiles: []DHCPBootProfile{}, FailoverServers: []DHCPScopeServer{}, Failover: DHCPFailover{Peers: []DHCPFailoverPeer{}}, Management: "file", DNSTTL: Duration(30 * time.Second), Scopes: []DHCPScope{}, TrustedRelays: []DHCPTrustedRelay{}, LeaseDuration: Duration(12 * time.Hour), DNSServers: []string{}, Reservations: []DHCPReservation{}}
 	if !reflect.DeepEqual(cfg.DHCP, want) {
 		t.Fatalf("DHCP defaults: %+v, want %+v", cfg.DHCP, want)
 	}
@@ -49,7 +49,7 @@ func TestDHCPConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := dhcp.Config{
+	want := dhcp.Config{DomainSearch: []string{},
 		Name: "default", Management: "file", DNSTTL: 30 * time.Second,
 		Interface: "eth0", ServerIP: netip.MustParseAddr("192.168.1.2"), Subnet: netip.MustParsePrefix("192.168.1.0/24"),
 		RangeStart: netip.MustParseAddr("192.168.1.100"), RangeEnd: netip.MustParseAddr("192.168.1.200"), Router: netip.MustParseAddr("192.168.1.1"),
@@ -221,7 +221,7 @@ func TestDHCPLoadAndEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := DHCP{
+	want := DHCP{ConflictDetection: "auto", NTPServers: []string{}, DomainSearch: []string{}, ClasslessRoutes: []DHCPClasslessRoute{}, BootProfiles: []DHCPBootProfile{}, FailoverServers: []DHCPScopeServer{}, Failover: DHCPFailover{Peers: []DHCPFailoverPeer{}},
 		Management: "file", DNSTTL: Duration(30 * time.Second), Scopes: []DHCPScope{}, TrustedRelays: []DHCPTrustedRelay{},
 		Enabled: true, Interface: "enp1s0", ServerIP: "192.168.2.2", Subnet: "192.168.2.0/24",
 		RangeStart: "192.168.2.100", RangeEnd: "192.168.2.150", Router: "192.168.2.1",

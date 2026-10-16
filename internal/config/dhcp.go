@@ -13,6 +13,18 @@ import (
 // restart; scopes explicitly managed by the API keep live pool options and
 // reservations in their lease database.
 type DHCP struct {
+	Failover          DHCPFailover         `koanf:"failover" json:"failover"`
+	ConflictDetection string               `koanf:"conflictDetection" json:"conflictDetection,omitempty"`
+	ProbeTimeout      Duration             `koanf:"probeTimeout" json:"probeTimeout,omitempty"`
+	NTPServers        []string             `koanf:"ntpServers" json:"ntpServers,omitempty"`
+	DomainSearch      []string             `koanf:"domainSearch" json:"domainSearch,omitempty"`
+	ClasslessRoutes   []DHCPClasslessRoute `koanf:"classlessRoutes" json:"classlessRoutes,omitempty"`
+	BootServer        string               `koanf:"bootServer" json:"bootServer,omitempty"`
+	BootServerName    string               `koanf:"bootServerName" json:"bootServerName,omitempty"`
+	BootFile          string               `koanf:"bootFile" json:"bootFile,omitempty"`
+	BootProfiles      []DHCPBootProfile    `koanf:"bootProfiles" json:"bootProfiles,omitempty"`
+	FailoverServers   []DHCPScopeServer    `koanf:"failoverServers" json:"failoverServers,omitempty"`
+
 	Management    string             `koanf:"management" json:"management"`
 	RelayOnly     bool               `koanf:"relayOnly" json:"relayOnly"`
 	TrustedRelays []DHCPTrustedRelay `koanf:"trustedRelays" json:"trustedRelays"`
@@ -42,12 +54,26 @@ type DHCPReservation struct {
 
 // DHCPTrustedRelay identifies the exact source and gateway addresses of a relay.
 type DHCPTrustedRelay struct {
-	SourceIP  string `koanf:"sourceIP" json:"sourceIP"`
-	GatewayIP string `koanf:"gatewayIP" json:"gatewayIP"`
+	SourcePort       uint16 `koanf:"sourcePort" json:"sourcePort,omitempty"`
+	LinkSelection    string `koanf:"linkSelection" json:"linkSelection,omitempty"`
+	ServerIdentifier string `koanf:"serverIdentifier" json:"serverIdentifier,omitempty"`
+	SourceIP         string `koanf:"sourceIP" json:"sourceIP"`
+	GatewayIP        string `koanf:"gatewayIP" json:"gatewayIP"`
 }
 
 // DHCPScope is a named scope; it cannot be combined with legacy flat fields.
 type DHCPScope struct {
+	ConflictDetection string               `koanf:"conflictDetection" json:"conflictDetection,omitempty"`
+	ProbeTimeout      Duration             `koanf:"probeTimeout" json:"probeTimeout,omitempty"`
+	NTPServers        []string             `koanf:"ntpServers" json:"ntpServers,omitempty"`
+	DomainSearch      []string             `koanf:"domainSearch" json:"domainSearch,omitempty"`
+	ClasslessRoutes   []DHCPClasslessRoute `koanf:"classlessRoutes" json:"classlessRoutes,omitempty"`
+	BootServer        string               `koanf:"bootServer" json:"bootServer,omitempty"`
+	BootServerName    string               `koanf:"bootServerName" json:"bootServerName,omitempty"`
+	BootFile          string               `koanf:"bootFile" json:"bootFile,omitempty"`
+	BootProfiles      []DHCPBootProfile    `koanf:"bootProfiles" json:"bootProfiles,omitempty"`
+	FailoverServers   []DHCPScopeServer    `koanf:"failoverServers" json:"failoverServers,omitempty"`
+
 	Name          string             `koanf:"name" json:"name"`
 	Management    string             `koanf:"management" json:"management"`
 	Interface     string             `koanf:"interface" json:"interface"`
@@ -84,7 +110,8 @@ func (d DHCP) Configs() ([]dhcp.Config, error) {
 		ServerIP: d.ServerIP, Subnet: d.Subnet, RelayOnly: d.RelayOnly, TrustedRelays: d.TrustedRelays,
 		RangeStart: d.RangeStart, RangeEnd: d.RangeEnd, Router: d.Router, DNSServers: d.DNSServers,
 		DomainName: d.DomainName, LeaseDuration: d.LeaseDuration, Reservations: d.Reservations,
-		RegisterDNS: d.RegisterDNS, DNSTTL: d.DNSTTL}
+		RegisterDNS: d.RegisterDNS, DNSTTL: d.DNSTTL,
+		ConflictDetection: d.ConflictDetection, ProbeTimeout: d.ProbeTimeout, NTPServers: d.NTPServers, DomainSearch: d.DomainSearch, ClasslessRoutes: d.ClasslessRoutes, BootServer: d.BootServer, BootServerName: d.BootServerName, BootFile: d.BootFile, BootProfiles: d.BootProfiles, FailoverServers: d.FailoverServers}
 	scopes := d.Scopes
 	if len(scopes) == 0 {
 		scopes = []DHCPScope{legacy}
@@ -131,7 +158,7 @@ func (d DHCP) Configs() ([]dhcp.Config, error) {
 }
 
 func (d DHCP) hasLegacyScope() bool {
-	return d.Interface != "" || d.ServerIP != "" || d.Subnet != "" || d.RangeStart != "" ||
+	return d.ConflictDetection != "" && d.ConflictDetection != "auto" || d.ProbeTimeout != 0 || len(d.NTPServers) > 0 || len(d.DomainSearch) > 0 || len(d.ClasslessRoutes) > 0 || d.BootServer != "" || d.BootServerName != "" || d.BootFile != "" || len(d.BootProfiles) > 0 || len(d.FailoverServers) > 0 || d.Interface != "" || d.ServerIP != "" || d.Subnet != "" || d.RangeStart != "" ||
 		d.RangeEnd != "" || d.Router != "" || len(d.DNSServers) > 0 || d.DomainName != "" ||
 		len(d.Reservations) > 0 || d.RelayOnly || len(d.TrustedRelays) > 0 || d.RegisterDNS ||
 		d.Management != "" && d.Management != "file" ||
@@ -148,11 +175,26 @@ func (d DHCPScope) runtime(path string) (dhcp.Config, error) {
 		}
 		return a
 	}
+	optionalAddr := func(field, value string) netip.Addr {
+		if value == "" {
+			return netip.Addr{}
+		}
+		return addr(field, value)
+	}
 	cfg := dhcp.Config{Name: d.Name, Management: d.Management, Interface: d.Interface,
 		ServerIP: addr("serverIP", d.ServerIP), RangeStart: addr("rangeStart", d.RangeStart),
 		RangeEnd: addr("rangeEnd", d.RangeEnd), Router: addr("router", d.Router),
 		DomainName: d.DomainName, LeaseDuration: d.LeaseDuration.Std(), RelayOnly: d.RelayOnly,
-		RegisterDNS: d.RegisterDNS, DNSTTL: d.DNSTTL.Std()}
+		RegisterDNS: d.RegisterDNS, DNSTTL: d.DNSTTL.Std(), ConflictDetection: d.ConflictDetection, ProbeTimeout: d.ProbeTimeout.Std()}
+	if cfg.ConflictDetection == "auto" {
+		cfg.ConflictDetection = ""
+	}
+	if err := d.ApplyExtendedOptions(&cfg); err != nil {
+		errs = append(errs, fmt.Errorf("%s: %w", path, err))
+	}
+	for _, server := range d.FailoverServers {
+		cfg.FailoverServers = append(cfg.FailoverServers, dhcp.ScopeServer{NodeID: server.NodeID, Address: addr("failoverServers.address", server.Address)})
+	}
 	var err error
 	cfg.Subnet, err = netip.ParsePrefix(d.Subnet)
 	if err != nil {
@@ -165,7 +207,7 @@ func (d DHCPScope) runtime(path string) (dhcp.Config, error) {
 		cfg.Reservations = append(cfg.Reservations, dhcp.Reservation{MAC: r.MAC, IP: addr(fmt.Sprintf("reservations[%d].ip", i), r.IP), Hostname: r.Hostname})
 	}
 	for i, r := range d.TrustedRelays {
-		cfg.TrustedRelays = append(cfg.TrustedRelays, dhcp.TrustedRelay{SourceIP: addr(fmt.Sprintf("trustedRelays[%d].sourceIP", i), r.SourceIP), GatewayIP: addr(fmt.Sprintf("trustedRelays[%d].gatewayIP", i), r.GatewayIP)})
+		cfg.TrustedRelays = append(cfg.TrustedRelays, dhcp.TrustedRelay{SourceIP: addr(fmt.Sprintf("trustedRelays[%d].sourceIP", i), r.SourceIP), GatewayIP: addr(fmt.Sprintf("trustedRelays[%d].gatewayIP", i), r.GatewayIP), SourcePort: r.SourcePort, LinkSelection: optionalAddr("trustedRelays.linkSelection", r.LinkSelection), ServerIdentifier: optionalAddr("trustedRelays.serverIdentifier", r.ServerIdentifier)})
 	}
 	if err := errors.Join(errs...); err != nil {
 		return dhcp.Config{}, err
@@ -179,6 +221,9 @@ func (d DHCPScope) runtime(path string) (dhcp.Config, error) {
 func (c *Config) validateDHCP() []error {
 	if len(c.DHCP.Scopes) > 0 && c.DHCP.hasLegacyScope() {
 		return []error{errors.New("dhcp.scopes: named scopes and legacy flat scope fields are mutually exclusive")}
+	}
+	if err := c.DHCP.Failover.Validate(); err != nil {
+		return []error{err}
 	}
 	if !c.DHCP.Enabled {
 		return nil
@@ -198,15 +243,17 @@ func (c *Config) validateDHCP() []error {
 			switch path {
 			case "dhcp.rangeStart", "dhcp.rangeEnd", "dhcp.router", "dhcp.dnsServers",
 				"dhcp.domainName", "dhcp.leaseDuration", "dhcp.registerDNS", "dhcp.dnsTTL",
-				"dhcp.reservations", "dhcp.scopes":
+				"dhcp.reservations", "dhcp.scopes", "dhcp.ntpServers", "dhcp.domainSearch", "dhcp.classlessRoutes", "dhcp.bootServer", "dhcp.bootServerName", "dhcp.bootFile", "dhcp.bootProfiles":
 				errs = append(errs, fmt.Errorf("%s: environment overrides are incompatible with enabled DHCP management=api; remove the environment variable and use a config file seed plus the DHCP API, or set management=file", path))
 			}
 		}
 	}
 	if c.Store.Driver != "sqlite" {
-		errs = append(errs, errors.New("dhcp.enabled: requires store.driver=sqlite for a standalone node"))
+		errs = append(errs, errors.New("dhcp.enabled: requires store.driver=sqlite for local durable lease replicas"))
 	}
-	if _, err := c.DHCP.Configs(); err != nil {
+	if scopes, err := c.DHCP.Configs(); err != nil {
+		errs = append(errs, err)
+	} else if err := c.DHCP.Failover.ValidateScopes(scopes); err != nil {
 		errs = append(errs, err)
 	}
 	return errs

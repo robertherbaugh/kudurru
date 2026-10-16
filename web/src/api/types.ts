@@ -12,7 +12,8 @@ import type { components } from './generated';
 
 type S = components['schemas'];
 
-// DHCPv4 management is local to the connected node.
+// DHCPv4 setup is node-local; quorum management writes route to its leader.
+export type DHCPFailover = S['DHCPFailover'];
 export type DHCPPoolOptions = S['DHCPPoolOptions'];
 export type DHCPReservation = S['DHCPReservation'];
 export type DHCPScopeSummary = S['DHCPScopeSummary'];

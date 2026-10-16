@@ -13,6 +13,8 @@ import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
 import type { DHCPConfig, DHCPLease, DHCPPoolOptions, DHCPReservation } from '../api/types';
 import { DHCPSavedScope, DHCPSetupNotices, useDHCPSetup } from '../components/DHCPSetup';
+import { DHCPAdvancedFields, advancedOptionsError } from '../components/DHCPAdvancedFields';
+import { DHCPFailoverStatus } from '../components/DHCPFailover';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { DurationField, durationError } from '../components/fields/DurationField';
@@ -66,6 +68,7 @@ function OptionsEditor({ config, saved }: { config: DHCPConfig; saved: (v: DHCPC
   if (ttlError || parseDuration(draft.dnsTTL) > 3600 || !Number.isInteger(parseDuration(draft.dnsTTL))) errors.dnsTTL = ttlError ?? 'Use whole seconds, up to one hour';
   const domainError = hostnameError(draft.domainName);
   if (domainError || (draft.registerDNS && !draft.domainName.trim())) errors.domainName = domainError ?? 'A domain is required for DNS registration';
+  const advancedError = advancedOptionsError(draft);
   const mutation = useMutation({
     onError: onConflict,
     mutationFn: () => api.dhcp.update(config.scope, { ...draft, dnsServers: servers }, base.etag),
@@ -73,7 +76,7 @@ function OptionsEditor({ config, saved }: { config: DHCPConfig; saved: (v: DHCPC
   });
   const reset = () => { setBase(config); setDraft(config.options); setSubmitted(false); mutation.reset(); };
   return <Section padding={0} variant="transparent">
-    <VStack as="form" gap={4} onSubmit={(e) => { e.preventDefault(); setSubmitted(true); if (!Object.keys(errors).length) mutation.mutate(); }}>
+    <VStack as="form" gap={4} onSubmit={(e) => { e.preventDefault(); setSubmitted(true); if (writable && !stale && !mutation.isPending && !Object.keys(errors).length && !advancedError) mutation.mutate(); }}>
       <Heading level={2}>Network options</Heading>
       <Text type="supporting">Changes apply to this scope immediately. Existing leases keep their recorded expiration.</Text>
       {stale ? <Banner status="warning" title="This scope has changed" description="Reload the saved values before making another change. Your draft is still shown."
@@ -95,6 +98,8 @@ function OptionsEditor({ config, saved }: { config: DHCPConfig; saved: (v: DHCPC
         help="Serve A and PTR records for active leases. Specific configured DNS zones take precedence; use a domain dedicated to DHCP names." />
       <DurationField label="Lease record TTL" value={draft.dnsTTL} onChange={(v) => update('dnsTTL', v)} isDisabled={locked('dnsTTL')}
         error={submitted ? errors.dnsTTL : undefined} description="One second to one hour, limited by each lease's remaining lifetime." />
+      <DHCPAdvancedFields value={draft} onChange={setDraft} disabled={!writable} locked={locked} />
+      {submitted && advancedError ? <Banner status="error" title="Check additional options" description={advancedError} /> : null}
       <HStack gap={2}>
         <Button label="Save network options" type="submit" variant="primary" isLoading={mutation.isPending} isDisabled={!writable || stale}
           tooltip={!writable ? config.management === 'file' ? 'Managed by the configuration file' : 'Requires dhcp.write' : undefined} />
@@ -249,6 +254,7 @@ export default function DHCPScopePage({ params }: PageProps) {
     {setup.error ? <ErrorBanner error={setup.error} /> : null}
     {status.error ? <ErrorBanner error={status.error} /> : null}
     {setup.data ? <DHCPSetupNotices setup={setup.data} /> : null}
+    <DHCPFailoverStatus value={status.data?.failover} />
     {setup.data && desired && status.data ? <DHCPSavedScope key={scope} setup={setup.data} scope={desired} running={running} /> : null}
     {!desired && setup.data && !running ? <Text>This scope is not in the saved setup. Return to DHCP scopes to create one.</Text> : null}
     {running && c ? <>

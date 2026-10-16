@@ -44,14 +44,16 @@ const (
 
 // State is a detached desired setup, not the currently running service state.
 type State struct {
-	Enabled           bool
-	Scopes            []config.DHCPScope
-	Revision          uint64
-	ManagedBy         string
-	RestartRequired   bool
-	EnvironmentLocked bool
-	ScopeRevisions    map[string]uint64
-	PendingScopes     []string
+	Failover            config.DHCPFailover
+	FailoverInitialized bool
+	Enabled             bool
+	Scopes              []config.DHCPScope
+	Revision            uint64
+	ManagedBy           string
+	RestartRequired     bool
+	EnvironmentLocked   bool
+	ScopeRevisions      map[string]uint64
+	PendingScopes       []string
 }
 
 // ScopePlan is one immutable startup apply instruction.
@@ -62,11 +64,12 @@ type ScopePlan struct {
 }
 
 type document struct {
-	Version  int                `json:"version"`
-	Revision uint64             `json:"revision"`
-	Enabled  bool               `json:"enabled"`
-	Scopes   []config.DHCPScope `json:"scopes"`
-	Plans    []ScopePlan        `json:"plans"`
+	Failover config.DHCPFailover `json:"failover"`
+	Version  int                 `json:"version"`
+	Revision uint64              `json:"revision"`
+	Enabled  bool                `json:"enabled"`
+	Scopes   []config.DHCPScope  `json:"scopes"`
+	Plans    []ScopePlan         `json:"plans"`
 }
 
 // Manager holds an exclusive lifetime lock even while DHCP is disabled.
@@ -116,7 +119,7 @@ func Open(dir string, host config.DHCP, envLocked []string) (*Manager, error) {
 			conflicts = append(conflicts, path)
 		}
 	}
-	m.state = State{Enabled: host.Enabled, Revision: 1, ManagedBy: "api", EnvironmentLocked: len(conflicts) > 0, Scopes: []config.DHCPScope{}}
+	m.state = State{Failover: host.Failover.Clone(), Enabled: host.Enabled, Revision: 1, ManagedBy: "api", EnvironmentLocked: len(conflicts) > 0, Scopes: []config.DHCPScope{}}
 	if hostConfigured(host) || len(conflicts) > 0 {
 		m.state.ManagedBy = "file"
 	}
@@ -143,11 +146,23 @@ func Open(dir string, host config.DHCP, envLocked []string) (*Manager, error) {
 		if err != nil {
 			return fail(err)
 		}
+		if err := saved.Failover.Validate(); err != nil {
+			return fail(fmt.Errorf("%w: %v", ErrInvalidConfiguration, err))
+		}
 		scopes, err := validateScopes(context.Background(), saved.Enabled, saved.Scopes, true)
 		if err != nil {
 			return fail(err)
 		}
-		m.state = State{Enabled: saved.Enabled, Scopes: scopes, Revision: saved.Revision, ManagedBy: "api"}
+		if len(scopes) > 0 {
+			configs, err := (config.DHCP{Scopes: scopes}).Configs()
+			if err != nil {
+				return fail(err)
+			}
+			if err := saved.Failover.ValidateScopes(configs); err != nil {
+				return fail(fmt.Errorf("%w: %v", ErrInvalidConfiguration, err))
+			}
+		}
+		m.state = State{Failover: saved.Failover.Clone(), Enabled: saved.Enabled, Scopes: scopes, Revision: saved.Revision, ManagedBy: "api"}
 		if len(saved.Plans) != len(scopes) {
 			return fail(fmt.Errorf("%w: scope plans do not match saved scopes", ErrInvalidConfiguration))
 		}
@@ -170,10 +185,11 @@ func Open(dir string, host config.DHCP, envLocked []string) (*Manager, error) {
 	if err != nil {
 		return fail(err)
 	}
+	m.state.FailoverInitialized = view.FailoverInitialized
 	m.state.ScopeRevisions = maps.Clone(view.ScopeRevisions)
 	m.state.PendingScopes = append([]string{}, view.PendingScopes...)
 	if savedUI {
-		m.effective = config.DHCP{Enabled: view.Enabled, Scopes: cloneScopes(view.Scopes)}
+		m.effective = config.DHCP{Failover: view.Failover.Clone(), Enabled: view.Enabled, Scopes: cloneScopes(view.Scopes)}
 	}
 	m.baseline = cloneState(view)
 	m.startup = maps.Clone(m.plans)
@@ -194,7 +210,7 @@ func (m *Manager) Effective() config.DHCP {
 // Save stages desired configuration and its observed DB revisions. It only
 // reads lease databases; startup repeats the revision/live-state checks while
 // atomically committing settings and the scope's new token.
-func (m *Manager) Save(ctx context.Context, revision uint64, enabled bool, scopes []config.DHCPScope, adopt bool, expected map[string]uint64) (State, error) {
+func (m *Manager) Save(ctx context.Context, revision uint64, enabled bool, scopes []config.DHCPScope, adopt bool, expected map[string]uint64, failover ...config.DHCPFailover) (State, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -215,12 +231,34 @@ func (m *Manager) Save(ctx context.Context, revision uint64, enabled bool, scope
 	if m.state.ManagedBy == "file" && !adopt {
 		return State{}, ErrManagedByFile
 	}
+	chosenFailover := m.state.Failover.Clone()
+	if len(failover) > 1 {
+		return State{}, fmt.Errorf("%w: at most one failover configuration", ErrInvalidConfiguration)
+	}
+	if len(failover) == 1 {
+		chosenFailover = failover[0].Clone()
+	}
+	if err := chosenFailover.Validate(); err != nil {
+		return State{}, fmt.Errorf("%w: %v", ErrInvalidConfiguration, err)
+	}
 	normalized, err := validateScopes(ctx, enabled, scopes, true)
 	if err != nil {
 		return State{}, err
 	}
+	if len(normalized) > 0 {
+		configs, err := (config.DHCP{Scopes: normalized}).Configs()
+		if err != nil {
+			return State{}, fmt.Errorf("%w: %v", ErrInvalidConfiguration, err)
+		}
+		if err := chosenFailover.ValidateScopes(configs); err != nil {
+			return State{}, fmt.Errorf("%w: %v", ErrInvalidConfiguration, err)
+		}
+	}
 	current, metadata, err := m.readLocked(ctx)
 	if err != nil {
+		return State{}, err
+	}
+	if err := m.validateEstablishedFailover(chosenFailover, enabled, normalized, current); err != nil {
 		return State{}, err
 	}
 	// Removed scopes are also covered by the GET snapshot. Their databases
@@ -251,7 +289,8 @@ func (m *Manager) Save(ctx context.Context, revision uint64, enabled bool, scope
 		}
 		plan, planned := m.plans[scope.Name]
 		changed := !reflect.DeepEqual(scope, byName[scope.Name])
-		retry := planned && plan.Token != meta.AppliedSetupToken && plan.ExpectedRevision != meta.Revision
+		replicated := chosenFailover.Enabled && meta.ReplicaIndex > 0
+		retry := !replicated && planned && plan.Token != meta.AppliedSetupToken && plan.ExpectedRevision != meta.Revision
 		if !planned || changed || retry {
 			if original, ok := m.restoredStartupPlan(ctx, scope, meta); ok {
 				plan = original
@@ -263,7 +302,7 @@ func (m *Manager) Save(ctx context.Context, revision uint64, enabled bool, scope
 		plans[scope.Name] = plan
 		// Validate changed/pending settings without acquiring the live store's
 		// exclusive lock. No cleanup, schema migration, or settings writes occur.
-		if plan.Token != meta.AppliedSetupToken {
+		if !replicated && plan.Token != meta.AppliedSetupToken {
 			configs, err := (config.DHCP{Scopes: []config.DHCPScope{scope}}).Configs()
 			if err != nil {
 				return State{}, fmt.Errorf("%w: %v", ErrInvalidConfiguration, err)
@@ -276,11 +315,11 @@ func (m *Manager) Save(ctx context.Context, revision uint64, enabled bool, scope
 			}
 		}
 	}
-	candidate := State{Enabled: enabled, Scopes: normalized, ManagedBy: "api", Revision: m.state.Revision, ScopeRevisions: maps.Clone(current.ScopeRevisions), PendingScopes: []string{}}
+	candidate := State{FailoverInitialized: current.FailoverInitialized, Failover: chosenFailover, Enabled: enabled, Scopes: normalized, ManagedBy: "api", Revision: m.state.Revision, ScopeRevisions: maps.Clone(current.ScopeRevisions), PendingScopes: []string{}}
 	for _, scope := range normalized {
 		meta := metadata[scope.Name]
 		candidate.ScopeRevisions[scope.Name] = meta.Revision
-		if plans[scope.Name].Token != meta.AppliedSetupToken {
+		if plans[scope.Name].Token != meta.AppliedSetupToken && (!chosenFailover.Enabled || meta.ReplicaIndex == 0) {
 			candidate.PendingScopes = append(candidate.PendingScopes, scope.Name)
 		}
 	}
@@ -292,7 +331,7 @@ func (m *Manager) Save(ctx context.Context, revision uint64, enabled bool, scope
 	}
 	candidate.Revision++
 	candidate.RestartRequired = m.needsRestart(candidate, plans)
-	data, err := json.Marshal(document{Version: settingsVersion, Revision: candidate.Revision, Enabled: enabled, Scopes: normalized, Plans: orderedPlans(plans)})
+	data, err := json.Marshal(document{Failover: chosenFailover, Version: settingsVersion, Revision: candidate.Revision, Enabled: enabled, Scopes: normalized, Plans: orderedPlans(plans)})
 	if err != nil {
 		return State{}, err
 	}
@@ -326,7 +365,7 @@ func (m *Manager) Close() error {
 }
 
 func sameDesired(a, b State) bool {
-	return a.Enabled == b.Enabled && a.ManagedBy == b.ManagedBy && reflect.DeepEqual(a.Scopes, b.Scopes)
+	return reflect.DeepEqual(a.Failover, b.Failover) && a.Enabled == b.Enabled && a.ManagedBy == b.ManagedBy && reflect.DeepEqual(a.Scopes, b.Scopes)
 }
 
 func decodeDocument(data []byte) (document, error) {
@@ -347,6 +386,7 @@ func decodeDocument(data []byte) (document, error) {
 }
 
 func cloneState(s State) State {
+	s.Failover = s.Failover.Clone()
 	s.Scopes = cloneScopes(s.Scopes)
 	s.ScopeRevisions = maps.Clone(s.ScopeRevisions)
 	s.PendingScopes = append([]string{}, s.PendingScopes...)
@@ -356,6 +396,11 @@ func cloneScopes(scopes []config.DHCPScope) []config.DHCPScope {
 	result := make([]config.DHCPScope, len(scopes))
 	copy(result, scopes)
 	for i := range result {
+		result[i].NTPServers = append([]string(nil), result[i].NTPServers...)
+		result[i].DomainSearch = append([]string(nil), result[i].DomainSearch...)
+		result[i].ClasslessRoutes = append([]config.DHCPClasslessRoute(nil), result[i].ClasslessRoutes...)
+		result[i].BootProfiles = append([]config.DHCPBootProfile(nil), result[i].BootProfiles...)
+		result[i].FailoverServers = append([]config.DHCPScopeServer(nil), result[i].FailoverServers...)
 		result[i].DNSServers = append([]string{}, result[i].DNSServers...)
 		result[i].Reservations = append([]config.DHCPReservation{}, result[i].Reservations...)
 		result[i].TrustedRelays = append([]config.DHCPTrustedRelay{}, result[i].TrustedRelays...)
@@ -363,6 +408,12 @@ func cloneScopes(scopes []config.DHCPScope) []config.DHCPScope {
 	return result
 }
 func cloneDHCP(d config.DHCP) config.DHCP {
+	d.Failover = d.Failover.Clone()
+	d.NTPServers = append([]string(nil), d.NTPServers...)
+	d.DomainSearch = append([]string(nil), d.DomainSearch...)
+	d.ClasslessRoutes = append([]config.DHCPClasslessRoute(nil), d.ClasslessRoutes...)
+	d.BootProfiles = append([]config.DHCPBootProfile(nil), d.BootProfiles...)
+	d.FailoverServers = append([]config.DHCPScopeServer(nil), d.FailoverServers...)
 	d.DNSServers = append([]string{}, d.DNSServers...)
 	d.Reservations = append([]config.DHCPReservation{}, d.Reservations...)
 	d.TrustedRelays = append([]config.DHCPTrustedRelay{}, d.TrustedRelays...)

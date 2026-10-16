@@ -18,7 +18,7 @@ import (
 
 func protocolConfig() Config {
 	return Config{
-		Interface: "eth0", ServerIP: netip.MustParseAddr("192.0.2.1"),
+		ConflictDetection: "disabled", Interface: "eth0", ServerIP: netip.MustParseAddr("192.0.2.1"),
 		Subnet:     netip.MustParsePrefix("192.0.2.0/24"),
 		RangeStart: netip.MustParseAddr("192.0.2.10"), RangeEnd: netip.MustParseAddr("192.0.2.20"),
 		Router: netip.MustParseAddr("192.0.2.254"), DNSServers: []netip.Addr{netip.MustParseAddr("192.0.2.1")},

@@ -145,7 +145,7 @@ func TestLeaseSetupReadOnlyAndV2Migration(t *testing.T) {
 	}
 	s, path := leaseTestOpen(t, cfg)
 	bound := leaseTestBind(t, s, leaseTestClient(1))
-	leaseTestSQL(t, s, "ALTER TABLE lease_settings DROP COLUMN setup_token; PRAGMA user_version=2")
+	leaseTestSQL(t, s, "DROP TABLE lease_dns_claims; DROP TABLE lease_replica; DROP INDEX leases_expiry; ALTER TABLE lease_settings DROP COLUMN setup_token; PRAGMA user_version=2")
 	if err := os.Chmod(path, 0o640); err != nil { //nolint:gosec // Deliberately verify metadata readers preserve existing permissions.
 		t.Fatal(err)
 	}

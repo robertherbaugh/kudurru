@@ -3,14 +3,14 @@
 DHCPv4 is a **v0.2.0 development feature**, disabled by default. It supports
 persistent leases and reservations, multiple subnets and trusted relays,
 live API/dashboard management, lease import/export and automatic A/PTR
-records. It is not available in v0.1.0.
+records, conflict detection, network boot settings, classless routes, NTP and
+search domains. It is not available in v0.1.0.
 
-Use one Linux host with `store.driver: sqlite`, fixed interface addresses and
-a persistent `node.dataDir`. Only one allocator may manage each pool. DHCPv6
-and multi-node failover remain deferred. The Kubernetes `kube` store is
-rejected; do not copy enabled DHCP configuration to the other nodes of a DNS
-HA deployment. Continue to manage IPv6 router and DNS advertisements on your
-router.
+Use one Linux host, or the three-node quorum setup below, with
+`store.driver: sqlite`, fixed interface addresses and a persistent
+`node.dataDir` on each node. Independent allocators must never share a pool.
+The Kubernetes `kube` store is rejected. DHCPv6 is excluded; continue to manage
+IPv6 router and DNS advertisements on your router.
 
 ## Start in the dashboard
 
@@ -74,9 +74,11 @@ The pool, router and reservations must fit the subnet. Server, router,
 network, broadcast and trusted relay gateway addresses cannot be allocated.
 A reservation may be outside the dynamic pool but must be inside the subnet.
 Reservations use unicast Ethernet MAC addresses. Keep unmanaged static
-addresses outside the pool: the server does not probe for conflicts before
-making an offer. A matching client's DECLINE quarantines an address for ten
-minutes.
+addresses outside the pool. Before new offers, the server probes candidate
+addresses and durably quarantines detected conflicts for ten minutes. This
+reduces collisions without proving that a quiet host is absent. A matching
+client's DECLINE uses the same ten-minute hold. Relay server-ID overrides and
+all configured failover server addresses are also excluded from allocation.
 
 `leaseDuration` defaults to 12 hours and accepts whole seconds from one
 minute to 30 days. `dnsTTL` defaults to 30 seconds and accepts one second to
@@ -127,14 +129,109 @@ direct scope per interface, and a shared server address for scopes on that
 interface. Additional direct subnets need their own interfaces, such as VLAN
 interfaces. Flat fields and `scopes` cannot be combined.
 
-Configure the relay to send to the server address, preserving its client-side
-gateway in `giaddr`. Both the source IP and gateway IP must match the configured
-pair on the receiving interface. Relay requests and replies use UDP port 67;
-allow a route back to the gateway. Routed unicast renewals use the client's
-existing address to choose its scope. Unknown relays are ignored. Ordinary
-option 82 information is echoed; link-selection, server-ID-override and
-alternate-port extensions are unsupported and packets carrying them are
-dropped.
+Configure the relay to send to the server address, preserving its return
+address in `giaddr`. Both source IP and gateway IP must match the configured
+pair on the receiving interface; allow a route back to `giaddr`. Ports default
+to UDP 67. Unknown relays and direct clients carrying option 82 are ignored.
+Routed unicast renewals use the client's existing address to choose its scope.
+
+Relays supporting the following extensions need explicit authorization in
+each trusted mapping. For example, a relay may use a transit `giaddr` while
+selecting the guest link:
+
+```yaml
+trustedRelays:
+  - sourceIP: 192.0.2.1
+    gatewayIP: 192.0.2.1
+    sourcePort: 1067
+    linkSelection: 198.51.100.1
+    serverIdentifier: 198.51.100.1
+```
+
+This is a mapping within a guest scope with `subnet: 198.51.100.0/24`.
+`linkSelection` authorizes the exact RFC 3527 option-82 suboption-5 address;
+it must be usable within that scope. Several scopes may share a relay source
+and `giaddr` when their selectors differ. `serverIdentifier` authorizes the
+exact RFC 5107 suboption-11 value used as option 54 in offers and replies. The
+relay must handle subsequent client traffic sent to that override address.
+The server's source IP stays its local `serverIP`.
+
+A non-67 `sourcePort` requires RFC 8357's zero-length suboption 19 and must
+match the actual UDP source port. Replies go to `giaddr` at that same port;
+they never use `linkSelection` as the destination. Port 68 is forbidden.
+Configured link selection and server identifier values must be present exactly;
+unset fields reject those extensions. Duplicate control suboptions, malformed
+TLVs and port mismatches are dropped. Valid option 82 is echoed whole, or
+omitted whole if it cannot fit the client's reply limit. If a transit address
+also falls within another configured scope, that scope must exclude it through
+its own immutable topology; merely setting it as a mutable router is insufficient.
+
+### Conflict detection
+
+`conflictDetection` accepts `arp`, `icmp` or `disabled`. By default, a directly
+attached scope without trusted relays uses an ARP probe. A relay-only scope or
+any scope with trusted relays uses a routed ICMP echo. ARP is rejected for
+relay-configured scopes; choose ICMP or explicitly disable probes instead.
+
+`probeTimeout` defaults to `200ms` and accepts integral milliseconds between
+`50ms` and `500ms`. An offer hold commits before probing. A positive response
+causes a durable ten-minute quarantine before another candidate is tried, up
+to three candidates per packet. Existing bound clients are not probed again
+when rediscovering their lease. Probe socket, route and cancellation errors
+drop that packet without an offer; inspect logs and retry after correcting
+the deployment. Probes require the raw-network privileges below.
+
+ICMP only detects hosts that answer it through the configured server interface.
+Firewalls, sleeping devices and competing external allocators can hide conflicts.
+Continue to reserve DHCP pools exclusively and keep other static addresses
+outside them. `disabled` is an explicit operator opt-out; it does not disable
+client DECLINE quarantine.
+
+### NTP, search domains, routes and boot settings
+
+These optional fields work in the flat form or within a named scope. The
+following fields extend the local-scope example above:
+
+```yaml
+ntpServers: [192.0.2.1]
+domainSearch: [lan.home.arpa, lab.home.arpa]
+classlessRoutes:
+  - destination: 0.0.0.0/0
+    router: 192.0.2.1
+  - destination: 10.20.0.0/16
+    router: 192.0.2.1
+bootServer: 192.0.2.3
+bootServerName: boot.lan.home.arpa
+bootFile: netboot.efi
+bootProfiles:
+  - architecture: 7
+    bootServer: 192.0.2.3
+    bootServerName: boot.lan.home.arpa
+    bootFile: http://boot.lan.home.arpa/boot.efi
+```
+
+NTP option 42 permits up to 63 unicast IPv4 servers. Search option 119 uses
+validated DNS labels with at most 255 encoded bytes. Classless routes use
+option 121 and Microsoft option 249 when requested; destinations must be
+canonical IPv4 prefixes and next hops usable within the scope. The complete
+route list must fit 255 encoded bytes. Clients receiving classless routes
+ignore option 3, so include a `0.0.0.0/0` route explicitly for a default gateway.
+
+`bootServer` sets BOOTP `siaddr`. `bootServerName` sets option 66 and, when at
+most 63 bytes, `sname`; its limit is 253 bytes. `bootFile` sets both BOOTP `file`
+and option 67, with a 127-byte limit. Names and files accept printable ASCII
+without spaces. Up to 128 unique `bootProfiles` select a complete replacement
+set of those three fields by client option-93 architecture. The first matching
+architecture in the client's list wins; an unmatched client uses scope defaults.
+Blank profile fields stay blank. Use an external TFTP or HTTP boot server;
+kudurru does not serve boot files or provide proxyDHCP on UDP 4011.
+
+Optional options follow the client's parameter-request list and are omitted
+whole when the reply-size limit cannot accommodate them. Client FQDN option 81
+accepts DNS-label and legacy ASCII names and is preferred over option 12 as an
+advisory hostname. Its reply signals no server-driven RFC 2136 DNS UPDATE;
+`registerDNS` controls local A/PTR publication independently. Malformed FQDN
+flags/names and malformed architecture lists are rejected before allocation.
 
 ## Dashboard and API ownership
 
@@ -251,15 +348,17 @@ field reports startup activation failures only, not live packet/storage health.
 Set `registerDNS: true` and use a dedicated domain such as `lan.home.arpa`.
 A bound lease named `laptop` answers at `laptop.lan.home.arpa` and has a PTR
 record. Reservation hostnames override client-supplied names. Offers,
-quarantined or expired addresses have no records. Duplicate hostnames are
-suppressed; a reserved hostname is protected from claims by a different MAC,
+quarantined or expired addresses have no records. The earliest still-live
+bound claimant owns an unreserved name, across scopes sharing a domain. Later
+duplicates cannot suppress it; the earliest waiting claimant takes over when
+the owner ends. A reserved hostname is protected from claims by a different MAC,
 even when the reserved device is offline.
 
-DHCP names and MAC addresses are unauthenticated. A second client can obtain
-a lease with the same unreserved name and deny service to that name: all
-claimants lose their A/PTR records and hostname/nameGlob policy matches until
-the conflict clears, including across scopes sharing a domain. Clients can
-also claim unused names. Use reservation hostnames for stable names, but MAC
+Claim order survives renewal and restart. Release, expiry, rename, DNS disable
+or domain reassignment ends the old claim. Public imports cannot take ownership
+from an existing live name. Conflicting configured reservation names suppress
+that name until corrected. DHCP names and MAC addresses are unauthenticated;
+clients can still claim unused names or impersonate a MAC. Use reservation hostnames for stable names, but MAC
 reservations do not prevent impersonation. Enforce required restrictions with
 IP/network policies and a restrictive default policy; hostname matching is
 advisory, and a missing match can select a fallback policy.
@@ -293,8 +392,8 @@ the required broadcast connectivity.
 
 For a Linux container, use host networking, keep the data directory on a
 persistent volume and grant `NET_BIND_SERVICE` and `NET_RAW` to both the
-executable and the runtime. The latter capability permits binding the socket
-to the selected interface. Adding `--cap-add NET_RAW` alone to the existing
+executable and the runtime. `NET_RAW` permits binding to the selected
+interface and opening the ARP/ICMP probe sockets. Adding `--cap-add NET_RAW` alone to the existing
 non-root DNS image does not give its executable that effective capability.
 
 Build the opt-in development image from this checkout:
@@ -338,6 +437,9 @@ For the packaged systemd service, add a drop-in with `systemctl edit kudurru`:
 [Service]
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
+# Reset the packaged allowlist, then include ARP packet sockets.
+RestrictAddressFamilies=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK AF_PACKET
 ```
 
 Restart the service after changing its configuration and capabilities. The
@@ -345,6 +447,117 @@ default unit and deployment templates do not enable DHCP or grant its extra
 capability. A missing interface, a server address absent from that interface,
 an occupied UDP port 67 or insufficient permissions prevents DHCP from
 starting; dashboard-owned setup retains the repair path described above.
+
+## Three-node automatic failover
+
+Configure exactly three Linux/SQLite nodes. Two voters must be reachable to
+allocate or renew; losing one voter permits an election, while losing two
+stops successful DHCP replies until quorum returns. Every node needs its own
+persistent data directory and fixed server-facing interface addresses, including
+each directly served client link. A relay-only scope can use an off-subnet
+local server address. Relay
+forwarding must reach all three servers. A replacement leader uses its own
+server identifier: a client whose original server is down reaches it at T2
+rebinding. Existing leases remain usable until their expiry. This does not
+require a shared VIP and does not replicate DNS configuration objects.
+
+1. Provision interfaces, UDP 67 access and the capabilities described above on
+   all nodes. Permit a chosen TCP peer port between the three nodes, such as
+   7447. Keep host clocks synchronized and monitor clock health; forward clock
+   jumps can prematurely expire leases even when replicas agree.
+2. Create the same scope names, subnets, relay trust, conflict-detection settings
+   and initial options on all three dashboards. Each scope's interface and
+   server IP are local to that node. Keep DHCP disabled until setup is complete.
+3. Open **Automatic failover → Configure failover**. Set the same cluster ID
+   and three voter IDs/advertised peer addresses everywhere, and select this
+   node's distinct ID and listen address. For every scope, enter all three
+   server addresses, with exactly the same mapping on every node. Those
+   addresses are excluded from allocations. An optional dashboard URL is only
+   a navigation reference; replication and forwarded management use peer TCP.
+4. Choose credentials: the same existing `KUDURRU_ENCRYPTION_KEY` on every host
+   derives authenticated peer certificates, or provide CA, certificate and
+   private-key file paths on each host. Explicit certificates need both client
+   and server authentication EKUs, CN equal to the voter ID, and a SAN matching
+   the advertised peer host. Provision secrets outside the browser; the UI
+   stores paths only. All three TLS paths are required together.
+5. Select **Bootstrap this new cluster** on the alphabetically first voter
+   only. That is the only node allowed to adopt existing standalone leases.
+   Other voters must have empty lease state or their own existing state from
+   this same cluster. Never copy another node's directory or bootstrap an
+   independent cluster to recover from loss of quorum.
+6. Save failover and enabled state for restart on each node, then restart all
+   three. The dashboard reports voter role, leader, quorum readiness, applied
+   and committed indexes. No DHCP reply succeeds before the initial seed is
+   committed by a majority. Verify acquisition and renewals, then stop one
+   voter and verify the remaining majority elects/retains a serving leader.
+
+For file-managed deployment, the same fields live under `dhcp.failover`.
+This example names the first node; the other two change `nodeID`,
+`listenAddress`, their local scope interface/server IP, and set `bootstrap: false`:
+
+```yaml
+dhcp:
+  failover:
+    enabled: true
+    clusterID: home-dhcp
+    nodeID: stone-1
+    listenAddress: 0.0.0.0:7447
+    peers:
+      - {id: stone-1, address: '192.0.2.2:7447'}
+      - {id: stone-2, address: '192.0.2.3:7447'}
+      - {id: stone-3, address: '192.0.2.4:7447'}
+    bootstrap: true
+```
+
+Repeat the mapping on all replicas of a scope (or the legacy flat `dhcp`
+scope), using that scope's server addresses. Different scopes can use different
+mappings:
+
+```yaml
+failoverServers:
+  - {nodeID: stone-1, address: 192.0.2.2}
+  - {nodeID: stone-2, address: 192.0.2.3}
+  - {nodeID: stone-3, address: 192.0.2.4}
+```
+
+These are fragments of the complete setup above, not standalone configurations.
+Use `management: api` for replicated live network-option and reservation edits.
+Adopt file-managed scopes before initializing failover if you want that live
+UI ownership; an established file-managed cluster cannot change management mode
+in place.
+Mutations made through any healthy node's API forward to the current leader and
+wait for the connected node's committed SQLite state before reporting success.
+A timed-out write may still commit; reload current state and its revision before
+retrying. Pool ownership is never delegated to independent local callbacks. DNS answers
+on followers use their last committed snapshots, so a disconnected follower
+may serve a previous lease name until expiry or catch-up.
+
+Once a cluster identity exists, the UI freezes shared scope registry/topology,
+voter IDs/addresses, cluster ID and per-scope server mappings. Change network
+options and reservations through the live scope editors; imports also replicate.
+Local interface, peer listen/TLS references and node enable/disable may be saved
+for restart. Stop a voter by disabling DHCP while retaining failover settings.
+Deleting failover settings does not convert an established replica into a
+standalone allocator. Enabling failover on the initial bootstrap can apply its
+staged seed once; other node-local setup tokens cannot overwrite cluster state.
+
+Preserve the entire `dhcp-raft` directory, including `identity.json`, Bolt log
+and snapshots, with the lease databases and setup registry. Restart an intact
+failed node with the same identity and reachable peer address; it replays logs
+or receives a snapshot. If its SQLite apply failed, correct the storage problem
+before restarting it. The failed replica stops voting; the remaining two can
+continue. A node with lost Raft state and a persisted initialized identity
+refuses automatic bootstrap. Do not erase that guard.
+
+Changing shared topology or voter identity requires a coordinated migration:
+stop all old allocators, retain complete backups and export current leases,
+prepare compatible scopes on fresh directories with a new cluster ID, and
+start the sole bootstrap and two empty voters with DHCP client ingress blocked.
+Wait for quorum, import ownership through the live API, and verify committed
+state on all replicas before exposing DHCP traffic. Imports require quorum. Preserve every live allocation/quarantine, reservation and network
+option; use a nonoverlapping pool or drain leases when topology is incompatible.
+Never start old and migrated clusters against the same clients. There is no
+online membership-reconfiguration or force-new-cluster recovery endpoint.
 
 ## Lease durability and backups
 
@@ -359,16 +572,19 @@ lifetime even when DHCP is disabled. Saves use atomic replacement and file
 and directory synchronization; they do not rewrite YAML or mutate live lease
 databases.
 
-Listing and export share the store lock with allocations and rebuild the DNS
-snapshot. Large lease sets or frequent refreshes can delay allocation and
-renewal; large-pool capacity has not been benchmarked. Validate your expected
-lease count and request rate before deployment.
+Listing and export read committed cached state and do not rebuild DNS snapshots.
+They still copy/sort the live set under the store lock. Renewal updates affected
+rows only; durable SQLite writes remain mandatory. Comparative 1,000/10,000-lease
+[benchmarks](../architecture/dhcp.md#persistent-state-and-transfer) show the
+improvement, but do not establish production throughput. Validate your expected
+lease count, storage and request rates before deployment.
 
-Lease schema version 3 stores the last applied setup token. At startup, a new
+Lease schema version 4 retains the applied setup token and adds persistent DNS
+claim ranks and replica progress. At startup, a new
 token must match its expected database revision and preserve live ownership;
 the settings, revision and token commit together. Matching tokens retain later
 live edits instead of reapplying saved options. Earlier lease schemas migrate
-transactionally. The JSON setup document has its own version; schema v3 refers
+transactionally. The JSON setup document has its own version; schema v4 refers
 to the lease database, not the JSON export or setup format.
 
 Shortening `leaseDuration` never shortens retention of an existing binding:
@@ -387,7 +603,9 @@ The ordinary `kudurru backup` exports configuration objects, not these lease
 databases or `dhcp-settings.json`. Native lease exports cover allocations only,
 not saved setup, managed options or reservations. Stop the node before taking
 or restoring a filesystem backup of the data directory, including the setup
-registry and SQLite WAL files. Do not delete a scope database or restore an
+registry, `.dhcp-dns-claims.sqlite`, SQLite WAL files and, for quorum nodes,
+the entire `dhcp-raft` directory. The claim registry establishes cross-scope
+name order and must stay with its lease databases. Do not delete a scope database or restore an
 old copy while clients hold leases absent from it.
 
 ## Lease import and export
@@ -418,13 +636,25 @@ or reservations. Save and recreate those separately before cutover.
 
 ## First cutover and acceptance
 
-The opt-in [isolated test harness](../../test/dhcp/README.md) has passed with a
-stock dhcpcd client on two direct subnets and through a relay: acquisition,
-reserved addresses, distinct clients, exhaustion, release/reuse, restart,
-routed renewal and expiration/reacquisition. It runs the server as uid 65532
-with `NET_BIND_SERVICE` and `NET_RAW` plus `no-new-privileges`. It sends no
-traffic on a live LAN. Test your interfaces, router and relay hardware before
-moving clients.
+The [isolated test harness](../../test/dhcp/README.md) uses stock dhcpcd on
+two direct subnets and through a relay. It covers acquisition, reservations,
+distinct clients, exhaustion, release/reuse, restart, routed renewal and
+expiration/reacquisition. Static hosts provoke actual ARP and routed ICMP
+conflicts, whose durable quarantines must survive restart. Relay traffic uses
+link selection, server identifier override and alternate source port 1067.
+The client consumes NTP, search domains, classless routes and boot settings,
+and supplies client FQDN.
+
+The fixture runs as uid 65532 with exactly `NET_BIND_SERVICE` and `NET_RAW`
+and `no-new-privileges`. It checks the effective, permitted and bounding
+capabilities and opens an ARP socket in the disconnected namespace. Both
+systemd-style ambient capabilities and container-style executable file
+capabilities are checked; the server restarts using the file-capability profile.
+This validates process permissions, not actual systemd unit activation or a
+Docker daemon. The `dhcp-acceptance` CI job installs Ubuntu's stock `dhcpcd-base`
+package and retains logs, lease databases, script snapshots and packet captures.
+It sends no traffic on a live LAN. Test your actual unit/container deployment,
+interfaces, router and relay hardware before moving clients.
 
 1. Save the old server's options, reservations and leases. Prepare compatible
    pools and reservations. Stop the old DHCP service before importing its
@@ -438,9 +668,9 @@ moving clients.
    that command does not validate the saved UI registry or bind a listener.
 3. Start kudurru and import leases before allowing client DHCP traffic to it.
    Retain the old configuration for rollback.
-4. Verify one client's address, mask, gateway, DNS servers, domain, duration
-   and A/PTR resolution. For relays, verify the source/giaddr mapping and
-   routed renewal path.
+4. Verify one client's address, mask, gateway, DNS servers, domains, duration,
+   optional NTP/routes/boot settings and A/PTR resolution. For relays, verify
+   the exact source/giaddr/port/extension mapping and routed renewal path.
 5. Renew, restart kudurru, renew again, then test a second and a reserved
    client. Check each subnet independently.
 6. Exercise release, expiration and a full pool on an isolated LAN before

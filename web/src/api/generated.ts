@@ -2147,6 +2147,17 @@ export interface components {
             /** @description The kdr_ secret, shown only in this answer. */
             token: string;
         };
+        DHCPBootProfile: {
+            /** Format: int32 */
+            architecture: number;
+            bootFile?: string;
+            bootServer?: string;
+            bootServerName?: string;
+        };
+        DHCPClasslessRoute: {
+            destination: string;
+            router: string;
+        };
         DHCPConfig: {
             envLocked: string[];
             etag: string;
@@ -2173,6 +2184,22 @@ export interface components {
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
+        };
+        DHCPFailover: {
+            bootstrap: boolean;
+            caFile: string;
+            certFile: string;
+            clusterID: string;
+            enabled: boolean;
+            keyFile: string;
+            listenAddress: string;
+            nodeID: string;
+            peers: components["schemas"]["DHCPFailoverPeer"][] | null;
+        };
+        DHCPFailoverPeer: {
+            address: string;
+            apiURL?: string;
+            id: string;
         };
         DHCPImportRequest: {
             data: string;
@@ -2259,10 +2286,17 @@ export interface components {
             took_ms: number;
         };
         DHCPPoolOptions: {
+            bootFile?: string;
+            bootProfiles?: components["schemas"]["DHCPBootProfile"][] | null;
+            bootServer?: string;
+            bootServerName?: string;
+            classlessRoutes?: components["schemas"]["DHCPClasslessRoute"][] | null;
             dnsServers: string[];
             dnsTTL: string;
             domainName: string;
+            domainSearch?: string[] | null;
             leaseDuration: string;
+            ntpServers?: string[] | null;
             /** Format: ipv4 */
             rangeEnd: string;
             /** Format: ipv4 */
@@ -2289,6 +2323,10 @@ export interface components {
              */
             took_ms: number;
         };
+        DHCPScopeServer: {
+            address: string;
+            nodeID: string;
+        };
         DHCPScopeSummary: {
             interface: string;
             /** @enum {string} */
@@ -2304,6 +2342,8 @@ export interface components {
             enabled: boolean;
             environmentLocked: boolean;
             etag: string;
+            failover: components["schemas"]["DHCPFailover"];
+            failoverInitialized: boolean;
             /** @enum {string} */
             managedBy: "file" | "api";
             node: string;
@@ -2325,18 +2365,29 @@ export interface components {
         DHCPSetupRequest: {
             adopt?: boolean;
             enabled: boolean;
+            failover?: components["schemas"]["DHCPFailover"];
             scopeRevisions: {
                 [key: string]: string;
             };
             scopes: components["schemas"]["DHCPSetupScope"][];
         };
         DHCPSetupScope: {
+            bootFile?: string;
+            bootProfiles?: components["schemas"]["DHCPBootProfile"][] | null;
+            bootServer?: string;
+            bootServerName?: string;
+            classlessRoutes?: components["schemas"]["DHCPClasslessRoute"][] | null;
+            conflictDetection?: string;
             dnsServers: string[];
             dnsTTL: string;
             domainName: string;
+            domainSearch?: string[] | null;
+            failoverServers?: components["schemas"]["DHCPScopeServer"][] | null;
             interface: string;
             leaseDuration: string;
             name: string;
+            ntpServers?: string[] | null;
+            probeTimeout?: string;
             /** Format: ipv4 */
             rangeEnd: string;
             /** Format: ipv4 */
@@ -2354,6 +2405,7 @@ export interface components {
         DHCPStatus: {
             available: boolean;
             enabled: boolean;
+            failover?: components["schemas"]["ReplicationStatus"];
             node: string;
             scopes: components["schemas"]["DHCPScopeSummary"][];
             /**
@@ -2363,7 +2415,10 @@ export interface components {
             took_ms: number;
         };
         DHCPTopology: {
+            conflictDetection?: string;
+            failoverServers?: components["schemas"]["DHCPScopeServer"][] | null;
             interface: string;
+            probeTimeout?: string;
             relayOnly: boolean;
             /** Format: ipv4 */
             serverIP: string;
@@ -2373,8 +2428,12 @@ export interface components {
         DHCPTrustedRelay: {
             /** Format: ipv4 */
             gatewayIP: string;
+            linkSelection?: string;
+            serverIdentifier?: string;
             /** Format: ipv4 */
             sourceIP: string;
+            /** Format: int32 */
+            sourcePort?: number;
         };
         DNSFlags: {
             aa: boolean;
@@ -3386,6 +3445,23 @@ export interface components {
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
+        };
+        ReplicationStatus: {
+            /** Format: int64 */
+            appliedIndex: number;
+            clusterID: string;
+            /** Format: int64 */
+            commitIndex: number;
+            enabled: boolean;
+            error: string;
+            initialized: boolean;
+            /** Format: int64 */
+            lastContact: number;
+            leaderAddress: string;
+            leaderID: string;
+            nodeID: string;
+            ready: boolean;
+            role: string;
         };
         Request: {
             id?: string;

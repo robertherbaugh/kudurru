@@ -14,6 +14,7 @@ import { useNavigate } from '../lib/router';
 import { ErrorBanner, useNotify } from './Feedback';
 import { FormDialog } from './FormDialog';
 import { DHCPAdoptionWizard } from './DHCPAdoptionWizard';
+import { DHCPFailoverEditor } from './DHCPFailover';
 import { Wizard, WizardDialog, type WizardStep } from './Wizard';
 import { DHCPDNSFields, DHCPNetworkFields, DHCPReservationFields, DHCPTopologyFields, dnsError, networkError, newDHCPScope, setupScopeError, topologyError } from './DHCPSetupFields';
 import { cleanList } from './fields/StringListField';
@@ -33,7 +34,7 @@ export function useSaveDHCPSetup() {
     onError: (error) => { if (error instanceof ApiError && error.status === 412) void qc.invalidateQueries({ queryKey: qk.dhcp('setup') }); },
   });
 }
-export const setupRequest = (base: DHCPSetup): DHCPSetupRequest & { base: DHCPSetup } => ({ base, enabled: base.enabled, scopes: base.scopes, scopeRevisions: base.scopeRevisions });
+export const setupRequest = (base: DHCPSetup): DHCPSetupRequest & { base: DHCPSetup } => ({ base, enabled: base.enabled, scopes: base.scopes, scopeRevisions: base.scopeRevisions, failover: base.failover });
 export const setupChanged = (a: DHCPSetup, b: DHCPSetup) => a.etag !== b.etag || JSON.stringify(a.scopeRevisions) !== JSON.stringify(b.scopeRevisions);
 
 export function DHCPSetupNotices({ setup }: { setup: DHCPSetup }) {
@@ -59,12 +60,13 @@ export function DHCPSetupControls({ setup }: { setup: DHCPSetup }) {
       <SwitchField label="Enable DHCP after restart" value={setup.enabled} onChange={(enabled) => save.mutate({ ...setupRequest(setup), enabled })}
         isDisabled={!writable || setup.managedBy !== 'api' || save.isPending || (!setup.enabled && !setup.scopes.length)}
         help={setup.scopes.length ? 'Enable and disable changes take effect when this node restarts.' : 'Create a scope before enabling DHCP.'} />
-      <Button label="New scope" variant="primary" onClick={() => setCreating(true)} isDisabled={!writable || setup.managedBy !== 'api'}
-        tooltip={!can('dhcp', 'write') ? 'Requires dhcp.write' : !setup.available ? setup.unavailableReason : setup.environmentLocked ? 'Controlled by environment variables' : setup.managedBy === 'file' ? 'Adopt setup to manage it in the dashboard' : undefined} />
+      <Button label="New scope" variant="primary" onClick={() => setCreating(true)} isDisabled={!writable || setup.managedBy !== 'api' || setup.failoverInitialized}
+        tooltip={!can('dhcp', 'write') ? 'Requires dhcp.write' : setup.failoverInitialized ? 'Scope topology is fixed for this established failover cluster' : !setup.available ? setup.unavailableReason : setup.environmentLocked ? 'Controlled by environment variables' : setup.managedBy === 'file' ? 'Adopt setup to manage it in the dashboard' : undefined} />
     </HStack>
     {setup.managedBy === 'file' ? <Banner status="info" title="Managed by the configuration file" description="Adopt this node’s current DHCP setup to edit it here. The host YAML stays unchanged; saved dashboard setup takes precedence after restart."
       endContent={<Button label={incompleteFile ? "Complete and adopt setup" : "Manage in dashboard"} isDisabled={!writable} onClick={() => incompleteFile ? setCompleting(true) : setAdopting(setup)} />} /> : null}
     <Text type="supporting">The host must provide the interfaces, IPv4 addresses and DHCP network privileges. Stop any competing DHCP server before activating these scopes.</Text>
+    <DHCPFailoverEditor setup={setup} />
     {save.error ? <ErrorBanner error={save.error} /> : null}
     <FormDialog isOpen={!!adopting} onClose={() => setAdopting(null)} title="Manage DHCP in the dashboard"
       footer={<><Button label="Cancel" onClick={() => setAdopting(null)} /><Button label="Adopt setup" variant="primary" isLoading={save.isPending}
@@ -122,7 +124,7 @@ export function DHCPSavedScope({ setup, scope, running }: { setup: DHCPSetup; sc
   return <Section padding={0} variant="transparent"><VStack gap={4}>
     <HStack gap={2} wrap="wrap" hAlign="between" vAlign="center"><Heading level={2}>Setup for next restart</Heading><HStack gap={2}>
       <Button label={editing ? 'Hide setup editor' : 'Edit setup'} onClick={() => setEditing(!editing)} />
-      <Button label="Remove scope" isDisabled={!writable} onClick={() => setRemoving(setup)} />
+      <Button label="Remove scope" isDisabled={!writable || setup.failoverInitialized} tooltip={setup.failoverInitialized ? 'Scope topology is fixed for this established failover cluster' : undefined} onClick={() => setRemoving(setup)} />
     </HStack></HStack>
     <Text type="supporting">{scope.interface} · {scope.subnet} · {setup.pendingScopes.includes(scope.name) ? 'Saved changes pending' : running ? 'Scope is running' : 'Scope is not running'}.</Text>
     {editing ? <SavedScopeEditor setup={setup} scope={scope} writable={writable} /> : null}
@@ -142,14 +144,16 @@ function SavedScopeEditor({ setup, scope, writable }: { setup: DHCPSetup; scope:
   const save = useSaveDHCPSetup();
   const stale = setupChanged(setup, base);
   const fields = { value: draft, onChange: setDraft, disabled: !writable || save.isPending };
-  return <VStack as="form" gap={4} aria-label="Saved scope setup" onSubmit={(e) => { e.preventDefault(); const error = setupScopeError(draft); setError(error); if (!error && !stale) save.mutate({ ...setupRequest(base), scopes: base.scopes.map((s) => s.name === scope.name ? { ...draft, dnsServers: cleanList(draft.dnsServers) } : s) }, { onSuccess: (next) => { setBase(next); setDraft(next.scopes.find((s) => s.name === scope.name) ?? draft); } }); }}>
+  const sharedFields = { ...fields, disabled: fields.disabled || setup.failoverInitialized };
+  return <VStack as="form" gap={4} aria-label="Saved scope setup" onSubmit={(e) => { e.preventDefault(); const error = setupScopeError(draft); setError(error); if (writable && !save.isPending && !error && !stale) save.mutate({ ...setupRequest(base), scopes: base.scopes.map((s) => s.name === scope.name ? { ...draft, dnsServers: cleanList(draft.dnsServers) } : s) }, { onSuccess: (next) => { setBase(next); setDraft(next.scopes.find((s) => s.name === scope.name) ?? draft); } }); }}>
     <Text type="supporting">Save topology, options and reservations together for the next restart. Existing leases must remain valid for the new setup.</Text>
     {stale ? <Banner status="warning" title="The saved setup changed" description="Your draft is retained. Reload saved setup to use the latest revisions."
       endContent={<Button label="Reload saved setup" onClick={() => { setBase(setup); setDraft(scope); setError(undefined); save.reset(); }} />} /> : null}
-    <DHCPTopologyFields {...fields} existing />
-    <Heading level={3}>Network options after restart</Heading><DHCPNetworkFields {...fields} />
-    <Heading level={3}>DNS after restart</Heading><DHCPDNSFields {...fields} />
-    <DHCPReservationFields {...fields} />
+    {setup.failoverInitialized ? <Banner status="info" title="Shared failover settings are replicated live" description="Only this node’s interface can change here. Use the running network options and reservations editors to change shared settings through the quorum." /> : null}
+    <DHCPTopologyFields {...fields} existing sharedLocked={setup.failoverInitialized} />
+    <Heading level={3}>Network options after restart</Heading><DHCPNetworkFields {...sharedFields} />
+    <Heading level={3}>DNS after restart</Heading><DHCPDNSFields {...sharedFields} />
+    <DHCPReservationFields {...sharedFields} />
     {error ? <Banner status="error" title="Check the scope setup" description={error} /> : null}
     {save.error ? <ErrorBanner error={save.error} /> : null}
     <HStack gap={2}><Button label="Save setup for restart" type="submit" variant="primary" isDisabled={!writable || stale} isLoading={save.isPending} /></HStack>

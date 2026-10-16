@@ -166,9 +166,9 @@ func TestResolverCollisionAndOfflineReservationProtection(t *testing.T) {
 	c1, c2 := dnsTestClient(1, "same"), dnsTestClient(2, "same")
 	first := dnsTestBind(t, s, c1)
 	second := dnsTestBind(t, s, c2)
-	dnsTestAssert(t, r, "same.leases.test.", dns.TypeA, dns.RcodeNameError, 0)
+	dnsTestAssert(t, r, "same.leases.test.", dns.TypeA, dns.RcodeSuccess, 1)
 	reverse, _ := dns.ReverseAddr(first.Address.String())
-	dnsTestAssert(t, r, reverse, dns.TypePTR, dns.RcodeNameError, 0)
+	dnsTestAssert(t, r, reverse, dns.TypePTR, dns.RcodeSuccess, 1)
 	if len(r.Hostnames(second.Address)) != 0 {
 		t.Fatal("collision leaked into policy")
 	}
@@ -254,7 +254,7 @@ func TestResolverMultipleScopesAndLongestDomain(t *testing.T) {
 	r := New(map[string]*dhcp.LeaseStore{"default": first, "second": second})
 	dnsTestBind(t, first, dnsTestClient(1, "duplicate"))
 	dnsTestBind(t, second, dnsTestClient(2, "duplicate"))
-	dnsTestAssert(t, r, "duplicate.leases.test.", dns.TypeA, dns.RcodeNameError, 0)
+	dnsTestAssert(t, r, "duplicate.leases.test.", dns.TypeA, dns.RcodeSuccess, 1)
 	dnsTestBind(t, first, dnsTestClient(3, "shadow.child.leases.test"))
 	cfg.Name = "child"
 	cfg.DomainName = "child.leases.test"

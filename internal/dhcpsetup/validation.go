@@ -13,7 +13,7 @@ import (
 )
 
 func hostConfigured(d config.DHCP) bool {
-	return d.Enabled || len(d.Scopes) > 0 || d.Interface != "" || d.ServerIP != "" || d.Subnet != "" ||
+	return d.Failover.Enabled || d.Failover.ClusterID != "" || len(d.Failover.Peers) > 0 || d.ConflictDetection != "" && d.ConflictDetection != "auto" || d.ProbeTimeout != 0 || len(d.NTPServers) > 0 || len(d.DomainSearch) > 0 || len(d.ClasslessRoutes) > 0 || d.BootServer != "" || d.BootServerName != "" || d.BootFile != "" || len(d.BootProfiles) > 0 || len(d.FailoverServers) > 0 || d.Enabled || len(d.Scopes) > 0 || d.Interface != "" || d.ServerIP != "" || d.Subnet != "" ||
 		d.RangeStart != "" || d.RangeEnd != "" || d.Router != "" || len(d.DNSServers) > 0 ||
 		d.DomainName != "" || d.RelayOnly || len(d.TrustedRelays) > 0 || len(d.Reservations) > 0 || d.RegisterDNS ||
 		d.Management != "" && d.Management != "file" ||
@@ -27,7 +27,7 @@ func hostScopes(host config.DHCP) ([]config.DHCPScope, error) {
 		scopes = []config.DHCPScope{{Name: "default", Management: host.Management, Interface: host.Interface, ServerIP: host.ServerIP,
 			Subnet: host.Subnet, RelayOnly: host.RelayOnly, TrustedRelays: host.TrustedRelays, RangeStart: host.RangeStart,
 			RangeEnd: host.RangeEnd, Router: host.Router, DNSServers: host.DNSServers, DomainName: host.DomainName,
-			LeaseDuration: host.LeaseDuration, Reservations: host.Reservations, RegisterDNS: host.RegisterDNS, DNSTTL: host.DNSTTL}}
+			LeaseDuration: host.LeaseDuration, Reservations: host.Reservations, RegisterDNS: host.RegisterDNS, DNSTTL: host.DNSTTL, ConflictDetection: host.ConflictDetection, ProbeTimeout: host.ProbeTimeout, NTPServers: host.NTPServers, DomainSearch: host.DomainSearch, ClasslessRoutes: host.ClasslessRoutes, BootServer: host.BootServer, BootServerName: host.BootServerName, BootFile: host.BootFile, BootProfiles: host.BootProfiles, FailoverServers: host.FailoverServers}}
 	}
 	normalized, err := validateScopes(context.Background(), host.Enabled, scopes, false)
 	if err == nil || host.Enabled {
@@ -88,20 +88,10 @@ func validateScopes(ctx context.Context, enabled bool, scopes []config.DHCPScope
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		scope := config.DHCPScope{Name: cfg.Name, Management: cfg.Management, Interface: cfg.Interface,
-			ServerIP: cfg.ServerIP.String(), Subnet: cfg.Subnet.String(), RelayOnly: cfg.RelayOnly, RangeStart: cfg.RangeStart.String(),
-			RangeEnd: cfg.RangeEnd.String(), Router: cfg.Router.String(), DNSServers: []string{}, DomainName: cfg.DomainName,
-			LeaseDuration: config.Duration(cfg.LeaseDuration), RegisterDNS: cfg.RegisterDNS, DNSTTL: config.Duration(cfg.DNSTTL),
-			Reservations: []config.DHCPReservation{}, TrustedRelays: []config.DHCPTrustedRelay{}}
-		for _, ip := range cfg.DNSServers {
-			scope.DNSServers = append(scope.DNSServers, ip.String())
-		}
-		for _, r := range cfg.Reservations {
-			mac, _ := net.ParseMAC(r.MAC) // Configs already validated canonicalizable Ethernet MACs.
-			scope.Reservations = append(scope.Reservations, config.DHCPReservation{MAC: mac.String(), IP: r.IP.String(), Hostname: r.Hostname})
-		}
-		for _, relay := range cfg.TrustedRelays {
-			scope.TrustedRelays = append(scope.TrustedRelays, config.DHCPTrustedRelay{SourceIP: relay.SourceIP.String(), GatewayIP: relay.GatewayIP.String()})
+		scope := config.DHCPScopeFromConfig(cfg)
+		for i := range scope.Reservations {
+			mac, _ := net.ParseMAC(scope.Reservations[i].MAC)
+			scope.Reservations[i].MAC = mac.String()
 		}
 		slices.SortFunc(scope.Reservations, func(a, b config.DHCPReservation) int {
 			if a.MAC < b.MAC {

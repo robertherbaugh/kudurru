@@ -64,7 +64,7 @@ func ownedDomain(name string, snapshots []*dhcp.DNSSnapshot) string {
 func recordForName(name string, snapshots []*dhcp.DNSSnapshot, now time.Time) (dhcp.DNSLease, bool) {
 	domain := ownedDomain(name, snapshots)
 	var record dhcp.DNSLease
-	count := 0
+	found := false
 	for _, snapshot := range snapshots {
 		if snapshot.Domain() != domain {
 			continue
@@ -81,11 +81,13 @@ func recordForName(name string, snapshots []*dhcp.DNSSnapshot, now time.Time) (d
 					return
 				}
 			}
-			record = candidate
-			count++
+			if !found || candidate.ClaimEpoch < record.ClaimEpoch || candidate.ClaimEpoch == record.ClaimEpoch && (candidate.ClaimTicket < record.ClaimTicket || candidate.ClaimTicket == record.ClaimTicket && (candidate.ClaimOrdinal < record.ClaimOrdinal || candidate.ClaimOrdinal == record.ClaimOrdinal && candidate.Owner < record.Owner)) {
+				record = candidate
+				found = true
+			}
 		})
 	}
-	return record, count == 1
+	return record, found
 }
 
 func nameExists(name, domain string, snapshots []*dhcp.DNSSnapshot, now time.Time) bool {

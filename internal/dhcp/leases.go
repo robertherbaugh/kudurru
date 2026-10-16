@@ -27,6 +27,9 @@ type Lease struct {
 	ClientID, MAC, Hostname string
 	ExpiresAt               time.Time
 	State                   string // offered, bound, declined
+	// GrantedDuration is response-only: the duration promised by this decision.
+	// It is never stored, exported, or included in a committed DNS snapshot.
+	GrantedDuration time.Duration `json:"grantedDuration,omitempty"`
 }
 
 // RequestMode distinguishes DHCPREQUEST states and their ownership requirements.
@@ -51,7 +54,7 @@ var (
 const (
 	offerHold   = time.Minute
 	declineHold = 10 * time.Minute
-	leaseSchema = 3
+	leaseSchema = 4
 	leaseAppID  = 0x4b444834 // KDH4; reject unrelated SQLite databases.
 )
 
@@ -59,28 +62,42 @@ const (
 // authoritative: an allocation is returned only after a FULL-sync commit, and
 // no mutable allocation cache can get ahead of a failed write.
 type LeaseStore struct {
-	mu         sync.Mutex
-	db         *sql.DB
-	lock       *os.File
-	cfg        Config
-	byMAC      map[string]Reservation
-	byIP       map[netip.Addr]string
-	now        func() time.Time
-	closed     bool
-	closeErr   error
-	revision   uint64
-	dns        atomic.Pointer[DNSSnapshot]
-	generation uint64
-	setup      *leaseSetup
+	mu                sync.Mutex
+	db                *sql.DB
+	lock              *os.File
+	cfg               Config
+	byMAC             map[string]Reservation
+	byIP              map[netip.Addr]string
+	now               func() time.Time
+	closed            bool
+	closeErr          error
+	revision          uint64
+	management        atomic.Pointer[ManagementState]
+	dns               atomic.Pointer[DNSSnapshot]
+	generation        uint64
+	setup             *leaseSetup
+	registry          *sql.DB
+	registryPath      string
+	replica           bool
+	appliedIndex      uint64
+	replicaApplied    atomic.Uint64
+	replicaEpoch      uint64
+	replicaMu         sync.Mutex
+	leaseByIP         map[netip.Addr]storedLease
+	leaseByKey        map[string]storedLease
+	cacheChanges      int64
+	cacheDataVersion  int64
+	cacheReady        bool
+	activeTransaction context.Context
 }
 
 // OpenLeases opens private durable SQLite storage with exclusive ownership.
 // Incompatible live leases or an unsupported schema prevent startup.
 func OpenLeases(path string, cfg Config) (*LeaseStore, error) {
-	return openLeases(path, cfg, nil)
+	return openLeasesMode(path, cfg, nil, false)
 }
 
-func openLeases(path string, cfg Config, setup *leaseSetup) (*LeaseStore, error) {
+func openLeasesMode(path string, cfg Config, setup *leaseSetup, replica bool) (*LeaseStore, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -104,7 +121,7 @@ func openLeases(path string, cfg Config, setup *leaseSetup) (*LeaseStore, error)
 	if err != nil {
 		return nil, err
 	}
-	s := &LeaseStore{lock: lock, now: time.Now, setup: setup}
+	s := &LeaseStore{lock: lock, now: time.Now, setup: setup, replica: replica, registryPath: filepath.Join(filepath.Dir(path), ".dhcp-dns-claims.sqlite")}
 	s.setLeaseConfig(normalizeLeaseConfig(cfg))
 	fail := func(err error) (*LeaseStore, error) {
 		_ = s.Close()
@@ -138,22 +155,17 @@ func openLeases(path string, cfg Config, setup *leaseSetup) (*LeaseStore, error)
 	if err := s.initialize(); err != nil {
 		return fail(err)
 	}
-	// A configuration change must never silently drop a live binding or a
-	// quarantine. Reject conflicts and leave the old database intact.
-	if err := s.transact(context.Background(), func(_ *sql.Tx, leases []storedLease, _ time.Time) error {
-		for _, l := range leases {
-			if err := s.compatible(l); err != nil {
-				return fmt.Errorf("dhcp: active lease %s is incompatible with configuration: %w", l.Address, err)
-			}
-		}
-		return nil
-	}); err != nil {
-		return fail(err)
-	}
 	return s, nil
 }
 
 func (s *LeaseStore) initialize() error {
+	if !s.replica {
+		gate, err := lockDNSClaims(context.Background(), s.registryPath+".lock")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gate.Close() }()
+	}
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("dhcp: open lease database: %w", err)
@@ -210,6 +222,25 @@ reservations TEXT NOT NULL
 		if _, err := tx.Exec(`ALTER TABLE lease_settings ADD COLUMN setup_token TEXT NOT NULL DEFAULT ''; PRAGMA user_version = 3;`); err != nil {
 			return fmt.Errorf("dhcp: migrate lease setup schema: %w", err)
 		}
+		version = 3
+	}
+	if version == 3 {
+		if _, err := tx.Exec(`CREATE TABLE lease_dns_claims (
+ address INTEGER PRIMARY KEY REFERENCES leases(address) ON DELETE CASCADE,
+ name TEXT NOT NULL, epoch INTEGER NOT NULL CHECK(epoch >= 0), ticket INTEGER NOT NULL CHECK(ticket > 0), ordinal INTEGER NOT NULL DEFAULT 0 CHECK(ordinal >= 0));
+ CREATE TABLE lease_replica (singleton INTEGER PRIMARY KEY CHECK(singleton=1), applied_index INTEGER NOT NULL CHECK(applied_index>=0), epoch INTEGER NOT NULL CHECK(epoch>=0), active INTEGER NOT NULL CHECK(active IN (0,1)));
+ INSERT INTO lease_replica VALUES(1,0,0,0);
+ CREATE INDEX leases_expiry ON leases(expires_at);
+ PRAGMA user_version = 4;`); err != nil {
+			return fmt.Errorf("dhcp: migrate DNS ownership schema: %w", err)
+		}
+	}
+	var active int
+	if err := tx.QueryRow("SELECT applied_index,epoch,active FROM lease_replica WHERE singleton=1").Scan(&s.appliedIndex, &s.replicaEpoch, &active); err != nil {
+		return err
+	}
+	if s.appliedIndex > 0 && (!s.replica || s.setup != nil) {
+		return fmt.Errorf("%w: existing replicated ownership cannot be opened standalone or locally restaged", ErrReplicaRequired)
 	}
 	cfg, revision, err := s.initializeManagement(tx)
 	if err != nil {
@@ -218,8 +249,10 @@ reservations TEXT NOT NULL
 	// Keep migration and first API seed atomic with live-state validation. A
 	// rejected first startup must not persist incompatible seed options that
 	// would then override corrected file defaults on the next attempt.
-	if _, err := tx.Exec("DELETE FROM leases WHERE expires_at <= ?", s.now().Unix()); err != nil {
-		return err
+	if !s.replica {
+		if _, err := tx.Exec("DELETE FROM leases WHERE expires_at <= ?", s.now().Unix()); err != nil {
+			return err
+		}
 	}
 	leases, err := readStoredLeases(context.Background(), tx)
 	if err != nil {
@@ -228,11 +261,76 @@ reservations TEXT NOT NULL
 	if err := validateLeaseCandidate(cfg, leases); err != nil {
 		return err
 	}
+	s.setLeaseConfig(cfg)
+	if !s.replica {
+		if err := s.openClaimRegistry(context.Background()); err != nil {
+			return err
+		}
+	}
+	if s.replica && active == 0 {
+		for _, l := range leases {
+			s.replicaEpoch = max(s.replicaEpoch, l.claimEpoch)
+		}
+		s.replicaEpoch++
+	}
+	if _, err := tx.Exec("UPDATE lease_replica SET epoch=?,active=? WHERE singleton=1", s.replicaEpoch, s.replica); err != nil {
+		return err
+	}
+	if !s.replica {
+		floor := DNSClaim{Epoch: s.replicaEpoch}
+		for _, l := range leases {
+			if l.claimEpoch > floor.Epoch || l.claimEpoch == floor.Epoch && l.claimTicket > floor.Ticket {
+				floor = DNSClaim{Epoch: l.claimEpoch, Ticket: l.claimTicket}
+			}
+		}
+		if floor.Epoch > 0 || floor.Ticket > 0 {
+			if _, err := s.claimSequence(context.Background(), floor, false); err != nil {
+				return err
+			}
+		}
+	}
+	for i, l := range leases {
+		var next storedLease
+		if s.replica {
+			next = l
+			if next.State == "bound" && next.claimTicket == 0 && cfg.RegisterDNS {
+				hostname := l.Hostname
+				if r, ok := s.byMAC[l.MAC]; ok && r.Hostname != "" {
+					hostname = r.Hostname
+				}
+				if name, valid := leaseDNSName(hostname, cfg.DomainName); valid {
+					next.claimName = name
+					next.claimTicket = uint64(addressNumber(l.Address)) + 1
+				}
+			}
+		} else {
+			var err error
+			next, err = s.prepareClaim(context.Background(), l, cfg)
+			if err != nil {
+				return err
+			}
+		}
+		if next != l {
+			if err := writeClaim(context.Background(), tx, next); err != nil {
+				return err
+			}
+			leases[i] = next
+		}
+	}
+	if err := tx.QueryRow("SELECT total_changes()").Scan(&s.cacheChanges); err != nil {
+		return err
+	}
+	if err := tx.QueryRow("PRAGMA data_version").Scan(&s.cacheDataVersion); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	s.setLeaseConfig(cfg)
 	s.revision = revision
+	s.replaceLeaseCache(leases)
+	s.publishDNS(leases)
+	s.publishConfiguration()
+	s.replicaApplied.Store(s.appliedIndex)
 	return nil
 }
 
@@ -248,6 +346,9 @@ func (s *LeaseStore) Close() error {
 	if s.db != nil {
 		s.closeErr = s.db.Close()
 	}
+	if s.registry != nil {
+		s.closeErr = errors.Join(s.closeErr, s.registry.Close())
+	}
 	if s.lock != nil {
 		s.closeErr = errors.Join(s.closeErr, s.lock.Close())
 	}
@@ -256,7 +357,9 @@ func (s *LeaseStore) Close() error {
 
 type storedLease struct {
 	Lease
-	key string
+	key                                   string
+	claimName                             string
+	claimEpoch, claimTicket, claimOrdinal uint64
 }
 
 func normalizeClient(c Client) (Client, string, error) {
@@ -320,47 +423,19 @@ func (s *LeaseStore) transact(ctx context.Context, fn func(*sql.Tx, []storedLeas
 }
 
 func (s *LeaseStore) transaction(ctx context.Context, fn func(*sql.Tx, []storedLease, time.Time) error, committed func()) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return sql.ErrConnDone
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("dhcp: begin lease transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	now := s.now().UTC().Truncate(time.Second)
-	if _, err := tx.ExecContext(ctx, "DELETE FROM leases WHERE expires_at <= ?", now.Unix()); err != nil {
-		return fmt.Errorf("dhcp: expire leases: %w", err)
-	}
-	leases, err := readStoredLeases(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if err := fn(tx, leases, now); err != nil {
-		return err
-	}
-	// Read the resulting state before COMMIT so a failed read/write cannot
-	// leave an acknowledged allocation absent from the published DNS view.
-	leases, err = readStoredLeases(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		// modernc rolls back a failed COMMIT before returning its connection
-		// to database/sql, including deferred-constraint failures.
-		return fmt.Errorf("dhcp: commit lease transaction: %w", err)
-	}
-	if committed != nil {
-		committed()
-	}
-	s.publishDNS(leases)
-	return nil
+	return s.runLeaseTransaction(ctx, fn, committed)
 }
 
 func readStoredLeases(ctx context.Context, tx *sql.Tx) ([]storedLease, error) {
-	rows, err := tx.QueryContext(ctx, "SELECT address, client_key, client_id, mac, hostname, expires_at, state FROM leases ORDER BY address")
+	var version int
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return nil, err
+	}
+	query := "SELECT address,client_key,client_id,mac,hostname,expires_at,state,'',0,0,0 FROM leases ORDER BY address"
+	if version >= 4 {
+		query = "SELECT l.address,client_key,client_id,mac,hostname,expires_at,state,coalesce(c.name,''),coalesce(c.epoch,0),coalesce(c.ticket,0),coalesce(c.ordinal,0) FROM leases l LEFT JOIN lease_dns_claims c ON c.address=l.address ORDER BY l.address"
+	}
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +444,7 @@ func readStoredLeases(ctx context.Context, tx *sql.Tx) ([]storedLease, error) {
 		var l storedLease
 		var addr uint32
 		var expires int64
-		if err := rows.Scan(&addr, &l.key, &l.ClientID, &l.MAC, &l.Hostname, &expires, &l.State); err != nil {
+		if err := rows.Scan(&addr, &l.key, &l.ClientID, &l.MAC, &l.Hostname, &expires, &l.State, &l.claimName, &l.claimEpoch, &l.claimTicket, &l.claimOrdinal); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -391,13 +466,26 @@ func addressNumber(ip netip.Addr) uint32 {
 }
 
 func saveLease(ctx context.Context, tx *sql.Tx, l storedLease) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO leases(address, client_key, client_id, mac, hostname, expires_at, state)
+	state := leaseTransactionFrom(ctx)
+	if state != nil {
+		var err error
+		l, err = state.store.prepareClaim(ctx, l, state.store.cfg)
+		if err != nil {
+			return err
+		}
+	}
+	if _, err := leaseExec(ctx, tx, `INSERT INTO leases(address, client_key, client_id, mac, hostname, expires_at, state)
 VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(address) DO UPDATE SET
 client_key = excluded.client_key, client_id = excluded.client_id, mac = excluded.mac,
 hostname = excluded.hostname, expires_at = excluded.expires_at, state = excluded.state`,
-		addressNumber(l.Address), l.key, l.ClientID, l.MAC, l.Hostname, l.ExpiresAt.Unix(), l.State)
-	if err != nil {
+		addressNumber(l.Address), l.key, l.ClientID, l.MAC, l.Hostname, l.ExpiresAt.Unix(), l.State); err != nil {
 		return fmt.Errorf("dhcp: persist lease: %w", err)
+	}
+	if err := writeClaim(ctx, tx, l); err != nil {
+		return err
+	}
+	if state != nil {
+		state.changed[l.Address] = l
 	}
 	return nil
 }
@@ -410,13 +498,10 @@ func (s *LeaseStore) Offer(ctx context.Context, c Client, requested netip.Addr) 
 		return Lease{}, err
 	}
 	var result Lease
-	err = s.transact(ctx, func(tx *sql.Tx, leases []storedLease, now time.Time) error {
-		occupied := make(map[netip.Addr]bool, len(leases))
-		for _, l := range leases {
-			occupied[l.Address] = true
-			if l.key != key || l.State == "declined" {
-				continue
-			}
+	err = s.transactFast(ctx, func(tx *sql.Tx, _ []storedLease, now time.Time) error {
+		ctx = s.transactionContext(ctx)
+		state := leaseTransactionFrom(ctx)
+		if l, ok := state.client(key); ok {
 			if l.MAC != c.MAC {
 				return ErrUnavailable
 			}
@@ -426,25 +511,26 @@ func (s *LeaseStore) Offer(ctx context.Context, c Client, requested netip.Addr) 
 					return err
 				}
 			}
-			// DISCOVER never shortens or changes an existing binding.
 			result = l.Lease
+			result.GrantedDuration = s.cfg.LeaseDuration
 			return nil
 		}
+		occupied := func(ip netip.Addr) bool { _, ok := state.address(ip); return ok }
 		var chosen netip.Addr
 		r, reserved := s.reservation(c.MAC)
 		if reserved {
-			if occupied[r.IP] {
+			if occupied(r.IP) {
 				return ErrUnavailable
 			}
 			chosen = r.IP
-		} else if s.allowed(requested, c.MAC) && !occupied[requested] {
+		} else if s.allowed(requested, c.MAC) && !occupied(requested) {
 			chosen = requested
 		} else {
 			for ip := s.cfg.RangeStart; ip.IsValid() && ip.Compare(s.cfg.RangeEnd) <= 0; ip = ip.Next() {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if s.allowed(ip, c.MAC) && !occupied[ip] {
+				if s.allowed(ip, c.MAC) && !occupied(ip) {
 					chosen = ip
 					break
 				}
@@ -463,6 +549,7 @@ func (s *LeaseStore) Offer(ctx context.Context, c Client, requested netip.Addr) 
 			return err
 		}
 		result = l.Lease
+		result.GrantedDuration = s.cfg.LeaseDuration
 		return nil
 	})
 	if err != nil {
@@ -483,13 +570,12 @@ func (s *LeaseStore) Acknowledge(ctx context.Context, c Client, address netip.Ad
 		return Lease{}, fmt.Errorf("dhcp: invalid request mode")
 	}
 	var result Lease
-	err = s.transact(ctx, func(tx *sql.Tx, leases []storedLease, now time.Time) error {
+	err = s.transactFast(ctx, func(tx *sql.Tx, _ []storedLease, now time.Time) error {
+		ctx = s.transactionContext(ctx)
+		state := leaseTransactionFrom(ctx)
 		var own *storedLease
-		for i := range leases {
-			if leases[i].key == key && leases[i].MAC == c.MAC && leases[i].State != "declined" {
-				own = &leases[i]
-				break
-			}
+		if l, ok := state.client(key); ok && l.MAC == c.MAC {
+			own = &l
 		}
 		// An unknown INIT-REBOOT or renewal must stay silent, including
 		// requests outside our pool or for another client's live address.
@@ -499,10 +585,7 @@ func (s *LeaseStore) Acknowledge(ctx context.Context, c Client, address netip.Ad
 		if !s.allowed(address, c.MAC) {
 			return ErrUnavailable
 		}
-		for _, l := range leases {
-			if l.Address != address {
-				continue
-			}
+		if l, ok := state.address(address); ok {
 			if l.State == "declined" || l.key != key || l.MAC != c.MAC {
 				return ErrUnavailable
 			}
@@ -527,6 +610,7 @@ func (s *LeaseStore) Acknowledge(ctx context.Context, c Client, address netip.Ad
 				return err
 			}
 			result = l.Lease
+			result.GrantedDuration = expires.Sub(now)
 			return nil
 		}
 		if own != nil {
@@ -542,33 +626,37 @@ func (s *LeaseStore) Acknowledge(ctx context.Context, c Client, address netip.Ad
 
 // Release frees only the client's own live offer or binding, never quarantine.
 func (s *LeaseStore) Release(ctx context.Context, c Client, address netip.Addr) error {
-	return s.finish(ctx, c, address, false)
+	return s.finish(ctx, c, address, false, false)
 }
 
 // Decline quarantines only the client's own live offer or binding for ten minutes.
 func (s *LeaseStore) Decline(ctx context.Context, c Client, address netip.Addr) error {
-	return s.finish(ctx, c, address, true)
+	return s.finish(ctx, c, address, true, false)
 }
 
-func (s *LeaseStore) finish(ctx context.Context, c Client, address netip.Addr, decline bool) error {
+// QuarantineOffer records a detected conflict only for the exact owner of a
+// live offer. A stale probe can never quarantine an acknowledged binding.
+func (s *LeaseStore) QuarantineOffer(ctx context.Context, c Client, address netip.Addr) error {
+	return s.finish(ctx, c, address, true, true)
+}
+
+func (s *LeaseStore) finish(ctx context.Context, c Client, address netip.Addr, decline, offeredOnly bool) error {
 	c, key, err := normalizeClient(c)
 	if err != nil {
 		return err
 	}
-	return s.transact(ctx, func(tx *sql.Tx, leases []storedLease, now time.Time) error {
-		for _, l := range leases {
-			if l.Address != address {
-				continue
-			}
-			if l.key != key || l.MAC != c.MAC || l.State == "declined" {
+	return s.transactFast(ctx, func(tx *sql.Tx, _ []storedLease, now time.Time) error {
+		ctx = s.transactionContext(ctx)
+		state := leaseTransactionFrom(ctx)
+		if l, ok := state.address(address); ok {
+			if l.key != key || l.MAC != c.MAC || l.State == "declined" || offeredOnly && l.State != "offered" {
 				return ErrUnknownLease
 			}
 			if decline {
 				l.State, l.ExpiresAt = "declined", now.Add(declineHold)
 				return saveLease(ctx, tx, l)
 			}
-			_, err := tx.ExecContext(ctx, "DELETE FROM leases WHERE address = ?", addressNumber(address))
-			return err
+			return deleteLease(ctx, tx, address)
 		}
 		return ErrUnknownLease
 	})
@@ -577,7 +665,8 @@ func (s *LeaseStore) finish(ctx context.Context, c Client, address netip.Addr, d
 // List returns live leases (including holds and quarantines) in address order.
 func (s *LeaseStore) List(ctx context.Context) ([]Lease, error) {
 	result := []Lease{}
-	err := s.transact(ctx, func(_ *sql.Tx, leases []storedLease, _ time.Time) error {
+	err := s.readLeases(ctx, func(_ *sql.Tx, leases []storedLease, _ time.Time) error {
+		result = make([]Lease, 0, len(leases))
 		for _, l := range leases {
 			result = append(result, l.Lease)
 		}

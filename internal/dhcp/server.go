@@ -33,6 +33,7 @@ type Server struct {
 	cfg    Config
 	leases leaseBackend
 	logger *slog.Logger
+	probe  addressProbe
 
 	processMu sync.Mutex // packets and managed configuration commits
 	dispatch  func(context.Context, []byte, *net.UDPAddr) ([]byte, *net.UDPAddr, error)
@@ -57,7 +58,7 @@ func NewServer(cfg Config, leases *LeaseStore, logger *slog.Logger) (*Server, er
 		logger = slog.Default()
 	}
 	cfg = normalizedConfig(cfg)
-	return &Server{cfg: cfg, leases: leases, logger: logger, listen: listenDHCP}, nil
+	return &Server{cfg: cfg, leases: leases, logger: logger, listen: listenDHCP, probe: probeAddress}, nil
 }
 
 // Listen verifies the interface and server address and exclusively binds UDP 67.

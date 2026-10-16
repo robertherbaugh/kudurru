@@ -6,7 +6,7 @@ set -euo pipefail
 
 if [[ ${1:-} != --private-lab ]]; then
   [[ $(uname -s) == Linux ]] || { echo 'Linux required' >&2; exit 1; }
-  for tool in ip unshare mount jq tcpdump setpriv go grep; do
+  for tool in ip unshare mount jq tcpdump setpriv setcap getcap go grep; do
     command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 1; }
   done
   client_path=${DHCPCD:-$(command -v dhcpcd || true)}
@@ -14,6 +14,9 @@ if [[ ${1:-} != --private-lab ]]; then
   client=$(realpath "$client_path")
   repo=$(cd -- "$(dirname -- "$0")/../.." && pwd)
   output=$(mktemp -d "$repo/.context/dhcp-acceptance.XXXXXX")
+  # Run a fixed script snapshot so edits in the shared workspace cannot alter
+  # the commands of an acceptance run that is already in progress.
+  cp -- "$repo/test/dhcp/run.sh" "$output/run.sh"
   "$client" --version > "$output/client-version.txt"
   go build -o "$output/fixture" ./test/dhcp
   host_ns=$(readlink /proc/self/ns/net)
@@ -22,7 +25,7 @@ if [[ ${1:-} != --private-lab ]]; then
   # the original namespace. The private PID namespace kills every descendant
   # on exit, including clients/captures following an interrupted test.
   exec sudo unshare --net --mount --pid --uts --fork --kill-child \
-    bash "$repo/test/dhcp/run.sh" --private-lab "$output" "$client" "$host_ns"
+    bash "$output/run.sh" --private-lab "$output" "$client" "$host_ns"
 fi
 
 output=$2
@@ -45,7 +48,7 @@ cleanup() {
   trap - EXIT INT TERM
   for pid in "${pids[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done
   for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
-  for ns in srv relay a a2 a3 b c d; do ip netns del "$ns" 2>/dev/null || true; done
+  for ns in srv relay a a2 a3 b c d conflict; do ip netns del "$ns" 2>/dev/null || true; done
   # Evidence stays accessible to the invoking user after root-only execution.
   chown -R "${SUDO_UID:-0}:${SUDO_GID:-0}" "$output"
 }
@@ -53,7 +56,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-for ns in srv relay a a2 a3 b c d; do
+for ns in srv relay a a2 a3 b c d conflict; do
   ip netns add "$ns"
   ip -n "$ns" link set lo up
 done
@@ -68,7 +71,7 @@ pair() {
 }
 ip -n srv link add sa type bridge
 ip -n srv link set sa up
-for n in a a2 a3; do
+for n in a a2 a3 conflict; do
   pair srv "p$n" "$n" eth0
   ip -n srv link set "p$n" master sa
 done
@@ -83,8 +86,13 @@ done
 ip -n srv addr add 192.0.2.1/24 dev sa
 ip -n srv addr add 198.18.0.1/24 dev sb
 ip -n srv addr add 198.51.100.2/24 dev st
+ip -n srv addr add 198.51.100.3/24 dev st
+# A real ARP responder occupies the first candidate before any DISCOVER.
+ip -n conflict addr add 192.0.2.9/24 dev eth0
 ip -n relay addr add 198.51.100.1/24 dev up
 ip -n relay addr add 203.0.113.1/24 dev lan0
+# A routed positive ICMP response must also quarantine before an offer.
+ip -n relay addr add 203.0.113.9/24 dev lan0
 ip -n srv route add 203.0.113.0/24 via 198.51.100.1 dev st
 ip netns exec relay sysctl -q -w net.ipv4.ip_forward=1
 # Deterministic Ethernet identities; b has the configured reservation.
@@ -96,11 +104,33 @@ mkdir -p "$output/server"
 chown 65532:65532 "$output/server"
 chmod 755 "$output"
 fixture=$output/fixture
+# Verify the process credentials used by the systemd ambient-capability drop-in
+# and the container image's file-capability executable. These execute in srv,
+# never in the host namespace, and the fixture verifies effective kernel state.
+KUDURRU_DHCP_CAPABILITY_PROFILE=ambient ip netns exec srv setpriv \
+  --reuid=65532 --regid=65532 --clear-groups \
+  --bounding-set=-all,+net_bind_service,+net_raw \
+  --inh-caps=+net_bind_service,+net_raw --ambient-caps=+net_bind_service,+net_raw \
+  --no-new-privs "$fixture" capabilities > "$output/capabilities-ambient.log"
+setcap cap_net_bind_service,cap_net_raw=ep "$fixture"
+getcap "$fixture" > "$output/capabilities-file.log"
+KUDURRU_DHCP_CAPABILITY_PROFILE=file ip netns exec srv setpriv \
+  --reuid=65532 --regid=65532 --clear-groups \
+  --bounding-set=-all,+net_bind_service,+net_raw \
+  --inh-caps=+net_bind_service,+net_raw --ambient-caps=-all \
+  --no-new-privs "$fixture" capabilities >> "$output/capabilities-file.log"
+setcap -r "$fixture"
+printf 'PASS unprivileged ambient and file capability profiles with no-new-privileges\n'
 start_server() {
+  local profile=${1:-ambient} ambient=+net_bind_service,+net_raw
+  if [[ $profile == file ]]; then
+    setcap cap_net_bind_service,cap_net_raw=ep "$fixture"
+    ambient=-all
+  fi
   rm -f "$output/server/ready"
-  ip netns exec srv setpriv --reuid=65532 --regid=65532 --clear-groups \
+  KUDURRU_DHCP_CAPABILITY_PROFILE="$profile" ip netns exec srv setpriv --reuid=65532 --regid=65532 --clear-groups \
     --bounding-set=-all,+net_bind_service,+net_raw \
-    --inh-caps=+net_bind_service,+net_raw --ambient-caps=+net_bind_service,+net_raw \
+    --inh-caps=+net_bind_service,+net_raw --ambient-caps="$ambient" \
     --no-new-privs "$fixture" server "$output/server" >>"$output/server.log" 2>&1 &
   server_pid=$!
   pids+=("$server_pid")
@@ -108,7 +138,7 @@ start_server() {
   echo 'Server readiness timed out' >&2; exit 1
 }
 for ns in srv relay; do
-  ip netns exec "$ns" tcpdump -U -i any -n -w "$output/$ns.pcap" 'udp port 67 or udp port 68' >"$output/$ns-capture.log" 2>&1 &
+  ip netns exec "$ns" tcpdump -U -i any -n -w "$output/$ns.pcap" 'arp or icmp or udp port 67 or udp port 68 or udp port 1067' >"$output/$ns-capture.log" 2>&1 &
   pids+=("$!")
   capture_pids+=("$!")
 done
@@ -121,10 +151,14 @@ noipv4ll
 noipv6
 nohook resolv.conf,hostname,ntp.conf
 option subnet_mask,routers,domain_name_servers,domain_name
+option ntp_servers,domain_search,classless_static_routes,tftp_server_name,bootfile_name
+hostname labclient.default.example
+fqdn both
 CONF
 cat > "$output/hook" <<'HOOK'
 #!/bin/sh
 printf '%s %s %s\n' "$reason" "${new_ip_address:-}" "${new_dhcp_server_identifier:-}" >> "$LAB_EVENTS"
+printf 'ntp=%s search=%s routes=%s bootserver=%s bootfile=%s\n' "${new_ntp_servers:-}" "${new_domain_search:-}" "${new_classless_static_routes:-}" "${new_tftp_server_name:-}" "${new_bootfile_name:-}" >> "$LAB_EVENTS.options"
 HOOK
 chmod +x "$output/hook"
 # Private /run and /var isolate pidfiles, control sockets, DUID and lease files.
@@ -169,6 +203,18 @@ start_client c; wait_address c 203.0.113.10
 start_client d; wait_address d 203.0.113.11
 wait_lease_count default 2
 wait_lease_count remote 2
+jq -e '.default[] | select(.Address=="192.0.2.9" and .State=="declined")' "$output/server/leases.json" >/dev/null
+jq -e '.remote[] | select(.Address=="203.0.113.9" and .State=="declined")' "$output/server/leases.json" >/dev/null
+jq -e '.default[] | select(.State=="bound" and .Hostname=="labclient.default.example")' "$output/server/leases.json" >/dev/null
+for ((i=0;i<100;i++)); do
+  [[ $(ip -n a route show 10.123.0.0/16) == *'via 192.0.2.1'* ]] && break
+  sleep .1
+done
+[[ $(ip -n a route show 10.123.0.0/16) == *'via 192.0.2.1'* ]]
+grep -q 'ntp=192.0.2.1 search=default.example lab.example' "$output/a.events.options"
+grep -q 'bootserver=boot.default.example bootfile=netboot.efi' "$output/a.events.options"
+printf 'PASS actual ARP and routed ICMP conflicts quarantined; RFC3527/5107/8357 relay acquisition\n'
+printf 'PASS stock-client NTP, search, classless route, boot options and client FQDN\n'
 printf 'PASS acquisition, distinct clients, reservation, two direct subnets, relayed scope\n'
 # The third client cannot steal either live address.
 start_client a3
@@ -177,6 +223,9 @@ sleep 6
 printf 'PASS pool exhaustion\n'
 # SIGALRM is dhcpcd --release; SIGUSR1 is dhcpcd --renew.
 kill -ALRM "$(cat "$output/a.pid")"
+# dhcpcd can keep its userspace ARP defender alive briefly after deleting the
+# kernel address. Wait for full exit before probing this address for reuse.
+wait "$(cat "$output/a.pid")"
 # Let the releasing client finish removing its address before starting DAD on
 # the next client; the RELEASE can precede local deconfiguration briefly.
 for ((i=0;i<100;i++)); do [[ -n $(address a) ]] || break; sleep .1; done
@@ -189,7 +238,9 @@ printf 'PASS release and safe address reuse\n'
 before=$(jq -r '.remote[] | select(.Address=="203.0.113.10") | .ExpiresAt' "$output/server/leases.json")
 kill -TERM "$server_pid"
 wait "$server_pid"
-start_server
+start_server file
+jq -e '.default[] | select(.Address=="192.0.2.9" and .State=="declined")' "$output/server/leases.json" >/dev/null
+jq -e '.remote[] | select(.Address=="203.0.113.9" and .State=="declined")' "$output/server/leases.json" >/dev/null
 sleep 1
 kill -USR1 "$(cat "$output/c.pid")"
 for ((i=0;i<100;i++)); do
@@ -216,7 +267,10 @@ kill -TERM "$server_pid"
 wait "$server_pid"
 for pid in "${capture_pids[@]}"; do kill -TERM "$pid"; wait "$pid"; done
 for ns in srv relay; do tcpdump -nn -vv -r "$output/$ns.pcap" > "$output/$ns-packets.txt" 2>/dev/null; done
-grep -Eq '203\.0\.113\.10\.68 > 198\.51\.100\.2\.67' "$output/srv-packets.txt"
-grep -Eq '198\.51\.100\.2\.67 > 203\.0\.113\.1\.67' "$output/srv-packets.txt"
+grep -Eq '203\.0\.113\.10\.68 > 198\.51\.100\.[23]\.67' "$output/srv-packets.txt"
+grep -Eq '198\.51\.100\.2\.67 > 198\.51\.100\.1\.1067' "$output/srv-packets.txt"
+grep -Eq 'Server-ID.*198.51.100.3' "$output/relay-packets.txt"
+grep -Eq 'ARP, .*Request who-has 192.0.2.9' "$output/srv-packets.txt"
+grep -Eq '203.0.113.9 > 198.51.100.2: ICMP echo reply' "$output/srv-packets.txt"
 printf 'PASS wire routing evidence; all test resources remain inside the disconnected lab\n'
 printf 'PASS\n' > "$output/result"

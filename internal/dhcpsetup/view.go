@@ -61,6 +61,11 @@ func (m *Manager) leasePath(name string) string {
 
 func (m *Manager) readLocked(ctx context.Context) (State, map[string]dhcp.LeaseSettings, error) {
 	view := cloneState(m.state)
+	_, identityErr := os.Stat(filepath.Join(filepath.Dir(m.path), "dhcp-raft", "identity.json"))
+	if identityErr != nil && !os.IsNotExist(identityErr) {
+		return State{}, nil, identityErr
+	}
+	view.FailoverInitialized = identityErr == nil
 	view.ScopeRevisions = map[string]uint64{}
 	view.PendingScopes = []string{}
 	metadata := map[string]dhcp.LeaseSettings{}
@@ -110,7 +115,7 @@ func (m *Manager) readLocked(ctx context.Context) (State, map[string]dhcp.LeaseS
 		metadata[scope.Name] = meta
 		view.ScopeRevisions[scope.Name] = meta.Revision
 		plan, planned := m.plans[scope.Name]
-		pending := planned && plan.Token != meta.AppliedSetupToken
+		pending := planned && plan.Token != meta.AppliedSetupToken && (!view.Failover.Enabled || meta.ReplicaIndex == 0)
 		if pending {
 			view.PendingScopes = append(view.PendingScopes, scope.Name)
 		}
@@ -145,6 +150,9 @@ func overlaySettings(scope config.DHCPScope, meta dhcp.LeaseSettings) config.DHC
 	for _, ip := range opts.DNSServers {
 		scope.DNSServers = append(scope.DNSServers, ip.String())
 	}
+	extra := config.DHCPScopeFromConfig(dhcp.Config{NTPServers: opts.NTPServers, DomainSearch: opts.DomainSearch, ClasslessRoutes: opts.ClasslessRoutes, BootServer: opts.BootServer, BootServerName: opts.BootServerName, BootFile: opts.BootFile, BootProfiles: opts.BootProfiles})
+	scope.NTPServers, scope.DomainSearch, scope.ClasslessRoutes = extra.NTPServers, extra.DomainSearch, extra.ClasslessRoutes
+	scope.BootServer, scope.BootServerName, scope.BootFile, scope.BootProfiles = extra.BootServer, extra.BootServerName, extra.BootFile, extra.BootProfiles
 	scope.DomainName, scope.LeaseDuration = opts.DomainName, config.Duration(opts.LeaseDuration)
 	scope.RegisterDNS, scope.DNSTTL = opts.RegisterDNS, config.Duration(opts.DNSTTL)
 	scope.Reservations = []config.DHCPReservation{}
@@ -155,7 +163,7 @@ func overlaySettings(scope config.DHCPScope, meta dhcp.LeaseSettings) config.DHC
 }
 
 func (m *Manager) needsRestart(candidate State, plans map[string]ScopePlan) bool {
-	if candidate.Enabled != m.baseline.Enabled || candidate.ManagedBy != m.baseline.ManagedBy || len(plans) != len(m.startup) {
+	if !reflect.DeepEqual(candidate.Failover, m.baseline.Failover) || candidate.Enabled != m.baseline.Enabled || candidate.ManagedBy != m.baseline.ManagedBy || len(plans) != len(m.startup) {
 		return true
 	}
 	for name, plan := range plans {
@@ -171,7 +179,7 @@ func (m *Manager) needsRestart(candidate State, plans map[string]ScopePlan) bool
 // cannot replay stale seed options or bypass the persisted revision guard.
 func (m *Manager) restoredStartupPlan(ctx context.Context, scope config.DHCPScope, meta dhcp.LeaseSettings) (ScopePlan, bool) {
 	plan, ok := m.startup[scope.Name]
-	if !ok || plan.Token != meta.AppliedSetupToken {
+	if !ok || plan.Token != meta.AppliedSetupToken && (!m.state.Failover.Enabled || meta.ReplicaIndex == 0) {
 		return ScopePlan{}, false
 	}
 	for _, baseline := range m.baseline.Scopes {

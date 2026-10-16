@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { DHCPScopeSummary } from '../api/types';
 import { DHCPSetupControls, useDHCPSetup } from '../components/DHCPSetup';
+import { DHCPFailoverStatus } from '../components/DHCPFailover';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { PageHeader } from '../components/layout/Page';
 
@@ -44,6 +45,7 @@ export default function DHCPPage() {
     {status.error ? <ErrorBanner error={status.error} /> : null}
     {allowed && status.isPending ? <Loading label="Loading DHCP scopes" /> : null}
     {setup.error ? <ErrorBanner error={setup.error} /> : null}
+    <DHCPFailoverStatus value={status.data?.failover} />
     {setup.data ? <DHCPSetupControls setup={setup.data} /> : null}
     {status.data && !status.data.enabled ? <Banner status="info" title="DHCP is disabled on this node"
       description="Create or edit saved scopes below, enable DHCP, then restart this node to activate it." /> : null}

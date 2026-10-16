@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { DHCPSetupScope } from '../api/types';
 import { qk, useApi } from '../api/context';
 import { ErrorBanner } from './Feedback';
+import { DHCPAdvancedFields, advancedOptionsError } from './DHCPAdvancedFields';
 import { DurationField, durationError } from './fields/DurationField';
 import { SelectField } from './fields/SelectField';
 import { ShapeField } from './fields/ShapeField';
@@ -21,6 +22,9 @@ export function topologyError(scope: DHCPSetupScope): string | undefined {
   if (!scope.subnet.includes('/') || scope.subnet.includes(':') || formatError('cidr', scope.subnet)) return 'Enter an IPv4 subnet, for example 192.0.2.0/24.';
   if (scope.relayOnly && !scope.trustedRelays.length) return 'Add at least one trusted relay for a relay-only scope.';
   if (scope.trustedRelays.some((r) => ipError(r.sourceIP) || ipError(r.gatewayIP))) return 'Each relay needs an IPv4 source and gateway address.';
+  if (scope.trustedRelays.some((r) => (r.linkSelection && ipError(r.linkSelection)) || (r.serverIdentifier && ipError(r.serverIdentifier)) || (r.sourcePort && (!Number.isInteger(r.sourcePort) || r.sourcePort < 1 || r.sourcePort > 65535)))) return 'Relay extensions need valid IPv4 addresses and a source port from 1 to 65535.';
+  if ((scope.relayOnly || scope.trustedRelays.length > 0) && scope.conflictDetection === 'arp') return 'Use ICMP conflict detection for scopes with trusted relays.';
+  if (scope.probeTimeout && (durationError(scope.probeTimeout, { min: 0.05 }) || parseDuration(scope.probeTimeout) > 0.5 || !Number.isInteger(parseDuration(scope.probeTimeout) * 1000))) return 'Use a probe timeout between 50 and 500 milliseconds, in whole milliseconds.';
 }
 export function networkError(scope: DHCPSetupScope): string | undefined {
   if ([scope.rangeStart, scope.rangeEnd, scope.router].some((ip) => ipError(ip))) return 'Enter the first address, last address and router as IPv4 addresses.';
@@ -37,10 +41,10 @@ export function dnsError(scope: DHCPSetupScope): string | undefined {
 export function reservationError(scope: DHCPSetupScope): string | undefined {
   if (scope.reservations.some((r) => !/^(?:[\da-f]{2}:){5}[\da-f]{2}$/i.test(r.mac) || ipError(r.ip))) return 'Each reservation needs an Ethernet MAC and an IPv4 address.';
 }
-export const setupScopeError = (s: DHCPSetupScope) => topologyError(s) ?? networkError(s) ?? dnsError(s) ?? reservationError(s);
+export const setupScopeError = (s: DHCPSetupScope) => topologyError(s) ?? networkError(s) ?? dnsError(s) ?? reservationError(s) ?? advancedOptionsError(s);
 
-type Props = { value: DHCPSetupScope; onChange: (scope: DHCPSetupScope) => void; disabled?: boolean; existing?: boolean };
-export function DHCPTopologyFields({ value, onChange, disabled, existing }: Props) {
+type Props = { value: DHCPSetupScope; onChange: (scope: DHCPSetupScope) => void; disabled?: boolean; existing?: boolean; sharedLocked?: boolean };
+export function DHCPTopologyFields({ value, onChange, disabled, existing, sharedLocked }: Props) {
   const api = useApi();
   const inventory = useQuery({ queryKey: qk.dhcp('interfaces'), queryFn: api.dhcp.interfaces });
   const change = <K extends keyof DHCPSetupScope>(k: K, v: DHCPSetupScope[K]) => onChange({ ...value, [k]: v });
@@ -53,14 +57,25 @@ export function DHCPTopologyFields({ value, onChange, disabled, existing }: Prop
       onChange={(v) => change('interface', v)} isDisabled={disabled} isLoading={inventory.isPending}
       help="The interface must already exist on this node. Direct clients need an active Ethernet interface with broadcast support." />
     <HStack gap={4} wrap="wrap">
-      <TextField label="Server address" value={value.serverIP} onChange={(v) => change('serverIP', v)} isDisabled={disabled} placeholder="192.0.2.2"
+      <TextField label="Server address" value={value.serverIP} onChange={(v) => change('serverIP', v)} isDisabled={disabled || sharedLocked} placeholder="192.0.2.2"
         help={selected?.addresses.length ? `Assigned addresses: ${selected.addresses.join(', ')}.` : 'An IPv4 address already assigned to the selected interface.'} />
-      <TextField label="Client subnet" value={value.subnet} onChange={(v) => change('subnet', v)} isDisabled={disabled} placeholder="192.0.2.0/24" help="A network prefix. Scopes cannot overlap." />
+      <TextField label="Client subnet" value={value.subnet} onChange={(v) => change('subnet', v)} isDisabled={disabled || sharedLocked} placeholder="192.0.2.0/24" help="A network prefix. Scopes cannot overlap." />
     </HStack>
-    <SwitchField label="Relay-only scope" value={value.relayOnly} onChange={(v) => change('relayOnly', v)} isDisabled={disabled} help="Receive requests from trusted relays for a remote subnet." />
-    <ShapeField label="Trusted relays" value={value.trustedRelays} onChange={(v) => change('trustedRelays', v as DHCPSetupScope['trustedRelays'])} isDisabled={disabled}
-      shape={{ type: 'list', items: { type: 'object', fields: [{ name: 'sourceIP', label: 'Relay source address', type: 'string', format: 'ipv4' }, { name: 'gatewayIP', label: 'Relay gateway address', type: 'string', format: 'ipv4' }] } }}
-      description="Authorize the exact source address and gateway address sent by each relay. Leave empty for direct clients only." />
+    <SwitchField label="Relay-only scope" value={value.relayOnly} onChange={(v) => change('relayOnly', v)} isDisabled={disabled || sharedLocked} help="Receive requests from trusted relays for a remote subnet." />
+    <ShapeField label="Trusted relays" value={value.trustedRelays} onChange={(v) => change('trustedRelays', (v as DHCPSetupScope['trustedRelays']).map((relay) => ({ ...relay, sourcePort: Number(relay.sourcePort || 0) })))} isDisabled={disabled || sharedLocked}
+      shape={{ type: 'list', items: { type: 'object', fields: [{ name: 'sourceIP', label: 'Relay source address', type: 'string', format: 'ipv4' }, { name: 'gatewayIP', label: 'Relay gateway address', type: 'string', format: 'ipv4' },
+        { name: 'sourcePort', label: 'Relay source port', type: 'int', min: 0, max: 65535, help: '0 uses port 67. A different port explicitly authorizes RFC 8357 replies to that port.' },
+        { name: 'linkSelection', label: 'Relay link selection', type: 'string', format: 'ipv4', help: 'Optional exact RFC 3527 client-link address.' },
+        { name: 'serverIdentifier', label: 'Relay server identifier', type: 'string', format: 'ipv4', help: 'Optional exact RFC 5107 server identifier override.' }] } }}
+      description="Authorize the exact source, gateway and optional extensions of each relay. Configure relays to send to all failover members." />
+    <SelectField label="Address conflict detection" value={value.conflictDetection || 'auto'} onChange={(v) => change('conflictDetection', v)} isDisabled={disabled || sharedLocked}
+      options={[{ value: 'auto', label: 'Automatic', help: 'ARP on direct links; ICMP when trusted relays are configured.' }, { value: 'arp', label: 'ARP on the local link' }, { value: 'icmp', label: 'ICMP echo', help: 'For routed or relayed networks. Targets and firewalls must allow echo responses.' }, { value: 'disabled', label: 'Disabled', help: 'Provide independent conflict checks before assigning addresses.' }]} />
+    <DurationField label="Conflict probe timeout" value={value.probeTimeout || '200ms'} onChange={(v) => change('probeTimeout', v)} isDisabled={disabled || sharedLocked || value.conflictDetection === 'disabled'}
+      presets={[{ value: '50ms', label: '50 milliseconds' }, { value: '100ms', label: '100 milliseconds' }, { value: '200ms', label: '200 milliseconds' }, { value: '500ms', label: '500 milliseconds' }]}
+      description="50 to 500 whole milliseconds. Conflicts are durably quarantined before trying another address." />
+    <ShapeField label="Failover server addresses" value={value.failoverServers ?? []} onChange={(v) => change('failoverServers', v as DHCPSetupScope['failoverServers'])} isDisabled={disabled || sharedLocked}
+      shape={{ type: 'list', items: { type: 'object', fields: [{ name: 'nodeID', label: 'Server node ID', type: 'string' }, { name: 'address', label: 'Server IPv4 address', type: 'string', format: 'ipv4' }] } }}
+      description="For automatic failover, list all three voter IDs and their server addresses. These addresses are excluded from allocation." />
   </>;
 }
 export function DHCPNetworkFields({ value, onChange, disabled }: Props) {
@@ -73,6 +88,7 @@ export function DHCPNetworkFields({ value, onChange, disabled }: Props) {
     <StringListField label="DNS servers" value={value.dnsServers} onChange={(v) => change('dnsServers', v)} addLabel="Add DNS server" isDisabled={disabled}
       placeholder="192.0.2.2" itemError={ipError} description="IPv4 DNS servers advertised to clients. Each address must be reachable from their subnet." />
     <DurationField label="Lease duration" value={value.leaseDuration} onChange={(v) => change('leaseDuration', v)} isDisabled={disabled} description="One minute to 30 days." />
+    <DHCPAdvancedFields value={value} onChange={onChange} disabled={disabled} />
   </>;
 }
 export function DHCPDNSFields({ value, onChange, disabled }: Props) {

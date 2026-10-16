@@ -27,13 +27,34 @@ type Config struct {
 	DomainName           string
 	LeaseDuration        time.Duration
 	Reservations         []Reservation
+	ConflictDetection    string
+	ProbeTimeout         time.Duration
+	NTPServers           []netip.Addr
+	DomainSearch         []string
+	ClasslessRoutes      []ClasslessRoute
+	BootServer           netip.Addr
+	BootServerName       string
+	BootFile             string
+	BootProfiles         []BootProfile
+	FailoverServers      []ScopeServer
 }
 
-// TrustedRelay authorizes an exact UDP source and giaddr pair on Interface.
-// SourceIP may differ from GatewayIP; replies always go to GatewayIP:67.
+// ScopeServer reserves a failover member's local server address in this scope.
+type ScopeServer struct {
+	NodeID  string
+	Address netip.Addr
+}
+
+// TrustedRelay authorizes an exact source, giaddr, and relay extension tuple.
+// SourcePort defaults to 67. Alternate ports require RFC 8357 suboption 19.
+// LinkSelection and ServerIdentifier authorize exact RFC 3527/5107 values;
+// an unset value rejects that extension. Replies use GatewayIP and SourcePort.
 type TrustedRelay struct {
-	SourceIP  netip.Addr
-	GatewayIP netip.Addr
+	SourceIP         netip.Addr
+	GatewayIP        netip.Addr
+	SourcePort       uint16
+	LinkSelection    netip.Addr
+	ServerIdentifier netip.Addr
 }
 
 // normalizedConfig copies caller-owned slices and applies compatible defaults.
@@ -50,6 +71,25 @@ func normalizedConfig(c Config) Config {
 	c.DNSServers = append([]netip.Addr(nil), c.DNSServers...)
 	c.Reservations = append([]Reservation(nil), c.Reservations...)
 	c.TrustedRelays = append([]TrustedRelay(nil), c.TrustedRelays...)
+	for i := range c.TrustedRelays {
+		if c.TrustedRelays[i].SourcePort == 0 {
+			c.TrustedRelays[i].SourcePort = serverPort
+		}
+	}
+	if c.ConflictDetection == "" {
+		c.ConflictDetection = "arp"
+		if c.RelayOnly || len(c.TrustedRelays) != 0 {
+			c.ConflictDetection = "icmp"
+		}
+	}
+	if c.ProbeTimeout == 0 {
+		c.ProbeTimeout = 200 * time.Millisecond
+	}
+	c.NTPServers = append([]netip.Addr(nil), c.NTPServers...)
+	c.DomainSearch = append([]string(nil), c.DomainSearch...)
+	c.ClasslessRoutes = append([]ClasslessRoute(nil), c.ClasslessRoutes...)
+	c.BootProfiles = append([]BootProfile(nil), c.BootProfiles...)
+	c.FailoverServers = append([]ScopeServer(nil), c.FailoverServers...)
 	return c
 }
 
@@ -120,10 +160,22 @@ func (c Config) Validate() error {
 	if c.LeaseDuration < time.Minute || c.LeaseDuration > 30*24*time.Hour || c.LeaseDuration%time.Second != 0 {
 		return fmt.Errorf("dhcp: lease duration must be integral seconds between 1 minute and 30 days")
 	}
+	if err := c.validateProtocolOptions(); err != nil {
+		return err
+	}
 	relays := map[TrustedRelay]bool{}
 	for _, relay := range c.TrustedRelays {
 		if !usableIPv4(relay.SourceIP) || !usableIPv4(relay.GatewayIP) {
 			return fmt.Errorf("dhcp: relay source and gateway must be unicast IPv4 addresses")
+		}
+		if relay.SourcePort == clientPort {
+			return fmt.Errorf("dhcp: trusted relay source port must not be client port 68")
+		}
+		if relay.LinkSelection.IsValid() && !c.usable(relay.LinkSelection) {
+			return fmt.Errorf("dhcp: relay link selection must be a usable address inside the scope")
+		}
+		if relay.ServerIdentifier.IsValid() && !usableIPv4(relay.ServerIdentifier) {
+			return fmt.Errorf("dhcp: relay server identifier must be a unicast IPv4 address")
 		}
 		if relays[relay] {
 			return fmt.Errorf("dhcp: duplicate trusted relay mapping")
@@ -170,8 +222,13 @@ func (c Config) infrastructure(ip netip.Addr) bool {
 	if ip == c.ServerIP || ip == c.Router {
 		return true
 	}
+	for _, server := range c.FailoverServers {
+		if ip == server.Address {
+			return true
+		}
+	}
 	for _, relay := range c.TrustedRelays {
-		if ip == relay.GatewayIP {
+		if ip == relay.GatewayIP || ip == relay.ServerIdentifier {
 			return true
 		}
 	}

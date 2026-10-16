@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dhcp"
 )
 
@@ -22,6 +23,14 @@ const dhcpBase = "/node/dhcp/v4"
 
 // DHCPPoolOptions contains only mutable scope options; topology is host-owned.
 type DHCPPoolOptions struct {
+	NTPServers      []string                    `json:"ntpServers,omitempty"`
+	DomainSearch    []string                    `json:"domainSearch,omitempty"`
+	ClasslessRoutes []config.DHCPClasslessRoute `json:"classlessRoutes,omitempty"`
+	BootServer      string                      `json:"bootServer,omitempty"`
+	BootServerName  string                      `json:"bootServerName,omitempty"`
+	BootFile        string                      `json:"bootFile,omitempty"`
+	BootProfiles    []config.DHCPBootProfile    `json:"bootProfiles,omitempty"`
+
 	RangeStart    string   `json:"rangeStart" format:"ipv4"`
 	RangeEnd      string   `json:"rangeEnd" format:"ipv4"`
 	Router        string   `json:"router" format:"ipv4"`
@@ -41,17 +50,23 @@ type DHCPReservation struct {
 
 // DHCPTrustedRelay identifies a host-configured relay and gateway pair.
 type DHCPTrustedRelay struct {
-	SourceIP  string `json:"sourceIP" format:"ipv4"`
-	GatewayIP string `json:"gatewayIP" format:"ipv4"`
+	SourcePort       uint16 `json:"sourcePort,omitempty"`
+	LinkSelection    string `json:"linkSelection,omitempty"`
+	ServerIdentifier string `json:"serverIdentifier,omitempty"`
+	SourceIP         string `json:"sourceIP" format:"ipv4"`
+	GatewayIP        string `json:"gatewayIP" format:"ipv4"`
 }
 
 // DHCPTopology describes the immutable host network for a scope.
 type DHCPTopology struct {
-	Interface     string             `json:"interface"`
-	ServerIP      string             `json:"serverIP" format:"ipv4"`
-	Subnet        string             `json:"subnet"`
-	RelayOnly     bool               `json:"relayOnly"`
-	TrustedRelays []DHCPTrustedRelay `json:"trustedRelays" nullable:"false"`
+	ConflictDetection string                   `json:"conflictDetection,omitempty"`
+	ProbeTimeout      string                   `json:"probeTimeout,omitempty"`
+	FailoverServers   []config.DHCPScopeServer `json:"failoverServers,omitempty"`
+	Interface         string                   `json:"interface"`
+	ServerIP          string                   `json:"serverIP" format:"ipv4"`
+	Subnet            string                   `json:"subnet"`
+	RelayOnly         bool                     `json:"relayOnly"`
+	TrustedRelays     []DHCPTrustedRelay       `json:"trustedRelays" nullable:"false"`
 }
 
 // DHCPScopeSummary identifies a scope and its configuration ownership.
@@ -67,10 +82,11 @@ type DHCPScopeSummary struct {
 
 // DHCPStatus reports DHCP availability and scopes on the connected node.
 type DHCPStatus struct {
-	Node      string             `json:"node"`
-	Enabled   bool               `json:"enabled"`
-	Available bool               `json:"available"`
-	Scopes    []DHCPScopeSummary `json:"scopes" nullable:"false"`
+	Failover  *dhcp.ReplicationStatus `json:"failover,omitempty"`
+	Node      string                  `json:"node"`
+	Enabled   bool                    `json:"enabled"`
+	Available bool                    `json:"available"`
+	Scopes    []DHCPScopeSummary      `json:"scopes" nullable:"false"`
 	Took
 }
 
@@ -254,6 +270,10 @@ func dhcpSummary(cfg dhcp.Config, revision uint64) DHCPScopeSummary {
 func (s *Server) dhcpStatus(_ context.Context, _ *struct{}) (*dhcpStatusOutput, error) {
 	out := &DHCPStatus{Node: s.opts.NodeName, Enabled: s.opts.DHCP != nil && s.config().DHCP.Enabled, Available: s.opts.DHCP != nil, Scopes: []DHCPScopeSummary{}}
 	if s.opts.DHCP != nil {
+		status := s.opts.DHCP.Replication()
+		if status.Enabled {
+			out.Failover = &status
+		}
 		for _, name := range s.opts.DHCP.ScopeNames() {
 			store, err := s.opts.DHCP.Scope(name)
 			if err != nil {
@@ -275,11 +295,12 @@ func (s *Server) dhcpStatus(_ context.Context, _ *struct{}) (*dhcpStatusOutput, 
 }
 
 func dhcpOptions(cfg dhcp.Config) DHCPPoolOptions {
+	extra := config.DHCPScopeFromConfig(cfg)
 	dns := make([]string, 0, len(cfg.DNSServers))
 	for _, ip := range cfg.DNSServers {
 		dns = append(dns, ip.String())
 	}
-	return DHCPPoolOptions{RangeStart: cfg.RangeStart.String(), RangeEnd: cfg.RangeEnd.String(), Router: cfg.Router.String(), DNSServers: dns, DomainName: cfg.DomainName, LeaseDuration: cfg.LeaseDuration.String(), RegisterDNS: cfg.RegisterDNS, DNSTTL: cfg.DNSTTL.String()}
+	return DHCPPoolOptions{NTPServers: extra.NTPServers, DomainSearch: extra.DomainSearch, ClasslessRoutes: extra.ClasslessRoutes, BootServer: extra.BootServer, BootServerName: extra.BootServerName, BootFile: extra.BootFile, BootProfiles: extra.BootProfiles, RangeStart: cfg.RangeStart.String(), RangeEnd: cfg.RangeEnd.String(), Router: cfg.Router.String(), DNSServers: dns, DomainName: cfg.DomainName, LeaseDuration: cfg.LeaseDuration.String(), RegisterDNS: cfg.RegisterDNS, DNSTTL: cfg.DNSTTL.String()}
 }
 
 func dhcpETag(node, scope string, revision uint64) string {
@@ -289,7 +310,7 @@ func dhcpETag(node, scope string, revision uint64) string {
 
 func (s *Server) dhcpLocks(_ string) []string {
 	locked := []string{}
-	fields := []string{"rangeStart", "rangeEnd", "router", "dnsServers", "domainName", "leaseDuration", "registerDNS", "dnsTTL", "reservations"}
+	fields := []string{"rangeStart", "rangeEnd", "router", "dnsServers", "domainName", "leaseDuration", "registerDNS", "dnsTTL", "reservations", "ntpServers", "domainSearch", "classlessRoutes", "bootServer", "bootServerName", "bootFile", "bootProfiles"}
 	cfg := s.config()
 	for _, field := range fields {
 		if len(cfg.DHCP.Scopes) > 0 && slices.Contains(cfg.EnvLocked, "dhcp.scopes") || len(cfg.DHCP.Scopes) == 0 && slices.Contains(cfg.EnvLocked, "dhcp."+field) {
@@ -306,11 +327,12 @@ func (s *Server) dhcpConfig(name string, state dhcp.ManagementState) *dhcpConfig
 		reservations = append(reservations, DHCPReservation{MAC: r.MAC, IP: r.IP.String(), Hostname: r.Hostname})
 	}
 	relays := make([]DHCPTrustedRelay, 0, len(cfg.TrustedRelays))
-	for _, r := range cfg.TrustedRelays {
-		relays = append(relays, DHCPTrustedRelay{SourceIP: r.SourceIP.String(), GatewayIP: r.GatewayIP.String()})
+	extra := config.DHCPScopeFromConfig(cfg)
+	for _, r := range extra.TrustedRelays {
+		relays = append(relays, DHCPTrustedRelay{SourceIP: r.SourceIP, GatewayIP: r.GatewayIP, SourcePort: r.SourcePort, LinkSelection: r.LinkSelection, ServerIdentifier: r.ServerIdentifier})
 	}
 	tag := dhcpETag(s.opts.NodeName, name, state.Revision)
-	return &dhcpConfigOutput{ETag: tag, Body: &DHCPConfig{Node: s.opts.NodeName, Scope: name, Management: dhcpManagement(cfg.Management), Revision: strconv.FormatUint(state.Revision, 10), ETag: tag, Topology: DHCPTopology{Interface: cfg.Interface, ServerIP: cfg.ServerIP.String(), Subnet: cfg.Subnet.String(), RelayOnly: cfg.RelayOnly, TrustedRelays: relays}, Options: dhcpOptions(cfg), Reservations: reservations, EnvLocked: s.dhcpLocks(name)}}
+	return &dhcpConfigOutput{ETag: tag, Body: &DHCPConfig{Node: s.opts.NodeName, Scope: name, Management: dhcpManagement(cfg.Management), Revision: strconv.FormatUint(state.Revision, 10), ETag: tag, Topology: DHCPTopology{ConflictDetection: cfg.ConflictDetection, ProbeTimeout: cfg.ProbeTimeout.String(), FailoverServers: extra.FailoverServers, Interface: cfg.Interface, ServerIP: cfg.ServerIP.String(), Subnet: cfg.Subnet.String(), RelayOnly: cfg.RelayOnly, TrustedRelays: relays}, Options: dhcpOptions(cfg), Reservations: reservations, EnvLocked: s.dhcpLocks(name)}}
 }
 
 func (s *Server) dhcpGetConfig(_ context.Context, in *dhcpScopeInput) (*dhcpConfigOutput, error) {
@@ -321,14 +343,17 @@ func (s *Server) dhcpGetConfig(_ context.Context, in *dhcpScopeInput) (*dhcpConf
 	return s.dhcpConfig(in.Scope, store.Configuration()), nil
 }
 
-func (s *Server) dhcpMutate(ctx context.Context, name, tag, action string, fn func(context.Context, *dhcp.LeaseStore, dhcp.ManagementState) error) (*dhcpConfigOutput, error) {
+func (s *Server) dhcpMutate(ctx context.Context, name, tag, action string, fn func(context.Context, dhcp.ManagementState) error) (*dhcpConfigOutput, error) {
 	if _, err := s.dhcpScope(name); err != nil {
 		return nil, err
 	}
-	var before, after dhcp.ManagementState
-	err := s.opts.DHCP.MutateScope(ctx, name, func(ctx context.Context, store *dhcp.LeaseStore) error {
-		before = store.Configuration()
-		after = before
+	store, err := s.dhcpScope(name)
+	if err != nil {
+		return nil, err
+	}
+	before := store.Configuration()
+	after := before
+	apply := func() error {
 		if tag == "" {
 			return errInvalid("If-Match: required")
 		}
@@ -336,12 +361,13 @@ func (s *Server) dhcpMutate(ctx context.Context, name, tag, action string, fn fu
 		if tag != current {
 			return errPrecondition(tag, current)
 		}
-		if err := fn(ctx, store, before); err != nil {
+		if err := fn(ctx, before); err != nil {
 			return err
 		}
 		after = store.Configuration()
 		return nil
-	})
+	}
+	err = apply()
 	s.recordAction(ctx, action, audit.Resource{Kind: "dhcp", Name: name}, err, s.dhcpConfig(name, before).Body, s.dhcpConfig(name, after).Body)
 	if err != nil {
 		return nil, dhcpError(err)
@@ -371,7 +397,7 @@ func dhcpError(err error) error {
 }
 
 func (s *Server) dhcpPutConfig(ctx context.Context, in *dhcpConfigInput) (*dhcpConfigOutput, error) {
-	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.write", func(ctx context.Context, store *dhcp.LeaseStore, state dhcp.ManagementState) error {
+	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.write", func(ctx context.Context, state dhcp.ManagementState) error {
 		if dhcpManagement(state.Config.Management) != "api" {
 			return dhcp.ErrManagedByFile
 		}
@@ -393,10 +419,18 @@ func (s *Server) dhcpPutConfig(ctx context.Context, in *dhcpConfigInput) (*dhcpC
 		candidate.RangeStart, candidate.RangeEnd, candidate.Router = opts.RangeStart, opts.RangeEnd, opts.Router
 		candidate.DNSServers, candidate.DomainName, candidate.LeaseDuration = opts.DNSServers, opts.DomainName, opts.LeaseDuration
 		candidate.RegisterDNS, candidate.DNSTTL = opts.RegisterDNS, opts.DNSTTL
+		candidate.NTPServers = opts.NTPServers
+		candidate.DomainSearch = opts.DomainSearch
+		candidate.ClasslessRoutes = opts.ClasslessRoutes
+		candidate.BootServer = opts.BootServer
+		candidate.BootServerName = opts.BootServerName
+		candidate.BootFile = opts.BootFile
+		candidate.BootProfiles = opts.BootProfiles
+
 		if err := candidate.Validate(); err != nil {
 			return errInvalid("DHCP options: %v", err)
 		}
-		return store.UpdateOptions(ctx, state.Revision, opts)
+		return s.opts.DHCP.UpdateOptions(ctx, in.Scope, state.Revision, opts)
 	})
 }
 
@@ -431,6 +465,19 @@ func (o DHCPPoolOptions) runtime() (dhcp.PoolOptions, error) {
 		return out, errInvalid("dnsTTL: use whole seconds from 1s through 1h")
 	}
 	out.DomainName, out.RegisterDNS = o.DomainName, o.RegisterDNS
+	extra := config.DHCPScope{NTPServers: o.NTPServers, DomainSearch: o.DomainSearch, ClasslessRoutes: o.ClasslessRoutes, BootServer: o.BootServer, BootServerName: o.BootServerName, BootFile: o.BootFile, BootProfiles: o.BootProfiles}
+	var wire dhcp.Config
+	if err := extra.ApplyExtendedOptions(&wire); err != nil {
+		return out, errInvalid("DHCP options: %v", err)
+	}
+	out.NTPServers = wire.NTPServers
+	out.DomainSearch = wire.DomainSearch
+	out.ClasslessRoutes = wire.ClasslessRoutes
+	out.BootServer = wire.BootServer
+	out.BootServerName = wire.BootServerName
+	out.BootFile = wire.BootFile
+	out.BootProfiles = wire.BootProfiles
+
 	return out, nil
 }
 
@@ -452,7 +499,7 @@ func (s *Server) dhcpListReservations(_ context.Context, in *dhcpScopeInput) (*d
 }
 
 func (s *Server) dhcpPutReservation(ctx context.Context, in *dhcpReservationInput) (*dhcpConfigOutput, error) {
-	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.write", func(ctx context.Context, store *dhcp.LeaseStore, state dhcp.ManagementState) error {
+	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.write", func(ctx context.Context, state dhcp.ManagementState) error {
 		if dhcpManagement(state.Config.Management) != "api" {
 			return dhcp.ErrManagedByFile
 		}
@@ -474,12 +521,12 @@ func (s *Server) dhcpPutReservation(ctx context.Context, in *dhcpReservationInpu
 		if err := candidate.Validate(); err != nil {
 			return errInvalid("reservation: %v", err)
 		}
-		return store.PutReservation(ctx, state.Revision, reservation)
+		return s.opts.DHCP.PutReservation(ctx, in.Scope, state.Revision, reservation)
 	})
 }
 
 func (s *Server) dhcpDeleteReservation(ctx context.Context, in *dhcpReservationDeleteInput) (*dhcpConfigOutput, error) {
-	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.delete", func(ctx context.Context, store *dhcp.LeaseStore, state dhcp.ManagementState) error {
+	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.delete", func(ctx context.Context, state dhcp.ManagementState) error {
 		if dhcpManagement(state.Config.Management) != "api" {
 			return dhcp.ErrManagedByFile
 		}
@@ -490,7 +537,7 @@ func (s *Server) dhcpDeleteReservation(ctx context.Context, in *dhcpReservationD
 		if err != nil {
 			return err
 		}
-		return store.DeleteReservation(ctx, state.Revision, mac)
+		return s.opts.DHCP.DeleteReservation(ctx, in.Scope, state.Revision, mac)
 	})
 }
 
@@ -565,12 +612,7 @@ func (s *Server) dhcpImport(ctx context.Context, in *dhcpImportInput) (*dhcpImpo
 	if len(in.Body.Data) > dhcp.MaxImportBytes {
 		return nil, dhcpError(dhcp.ErrImportTooLarge)
 	}
-	var result dhcp.ImportResult
-	err := s.opts.DHCP.MutateScope(ctx, in.Scope, func(ctx context.Context, store *dhcp.LeaseStore) error {
-		var err error
-		result, err = store.Import(ctx, in.Body.Format, []byte(in.Body.Data))
-		return err
-	})
+	result, err := s.opts.DHCP.Import(ctx, in.Scope, in.Body.Format, []byte(in.Body.Data))
 	s.recordAction(ctx, "dhcpleases.import", audit.Resource{Kind: "dhcpleases", Name: in.Scope}, err, nil, result)
 	if err != nil {
 		return nil, dhcpError(err)

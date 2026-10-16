@@ -28,20 +28,32 @@ type ManagementState struct {
 // PoolOptions are the mutable options of an explicitly API-managed scope.
 // Host topology and management ownership never change through these methods.
 type PoolOptions struct {
-	RangeStart    netip.Addr    `json:"rangeStart"`
-	RangeEnd      netip.Addr    `json:"rangeEnd"`
-	Router        netip.Addr    `json:"router"`
-	DNSServers    []netip.Addr  `json:"dnsServers"`
-	DomainName    string        `json:"domainName"`
-	LeaseDuration time.Duration `json:"leaseDuration"`
-	RegisterDNS   bool          `json:"registerDNS"`
-	DNSTTL        time.Duration `json:"dnsTTL"`
+	RangeStart      netip.Addr       `json:"rangeStart"`
+	RangeEnd        netip.Addr       `json:"rangeEnd"`
+	Router          netip.Addr       `json:"router"`
+	DNSServers      []netip.Addr     `json:"dnsServers"`
+	DomainName      string           `json:"domainName"`
+	LeaseDuration   time.Duration    `json:"leaseDuration"`
+	RegisterDNS     bool             `json:"registerDNS"`
+	DNSTTL          time.Duration    `json:"dnsTTL"`
+	NTPServers      []netip.Addr     `json:"ntpServers,omitempty"`
+	DomainSearch    []string         `json:"domainSearch,omitempty"`
+	ClasslessRoutes []ClasslessRoute `json:"classlessRoutes,omitempty"`
+	BootServer      netip.Addr       `json:"bootServer,omitempty"`
+	BootServerName  string           `json:"bootServerName,omitempty"`
+	BootFile        string           `json:"bootFile,omitempty"`
+	BootProfiles    []BootProfile    `json:"bootProfiles,omitempty"`
 }
 
 func cloneLeaseConfig(cfg Config) Config {
 	cfg.DNSServers = slices.Clone(cfg.DNSServers)
 	cfg.Reservations = slices.Clone(cfg.Reservations)
 	cfg.TrustedRelays = slices.Clone(cfg.TrustedRelays)
+	cfg.NTPServers = slices.Clone(cfg.NTPServers)
+	cfg.DomainSearch = slices.Clone(cfg.DomainSearch)
+	cfg.ClasslessRoutes = slices.Clone(cfg.ClasslessRoutes)
+	cfg.BootProfiles = slices.Clone(cfg.BootProfiles)
+	cfg.FailoverServers = slices.Clone(cfg.FailoverServers)
 	return cfg
 }
 
@@ -65,7 +77,8 @@ func normalizeLeaseConfig(cfg Config) Config {
 func optionsFor(cfg Config) PoolOptions {
 	return PoolOptions{RangeStart: cfg.RangeStart, RangeEnd: cfg.RangeEnd, Router: cfg.Router,
 		DNSServers: slices.Clone(cfg.DNSServers), DomainName: cfg.DomainName, LeaseDuration: cfg.LeaseDuration,
-		RegisterDNS: cfg.RegisterDNS, DNSTTL: cfg.DNSTTL}
+		RegisterDNS: cfg.RegisterDNS, DNSTTL: cfg.DNSTTL,
+		NTPServers: slices.Clone(cfg.NTPServers), DomainSearch: slices.Clone(cfg.DomainSearch), ClasslessRoutes: slices.Clone(cfg.ClasslessRoutes), BootServer: cfg.BootServer, BootServerName: cfg.BootServerName, BootFile: cfg.BootFile, BootProfiles: slices.Clone(cfg.BootProfiles)}
 }
 
 func applyPoolOptions(cfg Config, p PoolOptions) Config {
@@ -74,6 +87,11 @@ func applyPoolOptions(cfg Config, p PoolOptions) Config {
 	cfg.DNSServers = slices.Clone(p.DNSServers)
 	cfg.DomainName, cfg.LeaseDuration = p.DomainName, p.LeaseDuration
 	cfg.RegisterDNS, cfg.DNSTTL = p.RegisterDNS, p.DNSTTL
+	cfg.NTPServers = slices.Clone(p.NTPServers)
+	cfg.DomainSearch = slices.Clone(p.DomainSearch)
+	cfg.ClasslessRoutes = slices.Clone(p.ClasslessRoutes)
+	cfg.BootServer, cfg.BootServerName, cfg.BootFile = p.BootServer, p.BootServerName, p.BootFile
+	cfg.BootProfiles = slices.Clone(p.BootProfiles)
 	return normalizeLeaseConfig(cfg)
 }
 
@@ -86,11 +104,18 @@ func (s *LeaseStore) setLeaseConfig(cfg Config) {
 	}
 }
 
-// Configuration reads memory only, returning copies of all mutable slices.
+func (s *LeaseStore) publishConfiguration() {
+	s.management.Store(&ManagementState{Config: cloneLeaseConfig(s.cfg), Revision: s.revision})
+}
+
+// Configuration reads the committed configuration and revision without locking
+// or database I/O, returning detached copies of all mutable slices.
 func (s *LeaseStore) Configuration() ManagementState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return ManagementState{Config: cloneLeaseConfig(s.cfg), Revision: s.revision}
+	state := s.management.Load()
+	if state == nil {
+		return ManagementState{}
+	}
+	return ManagementState{Config: cloneLeaseConfig(state.Config), Revision: state.Revision}
 }
 
 func writeLeaseSettings(ctx context.Context, tx *sql.Tx, cfg Config, revision uint64) error {
@@ -102,7 +127,7 @@ func writeLeaseSettings(ctx context.Context, tx *sql.Tx, cfg Config, revision ui
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO lease_settings(singleton, revision, options, reservations)
+	_, err = leaseExec(ctx, tx, `INSERT INTO lease_settings(singleton, revision, options, reservations)
 VALUES (1, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET
 revision=excluded.revision, options=excluded.options, reservations=excluded.reservations`, revision, string(opts), string(reservations))
 	return err
@@ -112,7 +137,7 @@ revision=excluded.revision, options=excluded.options, reservations=excluded.rese
 // later file pool values are defaults, while topology still comes from file.
 func (s *LeaseStore) initializeManagement(tx *sql.Tx) (Config, uint64, error) {
 	cfg := s.cfg
-	if cfg.Management != "api" {
+	if cfg.Management != "api" && !s.replica {
 		if s.setup != nil {
 			return Config{}, 0, fmt.Errorf("dhcp: UI setup requires management=api")
 		}
@@ -124,6 +149,9 @@ func (s *LeaseStore) initializeManagement(tx *sql.Tx) (Config, uint64, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		if s.setup != nil {
 			return s.applySetup(tx, 0)
+		}
+		if s.replica {
+			return cfg, 1, nil
 		}
 		return cfg, 1, writeLeaseSettings(context.Background(), tx, cfg, 1)
 	}
@@ -170,6 +198,7 @@ func (s *LeaseStore) manage(ctx context.Context, revision uint64, edit func(Conf
 	var candidate Config
 	var nextRevision uint64
 	return s.transaction(ctx, func(tx *sql.Tx, leases []storedLease, _ time.Time) error {
+		ctx = s.transactionContext(ctx)
 		if s.cfg.Management != "api" {
 			return ErrManagedByFile
 		}
@@ -188,8 +217,29 @@ func (s *LeaseStore) manage(ctx context.Context, revision uint64, edit func(Conf
 			return err
 		}
 		candidate = normalizeLeaseConfig(candidate)
+		state := leaseTransactionFrom(ctx)
+		state.cfg = candidate
+		state.reservations = make(map[string]Reservation, len(candidate.Reservations))
+		for _, r := range candidate.Reservations {
+			state.reservations[r.MAC] = r
+		}
 		nextRevision = s.revision + 1
-		return writeLeaseSettings(ctx, tx, candidate, nextRevision)
+		if err := writeLeaseSettings(ctx, tx, candidate, nextRevision); err != nil {
+			return replicaStorage(ctx, err)
+		}
+		for _, l := range leases {
+			next, err := s.prepareClaim(ctx, l, candidate)
+			if err != nil {
+				return err
+			}
+			if next != l {
+				if err := writeClaim(ctx, tx, next); err != nil {
+					return replicaStorage(ctx, err)
+				}
+				leaseTransactionFrom(ctx).changed[l.Address] = next
+			}
+		}
+		return nil
 	}, func() {
 		s.setLeaseConfig(candidate)
 		s.revision = nextRevision

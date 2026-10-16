@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -46,6 +47,7 @@ type LeaseRecord struct {
 	Hostname  string        `json:"hostname"`
 	ExpiresAt time.Time     `json:"expiresAt"`
 	State     string        `json:"state"`
+	DNSClaim  *DNSClaim     `json:"dnsClaim,omitempty"`
 }
 
 // LeaseDocument is the versioned native JSON export. It transfers runtime
@@ -68,7 +70,7 @@ type ImportResult struct {
 // Export takes a consistent live cut, preserving identity, holds and quarantine.
 func (s *LeaseStore) Export(ctx context.Context) (LeaseDocument, error) {
 	var document LeaseDocument
-	err := s.transact(ctx, func(_ *sql.Tx, leases []storedLease, now time.Time) error {
+	err := s.readLeases(ctx, func(_ *sql.Tx, leases []storedLease, now time.Time) error {
 		document = LeaseDocument{Version: 1, Scope: s.cfg.Name, Subnet: s.cfg.Subnet,
 			ExportedAt: now, Leases: make([]LeaseRecord, 0, len(leases))}
 		for _, l := range leases {
@@ -78,6 +80,9 @@ func (s *LeaseStore) Export(ctx context.Context) (LeaseDocument, error) {
 			}
 			document.Leases = append(document.Leases, LeaseRecord{Address: l.Address, Identity: identity,
 				MAC: l.MAC, Hostname: l.Hostname, ExpiresAt: l.ExpiresAt, State: l.State})
+			if l.claimTicket > 0 {
+				document.Leases[len(document.Leases)-1].DNSClaim = &DNSClaim{Name: l.claimName, Epoch: l.claimEpoch, Ticket: l.claimTicket, Ordinal: l.claimOrdinal}
+			}
 		}
 		return nil
 	})
@@ -217,7 +222,40 @@ func (s *LeaseStore) Import(ctx context.Context, format string, data []byte) (Im
 		return ImportResult{}, err
 	}
 	var result ImportResult
+	if format == "native" {
+		slices.SortStableFunc(records, func(a, b LeaseRecord) int {
+			if a.DNSClaim == nil && b.DNSClaim == nil {
+				return 0
+			}
+			if a.DNSClaim == nil {
+				return 1
+			}
+			if b.DNSClaim == nil {
+				return -1
+			}
+			if a.DNSClaim.Epoch < b.DNSClaim.Epoch {
+				return -1
+			}
+			if a.DNSClaim.Epoch > b.DNSClaim.Epoch {
+				return 1
+			}
+			if a.DNSClaim.Ticket < b.DNSClaim.Ticket {
+				return -1
+			}
+			if a.DNSClaim.Ticket > b.DNSClaim.Ticket {
+				return 1
+			}
+			if a.DNSClaim.Ordinal < b.DNSClaim.Ordinal {
+				return -1
+			}
+			if a.DNSClaim.Ordinal > b.DNSClaim.Ordinal {
+				return 1
+			}
+			return 0
+		})
+	}
 	err = s.transact(ctx, func(tx *sql.Tx, current []storedLease, now time.Time) error {
+		ctx = s.transactionContext(ctx)
 		if format == "native" && (document.Scope != s.cfg.Name || document.Subnet != s.cfg.Subnet) {
 			return fmt.Errorf("%w: native scope/subnet does not match target", ErrInvalidImport)
 		}
@@ -263,6 +301,7 @@ func (s *LeaseStore) Import(ctx context.Context, format string, data []byte) (Im
 				// Merging a backup does not rename a live client or downgrade
 				// its binding. Existing expiration is always a lower bound.
 				l.Hostname = old.Hostname
+				l.claimName, l.claimEpoch, l.claimTicket, l.claimOrdinal = old.claimName, old.claimEpoch, old.claimTicket, old.claimOrdinal
 				if old.State == "bound" {
 					l.State = "bound"
 				}
@@ -294,7 +333,7 @@ func (s *LeaseStore) Import(ctx context.Context, format string, data []byte) (Im
 // Holds, quarantine and non-wire identities fail rather than silently lose data.
 func (s *LeaseStore) ExportDNSMasq(ctx context.Context) ([]byte, error) {
 	var output bytes.Buffer
-	err := s.transact(ctx, func(_ *sql.Tx, leases []storedLease, _ time.Time) error {
+	err := s.readLeases(ctx, func(_ *sql.Tx, leases []storedLease, _ time.Time) error {
 		for _, l := range leases {
 			if l.State != "bound" {
 				return ErrUnsupportedExport

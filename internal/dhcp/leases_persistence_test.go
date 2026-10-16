@@ -48,7 +48,7 @@ func TestLeasePersistenceFailures(t *testing.T) {
 	if err := s.Decline(ctx, c, bound.Address); err == nil {
 		t.Fatal("failed decline reported success")
 	}
-	if ls := leaseTestList(t, s); len(ls) != 1 || ls[0] != bound {
+	if ls := leaseTestList(t, s); len(ls) != 1 || ls[0] != leasePersistent(bound) {
 		t.Fatalf("failed decline changed binding: %+v", ls)
 	}
 	leaseTestSQL(t, s, "DROP TRIGGER fail_update")
@@ -56,7 +56,7 @@ func TestLeasePersistenceFailures(t *testing.T) {
 	if err := s.Release(ctx, c, bound.Address); err == nil {
 		t.Fatal("failed release reported success")
 	}
-	if ls := leaseTestList(t, s); len(ls) != 1 || ls[0] != bound {
+	if ls := leaseTestList(t, s); len(ls) != 1 || ls[0] != leasePersistent(bound) {
 		t.Fatalf("failed release changed binding: %+v", ls)
 	}
 	leaseTestSQL(t, s, "DROP TRIGGER fail_delete")

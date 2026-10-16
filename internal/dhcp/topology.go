@@ -61,15 +61,30 @@ func ValidateTopology(configs []Config) error {
 				gatewaySeen[relay.GatewayIP] = true
 				gateways = append(gateways, gateway{relay.GatewayIP, cfg.Name})
 			}
+			if relay.ServerIdentifier.IsValid() && !gatewaySeen[relay.ServerIdentifier] {
+				gatewaySeen[relay.ServerIdentifier] = true
+				gateways = append(gateways, gateway{relay.ServerIdentifier, cfg.Name})
+			}
 		}
 	}
 	for _, cfg := range configs {
 		// Routers are mutable; only topology exclusions survive live edits.
 		excluded := map[netip.Addr]bool{cfg.ServerIP: true}
+		for _, server := range cfg.FailoverServers {
+			excluded[server.Address] = true
+		}
 		for _, relay := range cfg.TrustedRelays {
 			excluded[relay.GatewayIP] = true
+			if relay.ServerIdentifier.IsValid() {
+				excluded[relay.ServerIdentifier] = true
+			}
 		}
 		for _, other := range configs {
+			for _, server := range other.FailoverServers {
+				if cfg.usable(server.Address) && !excluded[server.Address] {
+					return fmt.Errorf("dhcp: scope %q could allocate failover server %s from scope %q", cfg.Name, server.Address, other.Name)
+				}
+			}
 			// Check the entire usable subnet, not just today's pool: mutable pool
 			// and reservation edits must never make an infrastructure IP available.
 			if cfg.ServerIP != other.ServerIP && cfg.usable(other.ServerIP) {

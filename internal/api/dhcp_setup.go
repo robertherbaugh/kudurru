@@ -21,47 +21,60 @@ import (
 
 // DHCPSetupScope is a complete desired scope, activated only after a restart.
 type DHCPSetupScope struct {
-	Name          string             `json:"name" minLength:"1" maxLength:"63"`
-	Interface     string             `json:"interface"`
-	ServerIP      string             `json:"serverIP" format:"ipv4"`
-	Subnet        string             `json:"subnet"`
-	RelayOnly     bool               `json:"relayOnly"`
-	TrustedRelays []DHCPTrustedRelay `json:"trustedRelays" nullable:"false"`
-	RangeStart    string             `json:"rangeStart" format:"ipv4"`
-	RangeEnd      string             `json:"rangeEnd" format:"ipv4"`
-	Router        string             `json:"router" format:"ipv4"`
-	DNSServers    []string           `json:"dnsServers" nullable:"false" minItems:"1" maxItems:"63"`
-	DomainName    string             `json:"domainName"`
-	LeaseDuration string             `json:"leaseDuration"`
-	RegisterDNS   bool               `json:"registerDNS"`
-	DNSTTL        string             `json:"dnsTTL"`
-	Reservations  []DHCPReservation  `json:"reservations" nullable:"false"`
+	NTPServers        []string                    `json:"ntpServers,omitempty"`
+	DomainSearch      []string                    `json:"domainSearch,omitempty"`
+	ClasslessRoutes   []config.DHCPClasslessRoute `json:"classlessRoutes,omitempty"`
+	BootServer        string                      `json:"bootServer,omitempty"`
+	BootServerName    string                      `json:"bootServerName,omitempty"`
+	BootFile          string                      `json:"bootFile,omitempty"`
+	BootProfiles      []config.DHCPBootProfile    `json:"bootProfiles,omitempty"`
+	ConflictDetection string                      `json:"conflictDetection,omitempty"`
+	ProbeTimeout      string                      `json:"probeTimeout,omitempty"`
+	FailoverServers   []config.DHCPScopeServer    `json:"failoverServers,omitempty"`
+	Name              string                      `json:"name" minLength:"1" maxLength:"63"`
+	Interface         string                      `json:"interface"`
+	ServerIP          string                      `json:"serverIP" format:"ipv4"`
+	Subnet            string                      `json:"subnet"`
+	RelayOnly         bool                        `json:"relayOnly"`
+	TrustedRelays     []DHCPTrustedRelay          `json:"trustedRelays" nullable:"false"`
+	RangeStart        string                      `json:"rangeStart" format:"ipv4"`
+	RangeEnd          string                      `json:"rangeEnd" format:"ipv4"`
+	Router            string                      `json:"router" format:"ipv4"`
+	DNSServers        []string                    `json:"dnsServers" nullable:"false" minItems:"1" maxItems:"63"`
+	DomainName        string                      `json:"domainName"`
+	LeaseDuration     string                      `json:"leaseDuration"`
+	RegisterDNS       bool                        `json:"registerDNS"`
+	DNSTTL            string                      `json:"dnsTTL"`
+	Reservations      []DHCPReservation           `json:"reservations" nullable:"false"`
 }
 
 // DHCPSetup reports saved desired setup separately from the running service.
 type DHCPSetup struct {
-	Node              string            `json:"node"`
-	Enabled           bool              `json:"enabled"`
-	ManagedBy         string            `json:"managedBy" enum:"file,api"`
-	EnvironmentLocked bool              `json:"environmentLocked"`
-	RestartRequired   bool              `json:"restartRequired"`
-	Available         bool              `json:"available"`
-	UnavailableReason string            `json:"unavailableReason"`
-	RuntimeError      string            `json:"runtimeError"`
-	Revision          string            `json:"revision"`
-	ETag              string            `json:"etag"`
-	Scopes            []DHCPSetupScope  `json:"scopes" nullable:"false"`
-	ScopeRevisions    map[string]string `json:"scopeRevisions" nullable:"false"`
-	PendingScopes     []string          `json:"pendingScopes" nullable:"false"`
+	Failover            config.DHCPFailover `json:"failover"`
+	FailoverInitialized bool                `json:"failoverInitialized"`
+	Node                string              `json:"node"`
+	Enabled             bool                `json:"enabled"`
+	ManagedBy           string              `json:"managedBy" enum:"file,api"`
+	EnvironmentLocked   bool                `json:"environmentLocked"`
+	RestartRequired     bool                `json:"restartRequired"`
+	Available           bool                `json:"available"`
+	UnavailableReason   string              `json:"unavailableReason"`
+	RuntimeError        string              `json:"runtimeError"`
+	Revision            string              `json:"revision"`
+	ETag                string              `json:"etag"`
+	Scopes              []DHCPSetupScope    `json:"scopes" nullable:"false"`
+	ScopeRevisions      map[string]string   `json:"scopeRevisions" nullable:"false"`
+	PendingScopes       []string            `json:"pendingScopes" nullable:"false"`
 	Took
 }
 
 // DHCPSetupRequest replaces the complete desired registry without live activation.
 type DHCPSetupRequest struct {
-	Enabled        bool              `json:"enabled"`
-	Scopes         []DHCPSetupScope  `json:"scopes" nullable:"false" maxItems:"256"`
-	Adopt          bool              `json:"adopt,omitempty"`
-	ScopeRevisions map[string]string `json:"scopeRevisions" nullable:"false"`
+	Failover       *config.DHCPFailover `json:"failover,omitempty"`
+	Enabled        bool                 `json:"enabled"`
+	Scopes         []DHCPSetupScope     `json:"scopes" nullable:"false" maxItems:"256"`
+	Adopt          bool                 `json:"adopt,omitempty"`
+	ScopeRevisions map[string]string    `json:"scopeRevisions" nullable:"false"`
 }
 
 // DHCPInterface describes a host interface without sending network packets.
@@ -107,7 +120,7 @@ func dhcpSetupETag(node string, revision uint64) string {
 
 func (s *Server) dhcpSetupResponse(state dhcpsetup.State) *dhcpSetupOutput {
 	tag := dhcpSetupETag(s.opts.NodeName, state.Revision)
-	out := &DHCPSetup{Node: s.opts.NodeName, Enabled: state.Enabled, ManagedBy: state.ManagedBy,
+	out := &DHCPSetup{FailoverInitialized: state.FailoverInitialized, Failover: state.Failover.Clone(), Node: s.opts.NodeName, Enabled: state.Enabled, ManagedBy: state.ManagedBy,
 		EnvironmentLocked: state.EnvironmentLocked, RestartRequired: state.RestartRequired || s.opts.DHCPSetupError != "",
 		Available: s.opts.DHCPSetup != nil, RuntimeError: s.opts.DHCPSetupError,
 		Revision: strconv.FormatUint(state.Revision, 10), ETag: tag, Scopes: []DHCPSetupScope{},
@@ -125,14 +138,14 @@ func (s *Server) dhcpSetupResponse(state dhcpsetup.State) *dhcpSetupOutput {
 }
 
 func dhcpSetupScope(scope config.DHCPScope) DHCPSetupScope {
-	out := DHCPSetupScope{Name: scope.Name, Interface: scope.Interface, ServerIP: scope.ServerIP,
+	out := DHCPSetupScope{NTPServers: scope.NTPServers, DomainSearch: scope.DomainSearch, ClasslessRoutes: scope.ClasslessRoutes, BootServer: scope.BootServer, BootServerName: scope.BootServerName, BootFile: scope.BootFile, BootProfiles: scope.BootProfiles, ConflictDetection: scope.ConflictDetection, ProbeTimeout: dhcpOptionalDuration(scope.ProbeTimeout.Std()), FailoverServers: append([]config.DHCPScopeServer(nil), scope.FailoverServers...), Name: scope.Name, Interface: scope.Interface, ServerIP: scope.ServerIP,
 		Subnet: scope.Subnet, RelayOnly: scope.RelayOnly, TrustedRelays: []DHCPTrustedRelay{},
 		RangeStart: scope.RangeStart, RangeEnd: scope.RangeEnd, Router: scope.Router,
 		DNSServers: append([]string{}, scope.DNSServers...), DomainName: scope.DomainName,
 		LeaseDuration: scope.LeaseDuration.Std().String(), RegisterDNS: scope.RegisterDNS,
 		DNSTTL: scope.DNSTTL.Std().String(), Reservations: []DHCPReservation{}}
 	for _, relay := range scope.TrustedRelays {
-		out.TrustedRelays = append(out.TrustedRelays, DHCPTrustedRelay{SourceIP: relay.SourceIP, GatewayIP: relay.GatewayIP})
+		out.TrustedRelays = append(out.TrustedRelays, DHCPTrustedRelay{SourceIP: relay.SourceIP, GatewayIP: relay.GatewayIP, SourcePort: relay.SourcePort, LinkSelection: relay.LinkSelection, ServerIdentifier: relay.ServerIdentifier})
 	}
 	for _, reservation := range scope.Reservations {
 		out.Reservations = append(out.Reservations, DHCPReservation{MAC: reservation.MAC, IP: reservation.IP, Hostname: reservation.Hostname})
@@ -153,13 +166,20 @@ func (scope DHCPSetupScope) config() (config.DHCPScope, error) {
 	if lease <= 0 || ttl < time.Second || ttl > time.Hour || ttl%time.Second != 0 {
 		return config.DHCPScope{}, errInvalid("scope %q: leaseDuration must be positive; dnsTTL must use whole seconds from 1s through 1h", scope.Name)
 	}
-	out := config.DHCPScope{Name: scope.Name, Management: "api", Interface: scope.Interface,
+	probeTimeout := time.Duration(0)
+	if scope.ProbeTimeout != "" {
+		probeTimeout, err = time.ParseDuration(scope.ProbeTimeout)
+		if err != nil {
+			return config.DHCPScope{}, errInvalid("probeTimeout: %v", err)
+		}
+	}
+	out := config.DHCPScope{NTPServers: scope.NTPServers, DomainSearch: scope.DomainSearch, ClasslessRoutes: scope.ClasslessRoutes, BootServer: scope.BootServer, BootServerName: scope.BootServerName, BootFile: scope.BootFile, BootProfiles: scope.BootProfiles, ConflictDetection: scope.ConflictDetection, ProbeTimeout: config.Duration(probeTimeout), FailoverServers: append([]config.DHCPScopeServer(nil), scope.FailoverServers...), Name: scope.Name, Management: "api", Interface: scope.Interface,
 		ServerIP: scope.ServerIP, Subnet: scope.Subnet, RelayOnly: scope.RelayOnly,
 		RangeStart: scope.RangeStart, RangeEnd: scope.RangeEnd, Router: scope.Router,
 		DNSServers: append([]string{}, scope.DNSServers...), DomainName: scope.DomainName,
 		LeaseDuration: config.Duration(lease), RegisterDNS: scope.RegisterDNS, DNSTTL: config.Duration(ttl)}
 	for _, relay := range scope.TrustedRelays {
-		out.TrustedRelays = append(out.TrustedRelays, config.DHCPTrustedRelay{SourceIP: relay.SourceIP, GatewayIP: relay.GatewayIP})
+		out.TrustedRelays = append(out.TrustedRelays, config.DHCPTrustedRelay{SourceIP: relay.SourceIP, GatewayIP: relay.GatewayIP, SourcePort: relay.SourcePort, LinkSelection: relay.LinkSelection, ServerIdentifier: relay.ServerIdentifier})
 	}
 	for _, reservation := range scope.Reservations {
 		out.Reservations = append(out.Reservations, config.DHCPReservation{MAC: reservation.MAC, IP: reservation.IP, Hostname: reservation.Hostname})
@@ -210,7 +230,11 @@ func (s *Server) dhcpPutSetup(ctx context.Context, in *dhcpSetupInput) (*dhcpSet
 			}
 			expected[name] = revision
 		}
-		saved, err := manager.Save(ctx, before.Revision, in.Body.Enabled, scopes, in.Body.Adopt, expected)
+		failover := before.Failover
+		if in.Body.Failover != nil {
+			failover = in.Body.Failover.Clone()
+		}
+		saved, err := manager.Save(ctx, before.Revision, in.Body.Enabled, scopes, in.Body.Adopt, expected, failover)
 		if err == nil {
 			after = saved
 		}
@@ -280,4 +304,11 @@ func discoverDHCPInterfaces(list func() ([]net.Interface, error), addresses func
 	}
 	slices.SortFunc(items, func(a, b DHCPInterface) int { return strings.Compare(a.Name, b.Name) })
 	return items, nil
+}
+
+func dhcpOptionalDuration(v time.Duration) string {
+	if v == 0 {
+		return ""
+	}
+	return v.String()
 }

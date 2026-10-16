@@ -21,18 +21,34 @@ func (s *Server) handlePacket(ctx context.Context, wire []byte, source *net.UDPA
 	s.processMu.Lock()
 	defer s.processMu.Unlock()
 	request := decodeClientPacket(wire, source)
-	if request == nil || !s.acceptsPacket(request, source) {
+	if request == nil {
+		return nil, nil, nil
+	}
+	if configured, ok := s.leases.(interface{ Configuration() ManagementState }); ok {
+		s.cfg = normalizedConfig(configured.Configuration().Config)
+	}
+	if !s.acceptsPacket(request, source) {
 		return nil, nil, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
+	if serving, ok := s.leases.(interface{ CheckServing(context.Context) error }); ok {
+		if err := serving.CheckServing(ctx); err != nil {
+			return nil, nil, err
+		}
+	}
 	options := request.Options
 	server := optionAddress(options.Get(dhcpv4.OptionServerIdentifier))
-	if server.IsValid() && server != s.cfg.ServerIP {
+	if server.IsValid() && server != s.serverIdentifier(request) {
 		return nil, nil, nil
 	}
 	client := Client{MAC: request.ClientHWAddr.String(), Hostname: normalizeClientHostname(request.HostName())}
+	if value := options.Get(dhcpv4.OptionFQDN); value != nil {
+		if name, ok := clientFQDN(value); ok && name != "" {
+			client.Hostname = name
+		}
+	}
 	if id := options.Get(dhcpv4.OptionClientIdentifier); id != nil {
 		// Preserve every byte of the opaque option in a stable printable
 		// identity. Empty ID lets the store use its distinct MAC namespace.
@@ -56,7 +72,7 @@ func (s *Server) handlePacket(ctx context.Context, wire []byte, source *net.UDPA
 		if !current.IsUnspecified() || server.IsValid() {
 			return nil, nil, nil
 		}
-		lease, err = s.leases.Offer(ctx, client, requested)
+		lease, err = s.offer(ctx, client, requested)
 		if errors.Is(err, ErrNoAddress) || errors.Is(err, ErrUnavailable) {
 			return nil, nil, nil
 		}
@@ -116,13 +132,13 @@ func (s *Server) handlePacket(ctx context.Context, wire []byte, source *net.UDPA
 		return nil, nil, errors.New("lease store returned an invalid address")
 	}
 
-	reply := s.reply(request, responseType, lease.Address)
+	reply := s.reply(request, responseType, lease.Address, lease.GrantedDuration)
 	destination := &net.UDPAddr{IP: net.IPv4bcast, Port: clientPort}
 	if responseType == dhcpv4.MessageTypeNak {
 		reply.SetBroadcast()
 	}
 	if !request.GatewayIPAddr.IsUnspecified() {
-		destination = &net.UDPAddr{IP: append(net.IP(nil), request.GatewayIPAddr...), Port: serverPort}
+		destination = &net.UDPAddr{IP: append(net.IP(nil), request.GatewayIPAddr...), Port: source.Port}
 	} else if responseType != dhcpv4.MessageTypeNak && !current.IsUnspecified() {
 		// RFC 2131 sections 4.1 and 4.3.5: configured clients receive
 		// ACKs at ciaddr, including INFORM responses, without ARP tricks.
@@ -144,7 +160,7 @@ func mutationError(err error) error {
 	return err
 }
 
-func (s *Server) reply(request *dhcpv4.DHCPv4, message dhcpv4.MessageType, address netip.Addr) *dhcpv4.DHCPv4 {
+func (s *Server) reply(request *dhcpv4.DHCPv4, message dhcpv4.MessageType, address netip.Addr, granted ...time.Duration) *dhcpv4.DHCPv4 {
 	// Construct a response directly with the codec: a reply reuses the
 	// request's transaction ID and never needs random-number generation.
 	reply := &dhcpv4.DHCPv4{
@@ -154,7 +170,7 @@ func (s *Server) reply(request *dhcpv4.DHCPv4, message dhcpv4.MessageType, addre
 		ClientHWAddr:  append(net.HardwareAddr(nil), request.ClientHWAddr...),
 		GatewayIPAddr: append(net.IP(nil), request.GatewayIPAddr...),
 		Flags:         request.Flags & 0x8000,
-		Options:       dhcpv4.OptionsFromList(dhcpv4.OptMessageType(message), dhcpv4.OptServerIdentifier(net.IP(s.cfg.ServerIP.AsSlice()))),
+		Options:       dhcpv4.OptionsFromList(dhcpv4.OptMessageType(message), dhcpv4.OptServerIdentifier(net.IP(s.serverIdentifier(request).AsSlice()))),
 	}
 	if id := request.Options.Get(dhcpv4.OptionClientIdentifier); id != nil {
 		reply.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClientIdentifier, id))
@@ -170,7 +186,11 @@ func (s *Server) reply(request *dhcpv4.DHCPv4, message dhcpv4.MessageType, addre
 		reply.YourIPAddr = net.IP(address.AsSlice())
 		// Offers hold an address briefly in storage but advertise the
 		// lease duration the client will receive on ACK, not the hold.
-		seconds := s.cfg.LeaseDuration / time.Second
+		duration := s.cfg.LeaseDuration
+		if len(granted) != 0 && granted[0] > 0 {
+			duration = granted[0]
+		}
+		seconds := duration / time.Second
 		reply.UpdateOption(dhcpv4.OptIPAddressLeaseTime(seconds * time.Second))
 		reply.UpdateOption(dhcpv4.OptRenewTimeValue((seconds / 2) * time.Second))
 		reply.UpdateOption(dhcpv4.OptRebindingTimeValue((seconds * 7 / 8) * time.Second))
@@ -206,9 +226,18 @@ func (s *Server) reply(request *dhcpv4.DHCPv4, message dhcpv4.MessageType, addre
 		option := dhcpv4.OptDomainName(s.cfg.DomainName)
 		networkOptions[option.Code.Code()] = option
 	}
+	s.advancedOptions(request, reply, networkOptions)
+	// Option 81 is negotiated when supplied, independently of the PRL.
+	if value := request.Options.Get(dhcpv4.OptionFQDN); value != nil {
+		option := dhcpv4.OptGeneric(dhcpv4.OptionFQDN, fqdnReply(value))
+		reply.UpdateOption(option)
+		if len(reply.ToBytes()) > limit {
+			reply.DeleteOption(option.Code)
+		}
+	}
 	order := request.Options.Get(dhcpv4.OptionParameterRequestList)
 	if order == nil {
-		order = []byte{3, 6, 15}
+		order = []byte{3, 6, 15, 42, 119, 121, 66, 67}
 	}
 	for _, code := range order {
 		if option, ok := networkOptions[code]; ok {
@@ -265,7 +294,7 @@ func encodeReply(request, reply *dhcpv4.DHCPv4) []byte {
 }
 
 func decodeClientPacket(wire []byte, source *net.UDPAddr) *dhcpv4.DHCPv4 {
-	if source == nil || (source.Port != clientPort && source.Port != serverPort) || source.IP.To4() == nil || len(wire) < 241 || len(wire) > maxPacketSize ||
+	if source == nil || source.Port < 1 || source.Port > 65535 || source.IP.To4() == nil || len(wire) < 241 || len(wire) > maxPacketSize ||
 		wire[0] != byte(dhcpv4.OpcodeBootRequest) || wire[1] != byte(iana.HWTypeEthernet) || wire[2] != 6 || wire[3] > 16 {
 		return nil
 	}
@@ -281,7 +310,7 @@ func decodeClientPacket(wire []byte, source *net.UDPAddr) *dhcpv4.DHCPv4 {
 	current := packetAddress(request.ClientIPAddr)
 	gateway := packetAddress(request.GatewayIPAddr)
 	if !gateway.IsUnspecified() {
-		if !unicastAddress(gateway) || !unicastAddress(packetAddress(source.IP)) || source.Port != serverPort || request.HopCount == 0 || !validRelayOptions(request.Options) {
+		if !unicastAddress(gateway) || !unicastAddress(packetAddress(source.IP)) || source.Port == clientPort || request.HopCount == 0 || !validRelayOptions(request.Options) {
 			return nil
 		}
 	} else if source.Port != clientPort || request.HopCount != 0 || request.Options.Has(dhcpv4.OptionRelayAgentInformation) {
@@ -348,6 +377,14 @@ func terminatedOptions(data []byte) bool {
 }
 
 func validClientOptions(options dhcpv4.Options) bool {
+	if value, present := options[dhcpv4.OptionFQDN.Code()]; present {
+		if _, ok := clientFQDN(value); !ok {
+			return false
+		}
+	}
+	if value, present := options[dhcpv4.OptionClientSystemArchitectureType.Code()]; present && (len(value) == 0 || len(value) > 254 || len(value)%2 != 0) {
+		return false
+	}
 	message := options.Get(dhcpv4.OptionDHCPMessageType)
 	if len(message) != 1 {
 		return false
@@ -395,36 +432,85 @@ func replyLimit(request *dhcpv4.DHCPv4) int {
 	return 576
 }
 
-// validRelayOptions validates option 82 TLVs without applying packet-supplied
-// selection overrides. Link-selection, server-ID override and alternate relay
-// ports require separate semantics, so this slice rejects those extensions.
-func validRelayOptions(options dhcpv4.Options) bool {
+// relayExtensions validates complete RFC 3046 TLVs, with exact framing and
+// uniqueness for extensions that affect routing or server identity.
+type relayExtensionValues struct {
+	link, server  netip.Addr
+	alternatePort bool
+}
+
+func relayExtensions(options dhcpv4.Options) (relayExtensionValues, bool) {
+	var result relayExtensionValues
 	value, present := options[dhcpv4.OptionRelayAgentInformation.Code()]
 	if !present {
-		return true
+		return result, true
 	}
 	if len(value) < 2 || len(value) > 255 {
-		return false
+		return result, false
 	}
+	seen := map[byte]bool{}
 	for offset := 0; offset < len(value); {
 		if offset+2 > len(value) {
-			return false
+			return result, false
 		}
 		code, length := value[offset], int(value[offset+1])
-		if length > len(value)-offset-2 || code == 5 || code == 11 || code == 19 {
-			return false
+		if length > len(value)-offset-2 {
+			return result, false
+		}
+		data := value[offset+2 : offset+2+length]
+		switch code {
+		case 5, 11:
+			if seen[code] || length != 4 || !unicastAddress(optionAddress(data)) {
+				return result, false
+			}
+			if code == 5 {
+				result.link = optionAddress(data)
+			} else {
+				result.server = optionAddress(data)
+			}
+			seen[code] = true
+		case 19:
+			// RFC 8357's DHCPv4 suboption carries no port bytes: the
+			// authorized UDP source port itself is the reply port.
+			if seen[code] || length != 0 {
+				return result, false
+			}
+			result.alternatePort, seen[code] = true, true
 		}
 		offset += 2 + length
 	}
-	return true
+	return result, true
+}
+
+func validRelayOptions(options dhcpv4.Options) bool {
+	_, ok := relayExtensions(options)
+	return ok
+}
+
+func (s *Server) serverIdentifier(request *dhcpv4.DHCPv4) netip.Addr {
+	extensions, ok := relayExtensions(request.Options)
+	if ok && extensions.server.IsValid() {
+		return extensions.server
+	}
+	return s.cfg.ServerIP
 }
 
 func (s *Server) acceptsPacket(request *dhcpv4.DHCPv4, source *net.UDPAddr) bool {
 	gateway := packetAddress(request.GatewayIPAddr)
 	if !gateway.IsUnspecified() {
 		peer := packetAddress(source.IP)
+		extensions, ok := relayExtensions(request.Options)
+		if !ok {
+			return false
+		}
 		for _, relay := range s.cfg.TrustedRelays {
-			if peer == relay.SourceIP && gateway == relay.GatewayIP {
+			port := int(relay.SourcePort)
+			if port == 0 {
+				port = serverPort
+			}
+			if peer == relay.SourceIP && gateway == relay.GatewayIP && source.Port == port &&
+				extensions.link == relay.LinkSelection && extensions.server == relay.ServerIdentifier &&
+				(extensions.alternatePort == (port != serverPort)) {
 				return true
 			}
 		}

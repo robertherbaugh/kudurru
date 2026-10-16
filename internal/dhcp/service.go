@@ -16,6 +16,8 @@ import (
 type Service struct {
 	scopes                     map[string]*Server
 	stores                     map[string]*LeaseStore
+	backends                   map[string]ManagedBackend
+	replicationStatus          func() ReplicationStatus
 	topology                   map[string]Config
 	names                      []string
 	listeners                  []*Server
@@ -83,7 +85,8 @@ func NewService(configs []Config, stores map[string]*LeaseStore, logger *slog.Lo
 
 func sameTopology(a, b Config) bool {
 	return a.Name == b.Name && a.Interface == b.Interface && a.ServerIP == b.ServerIP && a.Subnet == b.Subnet &&
-		a.Management == b.Management && a.RelayOnly == b.RelayOnly && reflect.DeepEqual(a.TrustedRelays, b.TrustedRelays)
+		a.Management == b.Management && a.RelayOnly == b.RelayOnly && a.ConflictDetection == b.ConflictDetection && a.ProbeTimeout == b.ProbeTimeout &&
+		reflect.DeepEqual(a.FailoverServers, b.FailoverServers) && reflect.DeepEqual(a.TrustedRelays, b.TrustedRelays)
 }
 
 // ScopeNames returns a sorted copy of the stable scope names.
@@ -102,6 +105,9 @@ func (s *Service) Scope(name string) (*LeaseStore, error) {
 // Even if fn returns an error after a commit, copy committed configuration before
 // unlocking so the allocator and wire options always agree for the next packet.
 func (s *Service) MutateScope(ctx context.Context, name string, fn func(context.Context, *LeaseStore) error) error {
+	if s.backends[name] != nil {
+		return ErrReplicatedMutation
+	}
 	server := s.scopes[name]
 	if server == nil {
 		return fmt.Errorf("dhcp: unknown scope %q", name)
@@ -132,12 +138,10 @@ func (s *Service) dispatch(ctx context.Context, iface string, wire []byte, peer 
 		}
 		selected := false
 		if !gateway.IsUnspecified() {
-			for _, relay := range cfg.TrustedRelays {
-				if relay.SourceIP == packetAddress(peer.IP) && relay.GatewayIP == gateway {
-					selected = true
-					break
-				}
-			}
+			server := s.scopes[name]
+			server.processMu.Lock()
+			selected = server.acceptsPacket(request, peer)
+			server.processMu.Unlock()
 		} else if !current.IsUnspecified() {
 			// Never infer the scope from option 50 or server identifier. A configured
 			// remote client may legitimately bypass its relay during T1 renewal.

@@ -2,18 +2,129 @@ package dhcp
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
+	"fmt"
 	"net/netip"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"modernc.org/sqlite"
 )
+
+var configurationFunctionID atomic.Uint64
 
 func managedTestConfig() Config {
 	c := leaseTestConfig()
 	c.Management, c.RegisterDNS, c.DomainName = "api", true, "leases.test"
 	return c
+}
+
+func TestLeaseConfigurationDoesNotWaitForCommit(t *testing.T) {
+	for _, fault := range []string{"none", "write", "commit"} {
+		t.Run(fault, func(t *testing.T) {
+			entered, resume := make(chan struct{}), make(chan struct{})
+			release := sync.OnceFunc(func() { close(resume) })
+			defer release()
+			function := fmt.Sprintf("lease_configuration_pause_%d", configurationFunctionID.Add(1))
+			if err := sqlite.RegisterScalarFunction(function, 0, func(_ *sqlite.FunctionContext, _ []driver.Value) (driver.Value, error) {
+				close(entered)
+				<-resume
+				if fault == "write" {
+					return nil, errors.New("injected settings write failure")
+				}
+				return nil, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			s, _ := leaseTestOpen(t, managedTestConfig())
+			before, snapshot := s.Configuration(), s.management.Load()
+			leaseTestSQL(t, s, "CREATE TRIGGER pause_settings AFTER UPDATE ON lease_settings BEGIN SELECT "+function+"(); END") // #nosec G202 -- fixed prefix followed by an atomic test counter.
+			if fault == "commit" {
+				leaseTestSQL(t, s, `CREATE TABLE settings_parent(id INTEGER PRIMARY KEY); CREATE TABLE settings_child(parent INTEGER REFERENCES settings_parent(id) DEFERRABLE INITIALLY DEFERRED); CREATE TRIGGER fail_settings AFTER UPDATE ON lease_settings BEGIN INSERT INTO settings_child VALUES(1); END`)
+			}
+			opts := optionsFor(before.Config)
+			opts.DomainName = "committed.test"
+			finished := make(chan error, 1)
+			go func() { finished <- s.UpdateOptions(context.Background(), before.Revision, opts) }()
+			select {
+			case <-entered:
+			case err := <-finished:
+				t.Fatalf("settings transaction did not reach pause: %v", err)
+			case <-time.After(5 * time.Second):
+				t.Fatal("settings transaction did not start")
+			}
+			read := make(chan ManagementState, 1)
+			go func() { read <- s.Configuration() }()
+			select {
+			case got := <-read:
+				if !reflect.DeepEqual(got, before) || s.management.Load() != snapshot {
+					t.Fatalf("uncommitted settings became visible: %+v", got)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("Configuration blocked behind settings write")
+			}
+			release()
+			err := <-finished
+			after := s.Configuration()
+			if fault == "none" {
+				if err != nil || after.Revision != before.Revision+1 || after.Config.DomainName != opts.DomainName {
+					t.Fatalf("committed settings not published atomically: %+v, %v", after, err)
+				}
+			} else if err == nil || !reflect.DeepEqual(after, before) || s.management.Load() != snapshot {
+				t.Fatalf("failed settings transaction published: %+v, %v", after, err)
+			}
+			if snapshot.Revision != before.Revision || !reflect.DeepEqual(snapshot.Config, before.Config) {
+				t.Fatal("previous committed snapshot was mutated")
+			}
+		})
+	}
+}
+
+func TestLeaseConfigurationRevisionSnapshotAtomic(t *testing.T) {
+	cfg := managedTestConfig()
+	cfg.DomainName = "revision-1.test"
+	s, _ := leaseTestOpen(t, cfg)
+	done := make(chan struct{})
+	invalid := make(chan ManagementState, 1)
+	var readers sync.WaitGroup
+	for range 4 {
+		readers.Go(func() {
+			for {
+				state := s.Configuration()
+				if state.Config.DomainName != fmt.Sprintf("revision-%d.test", state.Revision) {
+					select {
+					case invalid <- state:
+					default:
+					}
+					return
+				}
+				select {
+				case <-done:
+					return
+				default:
+				}
+			}
+		})
+	}
+	stop := sync.OnceFunc(func() { close(done); readers.Wait() })
+	defer stop()
+	for revision := uint64(1); revision < 32; revision++ {
+		opts := optionsFor(s.Configuration().Config)
+		opts.DomainName = fmt.Sprintf("revision-%d.test", revision+1)
+		if err := s.UpdateOptions(context.Background(), revision, opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stop()
+	select {
+	case state := <-invalid:
+		t.Fatalf("configuration/revision pair was torn: %+v", state)
+	default:
+	}
 }
 
 func TestLeaseManagementPersistenceAndOwnership(t *testing.T) {
@@ -201,7 +312,7 @@ func TestLeaseManagementMigrationAndFailedFirstSeed(t *testing.T) {
 	}
 	want := leaseTestList(t, s)
 	// Represent a pre-management v1 DB with its original lease schema.
-	leaseTestSQL(t, s, "DROP TABLE lease_settings; PRAGMA user_version=1")
+	leaseTestSQL(t, s, "DROP TABLE lease_dns_claims; DROP TABLE lease_replica; DROP INDEX leases_expiry; DROP TABLE lease_settings; PRAGMA user_version=1")
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -240,5 +351,47 @@ func TestLeaseRelayGatewayExcluded(t *testing.T) {
 	}
 	if err := s.PutReservation(context.Background(), 1, Reservation{MAC: leaseTestClient(2).MAC, IP: cfg.RangeStart}); err == nil {
 		t.Fatal("gateway reservation accepted")
+	}
+}
+
+func TestLeaseProtocolOptionsPersistAndDetachSlices(t *testing.T) {
+	ctx := context.Background()
+	s, path := leaseTestOpen(t, managedTestConfig())
+	options := optionsFor(s.Configuration().Config)
+	options.NTPServers = []netip.Addr{netip.MustParseAddr("192.0.2.4")}
+	options.DomainSearch = []string{"corp.test", "leases.test"}
+	options.ClasslessRoutes = []ClasslessRoute{{Destination: netip.MustParsePrefix("198.51.100.0/24"), Router: netip.MustParseAddr("192.0.2.254")}}
+	options.BootServer = netip.MustParseAddr("192.0.2.5")
+	options.BootServerName = "boot.corp.test"
+	options.BootFile = "pxelinux.0"
+	options.BootProfiles = []BootProfile{{Architecture: 9, BootServer: netip.MustParseAddr("192.0.2.6"), BootServerName: "uefi.corp.test", BootFile: "bootx64.efi"}}
+	if err := s.UpdateOptions(ctx, 1, options); err != nil {
+		t.Fatal(err)
+	}
+	options.NTPServers[0] = netip.MustParseAddr("203.0.113.9")
+	options.DomainSearch[0] = "changed.test"
+	options.ClasslessRoutes[0].Router = options.NTPServers[0]
+	options.BootProfiles[0].BootFile = "changed"
+	before := s.Configuration()
+	if before.Config.NTPServers[0] == options.NTPServers[0] || before.Config.DomainSearch[0] == options.DomainSearch[0] || before.Config.ClasslessRoutes[0].Router == options.ClasslessRoutes[0].Router || before.Config.BootProfiles[0].BootFile == "changed" {
+		t.Fatal("stored protocol options alias update caller")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenLeases(path, managedTestConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+	after := reopened.Configuration()
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("protocol options not durable: %+v want %+v", after, before)
+	}
+	detached := reopened.Configuration()
+	detached.Config.DomainSearch[0] = "bad.test"
+	detached.Config.BootProfiles[0].BootFile = "bad"
+	if reflect.DeepEqual(detached, reopened.Configuration()) {
+		t.Fatal("Configuration exposes mutable option slices")
 	}
 }

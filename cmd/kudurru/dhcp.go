@@ -71,11 +71,21 @@ func newDHCPWithSetup(cfg *config.Config, logger *slog.Logger, plans []dhcpsetup
 		return nil, cleanup, nil
 	}
 	if cfg.Store.Driver != "sqlite" {
-		return nil, cleanup, errors.New("dhcp.enabled requires store.driver: sqlite; DHCP leases are not replicated")
+		return nil, cleanup, errors.New("dhcp.enabled requires store.driver: sqlite for durable local lease replicas")
 	}
 	opts, err := cfg.DHCP.Configs()
 	if err != nil {
 		return nil, cleanup, err
+	}
+	if err := cfg.DHCP.Failover.ValidateScopes(opts); err != nil {
+		return nil, cleanup, err
+	}
+	_, identityErr := os.Stat(filepath.Join(cfg.Node.DataDir, "dhcp-raft", "identity.json"))
+	if identityErr != nil && !errors.Is(identityErr, os.ErrNotExist) {
+		return nil, cleanup, identityErr
+	}
+	if !cfg.DHCP.Failover.Enabled && identityErr == nil {
+		return nil, cleanup, errors.New("DHCP scope belongs to a failover cluster; restore failover settings instead of starting an independent allocator")
 	}
 	if err := os.MkdirAll(cfg.Node.DataDir, 0o750); err != nil {
 		return nil, cleanup, err
@@ -111,7 +121,13 @@ func newDHCPWithSetup(cfg *config.Config, logger *slog.Logger, plans []dhcpsetup
 		}
 		paths[filename] = true
 		var leases *dhcp.LeaseStore
-		if plan, ok := staged[name]; ok {
+		if cfg.DHCP.Failover.Enabled {
+			if plan, ok := staged[name]; ok && cfg.DHCP.Failover.Bootstrap && errors.Is(identityErr, os.ErrNotExist) {
+				leases, err = dhcp.OpenReplicaLeasesForSetup(filepath.Join(cfg.Node.DataDir, filename), scope, plan.Token, plan.ExpectedRevision)
+			} else {
+				leases, err = dhcp.OpenReplicaLeases(filepath.Join(cfg.Node.DataDir, filename), scope)
+			}
+		} else if plan, ok := staged[name]; ok {
 			leases, err = dhcp.OpenLeasesForSetup(filepath.Join(cfg.Node.DataDir, filename), scope, plan.Token, plan.ExpectedRevision)
 		} else {
 			leases, err = dhcp.OpenLeases(filepath.Join(cfg.Node.DataDir, filename), scope)
@@ -144,6 +160,14 @@ func newDHCPWithSetup(cfg *config.Config, logger *slog.Logger, plans []dhcpsetup
 	service, err := dhcp.NewService(opts, stores, logger)
 	if err != nil {
 		return fail(fmt.Errorf("create DHCP service: %w", err))
+	}
+	if cfg.DHCP.Failover.Enabled {
+		node, err := openDHCPFailover(cfg, stores, service, logger)
+		if err != nil {
+			_ = service.Close()
+			return fail(err)
+		}
+		closers = append(closers, func() { _ = node.Close() })
 	}
 	closers = append(closers, func() { _ = service.Close() })
 	return service, cleanup, nil
