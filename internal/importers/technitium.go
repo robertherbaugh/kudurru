@@ -88,6 +88,15 @@ func (c *sourceClient) technitium(ctx context.Context, req MigrationRequest, p *
 		p.Warnings = append(p.Warnings, "Technitium's custom blocking response needs manual review; imported policies use zeroIP.")
 	}
 	pol := v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, BlockMode: mode, BlockTTL: metav1.Duration{Duration: time.Duration(settings.BlockingAnswerTTL) * time.Second}}
+	subscriptions := map[string][]v1alpha1.ListSource{}
+	for i, u := range settings.BlockListURLs {
+		listMode := "block"
+		if strings.HasPrefix(u, "!") {
+			listMode = "allow"
+			u = strings.TrimPrefix(u, "!")
+		}
+		subscriptions[listMode] = append(subscriptions[listMode], v1alpha1.ListSource{Name: fmt.Sprintf("subscription-%d", i+1), URL: u, Format: "auto", Subdomains: true})
+	}
 	for _, listMode := range []string{"block", "allow"} {
 		path := "/blocked/export"
 		if listMode == "allow" {
@@ -107,27 +116,7 @@ func (c *sourceClient) technitium(ctx context.Context, req MigrationRequest, p *
 				entries = append(entries, e)
 			}
 		}
-		sources := entrySources(entries)
-		if listMode == "block" {
-			for i, u := range settings.BlockListURLs {
-				m := "block"
-				if strings.HasPrefix(u, "!") {
-					m = "allow"
-					u = strings.TrimPrefix(u, "!")
-				}
-				if m != "block" {
-					continue
-				}
-				sources = append(sources, v1alpha1.ListSource{Name: fmt.Sprintf("subscription-%d", i+1), URL: u, Format: "auto", Subdomains: true})
-			}
-		}
-		if listMode == "allow" {
-			for i, u := range settings.BlockListURLs {
-				if strings.HasPrefix(u, "!") {
-					sources = append(sources, v1alpha1.ListSource{Name: fmt.Sprintf("subscription-%d", i+1), URL: strings.TrimPrefix(u, "!"), Format: "auto", Subdomains: true})
-				}
-			}
-		}
+		sources := append(entrySources(entries), subscriptions[listMode]...)
 		refs := p.lists(req.Namespace, "technitium-"+listMode, listMode, sources)
 		if *settings.EnableBlocking {
 			if listMode == "block" {
