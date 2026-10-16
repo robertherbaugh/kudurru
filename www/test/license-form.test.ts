@@ -50,6 +50,16 @@ describe("validate", () => {
     expect(validate({ ...business, use: "", noncommercial: false })).toEqual([]);
   });
 
+  test("only business requests require a valid commercial edition", () => {
+    for (const edition of ["core", "enterprise"] as const) {
+      expect(validate({ ...business, edition })).toEqual([]);
+    }
+    for (const edition of ["", "invalid", "toString", "constructor", "__proto__"]) {
+      expect(validate({ ...business, edition: edition as Fields["edition"] })).toEqual(["Choose an edition."]);
+      expect(validate({ ...personal, edition: edition as Fields["edition"] })).toEqual([]);
+    }
+  });
+
   test("limits match the license server's: name 200, address 254, use 1000", () => {
     expect(validate({ ...personal, name: "x".repeat(201) })).toHaveLength(1);
     expect(validate({ ...personal, name: "x".repeat(200) })).toEqual([]);

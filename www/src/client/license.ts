@@ -52,6 +52,7 @@ export function validate(f: Fields): string[] {
     else if (use.length > LIMITS.personalUse) out.push(`What you run it for is longer than ${LIMITS.personalUse} characters.`);
     if (!f.noncommercial) out.push("Agree and certify that the key is only for eligible community use.");
   } else {
+    if (!Object.hasOwn(COMMERCIAL_PLANS, f.edition)) out.push("Choose an edition.");
     if (!f.company.trim()) out.push("Enter the name of your business or organization.");
     else if (f.company.trim().length > LIMITS.company) out.push(`The business name is longer than ${LIMITS.company} characters.`);
     const nodes = Number(f.nodes);
