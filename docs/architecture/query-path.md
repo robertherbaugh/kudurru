@@ -252,3 +252,11 @@ groups already answer the RFC 6303 and special-use names themselves and
 validate their own answers inside the upstream stage. NSID is not implemented, and
 the `epoch` in the health TXT is always `0`. The control stage has no
 configuration keys yet, so it only drops malformed queries.
+
+## DHCP lease records (v0.2.0 development)
+
+The authoritative stage can answer A/PTR records from committed in-memory
+[DHCP lease snapshots](dhcp.md#lease-dns-and-policy-names). The optional hook
+runs after the unsynced gate when no zone matches or the match is the
+catch-all root forward zone. Specific configured zones and a primary root
+retain precedence. It does not add a pipeline stage or modify zone contents.

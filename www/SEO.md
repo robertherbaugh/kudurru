@@ -17,10 +17,11 @@ by `build.ts`. Run `make www-check` before publishing changes.
 
 Titles describe the task the reader wants to accomplish. Keep capabilities
 and limitations accurate. The pages do not claim automatic migration,
-DHCP, DNSSEC validation of forwarded answers (only recursive upstream groups
-validate), or Pi-hole API compatibility. Schema data
-does not infer an offer or a zero price from free eligible use. Coordinate
-pricing changes with the enterprise and license content.
+current DHCP support, DNSSEC validation of forwarded answers (only recursive
+upstream groups validate), or Pi-hole API compatibility.
+DHCP server support is planned for v0.2.0 and must be labeled as planned.
+Schema data does not infer an offer or a zero price from free eligible use.
+Coordinate pricing changes with the enterprise and license content.
 
 ## Before launch
 

@@ -45,7 +45,7 @@ Principles that shaped it (the full list is in the [design record](docs/architec
 - **One owner per object.** Objects record who manages them (API, a file, an integration, Kubernetes); writes from another source are rejected.
 - **Serve from memory; degrade, never stop.** The query path never touches the store and keeps answering from the last good snapshot when the store is unreachable.
 - **GPL stays in its own container.** dnsdist and keepalived are supervised, never linked.
-- **Secure by default.** Privileged settings are host-only and can never be set through the API; OIDC logins with no matching role binding are refused, never silently admin.
+- **Secure by default.** Generic Settings keeps privileged host keys read-only. The dedicated DHCP setup API requires explicit ownership and a restart to activate changes; host interfaces and capabilities remain deployment tasks. OIDC logins with no matching role binding are refused, never silently admin.
 
 ## Deployment shapes
 
@@ -104,8 +104,18 @@ and [`deploy/compose/`](deploy/compose/).
 | Release | Name | Headline |
 |---|---|---|
 | v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
-| v0.2 | clay copies | Secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
+| v0.2.0 | clay copies | DHCP server support, secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
 | v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
+
+The v0.2.0 development tree includes standalone and three-node quorum DHCPv4 for Linux/SQLite.
+Configure fresh scopes entirely through **DNS → DHCP**, without DHCP YAML;
+existing host setup requires explicit adoption. Enabling, disabling and
+topology changes are saved for restart, while active scope options and
+reservations apply live. Durable lease state and revision checks preserve
+allocations and later live edits across restarts. See the
+[DHCP setup and deployment guide](docs/deploy/dhcp.md) for host networking,
+capabilities, conflict detection, advanced network/boot options and failover
+recovery. DHCP is not included in v0.1.0; DHCPv6 is excluded from this pass.
 
 OIDC, scoped roles, long-term statistics, integrations and the edge need
 the corresponding license entitlements; a free eligible personal key

@@ -340,7 +340,7 @@ func TestMeWithBearerRoles(t *testing.T) {
 		t.Fatalf("me %+v", me)
 	}
 	h.do(http.MethodGet, "/api/v1/auth/me", "admin", nil).want(http.StatusOK).json(&me)
-	if len(me.Permissions) != 23 {
+	if len(me.Permissions) != 25 {
 		t.Fatalf("admin permissions %d: %v", len(me.Permissions), me.Permissions)
 	}
 }

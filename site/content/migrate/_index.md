@@ -62,13 +62,12 @@ per-policy answer rewrites are not implemented in v0.1.0.
 
 ### Planned DHCPv4 support
 
-Built-in DHCPv4 is planned for v0.2.0 in
-[PR #66](https://github.com/robertherbaugh/kudurru/pull/66), which includes
-the development deployment and architecture guides. The initial scope is
-one Linux node using SQLite, disabled by default, with persistent leases,
-reservations, trusted relays, dashboard setup and optional A/PTR records
-from leases. DHCPv6 and multi-node failover are deferred; leases will not
-synchronize between DNS replicas.
+Built-in DHCPv4 is in development for v0.2.0 in
+[PR #66](https://github.com/robertherbaugh/kudurru/pull/66). It supports
+standalone Linux/SQLite nodes or a three-node quorum, durable leases and
+reservations, complete dashboard setup, multiple subnets and trusted relays,
+conflict checks, network/boot options, live management, lease import/export
+and persistent local DNS ownership. DHCPv6 is excluded from this pass.
 
 The migration steps here target v0.1.0 and still require an external DHCP
 server. Keep IPv6 router and DNS advertisements on your router.

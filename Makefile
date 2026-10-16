@@ -21,7 +21,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 .PHONY: test-postgres all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev web-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork docker-dhcp hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
@@ -454,6 +454,12 @@ docker-debug:
 ## the ko image).
 docker-hostnetwork: docker
 	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork --build-arg KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:$(VERSION) images/hostnetwork
+
+## docker-dhcp: opt-in local DHCP development image with both file
+## capabilities; requires NET_BIND_SERVICE and NET_RAW at runtime.
+## This does not change the capabilities of the published DNS images.
+docker-dhcp: docker
+	docker build -t kudurru:dhcp-development --build-arg KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg DHCP_CAPABILITIES=true images/hostnetwork
 
 ## hostnetwork-check: uid 65532 in the -hostnetwork image binds :53 with
 ## only NET_BIND_SERVICE and no_new_privs where the ip_unprivileged_port_start

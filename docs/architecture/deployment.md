@@ -19,6 +19,19 @@ container.
 Operator docs: [deploy/](../deploy/README.md). This page shows how the
 pieces talk to each other.
 
+The v0.2.0 development [DHCPv4 server](dhcp.md) supports a standalone Linux node or three quorum voters
+with local SQLite replicas and direct broadcast access or configured trusted
+relays for its subnets. It is opt-in,
+and independent allocators must never share a pool. Configure the explicit
+three-voter failover group before serving the same scopes from multiple nodes. Fresh setup is
+available in the dashboard without DHCP YAML. Setup saves stage the next
+restart; live options and reservations use the active scope API. Keep both
+`dhcp-settings.json`, the DNS claim registry, lease databases and failover
+Raft state on persistent storage. A UI-owned DHCP
+startup failure leaves DNS/API running for setup repair, while file-owned
+failures remain fatal. See [DHCP deployment](../deploy/dhcp.md) for host
+networking, capabilities, adoption and conflict recovery.
+
 Licensing ([how it works](licensing.md)): more than one node, and the dnsdist
 and keepalived edge, need a license key; a free personal key covers 3 nodes.
 DNS answering never depends on a key. Every kudurru container (server,

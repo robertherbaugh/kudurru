@@ -492,7 +492,9 @@ func TestPortConflictsFailFast(t *testing.T) {
 		ocfg["auth"] = map[string]any{"adminSocket": map[string]any{"path": filepath.Join(dir, "intruder.sock")}}
 		kudurrutest.WriteConfig(t, other.Config, ocfg)
 		code, out, d := runExpectFailure(t, nil, "serve", "--config", other.Config)
-		if code == 0 || !strings.Contains(out, "another kudurru process owns state.db") {
+		ownershipConflict := strings.Contains(out, "another kudurru process owns state.db") ||
+			strings.Contains(out, "open DHCP setup: dhcpsetup: setup directory is already owned")
+		if code == 0 || !ownershipConflict {
 			t.Errorf("second process on one data directory: exit %d in %s:\n%s", code, d, out)
 		}
 	})

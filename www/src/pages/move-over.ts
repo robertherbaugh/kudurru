@@ -97,7 +97,7 @@ export function moveOver(): Html {
         <tbody>${MIGRATION_COMPARISON.map((r) => html`<tr><th scope="row">${r.feature}</th><td>${r.pihole}</td><td>${r.adguard}</td><td>${r.technitium}</td><td>${r.kudurru}</td></tr>`)}</tbody>
       </table>
     </div>
-    <p class="fine migration-sources">Built-in DHCPv4 is planned for v0.2.0, initially on standalone Linux nodes using SQLite. ${external("https://github.com/robertherbaugh/kudurru/pull/66", html`Follow DHCP development in PR #66 ${icon.arrow}`)}.</p>
+    <p class="fine migration-sources">Built-in DHCPv4 is in development for v0.2.0, with dashboard setup and optional three-node quorum failover on Linux/SQLite. ${external("https://github.com/robertherbaugh/kudurru/pull/66", html`Follow DHCP development in PR #66 ${icon.arrow}`)}.</p>
     <p class="fine migration-sources">Sources: ${MIGRATIONS.map((m, i) => html`${i ? " · " : ""}${external(m.source, m.name)}`)} · ${external(docs("/project/changelog/"), "kudurru changelog")}. ${external(docs("/migrate/"), "Detailed mappings and limitations in the docs")}.</p>
   </div>
 </section>

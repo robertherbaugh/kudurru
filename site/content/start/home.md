@@ -42,8 +42,8 @@ for v0.2.0. Check from any device:
 dig @<host> example.com
 ```
 
-The planned DHCPv4 server is opt-in and initially targets one Linux node
-using SQLite. DHCPv6 and multi-node failover are deferred. See the
+The v0.2.0 DHCPv4 development server is opt-in, with Linux/SQLite standalone
+or three-node quorum operation and dashboard setup. DHCPv6 is excluded. See the
 [planned DHCPv4 scope](/migrate/#planned-dhcpv4-support) and follow
 [PR #66](https://github.com/robertherbaugh/kudurru/pull/66) for development
 and setup documentation. The steps on this page apply to v0.1.0.

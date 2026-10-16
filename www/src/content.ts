@@ -638,10 +638,11 @@ export const ROADMAP: Release[] = [
     ],
   },
   {
-    version: "v0.2",
+    version: "v0.2.0",
     name: "clay copies",
     meaning: "The landholder's copies: secondaries and followers.",
     items: [
+      "DHCP server support",
       "Secondary and stub zones, RFC 2136",
       "Active Directory DNS replacement for a single-domain forest",
       "DNSSEC validation of forwarded answers, RPZ feed import",
@@ -729,7 +730,7 @@ export const MIGRATIONS = [
     name: "Pi-hole",
     summary: "Keep the lists and local names you trust. Add authoritative zones, encrypted DNS listeners and Kubernetes CRDs.",
     mapping: "Groups become client groups and policies. Adlists become block lists; local DNS records become zone records.",
-    check: "Move DHCP to your router first if Pi-hole serves it. Translate regex extensions and reserve device addresses.",
+    check: "For v0.1.0, move DHCP to your router first if Pi-hole serves it; DHCP support is planned for v0.2.0. Translate regex extensions and reserve device addresses.",
     source: "https://docs.pi-hole.net/",
   },
   {

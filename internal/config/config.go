@@ -32,6 +32,7 @@ type Config struct {
 	Node      Node        `koanf:"node" json:"node"`
 	Listeners Listeners   `koanf:"listeners" json:"listeners"`
 	Store     StoreConfig `koanf:"store" json:"store"`
+	DHCP      DHCP        `koanf:"dhcp" json:"dhcp"`
 	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
 	Cache     Cache       `koanf:"cache" json:"cache"`
 	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
@@ -532,6 +533,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.Querylog.validate()...)
 	errs = append(errs, c.validateAudit()...)
 	errs = append(errs, c.Database.validate()...)
+	errs = append(errs, c.validateDHCP()...)
 	if t := c.Listeners.Internal.TLS; (t.CertFile == "") != (t.KeyFile == "") {
 		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))
 	}
