@@ -341,10 +341,12 @@ below like forwarded ones, with prefetch, serve-stale and coalescing, so a
 repeated name costs no outgoing query. A cold lookup takes a few round
 trips, typically 50 to 500 ms.
 
-The group's single server follows the [health](#server-health) rules:
-after 3 consecutive timeouts `<group>/recursive` is in backoff, and the log
-warns that outbound DNS (UDP and TCP port 53 to the internet) may be
-blocked. Recursion needs that egress to any address; forwarding needs only
+The group's single server follows the [health](#server-health) rules,
+with one difference: a lookup that times out counts against it only when
+no authoritative server has answered in the last 30 s, because one domain
+with dead name servers says nothing about the resolver. After 3 such
+timeouts in a row `<group>/recursive` is in backoff, and the log warns that
+outbound DNS (UDP and TCP port 53 to the internet) may be blocked. Recursion needs that egress to any address; forwarding needs only
 the configured servers. Firewalls, Kubernetes NetworkPolicies and ISPs that
 intercept port 53 break it.
 

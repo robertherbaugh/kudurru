@@ -243,9 +243,11 @@ SERVFAIL with EDE 22 (No Reachable Authority) and status
 `timeout_upstream`, the group's page shows the
 resolver in backoff, `kudurru_upstream_healthy{upstream="<group>/recursive"}`
 is 0 (`KudurruUpstreamUnhealthy`), the log warns "recursive resolver in
-backoff after consecutive timeouts; is outbound DNS (port 53) to the
-internet blocked?", and `kudurru_recursor_outgoing_queries_total` grows
-only with `result="timeout"` or `"error"`.
+backoff: lookups time out and no authoritative server has answered
+recently; check that outbound DNS (UDP and TCP port 53) to the internet is
+allowed", and `kudurru_recursor_outgoing_queries_total` grows only with
+`result="timeout"` or `"error"`. Timeouts for a few names whose own name
+servers are dead do not cause backoff while other lookups succeed.
 
 1. From the node, ask a root server directly over UDP and TCP:
    `dig @198.41.0.4 . NS +norec` and the same with `+tcp`. A timeout means

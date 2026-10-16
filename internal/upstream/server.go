@@ -178,6 +178,13 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 		} else {
 			a.err = fmt.Errorf("%s: %w", s.name, a.err)
 		}
+		// One slow lookup (a domain with dead name servers) says nothing
+		// about the recursive resolver as a whole: it only counts against
+		// its health when no authoritative server has answered lately.
+		if r, ok := s.u.(*recursor.Resolver); ok && r.Reachable() {
+			s.record(true, reason, timeout)
+			return a
+		}
 		s.record(false, reason, timeout)
 		return a
 	}
@@ -210,11 +217,11 @@ func (s *server) countResponse(rcode int) {
 }
 
 // do runs the dnsproxy exchange and returns as soon as ctx is done: the
-// plain transport only honours its own timeout, so without this a race
+// plain transport only honors its own timeout, so without this a race
 // loser or a query past its deadline would hold the caller. The abandoned
 // exchange finishes in the background within the per-server timeout.
 //
-// The recursive resolver honours ctx itself and reports the DNSSEC state
+// The recursive resolver honors ctx itself and reports the DNSSEC state
 // of its answer.
 func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, recursor.Security, error) {
 	if r, ok := s.u.(*recursor.Resolver); ok {

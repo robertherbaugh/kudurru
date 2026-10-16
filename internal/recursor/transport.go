@@ -63,6 +63,7 @@ func (q *query) send(server netip.AddrPort, name string, qtype uint16) (*dns.Msg
 		return nil, err
 	}
 	r.infra.ok(server.Addr(), rtt)
+	r.lastAnswer.Store(r.now().UnixNano())
 	r.metrics.outgoing(false, nil)
 	return resp, nil
 }

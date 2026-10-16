@@ -184,6 +184,19 @@ type Resolver struct {
 	now           func() time.Time
 	allowLoopback bool
 	primeMu       sync.Mutex
+	lastAnswer    atomic.Int64 // unix nanoseconds of the last answer from any name server
+}
+
+// reachableWindow is how recent an answer from a name server must be for
+// Reachable.
+const reachableWindow = 30 * time.Second
+
+// Reachable reports whether some authoritative server answered within the
+// last reachableWindow: the resolver can reach the internet, so a slow
+// lookup is about the name, not about the network.
+func (r *Resolver) Reachable() bool {
+	t := r.lastAnswer.Load()
+	return t != 0 && r.now().Sub(time.Unix(0, t)) < reachableWindow
 }
 
 // New builds a resolver. Nothing is sent until the first query.

@@ -121,7 +121,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 				if healthy {
 					logger.Info("recursive resolver recovered", "upstream", label)
 				} else {
-					logger.Warn("recursive resolver in backoff after consecutive timeouts; is outbound DNS (port 53) to the internet blocked?", "upstream", label, "failures", cfg.Health.Failures)
+					logger.Warn("recursive resolver in backoff: lookups time out and no authoritative server has answered recently; check that outbound DNS (UDP and TCP port 53) to the internet is allowed", "upstream", label, "failures", cfg.Health.Failures)
 				}
 			}
 			g.servers = append(g.servers, srv)
