@@ -125,7 +125,7 @@ export const NAV: NavLink[] = [
   { label: "Dashboard", href: "#dashboard" },
   { label: "Deploy", href: "#deploy" },
   { label: "Roadmap", href: "#roadmap" },
-  { label: "Move over", href: "/move-over/" },
+  { label: "Homelab", href: "/move-over/" },
   // A page of its own: not prefixed with the home page path like the anchors.
   { label: "Enterprise", href: "/enterprise/" },
   { label: "License", href: "/license/" },
@@ -659,9 +659,9 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     ],
   },
   {
-    title: "Move over",
+    title: "Homelab",
     links: [
-      { label: "Compare features", href: "/move-over/" },
+      { label: "DNS for your homelab", href: "/move-over/" },
       { label: "From Pi-hole", href: docs("/migrate/pihole/") },
       { label: "From AdGuard Home", href: docs("/migrate/adguard-home/") },
       { label: "From Technitium", href: docs("/migrate/technitium/") },
@@ -680,6 +680,28 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     ],
   },
 ];
+
+// Homelab capabilities follow the home network and Kubernetes start guides.
+export const HOMELAB_FEATURES = [
+  {
+    title: "Local names for your services",
+    body: "Give your NAS, VMs and self-hosted apps names in your own DNS zones. Manage records in the dashboard or as YAML alongside your other configuration.",
+    href: "/guide/admin/07-zones-and-upstreams/",
+    link: "Set up local DNS",
+  },
+  {
+    title: "Rules for your household",
+    body: "Block ad and tracker domains for devices using your resolver. With a free key, give your kids' devices, IoT subnet and personal devices their own policies and schedules.",
+    href: "/guide/admin/05-groups-clients-policies/",
+    link: "Explore groups and policies",
+  },
+  {
+    title: "See why a request was blocked",
+    body: "The query log shows the client, matching list and rule behind an answer. Allow a domain from the log or pause blocking while you troubleshoot a device.",
+    href: "/guide/admin/03-watch-the-network/",
+    link: "Explore the query log",
+  },
+] as const;
 
 // Migration comparisons describe the 0.1.0 implementation, not schema-only
 // features. Keep site/content/migrate in step; sources are linked below.

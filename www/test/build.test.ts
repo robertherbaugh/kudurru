@@ -242,7 +242,7 @@ test("fonts are separate hashed files, not data URLs", async () => {
   for (const f of fonts) expect((await stat(join(out, f))).size).toBeGreaterThan(10_000);
 });
 
-describe("the move-over page", () => {
+describe("the homelab page", () => {
   test("is linked from every page's nav and footer and listed in the sitemap", async () => {
     for (const name of PAGE_PATHS) {
       const page = pages[name]!;
