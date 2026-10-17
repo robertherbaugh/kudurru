@@ -424,14 +424,15 @@ Explicit service annotations override the generated defaults. */}}
 
 {{/*
 "true" when the kudurru pod binds a port below 1024 in its own network
-namespace (plain DNS, a sidecar dnsdist on :53, or DoT/DoH/DoQ listeners).
+namespace (plain DNS, a sidecar dnsdist on :53, DoT/DoH/DoQ listeners, or
+DHCP on UDP 67).
 hostNetwork pods cannot set namespaced sysctls (docs/deploy/helm.md).
 */}}
 {{- define "kudurru.lowPortSysctl" -}}
 {{- if not .Values.hostNetwork.enabled -}}
 {{- $edgeMode := include "kudurru.edge.mode" . -}}
 {{- $s := .Values.service -}}
-{{- if or (lt (int (include "kudurru.dnsPort" .)) 1024) (eq $edgeMode "sidecar") (and (not .Values.edge.enabled) (include "kudurru.anyTLS" .)) -}}
+{{- if or (lt (int (include "kudurru.dnsPort" .)) 1024) (eq $edgeMode "sidecar") (and (not .Values.edge.enabled) (include "kudurru.anyTLS" .)) .Values.dhcp.enabled -}}
 true
 {{- end -}}
 {{- end -}}

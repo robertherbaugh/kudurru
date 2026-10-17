@@ -462,7 +462,13 @@ func checkRestricted(t *testing.T, name string, podSC, sc map[string]any, _ bool
 func (r *rendered) checkService(t *testing.T, svc map[string]any, pods []map[string]any) {
 	t.Helper()
 	name := str(dig(svc, "metadata", "name"))
-	selector := mapOf(dig(svc, "spec", "selector"))
+	selector := map[string]any{}
+	for k, v := range mapOf(dig(svc, "spec", "selector")) {
+		// The serving DHCP replica sets this label on its own pod at runtime.
+		if k != "kudurru.io/dhcp-active" {
+			selector[k] = v
+		}
+	}
 	var matched []map[string]any
 	for _, p := range pods {
 		if labelsMatch(selector, mapOf(dig(p, "metadata", "labels"))) {

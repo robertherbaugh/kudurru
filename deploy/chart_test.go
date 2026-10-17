@@ -489,6 +489,26 @@ var chartCases = []chartCase{
 			t.Errorf("NetworkPolicy does not admit the block page port")
 		}
 	}},
+	{name: "dhcp-high-dns-port", values: "listen: {port: 5353}\ndhcp: {enabled: true, serverAddress: 192.0.2.67, service: {annotations: {metallb.io/loadBalancerIPs: 192.0.2.67}}}\nnetworkPolicy: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		// DNS on 5353 needs no low port, but DHCP binds UDP 67 as uid 65532.
+		if dig(r.pod(t), "spec", "securityContext", "sysctls", 0, "name") != "net.ipv4.ip_unprivileged_port_start" {
+			t.Errorf("uid 65532 binding UDP 67 needs the ip_unprivileged_port_start sysctl")
+		}
+		svc := r.object(t, "Service", "kudurru-dhcp")
+		if dig(svc, "spec", "loadBalancerIP") != "192.0.2.67" || dig(svc, "spec", "externalTrafficPolicy") != "Local" ||
+			dig(svc, "spec", "selector", "kudurru.io/dhcp-active") != "true" || dig(svc, "spec", "ports", 0, "protocol") != "UDP" {
+			t.Errorf("DHCP Service: %v", dig(svc, "spec"))
+		}
+		if cfg := r.config(t); !cfg.DHCP.Enabled || cfg.DHCP.ServerIP != "192.0.2.67" || cfg.DHCP.Interface != "eth0" {
+			t.Errorf("node dhcp settings = %+v", cfg.DHCP)
+		}
+		if role := fmt.Sprint(dig(r.object(t, "Role", "kudurru"), "rules")); !strings.Contains(role, "dhcpleases") || !strings.Contains(role, "pods") {
+			t.Errorf("Role lacks the DHCP rules: %s", role)
+		}
+		if np := r.object(t, "NetworkPolicy", "kudurru"); !strings.Contains(fmt.Sprint(dig(np, "spec", "ingress")), "67") {
+			t.Errorf("NetworkPolicy does not admit UDP 67")
+		}
+	}},
 	{name: "everything", values: "edge: {enabled: true, tlsSecretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}}\nvip: {provider: metallb, address: 192.0.2.53}\ningress: {enabled: true, host: dns.example.com}\nserviceMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}\nnetworkPolicy: {enabled: true, apiFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]}\npriorityClassName: system-cluster-critical\nexternalDNS: {webhook: {enabled: true}}\nauth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment"},
 }
 
@@ -530,6 +550,10 @@ var failCases = []struct{ name, values, want string }{
 	{"short-proxy-secret", "edge: {enabled: true, proxyProtocolSecret: short}", "at least 32 bytes"},
 	{"edge-backend-53", "edge: {enabled: true, backendPort: 53}", "backendPort"},
 	{"block-page-without-address", "blockPage: {enabled: true}", "blockPage.ipv4 or blockPage.ipv6"},
+	{"dhcp-without-address", "dhcp: {enabled: true}", "dhcp.serverAddress"},
+	{"dhcp-standalone", "mode: standalone\ndhcp: {enabled: true, serverAddress: 192.0.2.67}", "config.node.dhcp"},
+	{"dhcp-cluster-traffic-policy", "dhcp: {enabled: true, serverAddress: 192.0.2.67, service: {externalTrafficPolicy: Cluster}}", "externalTrafficPolicy must be Local"},
+	{"dhcp-hostnetwork", "hostNetwork: {enabled: true}\ndhcp: {enabled: true, serverAddress: 192.0.2.67}", "hostNetwork"},
 }
 
 // helmBin returns the helm binary or skips the test.
