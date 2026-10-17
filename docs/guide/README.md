@@ -3,6 +3,9 @@
 Start with one task. Each walkthrough tells you what you need, what to click,
 and how to check the result. The screenshots show demo data.
 
+Looking at a particular screen? Use [Use each dashboard page](dashboard/README.md)
+to find instructions for every navigation page and its detail pages.
+
 ## New to kudurru?
 
 Follow [First steps](first-steps/README.md) to start a node, sign in,
@@ -14,8 +17,10 @@ before you change the network.
 | Task | Guide |
 |---|---|
 | Start using the app | [First steps](first-steps/README.md) |
+| Learn a dashboard page | [Page-by-page guide](dashboard/README.md) |
 | Block ads or fix a blocked site | [Filtering](filtering/README.md) |
 | Set up DHCP and reserve addresses | [DHCP setup](dhcp/README.md) |
+| Set up Kubernetes DHCP with a router relay | [Kubernetes DHCP walkthrough](dhcp/kubernetes/README.md) |
 | Give a device a local DNS name | [Local DNS](local-dns/README.md) |
 | Understand the block page or request access | [Use a network with kudurru](user-guide.md) |
 

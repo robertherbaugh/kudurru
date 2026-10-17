@@ -155,10 +155,14 @@ Keep them as they are: **Allowlist**, **Denylist**, `blocking.defaultResponse`.
 - Keep existing URLs and heading anchors when you move published material.
 
 The walkthrough order is in `docs-site/hugo.yaml`. The site adds step
-navigation to the First steps and DHCP sections.
+navigation to First steps and both DHCP paths. The dashboard page index maps
+each navigation and detail page to a task guide. Update it when routes change.
 To take only the DHCP screenshots again, use:
 
 ```sh
 cd dashboard
 KUDURRU_GUIDE_GROUPS=dhcp,dhcp-running node scripts/guide-screenshots.mjs
 ```
+
+Use `dhcp-kubernetes,dhcp-kubernetes-running` for the Kubernetes DHCP captures.
+Use `page-tour` for Domains, Denylist, License and the migration wizard.

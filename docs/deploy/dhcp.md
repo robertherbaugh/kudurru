@@ -6,9 +6,10 @@ Keep IPv6 router and DNS advertisements on your router; DHCPv6 is not supported.
 
 ## Set up DHCP step by step
 
-Start with the [DHCP walkthrough](../guide/dhcp/README.md).
-It takes you from a prepared host to a verified client lease, with screenshots
-of each wizard step.
+Choose [Kubernetes DHCP](../guide/dhcp/kubernetes/README.md) for the LoadBalancer,
+router relay and required trusted relay setup.
+Choose [Linux with SQLite](../guide/dhcp/README.md#linux-with-sqlite) for the following direct-LAN steps.
+Both paths include screenshots and end with a verified client lease.
 
 | Step | Result |
 |---|---|

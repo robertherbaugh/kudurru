@@ -2,7 +2,7 @@
 
 **Before you start**
 
-- You need a role with access to **Query log**, such as `admin` or `viewer`.
+- You need the `admin`, `operator` or `auditor` role to read **Query log**.
 - You need a client that uses kudurru for DNS.
 
 ## 1. Find your client

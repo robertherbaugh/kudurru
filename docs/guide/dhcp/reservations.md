@@ -36,7 +36,8 @@ An address that another client still leases cannot become this device's reservat
 
 A reservation on a running API-managed scope applies immediately. The client
 receives it when it next acquires or renews a lease.
-For a scope that is not running, add reservations under **Setup for next restart** instead.
+On SQLite, add reservations under **Setup for next restart** if the scope is not running.
+On Kubernetes, scope changes apply live. Edit a managed scope at its configuration source.
 
 ## Check the result
 

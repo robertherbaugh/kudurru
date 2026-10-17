@@ -1,13 +1,15 @@
 # DHCP on Kubernetes
 
-[DHCP guides](dhcp.md) · [Step-by-step setup](../guide/dhcp/README.md)
+[DHCP guides](dhcp.md) · [Kubernetes walkthrough](../guide/dhcp/kubernetes/README.md)
 
 ## Kubernetes
 
 The serving replica sits on the pod network, so clients reach it through a
 DHCP relay: the router forwards each client VLAN's DHCP to a LoadBalancer
 address. Leases live in the apiserver; a replica that takes over keeps every
-client's address. How it works: [DHCP on the Kubernetes store](../architecture/dhcp.md#kubernetes-store).
+client's address. Every scope requires at least one trusted relay.
+For illustrated instructions, start with the [Kubernetes walkthrough](../guide/dhcp/kubernetes/README.md).
+How it works: [DHCP on the Kubernetes store](../architecture/dhcp.md#kubernetes-store).
 
 1. Install the `kudurru-crds` chart of this release first. It adds the
    `DHCPScope` and `DHCPLease` CRDs; kudurru waits for every kind it watches.
@@ -67,9 +69,11 @@ client's address. How it works: [DHCP on the Kubernetes store](../architecture/d
    Omit the annotation for scopes you edit in the dashboard. A scope with any
    other `kudurru.io/managed-by` owner is read-only there and shows the owner.
 5. Check `kubectl get dhcpscopes`: `SERVING` names the replica that answers
-   and `READY` turns `True`. `kubectl get dhcpleases -n <namespace>` lists
-   leases as clients bind. Then turn off the router's own DHCP server for the
-   VLAN.
+   and `READY` turns `True`. Stop the old DHCP service before enabling relay
+   traffic to kudurru. Import final leases, use a nonoverlapping pool, or wait
+   for old leases to expire. Then enable the relay and test one client.
+   `kubectl get dhcpleases -n <namespace>` lists leases as clients bind.
+   Follow [Switch and test](../guide/dhcp/kubernetes/check.md) for the full cutover.
 
 Changes apply live; no restart is needed. A change to a scope's subnet,
 relays or conflict detection rebuilds the DHCP listener for a moment. The
@@ -87,3 +91,37 @@ a scope's page (or `GET /api/v1/node/dhcp/v4/scopes/{scope}/export`) before
 deleting a namespace. An import writes one `DHCPLease` per lease while the
 scope waits, so the scope answers no clients until it finishes; an import
 that takes more than five minutes is rolled back. Split very large imports.
+
+## Check relay packets
+
+If no lease appears, confirm the LoadBalancer address, Service endpoints,
+scope readiness, router relay interface and firewall rules first.
+`externalTrafficPolicy: Local` preserves the source at the Service;
+upstream NAT can still change it. The trusted source must match what the pod receives.
+
+Use the router's packet capture tool to inspect forwarded requests to UDP 67.
+On a Linux router with `tcpdump`, replace `eth0` with the outgoing interface:
+
+```sh
+sudo tcpdump -ni eth0 -vvv 'udp dst port 67 and dst host 10.200.200.67'
+```
+
+Renew the test client's lease during the cutover. Look for a line such as
+`192.0.2.1.67 > 10.200.200.67.67` and `Gateway-IP 192.0.2.1` in the decoded packet.
+
+| Packet field | Required scope value |
+|---|---|
+| IPv4 source | `trustedRelays[].sourceIP` |
+| `Gateway-IP` (`giaddr`) | `trustedRelays[].gatewayIP` |
+| UDP source port | `sourcePort`; `0` selects port 67 |
+| Link selection or server identifier override | Exact optional `linkSelection` or `serverIdentifier` |
+
+If a request leaves the router but never reaches the serving pod, check routing,
+the LoadBalancer, network policies and firewalls. A capture on the router does
+not reveal NAT farther along the path; compare it with the cluster network capture.
+If the pod receives requests but drops them, check the exact trusted values
+and the serving replica's logs. Debug logging includes packet rejection reasons.
+
+If a client binds but later fails renewal, allow direct client traffic to the
+LoadBalancer on UDP 67. If addresses work but names fail, check the advertised
+DNS address and UDP/TCP 53. The DHCP Service does not provide DNS by itself.

@@ -6,6 +6,9 @@
 - You need the values from [Prepare your network](prepare.md).
 - You need a fresh scope setup that the dashboard can manage.
 
+This page is for direct clients on a Linux node with SQLite.
+For Kubernetes, use [Create a scope with a trusted relay](kubernetes/create-scope.md).
+
 If the page says **Managed by the configuration file**, follow
 [Adopt existing setup](../../deploy/dhcp-management.md#dashboard-and-api-ownership) first.
 

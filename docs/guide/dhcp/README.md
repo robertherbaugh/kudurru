@@ -1,7 +1,17 @@
 # Set up DHCP
 
 Let kudurru assign IPv4 addresses, keep reservations and serve names for leased devices.
-Follow this walkthrough for one Linux node with the SQLite store.
+Choose the walkthrough that matches your deployment.
+
+| Deployment | Start here |
+|---|---|
+| Kubernetes store | [Kubernetes DHCP walkthrough](kubernetes/README.md): LoadBalancer, router relay, required trusted relays and client tests |
+| Linux with SQLite | Follow the 7 steps below for clients on the node's local network |
+
+Kubernetes requires at least 1 trusted relay per scope. The router forwards
+client broadcasts to the DHCP LoadBalancer. Scope changes apply live.
+
+## Linux with SQLite
 
 **Before you start**
 
@@ -22,8 +32,7 @@ Follow this walkthrough for one Linux node with the SQLite store.
 A scope describes one subnet and its address pool. Saving a scope does not start
 DHCP on a SQLite node. Activation needs a node restart.
 
-For a Kubernetes deployment, follow [DHCP on Kubernetes](../../deploy/dhcp-kubernetes.md).
-It uses trusted relays and one elected serving replica. Scope changes apply live.
+For a Kubernetes deployment, follow the [Kubernetes walkthrough](kubernetes/README.md).
 For several Linux nodes, see [Automatic failover](../../deploy/dhcp-failover.md).
 
 DHCPv6 is not supported. Keep IPv6 router and DNS advertisements on your router.

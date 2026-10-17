@@ -15,7 +15,8 @@
 //   KUDURRU_GUIDE_ONLY        comma-separated shot names to retake
 //   KUDURRU_GUIDE_GROUPS      comma-separated groups to run (sign in, monitor, lists, domains, groups,
 //                             clients, policies, requests, block page, zones, upstreams, system, access,
-//                             appearance, viewer, dhcp, dhcp-running)
+//                             appearance, viewer, dhcp, dhcp-running,
+//                             dhcp-kubernetes, dhcp-kubernetes-running, page-tour)
 //   KUDURRU_GUIDE_OUT         screenshot output directory (default ../docs/guide/images)
 //
 // Screenshots are PNG files in docs/guide/images/, 1280 pixels wide.

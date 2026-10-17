@@ -31,7 +31,7 @@ not require Bun.
 | Site section | Source |
 |---|---|
 | Home, Get started, Migrate, section pages | `docs-site/content` |
-| Learn | `docs/guide`: short task pages for first use, filtering, DHCP and local DNS; the administrator reference keeps the full chapters |
+| Learn | `docs/guide`: short task pages for first use, every dashboard page, both DHCP deployment paths and local DNS; the administrator reference keeps the full chapters |
 | Deploy | `docs/deploy` (its `README.md` is the section page) |
 | Enterprise | `docs/enterprise.md`: current features, proposed pricing and node counting |
 | Reference | `docs-site/content/reference`, generated: `hack/docsgen` (settings, CRDs, endpoint index) and `TestCLIReferenceDrift` in `cmd/kudurru` (CLI) |
@@ -90,7 +90,7 @@ no workflow in this repository holds Cloudflare credentials.
 
 ### Walkthroughs and screenshots
 
-The First steps and DHCP sections use `walkthrough: true` in `hugo.yaml`.
+The First steps, SQLite DHCP and Kubernetes DHCP sections use `walkthrough: true` in `hugo.yaml`.
 Page weights set the order of the step indicator and Back/Next links.
 Guide pages stay plain Markdown with an H1 title; subsection `README.md` files
 have explicit mounts to `_index.md`. Add a matching mount and exclusion when
@@ -106,6 +106,9 @@ mock mode with `dashboard/scripts/guide-screenshots.mjs`; see the
 [guide writing rules](../docs/guide/style.md#take-the-screenshots-again).
 The DHCP groups cover all four wizard steps, staged activation, running
 leases and a reservation dialog. No live DHCP service is needed for these images.
+The Kubernetes DHCP groups capture trusted relays, live scope review and leases.
+The page-by-page index in `docs/guide/dashboard/README.md` covers each navigation
+page and its detail views. Check it against `dashboard/src/routes.tsx` when routes change.
 
 ### One-time setup in the Cloudflare dashboard
 

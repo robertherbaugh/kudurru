@@ -22,7 +22,7 @@
   <section class="home__section" aria-labelledby="tasks">
     <h2 id="tasks">What do you want to do?</h2>
     <ul class="cards">
-      {{- range slice "/guide/first-steps" "/guide/filtering" "/guide/dhcp" "/guide/local-dns" }}
+      {{- range slice "/guide/first-steps" "/guide/dashboard" "/guide/filtering" "/guide/dhcp" "/guide/local-dns" }}
       {{- with site.GetPage . }}
       <li class="card">
         <a class="card__link" href="{{ .RelPermalink }}">{{ partial "title.html" . }}</a>
