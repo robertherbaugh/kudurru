@@ -1,7 +1,7 @@
-// Copied from web/src/components/EditableSection.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/EditableSection.tsx at dd3dcb0; keep in step by hand.
 // Changes: an optional describeError, so a page can word a refused save
 // without the server's field paths (api/fieldErrors bannerError).
-// One section of an object page (docs/m3/ui.md "Pages, wizards and
+// One section of an object page (dev-docs/milestones/m3/ui.md "Pages, wizards and
 // dialogs"): a Panel (a region named by its heading) with the current
 // value, and an Edit button that swaps in typed controls with their own
 // Save and Cancel. The section

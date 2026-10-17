@@ -1,7 +1,7 @@
 // Package integration is the extension seam: in-tree Go integrations
 // (Tier A) implement these interfaces and register at init; out-of-process
 // HTTP integrations (Tier B) speak the external-dns webhook contract plus
-// kudurru extensions (docs/architecture.md §9). Integrations never run on
+// kudurru extensions (dev-docs/design-record.md §9). Integrations never run on
 // the query path.
 package integration
 

@@ -7,7 +7,7 @@ import (
 	"runtime"
 )
 
-// Multi-socket listeners (docs/architecture.md §13.1, an M1 carry-over). A
+// Multi-socket listeners (dev-docs/design-record.md §13.1, an M1 carry-over). A
 // udp or tcp Spec binds N sockets on the same address with SO_REUSEPORT,
 // each served by its own miekg/dns read loop sharing the Handler, so the
 // kernel spreads datagrams and connections over N receive queues instead

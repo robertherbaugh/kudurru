@@ -1,4 +1,4 @@
-# kind + MetalLB + Helm end-to-end test (hack/kind-e2e.sh, docs/m5/e2e.md):
+# kind + MetalLB + Helm end-to-end test (hack/kind-e2e.sh, dev-docs/milestones/m5/e2e.md):
 # the image built from the Dockerfile on a kind cluster of a control-plane
 # node and three workers, with both charts, three replicas and MetalLB.
 # Part 1 checks the cluster without a database: DNS over UDP and TCP through
@@ -8,7 +8,7 @@
 # and stops the database for a while.
 #
 # Runs on every pull request and push to main that touches more than
-# docs/, site/, www/ and branding/, so it can be a required check: those changes skip
+# docs/, dev-docs/, docs-site/, website/ and branding/, so it can be a required check: those changes skip
 # the job rather than the workflow, because a skipped job satisfies a
 # required status check and a workflow that never runs does not (the same
 # gate as ci.yml). The runner has to hold the four kind nodes, PostgreSQL
@@ -36,11 +36,11 @@ jobs:
           HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           # Run unless git can list the changes and every one is under
-          # docs/, site/ or www/ (a new branch, a manual run or an
+          # docs/, dev-docs/, docs-site/ or website/ (a new branch, a manual run or an
           # unreachable force-pushed base runs the test).
           code=true
           if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www|branding)/' <<<"$files"; then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|dev-docs|docs-site|website|branding)/' <<<"$files"; then
               code=false
             fi
           fi

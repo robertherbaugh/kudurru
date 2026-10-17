@@ -1,7 +1,7 @@
 package pipeline
 
 // Status is the ≤32-value taxonomy shared by the query log, metrics and UI
-// colours (docs/architecture.md §11.2). Values ≥ 16 were not answered
+// colors (dev-docs/design-record.md §11.2). Values ≥ 16 were not answered
 // normally.
 type Status uint8
 

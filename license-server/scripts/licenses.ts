@@ -5,7 +5,7 @@
 // (openid-client with oauth4webapi and jose, nodemailer). The Dockerfile
 // copies the file to /app/third-party-licenses.txt next to /app/NOTICE,
 // which covers the Bun runtime and the base image. Fails on a copyleft
-// license (CONTRIBUTING.md), as web/scripts/licenses.ts does.
+// license (CONTRIBUTING.md), as dashboard/scripts/licenses.ts does.
 //
 //   bun scripts/licenses.ts [dist/ui]
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';

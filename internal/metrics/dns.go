@@ -1,5 +1,5 @@
 // Package metrics holds the Prometheus instruments. Labels follow the
-// bounded-cardinality policy of docs/architecture.md §11.1: client and
+// bounded-cardinality policy of dev-docs/design-record.md §11.1: client and
 // domain are never labels.
 package metrics
 

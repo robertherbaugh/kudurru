@@ -47,7 +47,7 @@ func runMain(m *testing.M) int {
 	}
 	env := &envtest.Environment{
 		BinaryAssetsDirectory: assets,
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "deploy", "kustomize", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
 	}
 	args := env.ControlPlane.GetAPIServer().Configure()

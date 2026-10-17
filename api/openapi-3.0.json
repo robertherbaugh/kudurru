@@ -7619,7 +7619,7 @@
     }
   },
   "info": {
-    "description": "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; lists are {items, continue, took_ms} with opaque keyset continue tokens.",
+    "description": "The kudurru REST API (dev-docs/design-record.md §10). Errors are {error:{key,message,hint}, took_ms}; lists are {items, continue, took_ms} with opaque keyset continue tokens.",
     "license": {
       "name": "LicenseRef-Kudurru-Community",
       "url": "https://kudurru.io/license/text/"

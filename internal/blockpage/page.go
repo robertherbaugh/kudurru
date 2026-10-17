@@ -11,8 +11,8 @@ import (
 )
 
 // Brand assets: downscaled copies of branding/assets
-// (kudurru-logo-mixed{,-paper}.png as web/src/assets has them, and
-// favicon.ico), written by web/scripts/brand-assets.py. The logos are
+// (kudurru-logo-mixed{,-paper}.png as dashboard/src/assets has them, and
+// favicon.ico), written by dashboard/scripts/brand-assets.py. The logos are
 // inlined as data: URIs so the page makes no request but /favicon.ico.
 var (
 	//go:embed assets/logo-light.png

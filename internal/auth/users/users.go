@@ -1,4 +1,4 @@
-// Package users is the local account store of docs/architecture.md §8.7:
+// Package users is the local account store of dev-docs/design-record.md §8.7:
 // LocalUser objects (api/internalkinds/v1alpha1) persisted through
 // store.Store and mirrored in a watch-fed cache, Argon2id password hashes,
 // the first-boot admin, password login with per-IP and per-user lockouts,

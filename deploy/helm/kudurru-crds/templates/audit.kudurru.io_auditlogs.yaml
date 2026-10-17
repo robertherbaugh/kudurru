@@ -1,0 +1,234 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+    helm.sh/resource-policy: keep
+  name: auditlogs.audit.kudurru.io
+spec:
+  group: audit.kudurru.io
+  names:
+    categories:
+    - kudurru-audit
+    kind: AuditLog
+    listKind: AuditLogList
+    plural: auditlogs
+    singular: auditlog
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.node
+      name: Node
+      type: string
+    - jsonPath: .spec.count
+      name: Events
+      type: integer
+    - jsonPath: .spec.from
+      name: From
+      type: string
+    - jsonPath: .spec.until
+      name: Until
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          AuditLog is an immutable batch of audit events recorded by one kudurru
+          node: the events of one audit spool (Source) with ids FirstID to LastID,
+          hash-chained to the batch before it. kudurru only creates and deletes
+          AuditLogs (its RBAC grants no update), the leader deletes them after
+          audit.retention, and GET /api/v1/audit reads them on every replica.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AuditLogSpec is the batch.
+            properties:
+              count:
+                description: Count is the number of events.
+                type: integer
+              events:
+                description: Events are the events, oldest first.
+                items:
+                  description: AuditLogEvent is one audit event (dev-docs/design-record.md
+                    §11.4).
+                  properties:
+                    action:
+                      description: Action is "<resource>.<verb>", e.g. "dnszone.update".
+                      type: string
+                    actor:
+                      description: Actor is who acted.
+                      properties:
+                        auth:
+                          description: Auth is how the actor authenticated (cookie,
+                            token, jwt, k8s, unix, internal).
+                          type: string
+                        groups:
+                          items:
+                            type: string
+                          type: array
+                        id:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                      type: object
+                    after:
+                      type: string
+                    authz:
+                      description: Authz is the authorizer path that decided (binding,
+                        sar, local).
+                      type: string
+                    before:
+                      description: |-
+                        Before and After are the redacted states around the action, as JSON
+                        text (kept byte for byte: they are hashed).
+                      type: string
+                    hash:
+                      type: string
+                    id:
+                      description: ID is the event's id in the node's audit spool.
+                      format: int64
+                      type: integer
+                    manager:
+                      description: Manager is the store manager of a store write ("api",
+                        "file:...").
+                      type: string
+                    node:
+                      description: Node is set when it differs from spec.node.
+                      type: string
+                    prevHash:
+                      description: PrevHash and Hash chain the node's events.
+                      type: string
+                    reason:
+                      type: string
+                    request:
+                      description: Request is the HTTP context of the action.
+                      properties:
+                        id:
+                          type: string
+                        ip:
+                          type: string
+                        method:
+                          type: string
+                        path:
+                          type: string
+                        ua:
+                          type: string
+                      type: object
+                    resource:
+                      description: Resource is the object or virtual resource acted
+                        upon.
+                      properties:
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                      required:
+                      - kind
+                      type: object
+                    resourceVersion:
+                      type: string
+                    result:
+                      description: Result is success, denied or error.
+                      type: string
+                    stub:
+                      description: |-
+                        Stub is set when the documents, the reason and the request were
+                        dropped (hourly budget); Hash then cannot be recomputed and only
+                        the link to the previous event is verified.
+                      type: boolean
+                    ts:
+                      description: Time is when the action happened.
+                      format: date-time
+                      type: string
+                  required:
+                  - action
+                  - actor
+                  - hash
+                  - id
+                  - resource
+                  - result
+                  - ts
+                  type: object
+                maxItems: 1000
+                type: array
+              firstID:
+                description: FirstID and LastID are the spool ids of the first and
+                  last event.
+                format: int64
+                type: integer
+              from:
+                description: From and Until are the times of the first and last event.
+                format: date-time
+                type: string
+              hash:
+                type: string
+              lastID:
+                format: int64
+                type: integer
+              node:
+                description: Node is the node that recorded the events.
+                minLength: 1
+                type: string
+              prevHash:
+                description: |-
+                  PrevHash is the hash the first event follows (the last event of the
+                  spool before this batch); Hash is the last event's hash.
+                type: string
+              seal:
+                description: |-
+                  Seal is an HMAC-SHA256 over the batch keyed from the cluster
+                  encryption key, so an edit made without that key is detected.
+                type: string
+              source:
+                description: |-
+                  Source is the UUID of the node's audit spool; events are keyed by
+                  (source, id).
+                minLength: 1
+                type: string
+              stubs:
+                description: |-
+                  Stubs counts the denied or failed events stored without documents
+                  and request data because the node exceeded its hourly budget for
+                  them (successful actions are always stored in full).
+                type: integer
+              until:
+                format: date-time
+                type: string
+            required:
+            - count
+            - events
+            - firstID
+            - from
+            - hash
+            - lastID
+            - node
+            - source
+            - until
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}

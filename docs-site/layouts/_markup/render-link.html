@@ -1,0 +1,66 @@
+{{- /*
+  Links, resolved so that the markdown keeps working on GitHub:
+
+  - absolute URLs and same-page fragments pass through;
+  - "/path/" is a page of this site (docs-site/content pages use it);
+  - a relative path is resolved against the source file's directory in the
+    repository, as GitHub does: a file that is a page of this site (docs/,
+    docs-site/content, the mounted root files) links to that page, a directory
+    to its README.md or _index.md page, anything else to the file on GitHub.
+
+  A link to a page, a fragment or a repository file that does not exist is
+  a warning, and the site build runs with --panicOnWarning (make docs-site).
+*/ -}}
+{{- $dest := .Destination -}}
+{{- $u := urls.Parse $dest -}}
+{{- $href := $dest -}}
+{{- $external := false -}}
+{{- $frag := cond (ne $u.Fragment "") (printf "#%s" $u.Fragment) "" -}}
+{{- $target := false -}}
+{{- if or $u.IsAbs (hasPrefix $dest "//") (eq $u.Scheme "mailto") -}}
+  {{- $external = true -}}
+{{- else if hasPrefix $dest "#" -}}
+  {{- /* same page; headings are checked by the browser, not here */ -}}
+{{- else if and (hasPrefix $u.Path "/") (path.Ext $u.Path) (ne (path.Ext $u.Path) ".md") -}}
+  {{- /* a file the site publishes (static/ and its mounts) */ -}}
+  {{- $href = printf "%s%s" (relURL (strings.TrimPrefix "/" $u.Path)) $frag -}}
+{{- else if hasPrefix $u.Path "/" -}}
+  {{- $p := site.GetPage (strings.TrimSuffix "/" $u.Path | default "/") -}}
+  {{- if $p -}}
+    {{- $target = $p -}}
+  {{- else -}}
+    {{- warnf "%s: link to %q: no page %s" .Page.String $dest $u.Path -}}
+  {{- end -}}
+{{- else -}}
+  {{- $from := partial "repo-path.html" .Page -}}
+  {{- $path := path.Join (path.Dir $from) $u.Path -}}
+  {{- $pages := partialCached "repo-pages.html" "repo-pages" -}}
+  {{- range slice $path (path.Join $path "README.md") (path.Join $path "_index.md") -}}
+    {{- if and (not $target) (index $pages .) -}}
+      {{- $target = index $pages . -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if not $target -}}
+    {{- if or (hasPrefix $path "../") (eq $path "..") -}}
+      {{- warnf "%s: link to %q leaves the repository" .Page.String $dest -}}
+    {{- else if and (hasPrefix $path "docs-site/content/") (hasSuffix $path ".md") -}}
+      {{- warnf "%s: link to %q: no such page" .Page.String $dest -}}
+    {{- else if and (partialCached "repo-files.html" "repo-files") (not (index (partialCached "repo-files.html" "repo-files") $path)) -}}
+      {{- warnf "%s: link to %q: %s is not in the repository" .Page.String $dest $path -}}
+    {{- else -}}
+      {{- $href = printf "%s/blob/%s/%s%s" site.Params.repo site.Params.repoRef $path $frag -}}
+      {{- $external = true -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- with $target -}}
+  {{- $href = printf "%s%s" .RelPermalink $frag -}}
+  {{- with $u.Fragment -}}
+    {{- $id := . -}}
+    {{- if not (or ($target.Fragments.Identifiers.Contains $id) (strings.Contains $target.RawContent (printf "id=\"%s\"" $id))) -}}
+      {{- warnf "%s: link to %q: %s has no anchor #%s" $.Page.String $dest $target.RelPermalink $id -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+<a href="{{ $href }}"{{ with .Title }} title="{{ . }}"{{ end }}{{ if $external }} rel="noopener"{{ end }}>{{ .Text }}</a>
+{{- /* chomp trailing newline */ -}}

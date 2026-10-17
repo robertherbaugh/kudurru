@@ -13,7 +13,7 @@ store. Both have dashboard setup.
 This tour is for contributors and for operators who want to know what
 happens inside. For running kudurru, read the [guide](../guide/README.md)
 and the [deployment docs](../deploy/README.md).
-For *why* it is built this way, read the [design record](../architecture.md)
+For *why* it is built this way, read the [design record](../../dev-docs/design-record.md)
 and its decision log (D1 onwards); where the code and the design record
 disagree, these pages follow the code and say so.
 
@@ -121,7 +121,7 @@ code. The main gaps between the two:
 | DHCP server support | DHCPv4 ships in v0.1.0 on Linux: SQLite standalone or three-node quorum failover, or the Kubernetes store with `DHCPScope`/`DHCPLease` objects and one elected replica behind a relay; dashboard setup, direct/relayed subnets, conflict checks, advanced network/boot options, live management, lease import/export and persistent A/PTR ownership; DHCPv6 is excluded |
 | Kubernetes Events from the controller | events are logged only |
 
-The open list lives in [follow-ups](../followups.md).
+The open list lives in [follow-ups](../../dev-docs/followups.md).
 
 ## Reading the diagrams
 

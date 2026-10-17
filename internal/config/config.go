@@ -93,7 +93,7 @@ type Listeners struct {
 	Metrics           Listener    `koanf:"metrics" json:"metrics"`
 	ProxyProtocolFrom []string    `koanf:"proxyProtocolFrom" json:"proxyProtocolFrom"`
 	// ProxyProtocolSecretFile holds the PROXYv2 TLV 0xE0 secret shared with
-	// the dnsdist supervisor (docs/architecture.md §3.3, D56).
+	// the dnsdist supervisor (dev-docs/design-record.md §3.3, D56).
 	ProxyProtocolSecretFile string `koanf:"proxyProtocolSecretFile" json:"proxyProtocolSecretFile"`
 	// Sockets is how many SO_REUSEPORT sockets each udp and tcp listener
 	// binds (Linux; one elsewhere); 0 means GOMAXPROCS.
@@ -152,7 +152,7 @@ type Listener struct {
 	Address string `koanf:"address" json:"address"`
 }
 
-// StoreConfig selects and tunes the Store driver (docs/architecture.md §4.3).
+// StoreConfig selects and tunes the Store driver (dev-docs/design-record.md §4.3).
 type StoreConfig struct {
 	// Driver is sqlite (state.db under node.dataDir) or kube (CRDs via the
 	// apiserver).
@@ -209,7 +209,7 @@ type ECS struct {
 	IPv6Prefix int    `koanf:"ipv6Prefix" json:"ipv6Prefix"`
 }
 
-// Cache configures the response cache (docs/architecture.md §3.3).
+// Cache configures the response cache (dev-docs/design-record.md §3.3).
 type Cache struct {
 	// MaxEntries bounds the cache; 0 disables it.
 	MaxEntries  int             `koanf:"maxEntries" json:"maxEntries"`
@@ -250,7 +250,7 @@ type UpstreamGroup struct {
 	Timeout  Duration `koanf:"timeout" json:"timeout"`
 }
 
-// Querylog configures the per-node query log (docs/architecture.md §11.2,
+// Querylog configures the per-node query log (dev-docs/design-record.md §11.2,
 // D59).
 type Querylog struct {
 	// Enabled turns the query log on. When false no events are collected.
@@ -419,7 +419,7 @@ type TSIGKey struct {
 type Notify struct {
 	// Source is the local IP address NOTIFY messages are sent from; empty
 	// lets the kernel choose. Secondaries match NOTIFY senders against
-	// their primaries list (docs/architecture.md §4.6).
+	// their primaries list (dev-docs/design-record.md §4.6).
 	Source string `koanf:"source" json:"source"`
 }
 

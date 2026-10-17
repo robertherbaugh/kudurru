@@ -12,7 +12,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/zone"
 )
 
-// Zone transfers out (docs/architecture.md §7.1 step 6, §13.1 M2):
+// Zone transfers out (dev-docs/design-record.md §7.1 step 6, §13.1 M2):
 //
 //   - AXFR (RFC 5936) only over stream transports (TCP, DoT); over UDP it
 //     is REFUSED. The answer is the zone in canonical order with the SOA

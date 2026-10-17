@@ -1,4 +1,4 @@
-// The application root, after web/src/App.tsx: the providers (query cache,
+// The application root, after dashboard/src/App.tsx: the providers (query cache,
 // API client, router, appearance, Astryx links and layers for toasts) and
 // the session gate. Anonymous pages (/login, /verify, /approve) render
 // without asking for a session at all; every other page needs one, and a

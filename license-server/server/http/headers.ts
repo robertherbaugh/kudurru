@@ -1,7 +1,7 @@
 // Security headers (design spec §2) on every response the server sends:
 // API answers, redirects, downloads, static files, the SPA and the 500 of
 // Bun's error hook. The CSP is exactly the dashboard's web.DefaultCSP
-// (web/handler.go): scripts only from the bundle, the SPA talks only to its
+// (dashboard/handler.go): scripts only from the bundle, the SPA talks only to its
 // own origin, no framing. HSTS only when PUBLIC_URL is https. API answers
 // and downloads are never cached (Cache-Control: no-store) unless the
 // handler named its own Cache-Control; static.ts names one for every file.

@@ -1,4 +1,4 @@
-// Copied from web/src/components/fields/EnumSelect.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/fields/EnumSelect.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // A strongly typed choice over a fixed set of values (settings schema
 // `enum`, Policy blockMode, BlockList mode, ...): SelectField under its

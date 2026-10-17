@@ -11,7 +11,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/edge"
 )
 
-// Track-file weights (docs/architecture.md §3.6): keepalived multiplies the
+// Track-file weights (dev-docs/design-record.md §3.6): keepalived multiplies the
 // value by the track_file weight (-1) and adds it to the priority. With
 // every instance on nopreempt only Fault moves a VIP away from the current
 // MASTER; PreferNot only matters for the next election. These mirror

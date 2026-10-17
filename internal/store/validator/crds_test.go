@@ -16,14 +16,14 @@ import (
 )
 
 // TestEmbeddedCRDsMatchManifests fails when internal/store/validator/crds
-// drifts from config/crd/bases, the output of `make manifests`. Fix it with
+// drifts from deploy/kustomize/crd/bases, the output of `make manifests`. Fix it with
 // `make manifests` (which copies the CRDs here), never by hand.
 func TestEmbeddedCRDsMatchManifests(t *testing.T) {
 	embedded, err := EmbeddedCRDs()
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths, err := filepath.Glob(filepath.Join(repoRoot, "config", "crd", "bases", "*.yaml"))
+	paths, err := filepath.Glob(filepath.Join(repoRoot, "deploy", "kustomize", "crd", "bases", "*.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,17 +31,17 @@ func TestEmbeddedCRDsMatchManifests(t *testing.T) {
 	for _, p := range paths {
 		name := filepath.Base(p)
 		onDisk = append(onDisk, name)
-		want, err := os.ReadFile(p) //nolint:gosec // paths come from a glob of config/crd/bases
+		want, err := os.ReadFile(p) //nolint:gosec // paths come from a glob of deploy/kustomize/crd/bases
 		if err != nil {
 			t.Fatal(err)
 		}
 		got, ok := embedded[name]
 		if !ok {
-			t.Errorf("%s is in config/crd/bases but not embedded; run `make manifests`", name)
+			t.Errorf("%s is in deploy/kustomize/crd/bases but not embedded; run `make manifests`", name)
 			continue
 		}
 		if !bytes.Equal(got, want) {
-			t.Errorf("embedded %s differs from config/crd/bases; run `make manifests`", name)
+			t.Errorf("embedded %s differs from deploy/kustomize/crd/bases; run `make manifests`", name)
 		}
 	}
 	var names []string
@@ -51,7 +51,7 @@ func TestEmbeddedCRDsMatchManifests(t *testing.T) {
 	sort.Strings(names)
 	sort.Strings(onDisk)
 	if strings.Join(names, ",") != strings.Join(onDisk, ",") {
-		t.Errorf("embedded CRDs %v, config/crd/bases %v; run `make manifests`", names, onDisk)
+		t.Errorf("embedded CRDs %v, deploy/kustomize/crd/bases %v; run `make manifests`", names, onDisk)
 	}
 	if len(names) != len(sampleFiles) {
 		t.Errorf("%d CRDs embedded, %d sample kinds: add a sample (and test cases) for every kind", len(names), len(sampleFiles))

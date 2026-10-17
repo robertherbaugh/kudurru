@@ -1,5 +1,5 @@
 // Package catalogue is kudurru's blocked-services and safe-search catalogue
-// (docs/architecture.md §7, decision D60): which domains make up a service
+// (dev-docs/design-record.md §7, decision D60): which domains make up a service
 // a Policy can block by ID (spec.blockedServices: youtube, tiktok, ...),
 // and which search engines answer their own safe hostname when a Policy
 // sets spec.safeSearch.

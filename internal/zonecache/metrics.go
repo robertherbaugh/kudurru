@@ -6,7 +6,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
-// cacheMetrics are the zonecache instruments (docs/architecture.md §11.1).
+// cacheMetrics are the zonecache instruments (dev-docs/design-record.md §11.1).
 // Labels are bounded: kind is one of the watched kinds, builder one of the
 // registered builders, result ok|error.
 type cacheMetrics struct {

@@ -38,7 +38,7 @@ All production files use lowercase kebab-case names under [assets/](assets/). Th
 | [kudurru-brand-sheet.png](assets/kudurru-brand-sheet.png) | 1440 × 1240, opaque PNG | Quick visual reference |
 
 The social card is available for upload to repository settings. The
-v0.1.0 dashboard (`web/`, React + Astryx, D69) uses this brand's palette,
+v0.1.0 dashboard (`dashboard/`, React + Astryx, D69) uses this brand's palette,
 favicon and app icons.
 
 ## Identity and copy
@@ -107,12 +107,12 @@ After changing production artwork, regenerate the embedded dashboard,
 block-page and email assets from the repository root:
 
 ```sh
-.context/brand-venv/bin/python3 web/scripts/brand-assets.py
+.context/brand-venv/bin/python3 dashboard/scripts/brand-assets.py
 .context/brand-venv/bin/python3 license-server/scripts/mail-brand.py
 ```
 
 The dashboard and license portal keep their Astryx theme sources in
-[`web/src/themes/kudurru/`](../web/src/themes/kudurru/) and
+[`dashboard/src/themes/kudurru/`](../dashboard/src/themes/kudurru/) and
 [`license-server/ui/src/themes/kudurru/`](../license-server/ui/src/themes/kudurru/).
 Palette changes also need updates there; the image export scripts do not
 rebuild themes. The websites read this kit during their builds.

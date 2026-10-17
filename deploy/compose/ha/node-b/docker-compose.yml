@@ -1,4 +1,4 @@
-# Compose HA, ha-static profile (docs/architecture.md §6.5): node-b.
+# Compose HA, ha-static profile (dev-docs/design-record.md §6.5): node-b.
 # Nodes: node-a 10.0.0.11 (priority index 0 → 200), node-b 10.0.0.12 (1 →
 # 190), node-c 10.0.0.13 (2 → 180); VIP 10.0.0.53/24 on eth0, VRID 53.
 # The three directories differ only in KUDURRU_NODE__NAME, --peers and

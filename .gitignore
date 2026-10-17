@@ -6,17 +6,17 @@
 *.out
 coverage.*
 
-# generated at build time (committed generated files live under api/ and config/crd/bases)
-# web/dist/index.html is a committed placeholder so Go builds without Bun;
-# `make web-build` overwrites it, writes the hashed bundle into assets/ and
-# copies web/public/ (icons, manifest) next to it.
-/web/dist/*
-!/web/dist/index.html
-/web/node_modules/
-/web/coverage/
-/web/e2e/.auth/
-/web/playwright-report/
-/web/test-results/
+# generated at build time (committed generated files live under api/ and deploy/kustomize/crd/bases)
+# dashboard/dist/index.html is a committed placeholder so Go builds without Bun;
+# `make dashboard-build` overwrites it, writes the hashed bundle into assets/ and
+# copies dashboard/public/ (icons, manifest) next to it.
+/dashboard/dist/*
+!/dashboard/dist/index.html
+/dashboard/node_modules/
+/dashboard/coverage/
+/dashboard/e2e/.auth/
+/dashboard/playwright-report/
+/dashboard/test-results/
 
 # local state
 /.context/
@@ -36,8 +36,8 @@ coverage.*
 /.claude/*
 !/.claude/skills/
 
-# docs site (site/): build output, Hugo's cache and the generated assets
-/site/public/
-/site/resources/
-/site/.generated/
-/site/.hugo_build.lock
+# docs site (docs-site/): build output, Hugo's cache and the generated assets
+/docs-site/public/
+/docs-site/resources/
+/docs-site/.generated/
+/docs-site/.hugo_build.lock

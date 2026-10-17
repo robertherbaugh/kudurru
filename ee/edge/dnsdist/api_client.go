@@ -15,7 +15,7 @@ import (
 
 // APIClient talks to dnsdist's built-in webserver (X-API-Key). Only the
 // read endpoints and the cache flush are used: the API cannot manage
-// backends (docs/research/dnsdist-keepalived.md §1.12).
+// backends (dev-docs/research/dnsdist-keepalived.md §1.12).
 type APIClient struct {
 	// BaseURL is http://host:port of the webserver.
 	BaseURL string

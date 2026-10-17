@@ -1,5 +1,5 @@
 // Package health is the ops listener: startup, readiness and liveness
-// probes with the semantics of docs/architecture.md §5.2. Upstream
+// probes with the semantics of dev-docs/design-record.md §5.2. Upstream
 // reachability is never a readiness condition.
 package health
 

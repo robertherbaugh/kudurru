@@ -70,10 +70,10 @@ where it matters.
 |---|---|
 | All deployment shapes (Docker, Kubernetes, packages) | [Deploying kudurru](../deploy/README.md) |
 | Backup, key rotation and upgrade runbooks | [Runbooks](../deploy/runbooks.md) |
-| The design of kudurru | [Architecture](../architecture.md) |
-| Every setting | [Settings reference](../../site/content/reference/configuration.md) |
-| Every command | [Command reference](../../site/content/reference/cli.md) |
-| Move from Pi-hole | [Coming from Pi-hole](../../site/content/migrate/pihole.md) |
-| Move from AdGuard Home | [Coming from AdGuard Home](../../site/content/migrate/adguard-home.md) |
-| Move from Technitium | [Coming from Technitium](../../site/content/migrate/technitium.md) |
-| Switch DNS servers | [Cutover and rollback checklist](../../site/content/migrate/cutover.md) |
+| The design of kudurru | [Architecture](../../dev-docs/design-record.md) |
+| Every setting | [Settings reference](../../docs-site/content/reference/configuration.md) |
+| Every command | [Command reference](../../docs-site/content/reference/cli.md) |
+| Move from Pi-hole | [Coming from Pi-hole](../../docs-site/content/migrate/pihole.md) |
+| Move from AdGuard Home | [Coming from AdGuard Home](../../docs-site/content/migrate/adguard-home.md) |
+| Move from Technitium | [Coming from Technitium](../../docs-site/content/migrate/technitium.md) |
+| Switch DNS servers | [Cutover and rollback checklist](../../docs-site/content/migrate/cutover.md) |

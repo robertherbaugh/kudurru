@@ -1,7 +1,7 @@
 # kudurru-dnsdist: upstream dnsdist 2.1 (GPL-2.0, unmodified) plus the kudurru
 # supervisor (`kudurru edge run`): render dnsdist.yml from the topology,
 # `dnsdist --check-config`, run dnsdist as a child, forward signals, expose
-# :8084/healthz/ready. docs/architecture.md §3.6, decisions D16/D17.
+# :8084/healthz/ready. dev-docs/design-record.md §3.6, decisions D16/D17.
 #
 # The two programs are merely aggregated in one image; kudurru never links
 # dnsdist. This image ships the GPL-2.0 text and the upstream source location.

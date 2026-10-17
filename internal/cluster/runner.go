@@ -1,5 +1,5 @@
 // Package cluster runs the node's runnables and owns the leader-election
-// loop (docs/architecture.md §3.1, §5.3, decisions D44 and D78).
+// loop (dev-docs/design-record.md §3.1, §5.3, decisions D44 and D78).
 //
 // A Runner holds two groups. Always-on runnables (dnsserver, zonecache,
 // api, querylog, ops) start as soon as Run is called, on every replica.

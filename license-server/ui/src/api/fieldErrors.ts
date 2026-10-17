@@ -1,5 +1,5 @@
 // The server's 400 `error.fields` next to the controls they name
-// (docs/m3/ui.md: "A 400 names the failing parts of a value inline").
+// (dev-docs/milestones/m3/ui.md: "A 400 names the failing parts of a value inline").
 // A form lists the body fields its controls show; each control asks for its
 // message (fieldError, or the hook's `field`), and the form's banner only
 // carries what no control shows (bannerError), so a wire path such as

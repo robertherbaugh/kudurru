@@ -215,7 +215,7 @@ test('the customer accepts the invite, sees the key and asks for a free personal
 });
 
 /**
- * Posts as the kudurru.io form does (www/src/client/license.ts): from a
+ * Posts as the kudurru.io form does (website/src/client/license.ts): from a
  * minimal stand-in page on its own origin, served by a real local server
  * (Chrome's Local Network Access refuses a page it sees as public calling a
  * loopback portal), cross-origin. Returns the status and the JSON answer.

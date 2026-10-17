@@ -10,7 +10,7 @@
 //	go run -tags spike ./internal/dnsserver/spikecmd -upstream 1.1.1.1:53
 //	go run -tags spike,dnsproxy ./internal/dnsserver/spikecmd -selfcheck
 //
-// See docs/spikes/dnsserver-quic.md for the client commands.
+// See dev-docs/spikes/dnsserver-quic.md for the client commands.
 package main
 
 import (

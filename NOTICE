@@ -7,12 +7,12 @@ personal, homelab, nonprofit and community-development uses are permitted.
 Business and government production use requires an accepted commercial
 agreement and Order Form, including for no-key features. See LICENSING.md.
 
-The ee/ and site/ directories have their own notices in ee/LICENSE.md and
-site/LICENSE.md. The www/ marketing website and license-server/ issuance
+The ee/ and docs-site/ directories have their own notices in ee/LICENSE.md and
+docs-site/LICENSE.md. The kudurru.io website (website/) and the license-server/ issuance
 service are excluded from the Community License and commercial grant;
 they have separate source-viewing licenses in those folders. The website's
 project-controlled source is copyright 2026 kudurru project maintainers
-(the applicable copyright holders defined in www/LICENSE.md); the issuance
+(the applicable copyright holders defined in website/LICENSE.md); the issuance
 service's project-controlled source is copyright 2026 Robert Herbaugh. The
 blocked-services catalog under internal/listdata/catalogue is separately
 Apache-2.0 licensed.
@@ -101,7 +101,7 @@ Attributions are added to this file as the dependencies land:
 - Mermaid (https://github.com/mermaid-js/mermaid), MIT, Copyright (c) 2014 -
   2022 Knut Sveidqvist: the browser bundle of mermaid 11.17.2 (with its
   permissively licensed dependencies, licence comments kept) is stored
-  unmodified (gzipped) in site/vendor/mermaid and served by the docs site to
+  unmodified (gzipped) in docs-site/vendor/mermaid and served by the docs site to
   render the diagrams of docs/architecture; licence and provenance in that
   directory. It is not part of the kudurru binary or images.
 - oapi-codegen (https://github.com/oapi-codegen/oapi-codegen), Apache-2.0:
@@ -158,8 +158,8 @@ Attributions are added to this file as the dependencies land:
   runs an unmodified dex release as a separate process; dex is not linked
   into or distributed with kudurru.
 
-Dashboard bundle (web/, compiled into the binary when built with
-`make web-build`; web/dist/third-party-licenses.txt, generated at build
+Dashboard bundle (dashboard/, compiled into the binary when built with
+`make dashboard-build`; dashboard/dist/third-party-licenses.txt, generated at build
 time and embedded with the bundle, carries every licence text):
 
 - Astryx (https://github.com/facebook/astryx), MIT, Copyright (c) Meta
@@ -183,7 +183,7 @@ time and embedded with the bundle, carries every licence text):
   Contributors.
 
 The dashboard's information architecture is re-derived from
-docs/architecture.md §10; no Pi-hole (EUPL-1.2) markup, styles or
+dev-docs/design-record.md §10; no Pi-hole (EUPL-1.2) markup, styles or
 JavaScript is used. Development-only tools (Vite, Vitest, ESLint, MSW,
 Testing Library, TypeScript) are not part of the bundle.
 

@@ -2,7 +2,7 @@ package cache
 
 import "github.com/prometheus/client_golang/prometheus"
 
-// Metrics are the cache instruments (docs/architecture.md §11.1). All
+// Metrics are the cache instruments (dev-docs/design-record.md §11.1). All
 // methods are safe on a nil *Metrics.
 type Metrics struct {
 	Entries    *prometheus.GaugeVec   // kind

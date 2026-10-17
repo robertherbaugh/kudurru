@@ -1,5 +1,5 @@
 // Package k8s authenticates Kubernetes ServiceAccount tokens for the kube
-// store driver (docs/architecture.md §5.5, D21, D55): projected tokens with
+// store driver (dev-docs/design-record.md §5.5, D21, D55): projected tokens with
 // audience "kudurru" are verified offline against the cluster's OIDC
 // discovery document and JWKS (read through the apiserver with the pod's
 // own credentials), with TokenReview as the fallback when the keys cannot

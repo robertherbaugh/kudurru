@@ -31,14 +31,14 @@ func kubeconformBin(t *testing.T) string {
 	return p
 }
 
-// crdSchemaDir converts config/crd/bases into kubeconform's JSON schema
+// crdSchemaDir converts deploy/kustomize/crd/bases into kubeconform's JSON schema
 // layout <dir>/<group>/<kind>_<version>.json, with additionalProperties
 // false wherever the CRD lists properties and does not preserve unknown
 // fields (what kubeconform's openapi2jsonschema -strict does).
 func crdSchemaDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	bases, err := filepath.Glob(filepath.Join(repoRoot(t), "config/crd/bases/*.yaml"))
+	bases, err := filepath.Glob(filepath.Join(repoRoot(t), "deploy/kustomize/crd/bases/*.yaml"))
 	if err != nil || len(bases) == 0 {
 		t.Fatalf("no CRDs: %v", err)
 	}

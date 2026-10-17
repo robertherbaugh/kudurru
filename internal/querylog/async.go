@@ -11,7 +11,7 @@ import (
 	"k8s.io/utils/clock"
 )
 
-// Async is the collector of docs/architecture.md §11.2: a bounded queue
+// Async is the collector of dev-docs/design-record.md §11.2: a bounded queue
 // in front of one goroutine that applies the exclude lists and the privacy
 // transform once, stamps ids, publishes to the live tail and hands batches
 // of BatchSize events (or whatever arrived within Interval) to the Sink.

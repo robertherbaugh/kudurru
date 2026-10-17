@@ -7,7 +7,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 )
 
-// The structs below are the JSON bodies of the docs/architecture.md §10
+// The structs below are the JSON bodies of the dev-docs/design-record.md §10
 // stats and log endpoints (the huma handlers in M3 return them as they
 // are, adding took_ms). Every response embeds Scope so the cluster
 // scatter-gather (scope=cluster) can fill nodes[] and partial without a

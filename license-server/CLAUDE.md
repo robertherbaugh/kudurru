@@ -36,7 +36,7 @@ RULES:
 
 - Read [README.md](README.md) (what it is, configuration, roles, keys) and
   [docs/architecture.md](docs/architecture.md) (the flows) first. The design
-  record is docs/architecture.md D165 in the repository root.
+  record is dev-docs/design-record.md D165 in the repository root.
 - Hard rules: no kudurru node ever contacts the portal; keys must stay
   byte-identical to `internal/license` (`server/test/jws.test.ts`, the Go
   golden vectors, the node oracle); never `features: []`, never `nbf`; the
@@ -44,10 +44,10 @@ RULES:
 - `shared/routes.ts` is the one list of routes and their access rule; add a
   route there, give it a handler, and the RBAC test covers it. Wire types
   live in `shared/api.ts` only.
-- UI (`ui/`): the rules below and docs/m3/ui.md ("Pages, wizards and
-  dialogs") apply as in `web/`. Look up every component with
+- UI (`ui/`): the rules below and dev-docs/milestones/m3/ui.md ("Pages, wizards and
+  dialogs") apply as in `dashboard/`. Look up every component with
   `bun run astryx -- component <Name> --dense` (run from license-server/).
-  `ui/src/ui/` is copied from `web/src`: each file names its source; keep
+  `ui/src/ui/` is copied from `dashboard/src`: each file names its source; keep
   them in step by hand.
 - A new table or a new kind of query needs its grant in a new migration
   (like `0002_runtime_grants.sql`); `server/test/roles.test.ts` fails

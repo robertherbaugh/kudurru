@@ -1,10 +1,10 @@
 // Command docsgen writes the generated reference pages of the docs site
-// (site/content/reference):
+// (docs-site/content/reference):
 //
 //   - configuration.md from the settings metadata table
 //     (internal/config.Schema, the table `kudurru config schema` prints);
 //   - crds/<kind>.md from the OpenAPI v3 schemas of the CRDs in
-//     config/crd/bases (what `make manifests` writes);
+//     deploy/kustomize/crd/bases (what `make manifests` writes);
 //   - api/endpoints.md from the OpenAPI document api/openapi.json (what
 //     `make openapi` writes).
 //
@@ -24,11 +24,11 @@ import (
 
 // Output locations, relative to the repository root.
 const (
-	referenceDir = "site/content/reference"
+	referenceDir = "docs-site/content/reference"
 	configPage   = referenceDir + "/configuration.md"
 	crdDir       = referenceDir + "/crds"
 	endpointPage = referenceDir + "/api/endpoints.md"
-	crdBases     = "config/crd/bases"
+	crdBases     = "deploy/kustomize/crd/bases"
 	openAPIFile  = "api/openapi.json"
 )
 

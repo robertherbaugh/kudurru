@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Audit retention defaults (docs/architecture.md §11.4).
+// Audit retention defaults (dev-docs/design-record.md §11.4).
 const (
 	// DefaultAuditRetention is how long audit rows are kept: 400 days.
 	DefaultAuditRetention = 400 * 24 * time.Hour

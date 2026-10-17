@@ -1,14 +1,14 @@
-# PrometheusRule for kudurru (docs/architecture.md §11.6). Every metric used
+# PrometheusRule for kudurru (dev-docs/design-record.md §11.6). Every metric used
 # here is emitted by the binary today; deploy/assets_test.go fails when an
 # expression names a metric the code does not register. The Helm chart ships
-# a copy (charts/kudurru/files/prometheus-rules.yaml, `make chart-assets`).
+# a copy (deploy/helm/kudurru/files/prometheus-rules.yaml, `make chart-assets`).
 #
 # The edge and VIP alerts read the supervisors' metrics (`kudurru edge run`
 # :8084, `kudurru vip run` :8085); they only fire when those are scraped too
 # (the Helm chart's <release>-edge PodMonitor does).
 #
 # §11.6 alerts not shipped yet, because their metric does not exist (see
-# docs/followups.md): KudurruClusterFenced (kudurru_cluster_fenced, v0.2),
+# dev-docs/followups.md): KudurruClusterFenced (kudurru_cluster_fenced, v0.2),
 # KudurruDNSSECKeyExpiring (kudurru_dnssec_key_expiry_timestamp_seconds, v1.0).
 #
 # Without the Prometheus Operator, load spec.groups as a plain rule file:

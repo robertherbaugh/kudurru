@@ -1,4 +1,4 @@
-// Copied from web/src/test/setup.ts at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/test/setup.ts at dd3dcb0; keep in step by hand.
 // Changes: no MSW server (the portal's tests stub fetch per test with
 // ui/src/test/api.ts, which this file resets); no query-log, canvas or
 // TanStack Virtual stubs (the portal has none of those).

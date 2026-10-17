@@ -6,7 +6,7 @@
 # the release branch, not by this workflow. hack/release-tag.sh refuses a
 # tree that differs from the latest v<VERSION>-rc.<N>, so a release ships
 # exactly what its last candidate shipped, and a VERSION that is already
-# released. docs/release-checklist.md, "Release pipeline".
+# released. dev-docs/release-checklist.md, "Release pipeline".
 name: release
 on:
   push:

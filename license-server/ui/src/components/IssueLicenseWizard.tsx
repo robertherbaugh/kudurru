@@ -1,5 +1,5 @@
 // "Issue license" (POST /api/v1/licenses) in a WizardDialog over the page
-// the admin is on (docs/m3/ui.md: wizards only for creation), in four
+// the admin is on (dev-docs/milestones/m3/ui.md: wizards only for creation), in four
 // steps:
 // 1. Customer: an existing one (CustomerField) or a new one created inline
 //    (a wizard never opens another dialog);

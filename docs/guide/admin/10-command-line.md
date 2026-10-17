@@ -155,7 +155,7 @@ kudurru apply -f kids.yaml
 ```
 
 The dashboard then shows the objects with the owner **API**. The folder
-`config/samples/` has more examples.
+`deploy/kustomize/samples/` has more examples.
 
 NOTE: `kudurru apply` refuses an object that a file or Kubernetes owns. The
 error says `managed_by` and names the owner.
@@ -188,5 +188,5 @@ Chapter 11 explains what a backup holds.
 | `kudurru version` | Show the version |
 
 Use `kudurru <command> --help` for the options of each command. The
-[command reference](../../../site/content/reference/cli.md) has all of
+[command reference](../../../docs-site/content/reference/cli.md) has all of
 them.

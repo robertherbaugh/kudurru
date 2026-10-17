@@ -1,0 +1,7 @@
+# ServiceAccount, least-privilege ClusterRole/Role (§5.3, D77) and the
+# aggregated kudurru-viewer/editor/admin/auditor roles. rbac.yaml is rendered
+# from deploy/helm/kudurru (make kustomize).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - rbac.yaml

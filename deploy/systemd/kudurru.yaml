@@ -1,6 +1,6 @@
 # /etc/kudurru/kudurru.yaml installed by the kudurru package (a config file:
 # upgrades keep your edits). Every key is listed by `kudurru config schema`;
-# docs/architecture.md §6.2 explains the two scopes.
+# dev-docs/design-record.md §6.2 explains the two scopes.
 node:
   dataDir: /var/lib/kudurru
 store:

@@ -1,5 +1,5 @@
 // Package externaldns serves the external-dns webhook provider contract
-// (docs/architecture.md §5.6, §9.6) over the kudurru object store, so
+// (dev-docs/design-record.md §5.6, §9.6) over the kudurru object store, so
 // `external-dns --provider=webhook` turns Ingress, Service and Gateway
 // hostnames into kudurru records with no kudurru-side Kubernetes code.
 //

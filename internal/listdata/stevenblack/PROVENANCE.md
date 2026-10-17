@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 | Field | Value |
 |---|---|
 | File | `hosts` (this directory), embedded into the kudurru binary by `internal/listdata` (`go:embed`) |
-| Purpose | the first-boot starter `BlockList` "starter" (docs/architecture.md §6.4), so blocking works offline |
+| Purpose | the first-boot starter `BlockList` "starter" (dev-docs/design-record.md §6.4), so blocking works offline |
 | Upstream repository | https://github.com/StevenBlack/hosts |
 | Upstream path | `data/StevenBlack/hosts` ("Steven Black's ad-hoc list") |
 | Upstream commit | `2025dea10a1d17c41acf1035056e5c4a2913ebfc` (master, 2026-10-07) |
@@ -24,7 +24,7 @@ the part Steven Black maintains himself under MIT.
 
 Copyleft lists (hagezi, GPL-3.0; AdGuard filters, GPL-3.0) may be
 referenced by URL at runtime like any other data but are never embedded
-(docs/architecture.md §6.4, §14 risk 16). `TestProvenance` in
+(dev-docs/design-record.md §6.4, §14 risk 16). `TestProvenance` in
 `internal/listdata` fails the build when this file stops naming a
 permissive licence, when the licence text is missing, or when the embedded
 file's SHA-256 no longer matches the one recorded above.

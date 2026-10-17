@@ -12,7 +12,7 @@ const (
 	DropStageTail = "tail"
 )
 
-// Metrics are the query-log instruments of docs/architecture.md §11.1. The
+// Metrics are the query-log instruments of dev-docs/design-record.md §11.1. The
 // collector (Async), the live tail and the SQLite writer share one set so
 // every name is registered exactly once.
 type Metrics struct {

@@ -7,7 +7,7 @@
 # -hostnetwork image and binds :53 as uid 65532 without the
 # ip_unprivileged_port_start sysctl, and `make volume-check` starts the
 # kudurru images on fresh named volumes. A failure fails the workflow; make it a
-# required check on main. docs/m3/edge.md.
+# required check on main. dev-docs/milestones/m3/edge.md.
 name: edge
 on:
   workflow_dispatch:

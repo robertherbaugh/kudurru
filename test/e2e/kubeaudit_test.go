@@ -44,7 +44,7 @@ func TestKubeAuditAcrossReplicas(t *testing.T) {
 	}
 	auditBin, nodeEnv := licensedAuditFixture(t)
 	var crds []*apiextensionsv1.CustomResourceDefinition
-	for _, glob := range []string{"config/crd/bases/*.yaml", "config/crd/audit/*.yaml"} {
+	for _, glob := range []string{"deploy/kustomize/crd/bases/*.yaml", "deploy/kustomize/crd/audit/*.yaml"} {
 		files, _ := filepath.Glob(filepath.Join(root, glob))
 		for _, f := range files {
 			b, err := os.ReadFile(f) //nolint:gosec // the repository's CRDs

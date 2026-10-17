@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Auth configures authentication (docs/architecture.md §6.2, §8).
+// Auth configures authentication (dev-docs/design-record.md §6.2, §8).
 type Auth struct {
 	// LocalLogin is enabled, admins-only or disabled; it gates POST
 	// /api/v1/auth/login. The admin socket always works (break-glass).

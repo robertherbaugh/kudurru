@@ -2,7 +2,7 @@
 # tarball (GPL-2.0+, unmodified) plus the kudurru supervisor (`kudurru vip
 # run`): render keepalived.conf, `keepalived -t`, run keepalived as a child,
 # SIGHUP on re-render; keepalived runs `kudurru vip fifo` as its notify FIFO
-# script. docs/architecture.md §3.6, decisions D46/D53.
+# script. dev-docs/design-record.md §3.6, decisions D46/D53.
 #
 # Alpine's keepalived package is still 2.3.x, which lacks auth_hmac (the only
 # authenticated VRRP option), so we build from source. The written source

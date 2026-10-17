@@ -2,7 +2,7 @@
 
 One directory per node, identical except `KUDURRU_NODE__NAME`, `--peers` and
 `--priority-index` in `docker-compose.yml`. This is the `ha-static` shape of
-docs/architecture.md §6.5:
+dev-docs/design-record.md §6.5:
 
 - every node runs kudurru on `:5353`, a dnsdist that lists **all** kudurru
   nodes as backends (PROXYv2 with the shared TLV secret), and keepalived

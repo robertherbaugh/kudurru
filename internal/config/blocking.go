@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Blocking holds the cluster-wide blocking defaults (docs/architecture.md
+// Blocking holds the cluster-wide blocking defaults (dev-docs/design-record.md
 // §6.2, §7.1 step 7, D58). Policies and BlockLists override the response
 // and TTL per client group and per list.
 type Blocking struct {

@@ -12,7 +12,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 )
 
-// Defaults from docs/architecture.md §6.2 (auth.session) and §8.2.
+// Defaults from dev-docs/design-record.md §6.2 (auth.session) and §8.2.
 const (
 	DefaultCookieName    = "kudurru_session"
 	DefaultIdleTimeout   = 30 * time.Minute

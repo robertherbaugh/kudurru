@@ -1,5 +1,5 @@
 // Package tokens implements the API tokens and service accounts of
-// docs/architecture.md §8.6: tokens in the wire format
+// dev-docs/design-record.md §8.6: tokens in the wire format
 // kdr_<12-char id>_<43-char secret>, stored as APIToken objects holding
 // only hex(sha256(token)), compared in constant time on the full hash with
 // the same 401 for an unknown id and a wrong secret (no Technitium-style

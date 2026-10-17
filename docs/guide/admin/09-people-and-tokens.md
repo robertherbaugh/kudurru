@@ -91,7 +91,7 @@ kudurru can use an OpenID Connect provider. Examples are Google, Microsoft
 Entra ID, Keycloak, Authentik and Dex. Each provider has an entry in
 `auth.identityProviders` in `kudurru.yaml`. An entry needs an `id`, an
 `issuer`, a `clientID`, a `clientSecretFile` and a `redirectURL`. The
-[settings reference](../../../site/content/reference/configuration.md#auth.identityProviders)
+[settings reference](../../../docs-site/content/reference/configuration.md#auth.identityProviders)
 lists all the fields.
 
 After you set up a provider, the sign-in page shows one button for it.

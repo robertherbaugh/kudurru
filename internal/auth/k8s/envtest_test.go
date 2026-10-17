@@ -71,7 +71,7 @@ func run(m *testing.M) int {
 		ctrllog.SetLogger(logr.Discard())
 		klog.SetLogger(logr.Discard())
 	}
-	env := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{filepath.Join("..", "..", "..", "config", "crd", "bases")}}
+	env := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{filepath.Join("..", "..", "..", "deploy", "kustomize", "crd", "bases")}}
 	args := env.ControlPlane.GetAPIServer().Configure()
 	args.Set("advertise-address", "127.0.0.1")
 	args.Set("endpoint-reconciler-type", "none")

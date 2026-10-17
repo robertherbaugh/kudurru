@@ -17,7 +17,7 @@ const DefaultGroup = "default"
 // Strategy selects which servers of a group are asked, and in which order.
 type Strategy string
 
-// Strategies (docs/architecture.md §3.3, §6.2).
+// Strategies (dev-docs/design-record.md §3.3, §6.2).
 const (
 	// ParallelBest races two healthy servers picked at random and takes the
 	// first usable answer; if both fail, the rest of the group is raced.

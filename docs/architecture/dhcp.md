@@ -233,7 +233,7 @@ After successful startup, a lease-handler or storage failure logs at ERROR
 and drops only that packet, without sending a successful lease reply for the
 failed operation. Later requests and client retries continue in both file-
 and UI-owned scopes. This keeps optional DHCP storage failures from stopping
-core DNS ([D175](../architecture.md#16-decision-log)). Existing network timeout
+core DNS ([D175](../../dev-docs/design-record.md#16-decision-log)). Existing network timeout
 and ICMP exceptions remain per-packet; unexpected socket failures remain fatal.
 Startup ownership and activation rules are unchanged. Live packet failures
 are diagnosed through logs, not the startup-only setup `runtimeError` field.

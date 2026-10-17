@@ -1,7 +1,7 @@
 // Package sqlitelog is the built-in query-log sink: the per-node SQLite
 // fact table with dictionary encoding, minute/hour/day rollups, retention,
 // and the read API the dashboard and the stats endpoints use
-// (docs/architecture.md §10, §11.2, D59).
+// (dev-docs/design-record.md §10, §11.2, D59).
 //
 // Data flow: querylog.Async (the collector) applies privacy, stamps ids,
 // publishes to the live tail and hands batches to Writer.Write, which
@@ -42,7 +42,7 @@ import (
 // ErrClosed is returned by Write after Close.
 var ErrClosed = errors.New("sqlitelog: writer closed")
 
-// Retention and scheduling constants (docs/architecture.md §11.2, D59).
+// Retention and scheduling constants (dev-docs/design-record.md §11.2, D59).
 const (
 	// MinuteRetention keeps the _1m rollups 35 days.
 	MinuteRetention = 35 * 24 * time.Hour

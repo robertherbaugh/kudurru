@@ -1,7 +1,7 @@
 // Package auditlog keeps audit events in AuditLog objects
 // (audit.kudurru.io/v1alpha1) in the release namespace: the cluster-wide
 // audit store of mode=kubernetes without a central database
-// (docs/architecture.md §11.4, D157).
+// (dev-docs/design-record.md §11.4, D157).
 //
 // Every node ships its audit spool into immutable batches (Target, through
 // audit.Shipper); every replica reads all batches (Reader), so GET /audit

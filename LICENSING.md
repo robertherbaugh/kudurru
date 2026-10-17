@@ -19,7 +19,7 @@ school or research organization's activity alone does not make it eligible.
 You may modify and share Covered Software for the permitted community uses.
 Keep the notices, include the license, identify changes, and provide the
 source for changes in distributed executables. Those rights do not cover
-`www/` or `license-server/`.
+`website/` or `license-server/`.
 
 The Community License text is also on
 [kudurru.io](https://kudurru.io/license/text/) and in the
@@ -119,13 +119,13 @@ and `kudurru_license_node_limit` let you alert before a key runs out.
 |---|---|
 | Core DNS server, binaries and dashboard | [Kudurru Community License](LICENSE), or an accepted commercial agreement for its authorized scope |
 | `ee/` enterprise materials | [Enterprise notice](ee/LICENSE.md): eligible community entitlements, or Enterprise/named modules in the commercial Order Form |
-| `site/` documentation source and build system | [Documentation notice](site/LICENSE.md): community previews and contributions; commercial private mirrors under Section 3.3 of the agreement |
-| `www/` marketing website | [Website Source-Viewing License](www/LICENSE.md), copyright kudurru project maintainers (the applicable copyright holders defined in that notice); inspection only unless separately authorized |
+| `docs-site/` documentation source and build system | [Documentation notice](docs-site/LICENSE.md): community previews and contributions; commercial private mirrors under Section 3.3 of the agreement |
+| `website/` kudurru.io website | [Website Source-Viewing License](website/LICENSE.md), copyright kudurru project maintainers (the applicable copyright holders defined in that notice); inspection only unless separately authorized |
 | `license-server/` issuance service | [License Server Source-Viewing License](license-server/LICENSE.md), copyright Robert Herbaugh; inspection only unless separately authorized |
 
 Anyone may read and link to the published documentation without buying a
 license. A commercial agreement does not grant rights to build, modify,
-redistribute or host the marketing website or license server.
+redistribute or host the website or license server.
 
 The blocked-services and safe-search catalog in `internal/listdata/catalogue`
 is separately licensed data under Apache-2.0; that license applies only to

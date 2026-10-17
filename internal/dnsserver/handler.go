@@ -48,7 +48,7 @@ func (h *Handler) timeout() time.Duration {
 // reset); Resolve adds the query deadline.
 //
 // A stage may ask the transport to send nothing at all: the ingress rate
-// limiter's drop (docs/architecture.md §7.1 step 2) answers with a Response
+// limiter's drop (dev-docs/design-record.md §7.1 step 2) answers with a Response
 // whose Msg is nil and whose Status is pipeline.StatusDropped or
 // pipeline.StatusBlockedRateLimit, the control stage returns
 // pipeline.ErrDrop. The listeners honour both: udp writes nothing, tcp and

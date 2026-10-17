@@ -17,7 +17,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/config"
 )
 
-// The per-prefix QPM limiter of docs/architecture.md §7.1 step 2. Every
+// The per-prefix QPM limiter of dev-docs/design-record.md §7.1 step 2. Every
 // UDP query is charged to a token bucket per configured prefix length of
 // its client address (IPv4 /32 and /24, IPv6 /128, /64 and /56 by
 // default), most specific first. A bucket holds one minute's allowance

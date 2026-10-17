@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
 // Build, dev server and test configuration of the license portal UI,
-// adapted from web/vite.config.ts.
+// adapted from dashboard/vite.config.ts.
 //
 // - The Vite root is ui/ (ui/index.html); the build lands in dist/ui, which
 //   the Bun server serves from a manifest of the built files

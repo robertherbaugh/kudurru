@@ -15,7 +15,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 )
 
-// chartCase is one values permutation of charts/kudurru.
+// chartCase is one values permutation of deploy/helm/kudurru.
 type chartCase struct {
 	name   string
 	values string // YAML
@@ -575,7 +575,7 @@ func helmBin(t *testing.T) string {
 func renderChart(t *testing.T, values string) ([]byte, error) {
 	t.Helper()
 	root := repoRoot(t)
-	args := []string{"template", "kudurru", filepath.Join(root, "charts/kudurru"), "--namespace", releaseNS}
+	args := []string{"template", "kudurru", filepath.Join(root, "deploy/helm/kudurru"), "--namespace", releaseNS}
 	if values != "" {
 		f := filepath.Join(t.TempDir(), "values.yaml")
 		if err := os.WriteFile(f, []byte(values), 0o600); err != nil {
@@ -672,7 +672,7 @@ func TestChartChecksumCoversNodeFileOnly(t *testing.T) {
 // TestChartLint runs helm lint on both charts.
 func TestChartLint(t *testing.T) {
 	root := repoRoot(t)
-	for _, c := range []string{"charts/kudurru", "charts/kudurru-crds"} {
+	for _, c := range []string{"deploy/helm/kudurru", "deploy/helm/kudurru-crds"} {
 		cmd := exec.Command(helmBin(t), "lint", "--strict", filepath.Join(root, c)) //nolint:gosec // fixed binary
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Errorf("helm lint %s: %v\n%s", c, err, out)
@@ -680,13 +680,13 @@ func TestChartLint(t *testing.T) {
 	}
 }
 
-// TestCRDChartMatchesBases keeps charts/kudurru-crds/templates equal to
-// config/crd/bases (make manifests is the source) plus the
+// TestCRDChartMatchesBases keeps deploy/helm/kudurru-crds/templates equal to
+// deploy/kustomize/crd/bases (make manifests is the source) plus the
 // helm.sh/resource-policy: keep annotation that stops `helm uninstall` from
 // deleting the CRDs and with them every kudurru.io object.
 func TestCRDChartMatchesBases(t *testing.T) {
 	root := repoRoot(t)
-	bases, err := filepath.Glob(filepath.Join(root, "config/crd/bases/*.yaml"))
+	bases, err := filepath.Glob(filepath.Join(root, "deploy/kustomize/crd/bases/*.yaml"))
 	if err != nil || len(bases) == 0 {
 		t.Fatalf("no CRD bases: %v", err)
 	}
@@ -703,12 +703,12 @@ func TestCRDChartMatchesBases(t *testing.T) {
 				want.WriteString("    helm.sh/resource-policy: keep\n")
 			}
 		}
-		got, err := os.ReadFile(filepath.Join(root, "charts/kudurru-crds/templates", filepath.Base(b))) //nolint:gosec // repository file
+		got, err := os.ReadFile(filepath.Join(root, "deploy/helm/kudurru-crds/templates", filepath.Base(b))) //nolint:gosec // repository file
 		if err != nil || !bytes.Equal(got, want.Bytes()) {
-			t.Errorf("charts/kudurru-crds/templates/%s differs from config/crd/bases; run make manifests", filepath.Base(b))
+			t.Errorf("deploy/helm/kudurru-crds/templates/%s differs from deploy/kustomize/crd/bases; run make manifests", filepath.Base(b))
 		}
 		if !strings.Contains(string(got), "helm.sh/resource-policy: keep") {
-			t.Errorf("charts/kudurru-crds/templates/%s lacks helm.sh/resource-policy: keep", filepath.Base(b))
+			t.Errorf("deploy/helm/kudurru-crds/templates/%s lacks helm.sh/resource-policy: keep", filepath.Base(b))
 		}
 	}
 }

@@ -1,5 +1,5 @@
 // Package zonecache is the always-on runnable that materialises store
-// objects into serving snapshots (docs/architecture.md §3.1, §4.4, §4.5,
+// objects into serving snapshots (dev-docs/design-record.md §3.1, §4.4, §4.5,
 // decisions D7 and D33). Serving code never reads the store on the query
 // path; it loads one *Snapshot per query from Cache.Snapshot and reads the
 // views the registered builders derived from it.

@@ -11,10 +11,10 @@ import (
 // PathZones is GET /internal/zones: the authoritative zones a node serves
 // with their current serials, polled every 5 s by edge supervisors to
 // flush dnsdist's authoritative packet cache on serial change and to route
-// zone names to the authoritative pool (docs/architecture.md §3.6 step 5).
+// zone names to the authoritative pool (dev-docs/design-record.md §3.6 step 5).
 //
 // Only the client side exists so far; the route lands on the server with
-// the zone status work (docs/followups.md). Until then Client.Zones
+// the zone status work (dev-docs/followups.md). Until then Client.Zones
 // returns ErrZonesUnsupported.
 const PathZones = "/internal/zones"
 

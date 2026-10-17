@@ -12,8 +12,8 @@ container.
 | One container | sqlite `state.db` | 1 | itself | `deploy/compose/single` |
 | One host + edge | sqlite | 1, behind dnsdist | itself | `deploy/compose/single-edge` |
 | systemd | sqlite | 1 | itself | `deploy/systemd` |
-| Kubernetes | kube (CRDs) | every replica (Deployment ≥ 2) | Lease holder | `charts/kudurru`, `config/` |
-| Kubernetes standalone | sqlite on a PVC | 1 (StatefulSet) | itself | `charts/kudurru` `mode: standalone` |
+| Kubernetes | kube (CRDs) | every replica (Deployment ≥ 2) | Lease holder | `deploy/helm/kudurru`, `deploy/kustomize/` |
+| Kubernetes standalone | sqlite on a PVC | 1 (StatefulSet) | itself | `deploy/helm/kudurru` `mode: standalone` |
 | Compose HA (static twins) | sqlite on each node | every node, behind dnsdist, one VIP | each node for itself | `deploy/compose/ha/node-{a,b,c}` |
 
 Operator docs: [deploy/](../deploy/README.md). This page shows how the

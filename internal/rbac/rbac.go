@@ -1,5 +1,5 @@
 // Package rbac is the hand-rolled (subject, role, scope) authorizer behind
-// the Authorizer interface (docs/architecture.md §8.5). permissions.yaml is
+// the Authorizer interface (dev-docs/design-record.md §8.5). permissions.yaml is
 // the single source of roles; the SAR authorizer for Kubernetes identities
 // plugs into the same Chain.
 package rbac

@@ -4,7 +4,7 @@
 # charts and the supervisor images, and creates the GitHub pre-release.
 # `latest` does not move. VERSION is the file in the repository root;
 # hack/release-tag.sh picks N and refuses a VERSION that is already released.
-# docs/release-checklist.md, "Release pipeline".
+# dev-docs/release-checklist.md, "Release pipeline".
 name: release-candidate
 on:
   push:

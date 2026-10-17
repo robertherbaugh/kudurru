@@ -1,4 +1,4 @@
-// Copied from web/src/components/AppearanceButton.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/AppearanceButton.tsx at dd3dcb0; keep in step by hand.
 // Changes: the portal has one theme (kudurru), so the theme picker is gone;
 // AppearanceDialog is exported for the account menu, which opens it after
 // closing its popover (no nested overlays).

@@ -6,7 +6,7 @@ See the LICENSE file in the repository root.
 */
 
 // Package v1alpha1 holds the internal kudurru.io/v1alpha1 kinds of the
-// identity layer (docs/architecture.md §4.1, §8, decision D26): LocalUser,
+// identity layer (dev-docs/design-record.md §4.1, §8, decision D26): LocalUser,
 // APIToken, ServiceAccount, RoleBinding and IdentityProvider.
 //
 // They share the kudurru.io/v1alpha1 group version with the public kinds so

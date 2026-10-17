@@ -12,7 +12,7 @@ import (
 // treat a disabled object as absent; the controller reports it with a
 // Disabled condition. An annotation rather than a spec field so that the
 // v1alpha1 schema stays stable and kubectl annotate works (decision in
-// docs/m5/burndown-server.md); the dashboard writes the same annotation.
+// dev-docs/milestones/m5/burndown-server.md); the dashboard writes the same annotation.
 const EnabledAnnotation = "kudurru.io/enabled"
 
 // CommentAnnotation is a free-text note the dashboard shows next to the

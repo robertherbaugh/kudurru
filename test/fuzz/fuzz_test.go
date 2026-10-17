@@ -3,7 +3,7 @@
 // loader, DoH request bodies, TSIG verification, query-log filters, the
 // dnsmasq import and the keepalived/dnsdist renderers. In-package targets
 // (blocking parser, PROXYv2, zone file import) stay next to their code;
-// hack/fuzz.sh and `make fuzz` run all of them (docs/m5/e2e.md).
+// hack/fuzz.sh and `make fuzz` run all of them (dev-docs/milestones/m5/e2e.md).
 //
 // Without -fuzz, `go test` runs every target over its seed corpus (f.Add
 // and testdata/fuzz/<target>/), so the corpus is a regression suite.

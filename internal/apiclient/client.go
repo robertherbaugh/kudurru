@@ -1,5 +1,5 @@
 // Package apiclient is the hand-written Go client for the kudurru REST API
-// (/api/v1, docs/architecture.md §10). It is the transport the CLI uses.
+// (/api/v1, dev-docs/design-record.md §10). It is the transport the CLI uses.
 //
 // The surface is deliberately small so that a client generated from
 // /api/v1/openapi.json can replace the transport underneath without the

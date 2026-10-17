@@ -4,7 +4,7 @@
 `@scalar/api-reference` **1.44.20** (the version huma v2.39.1 pins), gzipped
 with `gzip -9 -n`. kudurru serves it at `/api/v1/docs/scalar-1.44.20.js` so
 the API reference at `/api/v1/docs` loads nothing from a CDN and works under
-`listeners.api.pathPrefix` and the strict CSP (docs/architecture.md §8.8).
+`listeners.api.pathPrefix` and the strict CSP (dev-docs/design-record.md §8.8).
 
 - Licence: MIT, `LICENSE` in this directory (Copyright (c) 2023-present
   Scalar), from https://github.com/scalar/scalar/blob/main/LICENSE; listed in

@@ -6,6 +6,21 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Changed
+
+- The repository layout names each part by what it is: the dashboard moved
+  from `web/` to `dashboard/`, the kudurru.io website from `www/` to
+  `website/` and the docs site from `site/` to `docs-site/`. The Helm charts
+  (`charts/`) and the kustomize tree (`config/`) moved under
+  `deploy/helm/` and `deploy/kustomize/`. A remote kustomize overlay is now
+  `github.com/robertherbaugh/kudurru/deploy/kustomize/overlays/<name>`;
+  overlays pinned to v0.1.0 keep the `config/` path. `docs/` keeps the
+  published documentation; the design record (formerly
+  `docs/architecture.md`, now `dev-docs/design-record.md`), milestone
+  reports, research, spikes and follow-ups moved to `dev-docs/`. The
+  `make web-*` and `make www-*` targets are now `make dashboard-*` and
+  `make website-*`.
+
 ## [0.1.0] - 2026-10-16
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or
@@ -164,8 +179,8 @@ Fixes incorporated during release-candidate testing:
   read-only test jobs and restricted signing identities. Promotion requires
   a successfully published candidate.
 
-Details and validation are in the [security reviews](docs/m5/README.md)
-and [final feature review](docs/m5/features-v0.1.md).
+Details and validation are in the [security reviews](dev-docs/milestones/m5/README.md)
+and [final feature review](dev-docs/milestones/m5/features-v0.1.md).
 
 ### License
 
@@ -215,9 +230,9 @@ and [final feature review](docs/m5/features-v0.1.md).
   cluster-wide blocking toggles remain future work.
 - Recorded local checks do not certify real-network client identity or
   two-VM VIP failover. Verify these in your deployment using the
-  [release checklist](docs/release-checklist.md) and runbooks.
+  [release checklist](dev-docs/release-checklist.md) and runbooks.
 
 See the [architecture tour](docs/architecture/README.md#built-and-not-built)
-and [follow-ups](docs/followups.md) for the full scope and backlog.
+and [follow-ups](dev-docs/followups.md) for the full scope and backlog.
 Measurements and development history remain in the
-[milestone reports](docs/m5/README.md).
+[milestone reports](dev-docs/milestones/m5/README.md).

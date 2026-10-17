@@ -45,12 +45,12 @@ pinned upstream versions are bumped by the CVE job.
 
 ## Threat model (summary)
 
-The design and its rationale live in [docs/architecture.md](docs/architecture.md)
+The design and its rationale live in [dev-docs/design-record.md](dev-docs/design-record.md)
 §3.3 (dataplane), §8 (authentication, RBAC, tokens, bootstrap) and §14
-(risks). The M5 security review is in [docs/m5/security.md](docs/m5/security.md),
+(risks). The M5 security review is in [dev-docs/milestones/m5/security.md](dev-docs/milestones/m5/security.md),
 the review of the v0.1 round (block page, unblock requests, allowlists,
 catalogue fetchers, release pipeline) in
-[docs/m5/security-v0.1-round.md](docs/m5/security-v0.1-round.md).
+[dev-docs/milestones/m5/security-v0.1-round.md](dev-docs/milestones/m5/security-v0.1-round.md).
 
 ### Assets
 
@@ -92,7 +92,7 @@ catalogue fetchers, release pipeline) in
 ### Roles
 
 `viewer`, `auditor`, `operator`, `zone-admin` (zone-scoped) and `admin`
-(docs/architecture.md §8.5). Operators can change filtering for every client
+(dev-docs/design-record.md §8.5). Operators can change filtering for every client
 and point block lists at any URL that is not node-local; zone-admins control
 only the zones they are bound to; only admins change settings, identities
 and cluster membership. API tokens act as their owner, optionally narrowed

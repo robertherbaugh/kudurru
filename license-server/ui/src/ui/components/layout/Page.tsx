@@ -1,7 +1,7 @@
-// Copied from web/src/components/layout/Page.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/layout/Page.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // The page scaffolding every dashboard page shares, built from Astryx
-// layout components only (web/AGENTS.md): the page frame, the page header
+// layout components only (dashboard/AGENTS.md): the page frame, the page header
 // (back link, h1, state row, description, actions) and the panel (a Card
 // with a heading row) that groups one widget or one section of an object
 // page.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run kudurru's Go fuzz targets (docs/m5/e2e.md, "Fuzzing").
+# Run kudurru's Go fuzz targets (dev-docs/milestones/m5/e2e.md, "Fuzzing").
 #
 #   hack/fuzz.sh                 every target for FUZZTIME (default 60s)
 #   hack/fuzz.sh --list          print "package target" pairs (CI matrix)

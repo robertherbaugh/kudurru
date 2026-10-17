@@ -86,7 +86,7 @@ jobs:
           bun-version: 1.4.3
       # bun run starts node-shebang tools (vitest, eslint, the Astryx CLI)
       # with the runner's Node; vitest 5, jsdom 30 and the Astryx CLI need
-      # Node 22 or later. The same pin as ci.yml's web jobs.
+      # Node 22 or later. The same pin as ci.yml's dashboard jobs.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -201,7 +201,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
-      # Playwright runs on Node, as in ci.yml's web-e2e job.
+      # Playwright runs on Node, as in ci.yml's dashboard-e2e job.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24

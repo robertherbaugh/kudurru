@@ -1,4 +1,4 @@
-// Shared compiler options of the three projects in tsconfig.json (server, ui, tools). Strict as web/tsconfig.json.
+// Shared compiler options of the three projects in tsconfig.json (server, ui, tools). Strict as dashboard/tsconfig.json.
 {
   "compilerOptions": {
     "target": "ES2023",

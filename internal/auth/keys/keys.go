@@ -1,4 +1,4 @@
-// Package keys loads the cluster encryption key (docs/architecture.md §8.2,
+// Package keys loads the cluster encryption key (dev-docs/design-record.md §8.2,
 // D57, D71): KUDURRU_ENCRYPTION_KEY[_FILE] and the rotation-window
 // KUDURRU_ENCRYPTION_KEY_PREVIOUS[_FILE], base64 or hex (session.ParseKey).
 // Single-instance Docker deployments that set neither get a key generated

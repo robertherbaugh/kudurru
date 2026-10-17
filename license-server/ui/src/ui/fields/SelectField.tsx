@@ -1,4 +1,4 @@
-// Copied from web/src/components/fields/SelectField.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/fields/SelectField.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // A closed choice as an Astryx Selector with the help under it: the
 // field's own help, then the selected option's help, so a choice explains

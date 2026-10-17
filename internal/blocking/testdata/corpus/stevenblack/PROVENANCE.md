@@ -20,4 +20,4 @@ is the part Steven Black maintains himself.
 
 The file is test data for `TestRealCorpus` and `BenchmarkRealCorpus`; it is
 not compiled into the kudurru binary. hagezi and AdGuard lists are GPL-3.0
-and are never embedded (docs/architecture.md §6.1, §14 risk 16).
+and are never embedded (dev-docs/design-record.md §6.1, §14 risk 16).

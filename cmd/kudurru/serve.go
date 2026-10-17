@@ -22,6 +22,7 @@ import (
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/dashboard"
 	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
@@ -77,7 +78,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/version"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 	"github.com/robertherbaugh/kudurru/internal/zoneview"
-	"github.com/robertherbaugh/kudurru/web"
 
 	"k8s.io/client-go/rest"
 )
@@ -120,9 +120,9 @@ func newLoggerAt(cfg config.Log, level *slog.LevelVar) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stdout, opts))
 }
 
-// openStore opens the configured driver (docs/architecture.md §4.3, §4.4).
+// openStore opens the configured driver (dev-docs/design-record.md §4.3, §4.4).
 // The returned snapshot store is non-nil only for the kube driver.
-// openStore opens the configured driver (docs/architecture.md §4.3, §4.4)
+// openStore opens the configured driver (dev-docs/design-record.md §4.3, §4.4)
 // with the public and internal kudurru.io kinds. The rest config is non-nil
 // only for the kube driver.
 func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, reg prometheus.Registerer, logger *slog.Logger) (store.Store, *localdb.SnapshotStore, *rest.Config, error) {
@@ -483,7 +483,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// A dnsdist next to this node (sidecar, compose single-edge, HA nodes)
 	// caches blocked and unblocked answers up to their TTL: flush its
 	// resolver pool on every compiled list snapshot and on blocking toggles
-	// (docs/m3/edge.md). Without a local edge the flusher is a no-op.
+	// (dev-docs/milestones/m3/edge.md). Without a local edge the flusher is a no-op.
 	edgeFlush := dnsdist.NewLocalCacheFlusher("", "", logger.With("component", "edgeflush"))
 	defer edgeFlush.Stop()
 	listResolver, err = listfetcher.NewResolver(listfetcher.ResolverOptions{
@@ -808,8 +808,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		centralJobs = append(centralJobs, pgquerylog.Jobs(cfg.Database.Querylog.Retention.Raw.Std())...)
 	}
-	if !web.Built() {
-		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
+	if !dashboard.Built() {
+		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make dashboard-build)")
 	}
 	edgeSupervisors, vipSupervised, err := edgeStatusSource(restCfg, cfg.Node.Name)
 	if err != nil {
@@ -839,7 +839,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
 		AuthHandler: authMux,
 		Roles:       ids.Roles,
-		UIHandler:   web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),
+		UIHandler:   dashboard.Handler(dashboard.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 		DefaultNamespace: namespace,
 		Catalogue:        catalogueAPI(catalogs, catRefreshers),

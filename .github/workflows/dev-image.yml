@@ -5,10 +5,10 @@
 # the commit. Built from the Dockerfile (the release images come from
 # goreleaser + ko in publish.yml). Pull requests from forks and Dependabot
 # get a read-only token and are skipped. A pull request that changes
-# nothing outside docs/, site/, www/, branding/ and license-server/ builds no image:
+# nothing outside docs/, dev-docs/, docs-site/, website/, branding/ and license-server/ builds no image:
 # those directories supply no image assets (the same gate as ci.yml; the
 # license portal has its own image, license-server.yml).
-# docs/release-checklist.md, "Release pipeline".
+# dev-docs/release-checklist.md, "Release pipeline".
 name: dev-image
 on:
   pull_request:
@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   # Same check as ci.yml's changes job: false only when every file the pull
-  # request changes is under docs/, site/, www/, branding/ or license-server/.
+  # request changes is under docs/, dev-docs/, docs-site/, website/, branding/ or license-server/.
   changes:
     runs-on: ubicloud-standard-2-ubuntu-2404
     outputs:
@@ -37,7 +37,7 @@ jobs:
         run: |
           code=true
           if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www|license-server|branding)/' <<<"$files"; then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|dev-docs|docs-site|website|license-server|branding)/' <<<"$files"; then
               code=false
             fi
           fi
@@ -58,7 +58,7 @@ jobs:
         with:
           bun-version: 1.4.3
       - name: Build the dashboard bundle
-        run: make web-build
+        run: make dashboard-build
       - name: Version and image tag
         id: meta
         env:

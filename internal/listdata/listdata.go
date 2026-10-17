@@ -1,5 +1,5 @@
 // Package listdata embeds the starter blocklist kudurru seeds on first
-// boot (docs/architecture.md §6.4): Steven Black's own ad-hoc hosts list
+// boot (dev-docs/design-record.md §6.4): Steven Black's own ad-hoc hosts list
 // (MIT), with its licence and a provenance file. Only permissively licensed
 // data may be embedded here; TestProvenance enforces that the provenance
 // file names the licence and the recorded digest matches the bytes.

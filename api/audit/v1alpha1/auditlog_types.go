@@ -85,7 +85,7 @@ type AuditLogSpec struct {
 	Events []AuditLogEvent `json:"events"`
 }
 
-// AuditLogEvent is one audit event (docs/architecture.md §11.4).
+// AuditLogEvent is one audit event (dev-docs/design-record.md §11.4).
 type AuditLogEvent struct {
 	// ID is the event's id in the node's audit spool.
 	ID int64 `json:"id"`

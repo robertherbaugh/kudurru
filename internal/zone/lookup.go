@@ -5,7 +5,7 @@ import (
 )
 
 // MaxChain caps the number of CNAME and DNAME hops followed for one query,
-// inside a zone and across zones (docs/architecture.md §7.1 step 6).
+// inside a zone and across zones (dev-docs/design-record.md §7.1 step 6).
 const MaxChain = 20
 
 // Kind classifies a lookup result.

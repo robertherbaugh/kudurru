@@ -17,7 +17,7 @@ import (
 
 // AggregatedRolesPath is where `make rbac-manifests` writes the chart's
 // aggregated ClusterRoles, relative to the repository root.
-const AggregatedRolesPath = "charts/kudurru/templates/rbac-aggregated.yaml"
+const AggregatedRolesPath = "deploy/helm/kudurru/templates/rbac-aggregated.yaml"
 
 // PolicyRule is a Kubernetes RBAC rule (rbac.authorization.k8s.io/v1),
 // reduced to the fields the generated ClusterRoles use.

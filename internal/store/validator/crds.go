@@ -7,8 +7,8 @@ import (
 	"sort"
 )
 
-// crdFiles holds byte-for-byte copies of config/crd/bases/*.yaml. `make
-// manifests` regenerates config/crd/bases with controller-gen and copies the
+// crdFiles holds byte-for-byte copies of deploy/kustomize/crd/bases/*.yaml. `make
+// manifests` regenerates deploy/kustomize/crd/bases with controller-gen and copies the
 // result here; TestEmbeddedCRDsMatchManifests fails when the two drift.
 //
 //go:embed crds/*.yaml
