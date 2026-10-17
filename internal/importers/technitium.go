@@ -99,13 +99,13 @@ func (c *sourceClient) technitium(ctx context.Context, req MigrationRequest, p *
 	subscriptions := map[string][]v1alpha1.ListSource{}
 	for i, u := range settings.BlockListURLs {
 		u = strings.TrimSpace(u)
-		if u == "" || strings.HasPrefix(u, "#") {
-			continue
-		}
 		listMode := "block"
 		if strings.HasPrefix(u, "!") {
 			listMode = "allow"
 			u = strings.TrimSpace(strings.TrimPrefix(u, "!"))
+		}
+		if u == "" || strings.HasPrefix(u, "#") {
+			continue
 		}
 		subscriptions[listMode] = append(subscriptions[listMode], v1alpha1.ListSource{Name: fmt.Sprintf("subscription-%d", i+1), URL: u, Format: "auto", Subdomains: true})
 	}

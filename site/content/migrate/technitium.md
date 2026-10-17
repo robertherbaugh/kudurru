@@ -39,7 +39,8 @@ app data or silently dropping DNSSEC. A member is also skipped if its
 effective query access policy cannot be read or converted; local defaults
 are never substituted for an unreadable inherited policy. Catalog zones
 themselves remain unsupported. Blank lines and comments beginning with `#`
-in list subscriptions are ignored. Zone transfers, NOTIFY, DNS Apps,
+in list subscriptions are ignored, including those following an allow-list
+`!` prefix. Zone transfers, NOTIFY, DNS Apps,
 Advanced Blocking profiles, outbound proxies and conditional forwarders require separate
 review. Keep those services on Technitium until their replacements are ready.
 
