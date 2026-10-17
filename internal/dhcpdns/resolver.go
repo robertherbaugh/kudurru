@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -19,6 +20,7 @@ import (
 // Resolver reads immutable snapshots; it needs no goroutine or database access.
 type Resolver struct {
 	stores []*dhcp.LeaseStore
+	source atomic.Pointer[func() []*dhcp.LeaseStore]
 	now    func() time.Time
 }
 
@@ -40,9 +42,18 @@ func New(stores map[string]*dhcp.LeaseStore) *Resolver {
 	return r
 }
 
+// SetSource replaces the fixed store registry with fn, called on every
+// query, for a DHCP service whose scopes change at runtime (the Kubernetes
+// store). fn must be cheap and return stores in a stable order.
+func (r *Resolver) SetSource(fn func() []*dhcp.LeaseStore) { r.source.Store(&fn) }
+
 func (r *Resolver) snapshots() []*dhcp.DNSSnapshot {
-	result := make([]*dhcp.DNSSnapshot, 0, len(r.stores))
-	for _, store := range r.stores {
+	stores := r.stores
+	if fn := r.source.Load(); fn != nil {
+		stores = (*fn)()
+	}
+	result := make([]*dhcp.DNSSnapshot, 0, len(stores))
+	for _, store := range stores {
 		if snapshot := store.DNS(); snapshot != nil && snapshot.Enabled() {
 			result = append(result, snapshot)
 		}

@@ -84,9 +84,24 @@ func NewService(configs []Config, stores map[string]*LeaseStore, logger *slog.Lo
 }
 
 func sameTopology(a, b Config) bool {
-	return a.Name == b.Name && a.Interface == b.Interface && a.ServerIP == b.ServerIP && a.Subnet == b.Subnet &&
+	return a.Name == b.Name && a.Interface == b.Interface && a.ServerIP == b.ServerIP && a.ServerIdentifier == b.ServerIdentifier && a.Subnet == b.Subnet &&
 		a.Management == b.Management && a.RelayOnly == b.RelayOnly && a.ConflictDetection == b.ConflictDetection && a.ProbeTimeout == b.ProbeTimeout &&
 		reflect.DeepEqual(a.FailoverServers, b.FailoverServers) && reflect.DeepEqual(a.TrustedRelays, b.TrustedRelays)
+}
+
+// ErrNotServing is what a serving check returns on a replica that does not
+// hold the allocator term; its packets are dropped without an ERROR log.
+var ErrNotServing = errors.New("dhcp: this replica does not serve DHCP")
+
+// SetServingCheck fences replies on every scope, for an allocator whose
+// authority comes from outside the lease store (a Kubernetes Lease term).
+// It must be called before Listen.
+func (s *Service) SetServingCheck(check func(context.Context) error) {
+	for _, server := range s.scopes {
+		server.processMu.Lock()
+		server.serving = check
+		server.processMu.Unlock()
+	}
 }
 
 // ScopeNames returns a sorted copy of the stable scope names.

@@ -89,3 +89,21 @@ func TestProbeReceiveBoundedAndCancelable(t *testing.T) {
 		t.Fatal("broken socket did not fail closed", err)
 	}
 }
+
+// Without CAP_NET_RAW, the ICMP probe uses an unprivileged datagram socket
+// (a non-root pod). Loopback answers the echo, so it reports a conflict.
+func TestProbeICMPWithoutRawSockets(t *testing.T) {
+	raw := openRawICMP
+	openRawICMP = func() (int, error) { return -1, unix.EPERM }
+	t.Cleanup(func() { openRawICMP = raw })
+	dgram, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_ICMP)
+	if err != nil {
+		t.Skipf("unprivileged ICMP sockets are not permitted (net.ipv4.ping_group_range): %v", err)
+	}
+	_ = unix.Close(dgram)
+	cfg := Config{Interface: "lo", ServerIP: netip.MustParseAddr("127.0.0.1"), ConflictDetection: "icmp", ProbeTimeout: 500 * time.Millisecond}
+	conflict, err := probeAddress(context.Background(), cfg, netip.MustParseAddr("127.0.0.1"))
+	if err != nil || !conflict {
+		t.Fatalf("probe = %v, %v; want a conflict from loopback", conflict, err)
+	}
+}
