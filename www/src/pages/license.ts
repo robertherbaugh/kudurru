@@ -6,15 +6,18 @@ import type { Rendered } from "../markdown.ts";
 // /license/: what is free, what a key unlocks and how to get one. Using a
 // key on a node is in the docs (LICENSING.md, the admin guide).
 // The rules in full are LICENSING.md; this page is its short form.
-const REQUEST_PATH = "/api/v1/public/key-requests"; // the license server's public form endpoint
+const REQUEST_PATH = "/api/v1/public/key-requests"; // the license server's personal form endpoint
+const BUSINESS_PATH = "/api/v1/public/business-requests"; // and its business one
 
-// The form: a personal request goes to the license server, anything else
-// opens the visitor's mail program (src/client/license.ts). It needs script,
-// so without script the two mail links of the "Get a key" text stand in.
+// The form: a personal and a business request both go to the license server
+// (src/client/license.ts); when it cannot take a business request, the form
+// opens the visitor's mail program instead. It needs script, so without
+// script the two mail links of the "Get a key" text stand in.
 // It sits beside the introductory text, stacking below it on narrow screens.
 function requestForm(licenseApi: string): Html {
   const endpoint = new URL(REQUEST_PATH, licenseApi).toString();
-  return html`<form class="licform" data-license-form data-endpoint="${endpoint}" novalidate aria-labelledby="lic-req-title">
+  const businessEndpoint = new URL(BUSINESS_PATH, licenseApi).toString();
+  return html`<form class="licform" data-license-form data-endpoint="${endpoint}" data-business-endpoint="${businessEndpoint}" novalidate aria-labelledby="lic-req-title">
       <div class="licform-box">
         <h2 id="lic-req-title">Request a key</h2>
         <fieldset class="licform-kind">
@@ -49,7 +52,7 @@ function requestForm(licenseApi: string): Html {
           <pre class="mono" id="lic-mail-text" data-mail-text></pre>
           <button class="more" type="button" data-copy="lic-mail-text"><span>Copy</span></button>
         </div>
-        <p class="fine">A personal request goes to our license server, which emails you a link to confirm your address. After you confirm, we review the request and email your key once it is approved. A business request is not sent anywhere: it opens an email to ${LICENSE_CONTACT} with the subject ${BUSINESS_SUBJECT} and your details filled in.</p>
+        <p class="fine">A personal request goes to our license server, which emails you a link to confirm your address. After you confirm, we review the request and email your key once it is approved. A business request goes to the same server: we email you that we have it, and reply by email. If the server cannot take it, the form opens an email to ${LICENSE_CONTACT} with the subject ${BUSINESS_SUBJECT} and your details filled in instead.</p>
       </div>
     </form>`;
 }

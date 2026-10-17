@@ -93,9 +93,33 @@ export const ATTESTATION_STATEMENT =
 /** Where the Kudurru Community License is published (www LICENSE_TEXT_PATH). */
 export const NONCOMMERCIAL_LICENSE_URL = 'https://kudurru.io/license/text/';
 
-/** Where business inquiries go (the user's direction: not through the server). */
+/**
+ * Where people write about a business license. The kudurru.io form sends
+ * business requests to the portal (Requests, Business); this address stays
+ * for the signed-in page's button and the form's fallback when the portal is
+ * unavailable.
+ */
 export const BUSINESS_CONTACT = 'hello@kudurru.io';
 export const BUSINESS_MAILTO = 'mailto:hello@kudurru.io?subject=Business%20License';
+
+/** The editions the kudurru.io form offers (www COMMERCIAL_PLANS), by key. */
+export interface BusinessEditionInfo {
+  label: string;
+  /** The plan a license for this edition is issued with. */
+  plan: Extract<Plan, 'business' | 'enterprise'>;
+}
+
+/** Commercial Core is issued as plan business, Enterprise as plan enterprise. */
+export const BUSINESS_EDITIONS = {
+  core: { label: 'Commercial Core', plan: 'business' },
+  enterprise: { label: 'Enterprise', plan: 'enterprise' },
+} as const satisfies Record<string, BusinessEditionInfo>;
+
+/** An edition of the kudurru.io form (BusinessRequest.edition). */
+export type BusinessEdition = keyof typeof BUSINESS_EDITIONS;
+
+/** The most nodes a business request may ask for (the kudurru.io form's limit). */
+export const BUSINESS_REQUEST_MAX_NODES = 10_000;
 
 /** The page that explains the license and how to get a key. */
 export const LICENSE_PAGE_URL = 'https://kudurru.io/license';

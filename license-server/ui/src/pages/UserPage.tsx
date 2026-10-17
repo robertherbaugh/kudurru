@@ -3,8 +3,11 @@
 // granted here (a CheckboxList with Save, superadmins only), Disable or
 // Enable and Revoke sessions (each confirmed; both end the person's
 // sessions), the customers they belong to and the recent audit events
-// about them. The server refuses a superadmin removing their own grant,
-// disabling themselves or the last superadmin losing the role; the page
+// about them. Delete user (confirmed) removes the account, its sessions and
+// memberships and returns to the list; signing in again makes a new account
+// without roles, so the dialog points to Disable for keeping someone out.
+// The server refuses a superadmin removing their own grant, disabling or
+// deleting themselves or the last superadmin losing the role; the page
 // shows its answer.
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
@@ -29,6 +32,7 @@ import { KIND_LABEL } from '../lib/words';
 import { errorText, ErrorBanner, Loading, useNotify } from '../ui/components/Feedback';
 import { Page, PageHeader, Panel } from '../ui/components/layout/Page';
 import { FieldShell } from '../ui/fields/FieldHelp';
+import { useNavigate } from '../ui/lib/router';
 
 type MembershipRow = UserDetail['memberships'][number] & { key: string } & Record<string, unknown>;
 
@@ -48,7 +52,10 @@ export default function UserPage({ params }: PageProps) {
   const self = id === me.user.id;
   const update = useRouteMutation('userUpdate', { refreshSession: self });
   const revoke = useRouteMutation('userRevokeSessions');
+  const remove = useRouteMutation('userDelete');
+  const navigate = useNavigate();
   const [confirm, setConfirm] = useState<'disable' | 'enable' | 'revoke' | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const u = q.data;
   const write = can('users.write');
 
@@ -107,6 +114,7 @@ export default function UserPage({ params }: PageProps) {
               ) : (
                 <Button label="Disable" variant="destructive" isDisabled={self} tooltip={self ? 'You cannot disable yourself' : undefined} onClick={() => setConfirm('disable')} />
               )}
+              <Button label="Delete user" variant="destructive" isDisabled={self} tooltip={self ? 'You cannot delete yourself' : undefined} onClick={() => setDeleting(true)} />
             </>
           ) : null
         }
@@ -159,6 +167,31 @@ export default function UserPage({ params }: PageProps) {
             actionVariant={confirm === 'enable' ? 'primary' : 'destructive'}
             isActionLoading={update.isPending || revoke.isPending}
             onAction={act}
+          />
+          <AlertDialog
+            isOpen={deleting}
+            onOpenChange={setDeleting}
+            title={`Delete ${u.name || u.email || 'this account'}?`}
+            description={`Deletes the account, ends ${u.activeSessions === 1 ? 'its session' : 'its sessions'} and removes it from ${u.memberships.length === 1 ? '1 customer' : `${u.memberships.length} customers`}. Licenses, keys and the audit log keep the name. Signing in again makes a new account without roles: to keep the person out, disable them instead.`}
+            actionLabel="Delete user"
+            actionVariant="destructive"
+            isActionLoading={remove.isPending}
+            onAction={() =>
+              remove.mutate(
+                { params: { id: u.id } },
+                {
+                  onSuccess: () => {
+                    notify.success(`Deleted ${u.name || u.email || u.subject}`);
+                    setDeleting(false);
+                    navigate('/users');
+                  },
+                  onError: (err) => {
+                    notify.error(err, 'Could not delete the account');
+                    setDeleting(false);
+                  },
+                },
+              )
+            }
           />
         </>
       ) : null}

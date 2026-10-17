@@ -4,7 +4,8 @@
 // limits count rows, so they are kept that long), deletes one-click
 // approval links 30 days after they expired (until then the /approve page
 // can still say why a link no longer decides), and forgets the IP address
-// and user agent of public form requests and sessions older than 90 days.
+// and user agent of public form requests (personal and business) and
+// sessions older than 90 days.
 // One pass at a time; a failing pass is logged and the next one runs as
 // usual. main.ts starts it and stops it on SIGTERM.
 
@@ -32,6 +33,7 @@ export interface CleanupResult {
   publicRequests: number;
   approvalLinks: number;
   anonymizedPublicRequests: number;
+  anonymizedBusinessRequests: number;
   anonymizedSessions: number;
 }
 
@@ -52,6 +54,10 @@ export async function cleanup(db: Db, now: Date): Promise<CleanupResult> {
     with u as (update public_key_requests set ip = null, user_agent = null
                 where created_at < ${networkBefore} and (ip is not null or user_agent is not null) returning 1)
     select count(*) as n from u`;
+  const anonBrq = await db<{ n: string }[]>`
+    with u as (update business_requests set ip = null, user_agent = null
+                where created_at < ${networkBefore} and (ip is not null or user_agent is not null) returning 1)
+    select count(*) as n from u`;
   const anonSessions = await db<{ n: string }[]>`
     with u as (update sessions set ip = null, user_agent = null
                 where created_at < ${networkBefore} and (ip is not null or user_agent is not null) returning 1)
@@ -62,6 +68,7 @@ export async function cleanup(db: Db, now: Date): Promise<CleanupResult> {
     publicRequests: toInt(pkr[0]?.n),
     approvalLinks: toInt(links[0]?.n),
     anonymizedPublicRequests: toInt(anonPkr[0]?.n),
+    anonymizedBusinessRequests: toInt(anonBrq[0]?.n),
     anonymizedSessions: toInt(anonSessions[0]?.n),
   };
 }
@@ -95,7 +102,7 @@ export function startJobs(opts: JobsOptions): Jobs {
     const pass = (async () => {
       try {
         const r = await cleanup(opts.db, clock());
-        const total = r.sessions + r.logins + r.publicRequests + r.approvalLinks + r.anonymizedPublicRequests + r.anonymizedSessions;
+        const total = r.sessions + r.logins + r.publicRequests + r.approvalLinks + r.anonymizedPublicRequests + r.anonymizedBusinessRequests + r.anonymizedSessions;
         if (total > 0) opts.log.info('cleanup done', { ...r });
         return r;
       } catch (e) {

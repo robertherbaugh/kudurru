@@ -153,9 +153,10 @@ download) and in the docs (`site/hugo.yaml` mounts `LICENSE` and `LICENSING.md`
 as `/project/license/` and `/project/licensing/`); the dashboard, the README and
 the key form link to them. The public page is [kudurru.io/license](https://kudurru.io/license)
 (`www/src/pages/license.ts`, content in `www/src/content.ts`); its "Request a
-key" form sends a personal request to the license server and opens a mail to
-hello@kudurru.io for anything else, including the selected Commercial Core or
-Enterprise edition (`www/README.md`, "The Request a key form"), and the
+key" form sends a personal request and a business request (with the selected
+Commercial Core or Enterprise edition) to the license server, and opens a mail
+to hello@kudurru.io for a business request the server cannot take
+(`www/README.md`, "The Request a key form"; D181), and the
 administrator guide has a chapter on it (`docs/guide/admin/13-license.md`).
 
 ## Test builds
@@ -173,7 +174,8 @@ if that ever changes. Never build a release with the tag.
 Keys are issued by the license portal, `license-server/` (D165): license
 admins issue, renew, change and withdraw licenses there after an OIDC
 sign-in, customers download their keys, and the kudurru.io form requests
-free personal keys. It signs with the same key and in the same format as
+free personal keys and sends business requests, which license admins answer
+on its Requests page (D181). It signs with the same key and in the same format as
 `hack/licensegen`, and no node ever contacts it (D163). How it works:
 `license-server/docs/architecture.md`; how to run it:
 `license-server/README.md`.

@@ -1,13 +1,14 @@
 // Users (design spec §8 users.*): thin handlers over services/users.ts. The
 // acting session is passed along so role, disable and revoke changes end
-// the target's sessions but never the one making the change.
+// the target's sessions but never the one making the change, and so nobody
+// deletes themselves.
 
 import type { ResponseOf } from '../../shared/api';
 import { ROLES } from '../../shared/permissions';
 import { q, readJson, v } from '../http/body';
-import { json } from '../http/errors';
+import { json, noContent } from '../http/errors';
 import type { PartialHandlerMap, RequestContext } from '../http/types';
-import { getUserDetail, listUsers, revokeUserSessions, updateUser, type ActingUser } from '../services/users';
+import { deleteUser, getUserDetail, listUsers, revokeUserSessions, updateUser, type ActingUser } from '../services/users';
 import { actorFromCtx, inTransaction } from '../services/types';
 import { requirePrincipal } from './me';
 
@@ -37,5 +38,10 @@ export const userHandlers: PartialHandlerMap = {
   userRevokeSessions: async (ctx) => {
     const revoked = await inTransaction(ctx, actorFromCtx(ctx), (s) => revokeUserSessions(s, ctx.params.id, acting(ctx)));
     return json<ResponseOf<'userRevokeSessions'>>({ revoked });
+  },
+
+  userDelete: async (ctx) => {
+    await inTransaction(ctx, actorFromCtx(ctx), (s) => deleteUser(s, ctx.params.id, acting(ctx)));
+    return noContent();
   },
 };

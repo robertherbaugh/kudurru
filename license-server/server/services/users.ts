@@ -7,6 +7,15 @@
 // API. Role and disable changes end the user's sessions except the acting
 // one. Changes are serialized by an advisory lock so two superadmins cannot
 // demote each other at the same moment.
+//
+// Delete (deleteUser, under the same lock): nobody deletes themselves, and
+// the last enabled superadmin stays (two superadmins deleting each other at
+// the same moment: the second one finds no other). The user's customer
+// memberships are deleted first (an unlinked member row must not re-link to
+// whoever signs in next with the address), the sessions go with the row (on
+// delete cascade), and everything else keeps its label and loses the link
+// (on delete set null). user.deleted records who it was: the audit trail
+// keeps ids, not rows. Signing in again creates a new user without roles.
 
 import type { Items, UpdateUserBody, User, UserDetail } from '../../shared/api';
 import { effectiveRoles, isRole, ROLES, type Role } from '../../shared/permissions';
@@ -124,6 +133,37 @@ export async function updateUser(ctx: ServiceCtx, id: string, body: UpdateUserBo
   const revoked = await deleteUserSessions(ctx.tx, id, acting.sessionHash);
   if (rolesChanged) await auditCtx(ctx, { action: 'user.roles_changed', targetType: 'user', targetId: id, details: { from: fromGranted, to: toGranted, sessionsRevoked: revoked } });
   if (disabledChanged) await auditCtx(ctx, { action: disable ? 'user.disabled' : 'user.enabled', targetType: 'user', targetId: id, details: { sessionsRevoked: revoked } });
+}
+
+/** DELETE /users/:id: the user, their sessions and their memberships, with the guards above. */
+export async function deleteUser(ctx: ServiceCtx, id: string, acting: ActingUser): Promise<void> {
+  await ctx.tx`select pg_advisory_xact_lock(${USER_ROLES_LOCK})`;
+  const user = await lockUser(ctx, id);
+  if (id === acting.userId) fail('conflict', 'You cannot delete yourself. Ask another superadmin.');
+  if (effectiveRoles(user.idp_roles, user.granted_roles, user.disabled_at !== null).includes('superadmin')) {
+    const others = await ctx.tx<{ n: string }[]>`
+      select count(*) as n from users
+       where id <> ${id} and disabled_at is null and ('superadmin' = any(idp_roles) or 'superadmin' = any(granted_roles))`;
+    if (toInt(others[0]?.n) === 0) fail('conflict', 'This is the last enabled superadmin. Make someone else a superadmin first.');
+  }
+  const memberships = await ctx.tx<{ customer_id: string; email: string }[]>`
+    delete from customer_members where user_id = ${id} returning customer_id, email`;
+  const sessions = await ctx.tx<{ n: string }[]>`select count(*) as n from sessions where user_id = ${id}`;
+  await ctx.tx`delete from users where id = ${id}`;
+  await auditCtx(ctx, {
+    action: 'user.deleted',
+    targetType: 'user',
+    targetId: id,
+    details: {
+      name: user.name,
+      email: user.email,
+      issuer: user.issuer,
+      subject: user.subject,
+      roles: effectiveRoles(user.idp_roles, user.granted_roles, user.disabled_at !== null),
+      memberships: memberships.map((m) => ({ customerId: m.customer_id, email: m.email })),
+      sessionsEnded: toInt(sessions[0]?.n),
+    },
+  });
 }
 
 /** POST /users/:id/revoke-sessions: ends the user's sessions (except the acting one). */

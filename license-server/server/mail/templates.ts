@@ -10,12 +10,16 @@
 // link to the portal. A personal request that waits for an admin mails the
 // requester ("waiting for approval") and each approver: the details, the
 // terms approval signs and, unless the request needs a signed-in admin
-// (blocked, withdrawn history), a one-click approve link of their own.
+// (blocked, withdrawn history), a one-click approve link of their own. A
+// business request from the form mails the requester ("we have your
+// request") and each approver (the details and a link to the Requests page).
 
-import type { RequestSource, ReviewReason } from '../../shared/api';
+import type { BusinessEdition, RequestSource, ReviewReason } from '../../shared/api';
 import {
   ALL_FEATURES_LABEL,
   APPROVAL_LINK_TTL_DAYS,
+  BUSINESS_CONTACT,
+  BUSINESS_EDITIONS,
   CONFIRM_TTL_HOURS,
   featureLabel,
   INVITE_TTL_DAYS,
@@ -366,6 +370,102 @@ export function rejectedMail(m: RejectedMail): MailMessage {
     title: 'An update on your request.',
     preview: 'We have reviewed your request for a personal kudurru key.',
     publicUrl: m.publicUrl,
+  });
+}
+
+// --- business requests ----------------------------------------------------------
+
+/** A business request as its mails describe it. */
+export interface BusinessRequestFacts {
+  id: string;
+  name: string;
+  email: string;
+  company: string;
+  edition: BusinessEdition;
+  nodes: number;
+  /** '' when the form left it empty. */
+  details: string;
+}
+
+/**
+ * The facts paragraph of a business request mail and its HTML rows. The
+ * approver copy has every field and the request ID. The requester copy has
+ * only the edition (a closed set) and the node count (a number): the address
+ * is not confirmed, so mail to it never repeats text the submitter wrote,
+ * which would let anyone send a third party their own words from the portal.
+ */
+function businessFacts(r: BusinessRequestFacts, audience: 'requester' | 'approver'): { text: string; rows: [string, string][] } {
+  const rows: [string, string][] = [
+    ...(audience === 'approver'
+      ? [['Request', r.id], ['Name', r.name], ['Company', r.company], ['Email', r.email]] as [string, string][]
+      : []),
+    ['Edition', BUSINESS_EDITIONS[r.edition].label],
+    ['Nodes', String(r.nodes)],
+  ];
+  return { text: rows.map(([k, v]) => `${`${k}:`.padEnd(12)}${v}`).join('\n'), rows };
+}
+
+export interface BusinessReceivedMail {
+  to: string;
+  request: BusinessRequestFacts;
+  publicUrl: string;
+}
+
+/**
+ * To the requester: we have the business request and reply by email. The
+ * address is not confirmed (no link to follow), so the mail is fixed text
+ * plus the edition and node count, and invites a reply, nothing more.
+ */
+export function businessReceivedMail(m: BusinessReceivedMail): MailMessage {
+  const facts = businessFacts(m.request, 'requester');
+  return brandedMail({
+    to: m.to,
+    subject: 'We have your kudurru business license request',
+    text: paragraphs(
+      // A fixed greeting, as for the personal form: the name is unconfirmed.
+      'Hello,',
+      'Thank you for your interest in a kudurru business license. We have your request and will reply to this address. There is nothing else you need to do.',
+      facts.text,
+      `If you did not send this request, ignore this message, or reply and tell us. Questions in the meantime go to ${BUSINESS_CONTACT}.`,
+      signature(m.publicUrl),
+    ),
+  }, {
+    title: 'Got it.',
+    preview: 'We have your kudurru business license request and will reply by email.',
+    publicUrl: m.publicUrl,
+    details: [{ text: facts.text, heading: 'Your request', rows: facts.rows }],
+  });
+}
+
+export interface BusinessRequestNeededMail {
+  /** One approver (ADMIN_NOTIFY_EMAIL, or a license admin or superadmin). */
+  to: string;
+  request: BusinessRequestFacts;
+  publicUrl: string;
+}
+
+/** To one approver: a new business request waits in the portal. No one-click link: an admin issues or closes it there. */
+export function businessRequestNeededMail(m: BusinessRequestNeededMail): MailMessage {
+  const r = m.request;
+  const facts = businessFacts(r, 'approver');
+  const url = `${m.publicUrl}/requests?tab=business`;
+  return brandedMail({
+    to: m.to,
+    subject: `Business license request from ${oneLine(r.company)}`,
+    text: paragraphs(
+      'Hello,',
+      `${r.name} of ${r.company} asks on the kudurru.io form about the ${BUSINESS_EDITIONS[r.edition].label} edition for ${r.nodes} ${r.nodes === 1 ? 'node' : 'nodes'}. They were told we reply by email; nothing is signed until a license admin issues a license.`,
+      facts.text,
+      r.details ? `Their details:\n${r.details}` : 'They gave no further details.',
+      `Issue a license from the request, or close it with a note, on the Requests page (Business):\n${url}`,
+      signature(m.publicUrl),
+    ),
+  }, {
+    title: 'A business request came in.',
+    preview: `${oneLine(r.company)} asks about the ${BUSINESS_EDITIONS[r.edition].label} edition.`,
+    publicUrl: m.publicUrl,
+    details: [{ text: facts.text, heading: 'The request', rows: facts.rows }],
+    action: { label: 'Open business requests', url },
   });
 }
 

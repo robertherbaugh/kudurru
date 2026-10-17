@@ -8,7 +8,7 @@
 --     -f license-server/deploy/postgres-roles.sql
 --
 -- Then migrate as the owner (it creates the tables and, through migrations
--- 0002 and 0003, grants the runtime role exactly what the server uses) and give the
+-- 0002 to 0005, grants the runtime role exactly what the server uses) and give the
 -- serving container only the runtime role:
 --
 --   DATABASE_MIGRATE_URL=postgres://license_portal_owner:…@<host>:5432/<db>   (migrate step only)
@@ -31,7 +31,7 @@ grant usage, create on schema public to license_portal_owner;
 grant usage on schema public to license_portal_app;
 
 -- If the runtime role is created after the migrations already ran, run this
--- block as license_portal_owner once (migrations 0002 and 0003 do the same
+-- block as license_portal_owner once (migrations 0002 to 0005 do the same
 -- on a fresh database; server/test/roles.test.ts keeps the two in step):
 --
 -- grant select on schema_migrations to license_portal_app;
@@ -41,3 +41,5 @@ grant usage on schema public to license_portal_app;
 -- grant select, insert on audit_events to license_portal_app;
 -- grant usage on sequence audit_events_id_seq to license_portal_app;
 -- grant select, insert, update, delete on request_approval_links to license_portal_app;
+-- grant delete on users to license_portal_app;
+-- grant select, insert, update on business_requests to license_portal_app;

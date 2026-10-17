@@ -14,7 +14,7 @@
 //   connection breaks) rather than from the server, which sets
 //   X-Content-Type-Options on every response (design spec §2).
 // - unavailable: the 503 the Worker answers instead, in the server's error
-//   shape, with the public form's CORS headers, never with the cause.
+//   shape, with the public form routes' CORS headers, never with the cause.
 
 /** The header the server is told to trust (CLIENT_IP_HEADER=X-Client-IP). */
 export const CLIENT_IP_HEADER = 'X-Client-IP';
@@ -33,8 +33,14 @@ const TARGET_PORT_HEADER = 'cf-container-target-port';
  */
 const BUFFER_LIMIT = 64 * 1024;
 
-/** The kudurru.io form's route, the only cross-origin one (design spec §6, FROZEN contract). */
+/** The kudurru.io form's personal route (design spec §6, FROZEN contract). */
 export const PUBLIC_FORM_PATH = '/api/v1/public/key-requests';
+
+/** The kudurru.io form's business route. */
+export const PUBLIC_BUSINESS_FORM_PATH = '/api/v1/public/business-requests';
+
+/** The cross-origin routes: the kudurru.io form's two (shared/routes.ts, cors publicForm). */
+export const PUBLIC_FORM_PATHS: readonly string[] = [PUBLIC_FORM_PATH, PUBLIC_BUSINESS_FORM_PATH];
 
 /** Seconds a client is asked to wait after a 503. */
 export const RETRY_AFTER_SECONDS = '30';
@@ -122,11 +128,11 @@ const PAGE = `<!doctype html>
 /**
  * The Worker's own 503: JSON in the server's error shape for /api/ paths
  * (`{"error":{"key":"unavailable","message":...}}`), a small HTML page for
- * everything else. On the public form's route an allowed Origin gets the
- * same CORS headers the server would send, so the kudurru.io page can read
- * the answer; its preflight gets a 204, so the browser sends the POST,
- * which either reaches a container that has started meanwhile or gets
- * this 503 in a form the page can show.
+ * everything else. On the public form's routes (personal and business) an
+ * allowed Origin gets the same CORS headers the server would send, so the
+ * kudurru.io page can read the answer; its preflight gets a 204, so the
+ * browser sends the POST, which either reaches a container that has started
+ * meanwhile or gets this 503 in a form the page can show.
  */
 export function unavailable(request: Request, settings: Settings): Response {
   const url = new URL(request.url);
@@ -140,7 +146,7 @@ export function unavailable(request: Request, settings: Settings): Response {
   });
   if (settings.publicUrl.startsWith('https:')) headers.set('Strict-Transport-Security', 'max-age=31536000');
 
-  const isForm = url.pathname === PUBLIC_FORM_PATH;
+  const isForm = PUBLIC_FORM_PATHS.includes(url.pathname);
   if (isForm) {
     headers.set('Vary', 'Origin');
     headers.set('Access-Control-Expose-Headers', 'Retry-After');

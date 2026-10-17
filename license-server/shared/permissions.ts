@@ -36,7 +36,7 @@ export type Permission =
   | 'blocklist.write'
   | 'audit.read'
   | 'users.read'
-  /** Granted roles, disable and enable, revoke sessions. */
+  /** Granted roles, disable and enable, revoke sessions, delete users. */
   | 'users.write'
   /** The System page. */
   | 'system.read';
@@ -101,7 +101,7 @@ export interface RoleInfo {
 export const ROLE_INFO: readonly RoleInfo[] = [
   { key: 'customer', label: 'Customer', description: 'Sees the licenses and keys of the customers they belong to, and requests a free personal key.' },
   { key: 'license_admin', label: 'License admin', description: 'Manages customers, issues, renews, changes and withdraws licenses, and decides requests.' },
-  { key: 'superadmin', label: 'Superadmin', description: 'Everything a license admin does, plus user roles, sessions and the blocklist.' },
+  { key: 'superadmin', label: 'Superadmin', description: 'Everything a license admin does, plus user roles, sessions, deleting users and the blocklist.' },
 ];
 
 export function isRole(v: unknown): v is Role {

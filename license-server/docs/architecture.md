@@ -31,8 +31,8 @@ flowchart LR
     C --> UI
     A --> UI
     S --> UI
-    F -->|"POST /api/v1/public/key-requests<br/>(CORS)"| API
-    API --> PG[("Postgres<br/>users, sessions, customers,<br/>licenses, keys, requests,<br/>approval links, audit")]
+    F -->|"POST /api/v1/public/key-requests<br/>and /business-requests (CORS)"| API
+    API --> PG[("Postgres<br/>users, sessions, customers,<br/>licenses, keys, requests,<br/>business requests,<br/>approval links, audit")]
     API -->|"SMTP"| MAIL["mail server"]
     API -->|"OIDC (code + PKCE)"| IDP["identity provider"]
     SIGN -. "keys by mail and download" .-> N["kudurru nodes<br/>(verify offline)"]
@@ -170,6 +170,37 @@ against their `ISSUE_MAX_PER_ACTOR_PER_DAY`; else it is the system actor
 rate limited per client address. The preview answers for a used or expired
 link too, until the cleanup deletes the link 30 days after its expiry.
 
+## A business request from the kudurru.io form
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor V as visitor
+    participant W as kudurru.io
+    participant P as portal
+    participant DB as Postgres
+    actor A as license admin
+    V->>W: Request a key: business (name, email, company, edition, nodes, details)
+    W->>P: POST /api/v1/public/business-requests (CORS)
+    P->>DB: limits per network and per email, then business_requests (open)
+    P-->>W: 202 sent
+    P->>V: mail: We have your kudurru business license request
+    P->>A: mail per approver: Business license request from (company), link to Requests
+    A->>V: reply by email (outside the portal)
+    alt issue
+        A->>P: Requests, Business: Issue license (the wizard filled in from the request)
+        P->>DB: lock the open request, issue the license, request issued with the license
+    else close
+        A->>P: Close with a note
+        P->>DB: request closed (nothing mailed)
+    end
+```
+
+There is no confirmation link: nothing is signed until a license admin
+issues a license, so the request is stored at once. When the portal cannot
+be reached or cannot take it, the form opens an email to hello@kudurru.io
+with the same fields instead.
+
 ## A license's keys
 
 ```mermaid
@@ -208,6 +239,7 @@ erDiagram
     license_requests }o--o| licenses : "results in"
     license_requests ||--o{ request_approval_links : "one-click links (one per recipient)"
     public_key_requests }o--o| license_requests : "may become (when it waits for approval)"
+    business_requests }o--o| licenses : "issued as"
     users {
         text id
         text issuer
@@ -241,6 +273,14 @@ erDiagram
         text review_reason "auto_approve_off daily_cap blocked withdrawn_history"
         text status "open approved rejected canceled"
     }
+    business_requests {
+        text id
+        text email
+        text company
+        text edition "core or enterprise"
+        int nodes
+        text status "open issued closed"
+    }
     request_approval_links {
         bytea token_hash "SHA-256 of the token"
         text request_id
@@ -259,15 +299,17 @@ erDiagram
 `audit_events` refuses UPDATE, DELETE and TRUNCATE by trigger, and the
 runtime role may only read and append it (migration 0002). The cleanup
 job deletes approval links 30 days after they expire (migration 0003 adds
-the table and its grant).
+the table and its grant). Deleting a user (migration 0004 grants it)
+deletes their sessions and memberships; every other reference keeps its
+label and loses the link. Migration 0005 adds `business_requests`.
 
 ## Roles
 
 | Permission | customer | license admin | superadmin |
 |---|---|---|---|
 | Own licenses and keys (members of a customer), personal key requests, asking for the renewal of a personal key, accepting invites | yes | yes | yes |
-| Customers, members, licenses (issue, import, renew, change, withdraw, email), requests (approve, reject), the block list, users (read), audit, system | | yes | yes |
-| Granting roles, disabling users, ending sessions, removing block list entries | | | yes |
+| Customers, members, licenses (issue, import, renew, change, withdraw, email), requests (approve, reject; business requests: issue, close), the block list, users (read), audit, system | | yes | yes |
+| Granting roles, disabling and deleting users, ending sessions, removing block list entries | | | yes |
 
 `shared/permissions.ts` is the source; every route in `shared/routes.ts`
 names the one permission it needs, and `server/test/rbac.test.ts` checks
