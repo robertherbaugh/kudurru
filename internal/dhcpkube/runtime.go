@@ -120,9 +120,12 @@ type Runtime struct {
 	listenErr string
 	serverIP  netip.Addr
 
-	leaseMu sync.Mutex // the lease cache and pending writes
+	leaseMu sync.Mutex // the lease cache, pending and in-flight writes
 	cache   map[string]leaseEntry
 	pending map[string]pendingWrite
+	// inflight marks objects this replica is writing or rereading; watch
+	// events for them wait until the cache and pending entry are recorded.
+	inflight map[string]chan struct{}
 
 	kick        chan struct{}
 	scopesReady chan struct{}
@@ -162,7 +165,7 @@ func New(opts Options) (*Runtime, error) {
 	}
 	return &Runtime{opts: opts, log: opts.Logger.With("component", "dhcp"),
 		scopes: map[string]*v1alpha1.DHCPScope{}, invalid: map[string]string{},
-		cache: map[string]leaseEntry{}, pending: map[string]pendingWrite{},
+		cache: map[string]leaseEntry{}, pending: map[string]pendingWrite{}, inflight: map[string]chan struct{}{},
 		kick: make(chan struct{}, 1), scopesReady: make(chan struct{}), leasesReady: make(chan struct{})}, nil
 }
 
@@ -722,6 +725,21 @@ func (r *Runtime) resetStores(ctx context.Context) {
 func (r *Runtime) observe(ctx context.Context, obj *dhcpv1.DHCPLease, deleted bool) {
 	name := obj.Name
 	r.leaseMu.Lock()
+	// While this replica writes the object, the pending entry that tells its
+	// own events from older ones does not exist yet: wait for the write.
+	for {
+		done, writing := r.inflight[name]
+		if !writing {
+			break
+		}
+		r.leaseMu.Unlock()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return
+		}
+		r.leaseMu.Lock()
+	}
 	if p, ok := r.pending[name]; ok {
 		if deleted && p.deleted || !deleted && obj.ResourceVersion == p.rv {
 			delete(r.pending, name)
@@ -756,7 +774,14 @@ func (r *Runtime) observe(ctx context.Context, obj *dhcpv1.DHCPLease, deleted bo
 		r.cache[name] = leaseEntry{scope: scope, lease: lease, rv: obj.ResourceVersion}
 		r.leaseMu.Unlock()
 	}
+	rv := obj.ResourceVersion
 	err := r.mutate(ctx, scope, func(ctx context.Context, s *dhcp.LeaseStore) error {
+		// Decide under the scope's packet lock: a write that committed
+		// while this event waited updated the cache and the store already,
+		// and applying the event now would revert it.
+		if !r.cached(name, rv, deleted) {
+			return nil
+		}
 		if deleted {
 			return s.SyncExternal(ctx, nil, []netip.Addr{lease.Record.Address})
 		}
@@ -765,6 +790,48 @@ func (r *Runtime) observe(ctx context.Context, obj *dhcpv1.DHCPLease, deleted bo
 	if err != nil && r.knownScope(scope) {
 		r.log.Warn("DHCP working copy not updated", "lease", name, "error", err)
 	}
+}
+
+// cached reports whether the cache still holds the object at rv, or, for a
+// delete, holds no object.
+func (r *Runtime) cached(name, rv string, deleted bool) bool {
+	r.leaseMu.Lock()
+	defer r.leaseMu.Unlock()
+	e, ok := r.cache[name]
+	if deleted {
+		return !ok
+	}
+	return ok && e.rv == rv
+}
+
+// begin marks name in flight and returns the cache entry the write is based
+// on; end records the outcome and releases waiting watch events.
+func (r *Runtime) begin(name string) (leaseEntry, bool, chan struct{}) {
+	r.leaseMu.Lock()
+	defer r.leaseMu.Unlock()
+	for {
+		if done, busy := r.inflight[name]; busy {
+			r.leaseMu.Unlock()
+			<-done
+			r.leaseMu.Lock()
+			continue
+		}
+		break
+	}
+	done := make(chan struct{})
+	r.inflight[name] = done
+	entry, known := r.cache[name]
+	return entry, known, done
+}
+
+func (r *Runtime) end(name string, done chan struct{}, record func()) {
+	r.leaseMu.Lock()
+	defer r.leaseMu.Unlock()
+	if record != nil {
+		record()
+	}
+	delete(r.inflight, name)
+	close(done)
 }
 
 func (r *Runtime) knownScope(scope string) bool {
@@ -788,21 +855,19 @@ func (r *Runtime) persister(scope string) dhcp.ExternalPersister {
 		}
 		for i, c := range ordered {
 			name := names[i]
-			r.leaseMu.Lock()
-			entry, known := r.cache[name]
-			r.leaseMu.Unlock()
+			entry, known, done := r.begin(name)
 			var err error
+			var record func()
 			if c.Lease == nil {
-				if !known {
-					continue
-				}
-				err = r.opts.Leases.Delete(ctx, name, entry.rv)
-				if err == nil || errors.Is(err, ErrNotFound) {
-					r.leaseMu.Lock()
-					delete(r.cache, name)
-					r.pending[name] = pendingWrite{deleted: true, at: r.opts.Now()}
-					r.leaseMu.Unlock()
-					continue
+				if known {
+					err = r.opts.Leases.Delete(ctx, name, entry.rv)
+					if err == nil || errors.Is(err, ErrNotFound) {
+						err = nil
+						record = func() {
+							delete(r.cache, name)
+							r.pending[name] = pendingWrite{deleted: true, at: r.opts.Now()}
+						}
+					}
 				}
 			} else {
 				obj := leaseObject("", scope, *c.Lease)
@@ -813,15 +878,18 @@ func (r *Runtime) persister(scope string) dhcp.ExternalPersister {
 					err = r.opts.Leases.Create(ctx, obj)
 				}
 				if err == nil {
-					r.leaseMu.Lock()
-					r.cache[name] = leaseEntry{scope: scope, lease: *c.Lease, rv: obj.ResourceVersion}
-					r.pending[name] = pendingWrite{rv: obj.ResourceVersion, at: r.opts.Now()}
-					r.leaseMu.Unlock()
-					continue
+					lease := *c.Lease
+					record = func() {
+						r.cache[name] = leaseEntry{scope: scope, lease: lease, rv: obj.ResourceVersion}
+						r.pending[name] = pendingWrite{rv: obj.ResourceVersion, at: r.opts.Now()}
+					}
 				}
 			}
-			go r.reread(context.WithoutCancel(ctx), scope, names)
-			return fmt.Errorf("dhcp lease %s: %w", name, err)
+			r.end(name, done, record)
+			if err != nil {
+				go r.reread(context.WithoutCancel(ctx), scope, names)
+				return fmt.Errorf("dhcp lease %s: %w", name, err)
+			}
 		}
 		return nil
 	}
@@ -833,36 +901,59 @@ func (r *Runtime) persister(scope string) dhcp.ExternalPersister {
 func (r *Runtime) reread(ctx context.Context, scope string, names []string) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	var upserts []dhcp.ExternalLease
-	var deletes []netip.Addr
+	type reread struct {
+		name, rv string
+		lease    dhcp.ExternalLease
+		address  netip.Addr
+		deleted  bool
+	}
+	var found []reread
 	for _, name := range names {
+		// In flight: watch events for name wait until the cache holds the
+		// current object, then apply on top of it.
+		_, _, done := r.begin(name)
 		obj, err := r.opts.Leases.Get(ctx, name)
-		r.leaseMu.Lock()
-		delete(r.pending, name)
+		var record func()
 		switch {
 		case errors.Is(err, ErrNotFound):
-			if old, ok := r.cache[name]; ok {
-				deletes = append(deletes, old.lease.Record.Address)
-				delete(r.cache, name)
-			} else if ip, ok := addressOf(scope, name); ok {
-				deletes = append(deletes, ip)
+			record = func() {
+				delete(r.pending, name)
+				if old, ok := r.cache[name]; ok {
+					found = append(found, reread{name: name, address: old.lease.Record.Address, deleted: true})
+					delete(r.cache, name)
+				} else if ip, ok := addressOf(scope, name); ok {
+					found = append(found, reread{name: name, address: ip, deleted: true})
+				}
 			}
 		case err != nil:
-			r.leaseMu.Unlock()
 			r.log.Warn("DHCPLease reread failed; the next list repairs it", "lease", name, "error", err)
-			continue
 		default:
 			if s, lease, err := leaseFromObject(obj); err == nil && s == scope {
-				r.cache[name] = leaseEntry{scope: scope, lease: lease, rv: obj.ResourceVersion}
-				upserts = append(upserts, lease)
+				record = func() {
+					delete(r.pending, name)
+					r.cache[name] = leaseEntry{scope: scope, lease: lease, rv: obj.ResourceVersion}
+					found = append(found, reread{name: name, rv: obj.ResourceVersion, lease: lease})
+				}
 			}
 		}
-		r.leaseMu.Unlock()
+		r.end(name, done, record)
 	}
-	if len(upserts) == 0 && len(deletes) == 0 {
+	if len(found) == 0 {
 		return
 	}
 	if err := r.mutate(ctx, scope, func(ctx context.Context, s *dhcp.LeaseStore) error {
+		var upserts []dhcp.ExternalLease
+		var deletes []netip.Addr
+		for _, f := range found {
+			if !r.cached(f.name, f.rv, f.deleted) {
+				continue // a newer write or event already applied
+			}
+			if f.deleted {
+				deletes = append(deletes, f.address)
+			} else {
+				upserts = append(upserts, f.lease)
+			}
+		}
 		return s.SyncExternal(ctx, upserts, deletes)
 	}); err != nil {
 		r.log.Warn("DHCP working copy not repaired", "scope", scope, "error", err)

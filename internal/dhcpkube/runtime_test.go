@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,9 @@ import (
 // resourceVersion preconditions, unique names and an ordered watch that
 // replays history after a resourceVersion.
 type fakeLeases struct {
+	// delay holds a write's caller after its event is out, widening the
+	// window in which a watch event overtakes the write's return.
+	delay    atomic.Int64
 	mu       sync.Mutex
 	rv       int
 	objs     map[string]dhcpv1.DHCPLease
@@ -33,6 +37,8 @@ type fakeLeases struct {
 }
 
 func newFakeLeases() *fakeLeases { return &fakeLeases{objs: map[string]dhcpv1.DHCPLease{}} }
+
+func (f *fakeLeases) pause() { time.Sleep(time.Duration(f.delay.Load())) }
 
 func (f *fakeLeases) emit(t watch.EventType, obj dhcpv1.DHCPLease) {
 	ev := watch.Event{Type: t, Object: obj.DeepCopy()}
@@ -83,6 +89,7 @@ func (f *fakeLeases) next() string {
 }
 
 func (f *fakeLeases) Create(_ context.Context, obj *dhcpv1.DHCPLease) error {
+	defer f.pause()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.objs[obj.Name]; ok {
@@ -95,6 +102,7 @@ func (f *fakeLeases) Create(_ context.Context, obj *dhcpv1.DHCPLease) error {
 }
 
 func (f *fakeLeases) Update(_ context.Context, obj *dhcpv1.DHCPLease) error {
+	defer f.pause()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cur, ok := f.objs[obj.Name]
@@ -111,6 +119,7 @@ func (f *fakeLeases) Update(_ context.Context, obj *dhcpv1.DHCPLease) error {
 }
 
 func (f *fakeLeases) Delete(_ context.Context, name, rv string) error {
+	defer f.pause()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cur, ok := f.objs[name]
@@ -507,5 +516,114 @@ func TestLeaseObjectRoundTrip(t *testing.T) {
 	bad.Name = "lan.192.0.2.99"
 	if _, _, err := leaseFromObject(bad); err == nil {
 		t.Fatal("a lease whose name does not match its address was accepted")
+	}
+}
+
+// The event of this replica's own write can arrive before the write
+// returns. It must not be applied after a newer local write (the binding
+// would revert to an offer in the working copy).
+func TestOwnEventsDoNotRevertNewerWrites(t *testing.T) {
+	h := newHarness(t)
+	a := h.replica("kudurru-a", "10.0.0.1")
+	h.election.grant("kudurru-a")
+	eventually(t, "a serving", func() bool { return a.Leader() && len(a.Status().Scopes) == 1 })
+	h.leases.delay.Store(int64(30 * time.Millisecond))
+	for i := 1; i <= 3; i++ {
+		// Offer and acknowledge in separate packets, as clients do.
+		client := dhcp.Client{MAC: fmt.Sprintf("02:00:00:00:00:%02x", i)}
+		var lease dhcp.Lease
+		if err := a.mutate(context.Background(), "lan", func(ctx context.Context, s *dhcp.LeaseStore) error {
+			var err error
+			lease, err = s.Offer(ctx, client, netip.Addr{})
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond) // the client's REQUEST follows later
+		if err := a.mutate(context.Background(), "lan", func(ctx context.Context, s *dhcp.LeaseStore) error {
+			_, err := s.Acknowledge(ctx, client, lease.Address, dhcp.Selecting)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond) // let any stale event land
+		for _, l := range listed(a, "lan") {
+			if l.Address == lease.Address && l.State != "bound" {
+				t.Fatalf("working copy reverted %s to %s", l.Address, l.State)
+			}
+		}
+		// Another writer's change right after is applied promptly: the own
+		// event must not leave a pending entry that hides it.
+		obj, err := h.leases.Get(context.Background(), ObjectName("lan", lease.Address))
+		if err != nil {
+			t.Fatal(err)
+		}
+		obj.Spec.Hostname = fmt.Sprintf("renamed-%d", i)
+		if err := h.leases.Update(context.Background(), obj); err != nil {
+			t.Fatal(err)
+		}
+		eventually(t, "the other writer's change", func() bool {
+			for _, l := range listed(a, "lan") {
+				if l.Address == lease.Address {
+					return l.Hostname == obj.Spec.Hostname
+				}
+			}
+			return false
+		})
+	}
+}
+
+// A watch event that waits for the scope's packet lock while a newer local
+// write commits must be dropped, not applied over that write.
+func TestStaleEventWaitingForThePacketLock(t *testing.T) {
+	h := newHarness(t)
+	a := h.replica("kudurru-a", "10.0.0.1")
+	h.election.grant("kudurru-a")
+	eventually(t, "a serving", func() bool { return a.Leader() && len(a.Status().Scopes) == 1 })
+	client := dhcp.Client{MAC: "02:00:00:00:00:01", Hostname: "laptop"}
+	lease, err := bind(t, a, client.MAC, client.Hostname)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := ObjectName("lan", lease.Address)
+
+	entered, proceed, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- a.mutate(context.Background(), "lan", func(ctx context.Context, s *dhcp.LeaseStore) error {
+			close(entered)
+			<-proceed
+			renewed := client
+			renewed.Hostname = "laptop-2"
+			_, err := s.Acknowledge(ctx, renewed, lease.Address, dhcp.Renewing)
+			return err
+		})
+	}()
+	<-entered
+	// Another writer changes the object; its event waits for the lock.
+	obj, err := h.leases.Get(context.Background(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	obj.Spec.Hostname = "intruder"
+	if err := h.leases.Update(context.Background(), obj); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the event in the cache", func() bool { return a.cached(name, obj.ResourceVersion, false) })
+	close(proceed)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond) // the queued event runs now
+	current, err := h.leases.Get(context.Background(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range listed(a, "lan") {
+		if l.Address == lease.Address && l.Hostname != current.Spec.Hostname {
+			t.Fatalf("working copy hostname %q, object %q", l.Hostname, current.Spec.Hostname)
+		}
+	}
+	if current.Spec.Hostname != "laptop-2" {
+		t.Fatalf("the renewal did not write over the other writer: %q", current.Spec.Hostname)
 	}
 }
