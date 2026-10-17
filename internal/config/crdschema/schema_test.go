@@ -33,7 +33,7 @@ func TestSettingsAdmissionContainsOnlyPublicClusterKeys(t *testing.T) {
 			t.Fatalf("help drift for %s", key.Path)
 		}
 	}
-	data, err := os.ReadFile("../../../config/crd/bases/kudurru.io_kudurrus.yaml")
+	data, err := os.ReadFile("../../../deploy/kustomize/crd/bases/kudurru.io_kudurrus.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

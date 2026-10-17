@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	path := flag.String("file", "config/crd/bases/kudurru.io_kudurrus.yaml", "generated Kudurru CRD")
+	path := flag.String("file", "deploy/kustomize/crd/bases/kudurru.io_kudurrus.yaml", "generated Kudurru CRD")
 	flag.Parse()
 	if err := run(*path); err != nil {
 		fmt.Fprintln(os.Stderr, err)

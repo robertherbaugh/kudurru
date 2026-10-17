@@ -51,7 +51,7 @@ func runMain(m *testing.M) int {
 	}
 	var crds []*apiextensionsv1.CustomResourceDefinition
 	for _, name := range []string{"serviceaccounts", "rolebindings", "identityproviders"} {
-		raw, err := os.ReadFile(filepath.Join("..", "..", "config", "crd", "bases", "kudurru.io_"+name+".yaml")) // #nosec G304 -- fixed production CRD names
+		raw, err := os.ReadFile(filepath.Join("..", "..", "deploy", "kustomize", "crd", "bases", "kudurru.io_"+name+".yaml")) // #nosec G304 -- fixed production CRD names
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "IAM envtest production CRD unavailable")
 			return 1

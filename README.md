@@ -124,7 +124,7 @@ OIDC, scoped roles, long-term statistics, integrations and the edge need
 the corresponding license entitlements; a free eligible personal key
 unlocks them. Full milestones and planned features are in
 [dev-docs/design-record.md §13](dev-docs/design-record.md#13-roadmap).
-The [v0.2 implementation plan](docs/v0.2/README.md) reconciles that scope with the current code and groups the remaining work by dependency and acceptance criteria.
+The [v0.2 implementation plan](dev-docs/milestones/v0.2/README.md) reconciles that scope with the current code and groups the remaining work by dependency and acceptance criteria.
 
 ## Documentation
 

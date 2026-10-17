@@ -17,6 +17,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/dnssec"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/recursor"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
 
@@ -185,8 +186,9 @@ func (s *Stage) Serve(req *pipeline.Request, _ pipeline.Next) (*pipeline.Respons
 		return s.failure(req, plan.Group(), err), nil
 	}
 	// DNSSEC proof material stays intact until validation and raw cache storage.
+	security := recursiveSecurity(res, plan, req.Msg.CheckingDisabled, time.Now())
 	if !plan.Validates() && !plan.RawResponse() {
-		Finalize(req.Msg, res.Msg, pipeline.Security{}, false, time.Now())
+		Finalize(req.Msg, res.Msg, security, false, time.Now())
 	}
 	return &pipeline.Response{
 		Msg:        res.Msg,
@@ -195,8 +197,37 @@ func (s *Stage) Serve(req *pipeline.Request, _ pipeline.Next) (*pipeline.Respons
 		Cacheable:  plan.Cacheable(),
 		Origin:     pipeline.OriginForwarded,
 		CacheScope: plan.Scope(),
+		Security:   security,
 		DNSSEC:     pipeline.DNSSEC(res.DNSSEC), // same values
 	}, nil
+}
+
+// recursiveSecurity accepts only the native resolver's out-of-band result,
+// never wire AD. Bound raw-cache reuse by the returned TTLs and signatures;
+// stale serving must not extend a recursive validation result.
+func recursiveSecurity(res *upstream.Result, plan *upstream.QueryPlan, cd bool, now time.Time) pipeline.Security {
+	if !plan.Recursive() || cd || res.DNSSEC == recursor.SecUnknown {
+		return pipeline.Security{}
+	}
+	sec := pipeline.Security{State: pipeline.ValidationState(res.DNSSEC), ContextID: plan.Scope().ID, ValidatedAt: now}
+	for _, section := range [][]dns.RR{res.Msg.Answer, res.Msg.Ns} {
+		for _, rr := range section {
+			until := now.Add(time.Duration(rr.Header().Ttl) * time.Second)
+			if sig, ok := rr.(*dns.RRSIG); ok {
+				expires := time.Unix(int64(sig.Expiration), 0)
+				if expires.Before(until) {
+					until = expires
+				}
+			}
+			if sec.ValidUntil.IsZero() || until.Before(sec.ValidUntil) {
+				sec.ValidUntil = until
+			}
+		}
+	}
+	if sec.ValidUntil.IsZero() {
+		sec.ValidUntil = now
+	}
+	return sec
 }
 
 // Finalize personalizes flags and DNSSEC representation on a private message.

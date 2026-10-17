@@ -51,6 +51,11 @@ func (p *QueryPlan) Derive(req *pipeline.Request) (*QueryPlan, error) {
 		return nil, err
 	}
 	n.group, n.conditional = group, conditional
+	// Recursive groups validate under their own captured recursion settings.
+	// The forwarded-answer validator must not change their CD behavior or trust.
+	if n.Recursive() {
+		n.validate = false
+	}
 	b := append([]byte(nil), p.set.identity[:]...)
 	b = append(b, group...)
 	b = append(b, 0)
@@ -76,6 +81,12 @@ func (p *QueryPlan) ForCache() *QueryPlan         { n := *p; n.raw = true; retur
 func (p *QueryPlan) RawResponse() bool            { return p.raw }
 func (p *QueryPlan) Validates() bool              { return p.validate }
 func (p *QueryPlan) Cacheable() bool              { return !p.conditional }
+
+// Recursive reports whether this route uses the native validating resolver.
+func (p *QueryPlan) Recursive() bool {
+	g := p.set.groups[p.group]
+	return g != nil && len(g.servers) == 1 && g.servers[0].proto == RecursiveServer
+}
 func (p *QueryPlan) Current() bool {
 	return (p.current == nil || p.current()) && (p.validator == nil || p.active == p.validator.ActiveContextID())
 }
@@ -86,6 +97,10 @@ func (p *QueryPlan) ECSSubnet(m *dns.Msg, _ netip.Addr) netip.Prefix {
 func (p *QueryPlan) Exchange(ctx context.Context, m *dns.Msg) (*Result, error) {
 	q := p.set.PrepareQuery(m, p.client)
 	q.AuthenticatedData = false
+	if p.Recursive() {
+		// Retain proofs for the raw cache; finalization strips them for non-DO clients.
+		q.IsEdns0().SetDo()
+	}
 	if p.validate && !m.CheckingDisabled {
 		q.CheckingDisabled = true
 		q.IsEdns0().SetDo()

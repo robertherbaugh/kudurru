@@ -1,7 +1,7 @@
 # A query's journey
 
 Every DNS query, on every transport, goes through the same fixed chain of
-nine installed stages. A stage either answers (and the query goes no further), or
+ten installed stages. A stage either answers (and the query goes no further), or
 calls the next stage and may look at the answer on the way back. When the
 chain returns, an observer records the outcome. This page walks that path.
 
@@ -285,6 +285,12 @@ an immutable value that something else swaps atomically:
 
 ## DNSSEC and raw cache provenance
 
+Recursive groups retain the native resolver's validation result through the raw
+cache and final response flags. The forwarded-answer validator does not replace
+recursive trust settings. Cache reuse is bounded by the returned TTLs and
+signature deadlines. Each complete SQLite publication owns its recursive
+resolver, so held requests keep their original root hints and validation settings.
+
 Validation defaults off; a forward zone can override the global setting.
 The validator uses shipped IANA root anchors and explicit operator anchors,
 with bounded proof queries on the captured route. NTAs expire absolutely,
@@ -315,6 +321,10 @@ the `epoch` in the health TXT is always `0`. The control stage has no
 configuration keys yet, so it only drops malformed queries.
 
 ## DHCP lease records (v0.1.0)
+
+Identification samples DHCP hostnames alongside the captured provider inventory.
+Alias and dependency queries retain those original names; a new client query
+observes current lease names.
 
 The authoritative stage can answer A/PTR records from committed in-memory
 [DHCP lease snapshots](dhcp.md#lease-dns-and-policy-names). The optional hook

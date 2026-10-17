@@ -36,6 +36,9 @@ type Stage struct {
 	// Inventory supplies complete immutable snapshots. It is optional for
 	// embedders; production always installs the shared inventory holder.
 	Inventory interface{ Snapshot() *inventory.Snapshot }
+	// Hostnames supplies local DHCP names, sampled once alongside inventory.
+	// Alias/dependency requests retain the original client identity.
+	Hostnames policy.HostnameResolver
 	// Capture and CaptureInventory read typed owners from Request.Serving.
 	// A captured query never falls back to src or the live inventory holder.
 	Capture          func(*pipeline.Request) (*policy.Index, error)
@@ -60,7 +63,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	if at.IsZero() {
 		at = s.now()
 	}
-	if (s.Inventory != nil || s.CaptureInventory != nil || req.Serving != nil) && !req.Client.IdentityCaptured {
+	if (s.Inventory != nil || s.CaptureInventory != nil || s.Hostnames != nil || req.Serving != nil) && !req.Client.IdentityCaptured {
 		var snapshot *inventory.Snapshot
 		if s.CaptureInventory != nil {
 			var err error
@@ -70,13 +73,17 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 			}
 		} else if req.Serving != nil {
 			return nil, pipeline.ErrServingCapture
-		} else {
+		} else if s.Inventory != nil {
 			snapshot = s.Inventory.Snapshot()
 		}
 		req.Client.IdentityCaptured = true
 		req.Client.MACs, req.Client.Names, req.Client.Tags = nil, nil, nil
 		if c := snapshot.Lookup(req.Client.Addr.Addr(), at); c != nil {
 			req.Client.MACs, req.Client.Names, req.Client.Tags = c.MACs, c.Names(), c.Tags
+		}
+		if s.Hostnames != nil {
+			names := append([]string(nil), req.Client.Names...)
+			req.Client.Names = append(names, s.Hostnames.Hostnames(req.Client.Addr.Addr())...)
 		}
 	}
 	var ix *policy.Index

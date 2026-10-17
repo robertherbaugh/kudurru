@@ -56,7 +56,7 @@ func kubeStore(t testing.TB) *kube.Store {
 	if _, err := os.Stat(filepath.Join(assets, "kube-apiserver")); err != nil { //nolint:gosec // G703: trusted test asset path selects local envtest binaries.
 		t.Skip("real envtest binaries unavailable; run make envtest")
 	}
-	env := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{"../../config/crd/bases"}, ErrorIfCRDPathMissing: true}
+	env := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{"../../deploy/kustomize/crd/bases"}, ErrorIfCRDPathMissing: true}
 	args := env.ControlPlane.GetAPIServer().Configure()
 	args.Set("advertise-address", "127.0.0.1")
 	args.Set("endpoint-reconciler-type", "none")

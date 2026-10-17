@@ -73,9 +73,11 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		}
 	} else if req.Msg.CheckingDisabled {
 		out.Security.Reason = "cd_bypass"
-	} else {
+	} else if !plan.Recursive() {
 		out.Security.Reason = "validation_disabled"
 	}
+	// Recursive groups retain their native resolver's bounded provenance;
+	// upstreams.recursion is independent of forwarded-answer validation.
 	if !plan.RawResponse() {
 		now := time.Now()
 		if plan.Validator() != nil {

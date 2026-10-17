@@ -4,9 +4,9 @@ Planning review, 2026-10-14, against `7064012` on `main`. This is a proposed
 implementation sequence for the existing requirements, not a claim that the
 features are implemented or that the release scope has been reduced.
 
-The product scope is in [architecture §13.2](../architecture.md#132-v02--clay-copies-12-weeks).
+The product scope is in [architecture §13.2](../../design-record.md#132-v020--clay-copies-12-weeks).
 Detailed contracts are spread across architecture §§4–11, the decision log,
-and [follow-ups](../followups.md). The [architecture tour](../architecture/README.md)
+and [follow-ups](../../followups.md). The [architecture tour](../../../docs/architecture/README.md)
 is a better starting point for current behavior than the original design
 record, although both need reconciliation with recent code.
 
@@ -20,7 +20,7 @@ dashboard, and multi-node query-log and statistics reads.
 GitHub lists [v0.1.0-rc.4](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0-rc.4)
 as a published pre-release at the time of this review; `VERSION` is still
 `0.1.0`. Statements that no candidate has been tagged are historical. This
-review does not certify the v0.1 GA gates: the [release checklist](../release-checklist.md)
+review does not certify the v0.1 GA gates: the [release checklist](../../release-checklist.md)
 still calls for release validation, including real dnsdist transport checks
 and two-VM keepalived failover evidence.
 
@@ -44,8 +44,8 @@ with raw immutable zone data, TCP/TLS AXFR and IXFR with TSIG, independent
 per-node SOA timers,
 durable last-good copies, expiry coverage, inbound NOTIFY with authenticated
 peer fan-out, and API/CLI/dashboard diagnostics.
-See [the current architecture](../architecture/zones.md#secondary-copies) and
-[operator guide](../guide/admin/07-zones-and-upstreams.md#create-a-secondary-zone).
+See [the current architecture](../../../docs/architecture/zones.md#secondary-copies) and
+[operator guide](../../../docs/guide/admin/07-zones-and-upstreams.md#create-a-secondary-zone).
 The regression suites cover serial wrap, failed/corrupt transfers, restart,
 configuration identity changes, bounded scheduling, CNAME zone boundaries,
 real BIND transfers and the browser create/edit/expiry workflow.
@@ -66,7 +66,7 @@ negative and tampered data. Response processing adds configured policy
 rewrites, DNS64, AAAA filtering, NXDOMAIN handling and rebinding protection,
 with nullable client-policy overrides, live settings, CLI metadata and dashboard
 editors. Native UDP/TCP and browser acceptance pass; see the
-[response-processing guide](../deploy/response-processing.md). The modifier
+[response-processing guide](../../../docs/deploy/response-processing.md). The modifier
 compiler and real edge packet-cache isolation acceptance remain in progress.
 
 The HA foundation includes complete versioned replication images, atomic
@@ -255,16 +255,16 @@ Do not treat every historical row as a new implementation task.
 
 | Documentation claim or task | Evidence at the reviewed commit | Planning consequence |
 |---|---|---|
-| Cluster stats/log scatter-gather and peer readiness are deferred | [scoped_querylog.go](../../internal/api/scoped_querylog.go), [nodes.go](../../internal/api/nodes.go), and their tests implement them | Keep the remaining remote `/nodes/{name}/health` work; do not rebuild aggregation |
-| Remote-node query-log reads return 501; live tail is node-local | [scoped_querylog.go](../../internal/api/scoped_querylog.go) reads live peers; [scoped_stream.go](../../internal/api/scoped_stream.go) multiplexes streams | Database-only reads of offline nodes remain separate work; the UI still disables live mode for central-source results |
-| “All settings” is a new v0.2 page | [SettingsPage.tsx](../../web/src/pages/SettingsPage.tsx) already renders the metadata-driven Expert view | Extend it for new settings and missing help/persistence behavior |
-| Scoped permissions and record-delete confirmation remain unfinished | [auth routes](../../internal/auth/stack/routes.go) return `scopedPermissions`; [ZoneDetailPage.tsx](../../web/src/pages/ZoneDetailPage.tsx) has the delete AlertDialog | Close these portions of the old rows; query export remains open |
-| Internal kinds do not exist yet | [internal kinds](../../api/internalkinds/v1alpha1) and both store adapters already exist | Add the missing kinds and migrations; preserve existing identity data |
-| Follower mode has `primary_id` and snapshot replication seams ready | [SQLite schema](../../internal/store/sqlite/schema.go) has an epoch key but no primary ID; the [internal server](../../internal/cluster/internalapi/server.go) has no replication snapshot endpoint | Budget for replication, metadata, and fencing implementation |
-| The zone journal already records serial deltas | [journal.go](../../internal/zone/journal.go) defines an interface without a concrete journal; current outbound IXFR falls back to AXFR when a delta is unavailable | Include journal/data-format work when sizing IXFR support |
-| NOTIFY and UPDATE already reach their authoritative callbacks | [ingress](../../internal/stages/ingress/ingress.go) returns NOTIMP for non-QUERY opcodes first | Add protocol dispatch through the full listener/pipeline path, not only direct handler tests |
-| The integration framework already exercises its full host lifecycle | [integration.go](../../ee/integration/integration.go) defines interfaces and a registry; [externaldns](../../ee/integration/externaldns) supplies the inbound webhook | Build the host, scheduler, ownership ledger, and plan engine before provider implementations |
-| Reserved zone types are rejected by CEL | [DNSZone schema](../../config/crd/bases/kudurru.io_dnszones.yaml) accepts reserved types; the [controller](../../internal/controller) reports unsupported behavior | Review actual validation and serving behavior before enabling a type |
+| Cluster stats/log scatter-gather and peer readiness are deferred | [scoped_querylog.go](../../../internal/api/scoped_querylog.go), [nodes.go](../../../internal/api/nodes.go), and their tests implement them | Keep the remaining remote `/nodes/{name}/health` work; do not rebuild aggregation |
+| Remote-node query-log reads return 501; live tail is node-local | [scoped_querylog.go](../../../internal/api/scoped_querylog.go) reads live peers; [scoped_stream.go](../../../internal/api/scoped_stream.go) multiplexes streams | Database-only reads of offline nodes remain separate work; the UI still disables live mode for central-source results |
+| “All settings” is a new v0.2 page | [SettingsPage.tsx](../../../dashboard/src/pages/SettingsPage.tsx) already renders the metadata-driven Expert view | Extend it for new settings and missing help/persistence behavior |
+| Scoped permissions and record-delete confirmation remain unfinished | [auth routes](../../../internal/auth/stack/routes.go) return `scopedPermissions`; [ZoneDetailPage.tsx](../../../dashboard/src/pages/ZoneDetailPage.tsx) has the delete AlertDialog | Close these portions of the old rows; query export remains open |
+| Internal kinds do not exist yet | [internal kinds](../../../api/internalkinds/v1alpha1) and both store adapters already exist | Add the missing kinds and migrations; preserve existing identity data |
+| Follower mode has `primary_id` and snapshot replication seams ready | [SQLite schema](../../../internal/store/sqlite/schema.go) has an epoch key but no primary ID; the [internal server](../../../internal/cluster/internalapi/server.go) has no replication snapshot endpoint | Budget for replication, metadata, and fencing implementation |
+| The zone journal already records serial deltas | [journal.go](../../../internal/zone/journal.go) defines an interface without a concrete journal; current outbound IXFR falls back to AXFR when a delta is unavailable | Include journal/data-format work when sizing IXFR support |
+| NOTIFY and UPDATE already reach their authoritative callbacks | [ingress](../../../internal/stages/ingress/ingress.go) returns NOTIMP for non-QUERY opcodes first | Add protocol dispatch through the full listener/pipeline path, not only direct handler tests |
+| The integration framework already exercises its full host lifecycle | [integration.go](../../../ee/integration/integration.go) defines interfaces and a registry; [externaldns](../../../ee/integration/externaldns) supplies the inbound webhook | Build the host, scheduler, ownership ledger, and plan engine before provider implementations |
+| Reserved zone types are rejected by CEL | [DNSZone schema](../../../deploy/kustomize/crd/bases/kudurru.io_dnszones.yaml) accepts reserved types; the [controller](../../../internal/controller) reports unsupported behavior | Review actual validation and serving behavior before enabling a type |
 
 When cleaning the original follow-up rows, cite the implementation commit
 and retain unfinished portions. Historical milestone reports are useful
@@ -307,7 +307,7 @@ need to wait for all six contracts.
    bounded DNSKEY/DS lookups, NTA handling, and how
    rewrites, DNS64, AAAA filtering, NXDOMAIN override, views, and rebinding
    checks compose. The
-   [upstream stage](../../internal/stages/upstream/upstream.go) is terminal:
+   [upstream stage](../../../internal/stages/upstream/upstream.go) is terminal:
    simply installing the reserved `postprocess` stage after it will not run
    that stage. Define response unwinding explicitly. Client-specific answers
    must not leak through the shared cache or through an edge packet cache.
@@ -339,7 +339,7 @@ need to wait for all six contracts.
 Every package must preserve the existing rules: no store or leader dependency
 on the query path, last-good snapshots during outages, bounded asynchronous
 telemetry, and DNS answering independent of license state. Follow the current
-[core/enterprise boundaries](../../ee/README.md) when placing new code.
+[core/enterprise boundaries](../../../ee/README.md) when placing new code.
 
 ## Feature packages and acceptance criteria
 
@@ -364,7 +364,7 @@ UI, documentation, and generated schema work with the relevant backend.
 Architecture references: V2-ZONE/UPDATE/HA use §§4.1–4.6; V2-DNS/RPZ/IDENTITY
 use §7 and D61/D86; V2-INTEGRATIONS uses §§5.6 and 9; V2-IAM uses §§5.1 and 8;
 V2-OBS uses §11; V2-EDGE uses §3.6; V2-OPS uses §§3.5, 6.2 and 10. The full
-scope remains [§13.2](../architecture.md#132-v02--clay-copies-12-weeks).
+scope remains [§13.2](../../design-record.md#132-v020--clay-copies-12-weeks).
 
 V2-DNS should split into validator/cache, modifier compilation, and synthesis
 and filtering slices. Cover cache hits, prefetch, coalescing, stale answers,
@@ -446,7 +446,7 @@ flowchart TD
 
 ## Carry-over ownership and release completion
 
-Retain the detailed items in [follow-ups](../followups.md); this plan does not
+Retain the detailed items in [follow-ups](../../followups.md); this plan does not
 silently drop them. Assign each remaining v0.2 item to its feature package:
 
 - **Store/HA:** cold-start cluster-ID verification, watch resume semantics,

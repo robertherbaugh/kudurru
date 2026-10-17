@@ -717,7 +717,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg), Recursor: rec}
+	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg), Recursor: rec, RecursorMetrics: recMetrics}
 	upSet, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upOpts)
 	if err != nil {
 		return err
@@ -812,6 +812,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	post.SetSettings(responseSettings)
 	idStage := identify.New(polSrc, nil)
 	idStage.Inventory = clientInventory
+	idStage.Hostnames = leaseDNS
 	stages := []pipeline.Stage{
 		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
 		idStage,

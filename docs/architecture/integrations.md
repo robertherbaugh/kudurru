@@ -5,13 +5,13 @@ inventory, or a Tier-B webhook. It is namespaced and uses the same generated
 schema in SQLite and Kubernetes. Provider blocks must match `spec.type`;
 Cloudflare requires an `apiToken` reference and UniFi an `apiKey` reference.
 Deletion defaults to `Retain`, and every optional UniFi write defaults to off.
-The [sample](../../config/samples/kudurru.io_v1alpha1_integration.yaml) starts
+The [sample](../../deploy/kustomize/samples/kudurru.io_v1alpha1_integration.yaml) starts
 suspended so applying an example cannot publish records.
 
 The schema, credential resolver, publication planner, durable ownership ledger,
 background host, Cloudflare SDK adapter and UniFi polling adapter are implemented.
 Production commit adapters, remaining providers and API/dashboard controls remain parts of the full
-[v0.2 implementation](../v0.2/README.md).
+[v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ```mermaid
 flowchart LR

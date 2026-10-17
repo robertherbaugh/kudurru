@@ -125,7 +125,12 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	}
 	set := owners.objects.Objects
 	owners.policy = policy.Build(policy.Input{ClientGroups: set.ClientGroups(), Policies: set.Policies(), BlockLists: set.BlockLists(), Lists: compiled.Snapshot, Generation: candidate.Image.Revision}, policy.Options{DefaultNamespace: opts.Namespace, Services: deps.Catalog.Catalogue, Inventory: true})
-	owners.upstreams, err = upstream.New(upstream.ConfigFrom(owners.config.Upstreams), opts.Upstreams)
+	// A complete publication owns its recursive resolver as well as its routes.
+	// Reusing the legacy mutable resolver would ignore captured recursion settings
+	// and let a reload change an older request's trust and root-hint configuration.
+	upstreamOptions := opts.Upstreams
+	upstreamOptions.Recursor = nil
+	owners.upstreams, err = upstream.New(upstream.ConfigFrom(owners.config.Upstreams), upstreamOptions)
 	if err != nil {
 		return nil, err
 	}

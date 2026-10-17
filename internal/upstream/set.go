@@ -34,6 +34,8 @@ type Options struct {
 	// reloads (with its caches) and applies Config.Recursion with
 	// Reconfigure; nil makes New build one the Set owns.
 	Recursor *recursor.Resolver
+	// RecursorMetrics are shared by resolvers owned by complete publications.
+	RecursorMetrics *recursor.Metrics
 }
 
 // Set is the immutable collection of groups built from one configuration.
@@ -110,7 +112,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 			if s.rec == nil {
 				s.rec = opts.Recursor
 				if s.rec == nil {
-					r, err := recursor.New(cfg.Recursion, recursor.Options{Logger: logger})
+					r, err := recursor.New(cfg.Recursion, recursor.Options{Logger: logger, Metrics: opts.RecursorMetrics})
 					if err != nil {
 						_ = s.Close()
 						return nil, fmt.Errorf("upstream: group %q: %w", name, err)

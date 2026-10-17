@@ -132,3 +132,40 @@ func BenchmarkServe(b *testing.B) {
 		_, _ = st.Serve(req, next)
 	}
 }
+
+type leaseNames struct {
+	names []string
+	calls int
+}
+
+func (h *leaseNames) Hostnames(netip.Addr) []string { h.calls++; return h.names }
+
+func TestDHCPNamesAlongsideCapturedInventory(t *testing.T) {
+	ix := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{{ObjectMeta: metav1.ObjectMeta{Name: "lease-client"}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{Hostname: "dhcp.lan"}}}}}}, policy.Options{Inventory: true})
+	st := New(policy.Static{Idx: ix}, nil)
+	hosts := &leaseNames{names: []string{"dhcp.lan"}}
+	st.Hostnames = hosts
+	st.CaptureInventory = func(*pipeline.Request) (*inventory.Snapshot, error) { return nil, nil }
+	req := &pipeline.Request{Client: pipeline.Client{Addr: netip.MustParseAddrPort("192.0.2.9:53")}}
+	next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+	if _, err := st.Serve(req, next); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(req.Client.GroupIDs, []string{"lease-client"}) {
+		t.Fatalf("DHCP identity lost: %+v", req.Client)
+	}
+	hosts.names[0] = "replacement.lan"
+	if _, err := st.Serve(req, next); err != nil {
+		t.Fatal(err)
+	}
+	if hosts.calls != 1 || !slices.Equal(req.Client.GroupIDs, []string{"lease-client"}) {
+		t.Fatal("dependency changed captured DHCP identity")
+	}
+	fresh := &pipeline.Request{Client: pipeline.Client{Addr: req.Client.Addr}}
+	if _, err := st.Serve(fresh, next); err != nil {
+		t.Fatal(err)
+	}
+	if len(fresh.Client.GroupIDs) != 0 || hosts.calls != 2 {
+		t.Fatal("fresh request retained former DHCP name")
+	}
+}

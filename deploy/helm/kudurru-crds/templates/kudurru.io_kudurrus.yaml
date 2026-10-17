@@ -835,13 +835,24 @@ spec:
                       groups:
                         additionalProperties:
                           properties:
+                            mode:
+                              description: forward (default) sends queries to the
+                                servers below; recursive resolves names itself from
+                                the root servers, so no single provider sees every
+                                name, and validates DNSSEC (see upstreams.recursion).
+                              enum:
+                              - forward
+                              - recursive
+                              maxLength: 8192
+                              type: string
                             servers:
                               description: DNS servers this group forwards to, e.g.
                                 1.1.1.1, tls://dns.quad9.net or https://dns.google/dns-query.
                                 A bare address uses plain DNS on port 53; tls://,
                                 https://, quic://, h3:// and sdns:// stamps encrypt
                                 the queries. Prefix a display name with name=, e.g.
-                                cloudflare=tls://1.1.1.1.
+                                cloudflare=tls://1.1.1.1. Required in forward mode;
+                                a recursive group has none.
                               items:
                                 maxLength: 8192
                                 type: string
@@ -849,7 +860,7 @@ spec:
                               type: array
                             strategy:
                               description: How the servers are picked for each query;
-                                parallel_best suits most setups.
+                                parallel_best suits most setups. Forward mode only.
                               enum:
                               - parallel_best
                               - strict
@@ -859,12 +870,12 @@ spec:
                               type: string
                             timeout:
                               description: How long to wait for one server's answer
-                                before trying another, e.g. 2s; raise it for slow
-                                or distant servers.
+                                before trying another, e.g. 2s (the default); raise
+                                it for slow or distant servers. In recursive mode
+                                it bounds the whole lookup of a name instead (default
+                                4s).
                               maxLength: 8192
                               type: string
-                          required:
-                          - servers
                           type: object
                         description: The DNS servers kudurru asks for names it does
                           not answer itself, in named groups; the group named default
@@ -874,6 +885,56 @@ spec:
                           forward zones and policies send queries to other groups
                           by name.
                         maxProperties: 10000
+                        type: object
+                      recursion:
+                        properties:
+                          dnssec:
+                            description: Check DNSSEC signatures on answers from recursive
+                              groups, from the root trust anchors down. Forged or
+                              broken answers in signed zones become SERVFAIL (status
+                              dnssec_bogus) instead of reaching devices; unsigned
+                              zones still resolve. Clients that set the CD bit get
+                              the data anyway.
+                            type: boolean
+                          ipv6:
+                            description: Whether recursive groups ask name servers
+                              over IPv6. auto (default) does when this host has an
+                              IPv6 route to the root servers.
+                            enum:
+                            - auto
+                            - "on"
+                            - "off"
+                            maxLength: 8192
+                            type: string
+                          qnameMinimization:
+                            description: 'Send each name server only as much of the
+                              name as it needs (QNAME minimization, RFC 9156): the
+                              root servers learn com, not www.example.com. Recursive
+                              groups only.'
+                            type: boolean
+                          rootHints:
+                            description: 'Addresses of the root servers recursive
+                              groups start from, e.g. 198.41.0.4; empty (the default)
+                              uses the built-in IANA list. Only for a private root
+                              or a lab: with custom hints, name servers on private
+                              and link-local addresses are asked too, which the public
+                              tree never allows.'
+                            items:
+                              maxLength: 8192
+                              type: string
+                            maxItems: 10000
+                            type: array
+                          trustAnchors:
+                            description: Root DS records DNSSEC validation trusts,
+                              e.g. 20326 8 2 E06D44B8...; empty (the default) uses
+                              the built-in KSK-2017 and KSK-2024 anchors from IANA.
+                              Only for a root key rollover the built-in list does
+                              not know yet, or for a private root.
+                            items:
+                              maxLength: 8192
+                              type: string
+                            maxItems: 10000
+                            type: array
                         type: object
                     type: object
                 type: object

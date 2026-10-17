@@ -71,7 +71,7 @@ func runtimeDriver(t *testing.T, kind string) driver {
 	if _, err := os.Stat(filepath.Join(assets, "kube-apiserver")); err != nil {
 		t.Fatal("native envtest assets required", err)
 	} //nolint:gosec // Trusted local test asset directory.
-	e := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{"../../config/crd/bases"}, ErrorIfCRDPathMissing: true}
+	e := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{"../../deploy/kustomize/crd/bases"}, ErrorIfCRDPathMissing: true}
 	args := e.ControlPlane.GetAPIServer().Configure()
 	args.Set("advertise-address", "127.0.0.1")
 	args.Set("endpoint-reconciler-type", "none")
