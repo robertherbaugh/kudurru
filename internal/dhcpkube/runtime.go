@@ -40,6 +40,8 @@ const (
 	// expiredGrace keeps an expired lease object briefly, so a renewal
 	// racing its expiry finds it.
 	expiredGrace = time.Minute
+	// importTimeout bounds a lease import (one apiserver write per lease).
+	importTimeout = 5 * time.Minute
 )
 
 // Options configures a Runtime.
@@ -98,7 +100,10 @@ type pendingWrite struct {
 // topology replaces the whole generation; option and reservation edits
 // apply to the running one.
 type generation struct {
-	service   *dhcp.Service
+	service *dhcp.Service
+	// locks serialize a scope's mutations when no listener (and so no
+	// packet lock) exists.
+	locks     map[string]*sync.Mutex
 	stores    map[string]*dhcp.LeaseStore
 	configs   map[string]dhcp.Config
 	revisions map[string]uint64
@@ -504,7 +509,7 @@ func (r *Runtime) rebuild(ctx context.Context, configs map[string]dhcp.Config, r
 		r.listenErr = err.Error()
 		return
 	}
-	gen := &generation{stores: map[string]*dhcp.LeaseStore{}, configs: map[string]dhcp.Config{}, revisions: map[string]uint64{}}
+	gen := &generation{stores: map[string]*dhcp.LeaseStore{}, configs: map[string]dhcp.Config{}, revisions: map[string]uint64{}, locks: map[string]*sync.Mutex{}}
 	fail := func(err error) {
 		r.listenErr = err.Error()
 		r.log.Error("DHCP service not started", "error", err)
@@ -523,7 +528,7 @@ func (r *Runtime) rebuild(ctx context.Context, configs map[string]dhcp.Config, r
 			fail(fmt.Errorf("scope %s: %w", name, err))
 			return
 		}
-		gen.stores[name] = s
+		gen.stores[name], gen.locks[name] = s, &sync.Mutex{}
 		if err := s.SetExternalConfig(ctx, cfg, revisions[name], false); err != nil {
 			fail(fmt.Errorf("scope %s: %w", name, err))
 			return
@@ -568,20 +573,30 @@ func (r *Runtime) rebuild(ctx context.Context, configs map[string]dhcp.Config, r
 	r.log.Info("DHCP scopes ready", "scopes", names, "interface", r.opts.Interface, "serverIdentifier", r.opts.ServerIdentifier)
 }
 
-// mutate runs fn on a scope's store, serialized with its packets.
+// mutate runs fn on a scope's store, serialized with its packets. r.mu is
+// held only to find the generation: fn may write to the apiserver, and
+// status, API reads and other scopes must not wait for it. A rebuild that
+// races fn closes the old store, and fn fails.
 func (r *Runtime) mutate(ctx context.Context, scope string, fn func(context.Context, *dhcp.LeaseStore) error) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.mutateLocked(ctx, scope, fn)
+	gen := r.gen
+	r.mu.Unlock()
+	return mutateGen(ctx, gen, scope, fn)
 }
 
+// mutateLocked is mutate for callers that hold r.mu.
 func (r *Runtime) mutateLocked(ctx context.Context, scope string, fn func(context.Context, *dhcp.LeaseStore) error) error {
-	gen := r.gen
+	return mutateGen(ctx, r.gen, scope, fn)
+}
+
+func mutateGen(ctx context.Context, gen *generation, scope string, fn func(context.Context, *dhcp.LeaseStore) error) error {
 	if gen == nil || gen.stores[scope] == nil {
 		return fmt.Errorf("dhcp: unknown scope %q", scope)
 	}
 	if gen.service == nil {
-		// No listener: nothing else writes these stores.
+		mu := gen.locks[scope]
+		mu.Lock()
+		defer mu.Unlock()
 		return fn(ctx, gen.stores[scope])
 	}
 	return gen.service.MutateScope(ctx, scope, fn)
@@ -1170,6 +1185,12 @@ func (r *Runtime) Stores() []*dhcp.LeaseStore {
 // may import; resourceVersion preconditions keep it safe beside the
 // allocator.
 func (r *Runtime) Import(ctx context.Context, scope, format string, data []byte) (dhcp.ImportResult, error) {
+	// An import is one transaction that writes one object per lease while it
+	// holds the scope's packet lock: bound it, so a slow apiserver cannot
+	// stall the scope's DHCP replies indefinitely. A failed import rolls back
+	// locally, and the objects it wrote are reread.
+	ctx, cancel := context.WithTimeout(ctx, importTimeout)
+	defer cancel()
 	var result dhcp.ImportResult
 	err := r.mutate(ctx, scope, func(ctx context.Context, s *dhcp.LeaseStore) error {
 		var err error
