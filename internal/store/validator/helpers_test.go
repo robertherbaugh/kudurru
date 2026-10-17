@@ -38,7 +38,7 @@ func testValidator(t testing.TB) *Validator {
 	return sharedV
 }
 
-// Sample files under config/samples, by kind.
+// Sample files under deploy/kustomize/samples, by kind.
 var sampleFiles = map[store.Kind]string{
 	"DNSZone":        "kudurru.io_v1alpha1_dnszone.yaml",
 	"DNSRecordSet":   "kudurru.io_v1alpha1_dnsrecordset.yaml",
@@ -51,7 +51,7 @@ var sampleFiles = map[store.Kind]string{
 
 func readSample(t testing.TB, kind store.Kind) []byte {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(repoRoot, "config", "samples", sampleFiles[kind]))
+	b, err := os.ReadFile(filepath.Join(repoRoot, "deploy", "kustomize", "samples", sampleFiles[kind]))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func newTyped(t testing.TB, kind store.Kind) store.Object {
 	return nil
 }
 
-// typedSample decodes the config/samples fixture of kind strictly, so a
+// typedSample decodes the deploy/kustomize/samples fixture of kind strictly, so a
 // sample that drifts from the Go types fails here first.
 func typedSample(t testing.TB, kind store.Kind) store.Object {
 	t.Helper()

@@ -33,7 +33,7 @@ const (
 const maxFileBytes = 64 << 20
 
 // ErrStaticReadOnly is returned by Loader.CheckAPIWrite in the ha-static
-// shape (docs/architecture.md §4.4): every node carries identical files,
+// shape (dev-docs/design-record.md §4.4): every node carries identical files,
 // so the API and UI are read-only for all kudurru.io objects, not only the
 // file-managed ones, and twins cannot diverge through node-local writes.
 var ErrStaticReadOnly = errors.New("objects: cluster.role is static; kudurru.io objects are read-only through the API (edit the object files on every node)")

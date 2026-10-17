@@ -1,5 +1,5 @@
 // Package notifier sends NOTIFY (RFC 1996) to a zone's secondaries when its
-// SOA serial changes. It is a leader-only runnable (docs/architecture.md
+// SOA serial changes. It is a leader-only runnable (dev-docs/design-record.md
 // §3.1, §4.6): the leader stamps serials (D12), so the leader notifies, and
 // a new leader re-notifies every zone once when its term starts, which is
 // harmless (a secondary that is current just compares serials) and covers

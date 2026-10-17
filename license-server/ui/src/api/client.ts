@@ -1,5 +1,5 @@
 // The license portal's typed fetch wrapper, adapted from
-// web/src/api/client.ts at dd3dcb0 (keep in step by hand).
+// dashboard/src/api/client.ts at dd3dcb0 (keep in step by hand).
 //
 // Changes from the dashboard's client:
 // - Routes are named, not spelled: `call('licenseGet', { params: { id } })`

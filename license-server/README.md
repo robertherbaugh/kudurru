@@ -62,7 +62,7 @@ Hosting on Cloudflare Containers: [cloudflare/README.md](cloudflare/README.md).
 | `server/mail/` | SMTP (nodemailer), mail texts and the shared branded HTML layout |
 | `server/migrations/` | The schema; `0002` grants the runtime role exactly what the code uses (`0003` adds the approval links' table, `0004` deleting users, `0005` the business requests' table, each with its grant) |
 | `server/test/` | `bun test` against Postgres; the Go golden vectors and node oracle in `golden/` |
-| `ui/` | The UI (Vite, React 19, Astryx 0.6.8); `ui/src/ui/` is the kit copied from `web/src`, each file marked with where it came from |
+| `ui/` | The UI (Vite, React 19, Astryx 0.6.8); `ui/src/ui/` is the kit copied from `dashboard/src`, each file marked with where it came from |
 | `e2e/` | Playwright: every role, the kudurru.io form and the one-click approval through Dex and Mailpit; every key handed out is judged by the node's own code |
 | `deploy/postgres-roles.sql` | The one-time database role setup |
 | `cloudflare/` | The Cloudflare Containers deployment (a package of its own) |

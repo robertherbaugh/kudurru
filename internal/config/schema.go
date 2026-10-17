@@ -1,7 +1,7 @@
 // Package config loads kudurru.yaml plus KUDURRU_<SECTION>__<KEY> environment
 // overrides through koanf, and owns the settings metadata table that drives
 // the file loader, the env mapping, `kudurru config`, the API, the UI and
-// the docs (docs/architecture.md §6.2, decision D24).
+// the docs (dev-docs/design-record.md §6.2, decision D24).
 package config
 
 import (

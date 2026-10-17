@@ -1,4 +1,4 @@
-// Package kube is the Kubernetes Store driver (docs/architecture.md §4.3,
+// Package kube is the Kubernetes Store driver (dev-docs/design-record.md §4.3,
 // decisions D2, D9, D10, D44): CRDs in the apiserver are the only source of
 // truth for configuration objects.
 //
@@ -56,7 +56,7 @@ import (
 // DriverName is reported in store.Info.Driver.
 const DriverName = "kube"
 
-// Defaults from docs/architecture.md §4.4 and §5.3.
+// Defaults from dev-docs/design-record.md §4.4 and §5.3.
 const (
 	DefaultLeaseDuration  = 15 * time.Second
 	DefaultRenewDeadline  = 10 * time.Second

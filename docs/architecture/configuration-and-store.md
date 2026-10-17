@@ -65,7 +65,7 @@ Import writes use the existing object authorization, schema, ownership and
 license checks. They are not transactional and return a result per object;
 the settings patch is applied only when every object succeeds. Unsupported
 source semantics are reported in the preview. See the
-[migration guides](../../site/content/migrate/_index.md) for supported data.
+[migration guides](../../docs-site/content/migrate/_index.md) for supported data.
 
 Technitium catalog member primary zones become independent primary zones.
 The converter reads `overrideCatalogQueryAccess`: an override keeps the
@@ -321,5 +321,5 @@ sequenceDiagram
 The `follower` (v0.2) and `raft` (v1.0) drivers, the `cluster.role: static`
 read-only mode for compose twins, the health of other nodes (the node
 list, the stats and the query log are already gathered), and a
-`roles:` setting. See [the design record §4](../architecture.md#4-data-model-storage-replication-ha)
+`roles:` setting. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
 for the plan.

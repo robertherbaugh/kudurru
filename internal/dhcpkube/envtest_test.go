@@ -64,7 +64,7 @@ func runEnv(m *testing.M) int {
 	root := filepath.Join(filepath.Dir(file), "..", "..")
 	var crds []*apiextensionsv1.CustomResourceDefinition
 	for _, dir := range []string{"bases", "dhcp"} {
-		paths, _ := filepath.Glob(filepath.Join(root, "config", "crd", dir, "*.yaml"))
+		paths, _ := filepath.Glob(filepath.Join(root, "deploy", "kustomize", "crd", dir, "*.yaml"))
 		for _, p := range paths {
 			b, err := os.ReadFile(p) //nolint:gosec // the repository's CRDs
 			if err != nil {

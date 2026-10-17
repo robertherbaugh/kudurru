@@ -1,7 +1,7 @@
 // Package log is the final pipeline step, implemented as a pipeline.Observer
 // because it must see the final response: it builds the query event,
 // enqueues it without blocking, and updates the Prometheus instruments
-// (docs/architecture.md §7.1 step 13).
+// (dev-docs/design-record.md §7.1 step 13).
 package log
 
 import (

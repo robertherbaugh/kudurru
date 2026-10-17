@@ -1,5 +1,5 @@
 // Package kudurrutest runs the real kudurru binary for the end-to-end and
-// interoperability tests under test/ (docs/m5/e2e.md): it builds the binary
+// interoperability tests under test/ (dev-docs/milestones/m5/e2e.md): it builds the binary
 // once per test package, renders a node configuration with free loopback
 // ports, starts `kudurru serve` as a child process, waits for readiness and
 // keeps the process log for failure reports.
@@ -44,12 +44,12 @@ func RequireE2E(t testing.TB) {
 }
 
 // EnvKnownBugs makes KnownBug run the assertions it would skip, to
-// reproduce a recorded bug (docs/m5/e2e.md, docs/followups.md).
+// reproduce a recorded bug (dev-docs/milestones/m5/e2e.md, dev-docs/followups.md).
 const EnvKnownBugs = "KUDURRU_E2E_KNOWN_BUGS"
 
 // KnownBug skips the rest of the test because of a recorded bug unless
 // KUDURRU_E2E_KNOWN_BUGS is set, in which case the test runs (and fails
-// until the bug is fixed). id names the bug in docs/m5/e2e.md.
+// until the bug is fixed). id names the bug in dev-docs/milestones/m5/e2e.md.
 func KnownBug(t testing.TB, id, summary string) {
 	t.Helper()
 	if os.Getenv(EnvKnownBugs) == "" {

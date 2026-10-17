@@ -94,9 +94,9 @@ injury to people.
 - Every screenshot has a figure caption and an alternative text.
 - The captions start with `Figure N.` and say what the reader sees.
 - The dashboard screenshots show demo data from the dashboard mock
-  (`web/src/mocks`). The names and numbers on your system are different.
+  (`dashboard/src/mocks`). The names and numbers on your system are different.
 - Do not edit a screenshot by hand. Take it again with
-  `web/scripts/guide-screenshots.mjs` (see [Take the screenshots
+  `dashboard/scripts/guide-screenshots.mjs` (see [Take the screenshots
   again](#take-the-screenshots-again)).
 
 ### Take the screenshots again
@@ -104,11 +104,11 @@ injury to people.
 1. Start the dashboard with the demo data:
 
    ```sh
-   cd web && bun run dev:mock -- --port 5199 --strictPort
+   cd dashboard && bun run dev:mock -- --port 5199 --strictPort
    ```
 
 2. Start a node for the block page screenshots. Use the helper in
-   `web/e2e/support/kudurru.ts`. Set `KUDURRU_GUIDE_BLOCKPAGE` to the block
+   `dashboard/e2e/support/kudurru.ts`. Set `KUDURRU_GUIDE_BLOCKPAGE` to the block
    page address of the node.
 3. Run the script from the `web` directory:
 

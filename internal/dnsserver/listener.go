@@ -20,7 +20,7 @@ import (
 
 // Protocol keys the listener registry. The values are the ones operators
 // write in kudurru.yaml (listeners.dns[].protocols and the dot, doh, doq and
-// doh3 sections; docs/architecture.md §6.2).
+// doh3 sections; dev-docs/design-record.md §6.2).
 type Protocol string
 
 // Listener protocols.
@@ -295,7 +295,7 @@ var factories = map[Protocol]func(Spec, *env) (Listener, error){
 
 // Registry owns every DNS listener of a node, keyed by protocol, plus the
 // certificate store they share. It is the dnsserver runnable of
-// docs/architecture.md §3.1: Run binds everything, serves until the context
+// dev-docs/design-record.md §3.1: Run binds everything, serves until the context
 // ends and reports per-listener readiness.
 type Registry struct {
 	env *env

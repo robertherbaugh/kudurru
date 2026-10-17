@@ -14,7 +14,7 @@ const (
 	EventWarning = "Warning"
 )
 
-// Event reasons the reconcilers emit (docs/architecture.md §3.4, §5.1).
+// Event reasons the reconcilers emit (dev-docs/design-record.md §3.4, §5.1).
 const (
 	EventSerialBumped = "SerialBumped"
 	EventDuplicated   = "Duplicated"

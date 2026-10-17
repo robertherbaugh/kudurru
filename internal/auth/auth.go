@@ -1,5 +1,5 @@
 // Package auth holds principals, sessions and the authenticator chain
-// (docs/architecture.md §8): the Principal and Session types, the
+// (dev-docs/design-record.md §8): the Principal and Session types, the
 // Middleware that runs the Authenticate and LoadPrincipal steps of §8.8
 // over pluggable Authenticator steps (implemented by internal/auth/tokens,
 // ee/oidc, internal/auth/k8s, internal/auth/session and the

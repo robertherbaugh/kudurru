@@ -12,7 +12,7 @@ import (
 // Metrics are the upstream instruments. The upstream label is
 // "<group>/<server name>", the server name being the display name or the
 // address as configured, so cardinality is bounded by the configuration and
-// resolved IPs never appear (docs/architecture.md §11.1).
+// resolved IPs never appear (dev-docs/design-record.md §11.1).
 type Metrics struct {
 	Healthy *prometheus.GaugeVec
 	// Requests is kudurru_upstream_requests_total{upstream,proto}; proto

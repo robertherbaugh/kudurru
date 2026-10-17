@@ -21,7 +21,7 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-// TestChartSupervisorArgs parses the arguments charts/kudurru renders for
+// TestChartSupervisorArgs parses the arguments deploy/helm/kudurru renders for
 // the dnsdist and keepalived containers (templates/_pod.tpl
 // kudurru.edge.container, templates/edge.yaml): an unknown flag would
 // crash-loop the edge pods.

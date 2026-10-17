@@ -3,7 +3,7 @@
 # much as the core count grows. Measured on the same topology (2 vCPU = 1
 # physical core): the `go` job's steps take 1318 s on 2 vCPU, 675 s on 4 and
 # 551 s on 8; vitest 263 s, 92 s and 57 s (it runs cores-1 workers). Jobs
-# that compile Go or run parallel test workers (go, web, web-e2e, e2e,
+# that compile Go or run parallel test workers (go, dashboard, dashboard-e2e, e2e,
 # dev-image, edge, publish's test and release) use standard-4: half the wall
 # time for about the same cost, and the `go` job is the critical path of
 # this workflow. Short, network-bound or wait-bound jobs, and the fuzz matrix
@@ -20,8 +20,8 @@ on:
 permissions:
   contents: read
 jobs:
-  # Changes confined to docs/, site/, www/, branding/ and license-server/ skip the
-  # jobs below; docs.yml, www.yml and license-server.yml still check them.
+  # Changes confined to docs/, dev-docs/, docs-site/, website/, branding/ and license-server/ skip the
+  # jobs below; docs.yml, website.yml and license-server.yml still check them.
   # Jobs are skipped rather than filtering the workflow with paths-ignore,
   # because a skipped job satisfies a
   # required status check and a workflow that never runs does not.
@@ -39,11 +39,11 @@ jobs:
           HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           # Run everything unless git can list the changes and every one is
-          # under docs/, site/, www/, branding/ or license-server/ (a new branch or an
+          # under docs/, dev-docs/, docs-site/, website/, branding/ or license-server/ (a new branch or an
           # unreachable force-pushed base runs everything).
           code=true
           if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www|license-server|branding)/' <<<"$files"; then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|dev-docs|docs-site|website|license-server|branding)/' <<<"$files"; then
               code=false
             fi
           fi
@@ -127,16 +127,16 @@ jobs:
         run: |
           go test -count=1 ./internal/central/...
           go test -count=1 -run '^TestDoctorDatabase$' ./cmd/kudurru
-  # The dashboard SPA (web/, D69): lint, typecheck, unit tests with MSW,
+  # The dashboard SPA (dashboard/, D69): lint, typecheck, unit tests with MSW,
   # the production bundle with its size budget, and the Go embed test
   # against the real bundle.
-  web:
+  dashboard:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-4-ubuntu-2404
     defaults:
       run:
-        working-directory: web
+        working-directory: dashboard
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -157,17 +157,17 @@ jobs:
           go-version-file: go.mod
       - name: Embed the built bundle
         working-directory: .
-        run: go test -count=1 ./web/...
+        run: go test -count=1 ./dashboard/...
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: web-dist
-          path: web/dist
+          name: dashboard-dist
+          path: dashboard/dist
           retention-days: 7
-  # The dashboard against a real `kudurru serve` (web/e2e, Playwright):
+  # The dashboard against a real `kudurru serve` (dashboard/e2e, Playwright):
   # the embedded bundle, the real API shapes and real DNS traffic, every
   # page in Chromium. The HTML report and the traces of failed tests are
   # uploaded when it fails.
-  web-e2e:
+  dashboard-e2e:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-4-ubuntu-2404
@@ -184,7 +184,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Install (frozen lockfile)
-        working-directory: web
+        working-directory: dashboard
         run: bun install --frozen-lockfile
       # Keyed on bun.lock, which pins the Playwright version.
       - name: Cache Playwright browsers
@@ -192,9 +192,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('dashboard/bun.lock') }}
       - name: Install Playwright chromium
-        working-directory: web
+        working-directory: dashboard
         run: |
           if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = true ]; then
             bunx playwright install-deps chromium
@@ -202,16 +202,16 @@ jobs:
             bunx playwright install --with-deps chromium
           fi
       - name: Build the bundle and the binary, run the suite
-        run: make web-e2e
+        run: make dashboard-e2e
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: playwright-report
           path: |
-            web/playwright-report/
-            web/test-results/
+            dashboard/playwright-report/
+            dashboard/test-results/
           retention-days: 14
-  # End to end (docs/m5/e2e.md): `kudurru serve` processes on loopback
+  # End to end (dev-docs/milestones/m5/e2e.md): `kudurru serve` processes on loopback
   # (two nodes, lameduck, restarts, config and port failures), BIND 9 as a
   # secondary and as a forwarding target, and the OIDC login against dex.
   e2e:
@@ -328,7 +328,7 @@ jobs:
         with:
           version: latest
   # Chart, kustomize, compose, dashboard and alert-rule checks
-  # (docs/m3/deploy.md): helm lint, the values render matrix with every
+  # (dev-docs/milestones/m3/deploy.md): helm lint, the values render matrix with every
   # rendered kudurru.yaml loaded through config.Load, the kustomize overlays,
   # and kubeconform against the Kubernetes 1.30 schemas and the CRDs.
   helm:
@@ -355,7 +355,7 @@ jobs:
       - name: Generated deployment assets are current
         run: |
           make deploy-assets
-          git diff --exit-code -- charts config deploy
+          git diff --exit-code -- deploy
       - name: goreleaser configuration
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:

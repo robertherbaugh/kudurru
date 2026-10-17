@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// Tail defaults (docs/architecture.md §11.2: hot ring 65 536; the SSE
+// Tail defaults (dev-docs/design-record.md §11.2: hot ring 65 536; the SSE
 // design gives every subscriber a buffer of 1 000).
 const (
 	DefaultRingSize  = 65536

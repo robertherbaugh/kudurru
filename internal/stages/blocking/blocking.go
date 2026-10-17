@@ -1,4 +1,4 @@
-// Package blocking is the blocking stage (docs/architecture.md §7.1 step 7,
+// Package blocking is the blocking stage (dev-docs/design-record.md §7.1 step 7,
 // §7.2, §7.3, D58). It filters the recursive path only: the authoritative
 // stage runs earlier and answers local zones itself, so their answers
 // never reach this stage and are never blocked.

@@ -1,5 +1,5 @@
 // The kudurru.io form (design spec §6 "Public form", a FROZEN contract the
-// www client is coded to) and its confirmation page.
+// website client is coded to) and its confirmation page.
 //
 // Submit: honeypot filled → 202 and nothing happens (a log line); no mail
 // or no signer → 503 unavailable (a request that cannot end in a key is not

@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# Release pipeline (docs/architecture.md §12, §6.1, §5.7; docs/deploy/README.md).
+# Release pipeline (dev-docs/design-record.md §12, §6.1, §5.7; docs/deploy/README.md).
 # .github/workflows/publish.yml runs `goreleaser release --clean` for the tag
 # that release-candidate.yml (v<VERSION>-rc.<N>) or release.yml (v<VERSION>)
 # just pushed, then pushes the Helm charts to oci://ghcr.io/robertherbaugh/charts
-# (docs/release-checklist.md, "Release pipeline").
+# (dev-docs/release-checklist.md, "Release pipeline").
 # Local dry run (needs Bun for the dashboard bundle):
 #   goreleaser release --snapshot --clean --skip=publish,sign
 version: 2
@@ -12,10 +12,10 @@ project_name: kudurru
 before:
   hooks:
     - go mod download
-    # The dashboard bundle into web/dist, which every binary embeds. A hook
+    # The dashboard bundle into dashboard/dist, which every binary embeds. A hook
     # rather than a workflow step: goreleaser refuses a dirty tree before the
     # hooks run, and the build overwrites the tracked placeholder index.html.
-    - make web-build
+    - make dashboard-build
     # crds.yaml and install.yaml for the GitHub release (make release-manifests).
     - make release-manifests
 

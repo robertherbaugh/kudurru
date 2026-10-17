@@ -16,7 +16,7 @@ const RegexWarnThreshold = 500
 // required literal of four bytes) per list above which callers should warn:
 // each one runs for every name the exact and suffix sets did not answer, at
 // roughly 25-75 ns apiece on the spike machine, so 50 of them cost 2-3.5 µs
-// per lookup (docs/spikes/blocking.md).
+// per lookup (dev-docs/spikes/blocking.md).
 const RegexUnindexedWarnThreshold = 50
 
 // ErrRegexCap is returned by RegexBuilder.Add once the hard cap is reached.
@@ -40,7 +40,7 @@ const (
 // tests a bitmap, and runs only the expressions whose gram occurs in the
 // name: the cost follows the name length, not the number of expressions.
 // Expressions without a usable literal are always run. The idea is the
-// "shortcut index" of docs/architecture.md §7.3 item 4, re-implemented.
+// "shortcut index" of dev-docs/design-record.md §7.3 item 4, re-implemented.
 //
 // Expressions are matched against the normalised (lower-case) name. An
 // expression that contains upper-case ASCII letters is compiled

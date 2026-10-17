@@ -1,0 +1,9 @@
+# The kudurru Deployment, its two ConfigMaps (D25), the dns/api/headless
+# Services and the PodDisruptionBudget. manager.yaml is rendered from
+# deploy/helm/kudurru with its defaults (make kustomize). The pods mount the
+# Secrets kudurru-encryption-key and kudurru-admin, which you create before
+# applying (docs/deploy/kustomize.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - manager.yaml

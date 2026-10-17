@@ -23,7 +23,7 @@ upstream image is pinned in the Dockerfile and bumped by the CVE tracking job.
 
 ## Supervisor contract
 
-`kudurru edge run` (see `kudurru edge run --help` and docs/m3/edge.md):
+`kudurru edge run` (see `kudurru edge run --help` and dev-docs/milestones/m3/edge.md):
 
 1. builds the topology from its flags and the membership source
    (`--backends` or `--backends-from endpointslice:<ns>/<svc>`),

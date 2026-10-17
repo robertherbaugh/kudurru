@@ -1,4 +1,4 @@
-// Package control is the global-rules stage (docs/architecture.md §7.1
+// Package control is the global-rules stage (dev-docs/design-record.md §7.1
 // step 4). It runs after identify and before any answer is produced, and
 // decides one of three things per query:
 //

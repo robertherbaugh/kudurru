@@ -19,7 +19,7 @@ const (
 
 var results = []string{ResultCreated, ResultUpdated, ResultUnchanged, ResultDeleted, ResultInvalid, ResultConflict, ResultError}
 
-// metrics are the loader's instruments (docs/architecture.md §11.1: fixed,
+// metrics are the loader's instruments (dev-docs/design-record.md §11.1: fixed,
 // bounded label sets; file names are never labels).
 type metrics struct {
 	files     prometheus.Gauge

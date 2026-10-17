@@ -1,5 +1,5 @@
 // Package matcher holds the compiled matchers of a block list
-// (docs/architecture.md §7.3), cheapest first:
+// (dev-docs/design-record.md §7.3), cheapest first:
 //
 //  1. Exact: lower-cased names bucketed by length, each bucket one sorted
 //     concatenated string searched with a binary search; a maphash bit
@@ -19,7 +19,7 @@
 // The length-bucketed sorted-string layout and the cheapest-first chain are
 // adapted from blocky v0.35.0 (github.com/0xERR0R/blocky, Apache-2.0,
 // cache/stringcache); see NOTICE. The suffix layout follows the design in
-// docs/architecture.md §7.3 (TLD buckets plus a bit filter) rather than
+// dev-docs/design-record.md §7.3 (TLD buckets plus a bit filter) rather than
 // blocky's map-per-node trie, which costs far more memory per entry.
 //
 // All matchers are immutable once built and safe for concurrent use; a nil

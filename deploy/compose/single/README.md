@@ -14,6 +14,6 @@ Sign in at https://localhost:8080/ as `admin` with the password from
 while no user exists.
 
 Zones, block lists, client groups and policies go into `objects.d/*.yaml`
-(see `objects.d/README.md` and `config/samples/`). The full guide is
+(see `objects.d/README.md` and `deploy/kustomize/samples/`). The full guide is
 [docs/deploy/docker.md](../../../docs/deploy/docker.md); dnsdist in front is
 [../single-edge](../single-edge/).

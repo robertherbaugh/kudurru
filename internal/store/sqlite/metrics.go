@@ -12,7 +12,7 @@ import (
 )
 
 // Metrics are the kudurru_store_* instruments of the driver
-// (docs/architecture.md §11.1). Create them once per process with
+// (dev-docs/design-record.md §11.1). Create them once per process with
 // NewMetrics and pass them in Options.Metrics; nil disables them.
 type Metrics struct {
 	// Operations counts store calls by op (get, list, apply, delete,

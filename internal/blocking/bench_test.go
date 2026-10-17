@@ -394,7 +394,7 @@ func benchMemory(b *testing.B, files []string, hostsSubdomainsFirst bool) {
 
 // externalListsEnv names real list files (hosts or adblock, separated by
 // the OS path-list separator) for BenchmarkExternal. Lists are never
-// committed; see docs/spikes/blocking.md for the Unlicense lists used in
+// committed; see dev-docs/spikes/blocking.md for the Unlicense lists used in
 // the spike report.
 const externalListsEnv = "KUDURRU_BLOCKING_BENCH_LISTS"
 

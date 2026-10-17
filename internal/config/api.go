@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// APIListener is the HTTP API and UI listener (docs/architecture.md §6.2,
+// APIListener is the HTTP API and UI listener (dev-docs/design-record.md §6.2,
 // §10). Every key is hostOnly: a listener address or certificate path set
 // through the API would be a privilege escalation.
 type APIListener struct {

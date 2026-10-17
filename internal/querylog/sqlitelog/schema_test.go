@@ -17,7 +17,7 @@ import (
 
 var update = flag.Bool("update", false, "rewrite testdata golden files")
 
-// TestSchemaGolden pins the on-disk schema to docs/architecture.md §11.2.
+// TestSchemaGolden pins the on-disk schema to dev-docs/design-record.md §11.2.
 func TestSchemaGolden(t *testing.T) {
 	w, _ := newWriter(t, t0)
 	rows, err := w.w.Query(`SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type DESC, name`)

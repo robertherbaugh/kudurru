@@ -1,4 +1,4 @@
-// Copied from web/src/components/fields/PresetField.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/fields/PresetField.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // A value picked from presets with "Custom…" for anything else: the shared
 // body of DurationField (Go durations) and SecondsField (TTLs in seconds).

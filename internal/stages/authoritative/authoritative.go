@@ -1,5 +1,5 @@
 // Package authoritative is the pipeline stage that answers from kudurru's
-// own zones (docs/architecture.md §7.1 step 6): longest-suffix zone match
+// own zones (dev-docs/design-record.md §7.1 step 6): longest-suffix zone match
 // over a lock-free snapshot, queryAccess/queryACL enforcement, primary
 // zone answers with wildcards, CNAME and DNAME chasing, forward zones by
 // upstream-group hint, zone transfers out (AXFR, IXFR by AXFR fallback;

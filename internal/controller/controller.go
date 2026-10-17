@@ -1,4 +1,4 @@
-// Package controller is the leader-only reconciler set (docs/architecture.md
+// Package controller is the leader-only reconciler set (dev-docs/design-record.md
 // §3.1, §3.4, §4.2, §4.6, §5.1): one reconciler per kind (DNSZone,
 // DNSRecordSet, BlockList, ClientGroup, Policy), never a mega-controller.
 //

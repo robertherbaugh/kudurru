@@ -6,7 +6,7 @@
 // `fields` listing them (dotted paths for nested objects; an array element
 // reports its array). Unknown fields are ignored and dropped.
 //
-// Strings are measured in UTF-16 code units (String.length, as the www
+// Strings are measured in UTF-16 code units (String.length, as the website
 // form and the browser count them). Lone surrogates are always refused
 // (Go would turn them into U+FFFD in a key), and so are control characters
 // unless a field is multiline. "Blank" uses Go's unicode.IsSpace set, the

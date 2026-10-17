@@ -1,4 +1,4 @@
-// Package stack assembles the identity layer of docs/architecture.md §8 from
+// Package stack assembles the identity layer of dev-docs/design-record.md §8 from
 // the configuration and the store: the authenticator chain of §8.8 (bearer
 // kdr_ → bearer JWT routed by iss → session cookie + CSRF → unix peer →
 // internal token), LoadPrincipal, the authorizer (rbac.Engine over SAR for

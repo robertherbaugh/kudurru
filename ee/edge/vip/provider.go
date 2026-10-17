@@ -1,6 +1,6 @@
 // Package vip abstracts virtual-IP ownership so the same UI, metrics and
 // drain commands work with keepalived (track_file + FIFO), kube-vip and
-// MetalLB (Service status) or no VIP at all (docs/architecture.md §3.6).
+// MetalLB (Service status) or no VIP at all (dev-docs/design-record.md §3.6).
 package vip
 
 import (

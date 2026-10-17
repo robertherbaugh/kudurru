@@ -142,7 +142,7 @@ func (d Decision) Blocked() bool { return d.Action == ActionBlock }
 func (d Decision) Rule() string { return d.Match.Rule() }
 
 // Status maps a block decision onto the query-log status taxonomy
-// (docs/architecture.md §11.2): response-side blocks are blocked_cname,
+// (dev-docs/design-record.md §11.2): response-side blocks are blocked_cname,
 // regex rules blocked_regex, everything else blocked_list. Non-blocking
 // decisions return StatusUnknown; the stage keeps whatever status the rest
 // of the pipeline produces. blocked_exact is left to the stage, which knows

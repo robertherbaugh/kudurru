@@ -8,7 +8,7 @@ Copyright © 2026 **Robert Herbaugh**. All rights reserved.
 
 This notice applies to the Licensor-controlled source code, templates, layouts, styling, graphics, images, content, copy, build configurations, and other material expressly placed under it within the repository's **`license-server/`** directory, which contains Kudurru license issuance, entitlement management, administrative functions, and related service code (**License Server Source**).
 
-It does **not** govern the Kudurru DNS server, the enterprise modules under `ee/`, the documentation project under `site/` that powers **https://docs.kudurru.io**, or the marketing website under `www/`. Those materials have separate license terms. Third-party materials identified by separate notices retain their own licenses, as do any earlier releases under different licenses.
+It does **not** govern the Kudurru DNS server, the enterprise modules under `ee/`, the documentation project under `docs-site/` that powers **https://docs.kudurru.io**, or the website under `website/`. Those materials have separate license terms. Third-party materials identified by separate notices retain their own licenses, as do any earlier releases under different licenses.
 
 ## 2. Public source inspection
 

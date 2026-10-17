@@ -30,7 +30,7 @@ through keepalived.conf, `track_file`, the notify FIFO and signals.
 
 ## Supervisor contract
 
-`kudurru vip run` (see `kudurru vip run --help` and docs/m3/edge.md):
+`kudurru vip run` (see `kudurru vip run --help` and dev-docs/milestones/m3/edge.md):
 
 1. renders `/etc/keepalived/keepalived.candidate.conf` from its flags
    (`--vip name=addr/len@iface#vrid`, `--peers`/`--peers-file`,

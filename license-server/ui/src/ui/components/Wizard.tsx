@@ -1,7 +1,7 @@
-// Copied from web/src/components/Wizard.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/Wizard.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // A multi-step creation flow in a modal over the page the user is on
-// (docs/m3/ui.md "Pages, wizards and dialogs"), composed like Astryx's
+// (dev-docs/milestones/m3/ui.md "Pages, wizards and dialogs"), composed like Astryx's
 // form-wizard-dialog template: a FormDialog whose Layout pins the dialog
 // header and a compact Astryx Stepper above the scrolling step body, and
 // pins the footer (Cancel, the step's message, Back, Next or the finishing

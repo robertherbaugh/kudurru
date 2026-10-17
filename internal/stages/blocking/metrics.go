@@ -43,7 +43,7 @@ var outcomeLabels = [numOutcomes][2]string{
 	rewriteSafeSearch: {"rewrite", "safesearch"},
 }
 
-// metrics are the blocking instruments (docs/architecture.md §11.1). All
+// metrics are the blocking instruments (dev-docs/design-record.md §11.1). All
 // methods are safe on a nil *metrics.
 type metrics struct {
 	decisions *prometheus.CounterVec // action, source, group

@@ -26,7 +26,7 @@ import (
 )
 
 // Response bodies of the stats and log routes: the sqlitelog read-model
-// structs (docs/m2/querylog.md) plus took_ms. Every one carries
+// structs (dev-docs/milestones/m2/querylog.md) plus took_ms. Every one carries
 // scope:{scope:"node"|"cluster", nodes:[...], partial:<node failures>}.
 type (
 	// SummaryBody is GET /stats/summary.

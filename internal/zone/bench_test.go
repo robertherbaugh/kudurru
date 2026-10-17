@@ -14,7 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 )
 
-// benchRecords is the size of the benchmark zone (docs/m1/zone.md).
+// benchRecords is the size of the benchmark zone (dev-docs/milestones/m1/zone.md).
 const benchRecords = 100_000
 
 // largeEndpoints returns endpoints for exactly benchRecords records below

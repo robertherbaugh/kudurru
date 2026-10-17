@@ -15,7 +15,7 @@ func TestPermissionsTableIsConsistent(t *testing.T) {
 			t.Errorf("built-in role %s missing", role)
 		}
 	}
-	// The matrix in docs/architecture.md §8.5, spot-checked.
+	// The matrix in dev-docs/design-record.md §8.5, spot-checked.
 	cases := []struct {
 		role, res, verb string
 		want            bool

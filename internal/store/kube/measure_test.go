@@ -22,7 +22,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 )
 
-// The measurements recorded in docs/spikes/store-kube.md. They create
+// The measurements recorded in dev-docs/spikes/store-kube.md. They create
 // thousands of objects and run the production election timings, so they
 // only run with KUDURRU_MEASURE=1:
 //

@@ -1,5 +1,5 @@
 // Package edge holds the model shared by the dnsdist and keepalived
-// supervisors (docs/architecture.md §3.6, D16-D20): the Topology that both
+// supervisors (dev-docs/design-record.md §3.6, D16-D20): the Topology that both
 // dnsdist renderers (YAML, Lua) consume, the stable backend identity and
 // the validation every rendered file goes through before dnsdist's own
 // --check-config. The supervisors live in ee/edge/dnsdist and
@@ -106,7 +106,7 @@ type Bind struct {
 	ReusePort bool
 }
 
-// Policies dnsdist accepts for a pool (docs/research/dnsdist-keepalived.md
+// Policies dnsdist accepts for a pool (dev-docs/research/dnsdist-keepalived.md
 // §1.6).
 var Policies = []string{"leastOutstanding", "firstAvailable", "wrandom", "whashed", "chashed", "roundrobin", "orderedWrandUntag"}
 

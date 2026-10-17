@@ -26,7 +26,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 )
 
-// Defaults from docs/architecture.md §4.4.
+// Defaults from dev-docs/design-record.md §4.4.
 const (
 	DefaultDebounce        = 50 * time.Millisecond
 	DefaultPersistInterval = 30 * time.Second

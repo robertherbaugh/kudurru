@@ -1,4 +1,4 @@
-// Package bootstrap seeds a fresh store on first boot (docs/architecture.md
+// Package bootstrap seeds a fresh store on first boot (dev-docs/design-record.md
 // §6.4): the root zone "." forwarding to the upstream group "default"
 // (DNSZone "root"), ClientGroup "default" matching every client and Policy
 // "default" applying to it, all written with Manager "bootstrap".

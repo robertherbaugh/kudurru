@@ -1,7 +1,7 @@
 package config
 
 // RateLimit configures the ingress per-prefix QPM limiter
-// (docs/architecture.md §7.1 step 2): UDP queries only; TCP, DoT, DoH,
+// (dev-docs/design-record.md §7.1 step 2): UDP queries only; TCP, DoT, DoH,
 // DoQ and DoH3 are never limited.
 type RateLimit struct {
 	// Enabled turns the limiter on.

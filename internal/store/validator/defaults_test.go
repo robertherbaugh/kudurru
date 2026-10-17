@@ -142,7 +142,7 @@ spec:
 // TestTypedDurationZeroIsDefaulted pins the `omitzero` tag on the
 // metav1.Duration fields: a zero value is absent on the wire, so the schema
 // default applies to typed objects exactly as it does for a Kubernetes
-// client (docs/spikes/store-validator.md, D70).
+// client (dev-docs/spikes/store-validator.md, D70).
 func TestTypedDurationZeroIsDefaulted(t *testing.T) {
 	v := testValidator(t)
 	p := polOf(typedSample(t, "Policy"))

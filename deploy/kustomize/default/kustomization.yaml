@@ -1,0 +1,13 @@
+# kudurru in mode=kubernetes: CRDs, RBAC, two replicas behind one
+# mixed-protocol LoadBalancer Service. `kustomize build deploy/kustomize/default` is
+# the release artifact install.yaml (make install-yaml). Create the
+# kudurru-encryption-key and kudurru-admin Secrets first
+# (docs/deploy/kustomize.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kudurru-system
+resources:
+  - ../namespace
+  - ../crd
+  - ../rbac
+  - ../manager

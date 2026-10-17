@@ -1,4 +1,4 @@
-// Package api is the kudurru REST API server (docs/architecture.md §10):
+// Package api is the kudurru REST API server (dev-docs/design-record.md §10):
 // huma operations under /api/v1 on the Go net/http mux, the uniform
 // envelope ({error:{key,message,hint}, took_ms}, list envelopes with
 // keyset "continue" tokens), the §8.8 middleware chain, the route
@@ -263,9 +263,9 @@ type Options struct {
 	// BlockPage renders GET /blockpage/preview (internal/blockpage); nil
 	// answers 503.
 	BlockPage BlockPagePreviewer
-	// UI is the single-page app bundle (web.FS); nil serves a built-in
+	// UI is the single-page app bundle (dashboard.FS); nil serves a built-in
 	// placeholder page. UIHandler, when set, replaces the built-in SPA
-	// handler (web.Handler with the same path prefix); it receives paths
+	// handler (dashboard.Handler with the same path prefix); it receives paths
 	// with the prefix stripped.
 	UI        fs.FS
 	UIHandler http.Handler
@@ -428,7 +428,7 @@ func newHumaAPI(mux *http.ServeMux, prefix string) huma.API {
 	// The Scalar docs page is served by registerDocs from an embedded
 	// bundle (huma's renderer loads it from unpkg.com).
 	cfg.DocsPath = ""
-	cfg.Info.Description = "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; " +
+	cfg.Info.Description = "The kudurru REST API (dev-docs/design-record.md §10). Errors are {error:{key,message,hint}, took_ms}; " +
 		"lists are {items, continue, took_ms} with opaque keyset continue tokens."
 	cfg.Info.License = &huma.License{Name: "LicenseRef-Kudurru-Community", URL: "https://kudurru.io/license/text/"}
 	cfg.Servers = []*huma.Server{{URL: prefix + BasePath}}

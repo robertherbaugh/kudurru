@@ -3,7 +3,7 @@
 # supervisor images, all cosign-signed. Called by release-candidate.yml (v<VERSION>-rc.<N>, a GitHub
 # pre-release, no `latest`) and release.yml (v<VERSION>, `latest`) after they
 # push the tag; workflow_dispatch re-publishes an existing tag by hand.
-# docs/release-checklist.md, "Release pipeline".
+# dev-docs/release-checklist.md, "Release pipeline".
 name: publish
 on:
   workflow_call:
@@ -65,7 +65,7 @@ jobs:
     steps:
       # The tag must be a release tag, and a hand-run publish must start from
       # a release branch: the signing identity (publish.yml@<branch>) is what
-      # `cosign verify` checks (docs/release-checklist.md, section 5).
+      # `cosign verify` checks (dev-docs/release-checklist.md, section 5).
       - name: Check the tag and the branch
         env:
           TAG: ${{ inputs.tag }}
@@ -87,7 +87,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      # goreleaser's before hook builds the dashboard bundle into web/dist.
+      # goreleaser's before hook builds the dashboard bundle into dashboard/dist.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
@@ -229,7 +229,7 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
           mkdir -p bin/charts
           for chart in kudurru-crds kudurru; do
-            helm package "charts/${chart}" --version "${version}" --app-version "${version}" -d bin/charts
+            helm package "deploy/helm/${chart}" --version "${version}" --app-version "${version}" -d bin/charts
             out=$(helm push "bin/charts/${chart}-${version}.tgz" oci://ghcr.io/robertherbaugh/charts 2>&1)
             echo "${out}"
             digest=$(echo "${out}" | awk '/^Digest:/ {print $2}')
@@ -322,7 +322,7 @@ jobs:
   supervisor-images:
     # kudurru-dnsdist and kudurru-keepalived aggregate the GPL programs with
     # the kudurru supervisor binary from the ko image the release job just
-    # pushed (images/*/Dockerfile, docs/release-checklist.md §4). Each
+    # pushed (images/*/Dockerfile, dev-docs/release-checklist.md §4). Each
     # platform builds natively on its own runner (keepalived compiles from
     # source, which took minutes under QEMU) and is pushed by digest only;
     # supervisor-manifests below joins the two into the tagged index.

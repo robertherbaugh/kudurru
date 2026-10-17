@@ -1,4 +1,4 @@
-// Copied from web/src/components/fields/TextField.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/fields/TextField.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // Text, multi-line text, switch and checkbox fields: the Astryx control
 // with its own label and the help under it (FieldHelp.tsx). Every other

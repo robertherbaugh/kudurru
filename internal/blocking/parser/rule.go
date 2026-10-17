@@ -197,7 +197,7 @@ const (
 
 // UnsupportedRule is a valid rule that this version does not compile, kept
 // with its tokenised modifiers so that the v0.2 modifier slow path can use
-// it (docs/architecture.md §7.3 item 4).
+// it (dev-docs/design-record.md §7.3 item 4).
 type UnsupportedRule struct {
 	Line      int
 	Text      string // the trimmed line

@@ -7,7 +7,7 @@ See the LICENSE file in the repository root.
 
 // Package v1alpha1 contains the audit.kudurru.io/v1alpha1 API types: the
 // AuditLog batches in which kudurru keeps its audit events in Kubernetes
-// when no central database is configured (docs/architecture.md §11.4,
+// when no central database is configured (dev-docs/design-record.md §11.4,
 // D157).
 //
 // The group is separate from kudurru.io on purpose: AuditLogs are runtime

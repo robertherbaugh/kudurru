@@ -1,6 +1,6 @@
 # Compose HA: three hosts, one VIP
 
-The `ha-static` shape of docs/architecture.md §4.4 and §6.5: every host runs
+The `ha-static` shape of dev-docs/design-record.md §4.4 and §6.5: every host runs
 kudurru, dnsdist and keepalived from `deploy/compose/ha/node-{a,b,c}`.
 
 ```

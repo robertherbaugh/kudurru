@@ -1,4 +1,4 @@
-// Copied from web/src/components/fields/ChoiceCards.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/fields/ChoiceCards.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // Options where each one needs a sentence: the first step of a wizard
 // (zone type, upstream provider, list type) and opt-in lists such as the

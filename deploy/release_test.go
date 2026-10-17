@@ -16,7 +16,7 @@ import (
 )
 
 // TestGoreleaserConfig pins the release contract of .goreleaser.yaml
-// (docs/architecture.md §12, D68): CGO_ENABLED=0 binaries for linux and
+// (dev-docs/design-record.md §12, D68): CGO_ENABLED=0 binaries for linux and
 // darwin on amd64 and arm64, distroless nonroot ko images for linux/amd64
 // and linux/arm64 plus a -debug variant, deb/rpm/apk with the systemd unit,
 // cosign signatures. `goreleaser check` in CI validates the schema.
@@ -82,7 +82,7 @@ func TestGoreleaserConfig(t *testing.T) {
 		t.Errorf("images need the version tag and the -debug variant, got %v", tags)
 	}
 	// A release candidate publishes <version>-rc.<N> only; the release moves
-	// latest (docs/release-checklist.md, "Release pipeline").
+	// latest (dev-docs/release-checklist.md, "Release pipeline").
 	if !tags["{{ if not .Prerelease }}latest{{ end }}"] {
 		t.Errorf("images need latest for releases only, got %v", tags)
 	}
@@ -91,9 +91,9 @@ func TestGoreleaserConfig(t *testing.T) {
 			t.Errorf("image tag %q moves latest on a release candidate", tg)
 		}
 	}
-	// Every binary embeds web/dist: the before hook builds the dashboard.
-	if !slices.Contains(list(mapOf(cfg["before"])["hooks"]), any("make web-build")) {
-		t.Errorf("before hooks must run make web-build, or the binaries embed the placeholder dashboard")
+	// Every binary embeds dashboard/dist: the before hook builds the dashboard.
+	if !slices.Contains(list(mapOf(cfg["before"])["hooks"]), any("make dashboard-build")) {
+		t.Errorf("before hooks must run make dashboard-build, or the binaries embed the placeholder dashboard")
 	}
 	for _, n := range list(cfg["nfpms"]) {
 		nm := mapOf(n)

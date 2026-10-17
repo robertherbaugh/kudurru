@@ -1,4 +1,4 @@
-// React wiring for the API client, after web/src/api/context.tsx: one
+// React wiring for the API client, after dashboard/src/api/context.tsx: one
 // ApiClient per app, the session from GET /api/v1/auth/me (the user, the
 // effective roles, the permissions that drive navigation and actions, the
 // CSRF token, dev mode) and sign-out. The CSRF token lives in a ref the

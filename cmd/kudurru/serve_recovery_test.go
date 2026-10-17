@@ -38,7 +38,7 @@ func TestRunServeKubeBootstrapAfterRecovery(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(assets, "kube-apiserver")); err != nil { //nolint:gosec // G703: trusted test binary directory from KUBEBUILDER_ASSETS or the repository
 		t.Skip("envtest kube-apiserver unavailable; set KUBEBUILDER_ASSETS")
 	}
-	env := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases")}, ErrorIfCRDPathMissing: true}
+	env := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{filepath.Join("..", "..", "deploy", "kustomize", "crd", "bases")}, ErrorIfCRDPathMissing: true}
 	args := env.ControlPlane.GetAPIServer().Configure()
 	args.Set("advertise-address", "127.0.0.1")
 	args.Set("endpoint-reconciler-type", "none")

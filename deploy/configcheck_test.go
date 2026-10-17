@@ -32,7 +32,7 @@ var reservedEnv = map[string]string{ //nolint:gosec // variable names, not crede
 
 // pendingKeys are settings keys the deployment assets already render whose
 // metadata row lands with another M3 package. The strict key check accepts
-// them; config.Load ignores unknown file keys. Each has a docs/followups.md row.
+// them; config.Load ignores unknown file keys. Each has a dev-docs/followups.md row.
 var pendingKeys = map[string]string{}
 
 // checkEnvName fails for a KUDURRU_* variable that neither maps onto a

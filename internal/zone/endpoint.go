@@ -14,7 +14,7 @@ import (
 )
 
 // SupportedTypes lists the record types an Endpoint may carry by mnemonic
-// (docs/architecture.md §4.1). Any other type is written as TYPEnnn with
+// (dev-docs/design-record.md §4.1). Any other type is written as TYPEnnn with
 // RFC 3597 rdata ("\# <len> <hex>").
 var SupportedTypes = []string{
 	"A", "AAAA", "CAA", "CNAME", "DNAME", "HTTPS", "MX", "NAPTR", "NS",

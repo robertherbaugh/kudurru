@@ -1,4 +1,4 @@
-// Package cache is kudurru's response cache (docs/architecture.md §3.3
+// Package cache is kudurru's response cache (dev-docs/design-record.md §3.3
 // "internal/cache"): a sharded LRU of packed DNS messages keyed by query
 // name, type, class, DO and CD bits and ECS subnet, with
 //

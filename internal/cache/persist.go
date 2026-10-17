@@ -85,7 +85,7 @@ type PersistStats struct {
 }
 
 // Persister is the persistence hook contract of the cache: it keeps a dump
-// of the live entries across restarts (docs/architecture.md §3.3
+// of the live entries across restarts (dev-docs/design-record.md §3.3
 // "persistence", the M1 carry-over "cache Dump/Load across restarts").
 // internal/cache/persist implements it on a local.db blob.
 //

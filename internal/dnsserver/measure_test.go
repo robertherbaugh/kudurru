@@ -1,6 +1,6 @@
 package dnsserver
 
-// Spike measurements for docs/spikes/dnsserver-quic.md. They are skipped
+// Spike measurements for dev-docs/spikes/dnsserver-quic.md. They are skipped
 // unless KUDURRU_SPIKE_MEASURE=1 because they take about a minute and print
 // tables instead of asserting:
 //

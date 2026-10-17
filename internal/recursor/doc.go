@@ -1,7 +1,7 @@
 // Package recursor is kudurru's own recursive resolver: it answers a
 // query by walking the DNS tree from the root servers instead of
 // forwarding to a public resolver, and validates the answers with DNSSEC
-// (docs/architecture.md D170, docs/architecture/upstreams-and-cache.md
+// (dev-docs/design-record.md D170, docs/architecture/upstreams-and-cache.md
 // "Recursive groups").
 //
 // An upstream group with mode "recursive" sends its queries here; the
@@ -44,5 +44,5 @@
 //     unless the client set CD; AD is set on secure answers for clients that
 //     asked with DO or AD.
 //
-// miekg/dns types are allowed here (docs/architecture.md §2).
+// miekg/dns types are allowed here (dev-docs/design-record.md §2).
 package recursor

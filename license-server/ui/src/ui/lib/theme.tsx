@@ -1,4 +1,4 @@
-// Copied from web/src/lib/theme.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/lib/theme.tsx at dd3dcb0; keep in step by hand.
 // Changes: one theme (kudurru) from ui/src/astryx-themes.ts, so no theme
 // list, no theme setter and no storage migration; its own storage key
 // (kudurru-license-portal.appearance) so the portal and a dashboard on the

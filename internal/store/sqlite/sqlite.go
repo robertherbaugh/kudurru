@@ -1,4 +1,4 @@
-// Package sqlite is the state.db Store driver (docs/architecture.md §4.3,
+// Package sqlite is the state.db Store driver (dev-docs/design-record.md §4.3,
 // §4.4 "Single Docker" and "Kubernetes standalone", §6.3; decisions D3,
 // D9-D12, D30, D70): every kudurru.io object lives as a JSON row in an
 // embedded, cgo-free SQLite database (modernc.org/sqlite).

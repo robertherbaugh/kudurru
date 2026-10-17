@@ -410,7 +410,7 @@ export interface RedeemInviteResult {
   customer: { id: string; name: string };
 }
 
-// --- public form (FROZEN: www is coded to it) -------------------------------
+// --- public form (FROZEN: website is coded to it) ----------------------------
 
 /**
  * POST /api/v1/public/key-requests from kudurru.io (CORS, ≤ 8 KiB). Unknown

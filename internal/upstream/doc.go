@@ -1,5 +1,5 @@
 // Package upstream forwards queries to upstream resolvers in named groups
-// (docs/architecture.md §3.3 "internal/upstream", §6.2 "upstreams").
+// (dev-docs/design-record.md §3.3 "internal/upstream", §6.2 "upstreams").
 //
 // Transports come from dnsproxy's upstream package (plain UDP with TCP
 // fallback on truncation, TCP, DoT, DoH over HTTP/1.1, HTTP/2 and HTTP/3,

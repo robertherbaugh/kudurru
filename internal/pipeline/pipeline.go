@@ -1,6 +1,6 @@
 // Package pipeline defines the fixed query path: a chain of named stages
 // with middleware semantics (each stage may act before and after calling
-// next) and observers that see the final response (docs/architecture.md
+// next) and observers that see the final response (dev-docs/design-record.md
 // §3.3, §7.1).
 //
 // Stage order is code, not configuration: New rejects stages that appear in

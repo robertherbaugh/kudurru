@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# kind + MetalLB + Helm end-to-end test (week-1 spike (f), docs/release-checklist.md
-# §3, extended in docs/m5/e2e.md): build the kudurru image, create a
+# kind + MetalLB + Helm end-to-end test (week-1 spike (f), dev-docs/release-checklist.md
+# §3, extended in dev-docs/milestones/m5/e2e.md): build the kudurru image, create a
 # multi-node kind cluster (hack/kind/cluster.yaml: a control-plane node and
 # three workers), install MetalLB in L2 mode on a slice of the kind Docker
 # network, install the kudurru-crds and kudurru charts with
@@ -355,7 +355,7 @@ done
 
 log "helm install kudurru-crds and kudurru ($REPLICAS replicas, vip.provider=metallb, address $LB_IP)"
 kubectl create namespace "$NS"
-helm install kudurru-crds "$ROOT/charts/kudurru-crds" --namespace "$NS" --wait
+helm install kudurru-crds "$ROOT/deploy/helm/kudurru-crds" --namespace "$NS" --wait
 if [ "$DATABASE" = 1 ]; then
   # Started now, used in part 2. The connection string names the Service
   # like a CloudNativePG uri does (<service>.<namespace>), which the pods
@@ -368,7 +368,7 @@ fi
 install_kudurru() {
   local db=()
   if [ -n "${2:-}" ]; then db=(--set database.existingSecret="$2" --set database.clusterDNS=true); fi
-  helm upgrade --install kudurru "$ROOT/charts/kudurru" --namespace "$NS" \
+  helm upgrade --install kudurru "$ROOT/deploy/helm/kudurru" --namespace "$NS" \
     --set image.repository="${IMAGE%:*}" --set image.tag="${IMAGE##*:}" --set image.pullPolicy=Never \
     --set replicaCount="$REPLICAS" --set auth.bootstrapToken.enabled=true \
     --set-file license.key="$ROOT/internal/license/testdata/e2e-license.key" \

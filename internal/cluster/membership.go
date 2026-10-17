@@ -27,7 +27,7 @@ type Peer struct {
 }
 
 // Membership answers "who are the nodes and who leads" for the internal
-// plane (docs/architecture.md §3.4: static | endpointslice | follower |
+// plane (dev-docs/design-record.md §3.4: static | endpointslice | follower |
 // raft). Replicas use Leader to find the node that serves list bodies by
 // digest (§7.3); the Nodes page scatter-gathers Peers.
 type Membership interface {

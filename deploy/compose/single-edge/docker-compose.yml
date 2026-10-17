@@ -1,4 +1,4 @@
-# kudurru behind dnsdist on one host (docs/architecture.md §6.4, edge
+# kudurru behind dnsdist on one host (dev-docs/design-record.md §6.4, edge
 # profile). dnsdist owns :53/:853/:443 and terminates DoT/DoH/DoQ with the
 # certificate in ./certs; kudurru shares dnsdist's network namespace and
 # listens on 127.0.0.1:5353 for PROXYv2 from loopback (no TLV secret needed).

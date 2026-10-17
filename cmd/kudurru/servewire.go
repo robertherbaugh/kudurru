@@ -21,7 +21,7 @@ import (
 )
 
 // Serve wiring helpers for the API's leader-side triggers and the leader
-// address lookup (M5 burn-down, docs/m5/burndown-server.md).
+// address lookup (M5 burn-down, dev-docs/milestones/m5/burndown-server.md).
 
 // listRefresher backs POST /blocklists/{ns}/{name}/refresh: the leader's
 // fetcher downloads the list now; a replica answers 409 naming the leader.

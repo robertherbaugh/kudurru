@@ -1,5 +1,5 @@
 // Package validator is the driver-independent store validator of decision
-// D34 (docs/architecture.md §4.1, §4.3 item 4): every write is checked
+// D34 (dev-docs/design-record.md §4.1, §4.3 item 4): every write is checked
 // against the kudurru CRDs exactly as the Kubernetes apiserver checks it,
 // before any store driver sees it, so the sqlite driver (Docker) and the
 // kube driver (Kubernetes) reject the same inputs.

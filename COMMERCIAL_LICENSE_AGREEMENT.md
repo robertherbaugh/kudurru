@@ -20,8 +20,8 @@ This Kudurru Commercial Software License Agreement (the **Agreement**) is betwee
 
 - **Software**: Kudurru's DNS server, API, management plane, and associated Kudurru code identified on an Order Form, excluding separately licensed Third-Party Materials.
 - **Enterprise Materials**: Licensor-controlled software under the repository's `ee/` directory, including enterprise modules, associated source, build files, and included documentation, to the extent identified as enterprise-licensed by Licensor.
-- **Documentation Site Materials**: Licensor-controlled documentation source, themes, configuration, and project-authored content under `site/`, used to create `docs.kudurru.io`; not the public marketing website.
-- **Website Materials**: Kudurru's public marketing site code, designs, assets, and content under `www/`, used for `kudurru.io`. These are **excluded** from this Agreement.
+- **Documentation Site Materials**: Licensor-controlled documentation source, themes, configuration, and project-authored content under `docs-site/`, used to create `docs.kudurru.io`; not the public website.
+- **Website Materials**: Kudurru's public website code, designs, assets, and content under `website/`, used for `kudurru.io`. These are **excluded** from this Agreement.
 - **License Server Materials**: Kudurru's license-issuance service, entitlement-management service, and associated Licensor-controlled source, configurations, and materials under `license-server/`. These are **excluded** from this Agreement.
 - **Licensed Materials**: Software, applicable Enterprise Materials expressly included by the Order Form, and Documentation Site Materials only to the extent permitted by Section 3.3 or the Order Form. Website Materials and License Server Materials are not Licensed Materials.
 - **Node**: An independently running Kudurru DNS server application instance or replica, whether hosted on a physical host, VM, container, or Kubernetes workload. A replica capable of actively serving or managing DNS is a Node; a stored image, stopped standby, or database backup is not. Separately licensed `dnsdist` or `keepalived` processes are not Nodes merely by existing.
@@ -44,7 +44,7 @@ This Kudurru Commercial Software License Agreement (the **Agreement**) is betwee
 
 3.5. **Copies for operations.** Customer may make reasonable operational, archival, and backup copies and provide copies to Authorized Users solely to perform permitted operations, subject to written confidentiality obligations. Customer remains responsible for their compliance.
 
-3.6. **Excluded website and license-server source.** This Agreement grants **no right** to reproduce, modify, build, deploy, host, redistribute, sublicense, or otherwise operate source in `www/` or `license-server/`. The separate `www/LICENSE.md` and `license-server/LICENSE.md` govern limited source inspection. Customer's right to receive, install, and locally validate legitimate license keys for Kudurru Software does not include a right to the license-issuance server's source or operations. Viewing the public marketing website and reading public documentation do not require a commercial license.
+3.6. **Excluded website and license-server source.** This Agreement grants **no right** to reproduce, modify, build, deploy, host, redistribute, sublicense, or otherwise operate source in `website/` or `license-server/`. The separate `website/LICENSE.md` and `license-server/LICENSE.md` govern limited source inspection. Customer's right to receive, install, and locally validate legitimate license keys for Kudurru Software does not include a right to the license-issuance server's source or operations. Viewing the public website and reading public documentation do not require a commercial license.
 
 3.7. **Rights of others.** Rights are granted only to the extent Licensor owns or is authorized to license the relevant material. Copyright holders of third-party contributions retain their rights. Third-Party Materials remain governed by their respective licenses.
 
@@ -80,7 +80,7 @@ This Kudurru Commercial Software License Agreement (the **Agreement**) is betwee
 
 6.1. Customer will safeguard access credentials and commercial keys, restrict source access to Authorized Users, and maintain reasonable security controls appropriate to DNS infrastructure.
 
-6.2. Except as expressly authorized by this Agreement, the Order Form, applicable third-party licenses, or nonwaivable law, Customer must not: (a) distribute, publish, resell, sublicense, or offer the Licensed Materials as a standalone product; (b) operate for third parties without Service Provider Use rights; (c) use more Nodes or higher-tier features than purchased; (d) remove legal notices; (e) falsely claim ownership, official project status, or endorsement; or (f) publish proprietary source from `ee/` or full unauthorized copies of `site/`. The separate source-viewing notices for `www/` and `license-server/` control those excluded materials.
+6.2. Except as expressly authorized by this Agreement, the Order Form, applicable third-party licenses, or nonwaivable law, Customer must not: (a) distribute, publish, resell, sublicense, or offer the Licensed Materials as a standalone product; (b) operate for third parties without Service Provider Use rights; (c) use more Nodes or higher-tier features than purchased; (d) remove legal notices; (e) falsely claim ownership, official project status, or endorsement; or (f) publish proprietary source from `ee/` or full unauthorized copies of `docs-site/`. The separate source-viewing notices for `website/` and `license-server/` control those excluded materials.
 
 6.3. Customer may publish interoperable software independently created by it and may report security vulnerabilities in good faith. This Agreement does not prohibit legitimate benchmarking, truthful public reviews, or security research, subject to confidentiality obligations covering genuinely nonpublic materials.
 
@@ -194,7 +194,7 @@ This Kudurru Commercial Software License Agreement (the **Agreement**) is betwee
 | Service Provider Use | [NOT AUTHORIZED / AUTHORIZED; CLIENTS OR POOLED SCOPE] |
 | Government use | [NO / YES; AGENCIES, PROCUREMENT ADDENDUM] |
 | Internal documentation mirror | Included for Authorized Users under Section 3.3 |
-| Website and license-server source | Excluded (`www/` and `license-server/`); no deployment or modification rights |
+| Website and license-server source | Excluded (`website/` and `license-server/`); no deployment or modification rights |
 | Subscription Start / End | [DATES] |
 | Annual fees / Node fees | [CURRENCY, PRICE AND PAYMENT SCHEDULE] |
 | License key policy | [DELIVERY, OFFLINE USE, DEPLOYMENT ID IF APPLICABLE] |

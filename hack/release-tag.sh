@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Work out the git tag for a release candidate or a release from the VERSION
-# file and the existing tags (docs/release-checklist.md, "Release
+# file and the existing tags (dev-docs/release-checklist.md, "Release
 # pipeline"). Read-only: it never creates or pushes a tag.
 #
 #   hack/release-tag.sh rc        the next v<VERSION>-rc.<N> for HEAD

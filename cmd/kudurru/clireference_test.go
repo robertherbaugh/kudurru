@@ -16,7 +16,7 @@ var updateCLIReference = flag.Bool("update-cli-reference", false, "rewrite the C
 
 // cliReferencePage is the docs site's CLI reference, generated from the
 // command tree so it cannot drift from `kudurru --help`.
-const cliReferencePage = "../../site/content/reference/cli.md"
+const cliReferencePage = "../../docs-site/content/reference/cli.md"
 
 // TestCLIReferenceDrift fails when the committed CLI reference differs
 // from the command tree; `make docs-gen` rewrites it.

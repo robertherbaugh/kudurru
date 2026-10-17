@@ -18,7 +18,7 @@ import (
 )
 
 // DefaultAdminSocket is where `kudurru serve` listens for admin commands
-// (docs/architecture.md §8.7: SO_PEERCRED uid 0, the server's own uid, or
+// (dev-docs/design-record.md §8.7: SO_PEERCRED uid 0, the server's own uid, or
 // a configured gid).
 const DefaultAdminSocket = "/run/kudurru/kudurru.sock"
 

@@ -8,7 +8,7 @@ import (
 )
 
 // Gate says how far the authoritative stage may trust a Set (decision D80,
-// docs/architecture.md §4.4).
+// dev-docs/design-record.md §4.4).
 type Gate uint8
 
 // Gates.

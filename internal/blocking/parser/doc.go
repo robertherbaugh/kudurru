@@ -29,7 +29,7 @@
 //	@@<any of these>  exception (Rule.Exception)
 //	! ...  # ...  [Adblock Plus 2.0]   comments
 //
-// Decisions recorded here and in docs/spikes/blocking.md:
+// Decisions recorded here and in dev-docs/spikes/blocking.md:
 //
 //   - Hosts and domains entries match exactly, never subdomains, as in
 //     AdGuard Home, Pi-hole and blocky. Options.HostsSubdomains turns them

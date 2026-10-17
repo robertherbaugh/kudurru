@@ -1,4 +1,4 @@
-// Package zone is kudurru's authoritative data model (docs/architecture.md
+// Package zone is kudurru's authoritative data model (dev-docs/design-record.md
 // §3.3, §4.1, §4.2): DNSZone and DNSRecordSet objects in, immutable
 // per-zone trees out.
 //

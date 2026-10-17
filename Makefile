@@ -3,7 +3,7 @@ BIN         := bin/kudurru
 # RELEASE_VERSION is what a build without a reachable tag reports (a
 # tarball, a shallow clone, a fork without tags): the VERSION file, which
 # also names the next release candidate and release tags
-# (docs/release-checklist.md, "Release pipeline").
+# (dev-docs/release-checklist.md, "Release pipeline").
 RELEASE_VERSION := $(shell tr -d '[:space:]' < VERSION 2>/dev/null)
 VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo $(RELEASE_VERSION))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -19,7 +19,7 @@ SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: test-postgres all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev web-e2e
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest dashboard-install dashboard-build dashboard-test dashboard-lint dashboard-dev dashboard-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork docker-dhcp hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
@@ -33,7 +33,7 @@ build:
 ## of M1, 53,862,560 at the end of M4, 54,874,272 for v0.1.0-rc.1 (budget
 ## 60,362,000), 58,523,808 after the v0.1 UX round, 59,826,336 after the
 ## catalog round and 57,991,328 with the dashboard embedded precompressed
-## (web/scripts/compress.ts: 2.5 MiB of bundle as 0.75 MiB of gzip)
+## (dashboard/scripts/compress.ts: 2.5 MiB of bundle as 0.75 MiB of gzip)
 ## (linux/amd64, Go 1.27.2, built dashboard). The project owner set the ceiling to 100,000,000 bytes
 ## (D138); growth still needs a reason in the change that causes it, and
 ## cmd/kudurru TestNoTemplateExecution guards the one known 12 MB trap.
@@ -84,15 +84,15 @@ lint: vet
 	$(GOLANGCI_LINT) run ./...
 
 fmt:
-	gofmt -s -w ./cmd ./api ./internal ./ee ./web/*.go
+	gofmt -s -w ./cmd ./api ./internal ./ee ./dashboard/*.go
 
 ## rbac-manifests: generate the chart's aggregated ClusterRoles
-## (charts/kudurru/templates/rbac-aggregated.yaml) from
+## (deploy/helm/kudurru/templates/rbac-aggregated.yaml) from
 ## internal/rbac/permissions.yaml (D31); TestAggregatedRolesDrift fails when
 ## the committed file is stale. Run `make deploy-assets` afterwards so the
 ## kustomize bases rendered from the chart follow.
 rbac-manifests:
-	go run ./ee/rbac/rbacgen -out charts/kudurru/templates/rbac-aggregated.yaml
+	go run ./ee/rbac/rbacgen -out deploy/helm/kudurru/templates/rbac-aggregated.yaml
 
 ## openapi: write api/openapi.json (OpenAPI 3.1, what /api/v1/openapi.json
 ## serves) and api/openapi-3.0.json from the huma route registry;
@@ -118,20 +118,20 @@ tidy:
 generate: manifests
 	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/... paths=./api/audit/v1alpha1/... paths=./api/dhcp/v1alpha1/...
 
-## manifests: the kudurru.io CRDs into config/crd/bases (the store's kinds:
+## manifests: the kudurru.io CRDs into deploy/kustomize/crd/bases (the store's kinds:
 ## validator, CRD reference) and the audit.kudurru.io AuditLog CRD into
-## config/crd/audit (runtime data the store never serves, D157) and the
-## dhcp.kudurru.io DHCPLease CRD into config/crd/dhcp (runtime data, D180);
+## deploy/kustomize/crd/audit (runtime data the store never serves, D157) and the
+## dhcp.kudurru.io DHCPLease CRD into deploy/kustomize/crd/dhcp (runtime data, D180);
 ## all are copied into the kudurru-crds chart.
 manifests:
-	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=config/crd/bases
-	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/audit/v1alpha1/... output:crd:artifacts:config=config/crd/audit
-	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/dhcp/v1alpha1/... output:crd:artifacts:config=config/crd/dhcp
-	mkdir -p charts/kudurru-crds/templates
+	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/bases
+	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/audit/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/audit
+	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/dhcp/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/dhcp
+	mkdir -p deploy/helm/kudurru-crds/templates
 	@# The chart copies carry helm.sh/resource-policy: keep so that
 	@# `helm uninstall kudurru-crds` never deletes the CRDs and every object (§5.1).
-	for f in config/crd/bases/*.yaml config/crd/audit/*.yaml config/crd/dhcp/*.yaml; do \
-		awk '{ print } /^    controller-gen.kubebuilder.io\/version:/ { print "    helm.sh/resource-policy: keep" }' $$f > charts/kudurru-crds/templates/$$(basename $$f); \
+	for f in deploy/kustomize/crd/bases/*.yaml deploy/kustomize/crd/audit/*.yaml deploy/kustomize/crd/dhcp/*.yaml; do \
+		awk '{ print } /^    controller-gen.kubebuilder.io\/version:/ { print "    helm.sh/resource-policy: keep" }' $$f > deploy/helm/kudurru-crds/templates/$$(basename $$f); \
 	done
 	$(MAKE) --no-print-directory validator-crds
 
@@ -139,14 +139,14 @@ manifests:
 validator-crds:
 	mkdir -p internal/store/validator/crds
 	rm -f internal/store/validator/crds/*.yaml
-	cp config/crd/bases/*.yaml internal/store/validator/crds/
+	cp deploy/kustomize/crd/bases/*.yaml internal/store/validator/crds/
 
 ## check-generated: fail if `make generate` or `make docs-gen` would change
 ## tracked files (the docs site's references follow the CRDs, the settings
 ## table, the CLI and the OpenAPI document)
 check-generated: generate
 	$(MAKE) --no-print-directory docs-gen
-	git diff --exit-code -- api config/crd charts/kudurru-crds internal/store/validator/crds site/content/reference
+	git diff --exit-code -- api deploy/kustomize/crd deploy/helm/kudurru-crds internal/store/validator/crds docs-site/content/reference
 
 ## dex: build the pinned dex release (Apache-2.0; a separate test program,
 ## never linked) from its source tarball for the OIDC end-to-end test. dex
@@ -173,7 +173,7 @@ test-auth-e2e: $(DEX_BIN)
 	CGO_ENABLED=1 KUDURRU_DEX_BIN=$(abspath $(DEX_BIN)) go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./ee/oidc/
 
 ## e2e: end-to-end tests against a freshly built `kudurru serve`
-## (docs/m5/e2e.md): two nodes on loopback sharing the encryption key,
+## (dev-docs/milestones/m5/e2e.md): two nodes on loopback sharing the encryption key,
 ## SIGTERM lameduck, restarts over existing databases, configuration and
 ## port failures (test/e2e), and the BIND 9 interop (test/interop, skipped
 ## when named is not installed). Recorded bugs are skipped; set
@@ -197,12 +197,12 @@ fuzz:
 
 ## bench: blocking benchmarks and the zone lookup benchmark gated against
 ## bench/baseline.txt (+20 %) and the absolute limits in bench/limits.txt
-## (docs/architecture.md §7.3, docs/m2/xfr.md). The baseline is
+## (dev-docs/design-record.md §7.3, dev-docs/milestones/m2/xfr.md). The baseline is
 ## machine-specific: refresh it with `make bench-baseline` on the runner
-## class that enforces it (docs/spikes/blocking.md, "Refreshing").
+## class that enforces it (dev-docs/spikes/blocking.md, "Refreshing").
 BENCH_PKGS      ?= ./internal/blocking/...
 # Only the 100k-record lookup benchmark of internal/zone is gated; its
-# build and export benchmarks are reported in docs/m1/zone.md.
+# build and export benchmarks are reported in dev-docs/milestones/m1/zone.md.
 BENCH_ZONE_PKGS ?= ./internal/zone
 BENCH_ZONE      ?= ^BenchmarkLookup100k$$
 BENCH_COUNT     ?= 5
@@ -229,52 +229,52 @@ bench-baseline:
 	go run ./internal/blocking/benchgate -limits $(BENCH_LIMITS) $(BENCH_OUT)
 	cp $(BENCH_OUT) $(BENCH_BASELINE)
 
-## web-*: the dashboard SPA in web/ (Bun + Vite, docs/architecture.md §10,
-## D69). `make build` never needs Bun: it embeds whatever web/dist holds,
+## dashboard-*: the dashboard SPA in dashboard/ (Bun + Vite, dev-docs/design-record.md §10,
+## D69). `make build` never needs Bun: it embeds whatever dashboard/dist holds,
 ## which on a plain checkout is the committed placeholder index.html. Run
-## `make web-build` first for a binary with the real dashboard (CI and
-## release images do). web-build overwrites the tracked placeholder
-## web/dist/index.html; do not commit the built one (TestIndexAssetsPresent
+## `make dashboard-build` first for a binary with the real dashboard (CI and
+## release images do). dashboard-build overwrites the tracked placeholder
+## dashboard/dist/index.html; do not commit the built one (TestIndexAssetsPresent
 ## in ./web fails if you do).
 BUN ?= bun
 
-web-install:
-	cd web && $(BUN) install --frozen-lockfile
+dashboard-install:
+	cd dashboard && $(BUN) install --frozen-lockfile
 
-web-build: web-install
-	cd web && $(BUN) run build
+dashboard-build: dashboard-install
+	cd dashboard && $(BUN) run build
 
-web-test: web-install
-	cd web && $(BUN) run test
+dashboard-test: dashboard-install
+	cd dashboard && $(BUN) run test
 
-web-lint: web-install
-	cd web && $(BUN) run lint && $(BUN) run typecheck
+dashboard-lint: dashboard-install
+	cd dashboard && $(BUN) run lint && $(BUN) run typecheck
 
-## web-dev: the dashboard against the MSW mock API (no server needed)
-web-dev: web-install
-	cd web && $(BUN) run dev:mock
+## dashboard-dev: the dashboard against the MSW mock API (no server needed)
+dashboard-dev: dashboard-install
+	cd dashboard && $(BUN) run dev:mock
 
-## web-e2e: the Playwright suite (web/e2e) against a real `kudurru serve`
+## dashboard-e2e: the Playwright suite (dashboard/e2e) against a real `kudurru serve`
 ## with the embedded dashboard: builds the bundle and the binary (with
 ## -tags licensetest, so the suite's node can run with a test license key),
 ## starts
 ## the server on free loopback ports with its own data directory, sends
 ## DNS traffic and drives every page in Chrome. Locally it uses
 ## /usr/bin/google-chrome (KUDURRU_E2E_CHROME names another; without one,
-## run `cd web && bunx playwright install chromium` once); CI uses
-## Playwright's chromium. The HTML report lands in web/playwright-report.
-web-e2e: web-build
+## run `cd dashboard && bunx playwright install chromium` once); CI uses
+## Playwright's chromium. The HTML report lands in dashboard/playwright-report.
+dashboard-e2e: dashboard-build
 	$(MAKE) build GOFLAGS="$(GOFLAGS) -tags=licensetest"
-	cd web && KUDURRU_BIN=../$(BIN) $(BUN) run e2e
+	cd dashboard && KUDURRU_BIN=../$(BIN) $(BUN) run e2e
 
-## Docs site (site/, Hugo; site/README.md). The Hugo extended release
+## Docs site (docs-site/, Hugo; docs-site/README.md). The Hugo extended release
 ## binary (Apache-2.0) is downloaded into bin/ at HUGO_VERSION and checked
 ## against the pinned SHA-256 of the linux tarball; on other platforms
 ## install Hugo extended $(HUGO_VERSION) and pass HUGO=/path/to/hugo.
-##   docs-gen:   regenerate the references under site/content/reference
+##   docs-gen:   regenerate the references under docs-site/content/reference
 ##               (settings, CRDs, CLI); TestReferenceDrift (hack/docsgen) and
 ##               TestCLIReferenceDrift (cmd/kudurru) fail when they are stale
-##   docs-site:  build the site into site/public with --panicOnWarning, so
+##   docs-site:  build the site into docs-site/public with --panicOnWarning, so
 ##               an unresolved link in any page (docs/ included) fails
 ##   docs-serve: live preview on http://localhost:1313/
 HUGO_VERSION            ?= 0.167.0
@@ -287,7 +287,7 @@ HUGO                    ?= $(HUGO_DIR)/hugo
 HUGO_FLAGS              ?= --minify --gc --cleanDestinationDir --panicOnWarning
 # The Scalar bundle (MIT, internal/api/scalar) renders the REST reference
 # page; Hugo reads it decompressed from this ignored directory.
-DOCS_GENERATED          := site/.generated
+DOCS_GENERATED          := docs-site/.generated
 
 .PHONY: docs-gen docs-assets docs-site docs-serve docs-check-links hugo
 
@@ -307,43 +307,43 @@ docs-gen:
 	go test -count=1 ./cmd/kudurru -run '^TestCLIReferenceDrift$$' -update-cli-reference
 
 ## docs-assets: the decompressed Scalar and Mermaid bundles
-## (internal/api/scalar, site/vendor/mermaid), and the list of repository
+## (internal/api/scalar, docs-site/vendor/mermaid), and the list of repository
 ## files the link hook checks links into the repository against (Hugo cannot
-## stat files outside site/)
+## stat files outside docs-site/)
 docs-assets:
 	mkdir -p $(DOCS_GENERATED)/scalar $(DOCS_GENERATED)/mermaid
 	gunzip -c internal/api/scalar/standalone.js.gz > $(DOCS_GENERATED)/scalar/standalone.js
-	gunzip -c site/vendor/mermaid/mermaid.min.js.gz > $(DOCS_GENERATED)/mermaid/mermaid.min.js
+	gunzip -c docs-site/vendor/mermaid/mermaid.min.js.gz > $(DOCS_GENERATED)/mermaid/mermaid.min.js
 	{ git ls-files --cached --others --exclude-standard 2>/dev/null || find . -path ./.git -prune -o -type f -print | sed 's|^\./||'; } > $(DOCS_GENERATED)/repo-files.txt
 
 docs-site: docs-assets $(HUGO)
-	cd site && $(HUGO) $(HUGO_FLAGS)
+	cd docs-site && $(HUGO) $(HUGO_FLAGS)
 
 docs-serve: docs-assets $(HUGO)
-	cd site && $(HUGO) server --bind 127.0.0.1 --port $${PORT:-1313}
+	cd docs-site && $(HUGO) server --bind 127.0.0.1 --port $${PORT:-1313}
 
 ## docs-check-links: build the site for the root of its own domain
 ## (docs.kudurru.io) and check every internal link, asset and fragment of the
-## HTML with htmltest (MIT, site/.htmltest.yml)
+## HTML with htmltest (MIT, docs-site/.htmltest.yml)
 HTMLTEST ?= go run github.com/wjdp/htmltest@v0.17.0
 docs-check-links: docs-assets $(HUGO)
 	rm -rf bin/docs-links bin/docs-links-log
-	cd site && $(HUGO) $(HUGO_FLAGS) --baseURL http://localhost/ --destination ../bin/docs-links
-	$(HTMLTEST) -c site/.htmltest.yml
+	cd docs-site && $(HUGO) $(HUGO_FLAGS) --baseURL http://localhost/ --destination ../bin/docs-links
+	$(HTMLTEST) -c docs-site/.htmltest.yml
 
 ## docs-check-workers: build the site as Cloudflare Workers Builds does and
-## run `wrangler deploy --dry-run` on site/wrangler.jsonc (no Cloudflare
+## run `wrangler deploy --dry-run` on docs-site/wrangler.jsonc (no Cloudflare
 ## account needed; installs the locked Wrangler dependency). Workers Builds
 ## deploys docs.kudurru.io from GitHub; nothing here deploys.
-## site/README.md, "Publishing".
+## docs-site/README.md, "Publishing".
 DOCS_URL ?= https://docs.kudurru.io
 WRANGLER ?= $(BUN) x wrangler
 .PHONY: docs-check-workers
 docs-check-workers: docs-assets $(HUGO)
-	cd site && $(BUN) install --frozen-lockfile
-	cd site && $(HUGO) $(HUGO_FLAGS) --baseURL $(DOCS_URL)/
-	cd site && WRANGLER_SEND_METRICS=false $(WRANGLER) deploy --dry-run
-## Deployment assets (docs/m3/deploy.md). The tools are Apache-2.0 and are
+	cd docs-site && $(BUN) install --frozen-lockfile
+	cd docs-site && $(HUGO) $(HUGO_FLAGS) --baseURL $(DOCS_URL)/
+	cd docs-site && WRANGLER_SEND_METRICS=false $(WRANGLER) deploy --dry-run
+## Deployment assets (dev-docs/milestones/m3/deploy.md). The tools are Apache-2.0 and are
 ## installed into bin/ at pinned versions; helm comes from the system.
 KUBECONFORM_VERSION ?= v0.8.0
 KUSTOMIZE_VERSION   ?= v5.8.3
@@ -358,7 +358,7 @@ $(DEPLOY_BIN)/kustomize:
 	GOBIN=$(DEPLOY_BIN) go install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
 
 helm-lint:
-	helm lint --strict charts/kudurru charts/kudurru-crds
+	helm lint --strict deploy/helm/kudurru deploy/helm/kudurru-crds
 
 ## helm-check: helm lint, the chart render matrix, the kustomize overlays and
 ## the compose/dashboard/rules checks, with kubeconform against the
@@ -373,11 +373,11 @@ deploy-assets:
 	go test -count=1 ./deploy/ -update
 
 ## release-manifests: crds.yaml and install.yaml (kustomize build
-## config/default) for the GitHub release, written to bin/release/.
+## deploy/kustomize/default) for the GitHub release, written to bin/release/.
 release-manifests: $(DEPLOY_BIN)/kustomize
 	mkdir -p bin/release
-	$(DEPLOY_BIN)/kustomize build config/crd > bin/release/crds.yaml
-	$(DEPLOY_BIN)/kustomize build config/default > bin/release/install.yaml
+	$(DEPLOY_BIN)/kustomize build deploy/kustomize/crd > bin/release/crds.yaml
+	$(DEPLOY_BIN)/kustomize build deploy/kustomize/default > bin/release/install.yaml
 
 ## edge-check: validate the golden dnsdist and keepalived configurations
 ## (ee/edge/*/testdata) with the real programs inside the pinned images:
@@ -414,7 +414,7 @@ edge-check: edge-images
 	    echo "== $$d (lua)"; dnsdist --check-config -C $$d/dnsdist.conf; done'
 	# eBPF DynBlocks: --check-config creates the BPF maps, which needs
 	# CAP_BPF/CAP_SYS_ADMIN as an effective capability, so root with the
-	# chart's capability set (charts/kudurru _pod.tpl, kudurru.edge.rootStart).
+	# chart's capability set (deploy/helm/kudurru _pod.tpl, kudurru.edge.rootStart).
 	docker run --rm --user 0:953 --cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
 	  --cap-add KILL --cap-add BPF --cap-add SYS_ADMIN --security-opt no-new-privileges --entrypoint /bin/sh \
 	  -v $(CURDIR)/ee/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
@@ -481,29 +481,29 @@ volume-check: docker-debug docker-hostnetwork
 	  ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork kudurru-base:volume-check kudurru-base:volume-check-debug
 
 clean:
-	rm -rf bin dist web/dist/assets
+	rm -rf bin dist dashboard/dist/assets
 
-## www-*: the kudurru.io website in www/ (Bun + TypeScript, served by
-## Cloudflare Workers static assets; www/README.md). The pages are rendered
-## at build time from www/src; the brand artwork and the dashboard
+## website-*: the kudurru.io website in website/ (Bun + TypeScript, served by
+## Cloudflare Workers static assets; website/README.md). The pages are rendered
+## at build time from website/src; the brand artwork and the dashboard
 ## screenshots come from branding and docs/guide/images. Cloudflare
 ## Workers Builds deploys it from GitHub; nothing here deploys.
-##   www-check: typecheck, tests (pages, links, CSP, _headers), a build and
+##   website-check: typecheck, tests (pages, links, CSP, _headers), a build and
 ##              `wrangler deploy --dry-run` (no Cloudflare account needed)
-##   www-dev:   rebuild on change and serve with `wrangler dev` on
+##   website-dev:   rebuild on change and serve with `wrangler dev` on
 ##              http://localhost:8787/
-.PHONY: www-install www-build www-check www-dev
-www-install:
-	cd www && $(BUN) install --frozen-lockfile
+.PHONY: website-install website-build website-check website-dev
+website-install:
+	cd website && $(BUN) install --frozen-lockfile
 
-www-build: www-install
-	cd www && $(BUN) run build
+website-build: website-install
+	cd website && $(BUN) run build
 
-www-check: www-install
-	cd www && $(BUN) run typecheck && $(BUN) test && $(BUN) run build && $(BUN) run check:deploy
+website-check: website-install
+	cd website && $(BUN) run typecheck && $(BUN) test && $(BUN) run build && $(BUN) run check:deploy
 
-www-dev: www-install
-	cd www && $(BUN) run dev
+website-dev: website-install
+	cd website && $(BUN) run dev
 
 ## license-server-*: the kudurru license portal in license-server/, the
 ## licensor's service that issues license keys (Bun, TypeScript, Postgres

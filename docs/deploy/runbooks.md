@@ -3,7 +3,7 @@
 ## Cold start without the apiserver
 
 Kubernetes clusters that resolve through kudurru need DNS before (and
-while) the control plane is reachable (docs/architecture.md §4.4, D79-D80,
+while) the control plane is reachable (dev-docs/design-record.md §4.4, D79-D80,
 D91).
 
 **How it works.** Every pod writes its materialized object set to

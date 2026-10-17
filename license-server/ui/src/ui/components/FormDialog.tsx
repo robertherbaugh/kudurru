@@ -1,4 +1,4 @@
-// Copied from web/src/components/FormDialog.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/FormDialog.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // The one modal frame every dashboard dialog uses: Astryx Dialog with the
 // Layout it is designed for (DialogHeader with the title and the close

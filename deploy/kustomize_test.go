@@ -12,8 +12,8 @@ import (
 	yamlv3 "go.yaml.in/yaml/v3"
 )
 
-// The kustomize tree under config/ (§5.7) is derived from the chart so the
-// two install paths cannot drift: the bases config/rbac and config/manager
+// The kustomize tree under deploy/kustomize/ (§5.7) is derived from the chart so the
+// two install paths cannot drift: the bases deploy/kustomize/rbac and deploy/kustomize/manager
 // and the overlays that change the workload shape (hostnetwork-daemonset,
 // standalone, with-edge) are rendered with the values below and committed.
 // Regenerate with
@@ -21,7 +21,7 @@ import (
 //	go test ./deploy -run TestKustomizeBases -update   (make kustomize)
 //
 // The metallb, kube-vip and cloud-lb-mixed overlays are hand-written
-// patches over config/default.
+// patches over deploy/kustomize/default.
 
 // kustomizeCommon names pre-created Secrets instead of chart-generated ones:
 // kustomize has no random generator, and docs/deploy/kustomize.md creates them.
@@ -41,17 +41,17 @@ var rbacKinds = []string{"ServiceAccount", "ClusterRole", "ClusterRoleBinding", 
 
 func isRBAC(d map[string]any) bool { return slices.Contains(rbacKinds, str(d["kind"])) }
 
-// inDefaultRBAC is true for the documents config/rbac already carries.
+// inDefaultRBAC is true for the documents deploy/kustomize/rbac already carries.
 func inDefaultRBAC(d map[string]any) bool {
 	return isRBAC(d) && !strings.HasPrefix(str(dig(d, "metadata", "name")), "kudurru-edge")
 }
 
 var kustomizeBases = []kustomizeBase{
-	{dir: "config/rbac/rbac.yaml", values: kustomizeCommon, keep: isRBAC},
-	{dir: "config/manager/manager.yaml", values: kustomizeCommon, keep: func(d map[string]any) bool { return !isRBAC(d) }},
-	{dir: "config/overlays/hostnetwork-daemonset/resources.yaml", values: kustomizeCommon + "hostNetwork: {enabled: true}\n", keep: func(d map[string]any) bool { return !inDefaultRBAC(d) }},
-	{dir: "config/overlays/with-edge/resources.yaml", values: kustomizeCommon + "edge: {enabled: true, existingSecret: kudurru-proxy-protocol}\n", keep: func(d map[string]any) bool { return !inDefaultRBAC(d) }},
-	{dir: "config/overlays/standalone/resources.yaml", values: kustomizeCommon + "mode: standalone\n", keep: func(map[string]any) bool { return true }},
+	{dir: "deploy/kustomize/rbac/rbac.yaml", values: kustomizeCommon, keep: isRBAC},
+	{dir: "deploy/kustomize/manager/manager.yaml", values: kustomizeCommon, keep: func(d map[string]any) bool { return !isRBAC(d) }},
+	{dir: "deploy/kustomize/overlays/hostnetwork-daemonset/resources.yaml", values: kustomizeCommon + "hostNetwork: {enabled: true}\n", keep: func(d map[string]any) bool { return !inDefaultRBAC(d) }},
+	{dir: "deploy/kustomize/overlays/with-edge/resources.yaml", values: kustomizeCommon + "edge: {enabled: true, existingSecret: kudurru-proxy-protocol}\n", keep: func(d map[string]any) bool { return !inDefaultRBAC(d) }},
+	{dir: "deploy/kustomize/overlays/standalone/resources.yaml", values: kustomizeCommon + "mode: standalone\n", keep: func(map[string]any) bool { return true }},
 }
 
 // kustomizeDoc strips the Helm-only labels from a rendered document.
@@ -85,7 +85,7 @@ func TestKustomizeBases(t *testing.T) {
 				t.Fatal(err)
 			}
 			var buf bytes.Buffer
-			buf.WriteString("# Generated from charts/kudurru by `go test ./deploy -run TestKustomizeBases -update`\n# (make kustomize). Do not edit; change the chart and regenerate.\n")
+			buf.WriteString("# Generated from deploy/helm/kudurru by `go test ./deploy -run TestKustomizeBases -update`\n# (make kustomize). Do not edit; change the chart and regenerate.\n")
 			for _, d := range decodeDocs(t, out) {
 				if !b.keep(d) {
 					continue
@@ -111,13 +111,13 @@ var overlays = []struct {
 	dir      string
 	wantKind string
 }{
-	{"config/default", "Deployment"},
-	{"config/overlays/metallb", "Deployment"},
-	{"config/overlays/kube-vip", "Deployment"},
-	{"config/overlays/cloud-lb-mixed", "Deployment"},
-	{"config/overlays/hostnetwork-daemonset", "DaemonSet"},
-	{"config/overlays/standalone", "StatefulSet"},
-	{"config/overlays/with-edge", "Deployment"},
+	{"deploy/kustomize/default", "Deployment"},
+	{"deploy/kustomize/overlays/metallb", "Deployment"},
+	{"deploy/kustomize/overlays/kube-vip", "Deployment"},
+	{"deploy/kustomize/overlays/cloud-lb-mixed", "Deployment"},
+	{"deploy/kustomize/overlays/hostnetwork-daemonset", "DaemonSet"},
+	{"deploy/kustomize/overlays/standalone", "StatefulSet"},
+	{"deploy/kustomize/overlays/with-edge", "Deployment"},
 }
 
 func kustomizeBuild(t *testing.T, dir string) []byte {
@@ -152,7 +152,7 @@ func TestKustomizeOverlays(t *testing.T) {
 				t.Errorf("workload is a %s, want %s", k, o.wantKind)
 			}
 			r.config(t)
-			if o.dir != "config/overlays/standalone" {
+			if o.dir != "deploy/kustomize/overlays/standalone" {
 				r.wantObject(t, "CustomResourceDefinition", "dnszones.kudurru.io")
 			}
 			r.wantObject(t, "Namespace", releaseNS)

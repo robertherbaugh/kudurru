@@ -14,7 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 )
 
-// VRRPProbe is the keepalived track_script check (docs/architecture.md
+// VRRPProbe is the keepalived track_script check (dev-docs/design-record.md
 // §3.6): a real DNS query over UDP and TCP to the VIP while this node
 // holds it (loopback otherwise: a loopback-only check passes with a
 // dnsdist that is not bound to the VIP), plus at least RequireBackends

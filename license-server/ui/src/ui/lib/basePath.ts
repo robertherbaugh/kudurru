@@ -1,4 +1,4 @@
-// Copied from web/src/lib/basePath.ts at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/lib/basePath.ts at dd3dcb0; keep in step by hand.
 // Changes: none.
 // Path-prefix awareness (§10): the Go handler rewrites `<base href>` in
 // index.html to the prefix the dashboard is served under (for example

@@ -54,14 +54,14 @@ Check each comment against the code; reviewers are sometimes wrong. Classify:
 | `[suggestion]` | Fix it if it is correct and in scope for this PR. |
 | `[nit]` | Fix it if it is cheap and correct. Otherwise decline briefly. |
 | Untagged or unknown tag | Treat it as `[suggestion]`. |
-| Out of scope but real | Defer it with a row in `docs/followups.md` (name the source and the target). |
+| Out of scope but real | Defer it with a row in `dev-docs/followups.md` (name the source and the target). |
 | Wrong or already handled | Decline, citing the code or the test that shows why. |
 
 Before editing, write the triage as a short list in the chat.
 
 ## 3. Implement
 
-- Follow the repo rules in `CLAUDE.md`: American English; for `web/` and
+- Follow the repo rules in `CLAUDE.md`: American English; for `dashboard/` and
   `license-server/` UI, read AGENTS.md first and use Astryx components.
   Keep `docs/architecture/` diagrams in step when you change a flow they show.
 - If you change `api/` types, run `make generate`.
@@ -71,11 +71,11 @@ Before editing, write the triage as a short list in the chat.
 | Area | Command |
 |---|---|
 | Go (`cmd/`, `internal/`, `ee/`, `api/`) | `make lint test` (`make check-generated` if `api/` changed) |
-| `web/` | `make web-lint web-test` and `cd web && bun run build` |
+| `dashboard/` | `make dashboard-lint dashboard-test` and `cd dashboard && bun run build` |
 | `license-server/` | `make license-server-check` |
-| `www/` | `make www-check` |
-| `charts/`, `deploy/` | `make helm-check` |
-| `site/` | `make docs-check-links` |
+| `website/` | `make website-check` |
+| `deploy/` | `make helm-check` |
+| `docs/`, `docs-site/` | `make docs-check-links` |
 
   A failure that also happens on `origin/main` is pre-existing; note it and move on.
 
@@ -134,17 +134,17 @@ gh pr merge "$N" --merge --match-head-commit "$(git rev-parse HEAD)"
   using it.
 - After merging, list the `main` runs that the merge started
   (`gh run list --branch main --limit 5`). Merges to `main` deploy the license
-  portal, `www` and the docs site. Report their URLs; do not wait for them.
+  portal, the website and the docs site. Report their URLs; do not wait for them.
 
 ## Stop and ask
 
 Stop and ask the user before acting if:
 
 - the PR is a draft, is closed, or targets anything other than `main`. PRs to
-  `release-candidate` and `release` follow `docs/release-checklist.md`.
+  `release-candidate` and `release` follow `dev-docs/release-checklist.md`.
 - you are declining a `[blocking]`/`[blocker]`/`[bug]` comment, or the review
   verdict is "request changes" and you disagree with it.
-- a fix needs an architecture decision, which means a `docs/architecture.md`
+- a fix needs an architecture decision, which means a `dev-docs/design-record.md`
   §16 row, or it would widen the PR's scope substantially.
 - CI fails for reasons you can't fix here (secrets, quota, external services).
 

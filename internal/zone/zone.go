@@ -45,7 +45,7 @@ type Zone struct {
 	// index maps every key in tree to its node. The tree gives canonical
 	// order (RRsets, export, the content hash, NSEC in v1.0); the index
 	// makes the exact-match probes of Lookup one hash lookup instead of a
-	// ~17-level pointer chase through a 100k-name tree (docs/m1/zone.md).
+	// ~17-level pointer chase through a 100k-name tree (dev-docs/milestones/m1/zone.md).
 	index  map[string]*node
 	apex   *node
 	soa    *dns.SOA // served SOA (status.serial)
@@ -112,7 +112,7 @@ func (z *Zone) Contains(name string) bool {
 }
 
 // QueryAllowed applies spec.policy.queryAccess and queryACL to a client
-// address (docs/architecture.md §7.1 step 6).
+// address (dev-docs/design-record.md §7.1 step 6).
 func (z *Zone) QueryAllowed(client netip.Addr) bool { return z.access.allowed(client) }
 
 // TransferAllowed applies spec.policy.zoneTransfer, transferACL and
@@ -215,7 +215,7 @@ type Builder struct {
 	// owners maps an endpoint identity to the source that claimed it
 	// first. Endpoints that are not served (disabled, expired, view-scoped)
 	// still claim their identity, so toggling one never moves ownership
-	// (the controller's rule, docs/m1/controller.md).
+	// (the controller's rule, dev-docs/milestones/m1/controller.md).
 	owners map[identity]string
 	// nameSource maps an owner key to the first source that put data at
 	// that name; it decides whether a CNAME conflict is Duplicated (another

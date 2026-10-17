@@ -1,5 +1,5 @@
 // Package spool is the node-local audit store of nodes whose store driver
-// does not keep audit rows (the kube driver; docs/architecture.md §11.4):
+// does not keep audit rows (the kube driver; dev-docs/design-record.md §11.4):
 // audit-spool.db under node.dataDir, a hash-chained SQLite table that the
 // audit routes read back and that shippers forward to a cluster-wide audit
 // store by its row ids.
