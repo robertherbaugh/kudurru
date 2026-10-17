@@ -1,22 +1,41 @@
 {{ define "main" }}
 <main id="main" class="home">
   <section class="hero">
+    <div class="hero__intro">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="{{ "brand/kudurru-logo-mixed-paper-tagline.png" | relURL }}">
       <img class="hero__logo" src="{{ "brand/kudurru-logo-mixed-tagline.png" | relURL }}" width="480" height="200" alt="kudurru: authority over every zone.">
     </picture>
-    <h1 class="visually-hidden">kudurru documentation</h1>
+    <h1>Learn kudurru,<br>one step at a time.</h1>
     <p class="hero__lead">{{ .Description | markdownify }}</p>
     <p class="hero__actions">
       {{- range .Params.actions }}
         <a class="button{{ if .primary }} button--primary{{ end }}" href="{{ (site.GetPage .page).RelPermalink }}">{{ .label }}</a>
       {{- end }}
     </p>
+    </div>
+    <a class="home__preview" href="{{ (site.GetPage "/guide/first-steps/queries").RelPermalink }}" aria-label="Learn to read the dashboard and your first queries">
+      <img src="{{ "guide/images/dashboard.png" | relURL }}" width="1280" height="1000" alt="The kudurru dashboard with DNS activity, blocked query counts and client charts." fetchpriority="high">
+    </a>
+  </section>
+
+  <section class="home__section" aria-labelledby="tasks">
+    <h2 id="tasks">What do you want to do?</h2>
+    <ul class="cards">
+      {{- range slice "/guide/first-steps" "/guide/filtering" "/guide/dhcp" "/guide/local-dns" }}
+      {{- with site.GetPage . }}
+      <li class="card">
+        <a class="card__link" href="{{ .RelPermalink }}">{{ partial "title.html" . }}</a>
+        <p>{{ .Description }}</p>
+      </li>
+      {{- end }}
+      {{- end }}
+    </ul>
   </section>
 
   {{- with site.GetPage "/start" }}
   <section class="home__section" aria-labelledby="roles">
-    <h2 id="roles">Start where you are</h2>
+    <h2 id="roles">Deployment paths</h2>
     <ul class="cards cards--roles">
       {{- range .Pages }}
       <li class="card">

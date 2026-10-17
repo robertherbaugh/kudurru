@@ -6,7 +6,7 @@ The markdown in this folder is published to
 
 | Folder | What it is |
 |---|---|
-| [guide/](guide/README.md) | The user guide and the administrator guide |
+| [guide/](guide/README.md) | Short walkthroughs for first use, filtering, DHCP and local DNS; administrator reference |
 | [deploy/](deploy/README.md) | Deployment guides (Docker, Compose HA, Helm, kustomize, Postgres, DHCP) and runbooks |
 | [architecture/](architecture/README.md) | The architecture tour: how kudurru works today, with diagrams |
 | [enterprise.md](enterprise.md) | kudurru Enterprise |

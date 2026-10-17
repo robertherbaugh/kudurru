@@ -110,7 +110,7 @@ injury to people.
 2. Start a node for the block page screenshots. Use the helper in
    `dashboard/e2e/support/kudurru.ts`. Set `KUDURRU_GUIDE_BLOCKPAGE` to the block
    page address of the node.
-3. Run the script from the `web` directory:
+3. Run the script from the `dashboard` directory:
 
    ```sh
    node scripts/guide-screenshots.mjs
@@ -143,3 +143,22 @@ Use these terms. Do not use the synonyms in the right column.
 
 The names of dashboard pages, objects and settings are product names.
 Keep them as they are: **Allowlist**, **Denylist**, `blocking.defaultResponse`.
+
+## Task pages
+
+- Give each page one task and a concrete result.
+- Aim for 50 to 120 lines. Split unrelated procedures into separate pages.
+- Start with **Before you start** and end with **Check the result**.
+- Put a screenshot beside the step that it explains.
+- Show the saved state and the running state separately when a restart is required.
+- Keep deployment constraints and troubleshooting details in linked reference pages.
+- Keep existing URLs and heading anchors when you move published material.
+
+The walkthrough order is in `docs-site/hugo.yaml`. The site adds step
+navigation to the First steps and DHCP sections.
+To take only the DHCP screenshots again, use:
+
+```sh
+cd dashboard
+KUDURRU_GUIDE_GROUPS=dhcp,dhcp-running node scripts/guide-screenshots.mjs
+```

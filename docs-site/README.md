@@ -31,6 +31,7 @@ not require Bun.
 | Site section | Source |
 |---|---|
 | Home, Get started, Migrate, section pages | `docs-site/content` |
+| Learn | `docs/guide`: short task pages for first use, filtering, DHCP and local DNS; the administrator reference keeps the full chapters |
 | Deploy | `docs/deploy` (its `README.md` is the section page) |
 | Enterprise | `docs/enterprise.md`: current features, proposed pricing and node counting |
 | Reference | `docs-site/content/reference`, generated: `hack/docsgen` (settings, CRDs, endpoint index) and `TestCLIReferenceDrift` in `cmd/kudurru` (CLI) |
@@ -86,6 +87,25 @@ no workflow in this repository holds Cloudflare credentials.
 | `static/_headers` | Response headers: a content security policy (own files only; inline styles for the API explorer), HSTS, `nosniff`, no framing, long caching for the fingerprinted CSS and JS |
 | `hugo.yaml` | Mounts `docs/guide/images` at `/guide/images`, so the guide's screenshots are files of the site |
 | `layouts/_markup/render-image.html` | Serves those images from the site's own origin. An image anywhere else in the repository is a build warning: GitHub's raw host is not served to visitors while the repository is private, and the content security policy does not allow it |
+
+### Walkthroughs and screenshots
+
+The First steps and DHCP sections use `walkthrough: true` in `hugo.yaml`.
+Page weights set the order of the step indicator and Back/Next links.
+Guide pages stay plain Markdown with an H1 title; subsection `README.md` files
+have explicit mounts to `_index.md`. Add a matching mount and exclusion when
+adding a new subsection.
+
+Keep task pages focused on one outcome, with prerequisites, numbered steps,
+screenshots beside the relevant steps and a result check. Keep advanced
+options in linked reference pages. Preserve published heading anchors when
+splitting a page. The old `/deploy/dhcp/` anchors link to the smaller reference pages.
+
+Screenshots open at full size when clicked. Capture them from the dashboard's
+mock mode with `dashboard/scripts/guide-screenshots.mjs`; see the
+[guide writing rules](../docs/guide/style.md#take-the-screenshots-again).
+The DHCP groups cover all four wizard steps, staged activation, running
+leases and a reservation dialog. No live DHCP service is needed for these images.
 
 ### One-time setup in the Cloudflare dashboard
 

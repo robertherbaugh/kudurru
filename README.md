@@ -128,7 +128,7 @@ unlocks them. Full milestones and planned features are in
 ## Documentation
 
 - [kudurru.io](https://kudurru.io): the project website ([source](website/README.md)); the documentation site is [docs.kudurru.io](https://docs.kudurru.io).
-- [User and administrator guide](docs/guide/README.md): how to use and run kudurru, in Simplified Technical English with screenshots.
+- [Learn kudurru](docs/guide/README.md): short walkthroughs with screenshots for first use, filtering, DHCP and local DNS, plus the administrator reference.
 - [Architecture tour](docs/architecture/README.md): how kudurru works, with diagrams for every flow (also at [docs.kudurru.io/architecture](https://docs.kudurru.io/architecture/)).
 - [Design record](dev-docs/design-record.md): the v0.1 design, the decision log and the glossary.
 - [Open questions](dev-docs/open-questions.md): the project owner's decisions and the remaining spikes.

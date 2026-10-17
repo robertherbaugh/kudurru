@@ -60,7 +60,7 @@ outputs:
 menus:
   main:
     - {name: Get started, pageRef: /start, weight: 10}
-    - {name: Guide, pageRef: /guide, weight: 15}
+    - {name: Learn, pageRef: /guide, weight: 15}
     - {name: Deploy, pageRef: /deploy, weight: 20}
     - {name: Migrate, pageRef: /migrate, weight: 30}
     - {name: Reference, pageRef: /reference, weight: 40}
@@ -70,9 +70,26 @@ menus:
 
 # Order of the mounted pages that carry no front matter of their own.
 cascade:
-  - {weight: 1, target: {path: /guide/user-guide}}
-  - {weight: 2, target: {path: /guide/admin}}
-  - {weight: 3, target: {path: /guide/style}}
+  - {weight: 10, description: "Start a node, sign in, connect a client and read its first queries.", walkthrough: true, target: {path: /guide/first-steps}}
+  - {weight: 20, description: "Add a block list or restore a site that a list blocks.", target: {path: /guide/filtering}}
+  - {weight: 30, description: "Prepare the host, create a scope, check a lease and reserve an address.", walkthrough: true, target: {path: /guide/dhcp}}
+  - {weight: 40, description: "Create a zone and give a device a name on your network.", target: {path: /guide/local-dns}}
+  - {weight: 1, stepLabel: "Start a node", target: {path: /guide/first-steps/install}}
+  - {weight: 2, stepLabel: "Sign in", target: {path: /guide/first-steps/sign-in}}
+  - {weight: 3, stepLabel: "Connect a client", target: {path: /guide/first-steps/connect}}
+  - {weight: 4, stepLabel: "Read queries", target: {path: /guide/first-steps/queries}}
+  - {weight: 1, target: {path: /guide/filtering/add-list}}
+  - {weight: 2, target: {path: /guide/filtering/allow-site}}
+  - {weight: 1, stepLabel: "Prepare the host", target: {path: /guide/dhcp/prepare}}
+  - {weight: 2, stepLabel: "Subnet", target: {path: /guide/dhcp/create-scope}}
+  - {weight: 3, stepLabel: "Addresses", target: {path: /guide/dhcp/address-pool}}
+  - {weight: 4, stepLabel: "DNS", target: {path: /guide/dhcp/lease-dns}}
+  - {weight: 5, stepLabel: "Review", target: {path: /guide/dhcp/review-scope}}
+  - {weight: 6, stepLabel: "Activate", target: {path: /guide/dhcp/activate}}
+  - {weight: 7, stepLabel: "Reserve an address", target: {path: /guide/dhcp/reservations}}
+  - {hideInNav: true, target: {path: /guide/style}}
+  - {weight: 50, target: {path: /guide/user-guide}}
+  - {weight: 60, target: {path: /guide/admin}}
   - {weight: 1, target: {path: /guide/admin/01-overview}}
   - {weight: 2, target: {path: /guide/admin/02-install-and-sign-in}}
   - {weight: 3, target: {path: /guide/admin/03-watch-the-network}}
@@ -124,9 +141,13 @@ module:
     # the repository can be private, and a public site must not depend on it.
     - {source: ../docs/guide/README.md, target: content/guide/_index.md}
     - {source: ../docs/guide/admin/README.md, target: content/guide/admin/_index.md}
+    - {source: ../docs/guide/first-steps/README.md, target: content/guide/first-steps/_index.md}
+    - {source: ../docs/guide/filtering/README.md, target: content/guide/filtering/_index.md}
+    - {source: ../docs/guide/dhcp/README.md, target: content/guide/dhcp/_index.md}
+    - {source: ../docs/guide/local-dns/README.md, target: content/guide/local-dns/_index.md}
     - source: ../docs/guide
       target: content/guide
-      files: ['! README.md', '! admin/README.md', '! images/**']
+      files: ['! README.md', '! admin/README.md', '! first-steps/README.md', '! filtering/README.md', '! dhcp/README.md', '! local-dns/README.md', '! images/**']
 
     - {source: ../docs/guide/images, target: static/guide/images}
 

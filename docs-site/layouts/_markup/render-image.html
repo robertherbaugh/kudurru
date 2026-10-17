@@ -4,7 +4,8 @@
   next to the markdown, and GitHub renders them), then:
 
   - an image under docs/guide/images is a file of this site (hugo.yaml
-    mounts it at /guide/images), served from the site's own origin;
+    mounts it at /guide/images), served from the site's own origin and
+    linked to its full-size image;
   - so is a diagram under docs/architecture/diagrams (mounted at
     /architecture/diagrams); it links to itself, because the wide diagrams
     are easier to read at full size;
@@ -16,9 +17,12 @@
 {{- $u := urls.Parse .Destination -}}
 {{- $src := .Destination -}}
 {{- $zoom := false -}}
+{{- $kind := "diagram" -}}
 {{- if not (or $u.IsAbs (hasPrefix $src "/")) -}}
   {{- $path := path.Join (path.Dir (partial "repo-path.html" .Page)) $u.Path -}}
   {{- if hasPrefix $path "docs/guide/images/" -}}
+    {{- $zoom = true -}}
+    {{- $kind = "screenshot" -}}
     {{- $src = relURL (strings.TrimPrefix "docs/" $path) -}}
   {{- else if hasPrefix $path "docs/architecture/diagrams/" -}}
     {{- $src = relURL (strings.TrimPrefix "docs/" $path) -}}
@@ -30,7 +34,7 @@
   {{- $src = relURL (strings.TrimPrefix "/" $src) -}}
 {{- end -}}
 {{- if $zoom -}}
-<a class="diagram" href="{{ $src }}" title="Open the diagram at full size"><img src="{{ $src }}" alt="{{ .PlainText }}"{{ with .Title }} title="{{ . }}"{{ end }} loading="lazy"></a>
+<a class="{{ $kind }}" href="{{ $src }}" title="Open the {{ $kind }} at full size"><img src="{{ $src }}" alt="{{ .PlainText }}"{{ with .Title }} title="{{ . }}"{{ end }} loading="lazy"></a>
 {{- else -}}
 <img src="{{ $src }}" alt="{{ .PlainText }}"{{ with .Title }} title="{{ . }}"{{ end }} loading="lazy">
 {{- end -}}

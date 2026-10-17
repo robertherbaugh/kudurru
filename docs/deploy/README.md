@@ -1,5 +1,8 @@
 # Deploying kudurru
 
+New to the app? Follow [First steps](../guide/first-steps/README.md).
+To assign client addresses, use the [DHCP walkthrough](../guide/dhcp/README.md).
+
 | Shape | Guide | Assets |
 |---|---|---|
 | One container (Docker, Podman) | [docker.md](docker.md) | `deploy/compose/single`, `deploy/compose/single-edge` |
