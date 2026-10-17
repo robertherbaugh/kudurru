@@ -21,17 +21,26 @@ no backup files or hand-written manifests are needed.
 
 The importer transfers allowed/blocked names (including subdomains), list
 subscriptions, supported default forwarders and unsigned primary zones
-through Technitium's standard zone export API. It preserves supported zone
-query access rules. Use a token with access to Settings, Allowed, Blocked,
-Zones and each zone to migrate; reading zone options also requires the
+through Technitium's standard zone export API. Primary zones in a cluster
+or catalog are imported as independent primary zones. The importer reads
+the catalog's query access mode and ordered network ACL when the member
+inherits them, and preserves a member's explicit override. Catalog membership
+and replication are not migrated. Use a token with access to Settings,
+Allowed, Blocked, Zones, each zone to migrate and any catalog supplying its
+query access policy; reading zone options also requires the
 Zones Modify permission in Technitium. Tokens are used as bearer credentials
 and are never stored by kudurru. The API flow was verified with Technitium
 15.6.1; older versions without bearer-token authentication are not supported.
 
-Disabled and signed zones, non-primary zones, catalog-controlled zones and
-zones containing disabled, expiring or app-specific records are skipped
-with warnings. This avoids enabling disabled records, publishing private
-app data or silently dropping DNSSEC. Zone transfers, NOTIFY, DNS Apps,
+Disabled and signed zones, non-primary zones and zones containing disabled,
+expiring or app-specific records are skipped with warnings. This avoids
+enabling disabled records, publishing private
+app data or silently dropping DNSSEC. A member is also skipped if its
+effective query access policy cannot be read or converted; local defaults
+are never substituted for an unreadable inherited policy. Catalog zones
+themselves remain unsupported. Blank lines and comments beginning with `#`
+in list subscriptions are ignored, including those following an allow-list
+`!` prefix. Zone transfers, NOTIFY, DNS Apps,
 Advanced Blocking profiles, outbound proxies and conditional forwarders require separate
 review. Keep those services on Technitium until their replacements are ready.
 

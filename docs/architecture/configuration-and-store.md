@@ -67,6 +67,15 @@ the settings patch is applied only when every object succeeds. Unsupported
 source semantics are reported in the preview. See the
 [migration guides](../../site/content/migrate/_index.md) for supported data.
 
+Technitium catalog member primary zones become independent primary zones.
+The converter reads `overrideCatalogQueryAccess`: an override keeps the
+member's local query policy; otherwise it reads the catalog's policy and
+copies its query mode and ordered ACL. Catalog reads, including failed
+reads, are cached for the preview. Unknown inheritance, unreadable catalogs
+and unsupported query modes skip affected zones instead of falling back
+to permissive member defaults. Catalog membership and replication are not
+imported. Comment and blank lines in subscription URLs are ignored.
+
 ## The objects
 
 All kinds share `kudurru.io/v1alpha1`. Public kinds are CRDs in Kubernetes;
