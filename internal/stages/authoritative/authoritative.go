@@ -49,6 +49,13 @@ type Source interface {
 	Zones() zone.Set
 }
 
+// LocalRecords resolves additional local namespaces outside specific configured
+// zones. A catch-all forward root also permits it. Implementations read memory
+// only and never block.
+type LocalRecords interface {
+	ResolveLocal(*pipeline.Request) (*pipeline.Response, bool)
+}
+
 // TransferProvider is the optional capability (discovered by type
 // assertion, §3.3) that hands out a zone's records for a transfer: chunks
 // of at most 64 KiB, SOA first and last, or the single SOA when serial is
@@ -62,6 +69,10 @@ type TransferProvider interface {
 type Stage struct {
 	// Source is required.
 	Source Source
+	// LocalRecords optionally supplies DHCP lease records outside every
+	// specific configured zone. A catch-all forward root permits local records;
+	// primary root and specific primary/forward zones retain precedence.
+	LocalRecords LocalRecords
 	// RecursionAvailable sets RA on authoritative replies. Set it when the
 	// chain also resolves recursively (an upstream stage follows), so
 	// clients that check RA keep using the server.
@@ -133,6 +144,12 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 			// A zone that has not loaded yet may cover the name.
 			return s.unsynced(req, gate), nil
 		}
+		if s.LocalRecords != nil {
+			if response, handled := s.LocalRecords.ResolveLocal(req); handled {
+				s.finish(req, response.Msg)
+				return response, nil
+			}
+		}
 		return next(req)
 	}
 	req.Zone = z
@@ -149,6 +166,12 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	if z.Type() == v1alpha1.ZoneTypeForward {
 		if gate == zone.GateUnsynced {
 			return s.unsynced(req, gate), nil
+		}
+		if z.Name() == "." && s.LocalRecords != nil {
+			if response, handled := s.LocalRecords.ResolveLocal(req); handled {
+				s.finish(req, response.Msg)
+				return response, nil
+			}
 		}
 		req.UpstreamGroup = z.UpstreamGroup()
 		return next(req)

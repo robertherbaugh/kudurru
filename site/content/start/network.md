@@ -62,6 +62,12 @@ one named host.
 - **Upstream groups** with the strategies `parallel_best`, `strict`,
   `random` and `rtt_weighted`, over UDP, TCP, DoT, DoH and DoQ
   ([`upstreams.groups`](/reference/configuration/#upstreams.groups)).
+- **Recursive groups** (`mode: recursive`): resolution from the root
+  servers with QNAME minimization and DNSSEC validation, chosen per group,
+  so a Policy, forward zone or conditional rule can send some clients or
+  names to recursion and the rest to forwarders
+  ([`upstreams.recursion.*`](/reference/configuration/#upstreams.recursion.dnssec);
+  trade-offs in [Home network](/start/home/#7-resolve-names-yourself-optional)).
 - **Conditional forwarding** by longest suffix
   ([`upstreams.conditional`](/reference/configuration/#upstreams.conditional)),
   or a `DNSZone` of type `forward` with its own upstream group.
@@ -95,4 +101,6 @@ and rollups for long-term views; the privacy mode is applied at ingest.
 | 9153 | tcp | Prometheus metrics |
 
 The complete list, with the external-dns webhook port, is in
-[Deploying kudurru](/deploy/#ports).
+[Deploying kudurru](/deploy/#ports). Outbound, forwarding needs only the
+configured upstream servers; a recursive group needs UDP and TCP port 53
+to any address on the internet.

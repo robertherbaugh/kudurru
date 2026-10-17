@@ -476,6 +476,29 @@ networkPolicy:
   # -- NetworkPolicyPeer list allowed to scrape :9153; empty allows all.
   metricsFrom: []
 
+dhcp:
+  # -- Serve DHCPv4 for the DHCPScope objects (mode kubernetes only;
+  # docs/deploy/dhcp.md). Leases are DHCPLease objects (the kudurru-crds
+  # chart). One replica, the holder of the kudurru-dhcp Lease, answers;
+  # the DHCP Service selects it by the kudurru.io/dhcp-active label. Clients
+  # reach it through a DHCP relay (for example the router) that sends to
+  # serverAddress. In mode standalone, configure DHCP with config.node.dhcp.
+  enabled: false
+  # -- The LoadBalancer address relays send to, advertised to clients as
+  # the DHCP server identifier. Required when enabled; also the Service's
+  # loadBalancerIP.
+  serverAddress: ""
+  # -- Pod interface that receives the relayed packets.
+  interface: eth0
+  service:
+    type: LoadBalancer
+    loadBalancerClass: ""
+    # -- Must be Local: trusted relays are matched by their source address,
+    # which Cluster replaces with a node address.
+    externalTrafficPolicy: Local
+    # -- Annotations, e.g. metallb.io/loadBalancerIPs naming serverAddress.
+    annotations: {}
+
 blockPage:
   # -- Serve the block page (docs/deploy/blocking-page.md): blocked names
   # answered with the blockPage response resolve to ipv4/ipv6, where a

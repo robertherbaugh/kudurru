@@ -22,7 +22,7 @@ export function moveOver(): Html {
       <div>
         <p class="label">DNS for your homelab</p>
         <h1 id="homelab-title" class="page-title">Your network.<br>Your DNS rules.</h1>
-        <p class="sec-lead">Local names for your services, ad blocking for your household, and a dashboard that explains every answer. Run kudurru on the hardware you already have, in one container or your Kubernetes cluster.</p>
+        <p class="sec-lead">Local names for your services, ad blocking for your household, an optional validating resolver that asks the root servers itself instead of one provider, and a dashboard that explains every answer. Run kudurru on the hardware you already have, in one container or your Kubernetes cluster.</p>
         <div class="actions">
           ${external(docs("/start/home/"), html`Set up your home network ${icon.arrow}`, "btn btn-primary")}
           <a class="btn btn-ghost" href="#homelab-migrate-title">Moving an existing setup? ${icon.arrow}</a>
@@ -60,7 +60,8 @@ export function moveOver(): Html {
       <article>
         <p class="label">Docker &amp; Compose</p>
         <h3>Start with a single host</h3>
-        <p>DNS, the dashboard and the API run in one container, with one persistent volume and no separate database. Give the host a stable address and keep DHCP on your router.</p>
+        <p>DNS, the dashboard and the API run in one container, with one persistent volume and no separate database. Give the host a stable address. Keep DHCP on your router or configure kudurru's optional DHCPv4 server on Linux/SQLite.</p>
+        <p>DHCPv4 in Docker needs a local DHCP-capable source build; published images lack the required file capabilities. ${external(docs("/deploy/dhcp/#network-and-privileges"), "Check DHCPv4 network and privileges")}.</p>
         ${external(docs("/deploy/docker/"), html`Run with Docker ${icon.arrow}`, "more")}
       </article>
       <article>
@@ -89,7 +90,7 @@ export function moveOver(): Html {
       <p class="sec-label">Feature comparison</p>
       <h2 id="comparison-title">Know what changes.</h2>
     </div>
-    <p class="sec-lead">kudurru v0.1.0 combines authoritative DNS, forwarding, filtering and a dashboard. Check the features you depend on before moving a working network.</p>
+    <p class="sec-lead">kudurru v0.1.0 combines authoritative DNS, forwarding or validating recursion, filtering, optional DHCPv4 and a dashboard. Check the features you depend on before moving a working network.</p>
     <div class="shapes migration-table" role="region" aria-labelledby="comparison-title" tabindex="0">
       <table>
         <caption>Built-in capabilities unless stated otherwise; planned features are labeled explicitly. Comparison reviewed October 16, 2026; other projects evolve independently.</caption>
@@ -97,7 +98,7 @@ export function moveOver(): Html {
         <tbody>${MIGRATION_COMPARISON.map((r) => html`<tr><th scope="row">${r.feature}</th><td>${r.pihole}</td><td>${r.adguard}</td><td>${r.technitium}</td><td>${r.kudurru}</td></tr>`)}</tbody>
       </table>
     </div>
-    <p class="fine migration-sources">Built-in DHCPv4 is planned for v0.2.0, initially on standalone Linux nodes using SQLite. ${external("https://github.com/robertherbaugh/kudurru/pull/66", html`Follow DHCP development in PR #66 ${icon.arrow}`)}.</p>
+    <p class="fine migration-sources">Built-in DHCPv4 is included in v0.1.0, disabled by default, with dashboard setup and optional three-node quorum failover on Linux/SQLite. DHCPv6 is not supported. ${external(docs("/deploy/dhcp/"), html`Configure DHCPv4 and plan the cutover ${icon.arrow}`)}.</p>
     <p class="fine migration-sources">Sources: ${MIGRATIONS.map((m, i) => html`${i ? " · " : ""}${external(m.source, m.name)}`)} · ${external(docs("/project/changelog/"), "kudurru changelog")}. ${external(docs("/migrate/"), "Detailed mappings and limitations in the docs")}.</p>
   </div>
 </section>

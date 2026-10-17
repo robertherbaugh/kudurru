@@ -21,7 +21,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 .PHONY: test-postgres all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev web-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork docker-dhcp hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
@@ -116,19 +116,21 @@ tidy:
 ## CRD run reads api/v1alpha1 only, because the internal kinds are never CRDs
 ## (Secrets in Kubernetes, JSON rows in state.db; D26).
 generate: manifests
-	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/... paths=./api/audit/v1alpha1/...
+	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/... paths=./api/audit/v1alpha1/... paths=./api/dhcp/v1alpha1/...
 
 ## manifests: the kudurru.io CRDs into config/crd/bases (the store's kinds:
 ## validator, CRD reference) and the audit.kudurru.io AuditLog CRD into
-## config/crd/audit (runtime data the store never serves, D157); both are
-## copied into the kudurru-crds chart.
+## config/crd/audit (runtime data the store never serves, D157) and the
+## dhcp.kudurru.io DHCPLease CRD into config/crd/dhcp (runtime data, D180);
+## all are copied into the kudurru-crds chart.
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/audit/v1alpha1/... output:crd:artifacts:config=config/crd/audit
+	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/dhcp/v1alpha1/... output:crd:artifacts:config=config/crd/dhcp
 	mkdir -p charts/kudurru-crds/templates
 	@# The chart copies carry helm.sh/resource-policy: keep so that
 	@# `helm uninstall kudurru-crds` never deletes the CRDs and every object (§5.1).
-	for f in config/crd/bases/*.yaml config/crd/audit/*.yaml; do \
+	for f in config/crd/bases/*.yaml config/crd/audit/*.yaml config/crd/dhcp/*.yaml; do \
 		awk '{ print } /^    controller-gen.kubebuilder.io\/version:/ { print "    helm.sh/resource-policy: keep" }' $$f > charts/kudurru-crds/templates/$$(basename $$f); \
 	done
 	$(MAKE) --no-print-directory validator-crds
@@ -454,6 +456,12 @@ docker-debug:
 ## the ko image).
 docker-hostnetwork: docker
 	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork --build-arg KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:$(VERSION) images/hostnetwork
+
+## docker-dhcp: opt-in local DHCP development image with both file
+## capabilities; requires NET_BIND_SERVICE and NET_RAW at runtime.
+## This does not change the capabilities of the published DNS images.
+docker-dhcp: docker
+	docker build -t kudurru:dhcp-development --build-arg KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg DHCP_CAPABILITIES=true images/hostnetwork
 
 ## hostnetwork-check: uid 65532 in the -hostnetwork image binds :53 with
 ## only NET_BIND_SERVICE and no_new_privs where the ip_unprivileged_port_start

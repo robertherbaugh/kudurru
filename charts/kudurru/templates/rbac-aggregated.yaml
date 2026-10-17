@@ -17,7 +17,7 @@ metadata:
     rbac.authorization.k8s.io/aggregate-to-view: "true"
 rules:
   - apiGroups: ["kudurru.io"]
-    resources: ["blocking", "blocklists", "caches", "clientgroups", "clients", "dnsrecordsets", "dnszones", "policies", "settings", "stats"]
+    resources: ["blocking", "blocklists", "caches", "clientgroups", "clients", "dhcpscopes", "dnsrecordsets", "dnszones", "policies", "settings", "stats"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kudurru.io"]
     resources: ["tokens"]
@@ -32,10 +32,10 @@ metadata:
     {{- include "kudurru.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["kudurru.io"]
-    resources: ["audits", "blocking", "blocklists", "caches", "clientgroups", "clients", "dnsrecordsets", "dnszones", "policies", "settings", "stats", "unblockrequests"]
+    resources: ["audits", "blocking", "blocklists", "caches", "clientgroups", "clients", "dhcpscopes", "dnsrecordsets", "dnszones", "policies", "settings", "stats", "unblockrequests"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kudurru.io"]
-    resources: ["querylogs"]
+    resources: ["dhcpleases", "querylogs"]
     verbs: ["get", "list", "watch", "export"]
   - apiGroups: ["kudurru.io"]
     resources: ["tokens"]
@@ -51,7 +51,7 @@ metadata:
     rbac.authorization.k8s.io/aggregate-to-edit: "true"
 rules:
   - apiGroups: ["kudurru.io"]
-    resources: ["dnszones", "querylogs", "settings", "stats"]
+    resources: ["dhcpscopes", "dnszones", "querylogs", "settings", "stats"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kudurru.io"]
     resources: ["clients"]
@@ -65,6 +65,9 @@ rules:
   - apiGroups: ["kudurru.io"]
     resources: ["unblockrequests"]
     verbs: ["get", "list", "watch", "delete", "decide"]
+  - apiGroups: ["kudurru.io"]
+    resources: ["dhcpleases"]
+    verbs: ["get", "list", "watch", "export"]
   - apiGroups: ["kudurru.io"]
     resources: ["caches"]
     verbs: ["get", "list", "watch", "flush"]

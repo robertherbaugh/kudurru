@@ -239,6 +239,7 @@ func FromFlat(flat map[string]any) (*Config, error) {
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("settings: %w", err)
 	}
+	cfg.Upstreams.normalize()
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("settings: %w", err)
 	}

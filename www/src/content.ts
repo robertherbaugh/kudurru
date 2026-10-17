@@ -1,6 +1,6 @@
 // Everything the pages say. Claims here follow CHANGELOG.md (0.1.0), the
 // docs/architecture, docs/deploy and bench/baseline.txt; when a feature moves between releases,
-// change it here and nowhere else.
+// keep site/content and docs in step with the release scope here.
 
 export const SITE_URL = "https://kudurru.io";
 export const DOCS_URL = "https://docs.kudurru.io";
@@ -44,7 +44,7 @@ export const SUPPORT_STARTING_ANNUAL_USD = 1200;
 export const COMMERCIAL_COMPARISON = [
   { what: "Eligible noncommercial use", community: "Yes", core: "Yes", enterprise: "Yes" },
   { what: "Business and government production rights", community: "No", core: "Yes", enterprise: "Yes" },
-  { what: "Authoritative DNS and forwarding resolver", community: "Yes", core: "Yes", enterprise: "Yes" },
+  { what: "Authoritative DNS, forwarding and validating recursive resolver", community: "Yes", core: "Yes", enterprise: "Yes" },
   { what: "Blocking and encrypted DNS", community: "Yes", core: "Yes", enterprise: "Yes" },
   { what: "Multiple nodes", community: `Up to ${LICENSE_FREE_NODES} with a free key`, core: "Licensed count", enterprise: "Licensed count" },
   { what: "OIDC and advanced RBAC", community: "With a free key", core: "No", enterprise: "Included" },
@@ -85,6 +85,20 @@ export const ENTERPRISE_FEATURES = [
     href: "/architecture/configuration-and-store/",
   },
 ] as const;
+
+export const ENTERPRISE_AD_DNS = {
+  release: "v0.2.0",
+  title: "Move DNS off your domain controllers.",
+  body: "The goal is to migrate your Active Directory DNS zones to kudurru and make it the authoritative source, so Windows DNS can be retired on every domain controller. AD DS continues to provide authentication, directory services and Group Policy.",
+  scope: "Initial scope: a single-domain forest, including multiple domain controllers and AD sites.",
+  items: [
+    "Import domain, forest locator (_msdcs) and reverse zones, with a preview before cutover.",
+    "Keep domain controller discovery and LDAP, Kerberos, global catalog and site records current.",
+    "Accept secure DNS registrations from domain controllers, Windows clients and DHCP servers, with ownership rules, aging and scavenging.",
+    "Complete the migration with failover checks and a rollback path, without forwarding the migrated zones back to Windows DNS.",
+  ],
+  href: "/enterprise/#planned-active-directory-dns",
+} as const;
 
 export interface LicenseRow {
   what: string;
@@ -209,7 +223,7 @@ export const STAGES: { id: StageId; does: string }[] = [
   { id: "authoritative", does: "Answers names in local zones from an in-memory tree" },
   { id: "blocking", does: "Evaluates the client's merged policies: lists, services, safe search" },
   { id: "cache", does: "Sharded TTL cache with prefetch, serve-stale and in-flight coalescing" },
-  { id: "upstream", does: "Forwards to the client's upstream group over DoT, DoH, DoQ or Do53" },
+  { id: "upstream", does: "Forwards to the client's upstream group over DoT, DoH, DoQ or Do53, or resolves from the root servers with DNSSEC validation" },
   { id: "log", does: "After the chain returns, the observer records the answer and its reason" },
 ];
 
@@ -442,6 +456,7 @@ export const REGISTERS: Register[] = [
     lead: "Do53 over UDP and TCP, DoT, DoH over HTTP/1.1 and HTTP/2, DoQ and DoH3, each with a certificate reloader, in front of one pipeline.",
     points: [
       "Upstream groups with parallel_best, strict, random and rtt_weighted strategies, conditional forwarding, ECS strip, forward or add",
+      "Opt-in recursive groups: resolution from the root servers with QNAME minimization and DNSSEC validation, no client subnet sent",
       "Sharded TTL cache with prefetch, serve-stale (RFC 8767) and in-flight coalescing; it is restored after a restart",
       "SO_REUSEPORT listeners on every core: 53 % more UDP throughput",
       "Per-prefix rate limits that slip TC=1 before they drop",
@@ -462,6 +477,21 @@ export const REGISTERS: Register[] = [
     ],
     figure: { value: "1.14", unit: "µs", caption: "p99 lookup against 1,000,000 suffix rules, 0 allocations" },
     link: { label: "Lists, groups and policies", href: docs("/guide/admin/05-groups-clients-policies/") },
+  },
+  {
+    id: "dhcp",
+    label: "DHCPv4",
+    title: "Addresses, leases and local names.",
+    lead: "An opt-in DHCPv4 server on Linux/SQLite assigns addresses on direct or trusted-relay subnets, with persistent leases and reservations.",
+    points: [
+      "Dashboard setup stages scope topology and enable/disable changes for restart; live options and reservations use the active scope API",
+      "Multiple subnets, conflict checks, network/boot options and native/dnsmasq lease import",
+      "Optional A/PTR records in a dedicated DHCP domain, with persistent name ownership",
+      "Optional three-node quorum failover commits lease ownership before replying; DHCPv6 is not supported",
+      "Docker requires a local DHCP-capable source build; systemd packages need a capability drop-in",
+    ],
+    figure: { value: "3", caption: "voters in the optional quorum failover group" },
+    link: { label: "DHCPv4 setup and cutover", href: docs("/deploy/dhcp/") },
   },
   {
     id: "identity",
@@ -616,6 +646,8 @@ export const ROADMAP: Release[] = [
     meaning: "The stone itself: one record of authority.",
     items: [
       "Resolver with DoT, DoH, DoQ and DoH3",
+      "Opt-in recursion with DNSSEC validation",
+      "Opt-in DHCPv4 on Linux/SQLite, dashboard setup and three-node quorum failover",
       "Primary and forward zones, AXFR and IXFR out",
       "Blocking with client groups, services and safe search",
       "Dashboard with long-term views, OIDC and RBAC (a free personal key unlocks them)",
@@ -623,12 +655,13 @@ export const ROADMAP: Release[] = [
     ],
   },
   {
-    version: "v0.2",
+    version: "v0.2.0",
     name: "clay copies",
     meaning: "The landholder's copies: secondaries and followers.",
     items: [
       "Secondary and stub zones, RFC 2136",
-      "DNSSEC validation, RPZ feed import",
+      "Active Directory DNS replacement for a single-domain forest",
+      "DNSSEC validation of forwarded answers, RPZ feed import",
       "Cloudflare split-horizon sink, UniFi inventory",
       "Follower-mode HA",
       "dnstap and tracing",
@@ -713,7 +746,7 @@ export const MIGRATIONS = [
     name: "Pi-hole",
     summary: "Keep the lists and local names you trust. Add authoritative zones, encrypted DNS listeners and Kubernetes CRDs.",
     mapping: "Groups become client groups and policies. Adlists become block lists; local DNS records become zone records.",
-    check: "Move DHCP to your router first if Pi-hole serves it. Translate regex extensions and reserve device addresses.",
+    check: "If Pi-hole serves DHCP, configure kudurru's opt-in DHCPv4 on Linux/SQLite or keep DHCP on your router. Preserve leases and reservations before switching. Translate regex extensions and reserve device addresses.",
     source: "https://docs.pi-hole.net/",
   },
   {
@@ -727,9 +760,9 @@ export const MIGRATIONS = [
   {
     slug: "technitium",
     name: "Technitium",
-    summary: "Move primary zones, conditional forwarding and blocking to a Go binary with a dashboard, CLI and Kubernetes API objects.",
+    summary: "Move primary zones, conditional forwarding, blocking and recursive resolution to a Go binary with a dashboard, CLI and Kubernetes API objects.",
     mapping: "Export primary zones as standard zone files. Recreate conditional forwarders, access controls and blocking policies explicitly.",
-    check: "Inventory DNS Apps, recursive resolution, DNSSEC and secondary zones. These need a separate service or a later kudurru release.",
+    check: "Inventory DNS Apps, DNSSEC signing and secondary zones. These need a separate service or a later kudurru release. Recursion with DNSSEC validation is an upstream group mode.",
     source: "https://technitium.com/dns/",
   },
 ] as const;
@@ -737,9 +770,9 @@ export const MIGRATIONS = [
 export const MIGRATION_COMPARISON = [
   { feature: "DNS filtering", pihole: "Hosts, domains and regex; group assignments", adguard: "Adblock DNS rules, allowlists and client settings", technitium: "Allowed/blocked zones and lists; Advanced Blocking app", kudurru: "Hosts, domains, adblock subset and RE2; client-group policies" },
   { feature: "Local names and zones", pihole: "Local DNS and CNAME records", adguard: "DNS rewrites", technitium: "Primary, secondary, stub, forwarder and catalog zones", kudurru: "Primary and forward zones; BIND import/export; AXFR/IXFR out" },
-  { feature: "Resolution", pihole: "Forwards to upstreams; recursion with a separate resolver", adguard: "Forwards to upstreams", technitium: "Full recursive resolver or forwarding", kudurru: "Forwards to named upstream groups; conditional forwarding" },
-  { feature: "DNSSEC", pihole: "Optional validation", adguard: "Requests DNSSEC data from upstreams", technitium: "Validation and authoritative signing", kudurru: "No validation or signing in v0.1.0" },
-  { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Use a separate DHCP server in v0.1.0; built-in support planned for v0.2.0" },
+  { feature: "Resolution", pihole: "Forwards to upstreams; recursion with a separate resolver", adguard: "Forwards to upstreams", technitium: "Full recursive resolver or forwarding", kudurru: "Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding" },
+  { feature: "DNSSEC", pihole: "Optional validation", adguard: "Requests DNSSEC data from upstreams", technitium: "Validation and authoritative signing", kudurru: "Validation in recursive upstream groups; no signing in v0.1.0" },
+  { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Opt-in DHCPv4 on Linux/SQLite; dashboard setup and optional three-node quorum failover; no DHCPv6" },
   { feature: "Encrypted DNS listeners", pihole: "Use a separate proxy", adguard: "DoT, DoH and DoQ", technitium: "DoT, DoH and DoQ", kudurru: "DoT, DoH, DoQ and DoH3" },
   { feature: "Multiple servers", pihole: "Separate instances; external sync tools", adguard: "Separate instances; external sync tools", technitium: "Built-in clustering", kudurru: "Shared Kubernetes store; Compose HA uses shared object files" },
   { feature: "Kubernetes configuration", pihole: "Container configuration; no native CRDs", adguard: "Container configuration; no native CRDs", technitium: "Container configuration; no native CRDs", kudurru: "Native CRDs, Helm and external-dns webhook" },

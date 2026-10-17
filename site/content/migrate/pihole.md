@@ -68,7 +68,7 @@ survive a restart. Complete the validation and cutover checklist afterward.
 | Local DNS and CNAME records | Primary zones and records | Create the containing zone, then copy records |
 | Conditional forwarding | Named upstream groups and suffix rules, or forward zones | Recreate both local-domain and reverse-DNS routes |
 | Temporary blocking pause | Dashboard toggle or `kudurru blocking disable 5m` | Pause is node-local in v0.1.0; check the node you manage |
-| DHCP | No DHCP server; planned for v0.2.0 | Move DHCP service and reservations before retiring Pi-hole |
+| DHCP | Opt-in DHCPv4 on Linux with the SQLite or Kubernetes store; no DHCPv6 | Configure kudurru or another DHCP server and preserve leases and reservations before retiring Pi-hole |
 | DNSSEC validation | No local validation | Retain a validating upstream if required; this does not add validation to kudurru |
 | Pi-hole-specific API integrations | kudurru REST API and CLI | Rewrite integrations; no Pi-hole API compatibility layer in v0.1.0 |
 | Teleporter and historical query database | kudurru object backup and separate logs | Keep the source backup/history separately; neither is directly importable |
@@ -246,7 +246,10 @@ blocking. Do not create a broad public zone merely to override one hostname.
 
 In **DNS** > **Upstreams**, set the `default` group to the upstreams Pi-hole
 used. If Pi-hole used a separate Unbound resolver, you can keep it as an
-upstream. Recreate conditional forwarding for your local suffix and the
+upstream, or set the `default` group's **Mode** to **Recursive**: kudurru
+then resolves from the root servers itself, with QNAME minimization and
+DNSSEC validation, and needs outbound UDP and TCP port 53
+([trade-offs](/start/home/#7-resolve-names-yourself-optional)). Recreate conditional forwarding for your local suffix and the
 correct `in-addr.arpa` / `ip6.arpa` reverse suffixes. Do not forward back to a
 router whose own DNS forwards to kudurru. See
 [zones and upstreams](/guide/admin/07-zones-and-upstreams/).
@@ -257,19 +260,26 @@ query-log privacy and retention in **Settings** before moving real traffic.
 
 ## DHCP handoff
 
-kudurru v0.1.0 has no DHCP server. Built-in DHCP support is planned for
-v0.2.0; the handoff below applies to v0.1.0.
+kudurru v0.1.0 includes an opt-in DHCPv4 server on Linux with either store,
+with dashboard setup, durable leases and reservations, trusted relays and
+optional three-node quorum failover on SQLite. On Kubernetes, one elected
+replica serves clients that your router relays to it. Follow the [DHCPv4 deployment guide](/deploy/dhcp/)
+to prepare it. You can also keep DHCP on your router or another server.
+Keep IPv6 router and DNS advertisements on your router; kudurru does not
+serve DHCPv6.
 
-If Pi-hole serves DHCP, prepare your router or another DHCP server with
+If Pi-hole serves DHCP, prepare kudurru or your chosen DHCP server with
 the same subnet, gateway, reservations and search domain. Account for active
 leases before choosing the new allocation pool; import leases where
-supported or exclude addresses still leased by Pi-hole. Set kudurru as DNS.
+supported or exclude addresses still leased by Pi-hole. kudurru supports
+dnsmasq lease import; recreate reservations separately. Set kudurru as DNS.
 
 Disable Pi-hole's DHCP service before enabling the replacement on the same
 LAN. Keep Pi-hole's DNS running during this handoff. Renew one client's lease
 and confirm its address, gateway, search domain and DNS. Recreate any dynamic
-local names previously derived from Pi-hole leases using the DHCP server's
-DNS integration, conditional forwarding or explicit records.
+local names previously derived from Pi-hole leases using kudurru's optional
+lease A/PTR records in a dedicated DHCP domain, the other DHCP server's DNS
+integration, conditional forwarding or explicit records.
 
 ## Switching over
 

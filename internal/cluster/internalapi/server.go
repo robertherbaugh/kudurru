@@ -245,7 +245,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		if err != nil {
 			_ = srv.Close()
 		}
-		<-errCh
+		if err := <-errCh; !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
 		return nil
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {

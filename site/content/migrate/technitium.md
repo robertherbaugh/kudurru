@@ -7,7 +7,8 @@ weight: 30
 
 Technitium combines authoritative DNS, recursive resolution, blocking, DHCP,
 clustering and DNS Apps. kudurru v0.1.0 covers primary zones, forwarding,
-filtering and a dashboard, with native Kubernetes objects. Start by deciding
+validating recursion, filtering and a dashboard, with native Kubernetes
+objects. Start by deciding
 which Technitium responsibilities can move and which need to stay elsewhere.
 
 ## Import directly through the API
@@ -20,17 +21,26 @@ no backup files or hand-written manifests are needed.
 
 The importer transfers allowed/blocked names (including subdomains), list
 subscriptions, supported default forwarders and unsigned primary zones
-through Technitium's standard zone export API. It preserves supported zone
-query access rules. Use a token with access to Settings, Allowed, Blocked,
-Zones and each zone to migrate; reading zone options also requires the
+through Technitium's standard zone export API. Primary zones in a cluster
+or catalog are imported as independent primary zones. The importer reads
+the catalog's query access mode and ordered network ACL when the member
+inherits them, and preserves a member's explicit override. Catalog membership
+and replication are not migrated. Use a token with access to Settings,
+Allowed, Blocked, Zones, each zone to migrate and any catalog supplying its
+query access policy; reading zone options also requires the
 Zones Modify permission in Technitium. Tokens are used as bearer credentials
 and are never stored by kudurru. The API flow was verified with Technitium
 15.6.1; older versions without bearer-token authentication are not supported.
 
-Disabled and signed zones, non-primary zones, catalog-controlled zones and
-zones containing disabled, expiring or app-specific records are skipped
-with warnings. This avoids enabling disabled records, publishing private
-app data or silently dropping DNSSEC. Zone transfers, NOTIFY, DNS Apps,
+Disabled and signed zones, non-primary zones and zones containing disabled,
+expiring or app-specific records are skipped with warnings. This avoids
+enabling disabled records, publishing private
+app data or silently dropping DNSSEC. A member is also skipped if its
+effective query access policy cannot be read or converted; local defaults
+are never substituted for an unreadable inherited policy. Catalog zones
+themselves remain unsupported. Blank lines and comments beginning with `#`
+in list subscriptions are ignored, including those following an allow-list
+`!` prefix. Zone transfers, NOTIFY, DNS Apps,
 Advanced Blocking profiles, outbound proxies and conditional forwarders require separate
 review. Keep those services on Technitium until their replacements are ready.
 
@@ -62,15 +72,15 @@ interchange format.
 |---|---|---|
 | Primary zones and standard DNS records | Primary `DNSZone` and `DNSRecordSet` | Export zone files, import and compare records |
 | Conditional Forwarder zones / `FWD` behavior | Forward `DNSZone` or suffix-to-upstream-group rule | Recreate forwarding explicitly; `FWD` is not a portable record |
-| Full recursive resolution | Forwarding resolver | Select upstream resolvers, or keep Technitium/Unbound for recursion |
-| DNSSEC validation and signing | Neither implemented | Retain a validating/signing service if required |
+| Full recursive resolution | Upstream group with `mode: recursive` (QNAME minimization) | Set `default` (or a Policy's group) to recursive; allow outbound UDP/TCP 53 |
+| DNSSEC validation and signing | Validation in recursive groups; no signing | Retain a signing service for signed zones; forwarded answers are not validated |
 | Secondary, stub and catalog zones | Deferred | Keep the existing service; do not apply schema-only zone types |
 | Zone transfer and NOTIFY | Outbound AXFR/IXFR, TSIG and NOTIFY | Recreate ACLs, keys and destinations; inbound secondary service is deferred |
 | RFC 2136 dynamic updates | Deferred | Keep the updater's DNS target or change automation to kudurru's API/external-dns webhook |
 | Allowed/blocked zones and URL lists | Allow/block `BlockList` objects and policies | Convert entries and attach lists explicitly |
 | Advanced Blocking DNS App | Client groups, policy lists, schedules, service blocking and safe search | Rebuild supported behavior; app configuration is not imported |
 | `APP`, `ANAME`, split-horizon or other app-specific behavior | No Technitium app runtime; no general per-client answer rewrites | Replace each dependency explicitly before moving affected zones |
-| DHCP | No DHCP server; planned for v0.2.0 | Hand off leases, reservations and DNS updates separately |
+| DHCP | Opt-in DHCPv4 on Linux with the SQLite or Kubernetes store; no DHCPv6 | Configure scopes and reservations, preserve active leases and review lease DNS behavior separately |
 | Clustering | Kubernetes shared store, or file-managed Compose HA | Choose a kudurru deployment; Technitium cluster membership does not transfer |
 | OIDC, LDAP, local users and permissions | Local users, OIDC and scoped roles; no native LDAP | Recreate credentials and grants; OIDC/scoped roles require a key |
 
@@ -187,9 +197,25 @@ upstreams:
 ```
 
 Replace these with your approved resolvers. If you depended on Technitium
-for full recursion, point `default` at a resolver that still provides it.
-An upstream validator can enforce its own DNSSEC policy, but kudurru does
-not validate the returned chain itself.
+for full recursion, make `default` recursive instead and keep the `corp`
+group for the private suffix:
+
+```yaml
+upstreams:
+  groups:
+    default: { mode: recursive, timeout: 4s }   # no servers: resolves from the root, validates DNSSEC
+    corp:
+      servers: ["192.168.50.10:53", "192.168.50.11:53"]
+      strategy: strict
+```
+
+Recursion needs outbound UDP and TCP port 53 to any address. kudurru
+validates DNSSEC only in recursive groups; a forwarding group passes on what
+its upstream returns, so an upstream validator enforces its own policy. In
+either mode, a SERVFAIL that carries a DNSSEC extended DNS error (6 to 12)
+is logged as `dnssec_bogus`. See
+[resolving names yourself](/start/home/#7-resolve-names-yourself-optional)
+for the privacy trade-offs.
 
 Save this as `technitium-forward.yaml` for a private corporate suffix:
 

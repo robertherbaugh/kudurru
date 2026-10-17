@@ -42,7 +42,7 @@
     "document": 4,
     "object": "Zone/wrongkind",
     "message": "kudurru.io/v1alpha1 Zone is not a kudurru.io kind",
-    "hint": "known kinds: BlockList, ClientGroup, DNSRecordSet, DNSZone, Policy, UnblockRequest"
+    "hint": "known kinds: BlockList, ClientGroup, DHCPScope, DNSRecordSet, DNSZone, Policy, UnblockRequest"
   },
   {
     "severity": "error",

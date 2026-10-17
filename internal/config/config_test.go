@@ -277,3 +277,83 @@ objects:
 		}
 	}
 }
+
+// TestRecursiveGroupReplacesDefault: a group defined in the file replaces
+// the built-in default group instead of inheriting its servers.
+func TestRecursiveGroupReplacesDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kudurru.yaml")
+	if err := os.WriteFile(path, []byte(`
+listeners:
+  dns: [{ address: "127.0.0.1:5353" }]
+upstreams:
+  groups:
+    default: { mode: recursive }
+    lan: { servers: ["192.168.1.1"] }
+  conditional: { "lan.": lan }
+  recursion: { ipv6: off }
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := cfg.Upstreams.Groups["default"]
+	if d.Mode != UpstreamModeRecursive || len(d.Servers) != 0 || d.Strategy != "" || d.Timeout.Std() != DefaultRecursiveTimeout {
+		t.Fatalf("default group %+v", d)
+	}
+	// A forwarding group that names only its servers shows the strategy
+	// and timeout it runs with, as before groups were replaced whole.
+	if lan := cfg.Upstreams.Groups["lan"]; lan.Strategy != DefaultUpstreamStrategy || lan.Timeout.Std() != DefaultUpstreamTimeout {
+		t.Fatalf("lan group %+v", lan)
+	}
+	r := cfg.Upstreams.Recursion
+	if !r.DNSSEC || !r.QNAMEMinimization || r.IPv6 != "off" {
+		t.Fatalf("recursion defaults %+v", r)
+	}
+
+	// Without a default group of its own the file keeps the built-in one.
+	if err := os.WriteFile(path, []byte("listeners: { dns: [{ address: \"127.0.0.1:5353\" }] }\nupstreams: { groups: { lan: { mode: recursive } } }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Upstreams.Groups["default"].Servers; len(got) != 2 {
+		t.Fatalf("built-in default group lost: %v", got)
+	}
+	for _, bad := range []string{
+		"upstreams: { groups: { default: { mode: recursive, servers: [\"1.1.1.1\"] } } }",
+		"upstreams: { groups: { default: { mode: forward } } }",
+		"upstreams: { groups: { default: { mode: iterative } } }",
+		"upstreams: { recursion: { trustAnchors: [\"not a DS\"] } }",
+		"upstreams: { recursion: { ipv6: sometimes } }",
+	} {
+		if err := os.WriteFile(path, []byte("listeners: { dns: [{ address: \"127.0.0.1:5353\" }] }\n"+bad+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(path, nil); err == nil {
+			t.Errorf("accepted %s", bad)
+		}
+	}
+}
+
+// TestMinimalGroupKeepsDefaults: a file group with only servers loads with
+// the default strategy and timeout, as it did before groups were replaced
+// whole (review of PR #73).
+func TestMinimalGroupKeepsDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kudurru.yaml")
+	if err := os.WriteFile(path, []byte("listeners: { dns: [{ address: \"127.0.0.1:5353\" }] }\nupstreams: { groups: { default: { servers: [\"8.8.8.8\"] } } }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := cfg.Upstreams.Groups["default"]
+	if d.Strategy != "parallel_best" || d.Timeout.Std() != 2*time.Second || len(d.Servers) != 1 {
+		t.Fatalf("default group %+v", d)
+	}
+}

@@ -113,6 +113,9 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 		}
 	}
 	ev.ReplyType = querylog.ReplyNone
+	if resp != nil {
+		ev.DNSSEC = querylog.DNSSECState(resp.DNSSEC) // same values
+	}
 	if resp != nil && resp.Msg != nil {
 		ev.Flags.TC = resp.Msg.Truncated
 		ev.Flags.AD = resp.Msg.AuthenticatedData

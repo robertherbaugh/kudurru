@@ -124,7 +124,12 @@ func TestBlockPageEndToEnd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- srv.Run(ctx) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run: %v", err)
+		}
+	})
 	httpAddr, _ := srv.Addrs()
 	_, port, _ := net.SplitHostPort(httpAddr)
 

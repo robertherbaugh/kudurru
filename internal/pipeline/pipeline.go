@@ -137,6 +137,10 @@ type Response struct {
 	List      string // matched list for the UI "why" row
 	Rule      string // matched rule text
 	Cacheable bool
+	// DNSSEC is the validation state of the answer: set by recursive
+	// upstream groups (and kept by the cache); unknown for everything
+	// kudurru did not validate.
+	DNSSEC DNSSEC
 	// Transfer, when set, is a multi-message answer (an AXFR or IXFR
 	// stream, RFC 5936 §2.2). Stream transports (TCP, DoT) write every
 	// message it yields, in order, instead of Msg; Msg is the first of
@@ -144,6 +148,19 @@ type Response struct {
 	// Stages set it only for requests that arrived over TCP or DoT.
 	Transfer iter.Seq[*dns.Msg]
 }
+
+// DNSSEC is the validation state of an answer (RFC 4033 §5). The values
+// match querylog.DNSSECState and recursor.Security.
+type DNSSEC uint8
+
+// DNSSEC states.
+const (
+	DNSSECUnknown DNSSEC = iota
+	DNSSECSecure
+	DNSSECInsecure
+	DNSSECBogus
+	DNSSECIndeterminate
+)
 
 // Next calls the rest of the chain.
 type Next func(*Request) (*Response, error)

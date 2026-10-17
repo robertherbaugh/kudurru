@@ -43,6 +43,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/dhcp"
+	"github.com/robertherbaugh/kudurru/internal/dhcpsetup"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/health"
 	"github.com/robertherbaugh/kudurru/internal/objects"
@@ -148,6 +150,17 @@ type CentralState interface {
 // every other dependency switches its routes to 501/503 when absent, so
 // tests and partial wirings work.
 type Options struct {
+	// DHCP is the node-local service; it owns sockets and shares its stores with management.
+	DHCP *dhcp.Service
+	// DHCPSetup persists desired node-local setup; saves require a restart to activate.
+	DHCPSetup *dhcpsetup.Manager
+	// DHCPSetupError reports failure to activate saved UI setup without disabling its API.
+	DHCPSetupError string
+	// DHCPKube is the DHCP service of the kube store (DHCPScope and
+	// DHCPLease objects); when set, the DHCP routes use it instead of DHCP
+	// and DHCPSetup.
+	DHCPKube DHCPCluster
+
 	// Store is the object store; Validator checks every object write
 	// (ValidateUnstructured first, D70).
 	Store     store.Store
@@ -497,7 +510,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		err := srv.Shutdown(shutdownCtx)
-		<-errCh
+		if serveErr := <-errCh; !errors.Is(serveErr, http.ErrServerClosed) {
+			return errors.Join(err, serveErr)
+		}
 		return err
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {

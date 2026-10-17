@@ -93,6 +93,7 @@ a key that covers the `edge` feature.** `kudurru license status` and
 | Single-node cluster with dnsdist | `edge.enabled=true`, `edge.mode=sidecar` |
 | Bare-metal VIP with keepalived | `edge.enabled=true`, `vip.provider=keepalived`, `vip.address=10.0.0.53/24`, `vip.keepalived.interface=eth0` |
 | DNS before the control plane | `priorityClassName=system-cluster-critical`, `persistence.local.enabled=true` |
+| DHCPv4 for relayed clients ([DHCPv4](#dhcpv4)) | `dhcp.enabled=true`, `dhcp.serverAddress=10.200.200.67` |
 
 ### Dashboard sticky sessions with Traefik
 
@@ -298,8 +299,8 @@ vip:
     interface: eth1          # virtual addresses
     vrrpInterface: eth0      # advertisements and unicast source discovery
     vips:
-      - {name: dns-a, address: 10.35.10.53/24, vrid: 53}
-      - {name: dns-b, address: 10.35.10.54/24, vrid: 54}
+      - {name: dns-a, address: 192.0.2.53/24, vrid: 53}
+      - {name: dns-b, address: 192.0.2.54/24, vrid: 54}
 ```
 
 The list replaces `vip.address` and `vip.keepalived.vrid`; each entry may
@@ -348,6 +349,19 @@ the edge kudurru terminates TLS with the `kubernetes.io/tls` Secret named by
 `tls.secretName`; with the edge dnsdist terminates it with
 `edge.tlsSecretName`.
 
+### DHCPv4
+
+In `mode: kubernetes`, `dhcp.enabled=true` with `dhcp.serverAddress` (the
+LoadBalancer address the router's DHCP relay sends to) serves the
+`DHCPScope` objects from one replica, the holder of the `kudurru-dhcp`
+Lease, and keeps leases as `DHCPLease` objects. Upgrade the `kudurru-crds`
+chart of the release first; it adds both CRDs. The chart also installs a
+cluster-scoped ValidatingAdmissionPolicy that limits the pod-label patches of
+kudurru's ServiceAccount. Steps, relay setup and
+scopes from Git: [DHCPv4 on Kubernetes](dhcp.md#kubernetes). In
+`mode: standalone`, configure DHCP with `config.node.dhcp` as on any SQLite
+node.
+
 ## Configuration
 
 `config.node` (node keys: listeners, store, log, tsigKeys, notify) and
@@ -363,6 +377,7 @@ config:
     upstreams:
       groups:
         default: { servers: ["tls://1.1.1.1", "tls://9.9.9.9"], strategy: parallel_best, timeout: 2s }
+        # default: { mode: recursive }   # resolve from the root servers and validate DNSSEC instead
       conditional: { "corp.example.": internal }
     blocking: { defaultResponse: nxdomain }
 ```
@@ -438,7 +453,11 @@ hostNetwork daemonset mode), the internal listener :8082 only from kudurru
 and edge pods, the API from `networkPolicy.apiFrom` (default: everyone),
 metrics from `networkPolicy.metricsFrom`, probes on :8081, and with
 `blockPage.enabled` the block page ports from everyone. Egress is not
-restricted.
+restricted. If your cluster restricts egress with its own policies (a
+default-deny NetworkPolicy, a CNI egress gateway or firewall), allow the
+kudurru pods UDP and TCP 53 to the upstream servers, or to any address
+(`0.0.0.0/0` and `::/0`) when an upstream group is recursive
+(`mode: recursive`).
 
 ## Block page
 

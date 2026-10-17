@@ -209,12 +209,17 @@ func (s *Stage) fetch(k cache.Key, req *pipeline.Request, next pipeline.Next) <-
 }
 
 // refreshed reports whether a fetch produced an answer (as opposed to every
-// upstream failing).
+// upstream failing, or the new answer failing DNSSEC validation, when
+// validated stale data is the better reply).
 func refreshed(resp *pipeline.Response, err error) bool {
 	if err != nil || resp == nil || resp.Msg == nil {
 		return false
 	}
-	return resp.Status != pipeline.StatusServfailUpstream && resp.Status != pipeline.StatusTimeoutUpstream
+	switch resp.Status {
+	case pipeline.StatusServfailUpstream, pipeline.StatusTimeoutUpstream, pipeline.StatusDNSSECBogus:
+		return false
+	}
+	return true
 }
 
 // wait delivers a fetch result to req, or gives up when the client does.
@@ -316,13 +321,32 @@ func (s *Stage) answer(req *pipeline.Request, k cache.Key, l cache.Lookup, ecsBi
 	m.Response = true
 	m.Authoritative = false
 	m.RecursionAvailable = true
+	sec := storedDNSSEC(m)
 	upstream.FinishReply(req.Msg, m, ecsBits)
 	status := pipeline.StatusCached
 	if stale {
 		status = pipeline.StatusCachedStale
 		upstream.AddEDE(m, dns.ExtendedErrorCodeStaleAnswer, "")
 	}
-	return &pipeline.Response{Msg: m, Status: status}
+	return &pipeline.Response{Msg: m, Status: status, DNSSEC: sec}
+}
+
+// dnssecOption is the private-use EDNS option code (RFC 6891 §9) under
+// which a stored answer keeps its DNSSEC state.
+const dnssecOption = 65001
+
+// storedDNSSEC reads the DNSSEC state store kept in m.
+func storedDNSSEC(m *dns.Msg) pipeline.DNSSEC {
+	opt := m.IsEdns0()
+	if opt == nil {
+		return pipeline.DNSSECUnknown
+	}
+	for _, o := range opt.Option {
+		if l, ok := o.(*dns.EDNS0_LOCAL); ok && l.Code == dnssecOption && len(l.Data) == 1 && l.Data[0] <= byte(pipeline.DNSSECIndeterminate) {
+			return pipeline.DNSSEC(l.Data[0])
+		}
+	}
+	return pipeline.DNSSECUnknown
 }
 
 // store packs a cacheable response without its OPT record, TTLs clamped.
@@ -354,6 +378,13 @@ func (s *Stage) store(k cache.Key, resp *pipeline.Response) {
 	}
 	if ttl <= 0 {
 		return
+	}
+	if resp.DNSSEC != pipeline.DNSSECUnknown {
+		// Kept in a private EDNS option of the stored copy, so cached
+		// answers report it too; FinishReply drops it on the way out.
+		opt := &dns.OPT{Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeOPT}}
+		opt.Option = []dns.EDNS0{&dns.EDNS0_LOCAL{Code: dnssecOption, Data: []byte{byte(resp.DNSSEC)}}}
+		out.Extra = append(out.Extra, opt)
 	}
 	wire, err := out.Pack()
 	if err != nil {

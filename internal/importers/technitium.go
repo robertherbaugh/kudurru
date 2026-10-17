@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -54,6 +55,13 @@ type techZone struct {
 	DNSSECStatus string `json:"dnssecStatus"`
 }
 
+type techZoneOptions struct {
+	QueryAccess                string   `json:"queryAccess"`
+	QueryACL                   []string `json:"queryAccessNetworkACL"`
+	Catalog                    string   `json:"catalog"`
+	OverrideCatalogQueryAccess *bool    `json:"overrideCatalogQueryAccess"`
+}
+
 func (c *sourceClient) technitium(ctx context.Context, req MigrationRequest, p *Plan) error {
 	c.headers.Set("Authorization", "Bearer "+req.Credential)
 	var zones struct {
@@ -90,10 +98,14 @@ func (c *sourceClient) technitium(ctx context.Context, req MigrationRequest, p *
 	pol := v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, BlockMode: mode, BlockTTL: metav1.Duration{Duration: time.Duration(settings.BlockingAnswerTTL) * time.Second}}
 	subscriptions := map[string][]v1alpha1.ListSource{}
 	for i, u := range settings.BlockListURLs {
+		u = strings.TrimSpace(u)
 		listMode := "block"
 		if strings.HasPrefix(u, "!") {
 			listMode = "allow"
-			u = strings.TrimPrefix(u, "!")
+			u = strings.TrimSpace(strings.TrimPrefix(u, "!"))
+		}
+		if u == "" || strings.HasPrefix(u, "#") {
+			continue
 		}
 		subscriptions[listMode] = append(subscriptions[listMode], v1alpha1.ListSource{Name: fmt.Sprintf("subscription-%d", i+1), URL: u, Format: "auto", Subdomains: true})
 	}
@@ -143,6 +155,9 @@ func (c *sourceClient) technitium(ctx context.Context, req MigrationRequest, p *
 	} else {
 		p.Warnings = append(p.Warnings, "Technitium used full recursion; kudurru will use its configured upstream resolvers.")
 	}
+	// A nil entry caches a failed read, so one inaccessible catalog does not
+	// cause another request for every member. Never fall back to local defaults.
+	catalogs := map[string]*techZoneOptions{}
 	for _, z := range zones.Zones {
 		if z.Internal {
 			continue
@@ -159,7 +174,7 @@ func (c *sourceClient) technitium(ctx context.Context, req MigrationRequest, p *
 			p.Warnings = append(p.Warnings, fmt.Sprintf("Skipped signed zone %s: prepare a DNSSEC transition before moving authority.", z.Name))
 			continue
 		}
-		if err := c.techPrimary(ctx, req, p, z); err != nil {
+		if err := c.techPrimary(ctx, req, p, z, catalogs); err != nil {
 			return err
 		}
 	}
@@ -195,7 +210,41 @@ func techServers(in []string, protocol string) ([]string, bool) {
 	return out, true
 }
 
-func (c *sourceClient) techPrimary(ctx context.Context, req MigrationRequest, p *Plan, z techZone) error {
+func (c *sourceClient) techPrimary(ctx context.Context, req MigrationRequest, p *Plan, z techZone, catalogs map[string]*techZoneOptions) error {
+	var opts techZoneOptions
+	if err := c.tech(ctx, "/zones/options/get", url.Values{"zone": {z.Name}}, &opts); err != nil {
+		return err
+	}
+	query := &opts
+	if opts.Catalog != "" {
+		if opts.OverrideCatalogQueryAccess == nil {
+			p.Warnings = append(p.Warnings, fmt.Sprintf("Skipped zone %s: catalog query-access inheritance is unknown.", z.Name))
+			return nil
+		}
+		if !*opts.OverrideCatalogQueryAccess {
+			catalog, seen := catalogs[opts.Catalog]
+			if !seen {
+				catalog = &techZoneOptions{}
+				if err := c.tech(ctx, "/zones/options/get", url.Values{"zone": {opts.Catalog}}, catalog); err != nil {
+					catalog = nil
+				}
+				catalogs[opts.Catalog] = catalog
+			}
+			if catalog == nil {
+				p.Warnings = append(p.Warnings, fmt.Sprintf("Skipped zone %s: could not read query access from catalog %s; the source token needs access to its zone options.", z.Name, opts.Catalog))
+				return nil
+			}
+			// Member options report the local policy, even when the catalog's
+			// policy is effective. Copy the inherited ACL in its original order.
+			query = catalog
+		}
+	}
+	access := map[string]v1alpha1.AccessMode{"Deny": "deny", "Allow": "allow", "AllowOnlyPrivateNetworks": "allowOnlyPrivate", "AllowOnlyForPrivateNetworks": "allowOnlyPrivate", "AllowOnlyPrivate": "allowOnlyPrivate", "AllowOnlyZoneNameServers": "allowOnlyZoneNameServers", "UseSpecifiedNetworkACL": "useNetworkACL", "AllowZoneNameServersAndUseSpecifiedNetworkACL": "zoneNameServersAndACL", "UseZoneNameServersAndSpecifiedNetworkACL": "zoneNameServersAndACL"}
+	a, ok := access[query.QueryAccess]
+	if !ok {
+		p.Warnings = append(p.Warnings, fmt.Sprintf("Skipped zone %s: its query access policy needs manual conversion.", z.Name))
+		return nil
+	}
 	q := url.Values{"zone": {z.Name}, "domain": {z.Name}, "listZone": {"true"}}
 	var records struct {
 		Records []struct {
@@ -222,21 +271,13 @@ func (c *sourceClient) techPrimary(ctx context.Context, req MigrationRequest, p 
 	if err != nil {
 		return fmt.Errorf("source Technitium zone %s: could not parse the standard zone export", z.Name)
 	}
-	var opts struct {
-		QueryAccess string   `json:"queryAccess"`
-		QueryACL    []string `json:"queryAccessNetworkACL"`
-		Catalog     string   `json:"catalog"`
+	if opts.Catalog != "" {
+		const warning = "Catalog member zones are imported as independent primary zones with their effective query access rules. Catalog membership and replication are not migrated."
+		if !slices.Contains(p.Warnings, warning) {
+			p.Warnings = append(p.Warnings, warning)
+		}
 	}
-	if err := c.tech(ctx, "/zones/options/get", url.Values{"zone": {z.Name}}, &opts); err != nil {
-		return err
-	}
-	access := map[string]v1alpha1.AccessMode{"Deny": "deny", "Allow": "allow", "AllowOnlyPrivateNetworks": "allowOnlyPrivate", "AllowOnlyForPrivateNetworks": "allowOnlyPrivate", "AllowOnlyPrivate": "allowOnlyPrivate", "AllowOnlyZoneNameServers": "allowOnlyZoneNameServers", "UseSpecifiedNetworkACL": "useNetworkACL", "AllowZoneNameServersAndUseSpecifiedNetworkACL": "zoneNameServersAndACL", "UseZoneNameServersAndSpecifiedNetworkACL": "zoneNameServersAndACL"}
-	a, ok := access[opts.QueryAccess]
-	if !ok || opts.Catalog != "" {
-		p.Warnings = append(p.Warnings, fmt.Sprintf("Skipped zone %s: its query access or catalog policy needs manual conversion.", z.Name))
-		return nil
-	}
-	im.Spec.Policy = v1alpha1.ZonePolicy{QueryAccess: a, QueryACL: opts.QueryACL, ZoneTransfer: "deny", Notify: "none"}
+	im.Spec.Policy = v1alpha1.ZonePolicy{QueryAccess: a, QueryACL: query.QueryACL, ZoneTransfer: "deny", Notify: "none"}
 	p.zone("technitium", req.Namespace, z.Name, im)
 	return nil
 }

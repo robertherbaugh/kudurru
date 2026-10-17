@@ -17,6 +17,7 @@ validator in Docker mode, enforce.
 |---|---|---|---|
 | [BlockList](blocklist.md) | Namespaced | `blocklist` | BlockList is a named, refreshable set of block or allow entries. |
 | [ClientGroup](clientgroup.md) | Namespaced | `cg` | ClientGroup names a set of clients so that Policies can target them. |
+| [DHCPScope](dhcpscope.md) | Cluster | `dhcpscope` | DHCPScope is a DHCPv4 address pool served by kudurru in Kubernetes. |
 | [DNSRecordSet](dnsrecordset.md) | Namespaced | `rrset` | DNSRecordSet is a set of records that belong to a DNSZone. |
 | [DNSZone](dnszone.md) | Cluster | `zone` | DNSZone is a recorded grant of authority over a name space: the stone kept in the temple. |
 | [Policy](policy.md) | Namespaced | `pol` | Policy applies lists, schedules and resolver settings to client groups. |

@@ -1,7 +1,8 @@
 // Upstream configuration helpers. There is no upstream API: groups,
-// bootstrap resolvers, conditional forwarding and ECS are the cluster
-// settings keys upstreams.* (internal/config, internal/upstream), read with
-// GET /settings and written with PATCH /settings as JSON merge patches.
+// bootstrap resolvers, conditional forwarding, ECS and the recursive
+// resolver's options are the cluster settings keys upstreams.*
+// (internal/config, internal/upstream), read with GET /settings and written
+// with PATCH /settings as JSON merge patches.
 import { useQuery } from '@tanstack/react-query';
 import { qk, useApi, useCan } from '../api/context';
 import type { SettingsBody } from '../api/types';
@@ -11,6 +12,36 @@ import { hostError, isIPv4, isIPv6 } from './rr';
 
 /** The group used when no policy, zone or conditional rule names one; it must exist. */
 export const DEFAULT_GROUP = 'default';
+
+/** How a group resolves: forward to its servers (the default) or recursively from the root servers. */
+export type UpstreamMode = 'forward' | 'recursive';
+
+export const UPSTREAM_MODES = [
+  { value: 'forward', label: 'Forward', help: 'Send queries to the servers you list, such as your router, Cloudflare or Quad9.' },
+  {
+    value: 'recursive',
+    label: 'Recursive',
+    help: 'kudurru resolves names itself, starting from the root servers, so no single provider sees every name, and validates DNSSEC. It needs outbound DNS (UDP and TCP port 53) to the internet.',
+  },
+] as const;
+
+/** The one server of a recursive group in GET /stats/upstreams, metrics and the query log (<group>/recursive). */
+export const RECURSIVE_SERVER = 'recursive';
+
+/** The timeout a group gets when it sets none: per server when forwarding, per lookup when recursive. */
+export function defaultTimeout(mode: UpstreamMode): string {
+  return mode === 'recursive' ? '4s' : '2s';
+}
+
+/** The group's timeout, or its mode's default. */
+export function timeoutOf(g: UpstreamGroupConfig): string {
+  return g.timeout || defaultTimeout(g.mode);
+}
+
+/** The server entries health and traffic are reported for: the configured servers, or the recursive resolver. */
+export function serverEntries(g: UpstreamGroupConfig): string[] {
+  return g.mode === 'recursive' ? [RECURSIVE_SERVER] : g.servers;
+}
 
 export const STRATEGIES = [
   { value: 'parallel_best', label: 'Parallel best', help: 'Race two healthy servers and take the first usable answer (default).' },
@@ -31,16 +62,33 @@ export const ECS_MODES = [
 ] as const;
 
 export interface UpstreamGroupConfig {
+  mode: UpstreamMode;
   servers: string[];
   strategy: string;
   timeout: string;
 }
+
+/** upstreams.recursion: options of every recursive group. */
+export interface RecursionConfig {
+  dnssec: boolean;
+  qnameMinimization: boolean;
+  ipv6: string;
+  trustAnchors: string[];
+  rootHints: string[];
+}
+
+export const RECURSION_IPV6 = [
+  { value: 'auto', label: 'Auto', help: 'Use IPv6 when this host has an IPv6 route to the root servers.' },
+  { value: 'on', label: 'On', help: 'Always ask IPv6 name servers too.' },
+  { value: 'off', label: 'Off', help: 'Ask name servers over IPv4 only.' },
+] as const;
 
 export interface UpstreamsConfig {
   groups: Record<string, UpstreamGroupConfig>;
   bootstrap: string[];
   conditional: Record<string, string>;
   ecs: { mode: string; ipv4Prefix: number; ipv6Prefix: number };
+  recursion: RecursionConfig;
 }
 
 function strings(v: unknown): string[] {
@@ -58,6 +106,7 @@ export function upstreamsOf(body: SettingsBody | undefined): UpstreamsConfig {
   for (const [name, g] of Object.entries(record(u.groups))) {
     const r = record(g);
     groups[name] = {
+      mode: r.mode === 'recursive' ? 'recursive' : 'forward',
       servers: strings(r.servers),
       strategy: typeof r.strategy === 'string' ? r.strategy : '',
       timeout: typeof r.timeout === 'string' ? r.timeout : '',
@@ -66,6 +115,7 @@ export function upstreamsOf(body: SettingsBody | undefined): UpstreamsConfig {
   const conditional: Record<string, string> = {};
   for (const [k, v] of Object.entries(record(u.conditional))) if (typeof v === 'string') conditional[k] = v;
   const ecs = record(u.ecs);
+  const rec = record(u.recursion);
   return {
     groups,
     bootstrap: strings(u.bootstrap),
@@ -75,7 +125,25 @@ export function upstreamsOf(body: SettingsBody | undefined): UpstreamsConfig {
       ipv4Prefix: typeof ecs.ipv4Prefix === 'number' ? ecs.ipv4Prefix : 24,
       ipv6Prefix: typeof ecs.ipv6Prefix === 'number' ? ecs.ipv6Prefix : 56,
     },
+    recursion: {
+      dnssec: rec.dnssec !== false,
+      qnameMinimization: rec.qnameMinimization !== false,
+      ipv6: typeof rec.ipv6 === 'string' && rec.ipv6 ? rec.ipv6 : 'auto',
+      trustAnchors: strings(rec.trustAnchors),
+      rootHints: strings(rec.rootHints),
+    },
   };
+}
+
+/**
+ * The merge patch value that saves a group as shown: a recursive group
+ * drops its servers and strategy (the server refuses servers in recursive
+ * mode), a forwarding group drops the mode, so switching either way never
+ * leaves the other mode's fields behind.
+ */
+export function groupPatch(g: UpstreamGroupConfig): Record<string, unknown> {
+  if (g.mode === 'recursive') return { mode: 'recursive', servers: null, strategy: null, timeout: g.timeout };
+  return { mode: null, servers: g.servers.map((s) => s.trim()).filter(Boolean), strategy: g.strategy, timeout: g.timeout };
 }
 
 /** Group names, "default" first. */

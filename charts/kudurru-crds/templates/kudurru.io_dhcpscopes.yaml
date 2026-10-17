@@ -1,0 +1,351 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+    helm.sh/resource-policy: keep
+  name: dhcpscopes.kudurru.io
+spec:
+  group: kudurru.io
+  names:
+    kind: DHCPScope
+    listKind: DHCPScopeList
+    plural: dhcpscopes
+    shortNames:
+    - dhcpscope
+    singular: dhcpscope
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.subnet
+      name: SUBNET
+      type: string
+    - jsonPath: .status.activeLeases
+      name: LEASES
+      type: integer
+    - jsonPath: .status.servingPod
+      name: SERVING
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: READY
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          DHCPScope is a DHCPv4 address pool served by kudurru in Kubernetes. Leases
+          are DHCPLease objects (dhcp.kudurru.io); one replica allocates at a time.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              DHCPScopeSpec is one DHCPv4 address pool and the options its clients
+              receive. Clients reach kudurru through the trusted relays; the server
+              address clients see is a node setting (dhcp.serverIP), shared by every
+              scope.
+            properties:
+              bootFile:
+                maxLength: 128
+                type: string
+              bootProfiles:
+                items:
+                  description: |-
+                    DHCPBootProfile selects boot information by client architecture
+                    (option 93).
+                  properties:
+                    architecture:
+                      format: int32
+                      maximum: 65535
+                      minimum: 0
+                      type: integer
+                    bootFile:
+                      maxLength: 128
+                      type: string
+                    bootServer:
+                      maxLength: 15
+                      type: string
+                    bootServerName:
+                      maxLength: 64
+                      type: string
+                  required:
+                  - architecture
+                  type: object
+                maxItems: 32
+                type: array
+              bootServer:
+                maxLength: 15
+                type: string
+              bootServerName:
+                maxLength: 64
+                type: string
+              classlessRoutes:
+                items:
+                  description: DHCPClasslessRoute is one RFC 3442 classless static
+                    route (option 121).
+                  properties:
+                    destination:
+                      maxLength: 18
+                      type: string
+                    router:
+                      maxLength: 15
+                      type: string
+                  required:
+                  - destination
+                  - router
+                  type: object
+                maxItems: 32
+                type: array
+              conflictDetection:
+                description: |-
+                  ConflictDetection probes a new address before offering it: icmp
+                  (default; needs NET_RAW) or disabled.
+                enum:
+                - auto
+                - icmp
+                - disabled
+                type: string
+              dnsServers:
+                description: DNSServers are the IPv4 DNS servers advertised to clients.
+                items:
+                  maxLength: 15
+                  type: string
+                maxItems: 63
+                minItems: 1
+                type: array
+              dnsTTL:
+                default: 30s
+                description: |-
+                  DNSTTL is the TTL of those records, from 1s to 1h, clamped to the
+                  remaining lease time.
+                type: string
+              domainName:
+                description: |-
+                  DomainName is the client domain, also the domain of local DNS records
+                  when registerDNS is set.
+                maxLength: 253
+                type: string
+              domainSearch:
+                items:
+                  maxLength: 253
+                  type: string
+                maxItems: 32
+                type: array
+              leaseDuration:
+                default: 12h
+                description: LeaseDuration is in whole seconds, from one minute to
+                  30 days.
+                type: string
+              ntpServers:
+                items:
+                  maxLength: 15
+                  type: string
+                maxItems: 63
+                type: array
+              probeTimeout:
+                description: ProbeTimeout bounds the ICMP probe; default 200ms.
+                type: string
+              rangeEnd:
+                maxLength: 15
+                type: string
+              rangeStart:
+                description: RangeStart and RangeEnd bound the dynamic pool, inclusive.
+                maxLength: 15
+                type: string
+              registerDNS:
+                description: |-
+                  RegisterDNS publishes A and PTR records for bound leases on every
+                  replica.
+                type: boolean
+              reservations:
+                description: Reservations assign fixed addresses to MAC addresses.
+                items:
+                  description: |-
+                    DHCPReservation assigns an address, and optionally a hostname, to one
+                    Ethernet MAC address.
+                  properties:
+                    hostname:
+                      maxLength: 253
+                      type: string
+                    ip:
+                      maxLength: 15
+                      type: string
+                    mac:
+                      maxLength: 17
+                      type: string
+                  required:
+                  - ip
+                  - mac
+                  type: object
+                maxItems: 4096
+                type: array
+              router:
+                description: Router is the default gateway advertised to clients.
+                maxLength: 15
+                type: string
+              subnet:
+                description: |-
+                  Subnet is the client IPv4 subnet in canonical CIDR form; it must not
+                  overlap another scope.
+                maxLength: 18
+                type: string
+              trustedRelays:
+                description: |-
+                  TrustedRelays are the relays allowed to forward this subnet's
+                  clients. At least one is required.
+                items:
+                  description: |-
+                    DHCPTrustedRelay authorizes one DHCP relay: the exact source address and
+                    gateway address (giaddr) of its packets for this subnet.
+                  properties:
+                    gatewayIP:
+                      description: |-
+                        GatewayIP is the giaddr the relay writes for this subnet; it is never
+                        allocated.
+                      maxLength: 15
+                      type: string
+                    linkSelection:
+                      description: |-
+                        LinkSelection is the exact RFC 3527 link selection address the relay
+                        sends, inside this subnet; empty refuses the extension.
+                      maxLength: 15
+                      type: string
+                    serverIdentifier:
+                      description: |-
+                        ServerIdentifier is the exact RFC 5107 server identifier override the
+                        relay sends; empty refuses the extension.
+                      maxLength: 15
+                      type: string
+                    sourceIP:
+                      description: |-
+                        SourceIP is the IPv4 source address of the relay's packets as kudurru
+                        receives them (the LoadBalancer Service must preserve it).
+                      maxLength: 15
+                      type: string
+                    sourcePort:
+                      description: |-
+                        SourcePort is the relay's UDP source port; zero means 67. An
+                        alternate port requires the RFC 8357 relay port suboption.
+                      format: int32
+                      maximum: 65535
+                      minimum: 0
+                      type: integer
+                  required:
+                  - gatewayIP
+                  - sourceIP
+                  type: object
+                maxItems: 64
+                minItems: 1
+                type: array
+            required:
+            - dnsServers
+            - rangeEnd
+            - rangeStart
+            - router
+            - subnet
+            - trustedRelays
+            type: object
+          status:
+            description: DHCPScopeStatus is written by the replica that serves DHCP.
+            properties:
+              activeLeases:
+                description: ActiveLeases counts bound leases.
+                type: integer
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              conflictingLeases:
+                description: |-
+                  ConflictingLeases counts live leases this spec no longer allows; they
+                  are not renewed and end at expiry.
+                type: integer
+              observedGeneration:
+                format: int64
+                type: integer
+              servingPod:
+                description: ServingPod is the replica that holds the DHCP allocator
+                  term.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

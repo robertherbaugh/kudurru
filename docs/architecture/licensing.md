@@ -156,7 +156,7 @@ the key form link to them. The public page is [kudurru.io/license](https://kudur
 key" form sends a personal request and a business request (with the selected
 Commercial Core or Enterprise edition) to the license server, and opens a mail
 to hello@kudurru.io for a business request the server cannot take
-(`www/README.md`, "The Request a key form"; D170), and the
+(`www/README.md`, "The Request a key form"; D181), and the
 administrator guide has a chapter on it (`docs/guide/admin/13-license.md`).
 
 ## Test builds
@@ -175,7 +175,7 @@ Keys are issued by the license portal, `license-server/` (D165): license
 admins issue, renew, change and withdraw licenses there after an OIDC
 sign-in, customers download their keys, and the kudurru.io form requests
 free personal keys and sends business requests, which license admins answer
-on its Requests page (D170). It signs with the same key and in the same format as
+on its Requests page (D181). It signs with the same key and in the same format as
 `hack/licensegen`, and no node ever contacts it (D163). How it works:
 `license-server/docs/architecture.md`; how to run it:
 `license-server/README.md`.

@@ -12,8 +12,8 @@ describe('NodesPage', () => {
       edge: { enabled: true, state: 'degraded', message: 'some supervisors are not ready' },
       vip: { enabled: true, state: 'running' }, backends: [], node: 'kudurru-0',
       supervisors: [{ node: 'worker-a', edge: { enabled: true, state: 'unavailable' }, vip: { enabled: true, state: 'running' } }],
-      vips: [{ name: 'dns-a', node: 'worker-a', address: '10.35.10.53/24', state: 'MASTER', priority: 200 },
-        { name: 'dns-b', node: 'worker-a', address: '10.35.10.54/24', state: 'BACKUP', priority: 180 }],
+      vips: [{ name: 'dns-a', node: 'worker-a', address: '192.0.2.53/24', state: 'MASTER', priority: 200 },
+        { name: 'dns-b', node: 'worker-a', address: '192.0.2.54/24', state: 'BACKUP', priority: 180 }],
     })));
     renderWithApp(<NodesPage />, { route: '/nodes' });
     expect(await screen.findByText('degraded')).toBeInTheDocument();

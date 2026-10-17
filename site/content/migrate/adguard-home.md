@@ -26,7 +26,7 @@ working-directory importer.
 | Blocked services and safe search | Policy service/category blocking and safe search | Match catalog IDs and supported engines explicitly |
 | Upstreams and bootstrap servers | Named groups, strategies, bootstrap and suffix rules | Recreate configuration; retest private reverse DNS |
 | DoT, DoH and DoQ | Native listeners; also DoH3 | Configure listener certificates and client endpoints separately |
-| DHCP | No DHCP server; planned for v0.2.0 | Hand off DHCP before retiring AdGuard Home |
+| DHCP | Opt-in DHCPv4 on Linux with the SQLite or Kubernetes store; no DHCPv6 | Configure kudurru or another DHCP server and preserve leases and reservations before retiring AdGuard Home |
 | Safe browsing / parental-control lookup services | No equivalent remote lookup services | Select suitable block lists; do not assume identical coverage |
 | Query history and users | Separate kudurru logs and accounts | Preserve old data separately; create new credentials and API tokens |
 

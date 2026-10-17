@@ -18,6 +18,8 @@ advertisements until the replacement passes the validation checks.
 2. Inventory services beyond blocking: DHCP, DNSSEC, recursive resolution,
    secondary zones, dynamic updates, encrypted endpoints and plugin behavior.
    Choose a replacement for every feature kudurru v0.1.0 does not provide.
+   Recursion and DNSSEC validation are available in upstream groups set to
+   `mode: recursive`; DNSSEC signing is not.
 3. Give kudurru a fixed address on a separate host or VM. Two servers cannot
    bind the same address and port. If you use one host, configure separate
    bind addresses or publish different test ports explicitly. The examples
@@ -145,6 +147,7 @@ response codes and intended filtering rather than identical output.
 | Schedules and safe search, if used | Expected behavior inside and outside each time window and for the supported engines |
 | Encrypted DNS, if used | Actual client connects using the configured hostname, certificate, port and protocol |
 | IPv6 client DNS | Real queries reach kudurru and match the intended IPv6 group |
+| Recursive group, if used | `dig @192.0.2.54 isc.org A +dnssec` has the `ad` flag; a name in your router's local domain resolves through its conditional rule; the group's resolver is healthy on **Upstreams** (outbound UDP/TCP 53 is open) |
 
 Set one test device's DNS to kudurru while the rest of the network uses the
 old server. Test normal browsing, work VPNs, streaming, local applications
@@ -158,9 +161,10 @@ OS secure DNS deliberately; an external DoH provider bypasses these servers.
    `kudurru backup --out before-cutover.yaml`. Save settings, certificates and
    credentials separately; an object backup is not a full data-volume backup.
 2. If the old DNS server provides DHCP, complete the DHCP handoff described
-   in its migration guide. kudurru v0.1.0 provides no DHCP service; support is
-   planned for v0.2.0. Preserve address reservations, lease ranges, gateway
-   and search-domain options.
+   in its migration guide. kudurru v0.1.0 includes opt-in DHCPv4 on
+   Linux with either store; use the [DHCPv4 deployment guide](/deploy/dhcp/) or keep
+   your existing DHCP server. Preserve address reservations, active leases,
+   lease ranges, gateway and search-domain options.
 3. Change DHCPv4's DNS option to kudurru. Also update DHCPv6 and router
    advertisements (RDNSS), including mesh routers or access points that
    advertise their own DNS settings. Review static devices and VPN profiles.

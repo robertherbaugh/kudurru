@@ -111,6 +111,7 @@ func (s *Server) registerRoutes() {
 	s.registerRuntime()
 	s.registerStats()
 	s.registerSettings()
+	s.registerDHCP()
 	s.registerBlockPage()
 	s.registerUnblock()
 	s.registerNodes()

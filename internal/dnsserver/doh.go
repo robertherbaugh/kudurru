@@ -236,7 +236,9 @@ func (l *dohListener) Serve(ctx context.Context) error {
 		if err := l.srv.Shutdown(sctx); err != nil {
 			_ = l.srv.Close()
 		}
-		<-errCh
+		if err := <-errCh; !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
 		return nil
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {

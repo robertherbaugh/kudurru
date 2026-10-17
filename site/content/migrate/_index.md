@@ -40,9 +40,9 @@ check the version you run.
 |---|---|---|---|---|
 | Filtering | Hosts, domains, regex and groups | Adblock DNS syntax, allowlists and client settings | Allowed/blocked zones and lists; Advanced Blocking app | Hosts, domains, adblock subset and RE2; client-group policies |
 | Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
-| Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding to named upstream groups; conditional forwarding |
-| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | No validation or signing |
-| DHCP | Built in | Built in | Built in | Use a separate DHCP server; built-in support planned for v0.2.0 |
+| Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding |
+| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | Validation in recursive groups; no signing |
+| DHCP | Built in | Built in | Built in | Opt-in DHCPv4 on Linux; dashboard setup; three-node quorum failover on SQLite or an elected replica behind a relay on Kubernetes; no DHCPv6 |
 | Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
 | Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
 | Kubernetes configuration | Container configuration; no native CRDs | Container configuration; no native CRDs | Container configuration; no native CRDs | Native CRDs, Helm, external-dns webhook |
@@ -50,24 +50,30 @@ check the version you run.
 | License | Open source; component licenses apply | GPL-3.0 | GPL-3.0 | Source available; eligible community use free, commercial production by agreement |
 
 AdGuard Home's DNSSEC option requests DNSSEC records from its upstreams;
-it does not make it a local validating resolver. kudurru can forward to a
-validating resolver, but v0.1.0 does not itself validate answers or sign zones.
+it does not make it a local validating resolver. kudurru v0.1.0 validates
+DNSSEC in upstream groups set to recursive mode, which resolve from the root
+servers instead of forwarding; it does not validate answers from forwarding
+groups (forward to a validating resolver for that) and does not sign zones.
+Forwarding stays the default; see
+[resolving names yourself](/start/home/#7-resolve-names-yourself-optional).
 A schema field for a future feature does not mean that feature is active.
 In particular, secondary/stub/catalog zones, RFC 2136 updates and general
 per-policy answer rewrites are not implemented in v0.1.0.
 
-### Planned DHCPv4 support
+### DHCPv4 support
 
-Built-in DHCPv4 is planned for v0.2.0 in
-[PR #66](https://github.com/robertherbaugh/kudurru/pull/66), which includes
-the development deployment and architecture guides. The initial scope is
-one Linux node using SQLite, disabled by default, with persistent leases,
-reservations, trusted relays, dashboard setup and optional A/PTR records
-from leases. DHCPv6 and multi-node failover are deferred; leases will not
-synchronize between DNS replicas.
+Built-in DHCPv4 is included in v0.1.0 and disabled by default. It supports
+standalone Linux/SQLite nodes or a three-node quorum, the
+[Kubernetes store](/deploy/dhcp/#kubernetes) (`DHCPScope` and `DHCPLease`
+objects, one elected replica serving relayed clients), durable leases and
+reservations, complete dashboard setup, multiple subnets and trusted relays,
+conflict checks, network/boot options, live management, lease import/export
+and persistent local DNS ownership. See the [DHCPv4 deployment guide](/deploy/dhcp/)
+for setup and cutover.
 
-The migration steps here target v0.1.0 and still require an external DHCP
-server. Keep IPv6 router and DNS advertisements on your router.
+You can keep your existing DHCP server or move DHCPv4 to kudurru. Stop the
+old allocator before activating its replacement. DHCPv6 is not supported;
+keep IPv6 router and DNS advertisements on your router.
 
 ### License and deployment choices
 

@@ -21,7 +21,7 @@ deployments.
 
 | Capability | What it provides | Details |
 |---|---|---|
-| Core DNS and dashboard | Authoritative zones, forwarding, encrypted DNS transports, blocking, the query log and short-term statistics | [Architecture overview](architecture/README.md) |
+| Core DNS and dashboard | Authoritative zones, forwarding, recursion with DNSSEC validation, encrypted DNS transports, blocking, the query log and short-term statistics | [Architecture overview](architecture/README.md) |
 | Multiple nodes and policies | The agreed node allowance, plus policies beyond the default for client groups and schedules | [Groups, clients and policies](guide/admin/05-groups-clients-policies.md) |
 | Identity and access | OIDC single sign-on, role bindings, zone-scoped roles and Kubernetes RBAC | [People, roles and tokens](guide/admin/09-people-and-tokens.md) |
 | Audit trail | Stored events, review of changes and audit export | [Audit](architecture/observability.md#audit) |
@@ -32,6 +32,30 @@ deployments.
 
 Cloudflare split-horizon and UniFi inventory integrations are planned;
 they are not current capabilities.
+
+## Planned: Active Directory DNS
+
+Planned for **v0.2.0**, AD DNS replacement targets an existing single-domain
+forest, including multiple domain controllers and AD sites. The goal is to
+make kudurru the authoritative source for the migrated zones so Windows DNS
+can remain stopped on every domain controller. AD DS continues to provide
+authentication, directory services, Group Policy, and directory replication.
+
+The planned scope includes:
+
+- Discovery and import of domain, forest locator (`_msdcs`), and reverse
+  zones, with previews and comparisons before authority transfers.
+- Ongoing DC discovery and LDAP, Kerberos, global catalog, and site-specific
+  records, maintained through secure registrations from DCs and members.
+- Secure Windows client and DHCP registrations, record ownership rules,
+  aging, and scavenging.
+- Durable updates, replication, failover, diagnostics, backup/restore, and
+  a controlled cutover and rollback path.
+
+Completion requires Windows qualification with all DC DNS services stopped
+and no DNS forwarding or update proxy back to them for the migrated zones.
+This is planned work; the current release does not provide complete AD DNS
+replacement.
 
 ## Pricing
 

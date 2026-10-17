@@ -11,10 +11,10 @@ rules:
   # Server-side apply needs create+patch; file-managed objects and
   # finalizers need delete (D77).
   - apiGroups: ["kudurru.io"]
-    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests"]
+    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests", "dhcpscopes"]
     verbs: ["get", "list", "watch", "create", "patch", "delete"]
   - apiGroups: ["kudurru.io"]
-    resources: ["dnszones/status", "dnsrecordsets/status", "blocklists/status", "clientgroups/status", "policies/status", "unblockrequests/status"]
+    resources: ["dnszones/status", "dnsrecordsets/status", "blocklists/status", "clientgroups/status", "policies/status", "unblockrequests/status", "dhcpscopes/status"]
     verbs: ["update", "patch"]
   # DNSEndpoint compatibility watch (read-only, never owned, §5.1).
   - apiGroups: ["externaldns.k8s.io"]
@@ -62,8 +62,9 @@ subjects:
 # Release namespace only: Leases (Elector(name) → Lease kudurru-<name>,
 # D78), Secrets for internal kinds (tokens, users, TSIG, DNSSEC keys;
 # revoking a token and deleting a user or RoleBinding delete their
-# Secrets), ConfigMaps for runtime state (blocking toggle replication) and
-# the AuditLog batches of the audit log (D157).
+# Secrets), ConfigMaps for runtime state (blocking toggle replication), the
+# AuditLog batches of the audit log (D157) and, with dhcp.enabled, the
+# DHCPLease objects and the DHCP endpoint label (D180).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -86,6 +87,18 @@ rules:
   - apiGroups: ["audit.kudurru.io"]
     resources: ["auditlogs"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  {{- if .Values.dhcp.enabled }}
+  # DHCP leases (D180): the replicas keep a working copy, the serving one
+  # allocates and deletes expired leases, and any replica may import.
+  - apiGroups: ["dhcp.kudurru.io"]
+    resources: ["dhcpleases"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  # The serving replica sets kudurru.io/dhcp-active on its own pod and
+  # clears it from the others; the DHCP Service selects it.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "patch"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

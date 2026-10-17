@@ -19,10 +19,12 @@ administrator of the network decides which names it refuses.
 kudurru has these functions:
 
 - It answers queries for the zones that you own.
-- It sends all other queries to upstream DNS servers.
+- It sends all other queries to upstream DNS servers, or it finds the
+  answers itself from the root servers and checks DNSSEC.
 - It blocks names that are on block lists.
 - It applies different rules to different client groups.
 - It has a dashboard that shows what happens on the network.
+- It can assign IPv4 addresses with an optional DHCPv4 server on Linux, with either store.
 
 ## Parts of this guide
 

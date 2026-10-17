@@ -156,7 +156,9 @@ read-only. The buttons are gray. Change the file or the resource.
 
 An upstream is an external DNS server. kudurru asks an upstream when the
 name is not in a zone and not in the cache. Upstreams are in groups. A group
-has a list of servers, a strategy and a time limit.
+has a list of servers, a strategy and a time limit. A group can also find
+the answers itself, from the root servers. See
+[Resolve names from the root servers](#resolve-names-from-the-root-servers).
 
 Open **DNS** > **Upstreams**. Figure 6 shows the page.
 
@@ -167,7 +169,7 @@ Open **DNS** > **Upstreams**. Figure 6 shows the page.
 | Column | Meaning |
 |---|---|
 | **Group** | The name of the group. The group `default` gets each query that no other rule sends elsewhere. |
-| **Strategy** | How kudurru selects a server |
+| **Strategy** | How kudurru selects a server. A recursive group shows **Recursive**. |
 | **Servers** | The number of servers |
 | **Health** | How many servers are healthy now, for this node |
 | **Queries (24 h)** | The number of queries that the group answered |
@@ -251,6 +253,109 @@ longest suffix wins. kudurru does not cache these answers.
 The default **Strip (never send a client subnet)** protects the privacy of
 your clients. Change it only if you know why.
 
+### Resolve names from the root servers
+
+A group has one of two modes. In the mode **Forward** (the default), the
+group sends the queries to its servers, for example Quad9. In the mode
+**Recursive**, kudurru finds the answer itself. It asks a root server, then
+the servers of each zone in the name. It also checks the DNSSEC signatures
+of the answers.
+
+Know these points before you use the mode **Recursive**:
+
+- No single provider sees all the names that your network looks up.
+- Each authoritative server sees the names in its zone and the public
+  address of your network. The root servers see only the last label, for
+  example `com` (QNAME minimization).
+- The queries to the authoritative servers use plain DNS on port 53. They
+  are not encrypted, so your internet provider can see them.
+- The node must send UDP and TCP to port 53 of all addresses on the
+  internet. Some firewalls and some internet providers block or redirect
+  port 53. Then the group gets no answers.
+- The first query for a name takes longer, usually 50 to 500 ms. The cache
+  answers the next queries for the name.
+- kudurru never sends the client subnet in this mode.
+
+To make the group `default` recursive:
+
+1. Open **DNS** > **Upstreams**.
+2. Click the group `default`.
+3. In **Settings**, select **Recursive** in **Mode**.
+4. Keep the **Timeout** at `4s`. In this mode it is the time limit for the
+   full search of a name.
+5. Click **Save**.
+
+The page of the group shows one server, the recursive resolver. To go back,
+select **Forward** and enter the servers again.
+
+You can also set the mode in the configuration file:
+
+```yaml
+upstreams:
+  groups:
+    default: { mode: recursive, timeout: 4s }
+    router: { servers: ["192.168.1.1:53"] }
+  conditional: { "[/lan/1.168.192.in-addr.arpa/]": router }
+```
+
+The panel **Recursion** on the page **Upstreams** applies to all recursive
+groups:
+
+| Setting | Meaning |
+|---|---|
+| **DNSSEC validation** | kudurru checks the signatures. On by default. |
+| **QNAME minimization** | Each server gets only the part of the name that it needs. On by default. |
+| **IPv6 to name servers** | **Auto** uses IPv6 when the node has an IPv6 route to the root servers. |
+
+The root trust anchors and the root hints are in **Settings**. Keep them
+empty. Then kudurru uses the values that it has.
+
+### Keep the names of your router
+
+The root servers do not know the local names of your router, for example
+`nas.lan` or `fritz.box`. Send these names to the router with a conditional
+rule (see [Send a domain to a group](#send-a-domain-to-a-group)):
+
+1. Make a group `router` in the mode **Forward**, with the address of the
+   router.
+2. Add a conditional rule for the local domain of the router, for example
+   `lan`.
+3. Add a conditional rule for the reverse zone of your network, for example
+   `1.168.192.in-addr.arpa`.
+
+kudurru answers some names itself and never sends them to the internet.
+These are the reverse names of private addresses and the names under
+`home.arpa`, `local`, `internal`, `test`, `invalid`, `onion` and `alt`.
+The answer is NXDOMAIN, and `localhost` gets `127.0.0.1` and `::1`. A
+conditional rule or a forward zone for one of these names comes first.
+
+### Read DNSSEC failures
+
+When a signature is not correct, expired or missing in a signed zone, the
+answer is "bogus". kudurru does not give a bogus answer to the client:
+
+- The client gets SERVFAIL.
+- The answer has an extended DNS error (EDE) from 6 to 12, for example
+  `7 Signature Expired`. The text of the error names the zone that failed.
+- The query log shows the status `dnssec_bogus` and the **DNSSEC** state
+  `bogus`.
+
+A client that sets the CD bit (it disables the check) gets the data,
+without the AD bit. You can use this to find the cause:
+
+```sh
+dig @<kudurru> example.com A +cd
+```
+
+Usually the owner of the zone made the error, and other resolvers that
+check DNSSEC also fail. Tell the owner of the zone. Do not turn off **DNSSEC
+validation** for one bad zone. kudurru v0.1.0 has no list of exceptions
+(negative trust anchors).
+
+A forwarding group does not check signatures. If its server validates DNSSEC
+and sends SERVFAIL with an EDE from 6 to 12, the status is also
+`dnssec_bogus`.
+
 ### Read the health of a group
 
 Click the name of a group. The page of the group (Figure 9) shows each
@@ -267,8 +372,8 @@ Chapter 12.
 ### Change or delete a group
 
 1. Open the page of the group.
-2. Change the **Servers**, the **Strategy** or the **Timeout** in
-   **Settings**.
+2. Change the **Mode**, the **Servers**, the **Strategy** or the
+   **Timeout** in **Settings**.
 3. Click **Save**.
 
 The section **Used by** shows the places that use the group. You cannot

@@ -17,9 +17,12 @@ by `build.ts`. Run `make www-check` before publishing changes.
 
 Titles describe the task the reader wants to accomplish. Keep capabilities
 and limitations accurate. The pages do not claim automatic migration,
-DHCP, current DNSSEC validation, or Pi-hole API compatibility. Schema data
-does not infer an offer or a zero price from free eligible use. Coordinate
-pricing changes with the enterprise and license content.
+DHCPv6 support, DNSSEC validation of forwarded answers (only recursive
+upstream groups validate), or Pi-hole API compatibility.
+DHCPv4 is included in v0.1.0, disabled by default, on Linux/SQLite, with
+dashboard setup and optional three-node quorum failover.
+Schema data does not infer an offer or a zero price from free eligible use.
+Coordinate pricing changes with the enterprise and license content.
 
 ## Before launch
 

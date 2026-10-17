@@ -28,7 +28,7 @@ export const USE_CASES: readonly UseCase[] = [
     title: "Kubernetes DNS server with CRDs & Helm | kudurru",
     description: "Manage DNS zones, records and blocking as Kubernetes CRDs. Deploy kudurru with Helm and keep answering DNS queries through control plane outages.",
     heading: "Kubernetes DNS you manage with kubectl.",
-    intro: "Run authoritative DNS, a forwarding resolver and network ad blocking in your cluster. kudurru stores configuration in Kubernetes custom resources, so zones, records and policies fit the same Git review and deployment workflow as your applications.",
+    intro: "Run authoritative DNS, a forwarding or validating recursive resolver and network ad blocking in your cluster. kudurru stores configuration in Kubernetes custom resources, so zones, records and policies fit the same Git review and deployment workflow as your applications.",
     summary: "Manage zones and policies as CRDs, deploy with Helm, and serve DNS from memory on every replica.",
     action: { label: "Deploy with Helm", href: docs("/start/kubernetes/") },
     sections: [
@@ -76,9 +76,10 @@ export const USE_CASES: readonly UseCase[] = [
         title: "One container, your own resolver",
         paragraphs: [
           "Run kudurru in Docker with a persistent data volume. The container includes DNS, the dashboard and the API; you do not need a separate database. A starter blocklist is embedded, and you can add URL sources or your own entries in hosts, domain, adblock and regex formats.",
-          "Give the host a stable address and configure your router's DHCP settings to advertise it as the DNS server. DHCP stays on your router or existing DHCP server. Test with one client before switching the whole network.",
+          "Give the host a stable address and configure your DHCP server to advertise it as the DNS server. v0.1.0 includes opt-in DHCPv4 on Linux/SQLite, with dashboard setup and optional three-node quorum failover. You can also keep DHCP on your router. Test with one client before switching the whole network.",
+          "To serve DHCPv4 in Docker, build a local DHCP-capable image from source with make docker-dhcp; the published images lack the required file capabilities. Packaged systemd installs need a capability drop-in. Follow Network and privileges in the DHCPv4 guide before enabling it.",
         ],
-        link: { label: "Start one Docker container", href: docs("/deploy/docker/") },
+        link: { label: "DHCPv4 network and privileges", href: docs("/deploy/dhcp/#network-and-privileges") },
       },
       {
         title: "Find out why a domain was blocked",
@@ -99,6 +100,7 @@ export const USE_CASES: readonly UseCase[] = [
     ],
     questions: [
       { question: "Do I need to install an app on every device?", answer: "No app is needed for clients that use the DNS server advertised by your router. Devices with their own DNS or VPN settings may need additional configuration." },
+      { question: "Can kudurru resolve names without Cloudflare or Quad9?", answer: "Yes. Set an upstream group to recursive mode and kudurru asks the root servers and each domain's own name servers, with QNAME minimization and DNSSEC validation, so no single provider sees every name. Those servers still see the names they serve and your public address, and the queries travel as plain DNS on port 53, which your network must allow. Forwarding stays the default." },
       { question: "Is kudurru free for a home network?", answer: "Eligible personal use is free under the Kudurru Community License. One node with the default policy works without a key. A free personal key unlocks additional policies and licensed features for up to three nodes. Business and government production use requires a commercial agreement." },
     ],
   },
@@ -132,8 +134,9 @@ export const USE_CASES: readonly UseCase[] = [
       {
         title: "Plan a gradual migration",
         paragraphs: [
-          "There is no automatic Pi-hole importer or Teleporter archive import in the current release. Recreate your lists, groups and local records using the migration guide. kudurru does not provide DHCP; keep that on your router or another DHCP server.",
-          "Run kudurru on a separate address beside Pi-hole. Compare answers for representative clients, move a test device, then change the DNS address advertised by DHCP. Keep Pi-hole available until its query log is quiet. DNSSEC validation is planned for v0.2, and Pi-hole API compatibility is planned for v1.0.",
+          "Use the migration guide to transfer your lists, groups and local records. kudurru v0.1.0 includes opt-in DHCPv4 on Linux/SQLite, with dashboard setup, durable leases, reservations and dnsmasq lease import. You can keep DHCP on your router or prepare kudurru before disabling Pi-hole's DHCP service. DHCPv6 is not supported.",
+          "Moving DHCPv4 to kudurru in Docker requires a local source build with extra file capabilities; published images do not include them. Packaged systemd installs need a capability drop-in. The migration guide links to the DHCPv4 network and privilege requirements.",
+          "Run kudurru on a separate address beside Pi-hole. Compare answers for representative clients, move a test device, then change the DNS address advertised by DHCP. Keep Pi-hole available until its query log is quiet. If you ran Unbound beside Pi-hole, a recursive upstream group can replace it, with DNSSEC validation. Pi-hole API compatibility is planned for v1.0.",
         ],
         link: { label: "Follow the migration checklist", href: docs("/migrate/pihole/#switching-over") },
       },

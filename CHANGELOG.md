@@ -4,11 +4,14 @@ Notable changes to kudurru, following [Keep a Changelog](https://keepachangelog.
 and [Semantic Versioning](https://semver.org/). Until v1.0, the
 `kudurru.io/v1alpha1` API may change between minor releases.
 
+## [Unreleased]
+
 ## [0.1.0] - 2026-10-16
 
-**“stone” — the first release.** Authoritative DNS, a forwarding resolver,
-blocking and a dashboard in one Go binary. Run it as one container or in
-Kubernetes with CRDs as the configuration store.
+**“stone” — the first release.** Authoritative DNS, a forwarding or
+validating recursive resolver, blocking, optional DHCPv4 and a dashboard in
+one Go binary. Run it as one container or in Kubernetes with CRDs as the
+configuration store.
 
 ### Added
 
@@ -21,12 +24,58 @@ Kubernetes with CRDs as the configuration store.
   Outbound AXFR/IXFR and NOTIFY; TSIG on UDP, TCP and DoT.
 - Upstream groups, conditional forwarding and ECS controls; a persistent
   TTL cache with prefetch, serve-stale and in-flight request coalescing.
+- An opt-in recursive resolver: an upstream group with `mode: recursive`
+  resolves names from the root servers with QNAME minimization and DNSSEC
+  validation (bogus answers become SERVFAIL with an extended DNS error and
+  the `dnssec_bogus` status), never sends a client subnet and answers
+  private reverse zones and special-use names such as `home.arpa` locally.
+  Settings are under `upstreams.recursion`; forwarding to 1.1.1.1 and
+  9.9.9.9 stays the default.
 - Hosts, domain, adblock and regex lists, allow/deny entries, per-source
   switches and exceptions, CNAME inspection and an embedded starter list.
 - IP/CIDR client groups with merged policies and schedules. A catalog of
   150 services in 14 categories supports category blocking and exceptions;
   safe search is available for supported search engines and video sites.
 - An optional block page with access requests and administrator approvals.
+
+#### DHCPv4
+
+- DHCPv4 server: opt-in Linux/SQLite scopes with durable leases,
+  reservations, multiple subnets and trusted relays. Node-local API and
+  dashboard management apply persisted options live with revision checks.
+  Native/dnsmasq lease import, native export and automatic A/PTR records
+  support cutover and dedicated DHCP domains. Isolated stock-client tests
+  cover acquisition, renewal, restart, release, expiration and exhaustion.
+  Three-node quorum replication provides automatic DHCPv4 failover; DHCPv6
+  is excluded. See the [DHCP deployment guide](docs/deploy/dhcp.md).
+- Complete DHCPv4 dashboard setup without DHCP YAML: scope creation, interface
+  discovery, topology, enable/disable and explicit adoption of host-file setup.
+  Desired setup is durably saved for restart; environment-owned setup stays
+  locked. Per-scope revisions and durable apply tokens preserve live
+  option/reservation edits and reject stale staged changes. Removed or renamed
+  scopes retain their lease databases. UI-owned DHCP activation errors keep
+  DNS and the dashboard available for repair and revision-conflict recovery.
+- Three static DHCP voters with mutual TLS, majority-committed leases and
+  management writes, follower forwarding, leader replacement, snapshot catch-up
+  and recovery fencing. The dashboard configures peers and reports quorum state.
+- Bounded ARP/ICMP pre-offer conflict detection, trusted relay link selection,
+  server-ID override and alternate ports; NTP/search/classless-route options,
+  architecture-specific PXE/HTTP boot settings and client FQDN handling.
+- DHCPv4 on the Kubernetes store: `DHCPScope` objects (from the dashboard or
+  from Git with `kudurru.io/managed-by`) and `DHCPLease` objects
+  (`dhcp.kudurru.io`) replace node-local setup and lease files. One replica,
+  elected through the `kudurru-dhcp` Lease, serves relayed clients at a
+  LoadBalancer address (`dhcp.enabled`, `dhcp.serverAddress` in the chart);
+  leases survive failover, and every replica shows the same DHCP pages and
+  answers lease DNS names. The dashboard's DHCP pages no longer depend on
+  which replica a sticky session reaches. Install the `kudurru-crds` chart
+  first. In Kubernetes RBAC, the `dhcp` permission is now the `dhcpscopes`
+  resource.
+- Persistent earliest-established DHCP DNS name ownership across scopes,
+  with reservation precedence and import-safe claim ordering. Indexed lease
+  transactions and incremental DNS publication keep renewals fast: median
+  renewal time is 0.35 ms at 10,000 leases in the FULL-synchronous SQLite
+  fixture.
 
 #### Dashboard, API and CLI
 
@@ -147,9 +196,15 @@ and [final feature review](docs/m5/features-v0.1.md).
 
 ### Known limitations
 
-- Secondary/stub zones, inbound transfers, RFC 2136, DNSSEC validation,
-  Cloudflare/UniFi integrations and follower replication are planned for
-  v0.2. DNSSEC signing and raft replication are planned for v1.0.
+- Secondary/stub zones, inbound transfers, RFC 2136, DNSSEC validation of
+  forwarded answers, Cloudflare/UniFi integrations and follower replication
+  are planned for v0.2. DNSSEC signing and Raft replication of the DNS
+  object store are planned for v1.0. DHCPv4 quorum replication is included.
+- Recursive groups need outbound UDP and TCP port 53 to any address. They
+  do not yet cache NSEC ranges aggressively (RFC 8198), follow root key
+  rollovers automatically (RFC 5011; new anchors ship with releases or
+  `upstreams.recursion.trustAnchors`), support negative trust anchors or
+  DNS cookies, or serve a local copy of the root zone (RFC 8806).
 - Client matching uses IP/CIDR. MAC, hostname and DoT/DoH client-ID fields
   have no production inventory or listener source yet; preserve device
   source addresses through gateways and load balancers.

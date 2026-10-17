@@ -261,6 +261,9 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- with .Values.auth.oidc.providers -}}
 {{- $_ := set $base "auth" (dict "identityProviders" .) -}}
 {{- end -}}
+{{- if .Values.dhcp.enabled -}}
+{{- $_ := set $base "dhcp" (dict "enabled" true "serverIP" .Values.dhcp.serverAddress "interface" .Values.dhcp.interface) -}}
+{{- end -}}
 {{- $cfg := mergeOverwrite $base (deepCopy (.Values.config.node | default dict)) -}}
 {{- toYaml $cfg -}}
 {{- end -}}
@@ -270,6 +273,20 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- $v := .Values -}}
 {{- if not (has $v.mode (list "kubernetes" "standalone")) -}}
 {{- fail (printf "mode must be kubernetes or standalone, not %q" $v.mode) -}}
+{{- end -}}
+{{- if $v.dhcp.enabled -}}
+{{- if ne $v.mode "kubernetes" -}}
+{{- fail "dhcp.enabled serves DHCPScope objects and needs mode kubernetes; in mode standalone, configure DHCP with config.node.dhcp" -}}
+{{- end -}}
+{{- if not $v.dhcp.serverAddress -}}
+{{- fail "dhcp.enabled needs dhcp.serverAddress: the LoadBalancer address DHCP relays send to" -}}
+{{- end -}}
+{{- if and (has $v.dhcp.service.type (list "LoadBalancer" "NodePort")) (ne $v.dhcp.service.externalTrafficPolicy "Local") -}}
+{{- fail "dhcp.service.externalTrafficPolicy must be Local: trusted DHCP relays are matched by their source address" -}}
+{{- end -}}
+{{- if $v.hostNetwork.enabled -}}
+{{- fail "dhcp.enabled reaches clients through a relay and its LoadBalancer Service; it does not support hostNetwork.enabled" -}}
+{{- end -}}
 {{- end -}}
 {{- if not (has $v.service.api.sessionAffinity (list "None" "ClientIP")) -}}
 {{- fail "service.api.sessionAffinity must be None or ClientIP" -}}
@@ -407,14 +424,15 @@ Explicit service annotations override the generated defaults. */}}
 
 {{/*
 "true" when the kudurru pod binds a port below 1024 in its own network
-namespace (plain DNS, a sidecar dnsdist on :53, or DoT/DoH/DoQ listeners).
+namespace (plain DNS, a sidecar dnsdist on :53, DoT/DoH/DoQ listeners, or
+DHCP on UDP 67).
 hostNetwork pods cannot set namespaced sysctls (docs/deploy/helm.md).
 */}}
 {{- define "kudurru.lowPortSysctl" -}}
 {{- if not .Values.hostNetwork.enabled -}}
 {{- $edgeMode := include "kudurru.edge.mode" . -}}
 {{- $s := .Values.service -}}
-{{- if or (lt (int (include "kudurru.dnsPort" .)) 1024) (eq $edgeMode "sidecar") (and (not .Values.edge.enabled) (include "kudurru.anyTLS" .)) -}}
+{{- if or (lt (int (include "kudurru.dnsPort" .)) 1024) (eq $edgeMode "sidecar") (and (not .Values.edge.enabled) (include "kudurru.anyTLS" .)) .Values.dhcp.enabled -}}
 true
 {{- end -}}
 {{- end -}}

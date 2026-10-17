@@ -49,6 +49,7 @@ import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
+import { dhcpHandlers, resetDHCP } from './dhcp';
 import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
@@ -57,6 +58,7 @@ let db: MockDB = createDB();
 /** Resets the database to the fixtures (tests call it in beforeEach). */
 export function resetDB(now?: number): MockDB {
   db = createDB(now);
+  resetDHCP();
   return db;
 }
 
@@ -107,6 +109,8 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   blocking: ['read', 'toggle'],
   settings: ['read', 'write'],
   node: ['config'],
+  dhcp: ['read', 'write', 'delete'],
+  dhcpleases: ['read', 'import', 'export'],
   users: ['read', 'write', 'delete'],
   groups: ['read', 'write', 'delete'],
   serviceaccounts: ['read', 'write', 'delete'],
@@ -123,7 +127,7 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
 /** The viewer role of permissions.yaml plus querylog.read (the mock "viewer"). */
 const VIEWER = [
   'zones.read', 'records.read', 'stats.read', 'cache.read', 'blocklists.read', 'policies.read', 'clientgroups.read',
-  'clients.read', 'blocking.read', 'settings.read', 'tokens.own', 'querylog.read', 'cluster.read',
+  'clients.read', 'blocking.read', 'settings.read', 'tokens.own', 'querylog.read', 'cluster.read', 'dhcp.read',
 ];
 
 /** The permission matrix GET /auth/me returns for a set of roles. */
@@ -138,7 +142,10 @@ export function permissions(roles: string[]): Record<string, string[]> {
     (out[r] ??= []).push(v);
   }
   // The auditor role reads unblock requests but cannot decide them.
-  if (roles.includes('auditor')) out.unblockrequests = ['read'];
+  if (roles.includes('auditor')) {
+    out.unblockrequests = ['read'];
+    out.dhcpleases = ['read', 'export'];
+  }
   return out;
 }
 
@@ -620,8 +627,8 @@ function digAnswer(req: DnsQueryRequest): DnsQueryResult {
 }
 
 /** The upstream groups of the cluster settings (a map keyed by group name). */
-function upstreamGroups(): Record<string, { servers?: string[]; strategy?: string; timeout?: string }> {
-  return (getPath(db.settings, 'upstreams.groups') as Record<string, { servers?: string[] }> | undefined) ?? {};
+function upstreamGroups(): Record<string, { mode?: string; servers?: string[] | null; strategy?: string; timeout?: string }> {
+  return (getPath(db.settings, 'upstreams.groups') as Record<string, { servers?: string[] | null }> | undefined) ?? {};
 }
 
 /** The display label of a server entry ("name=addr" → name). */
@@ -709,6 +716,7 @@ let tailTimer = 0;
 // ---------------------------------------------------------------------------
 
 export const handlers = [
+  ...dhcpHandlers(guard),
   // auth ------------------------------------------------------------------
   http.get(`${B}/auth/status`, () =>
     ok({
@@ -1292,9 +1300,10 @@ export const handlers = [
     if (g) return g;
     const url = new URL(request.url);
     const top = topFrom('upstreams', false, 10, seriesTotals().total / db.queries.length);
-    // servers[]: the live health of every configured server (not windowed).
+    // servers[]: the live health of every configured server (not windowed);
+    // a recursive group reports its resolver as the server "recursive".
     const servers = Object.entries(upstreamGroups()).flatMap(([group, g], gi) =>
-      (g.servers ?? []).map((entry, i) => {
+      (g.mode === 'recursive' ? ['recursive'] : (g.servers ?? [])).map((entry, i) => {
         const down = gi === 1 && i === 0 && group !== 'default';
         return {
           group,
@@ -1719,9 +1728,14 @@ const STRATEGIES = ['', 'parallel_best', 'strict', 'random', 'rtt_weighted'];
 
 /** What internal/upstream Config.Validate refuses, in its words. */
 function validateUpstreams(settings: Record<string, unknown>): string | null {
-  const groups = (getPath(settings, 'upstreams.groups') as Record<string, { servers?: string[]; strategy?: string }> | undefined) ?? {};
+  const groups = (getPath(settings, 'upstreams.groups') as Record<string, { mode?: string; servers?: string[] | null; strategy?: string }> | undefined) ?? {};
   if (!groups.default) return 'upstreams: upstream: group "default" is required';
   for (const [n, g] of Object.entries(groups)) {
+    if (g.mode === 'recursive') {
+      if (g.servers?.length) return `upstreams.groups[${n}].servers: a recursive group asks the root servers itself; remove the servers or use mode forward`;
+      continue;
+    }
+    if (g.mode && g.mode !== 'forward') return `upstreams.groups[${n}].mode: "${g.mode}" is not allowed`;
     if (!g.servers?.length) return `upstreams: upstream: group "${n}" has no servers`;
     if (!STRATEGIES.includes(g.strategy ?? '')) return `upstreams: upstream: group "${n}": unknown strategy "${g.strategy}"`;
   }

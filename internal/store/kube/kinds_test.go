@@ -15,7 +15,7 @@ func TestRegistryDerivesKindsFromScheme(t *testing.T) {
 	}
 	// BlockList ends in "List" but is a kind (its list is BlockListList);
 	// WatchEvent, ListOptions and core/v1 types are not kudurru kinds.
-	want := []store.Kind{"BlockList", "ClientGroup", "DNSRecordSet", "DNSZone", "Policy", "UnblockRequest"}
+	want := []store.Kind{"BlockList", "ClientGroup", "DHCPScope", "DNSRecordSet", "DNSZone", "Policy", "UnblockRequest"}
 	if fmt.Sprint(r.kinds) != fmt.Sprint(want) {
 		t.Fatalf("kinds = %v, want %v", r.kinds, want)
 	}

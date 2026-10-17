@@ -154,6 +154,11 @@ spec:
           containerPort: {{ .Values.externalDNS.webhook.port }}
           protocol: TCP
         {{- end }}
+        {{- if .Values.dhcp.enabled }}
+        - name: dhcp
+          containerPort: 67
+          protocol: UDP
+        {{- end }}
         {{- if .Values.blockPage.enabled }}
         - name: blockpage-http
           containerPort: {{ .Values.blockPage.httpPort }}

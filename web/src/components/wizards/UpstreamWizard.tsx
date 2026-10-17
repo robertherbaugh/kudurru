@@ -1,9 +1,11 @@
 // New upstream group, in a WizardDialog over the Upstreams page (?new=1)
-// or a missing group's page: provider (a public resolver preset or Custom)
-// → servers (the preset's filtering level and transport fill the list;
-// Custom or "Edit the list" edits it row by row) → name, strategy and
-// timeout → review → PATCH /settings {upstreams:{groups:{name: …}}}, then
-// the dialog closes and the group's page opens. Presets live in
+// or a missing group's page: mode (forward or recursive) → provider (a
+// public resolver preset or Custom) → servers (the preset's filtering level
+// and transport fill the list; Custom or "Edit the list" edits it row by
+// row) → name, strategy and timeout → review → PATCH /settings
+// {upstreams:{groups:{name: …}}}, then the dialog closes and the group's
+// page opens. A recursive group has no provider, servers or strategy, so it
+// goes from the mode straight to its name and timeout. Presets live in
 // lib/upstreamPresets.ts with the provider documentation they were checked
 // against.
 import { Banner } from '@astryxdesign/core/Banner';
@@ -21,13 +23,16 @@ import { ChoiceCards } from '../fields/ChoiceCards';
 import { EnumSelect } from '../fields/EnumSelect';
 import { SwitchField, TextField } from '../fields/TextField';
 import { ProviderIcon } from '../ProviderIcon';
-import { GroupFields, groupFieldErrors, ServersField, strategyLabel, useUpstreams } from '../UpstreamGroup';
+import { GroupFields, groupFieldErrors, ServersField, strategyLabel, useUpstreams, withMode } from '../UpstreamGroup';
 import { Wizard, WizardDialog, type WizardStep } from '../Wizard';
 import { useNavigate } from '../../lib/router';
 import { groupNameFor, PROVIDERS, serversFor, TRANSPORTS, transportsOf, type Provider, type Transport } from '../../lib/upstreamPresets';
-import { groupNameError, groupNames, splitServerName, type UpstreamGroupConfig } from '../../lib/upstreams';
+import { groupNameError, groupNames, groupPatch, splitServerName, UPSTREAM_MODES, type UpstreamGroupConfig, type UpstreamMode } from '../../lib/upstreams';
 
 const CUSTOM = 'custom';
+
+/** The name the wizard suggests for a recursive group. */
+const RECURSIVE_NAME = 'resolver';
 
 /** Why a new group name cannot be used, or null. */
 export function newGroupNameError(name: string, existing: string[]): string | null {
@@ -44,7 +49,13 @@ export interface UpstreamWizardProps {
 
 export function UpstreamWizardDialog({ isOpen, onClose }: UpstreamWizardProps & { isOpen: boolean }) {
   return (
-    <WizardDialog isOpen={isOpen} onClose={onClose} title="New upstream group" subtitle="The resolvers a policy, a forward zone or a conditional rule forwards to." what="upstream group">
+    <WizardDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title="New upstream group"
+      subtitle="How a policy, a forward zone or a conditional rule resolves names: through servers you pick, or recursively from the root servers."
+      what="upstream group"
+    >
       <UpstreamWizard onClose={onClose} />
     </WizardDialog>
   );
@@ -64,7 +75,7 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
   const [custom, setCustom] = useState<string[]>([]);
   const [name, setName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
-  const [group, setGroup] = useState<UpstreamGroupConfig>({ servers: [], strategy: 'parallel_best', timeout: '2s' });
+  const [group, setGroup] = useState<UpstreamGroupConfig>({ mode: 'forward', servers: [], strategy: 'parallel_best', timeout: '2s' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -76,8 +87,9 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
     () => (provider && variant ? serversFor(provider, variant, t, { ipv6, id: profile.trim() }) : []),
     [provider, variant, t, ipv6, profile],
   );
-  const servers = !provider || editing ? custom : presetServers;
-  const suggested = provider && variant ? groupNameFor(provider, variant) : '';
+  const recursive = group.mode === 'recursive';
+  const servers = recursive ? [] : !provider || editing ? custom : presetServers;
+  const suggested = recursive ? (existing.includes(RECURSIVE_NAME) ? '' : RECURSIVE_NAME) : provider && variant ? groupNameFor(provider, variant) : '';
   const groupName = nameTouched ? name : name || suggested;
 
   const pickProvider = (id: string) => {
@@ -90,7 +102,7 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
   };
 
   const create = async () => {
-    const cfg = { ...group, servers: servers.map((s) => s.trim()).filter(Boolean) };
+    const cfg = groupPatch({ ...group, servers });
     setBusy(true);
     setError(undefined);
     try {
@@ -109,7 +121,22 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
     { value: CUSTOM, label: 'Custom', description: 'Enter the servers yourself: a router, a Pi-hole, a corporate resolver or any DoT/DoH/DoQ URL.', icon: <ProviderIcon name="Custom" ids={[]} /> },
   ];
 
-  const steps: WizardStep[] = [
+  const modeStep: WizardStep = {
+    id: 'mode',
+    label: 'Mode',
+    description: 'Forward to resolvers you trust, or let kudurru resolve names itself.',
+    content: (
+      <ChoiceCards
+        label="Mode"
+        isLabelHidden
+        value={group.mode}
+        choices={UPSTREAM_MODES.map((m) => ({ value: m.value, label: m.label, description: m.help }))}
+        onChange={(m) => setGroup(withMode(group, m as UpstreamMode))}
+      />
+    ),
+  };
+
+  const forwardSteps: WizardStep[] = [
     {
       id: 'provider',
       label: 'Provider',
@@ -205,10 +232,17 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
         </>
       ),
     },
+  ];
+
+  const steps: WizardStep[] = [
+    modeStep,
+    ...(recursive ? [] : forwardSteps),
     {
       id: 'group',
       label: 'Group',
-      description: 'How policies, zones and conditional rules refer to it, and how its servers are asked.',
+      description: recursive
+        ? 'How policies, zones and conditional rules refer to it, and how long a lookup may take.'
+        : 'How policies, zones and conditional rules refer to it, and how its servers are asked.',
       validate: () => newGroupNameError(groupName, existing) ?? groupFieldErrors({ ...group, servers }).timeout ?? null,
       content: (
         <>
@@ -225,7 +259,7 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
             help="Letters, digits, - _ and ."
             error={groupName ? (newGroupNameError(groupName, existing) ?? undefined) : undefined}
           />
-          <GroupFields value={{ ...group, servers }} onChange={(g) => setGroup({ ...g, servers: group.servers })} serversHidden />
+          <GroupFields value={{ ...group, servers }} onChange={(g) => setGroup({ ...g, servers: group.servers })} serversHidden modeHidden />
         </>
       ),
     },
@@ -237,20 +271,25 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
           <MetadataListItem label="Name">
             <Text type="code">{groupName}</Text>
           </MetadataListItem>
-          <MetadataListItem label="Provider">
-            {provider ? `${provider.name}${variant && provider.variants.length > 1 ? `, ${variant.label}` : ''}, ${TRANSPORTS.find((x) => x.value === t)?.label}` : 'Custom'}
-          </MetadataListItem>
-          <MetadataListItem label="Servers">
-            <VStack gap={1}>
-              {servers.map((s) => (
-                <Text key={s} type="code">
-                  {s}
-                </Text>
-              ))}
-            </VStack>
-          </MetadataListItem>
-          <MetadataListItem label="Strategy">{strategyLabel(group.strategy)}</MetadataListItem>
-          <MetadataListItem label="Timeout">{group.timeout}</MetadataListItem>
+          <MetadataListItem label="Mode">{recursive ? `Recursive, from the root servers${u.cfg.recursion.dnssec ? ' with DNSSEC validation' : ''}` : 'Forward'}</MetadataListItem>
+          {recursive ? null : (
+            <MetadataListItem label="Provider">
+              {provider ? `${provider.name}${variant && provider.variants.length > 1 ? `, ${variant.label}` : ''}, ${TRANSPORTS.find((x) => x.value === t)?.label}` : 'Custom'}
+            </MetadataListItem>
+          )}
+          {recursive ? null : (
+            <MetadataListItem label="Servers">
+              <VStack gap={1}>
+                {servers.map((s) => (
+                  <Text key={s} type="code">
+                    {s}
+                  </Text>
+                ))}
+              </VStack>
+            </MetadataListItem>
+          )}
+          {recursive ? null : <MetadataListItem label="Strategy">{strategyLabel(group.strategy)}</MetadataListItem>}
+          <MetadataListItem label="Timeout">{recursive ? `${group.timeout} per lookup` : group.timeout}</MetadataListItem>
         </MetadataList>
       ),
     },
@@ -271,7 +310,7 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
       finishLabel="Create group"
       isFinishing={busy}
       onFinish={create}
-      isDirty={choice !== '' || name !== '' || profile !== '' || custom.length > 0}
+      isDirty={group.mode !== 'forward' || choice !== '' || name !== '' || profile !== '' || custom.length > 0}
       error={error ? <Banner status="error" title="The group could not be created" description={error} /> : null}
     />
   );

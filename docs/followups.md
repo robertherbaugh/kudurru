@@ -32,9 +32,12 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
+| DHCPv4 deployment acceptance with the target router/relay hardware and systemd/container packaging ([procedure](deploy/dhcp.md#first-cutover-and-acceptance)). Disconnected stock-dhcpcd lifecycle, relay and multi-subnet tests pass; production LAN acceptance remains operator-specific | D171–D179 | v0.1.0 deployment acceptance |
+| DHCPv6 protocol coverage and coordinated IPv6 ownership | D176; explicitly excluded by project owner from this DHCPv4 expansion | beyond this DHCPv4 pass |
 | Query-log stats reads over the current hour scan its facts once it has more than 100,000 distinct names (1.8 s at 1M rows at 2,000 q/s): per-domain rollups for shorter buckets, or an HLL sketch per hour for unique domains (docs/m2/querylog.md) | docs/m5/measurements-v0.1.md | v0.2 |
+| Query-log summary and client counts can omit newly written previous-hour events when a one-hour window ends in the first minute of an hour; add deterministic boundary coverage and correct rollup initialization or reads | PR #75 local validation; reproduced on `origin/main` with `TestClusterStatsMerge` and a window ending at HH:00:30 | Next query-log correctness pass |
 | Blocking: `$important`/`$badfilter` (considered for v0.1 in the policy package and left to the v0.2 modifier slow path, §7.3; v0.1 counts them unsupported) | blocking spike, policy report | v0.2 |
-| Config keys for the control stage (`control.allowedNetworks`, `control.blockedQTypes`) and a hostname source (`policy.HostnameResolver`: reverse PTR cache, DHCP leases, UniFi) for hostname/nameGlob client matchers | policy report | v0.2 (moved from M3 / v0.2: new configuration surface, not an exit criterion) |
+| Config keys for the control stage (`control.allowedNetworks`, `control.blockedQTypes`) and additional hostname sources (`policy.HostnameResolver`: reverse PTR cache and UniFi; DHCP lease names are implemented) for hostname/nameGlob client matchers | policy report | v0.2 (moved from M3 / v0.2: new configuration surface, not an exit criterion) |
 | Blocking toggle replication: a `blocking.Publisher` writing `kudurru.io/blocking-disabled-until` on the `kudurru-runtime` ConfigMap (kube) or state.db (sqlite), and a watcher calling `Toggle.Apply` (`POST /dns/blocking` toggles the node-local Toggle since docs/m3/api.md) | policy report | v0.2 (moved from M3: the toggle stays per node in v0.1; the release notes list it) |
 | Blocking: conformance corpus black-box against an AdGuard Home container (needs Docker); move benchgate to hack/; lazy-DFA regex engine for regex-heavy users | blocking spike | v0.2 (moved from M2: the AdGuard Home corpus can run on a GitHub Docker runner) |
 | Upstream: `upstreams.importFile` for dnsmasq import; cache inspect over REST (`Set.Status()` is in GET /stats/upstreams and flush in POST /cache/flush since docs/m3/api.md); cache and strategy benchmarks in `bench/limits.txt` | cache-upstream report | v0.2 (moved from M3: additions, nothing in v0.1 depends on them) |
@@ -44,6 +47,17 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | ratelimit: a slip counter next to `kudurru_dns_dropped_total{reason="ratelimit"}`; exemptions per ClientGroup (`ratelimit.*` reload without a restart landed in docs/m5/burndown-server.md) | hardening report | v0.2 |
 | Multi-socket listeners for DoT (same code path, left at one socket) and DoQ/DoH3 (needs QUIC connection-ID aware routing) | hardening report | v0.2 (moved from M3: one socket limits throughput only) |
 | Settings hot reload caveats: a `querylog.privacy`/`anonymize`/`exclude.*` reload builds a new privacy transform, so `pseudonym` mode draws a new HMAC key (pseudonyms change at the reload); `cache.maxEntries` growth keeps the shard count chosen at start (very large growth means large shards); `blocking.refreshInterval`, `blocking.allowDegraded`, `querylog.enabled/sink`, `auth.*` still need a restart (restartRequired) | docs/m5/burndown-server.md | v0.2 |
+
+## Recursive resolver (D170)
+
+| Item | Source | Target |
+|---|---|---|
+| Aggressive use of DNSSEC-validated NSEC/NSEC3 ranges to answer NXDOMAIN and NODATA from the resolver cache (RFC 8198) | D170 | v0.2 |
+| Automatic root trust-anchor updates (RFC 5011): new anchors come with releases or `upstreams.recursion.trustAnchors` | D170 | v0.2 |
+| Negative trust anchors: a list of zones whose broken DNSSEC is ignored, so an operator can work around a provider's signing outage without turning validation off | D170 | v0.2 |
+| DNSSEC validation of forwarded answers (the `dnssec` stage, §7.1 step 10); only recursive groups validate | D170 | v0.2 |
+| DNS cookies (RFC 7873, RFC 9018) on queries to authoritative servers | D170 | v0.2 |
+| A local copy of the root zone (RFC 8806) for recursive groups | D170 | later |
 
 ## API (docs/m3/api.md)
 

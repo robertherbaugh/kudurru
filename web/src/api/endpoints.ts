@@ -1,6 +1,7 @@
 // One typed function per /api/v1 route the dashboard uses. Pages call these
 // through the hooks in ./hooks; tests and mocks share the paths.
 import type { ApiClient, Query } from './client';
+import { dhcpEndpoints } from './dhcp';
 import type {
   ApiToken,
   ApplyResult,
@@ -90,6 +91,7 @@ export function objectPath(kind: ObjectKind, name: string, namespace?: string): 
 
 export function endpoints(c: ApiClient) {
   return {
+    dhcp: dhcpEndpoints(c),
     imports: {
       preview: (request: MigrationRequest) => c.post<MigrationPlan>('/imports/preview', request),
       apply: (plan: MigrationPlan) => c.post<MigrationResult>('/imports/apply', plan),
