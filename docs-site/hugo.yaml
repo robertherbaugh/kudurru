@@ -3,9 +3,9 @@
 # only docs-site/content holds pages of its own (landing pages, role pages,
 # migration guides and the generated references). The architecture tour
 # (docs/architecture) is published with its diagrams; the design record and
-# the engineering notes (dev-docs/design-record.md, docs/m*, dev-docs/spikes,
-# dev-docs/research ...) are not: they live in the repository, where links to
-# them resolve to GitHub.
+# the engineering notes (dev-docs/design-record.md, dev-docs/milestones,
+# dev-docs/spikes, dev-docs/research ...) are not: they live in the
+# repository, where links to them resolve to GitHub.
 title: kudurru
 # The Pages workflow passes the real --baseURL; every template link goes
 # through relURL/RelPermalink so the site also works below a sub-path.

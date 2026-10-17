@@ -38,12 +38,12 @@ not require Bun.
 | Architecture | `docs/architecture` (its `README.md` is the section page); the hand-drawn diagrams are served from `docs/architecture/diagrams`, and the Mermaid blocks are drawn in the browser by the bundle in `docs-site/vendor/mermaid`, loaded only on pages that have one |
 | Project | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, `LICENSE`, `LICENSING.md`, `COMMERCIAL_LICENSE_AGREEMENT.md` and the folder-specific license notices |
 
-The rest of `docs/` is for contributors and stays in the repository: the
-design record and decision log
-(`dev-docs/design-record.md`, `dev-docs/open-questions.md`) and the engineering notes
-(`dev-docs/milestones/m1` ... `dev-docs/milestones/m5`, `dev-docs/spikes`, `dev-docs/research`, `dev-docs/followups.md`,
-`dev-docs/release-checklist.md`). A page of the site that links to one of them
-gets a GitHub URL (below).
+`dev-docs/` is for contributors and stays in the repository: the design
+record and decision log (`dev-docs/design-record.md`,
+`dev-docs/open-questions.md`) and the engineering notes
+(`dev-docs/milestones/m1` ... `dev-docs/milestones/m5`, `dev-docs/spikes`,
+`dev-docs/research`, `dev-docs/followups.md`, `dev-docs/release-checklist.md`).
+A page of the site that links to one of them gets a GitHub URL (below).
 
 The mounts are in `hugo.yaml`. Pages from `docs/` need no front matter: the
 title is the first `#` heading, and the order within a section comes from the
