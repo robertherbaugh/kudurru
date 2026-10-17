@@ -32,6 +32,7 @@ function paramsFor(route: RouteDef): Record<string, string> {
     else if (collection === 'licenses') out[name!] = 'lic_AAAAAAAAAAAA';
     else if (collection === 'customers') out[name!] = 'cus_AAAAAAAAAAAA';
     else if (collection === 'requests') out[name!] = 'req_AAAAAAAAAAAA';
+    else if (collection === 'business-requests') out[name!] = 'brq_AAAAAAAAAAAA';
     else if (collection === 'users') out[name!] = 'usr_AAAAAAAAAAAA';
     else if (collection === 'blocked-emails') out[name!] = 'nobody@example.org';
     else throw new Error(`no test value for ${route.path} :${name}`);

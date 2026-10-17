@@ -50,7 +50,7 @@ func run(m *testing.M) int {
 	}
 	_, file, _, _ := goruntime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "..")
-	b, err := os.ReadFile(filepath.Join(root, "config", "crd", "audit", "audit.kudurru.io_auditlogs.yaml")) //nolint:gosec // the repository's CRD
+	b, err := os.ReadFile(filepath.Join(root, "deploy", "kustomize", "crd", "audit", "audit.kudurru.io_auditlogs.yaml")) //nolint:gosec // the repository's CRD
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

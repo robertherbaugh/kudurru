@@ -17,7 +17,7 @@ const FileName = "querylog.db"
 // version is refused (ErrSchemaTooNew) rather than silently mis-read; an
 // older one is upgraded in place by the steps in migrations.
 //
-//  1. v0.1 (docs/architecture.md §11.2)
+//  1. v0.1 (dev-docs/design-record.md §11.2)
 //  2. query.policy and dict_policy: the deciding policy per row; rows
 //     written before the upgrade keep policy NULL
 const SchemaVersion = 2
@@ -26,7 +26,7 @@ const SchemaVersion = 2
 // kudurru.
 var ErrSchemaTooNew = errors.New("sqlitelog: querylog.db schema is newer than this binary")
 
-// Pragmas are the connection settings of docs/architecture.md §11.2, applied
+// Pragmas are the connection settings of dev-docs/design-record.md §11.2, applied
 // on every connection open. The writer connection opens before the schema
 // is created, so auto_vacuum=INCREMENTAL takes effect on a fresh file (it
 // cannot change once tables exist without a VACUUM).
@@ -168,7 +168,7 @@ func rollupDomain(name string) string {
 	return `CREATE TABLE ` + name + ` (ts INTEGER, node INTEGER, domain INTEGER, total INTEGER, blocked INTEGER, PRIMARY KEY (ts,node,domain)) WITHOUT ROWID`
 }
 
-// schema is docs/architecture.md §11.2 verbatim, plus the _1h/_1d tables
+// schema is dev-docs/design-record.md §11.2 verbatim, plus the _1h/_1d tables
 // the spec declares "identical shapes". Rollup ts values are unix seconds
 // of the UTC-aligned bucket start; query.ts is unix µs.
 var schema = []string{

@@ -15,7 +15,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 )
 
-// chartCase is one values permutation of charts/kudurru.
+// chartCase is one values permutation of deploy/helm/kudurru.
 type chartCase struct {
 	name   string
 	values string // YAML
@@ -489,6 +489,28 @@ var chartCases = []chartCase{
 			t.Errorf("NetworkPolicy does not admit the block page port")
 		}
 	}},
+	{name: "dhcp-high-dns-port", values: "listen: {port: 5353}\ndhcp: {enabled: true, serverAddress: 192.0.2.67, service: {annotations: {metallb.io/loadBalancerIPs: 192.0.2.67}}}\nnetworkPolicy: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		// DNS on 5353 needs no low port, but DHCP binds UDP 67 as uid 65532.
+		if dig(r.pod(t), "spec", "securityContext", "sysctls", 0, "name") != "net.ipv4.ip_unprivileged_port_start" {
+			t.Errorf("uid 65532 binding UDP 67 needs the ip_unprivileged_port_start sysctl")
+		}
+		svc := r.object(t, "Service", "kudurru-dhcp")
+		if dig(svc, "spec", "loadBalancerIP") != "192.0.2.67" || dig(svc, "spec", "externalTrafficPolicy") != "Local" ||
+			dig(svc, "spec", "selector", "kudurru.io/dhcp-active") != "true" || dig(svc, "spec", "ports", 0, "protocol") != "UDP" {
+			t.Errorf("DHCP Service: %v", dig(svc, "spec"))
+		}
+		if cfg := r.config(t); !cfg.DHCP.Enabled || cfg.DHCP.ServerIP != "192.0.2.67" || cfg.DHCP.Interface != "eth0" {
+			t.Errorf("node dhcp settings = %+v", cfg.DHCP)
+		}
+		if role := fmt.Sprint(dig(r.object(t, "Role", "kudurru"), "rules")); !strings.Contains(role, "dhcpleases") || !strings.Contains(role, "pods") {
+			t.Errorf("Role lacks the DHCP rules: %s", role)
+		}
+		r.wantObject(t, "ValidatingAdmissionPolicy", "kudurru-"+releaseNS+"-dhcp-label")
+		r.wantObject(t, "ValidatingAdmissionPolicyBinding", "kudurru-"+releaseNS+"-dhcp-label")
+		if np := r.object(t, "NetworkPolicy", "kudurru"); !strings.Contains(fmt.Sprint(dig(np, "spec", "ingress")), "67") {
+			t.Errorf("NetworkPolicy does not admit UDP 67")
+		}
+	}},
 	{name: "everything", values: "edge: {enabled: true, tlsSecretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}}\nvip: {provider: metallb, address: 192.0.2.53}\ningress: {enabled: true, host: dns.example.com}\nserviceMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}\nnetworkPolicy: {enabled: true, apiFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]}\npriorityClassName: system-cluster-critical\nexternalDNS: {webhook: {enabled: true}}\nauth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment"},
 }
 
@@ -530,6 +552,10 @@ var failCases = []struct{ name, values, want string }{
 	{"short-proxy-secret", "edge: {enabled: true, proxyProtocolSecret: short}", "at least 32 bytes"},
 	{"edge-backend-53", "edge: {enabled: true, backendPort: 53}", "backendPort"},
 	{"block-page-without-address", "blockPage: {enabled: true}", "blockPage.ipv4 or blockPage.ipv6"},
+	{"dhcp-without-address", "dhcp: {enabled: true}", "dhcp.serverAddress"},
+	{"dhcp-standalone", "mode: standalone\ndhcp: {enabled: true, serverAddress: 192.0.2.67}", "config.node.dhcp"},
+	{"dhcp-cluster-traffic-policy", "dhcp: {enabled: true, serverAddress: 192.0.2.67, service: {externalTrafficPolicy: Cluster}}", "externalTrafficPolicy must be Local"},
+	{"dhcp-hostnetwork", "hostNetwork: {enabled: true}\ndhcp: {enabled: true, serverAddress: 192.0.2.67}", "hostNetwork"},
 }
 
 // helmBin returns the helm binary or skips the test.
@@ -549,7 +575,7 @@ func helmBin(t *testing.T) string {
 func renderChart(t *testing.T, values string) ([]byte, error) {
 	t.Helper()
 	root := repoRoot(t)
-	args := []string{"template", "kudurru", filepath.Join(root, "charts/kudurru"), "--namespace", releaseNS}
+	args := []string{"template", "kudurru", filepath.Join(root, "deploy/helm/kudurru"), "--namespace", releaseNS}
 	if values != "" {
 		f := filepath.Join(t.TempDir(), "values.yaml")
 		if err := os.WriteFile(f, []byte(values), 0o600); err != nil {
@@ -646,7 +672,7 @@ func TestChartChecksumCoversNodeFileOnly(t *testing.T) {
 // TestChartLint runs helm lint on both charts.
 func TestChartLint(t *testing.T) {
 	root := repoRoot(t)
-	for _, c := range []string{"charts/kudurru", "charts/kudurru-crds"} {
+	for _, c := range []string{"deploy/helm/kudurru", "deploy/helm/kudurru-crds"} {
 		cmd := exec.Command(helmBin(t), "lint", "--strict", filepath.Join(root, c)) //nolint:gosec // fixed binary
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Errorf("helm lint %s: %v\n%s", c, err, out)
@@ -654,13 +680,13 @@ func TestChartLint(t *testing.T) {
 	}
 }
 
-// TestCRDChartMatchesBases keeps charts/kudurru-crds/templates equal to
-// config/crd/bases (make manifests is the source) plus the
+// TestCRDChartMatchesBases keeps deploy/helm/kudurru-crds/templates equal to
+// deploy/kustomize/crd/bases (make manifests is the source) plus the
 // helm.sh/resource-policy: keep annotation that stops `helm uninstall` from
 // deleting the CRDs and with them every kudurru.io object.
 func TestCRDChartMatchesBases(t *testing.T) {
 	root := repoRoot(t)
-	bases, err := filepath.Glob(filepath.Join(root, "config/crd/bases/*.yaml"))
+	bases, err := filepath.Glob(filepath.Join(root, "deploy/kustomize/crd/bases/*.yaml"))
 	if err != nil || len(bases) == 0 {
 		t.Fatalf("no CRD bases: %v", err)
 	}
@@ -677,12 +703,12 @@ func TestCRDChartMatchesBases(t *testing.T) {
 				want.WriteString("    helm.sh/resource-policy: keep\n")
 			}
 		}
-		got, err := os.ReadFile(filepath.Join(root, "charts/kudurru-crds/templates", filepath.Base(b))) //nolint:gosec // repository file
+		got, err := os.ReadFile(filepath.Join(root, "deploy/helm/kudurru-crds/templates", filepath.Base(b))) //nolint:gosec // repository file
 		if err != nil || !bytes.Equal(got, want.Bytes()) {
-			t.Errorf("charts/kudurru-crds/templates/%s differs from config/crd/bases; run make manifests", filepath.Base(b))
+			t.Errorf("deploy/helm/kudurru-crds/templates/%s differs from deploy/kustomize/crd/bases; run make manifests", filepath.Base(b))
 		}
 		if !strings.Contains(string(got), "helm.sh/resource-policy: keep") {
-			t.Errorf("charts/kudurru-crds/templates/%s lacks helm.sh/resource-policy: keep", filepath.Base(b))
+			t.Errorf("deploy/helm/kudurru-crds/templates/%s lacks helm.sh/resource-policy: keep", filepath.Base(b))
 		}
 	}
 }

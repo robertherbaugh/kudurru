@@ -1,6 +1,6 @@
 /*
  * The portal's own CSS: documented exceptions only, the generic parts of
- * web/src/styles.css at dd3dcb0 (keep in step by hand). Left out: the
+ * dashboard/src/styles.css at dd3dcb0 (keep in step by hand). Left out: the
  * query colors, stat tiles, charts, query-log rows, service icons,
  * monograms and tiles, which only the dashboard has.
  *

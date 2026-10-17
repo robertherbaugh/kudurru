@@ -9,7 +9,7 @@ import (
 
 // TestRestoreOrderPutsTokensLast: Restore re-creates Secrets, which get a
 // new creationTimestamp, and the auth layer refuses a token older than its
-// owner (docs/m5/security.md S2). The sorted snapshot lists APIToken first,
+// owner (dev-docs/milestones/m5/security.md S2). The sorted snapshot lists APIToken first,
 // so Restore must apply tokens after users and service accounts or a
 // restore would invalidate them.
 func TestRestoreOrderPutsTokensLast(t *testing.T) {

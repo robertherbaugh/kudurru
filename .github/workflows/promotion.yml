@@ -1,4 +1,4 @@
-# Guards the promotion pull requests (docs/release-checklist.md, "Release
+# Guards the promotion pull requests (dev-docs/release-checklist.md, "Release
 # pipeline"): release-candidate takes merges from main only, release from
 # release-candidate only, and hack/release-tag.sh dry-runs the tag the merge
 # would publish, so a VERSION that is already released, or a release whose

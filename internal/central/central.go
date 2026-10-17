@@ -1,7 +1,7 @@
 // Package central is the optional cluster-wide database of runtime data:
 // audit events, query-log rows and statistics from every node in one
 // PostgreSQL (16 or newer) database, so every replica gives the same
-// answer and the data outlives the nodes (docs/architecture.md §4.5,
+// answer and the data outlives the nodes (dev-docs/design-record.md §4.5,
 // §11.2, §11.4; D158).
 //
 // Configuration objects never go here (they stay in CRDs or state.db).

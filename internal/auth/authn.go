@@ -31,7 +31,7 @@ const CSRFHeader = "X-Kudurru-CSRF"
 var ErrNoCredentials = errors.New("auth: no credentials of this kind")
 
 // Error is an authentication or authorization failure in the shape of the
-// API contract (docs/architecture.md §10): HTTP status, a stable key, a
+// API contract (dev-docs/design-record.md §10): HTTP status, a stable key, a
 // user-safe message and an optional hint. Authenticators return it for a
 // credential of their kind that is present but rejected.
 type Error struct {

@@ -1,6 +1,6 @@
 // Package oidc is kudurru's OpenID Connect relying party for the web UI: the
 // backend-for-frontend authorization code + PKCE login of
-// docs/architecture.md §8.2, the claim pipeline of §8.4
+// dev-docs/design-record.md §8.2, the claim pipeline of §8.4
 // (claimValidationRules → claimMappings → provisioning → bindings) and the
 // identity key of §8.1, built on github.com/coreos/go-oidc/v3 and
 // golang.org/x/oauth2 (§2).

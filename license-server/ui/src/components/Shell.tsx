@@ -1,4 +1,4 @@
-// The signed-in frame, after web/src/components/Shell.tsx: Astryx AppShell
+// The signed-in frame, after dashboard/src/components/Shell.tsx: Astryx AppShell
 // with the side navigation (sections and entries by Me.permissions, a
 // mobile drawer below the md breakpoint), the top bar (the product name and
 // the account menu) and the banners above every page (a failed session
@@ -38,8 +38,7 @@ function Brand() {
 }
 
 function RequestsBadge() {
-  const q = useOpenRequestCount();
-  const n = q.data?.items.length ?? 0;
+  const n = useOpenRequestCount();
   return n > 0 ? <Badge variant="info" label={String(n)} /> : null;
 }
 

@@ -1,4 +1,4 @@
-// Copied from web/src/components/ErrorBoundary.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/ErrorBoundary.tsx at dd3dcb0; keep in step by hand.
 // Changes: the console prefix says license portal.
 // Catches render errors of one page so the shell and navigation survive.
 import { Component, type ErrorInfo, type ReactNode } from 'react';

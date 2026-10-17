@@ -2,13 +2,21 @@
 // granted roles and disable/enable with the guards (no removing your own
 // superadmin grant, no disabling yourself, the last enabled superadmin
 // keeps it), the target's sessions ended on every change but never the
-// acting session, revoke-sessions, and the audit events.
+// acting session, revoke-sessions, delete (sessions and memberships go,
+// labels stay, not yourself, not the last enabled superadmin), and the
+// audit events.
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { userHandlers } from '../api/users';
+import { textArray } from '../db/sql';
 import { mergeHandlers } from '../http/router';
+import { silentLogger } from '../log';
+import { MemoryMailer } from '../mail/memory';
+import { deleteUser } from '../services/users';
+import { inTransaction } from '../services/types';
+import { signingUnavailable } from '../licensing/types';
 import { call, callJson, makeTestApp, type TestApp } from './call';
 import { describeDb, hasDb, useTestDb as fileDatabase } from './db';
-import { createCustomer, createUser, signInAs, type TestSession, type TestUser } from './fixtures';
+import { createCustomer, createUser, signInAs, testConfig, type TestSession, type TestUser } from './fixtures';
 
 // One fresh database for this file (useTestDb, renamed: it is not a React hook).
 const t = fileDatabase();
@@ -114,11 +122,69 @@ describeDb('users', () => {
     expect((await callJson(app, 'usersList', { as: rootSession })).status).toBe(200);
   });
 
+  test('delete: the user, their sessions and memberships go; labels stay; audited with who it was', async () => {
+    const u = await createUser(t.db, { name: 'Gone Person', email: 'gone@users.example', roles: ['license_admin'] });
+    await signInAs(t.db, u);
+    await signInAs(t.db, u);
+    const member = await createCustomer(t.db, { name: 'Gone Org', members: [{ email: u.email!, userId: u.id }, 'other@users.example'] });
+    const made = await createCustomer(t.db, { name: 'Made By Gone' });
+    await t.db`update customers set created_by = ${u.id}, created_by_label = 'Gone Person' where id = ${made.id}`;
+
+    const res = await call(app, 'userDelete', { as: rootSession, params: { id: u.id } });
+    expect(res.status).toBe(204);
+    expect((await call(app, 'userGet', { as: rootSession, params: { id: u.id } })).status).toBe(404);
+    expect(await sessionsOf(u.id)).toBe(0);
+    const members = await t.db<{ email: string }[]>`select email from customer_members where customer_id = ${member.id} order by email`;
+    expect(members.map((m) => m.email)).toEqual(['other@users.example']);
+    expect(await t.db`select created_by, created_by_label from customers where id = ${made.id}`).toEqual([{ created_by: null, created_by_label: 'Gone Person' }]);
+    const audit = (await t.db<{ actor_id: string; details: Record<string, unknown> }[]>`select actor_id, details from audit_events where action = 'user.deleted' and target_id = ${u.id}`)[0]!;
+    expect(audit.actor_id).toBe(root.id);
+    expect(audit.details).toEqual({
+      name: 'Gone Person',
+      email: 'gone@users.example',
+      issuer: u.issuer,
+      subject: u.subject,
+      roles: ['license_admin'],
+      memberships: [{ customerId: member.id, email: 'gone@users.example' }],
+      sessionsEnded: 2,
+    });
+    // Gone is gone.
+    expect((await call(app, 'userDelete', { as: rootSession, params: { id: u.id } })).status).toBe(404);
+  });
+
+  test('delete guards: not yourself; not the last enabled superadmin (two superadmins deleting each other at once)', async () => {
+    const self = await callJson(app, 'userDelete', { as: rootSession, params: { id: root.id } });
+    expect(self.status).toBe(409);
+    expect(self.error?.message).toContain('cannot delete yourself');
+
+    const a = await createUser(t.db, { roles: ['superadmin'] });
+    const b = await createUser(t.db, { roles: ['superadmin'] });
+    // Only a and b are enabled superadmins; each one's DELETE of the other passed its permission check.
+    const others = await t.db<{ id: string }[]>`
+      update users set disabled_at = now()
+       where disabled_at is null and ('superadmin' = any(granted_roles) or 'superadmin' = any(idp_roles)) and id not in (${a.id}, ${b.id})
+      returning id`;
+    const deps = { db: t.db, config: testConfig(), log: silentLogger, signing: signingUnavailable('not needed'), mailer: new MemoryMailer() };
+    const actorOf = (x: TestUser) => ({ kind: 'user' as const, userId: x.id, label: x.name });
+    try {
+      await inTransaction(deps, actorOf(a), (s) => deleteUser(s, b.id, { userId: a.id, sessionHash: null }));
+      const second = inTransaction(deps, actorOf(b), (s) => deleteUser(s, a.id, { userId: b.id, sessionHash: null }));
+      expect(second).rejects.toMatchObject({ status: 409 });
+      await second.catch(() => undefined);
+      expect(await t.db`select 1 from users where id = ${a.id}`).toHaveLength(1);
+    } finally {
+      await t.db`update users set disabled_at = null where id = any(${textArray(t.db, others.map((o) => o.id))})`;
+    }
+  });
+
   test('a license admin may read users but not change them', async () => {
     const reader = await signInAs(t.db, await createUser(t.db, { roles: ['license_admin'] }));
     expect((await call(app, 'usersList', { as: reader })).status).toBe(200);
     const res = await callJson(app, 'userUpdate', { as: reader, params: { id: root.id }, body: { disabled: true } });
     expect(res.status).toBe(403);
     expect(res.error?.hint).toEqual({ missing: 'users.write' });
+    const del = await callJson(app, 'userDelete', { as: reader, params: { id: root.id } });
+    expect(del.status).toBe(403);
+    expect(del.error?.hint).toEqual({ missing: 'users.write' });
   });
 });

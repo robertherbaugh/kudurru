@@ -16,7 +16,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/version"
 )
 
-// Download defaults (blocky's loading.downloads, docs/research §2.6).
+// Download defaults (blocky's loading.downloads, dev-docs/research §2.6).
 const (
 	DefaultMaxHTTPSize        = 64 << 20
 	DefaultAttempts           = 3

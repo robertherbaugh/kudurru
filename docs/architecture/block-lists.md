@@ -118,7 +118,7 @@ query log can show the rule as written without storing the lines.
 
 Lookups allocate nothing. The spike measured p99 1.18 µs for a hit and
 0.71 µs for a miss over a 1 M-entry suffix set, and about 90 MB steady RSS
-for 3 M entries ([spike](../spikes/blocking.md)); `make bench` guards it.
+for 3 M entries ([spike](../../dev-docs/spikes/blocking.md)); `make bench` guards it.
 
 | Syntax | Compiles to |
 |---|---|

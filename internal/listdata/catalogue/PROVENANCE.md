@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 | Field | Value |
 |---|---|
 | File | `catalogue.json` (this directory), embedded into the kudurru binary by `internal/listdata/catalogue` (`go:embed`) |
-| Purpose | `Policy.spec.blockedServices` and `Policy.spec.safeSearch` (docs/architecture.md §7, D60) |
+| Purpose | `Policy.spec.blockedServices` and `Policy.spec.safeSearch` (dev-docs/design-record.md §7, D60) |
 | Schema version | 2 |
 | Catalogue version | `2026.10.12` |
 | SHA-256 | `110d1368d6f2d6c38d23c0555f54b9ea195d3f74c95abb79edfa9caefe0a300f` |

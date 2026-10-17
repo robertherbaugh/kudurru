@@ -1,4 +1,4 @@
-// Copied from web/src/lib/format.ts at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/lib/format.ts at dd3dcb0; keep in step by hand.
 // Changes: none.
 // Formatting helpers shared by tiles, tables and charts.
 

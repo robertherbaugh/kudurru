@@ -96,7 +96,7 @@ func (s *Store) Restore(ctx context.Context, r io.Reader) error {
 // restoreOrder moves API tokens after every other object (stable
 // otherwise). Secrets get their creationTimestamp from the apiserver, and
 // the auth layer refuses a token older than the user or service account it
-// belongs to (a deleted account of the same name, docs/m5/security.md S2),
+// belongs to (a deleted account of the same name, dev-docs/milestones/m5/security.md S2),
 // so tokens must be re-created after their owners; the sorted snapshot
 // lists "APIToken/..." first.
 func restoreOrder(objs []store.Object) []store.Object {

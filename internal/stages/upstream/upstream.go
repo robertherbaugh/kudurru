@@ -1,4 +1,4 @@
-// Package upstream is the terminal forwarding stage (docs/architecture.md
+// Package upstream is the terminal forwarding stage (dev-docs/design-record.md
 // §7.1 step 11). It forwards over the groups of internal/upstream: the
 // group is Request.UpstreamGroup when the authoritative stage set it, else
 // the longest conditional-forwarding suffix, else "default". Answers from

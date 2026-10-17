@@ -143,7 +143,7 @@ type ExternalSpec struct {
 }
 
 // DNSSECSpec is reserved for v1.0 signing. The schema exists so that the
-// seam is in place (docs/architecture.md §13.1).
+// seam is in place (dev-docs/design-record.md §13.1).
 type DNSSECSpec struct {
 	Enabled bool `json:"enabled"`
 	// +kubebuilder:validation:Enum=ECDSAP256SHA256;ED25519

@@ -1,4 +1,4 @@
-// Copied from web/src/lib/router.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/lib/router.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // A minimal History-API router. The dashboard has a dozen flat routes, so a
 // 60 KB router library buys nothing; this one is prefix aware (basePath),

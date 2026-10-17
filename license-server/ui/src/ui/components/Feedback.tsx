@@ -1,4 +1,4 @@
-// Copied from web/src/components/Feedback.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/Feedback.tsx at dd3dcb0; keep in step by hand.
 // Changes: imports ApiError from the portal's client (../../api/client).
 // Loading, error and toast helpers shared by every page.
 import { Banner } from '@astryxdesign/core/Banner';

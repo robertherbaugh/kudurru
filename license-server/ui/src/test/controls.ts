@@ -1,4 +1,4 @@
-// Copied from web/src/test/controls.ts at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/test/controls.ts at dd3dcb0; keep in step by hand.
 // Changes: none.
 // Driving the Astryx controls in tests. A Selector or MultiSelector is a
 // combobox button whose options live in the listbox it controls (always in

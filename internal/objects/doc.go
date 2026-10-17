@@ -1,4 +1,4 @@
-// Package objects loads file-managed kudurru objects (docs/architecture.md
+// Package objects loads file-managed kudurru objects (dev-docs/design-record.md
 // §6.2): the CRD-shaped documents embedded under objects: in kudurru.yaml
 // and every *.yaml file in objectsDir (default /etc/kudurru/objects.d).
 //

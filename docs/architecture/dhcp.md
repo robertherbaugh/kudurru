@@ -1,8 +1,14 @@
 # DHCPv4 and lease state
 
-DHCPv4 is an optional **v0.2.0 development feature**. v0.1.0 does not serve
-DHCP. It runs on Linux with the SQLite configuration store and supports multiple directly attached and relayed IPv4 subnets. See the
+DHCPv4 is an optional **v0.1.0 feature**, disabled by default. It runs on Linux
+with either store. With the SQLite store, each node owns its setup and lease
+databases and supports multiple directly attached and relayed IPv4 subnets.
+With the Kubernetes store, scopes are `DHCPScope` objects, leases are
+`DHCPLease` objects and one replica serves relayed clients
+([Kubernetes store](#kubernetes-store)). See the
 [deployment guide](../deploy/dhcp.md) for configuration and cutover.
+
+The diagram below shows the SQLite store.
 
 ```mermaid
 flowchart LR
@@ -227,7 +233,7 @@ After successful startup, a lease-handler or storage failure logs at ERROR
 and drops only that packet, without sending a successful lease reply for the
 failed operation. Later requests and client retries continue in both file-
 and UI-owned scopes. This keeps optional DHCP storage failures from stopping
-core DNS ([D175](../architecture.md#16-decision-log)). Existing network timeout
+core DNS ([D175](../../dev-docs/design-record.md#16-decision-log)). Existing network timeout
 and ICMP exceptions remain per-packet; unexpected socket failures remain fatal.
 Startup ownership and activation rules are unchanged. Live packet failures
 are diagnosed through logs, not the startup-only setup `runtimeError` field.
@@ -395,10 +401,86 @@ over replicated settings. Disabling DHCP retains failover ownership; an
 established node cannot restart as a standalone allocator. This quorum service
 replicates DHCP state only, independently of DNS object-store replication.
 
+## Kubernetes store
+
+With `store.driver: kube` (the Helm chart's `mode: kubernetes`), DHCP state
+lives in the apiserver like the rest of the configuration (D180). Every
+replica answers the DHCP API and dashboard the same way, so a load balancer
+or sticky session can send the dashboard to any replica.
+
+```mermaid
+flowchart LR
+    git["Git (Argo CD) or dashboard"] --> scope[("DHCPScope objects<br/>kudurru.io, cluster-scoped")]
+    scope --> replicas["Every replica: watch scopes and leases<br/>local working copy per scope"]
+    leases[("DHCPLease objects<br/>dhcp.kudurru.io, release namespace<br/>name = scope.address")] --> replicas
+    replicas --> dns["Lease A/PTR records<br/>on every replica"]
+    replicas --> api["DHCP API and dashboard<br/>on every replica"]
+    elect["Lease kudurru-dhcp"] --> leader["Serving replica<br/>label kudurru.io/dhcp-active"]
+    relay["Router relay"] --> lb["LoadBalancer Service<br/>dhcp.serverAddress, Local policy"]
+    lb --> leader
+    leader -->|"create, update or delete<br/>with resourceVersion precondition"| leases
+    leader -->|"commit locally, then reply"| relay
+```
+
+- **Scopes.** A `DHCPScope` holds the subnet, pool, router, DNS servers,
+  options, trusted relays and reservations. Its name is the scope name. The
+  interface and the advertised server address are node settings
+  (`dhcp.interface`, default `eth0`, and `dhcp.serverIP`, the LoadBalancer
+  address), shared by every scope; every scope is relay-only. `dhcp.scopes`,
+  the flat scope keys and quorum failover are rejected with this store.
+- **Ownership.** The store's one-writer rule applies. Scopes written by the
+  dashboard are owned by `api`. A scope applied from Git carries
+  `kudurru.io/managed-by: gitops:<tool>` (any owner other than `api`), so the
+  dashboard shows it read-only and its writes return 409 `managed_by`.
+- **Leases.** `DHCPLease` objects are runtime data in their own group, like
+  `AuditLog` (D157): not served by the store, not in backups, not in the DNS
+  snapshot. The object name is `<scope>.<address>`, so Kubernetes refuses a
+  second owner of an address even if two replicas briefly both serve.
+  Updates and deletes carry the resourceVersion the writer last saw. Offers
+  (one minute) and quarantines (ten minutes) are stored too, so a failover
+  never offers an address that just failed a conflict probe.
+- **Working copies.** Each replica keeps one SQLite file per scope under
+  `node.dataDir/dhcp-kube/`, rebuilt from the objects at every start and
+  whenever the scope set or a scope's subnet, relays or conflict detection
+  changes. It serves lease lists, exports and the DNS snapshot. Option and
+  reservation changes apply live. A watch keeps the copy current. While a
+  replica writes an object, events for it wait until the write is recorded,
+  and its own and older events are skipped. An event is applied only if it
+  is still the latest the replica knows once it holds the scope's packet
+  lock, so it cannot revert a write that committed while it waited.
+- **Serving.** The replica that holds the `kudurru-dhcp` Lease first rebuilds
+  its copies from a consistent list, ranks DNS claims, then sets the
+  `kudurru.io/dhcp-active` label on its pod and removes it from the others.
+  The chart's DHCP Service selects that label, so the LoadBalancer has one
+  endpoint. Other replicas drop DHCP packets. Leases survive a failover in
+  the objects, and clients keep their addresses. A ValidatingAdmissionPolicy
+  lets the ServiceAccount change only that label, and only on its release's
+  pods, which RBAC alone cannot express.
+- **Commit order.** A lease decision runs in the local SQLite transaction. Its
+  exact row changes are written to the apiserver before the local commit:
+  deletes, then updates and creates. A refused write rolls back the local
+  transaction, so no reply is sent, and the affected objects are read again.
+  Expired leases are not deleted inline: the serving replica deletes expired
+  objects every 30 seconds.
+- **Status.** The serving replica writes each scope's status: the serving
+  pod, bound leases, and a `Ready` condition. A Git change that no longer
+  allows some live leases still applies. Those leases are not renewed, end at
+  expiry, and are counted in `conflictingLeases`. The dashboard refuses such
+  an edit with 409, as it does with the SQLite store.
+- **Network path.** Clients reach the pod through a DHCP relay that sends to
+  the LoadBalancer address. The Service uses `externalTrafficPolicy: Local`,
+  because trusted relays are matched by their source address. Replies to a
+  relay go to its giaddr, and option 54 advertises `dhcp.serverIP`, so
+  clients renewing directly send to the LoadBalancer address and reach the
+  serving pod again. The listener binds the pod address on `dhcp.interface`. The ICMP conflict
+  probe falls back to an unprivileged ICMP socket when the non-root pod has
+  no raw sockets.
+
 ## Deployment boundary and verification
 
-The `kube` store is rejected: each voter requires durable local SQLite lease
-replicas. DHCPv6 remains outside this implementation. A DNS VIP alone does not
+With the SQLite store, each quorum voter requires durable local SQLite lease
+replicas; the Kubernetes store uses `DHCPLease` objects instead. DHCPv6
+remains outside this implementation. A DNS VIP alone does not
 provide lease coordination. No live LAN is needed for automated tests. Three-node
 loopback tests exercise elections, partitions, quorum loss, authenticated peer
 rejection, forwarded writes, full restart, snapshot catch-up, bootstrap adoption

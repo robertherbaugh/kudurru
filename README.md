@@ -39,7 +39,7 @@ diagram per topic: a query's journey, policies and blocking, block lists,
 upstreams and the cache, zones, the store, deployment shapes, access and
 observability.
 
-Principles that shaped it (the full list is in the [design record](docs/architecture.md#1-vision--principles)):
+Principles that shaped it (the full list is in the [design record](dev-docs/design-record.md#1-vision--principles)):
 
 - **One object model, one `Store` interface, zero consensus code in v0.1.** In Kubernetes the apiserver is the replicated store; in Docker it is embedded SQLite. Follower mode (v0.2) and raft (v1.0) arrive behind the same interface.
 - **One owner per object.** Objects record who manages them (API, a file, an integration, Kubernetes); writes from another source are rejected.
@@ -96,63 +96,82 @@ For two or more replicas, add a license key as described in the
 [Helm guide](docs/deploy/helm.md#license-key). That guide also covers the first
 login, load balancers and monitoring. The same YAML works in both modes:
 `kudurru apply -f zone.yaml` against a Docker instance accepts the CRD
-documents verbatim. Examples live in [`config/samples/`](config/samples/)
+documents verbatim. Examples live in [`deploy/kustomize/samples/`](deploy/kustomize/samples/)
 and [`deploy/compose/`](deploy/compose/).
 
 ## Roadmap
 
 | Release | Name | Headline |
 |---|---|---|
-| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
-| v0.2.0 | clay copies | DHCP server support, secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
+| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, opt-in DHCPv4 on Linux with dashboard setup, on SQLite (with three-node quorum failover) or Kubernetes (DHCPScope and DHCPLease objects), primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
+| v0.2.0 | clay copies | secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
 | v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
 
-The v0.2.0 development tree includes standalone and three-node quorum DHCPv4 for Linux/SQLite.
-Configure fresh scopes entirely through **DNS → DHCP**, without DHCP YAML;
+v0.1.0 includes opt-in DHCPv4 for Linux. In Kubernetes, scopes are
+`DHCPScope` objects from the dashboard or Git, leases are `DHCPLease`
+objects, and one elected replica serves clients relayed to a LoadBalancer
+address. With SQLite it runs standalone or as a three-node quorum; there,
+configure fresh scopes entirely through **DNS → DHCP**, without DHCP YAML;
 existing host setup requires explicit adoption. Enabling, disabling and
 topology changes are saved for restart, while active scope options and
 reservations apply live. Durable lease state and revision checks preserve
 allocations and later live edits across restarts. See the
 [DHCP setup and deployment guide](docs/deploy/dhcp.md) for host networking,
 capabilities, conflict detection, advanced network/boot options and failover
-recovery. DHCP is not included in v0.1.0; DHCPv6 is excluded from this pass.
+recovery. DHCPv4 is disabled by default; DHCPv6 is excluded from this pass.
 
 OIDC, scoped roles, long-term statistics, integrations and the edge need
 the corresponding license entitlements; a free eligible personal key
 unlocks them. Full milestones and planned features are in
-[docs/architecture.md §13](docs/architecture.md#13-roadmap).
+[dev-docs/design-record.md §13](dev-docs/design-record.md#13-roadmap).
 
 ## Documentation
 
-- [kudurru.io](https://kudurru.io): the project website ([source](www/README.md)); the documentation site is [docs.kudurru.io](https://docs.kudurru.io).
+- [kudurru.io](https://kudurru.io): the project website ([source](website/README.md)); the documentation site is [docs.kudurru.io](https://docs.kudurru.io).
 - [User and administrator guide](docs/guide/README.md): how to use and run kudurru, in Simplified Technical English with screenshots.
 - [Architecture tour](docs/architecture/README.md): how kudurru works, with diagrams for every flow (also at [docs.kudurru.io/architecture](https://docs.kudurru.io/architecture/)).
-- [Design record](docs/architecture.md): the v0.1 design, the decision log and the glossary.
-- [Open questions](docs/open-questions.md): the project owner's decisions and the remaining spikes.
+- [Design record](dev-docs/design-record.md): the v0.1 design, the decision log and the glossary.
+- [Open questions](dev-docs/open-questions.md): the project owner's decisions and the remaining spikes.
 - [Deployment guides](docs/deploy/README.md): Docker, Helm, packages, runbooks.
-- [Research notes](docs/research/): point-in-time studies of the reference projects that the design record cites.
-- Engineering notes: milestone reports ([M1](docs/m1/README.md), [M2](docs/m2/README.md), [M3/M4](docs/m3/README.md), [M5](docs/m5/README.md)), [spikes](docs/spikes/README.md) and [follow-ups](docs/followups.md).
+- [Research notes](dev-docs/research/): point-in-time studies of the reference projects that the design record cites.
+- Engineering notes: milestone reports ([M1](dev-docs/milestones/m1/README.md), [M2](dev-docs/milestones/m2/README.md), [M3/M4](dev-docs/milestones/m3/README.md), [M5](dev-docs/milestones/m5/README.md)), [spikes](dev-docs/spikes/README.md) and [follow-ups](dev-docs/followups.md).
 - [Contributing](CONTRIBUTING.md): licensing rules (no GPL or EUPL code is ever ported), layout, and how to build.
 - [Branding kit](branding/README.md): logos, icons, color tokens, usage rules, and original artwork.
 
 ## Repository layout
 
 ```
-cmd/kudurru/        the single CLI and server binary
-api/v1alpha1/       Go types for every kind; the same structs are CRDs, the SQLite schema and the REST shapes
-internal/           dataplane (dnsserver, pipeline, stages, zone, blocking, cache, upstream)
-                    control plane (store, controller, config, auth, rbac, api, querylog, audit, cluster)
+# The kudurru binary (one Go module)
+cmd/kudurru/        entry point: the single CLI and server binary
+internal/           the core: dataplane (dnsserver, pipeline, stages, zone, blocking, cache, upstream)
+                    and control plane (store, controller, config, auth, rbac, api, querylog, audit, cluster);
+                    Go's internal/ rule keeps these packages private to this module
 ee/                 features that need a license key (OIDC, scoped RBAC, audit storage, long-term stats, edge, integrations)
-charts/             Helm charts: kudurru and kudurru-crds
-config/             kustomize tree, CRD bases, samples
-deploy/             docker compose profiles, Grafana dashboard, Prometheus rules
+api/                Go types for every kind (the same structs are CRDs, the SQLite schema and the REST shapes), OpenAPI
+dashboard/          the web dashboard (Bun + React 19 + Astryx), built into the binary
+
+# Running it
+deploy/             everything you deploy with:
+  helm/             Helm charts: kudurru and kudurru-crds
+  kustomize/        kustomize tree: CRD bases, RBAC, manager, samples, overlays
+  compose/          docker compose profiles (single, single-edge, ha)
+  grafana/ prometheus/ systemd/
 images/             dnsdist and keepalived supervisor images (GPL binaries, digest-pinned)
+
+# Documentation
+docs/               user documentation, published to docs.kudurru.io: guide, deploy guides, architecture tour
+docs-site/          the Hugo site that builds docs.kudurru.io from docs/
+dev-docs/           for contributors, not published: design record, milestone notes, research, spikes, follow-ups
+
+# Development
+test/               end-to-end, interop, DHCP and fuzz suites
+hack/               development scripts and generators
+bench/              benchmark baseline and regression limits
 branding/           original artwork, exported logos and icons, color tokens and brand guidelines
-docs/               guide, deploy docs and the architecture tour (published); design record, research, engineering notes (repo only)
-web/                the React dashboard (Bun + React 19 + Astryx), embedded in the binary
-site/               the documentation site (Hugo), built from docs/
-www/                the kudurru.io website (Bun + TypeScript)
-license-server/     the license portal that issues license keys (Bun + TypeScript + Postgres; not part of the binary)
+
+# Separately licensed, not part of the binary
+website/            the kudurru.io website (Bun + TypeScript)
+license-server/     the license portal that issues license keys (Bun + TypeScript + Postgres)
 ```
 
 ## AI Assisted Development
@@ -174,8 +193,8 @@ kudurru was built with substantial help from AI coding assistants: **Claude** (A
 
 **What this means for you**
 
-- The test suite and the CI workflows run on every change, and releases are published only through the pipeline described in the [release checklist](docs/release-checklist.md). Tests are not a substitute for validating your own environment.
-- Validate client addresses, encrypted transports and VIP failover in your own deployment using the [runbooks](docs/deploy/runbooks.md) and [release checklist](docs/release-checklist.md). The milestone reports record the environments and checks used during development.
+- The test suite and the CI workflows run on every change, and releases are published only through the pipeline described in the [release checklist](dev-docs/release-checklist.md). Tests are not a substitute for validating your own environment.
+- Validate client addresses, encrypted transports and VIP failover in your own deployment using the [runbooks](docs/deploy/runbooks.md) and [release checklist](dev-docs/release-checklist.md). The milestone reports record the environments and checks used during development.
 - AI-generated code can contain mistakes, including security-relevant ones. Review the code, and validate authentication, RBAC and network exposure yourself, before you run kudurru in production or on an untrusted network.
 - Issues and pull requests are reviewed and handled by the maintainer. The rules for AI agents that work in this repository are in [CLAUDE.md](CLAUDE.md).
 
@@ -190,9 +209,9 @@ and Order Form, including for no-key features. A free eligible key covers
 up to 3 nodes; commercial enterprise features require the Enterprise plan or
 named modules in the Order Form. DNS answering never depends on a key.
 
-The [`ee/`](ee/LICENSE.md) enterprise materials and [`site/`](site/LICENSE.md)
+The [`ee/`](ee/LICENSE.md) enterprise materials and [`docs-site/`](docs-site/LICENSE.md)
 documentation have their own notices. Anyone may read the published docs.
-The [`www/`](www/LICENSE.md) marketing website and
+The [`website/`](website/LICENSE.md) kudurru.io website and
 [`license-server/`](license-server/LICENSE.md) issuance service are separately
 licensed for source inspection; the Community License and commercial
 agreement do not grant rights to modify, redistribute or host them.

@@ -6,42 +6,27 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- DHCPv4 server for v0.2.0: opt-in Linux/SQLite scopes with durable leases,
-  reservations, multiple subnets and trusted relays. Node-local API and
-  dashboard management apply persisted options live with revision checks.
-  Native/dnsmasq lease import, native export and automatic A/PTR records
-  support cutover and dedicated DHCP domains. Isolated stock-client tests
-  cover acquisition, renewal, restart, release, expiration and exhaustion.
-  Three-node quorum replication provides automatic DHCPv4 failover; DHCPv6 is excluded. See the
-  [DHCP deployment guide](docs/deploy/dhcp.md).
-- Complete DHCPv4 dashboard setup without DHCP YAML: scope creation, interface
-  discovery, topology, enable/disable and explicit adoption of host-file setup.
-  Desired setup is durably saved for restart; environment-owned setup stays
-  locked. Per-scope revisions and durable apply tokens preserve live
-  option/reservation edits and reject stale staged changes. Removed or renamed
-  scopes retain their lease databases. UI-owned DHCP activation errors keep
-  DNS and the dashboard available for repair and revision-conflict recovery.
-
-- Three static DHCP voters with mutual TLS, majority-committed leases and
-  management writes, follower forwarding, leader replacement, snapshot catch-up
-  and recovery fencing. The dashboard configures peers and reports quorum state.
-- Bounded ARP/ICMP pre-offer conflict detection, trusted relay link selection,
-  server-ID override and alternate ports; NTP/search/classless-route options,
-  architecture-specific PXE/HTTP boot settings and client FQDN handling.
-- Persistent earliest-established DHCP DNS name ownership across scopes,
-  reservation precedence and import-safe claim ordering. Lease schema v4 adds
-  claim ranks and replica progress. Indexed transactions and incremental DNS
-  publication reduce 10,000-lease median renewal time from 46.5 ms to 0.35 ms in
-  the comparative FULL-synchronous SQLite fixture.
+- The repository layout names each part by what it is: the dashboard moved
+  from `web/` to `dashboard/`, the kudurru.io website from `www/` to
+  `website/` and the docs site from `site/` to `docs-site/`. The Helm charts
+  (`charts/`) and the kustomize tree (`config/`) moved under
+  `deploy/helm/` and `deploy/kustomize/`. A remote kustomize overlay is now
+  `github.com/robertherbaugh/kudurru/deploy/kustomize/overlays/<name>`;
+  overlays pinned to v0.1.0 keep the `config/` path. `docs/` keeps the
+  published documentation; the design record (formerly
+  `docs/architecture.md`, now `dev-docs/design-record.md`), milestone
+  reports, research, spikes and follow-ups moved to `dev-docs/`. The
+  `make web-*` and `make www-*` targets are now `make dashboard-*` and
+  `make website-*`.
 
 ## [0.1.0] - 2026-10-16
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or
-validating recursive resolver, blocking and a dashboard in one Go binary.
-Run it as one container or in Kubernetes with CRDs as the configuration
-store.
+validating recursive resolver, blocking, optional DHCPv4 and a dashboard in
+one Go binary. Run it as one container or in Kubernetes with CRDs as the
+configuration store.
 
 ### Added
 
@@ -67,6 +52,45 @@ store.
   150 services in 14 categories supports category blocking and exceptions;
   safe search is available for supported search engines and video sites.
 - An optional block page with access requests and administrator approvals.
+
+#### DHCPv4
+
+- DHCPv4 server: opt-in Linux/SQLite scopes with durable leases,
+  reservations, multiple subnets and trusted relays. Node-local API and
+  dashboard management apply persisted options live with revision checks.
+  Native/dnsmasq lease import, native export and automatic A/PTR records
+  support cutover and dedicated DHCP domains. Isolated stock-client tests
+  cover acquisition, renewal, restart, release, expiration and exhaustion.
+  Three-node quorum replication provides automatic DHCPv4 failover; DHCPv6
+  is excluded. See the [DHCP deployment guide](docs/deploy/dhcp.md).
+- Complete DHCPv4 dashboard setup without DHCP YAML: scope creation, interface
+  discovery, topology, enable/disable and explicit adoption of host-file setup.
+  Desired setup is durably saved for restart; environment-owned setup stays
+  locked. Per-scope revisions and durable apply tokens preserve live
+  option/reservation edits and reject stale staged changes. Removed or renamed
+  scopes retain their lease databases. UI-owned DHCP activation errors keep
+  DNS and the dashboard available for repair and revision-conflict recovery.
+- Three static DHCP voters with mutual TLS, majority-committed leases and
+  management writes, follower forwarding, leader replacement, snapshot catch-up
+  and recovery fencing. The dashboard configures peers and reports quorum state.
+- Bounded ARP/ICMP pre-offer conflict detection, trusted relay link selection,
+  server-ID override and alternate ports; NTP/search/classless-route options,
+  architecture-specific PXE/HTTP boot settings and client FQDN handling.
+- DHCPv4 on the Kubernetes store: `DHCPScope` objects (from the dashboard or
+  from Git with `kudurru.io/managed-by`) and `DHCPLease` objects
+  (`dhcp.kudurru.io`) replace node-local setup and lease files. One replica,
+  elected through the `kudurru-dhcp` Lease, serves relayed clients at a
+  LoadBalancer address (`dhcp.enabled`, `dhcp.serverAddress` in the chart);
+  leases survive failover, and every replica shows the same DHCP pages and
+  answers lease DNS names. The dashboard's DHCP pages no longer depend on
+  which replica a sticky session reaches. Install the `kudurru-crds` chart
+  first. In Kubernetes RBAC, the `dhcp` permission is now the `dhcpscopes`
+  resource.
+- Persistent earliest-established DHCP DNS name ownership across scopes,
+  with reservation precedence and import-safe claim ordering. Indexed lease
+  transactions and incremental DNS publication keep renewals fast: median
+  renewal time is 0.35 ms at 10,000 leases in the FULL-synchronous SQLite
+  fixture.
 
 #### Dashboard, API and CLI
 
@@ -155,8 +179,8 @@ Fixes incorporated during release-candidate testing:
   read-only test jobs and restricted signing identities. Promotion requires
   a successfully published candidate.
 
-Details and validation are in the [security reviews](docs/m5/README.md)
-and [final feature review](docs/m5/features-v0.1.md).
+Details and validation are in the [security reviews](dev-docs/milestones/m5/README.md)
+and [final feature review](dev-docs/milestones/m5/features-v0.1.md).
 
 ### License
 
@@ -189,8 +213,8 @@ and [final feature review](docs/m5/features-v0.1.md).
 
 - Secondary/stub zones, inbound transfers, RFC 2136, DNSSEC validation of
   forwarded answers, Cloudflare/UniFi integrations and follower replication
-  are planned for v0.2. DNSSEC signing and raft replication are planned for
-  v1.0.
+  are planned for v0.2. DNSSEC signing and Raft replication of the DNS
+  object store are planned for v1.0. DHCPv4 quorum replication is included.
 - Recursive groups need outbound UDP and TCP port 53 to any address. They
   do not yet cache NSEC ranges aggressively (RFC 8198), follow root key
   rollovers automatically (RFC 5011; new anchors ship with releases or
@@ -206,9 +230,9 @@ and [final feature review](docs/m5/features-v0.1.md).
   cluster-wide blocking toggles remain future work.
 - Recorded local checks do not certify real-network client identity or
   two-VM VIP failover. Verify these in your deployment using the
-  [release checklist](docs/release-checklist.md) and runbooks.
+  [release checklist](dev-docs/release-checklist.md) and runbooks.
 
 See the [architecture tour](docs/architecture/README.md#built-and-not-built)
-and [follow-ups](docs/followups.md) for the full scope and backlog.
+and [follow-ups](dev-docs/followups.md) for the full scope and backlog.
 Measurements and development history remain in the
-[milestone reports](docs/m5/README.md).
+[milestone reports](dev-docs/milestones/m5/README.md).

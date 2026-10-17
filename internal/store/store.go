@@ -1,5 +1,5 @@
 // Package store is the persistence seam every driver implements
-// (docs/architecture.md §4.3). Serving code never reads the store on the
+// (dev-docs/design-record.md §4.3). Serving code never reads the store on the
 // query path; it reads snapshots materialised by zonecache.
 //
 // Drivers: kube (CRDs via the apiserver) and sqlite (state.db) in v0.1,

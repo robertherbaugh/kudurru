@@ -11,7 +11,7 @@ import (
 var Forever = time.Unix(0, math.MaxInt64).UTC()
 
 // Publisher is the replication seam of the temporary disable
-// (docs/architecture.md §7.1 step 7): a local Disable or Enable is handed
+// (dev-docs/design-record.md §7.1 step 7): a local Disable or Enable is handed
 // to it so that every replica follows. The cluster-wide implementations
 // are wired later and are not part of this package:
 //

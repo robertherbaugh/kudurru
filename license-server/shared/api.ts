@@ -17,12 +17,13 @@
 // Customer-facing DTOs (MyLicense, MyLicenseDetail, MyRequest) never carry
 // notes, agreement references, withdraw reasons or who did what (§9).
 
-import type { Feature, FeatureInfo, LicenseState, Plan, PlanInfo, Policy } from './catalog';
+import type { BusinessEdition, Feature, FeatureInfo, LicenseState, Plan, PlanInfo, Policy } from './catalog';
 import type { ExpiresOn } from './dates';
 import type { Permission, Role } from './permissions';
 import type { RouteId } from './routes';
 
 export type { ExpiresOn } from './dates';
+export type { BusinessEdition } from './catalog';
 
 // --- primitives ------------------------------------------------------------
 
@@ -44,6 +45,7 @@ export const ID_PREFIX = {
   key: 'key_',
   request: 'req_',
   publicRequest: 'pkr_',
+  businessRequest: 'brq_',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
@@ -188,6 +190,9 @@ export type KeyReason = 'issue' | 'renew' | 'change' | 'import';
 export type MemberStatus = 'invited' | 'linked';
 
 export type RequestStatus = 'open' | 'approved' | 'rejected' | 'canceled';
+
+/** open: waits for a license admin; issued: a license answers it; closed: closed with a note. */
+export type BusinessRequestStatus = 'open' | 'issued' | 'closed';
 
 /** Why a personal request waits for a person instead of getting a key at once. */
 export type ReviewReason = 'auto_approve_off' | 'daily_cap' | 'withdrawn_history' | 'blocked';
@@ -405,7 +410,7 @@ export interface RedeemInviteResult {
   customer: { id: string; name: string };
 }
 
-// --- public form (FROZEN: www is coded to it) -------------------------------
+// --- public form (FROZEN: website is coded to it) ----------------------------
 
 /**
  * POST /api/v1/public/key-requests from kudurru.io (CORS, ≤ 8 KiB). Unknown
@@ -427,6 +432,35 @@ export interface PublicKeyRequestBody {
 }
 
 export interface PublicKeyRequestAccepted {
+  status: 'sent';
+}
+
+/**
+ * POST /api/v1/public/business-requests from kudurru.io (CORS, ≤ 8 KiB; not
+ * part of the frozen personal contract). Unknown fields are ignored. 202
+ * PublicBusinessRequestAccepted for every valid input (the request is
+ * stored, the requester gets a "we have your request" mail and the
+ * approvers a mail, or nobody without mail: the Requests page shows it);
+ * 400 invalid with `fields`; 429 rate_limited with Retry-After. While the
+ * portal cannot answer (the Worker's 503), the form offers an email instead.
+ */
+export interface PublicBusinessRequestBody {
+  /** The rules of PublicKeyRequestBody.name. */
+  name: string;
+  /** The rules of PublicKeyRequestBody.email. */
+  email: string;
+  /** 1-160 UTF-16 code units, not blank. */
+  company: string;
+  edition: BusinessEdition;
+  /** An integer from 1 to BUSINESS_REQUEST_MAX_NODES. */
+  nodes: number;
+  /** ≤ 1500 UTF-16 code units; optional. */
+  details?: string;
+  /** The honeypot: non-empty → 202 and nothing happens. */
+  website?: string;
+}
+
+export interface PublicBusinessRequestAccepted {
   status: 'sent';
 }
 
@@ -539,6 +573,8 @@ interface IssueLicenseFields {
   notes?: string;
   /** Mail the key to the customer's contact email after signing. */
   emailCustomer?: boolean;
+  /** An open business request the license answers: it becomes issued, with this license. */
+  businessRequestId?: string;
 }
 
 /** POST /api/v1/licenses: for an existing customer or a new one, never both. */
@@ -728,6 +764,38 @@ export interface BlockedEmail {
   blockedAt: Instant;
 }
 
+/** A business license request from the kudurru.io form, as admins see it. */
+export interface BusinessRequest {
+  id: string;
+  name: string;
+  email: string;
+  company: string;
+  edition: BusinessEdition;
+  nodes: number;
+  details: string;
+  status: BusinessRequestStatus;
+  decidedBy: ActorRef | null;
+  decidedAt: Instant | null;
+  decisionNote: string;
+  resultingLicenseId: string | null;
+  createdAt: Instant;
+}
+
+/** GET /api/v1/business-requests query. */
+export interface BusinessRequestListQuery {
+  /** Default: every status, open first. */
+  status?: BusinessRequestStatus;
+}
+
+/** POST /api/v1/business-requests/:id/close: the note stays with the request (no mail). */
+export interface CloseBusinessRequestBody {
+  note: string;
+}
+
+export interface CloseBusinessRequestResult {
+  request: BusinessRequest;
+}
+
 // --- users (admin) -----------------------------------------------------------
 
 /** A person who signed in at least once. */
@@ -777,6 +845,13 @@ export interface RevokeSessionsResult {
   revoked: number;
 }
 
+/*
+ * DELETE /api/v1/users/:id (204): deletes the user, their sessions and their
+ * customer memberships. Guards (409): nobody deletes themselves; the last
+ * enabled superadmin stays. Signing in again creates a new user without
+ * roles.
+ */
+
 // --- audit -------------------------------------------------------------------
 
 /** What an audit event records. Streams add actions here (additive changes only). */
@@ -787,6 +862,7 @@ export type AuditAction =
   | 'user.disabled'
   | 'user.enabled'
   | 'user.sessions_revoked'
+  | 'user.deleted'
   | 'customer.created'
   | 'customer.updated'
   | 'member.added'
@@ -807,11 +883,14 @@ export type AuditAction =
   | 'request.canceled'
   | 'public_request.received'
   | 'public_request.confirmed'
+  | 'business_request.received'
+  | 'business_request.issued'
+  | 'business_request.closed'
   | 'blocklist.added'
   | 'blocklist.removed';
 
 /** The kind of record an event is about. Member events target their customer (details.email names the member). */
-export type AuditTargetType = 'user' | 'customer' | 'license' | 'request' | 'public_request' | 'blocked_email';
+export type AuditTargetType = 'user' | 'customer' | 'license' | 'request' | 'public_request' | 'business_request' | 'blocked_email';
 
 /** One audit event. Details never contain a key token. */
 export interface AuditEvent {
@@ -970,6 +1049,7 @@ export type RouteTypes = {
   authCallback: Wire<Record<string, string>, None, never>;
   publicKeyRequest: Wire<None, PublicKeyRequestBody, PublicKeyRequestAccepted>;
   publicKeyRequestVerify: Wire<None, VerifyBody, VerifyResult>;
+  publicBusinessRequest: Wire<None, PublicBusinessRequestBody, PublicBusinessRequestAccepted>;
   approvalPreview: Wire<None, ApprovalTokenBody, ApprovalPreview>;
   approvalDecide: Wire<None, ApprovalDecideBody, ApprovalResult>;
   authMe: Wire<None, None, Me>;
@@ -1004,10 +1084,13 @@ export type RouteTypes = {
   requestReject: Wire<None, RejectBody, RejectResult>;
   blockedEmailsList: Wire<None, None, Items<BlockedEmail>>;
   blockedEmailRemove: Wire<None, None, void>;
+  businessRequestsList: Wire<BusinessRequestListQuery, None, Items<BusinessRequest>>;
+  businessRequestClose: Wire<None, CloseBusinessRequestBody, CloseBusinessRequestResult>;
   usersList: Wire<UserListQuery, None, Items<User>>;
   userGet: Wire<None, None, UserDetail>;
   userUpdate: Wire<None, UpdateUserBody, UserDetail>;
   userRevokeSessions: Wire<None, None, RevokeSessionsResult>;
+  userDelete: Wire<None, None, void>;
   auditList: Wire<AuditQuery, None, AuditPage>;
   system: Wire<None, None, SystemInfo>;
 };

@@ -1,7 +1,7 @@
 // Package querylog defines the query event, the non-blocking collector the
 // log observer writes to, the privacy transform applied once at ingest, the
 // live tail, the querylog metrics and the Sink contract every sink
-// implements (docs/architecture.md §11.2). The SQLite writer, rollups and
+// implements (dev-docs/design-record.md §11.2). The SQLite writer, rollups and
 // the read API live in internal/querylog/sqlitelog.
 package querylog
 
@@ -86,7 +86,7 @@ type Flags struct {
 	Traceparent bool
 }
 
-// Flag bits as stored in the query.flags column (docs/architecture.md
+// Flag bits as stored in the query.flags column (dev-docs/design-record.md
 // §11.2: RD, DO, TC, AD, CD, cached, stale, prefetch, ecs, traceparent).
 const (
 	FlagRD uint16 = 1 << iota

@@ -1,4 +1,4 @@
-// Package cache is the response-cache pipeline stage (docs/architecture.md
+// Package cache is the response-cache pipeline stage (dev-docs/design-record.md
 // §3.3 "internal/cache", §7.1 step 9). It sits after blocking and before
 // dnssec/upstream, so blocked and locally answered queries never reach it,
 // and it only stores responses the later stages mark Cacheable (forwarded

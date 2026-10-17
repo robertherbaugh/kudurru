@@ -1,4 +1,4 @@
--- 0001: the core tables (docs/architecture.md §4.5, D158).
+-- 0001: the core tables (dev-docs/design-record.md §4.5, D158).
 
 -- One row per local file that ships to this database: a node's audit
 -- spool, state.db or querylog.db. The uuid is minted with the file, so a

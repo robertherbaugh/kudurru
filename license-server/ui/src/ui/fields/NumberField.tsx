@@ -1,4 +1,4 @@
-// Copied from web/src/components/fields/NumberField.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/fields/NumberField.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // A whole number with optional bounds and unit (settings `min`/`max`, ECS
 // prefixes, percentages, TTLs): an Astryx NumberInput with the help and

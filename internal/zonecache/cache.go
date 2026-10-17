@@ -26,7 +26,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 )
 
-// Defaults from docs/architecture.md §4.4.
+// Defaults from dev-docs/design-record.md §4.4.
 const (
 	DefaultDebounce        = 50 * time.Millisecond
 	DefaultPersistInterval = 30 * time.Second
@@ -130,7 +130,9 @@ func (o *Options) setDefaults() {
 // scheme that has a matching list type, sorted: a kind added to
 // api/v1alpha1 is watched without touching zonecache. UnblockRequest is
 // left out: it never affects serving, and a block page request must not
-// rebuild the serving snapshot (internal/unblock watches it).
+// rebuild the serving snapshot (internal/unblock watches it). DHCPScope is
+// left out too: the DHCP runtime (internal/dhcpkube) watches it, and lease
+// DNS answers come from its own snapshots.
 func DefaultKinds() []store.Kind {
 	s := runtime.NewScheme()
 	if err := v1alpha1.AddToScheme(s); err != nil {
@@ -153,7 +155,7 @@ func DefaultKinds() []store.Kind {
 		if _, ok := reflect.New(listTyp).Interface().(metav1.ListInterface); !ok {
 			continue
 		}
-		if name == v1alpha1.KindUnblockRequest {
+		if name == v1alpha1.KindUnblockRequest || name == v1alpha1.KindDHCPScope {
 			continue
 		}
 		kinds = append(kinds, store.Kind(name))

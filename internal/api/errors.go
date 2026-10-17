@@ -19,7 +19,7 @@ import (
 )
 
 // Error keys of the envelope {error:{key,message,hint}, took_ms}
-// (docs/architecture.md §10).
+// (dev-docs/design-record.md §10).
 const (
 	KeyInvalid         = "invalid"
 	KeyUnauthenticated = "unauthenticated"

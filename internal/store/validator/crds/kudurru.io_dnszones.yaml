@@ -69,7 +69,7 @@ spec:
               dnssec:
                 description: |-
                   DNSSECSpec is reserved for v1.0 signing. The schema exists so that the
-                  seam is in place (docs/architecture.md §13.1).
+                  seam is in place (dev-docs/design-record.md §13.1).
                 properties:
                   algorithm:
                     default: ECDSAP256SHA256

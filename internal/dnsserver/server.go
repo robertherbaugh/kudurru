@@ -1,5 +1,5 @@
 // Package dnsserver owns the DNS listeners and hands every message to the
-// pipeline (docs/architecture.md §3.3).
+// pipeline (dev-docs/design-record.md §3.3).
 //
 // A Registry holds the listeners of a node keyed by protocol (udp, tcp,
 // dot, doh, doq, doh3) and shares one certificate-reload path

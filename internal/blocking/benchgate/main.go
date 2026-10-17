@@ -1,5 +1,5 @@
 // Command benchgate is the regression gate behind `make bench`
-// (docs/architecture.md §7.3, §12). It reads `go test -bench` output,
+// (dev-docs/design-record.md §7.3, §12). It reads `go test -bench` output,
 // takes the median of every benchmark metric over the -count runs, and
 // fails when
 //

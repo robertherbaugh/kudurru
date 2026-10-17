@@ -1,4 +1,4 @@
-# kudurru, single instance (docs/architecture.md §6.4).
+# kudurru, single instance (dev-docs/design-record.md §6.4).
 # Before the first start:
 #   mkdir -p secrets && openssl rand -base64 32 > secrets/encryption_key
 #   openssl rand -base64 18 > secrets/admin_password

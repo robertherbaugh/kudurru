@@ -1,4 +1,4 @@
-// Package identify is the client identification stage (docs/architecture.md
+// Package identify is the client identification stage (dev-docs/design-record.md
 // §7.1 step 3): it finds the client's ClientGroups and the policy that
 // applies to it now, from the policy Index of the current zonecache
 // snapshot, and hands both to the later stages.

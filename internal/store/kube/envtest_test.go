@@ -93,7 +93,7 @@ func requireEnv(t testing.TB) {
 // startControlPlane starts kube-apiserver and etcd with the kudurru CRDs
 // installed and the test namespaces created.
 func startControlPlane(assets string) (*envtest.Environment, *rest.Config, client.Client, error) {
-	crds, err := loadCRDs(filepath.Join(repoRoot(), "config", "crd", "bases"))
+	crds, err := loadCRDs(filepath.Join(repoRoot(), "deploy", "kustomize", "crd", "bases"))
 	if err != nil {
 		return nil, nil, nil, err
 	}

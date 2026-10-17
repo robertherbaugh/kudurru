@@ -18,6 +18,7 @@ type leaseTransaction struct {
 	rows         map[netip.Addr]storedLease
 	byKey        map[string]storedLease
 	changed      map[netip.Addr]storedLease
+	expired      map[netip.Addr]bool
 	writes       int64
 	claimsIssued uint64
 	now          time.Time
@@ -166,9 +167,11 @@ func (s *LeaseStore) runLeaseTransaction(ctx context.Context, fn func(*sql.Tx, [
 	}
 	expired, _ := result.RowsAffected()
 	if expired > 0 {
+		state.expired = map[netip.Addr]bool{}
 		for ip, l := range rows {
 			if !now.Before(l.ExpiresAt) {
 				state.changed[ip] = storedLease{}
+				state.expired[ip] = true
 			}
 		}
 	}
@@ -213,6 +216,15 @@ func (s *LeaseStore) runLeaseTransaction(ctx context.Context, fn func(*sql.Tx, [
 		}
 		if err := tx.QueryRowContext(ctx, "SELECT total_changes()").Scan(&after); err != nil {
 			return replicaStorage(ctx, err)
+		}
+	}
+	if s.external != nil {
+		// The external store is authoritative: commit there first, so a
+		// failed write rolls back the local transaction and no reply is sent.
+		if changes := externalChanges(state, rows, complete, fallback); len(changes) > 0 {
+			if err := s.external(ctx, changes); err != nil {
+				return err
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {

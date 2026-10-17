@@ -107,7 +107,7 @@ func TestConflictingManagers(t *testing.T) {
 }
 
 // TestApplyOptimisticConcurrencyWithSpecChange is the conformance case
-// ApplyOptimisticConcurrency as proposed in docs/spikes/store-kube.md: the
+// ApplyOptimisticConcurrency as proposed in dev-docs/spikes/store-kube.md: the
 // second write changes the spec, so every driver must change the
 // resourceVersion and bump generation. It runs against the kube driver and,
 // to show the proposal holds for the reference driver too, against memory.

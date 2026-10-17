@@ -24,7 +24,7 @@ const (
 func TestNewKnowsEveryKind(t *testing.T) {
 	v := testValidator(t)
 	got := fmt.Sprint(v.Kinds())
-	if want := "[BlockList ClientGroup DNSRecordSet DNSZone Policy UnblockRequest]"; got != want {
+	if want := "[BlockList ClientGroup DHCPScope DNSRecordSet DNSZone Policy UnblockRequest]"; got != want {
 		t.Fatalf("Kinds() = %s, want %s", got, want)
 	}
 	for kind := range sampleFiles {
@@ -32,7 +32,7 @@ func TestNewKnowsEveryKind(t *testing.T) {
 		if !ok || gvk.Group != v1alpha1.Group || gvk.Version != v1alpha1.Version {
 			t.Fatalf("%s: gvk %v ok=%v", kind, gvk, ok)
 		}
-		if namespaced == (kind == "DNSZone") {
+		if clusterScoped := kind == "DNSZone" || kind == "DHCPScope"; namespaced == clusterScoped {
 			t.Fatalf("%s: namespaced=%v", kind, namespaced)
 		}
 	}

@@ -17,7 +17,7 @@ import (
 )
 
 // Mode is the querylog.privacy level, applied at ingest and irreversible
-// (docs/architecture.md §11.2, D59).
+// (dev-docs/design-record.md §11.2, D59).
 type Mode uint8
 
 // Privacy modes, from most to least detail.

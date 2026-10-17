@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # edge-root-check: `kudurru edge run` in the kudurru-dnsdist image started
 # the way the chart starts it for eBPF DynBlocks and for host networking
-# (charts/kudurru, kudurru.edge.rootStart): root with group 953, every
+# (deploy/helm/kudurru, kudurru.edge.rootStart): root with group 953, every
 # capability dropped except NET_BIND_SERVICE, SETUID, SETGID and KILL (plus
 # BPF and SYS_ADMIN for eBPF), no_new_privs, a read-only root, and
 # net.ipv4.ip_unprivileged_port_start=1024 (what a hostNetwork pod sees).

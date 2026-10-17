@@ -6,8 +6,10 @@
 // link of the approval mail (ADMIN_NOTIFY_EMAIL); someone with no account
 // uses the kudurru.io form, confirms the mailed link, waits for the same
 // approval and gets the key by mail; another request is rejected from its
-// link and the note reaches the requester; the superadmin sees users, the
-// audit trail and the system page. Every key the portal hands out is
+// link and the note reaches the requester; a business request from the
+// form reaches the Requests page and both mailboxes, and a license admin
+// issues a license from it; the superadmin sees users, the audit trail and
+// the system page, and deletes a user. Every key the portal hands out is
 // judged by the node's own code (internal/license via nodestatus.go).
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { createServer } from 'node:http';
@@ -212,12 +214,13 @@ test('the customer accepts the invite, sees the key and asks for a free personal
   if (node) expect(node).toMatchObject({ state: 'active', plan: 'personal', licensee: request.name, nodes: 3, features: expect.arrayContaining(['oidc', 'rbac']) });
 });
 
-test('the kudurru.io form: a cross-origin request, a confirmation link, an admin approves, the key by mail', async ({ page, browser }) => {
-  const request = { name: 'Homelab Hank', email: `homelab-${run}@example.net`, use: 'DNS for the house' };
-  // A minimal stand-in for the kudurru.io form on its own origin, served
-  // from a real local server (Chrome's Local Network Access refuses a page
-  // it sees as public calling a loopback portal): the same request the www
-  // client sends (www/src/client/license.ts), cross-origin.
+/**
+ * Posts as the kudurru.io form does (website/src/client/license.ts): from a
+ * minimal stand-in page on its own origin, served by a real local server
+ * (Chrome's Local Network Access refuses a page it sees as public calling a
+ * loopback portal), cross-origin. Returns the status and the JSON answer.
+ */
+async function postFromForm(page: Page, path: string, body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
   const site = createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end('<!doctype html><title>kudurru.io</title><p>the license page</p>');
@@ -227,22 +230,27 @@ test('the kudurru.io form: a cross-origin request, a confirmation link, an admin
   try {
     await page.goto(`${FORM_ORIGIN}/license`);
     const portal = new URL(process.env.E2E_BASE_URL ?? 'http://localhost:8791').origin;
-    const answer = await page.evaluate(
-      async ({ portal, request }) => {
-        const res = await fetch(`${portal}/api/v1/public/key-requests`, {
+    return await page.evaluate(
+      async ({ url, body }) => {
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'omit',
-          body: JSON.stringify({ ...request, noncommercial: true, website: '' }),
+          body: JSON.stringify(body),
         });
-        return { status: res.status, body: await res.json() };
+        return { status: res.status, body: (await res.json()) as unknown };
       },
-      { portal, request },
+      { url: `${portal}${path}`, body },
     );
-    expect(answer).toEqual({ status: 202, body: { status: 'sent' } });
   } finally {
     site.close();
   }
+}
+
+test('the kudurru.io form: a cross-origin request, a confirmation link, an admin approves, the key by mail', async ({ page, browser }) => {
+  const request = { name: 'Homelab Hank', email: `homelab-${run}@example.net`, use: 'DNS for the house' };
+  const answer = await postFromForm(page, '/api/v1/public/key-requests', { ...request, noncommercial: true, website: '' });
+  expect(answer).toEqual({ status: 202, body: { status: 'sent' } });
 
   const confirm = await waitForMail(request.email, /confirm/i);
   expect(confirm.text.startsWith('Hello,')).toBe(true);
@@ -283,6 +291,36 @@ test('a license admin rejects a request from the approval mail, and the requeste
   expect((await listMail(request.email)).filter((m) => m.Attachments > 0)).toEqual([]);
 });
 
+test('the kudurru.io form: a business request, mail to the requester and the admins, a license issued from it', async ({ page, browser }) => {
+  const request = { name: 'Ada Admin', email: `business-${run}@example.net`, company: `Business Co ${run}`, edition: 'enterprise', nodes: 12, details: 'OIDC and edge nodes.' };
+  const answer = await postFromForm(page, '/api/v1/public/business-requests', { ...request, website: '' });
+  expect(answer).toEqual({ status: 202, body: { status: 'sent' } });
+
+  const received = await waitForMail(request.email, exactly('We have your kudurru business license request'));
+  expect(received.text).toContain('Enterprise');
+  expect(received.text).not.toContain(request.company);
+  const notice = await waitForMail(ADMIN_NOTIFY, exactly(`Business license request from ${request.company}`));
+  expect(notice.text).toContain('/requests?tab=business');
+
+  const admin = await asUser(browser, 'admin@example.org');
+  await admin.goto('/requests?tab=business');
+  await expect(admin.getByText(request.company).first()).toBeVisible();
+  await shot(admin, '13-business-requests');
+  await admin.getByRole('button', { name: `Issue a license for ${request.company}` }).click();
+  const wizard = admin.getByRole('form', { name: 'Issue license' });
+  await expect(wizard.getByRole('textbox', { name: /Customer name/ })).toHaveValue(request.company);
+  for (const step of ['Plan and limits', 'Term', 'Review']) {
+    await wizard.getByRole('button', { name: 'Next' }).click();
+    await expect(wizard.getByRole('heading', { level: 3, name: step })).toBeVisible();
+  }
+  await expect(wizard.getByText(`${request.company} (${request.email}): Enterprise, 12 nodes.`, { exact: false })).toBeVisible();
+  await wizard.getByRole('button', { name: 'Sign and issue' }).click();
+  await admin.waitForURL(/\/licenses\/lic_/);
+  await admin.goto('/requests?tab=business&status=issued');
+  await expect(admin.getByText(request.company).first()).toBeVisible();
+  await admin.context().close();
+});
+
 test('the superadmin sees users, the audit trail and the system page', async ({ browser }) => {
   const page = await asUser(browser, 'superadmin@example.org');
   await page.goto('/users');
@@ -300,5 +338,14 @@ test('the superadmin sees users, the audit trail and the system page', async ({ 
   await shot(page, '11-system');
   await page.goto(`/licenses/${licenseId}`);
   await shot(page, '12-license-superadmin');
+
+  // Delete a user: the account goes, and the list no longer has it.
+  await page.goto('/users');
+  await page.getByRole('row', { name: /other@example\.org/ }).getByRole('link').click();
+  await page.getByRole('button', { name: 'Delete user' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete user' }).click();
+  await expect(page).toHaveURL(/\/users$/);
+  await expect(page.getByText('customer@example.org').first()).toBeVisible();
+  await expect(page.getByText('other@example.org')).toHaveCount(0);
   await page.context().close();
 });

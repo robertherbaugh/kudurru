@@ -179,8 +179,22 @@ node.
 ## Point the network at kudurru
 
 Make the devices on your network use kudurru as their DNS server. kudurru
-v0.1.0 does not give out IP addresses. DHCP server support is planned for
-v0.2.0. For v0.1.0, use your router or your DHCP server.
+v0.1.0 can also assign IPv4 addresses with its optional DHCPv4 server.
+This function needs Linux and works with both stores. It is off by default.
+For setup in the dashboard, read the [DHCPv4 guide](../../deploy/dhcp.md).
+
+On Kubernetes, one replica serves DHCP and your router relays DHCP requests
+to a LoadBalancer address. Read [Kubernetes](../../deploy/dhcp.md#kubernetes).
+
+For Docker, build a local image from source with the required capabilities.
+The published Docker images do not have these capabilities.
+For a systemd package, add a service drop-in.
+Read [Network and privileges](../../deploy/dhcp.md#network-and-privileges)
+before you turn on DHCPv4.
+
+DHCPv6 is not supported. Keep IPv6 router and DNS advertisements on your router.
+
+To keep your current DHCP server, use these steps:
 
 1. Open the settings of your router or DHCP server.
 2. Find the setting for the DNS server. It can have the name **DNS server**

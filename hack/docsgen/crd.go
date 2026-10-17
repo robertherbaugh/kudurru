@@ -14,7 +14,7 @@ import (
 )
 
 // samplesDir holds one example per kind (kudurru.io_<version>_<singular>.yaml).
-const samplesDir = "config/samples"
+const samplesDir = "deploy/kustomize/samples"
 
 // crdReference renders crds/_index.md and one page per CRD in dir.
 func crdReference(dir string) ([]page, error) {
@@ -26,7 +26,7 @@ func crdReference(dir string) ([]page, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no CRDs in %s", dir)
 	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(dir))) // config/crd/bases → repository root
+	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(dir)))) // deploy/kustomize/crd/bases → repository root
 
 	var index strings.Builder
 	index.WriteString(frontMatter("CRD reference", "The kudurru.io custom resources: every field, its type and its validation.", 20))

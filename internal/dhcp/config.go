@@ -12,14 +12,18 @@ import (
 
 // Config describes one DHCPv4 scope and its immutable network topology.
 type Config struct {
-	Name                 string
-	Management           string
-	RelayOnly            bool
-	TrustedRelays        []TrustedRelay
-	RegisterDNS          bool
-	DNSTTL               time.Duration
-	Interface            string
-	ServerIP             netip.Addr
+	Name          string
+	Management    string
+	RelayOnly     bool
+	TrustedRelays []TrustedRelay
+	RegisterDNS   bool
+	DNSTTL        time.Duration
+	Interface     string
+	ServerIP      netip.Addr
+	// ServerIdentifier is the advertised option 54 address when clients reach
+	// the server through a translated address, such as a Kubernetes
+	// LoadBalancer. Zero means ServerIP, which the socket always binds.
+	ServerIdentifier     netip.Addr
 	Subnet               netip.Prefix
 	RangeStart, RangeEnd netip.Addr
 	Router               netip.Addr
@@ -135,6 +139,9 @@ func (c Config) Validate() error {
 			return fmt.Errorf("dhcp: %s must be a usable IPv4 address in the subnet", field.name)
 		}
 	}
+	if c.ServerIdentifier.IsValid() && (!c.RelayOnly || !usableIPv4(c.ServerIdentifier)) {
+		return fmt.Errorf("dhcp: an advertised server identifier requires a relay-only scope and a unicast IPv4 address")
+	}
 	if c.RangeStart.Compare(c.RangeEnd) > 0 {
 		return fmt.Errorf("dhcp: range start exceeds range end")
 	}
@@ -219,7 +226,7 @@ func (c Config) inPool(ip netip.Addr) bool {
 
 // infrastructure addresses must never be allocated, including reservations.
 func (c Config) infrastructure(ip netip.Addr) bool {
-	if ip == c.ServerIP || ip == c.Router {
+	if ip == c.ServerIP || ip == c.Router || c.ServerIdentifier.IsValid() && ip == c.ServerIdentifier {
 		return true
 	}
 	for _, server := range c.FailoverServers {

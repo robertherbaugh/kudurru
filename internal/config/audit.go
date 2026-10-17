@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Audit configures where audit events are kept (docs/architecture.md
+// Audit configures where audit events are kept (dev-docs/design-record.md
 // §11.4, D157). Both keys are hostOnly: whoever can change settings
 // through the API must not be able to move or shorten the audit trail.
 type Audit struct {

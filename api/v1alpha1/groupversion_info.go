@@ -9,7 +9,7 @@ See the LICENSE file in the repository root.
 //
 // These structs are the single object model of kudurru: they are the
 // Kubernetes CRDs, what the SQLite store driver persists as JSON, and what
-// the REST API, CLI and UI exchange (docs/architecture.md §3.4, §4.1).
+// the REST API, CLI and UI exchange (dev-docs/design-record.md §3.4, §4.1).
 //
 // +kubebuilder:object:generate=true
 // +groupName=kudurru.io
@@ -29,7 +29,7 @@ const (
 
 	// ManagedByAnnotation records the single writer of an object:
 	// "api", "file:<path>", "integration:<name>", "bootstrap" or "system".
-	// See docs/architecture.md §4.3 (Apply contract) and decision D9.
+	// See dev-docs/design-record.md §4.3 (Apply contract) and decision D9.
 	ManagedByAnnotation = "kudurru.io/managed-by"
 )
 
@@ -52,6 +52,7 @@ func addKnownTypes(s *runtime.Scheme) error {
 		&ClientGroup{}, &ClientGroupList{},
 		&Policy{}, &PolicyList{},
 		&UnblockRequest{}, &UnblockRequestList{},
+		&DHCPScope{}, &DHCPScopeList{},
 	)
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil

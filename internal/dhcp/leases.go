@@ -89,6 +89,7 @@ type LeaseStore struct {
 	cacheDataVersion  int64
 	cacheReady        bool
 	activeTransaction context.Context
+	external          ExternalPersister
 }
 
 // OpenLeases opens private durable SQLite storage with exclusive ownership.

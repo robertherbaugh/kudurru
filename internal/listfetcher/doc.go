@@ -1,5 +1,5 @@
 // Package listfetcher implements "fetch once, serve everywhere" for
-// blocklists (docs/architecture.md §3.1 listfetcher row, §4.6, §7.3,
+// blocklists (dev-docs/design-record.md §3.1 listfetcher row, §4.6, §7.3,
 // decision D15).
 //
 // Two halves share one DiskCache (blocking.listsDir, default

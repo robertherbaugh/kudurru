@@ -1,4 +1,4 @@
-// Copied from web/src/components/fields/FieldHelp.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/fields/FieldHelp.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // Helper text under the control (the dashboard rule: never between the
 // label and the control, so a row of fields lines up on its inputs).

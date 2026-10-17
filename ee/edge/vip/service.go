@@ -11,7 +11,7 @@ import (
 // MetalLB (both Apache-2.0, Service-aware). kudurru only adds annotations
 // to the Service the chart renders; weights do not exist and ownership is
 // in the Service status / the announcing node, which this stub does not
-// read yet (Owner reports unknown; follow-up in docs/followups.md).
+// read yet (Owner reports unknown; follow-up in dev-docs/followups.md).
 type ServiceProvider struct {
 	// Kind is "kube-vip" or "metallb".
 	Kind string

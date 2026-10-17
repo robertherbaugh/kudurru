@@ -8,7 +8,7 @@ Copyright (c) 2026 Robert Herbaugh and other applicable copyright holders.
 
 ## 1. Parties, software, and acceptance
 
-“Licensor” means Robert Herbaugh and, for portions they own and license under these terms, other copyright holders of Kudurru contributions. “You” means the individual or legal entity exercising rights under this License. “Covered Software” means the Kudurru DNS server, its source code, binaries, dashboard, and components expressly distributed under this License, including code in the `ee/` directory, but excluding separately licensed materials identified in Section 12. Documentation source under `site/` is covered only as specified in `site/LICENSE.md`. The marketing website under `www/` and the license-issuance service under `license-server/` are excluded and have separate source-viewing licenses.
+“Licensor” means Robert Herbaugh and, for portions they own and license under these terms, other copyright holders of Kudurru contributions. “You” means the individual or legal entity exercising rights under this License. “Covered Software” means the Kudurru DNS server, its source code, binaries, dashboard, and components expressly distributed under this License, including code in the `ee/` directory, but excluding separately licensed materials identified in Section 12. Documentation source under `docs-site/` is covered only as specified in `docs-site/LICENSE.md`. The website under `website/` and the license-issuance service under `license-server/` are excluded and have separate source-viewing licenses.
 
 By copying, modifying, distributing, or operating Covered Software in reliance on this License, You accept its terms. If You do not accept these terms, this License grants You no rights. Rights available independently under applicable law are unaffected.
 
@@ -160,7 +160,7 @@ Termination does not cancel licenses properly received by downstream recipients 
 
 ## 12. Third-party components and separate licenses
 
-This License covers only material expressly offered under it. The folder notices in `ee/LICENSE.md` and `site/LICENSE.md` define the grants for enterprise materials and documentation source. The separate source-viewing notices in `www/LICENSE.md` and `license-server/LICENSE.md` govern those excluded materials; this License grants no right to modify, deploy, host, or redistribute them.
+This License covers only material expressly offered under it. The folder notices in `ee/LICENSE.md` and `docs-site/LICENSE.md` define the grants for enterprise materials and documentation source. The separate source-viewing notices in `website/LICENSE.md` and `license-server/LICENSE.md` govern those excluded materials; this License grants no right to modify, deploy, host, or redistribute them.
 
 Third-party packages, fonts, data sets, independent software, and other separately licensed materials retain their own license terms, as identified by their notices and associated files.
 

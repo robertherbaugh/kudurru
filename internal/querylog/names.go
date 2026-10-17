@@ -8,7 +8,7 @@ import (
 )
 
 // The read API speaks symbolic names. These tables keep miekg/dns out of
-// the query-log packages (docs/architecture.md §2): they cover the types
+// the query-log packages (dev-docs/design-record.md §2): they cover the types
 // and rcodes a resolver log shows; anything else is TYPEnnn / RCODEnnn
 // (RFC 3597 style).
 

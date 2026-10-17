@@ -1207,6 +1207,9 @@
           "etag": {
             "type": "string"
           },
+          "managedBy": {
+            "type": "string"
+          },
           "management": {
             "enum": [
               "file",
@@ -1800,6 +1803,9 @@
           "interface": {
             "type": "string"
           },
+          "managedBy": {
+            "type": "string"
+          },
           "management": {
             "enum": [
               "file",
@@ -1862,6 +1868,13 @@
             ],
             "type": "string"
           },
+          "mode": {
+            "enum": [
+              "node",
+              "kubernetes"
+            ],
+            "type": "string"
+          },
           "node": {
             "type": "string"
           },
@@ -1880,6 +1893,12 @@
           "runtimeError": {
             "type": "string"
           },
+          "scopeOwners": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "scopeRevisions": {
             "additionalProperties": {
               "type": "string"
@@ -1891,6 +1910,9 @@
               "$ref": "#/components/schemas/DHCPSetupScope"
             },
             "type": "array"
+          },
+          "serverAddress": {
+            "type": "string"
           },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
@@ -1904,6 +1926,7 @@
         "required": [
           "failover",
           "failoverInitialized",
+          "mode",
           "node",
           "enabled",
           "managedBy",
@@ -2111,7 +2134,23 @@
           "failover": {
             "$ref": "#/components/schemas/ReplicationStatus"
           },
+          "invalidScopes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "mode": {
+            "enum": [
+              "node",
+              "kubernetes"
+            ],
+            "type": "string"
+          },
           "node": {
+            "type": "string"
+          },
+          "runtimeError": {
             "type": "string"
           },
           "scopes": {
@@ -2120,6 +2159,12 @@
             },
             "type": "array"
           },
+          "serverAddress": {
+            "type": "string"
+          },
+          "servingNode": {
+            "type": "string"
+          },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
             "format": "double",
@@ -2127,6 +2172,7 @@
           }
         },
         "required": [
+          "mode",
           "node",
           "enabled",
           "available",
@@ -7739,7 +7785,7 @@
     }
   },
   "info": {
-    "description": "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; lists are {items, continue, took_ms} with opaque keyset continue tokens.",
+    "description": "The kudurru REST API (dev-docs/design-record.md §10). Errors are {error:{key,message,hint}, took_ms}; lists are {items, continue, took_ms} with opaque keyset continue tokens.",
     "license": {
       "name": "LicenseRef-Kudurru-Community",
       "url": "https://kudurru.io/license/text/"
@@ -8654,7 +8700,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "write"
@@ -14138,6 +14185,122 @@
         }
       }
     },
+    "/dhcpscopes:batchDelete": {
+      "post": {
+        "operationId": "batchDeleteDhcpscopes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Processed"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Delete several dhcpscopes",
+        "tags": [
+          "dhcpscopes"
+        ],
+        "x-kudurru-permission": {
+          "resource": "dhcp",
+          "scope": "cluster",
+          "verb": "delete"
+        }
+      }
+    },
     "/dns/blocking": {
       "get": {
         "operationId": "getBlocking",
@@ -17965,7 +18128,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "read"
@@ -18110,7 +18274,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "write"
@@ -18258,7 +18423,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "delete"
@@ -18398,7 +18564,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "read"
@@ -18602,7 +18769,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "write"
@@ -18743,7 +18911,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "delete"
@@ -18875,7 +19044,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "read"
@@ -19071,7 +19241,8 @@
             "records",
             "blocklists",
             "clientgroups",
-            "policies"
+            "policies",
+            "dhcp"
           ],
           "scope": "cluster or per object",
           "verb": "write"

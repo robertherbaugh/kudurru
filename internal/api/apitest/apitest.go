@@ -1,5 +1,5 @@
 // Package apitest provides test doubles for the seams the API server
-// consumes from the auth package (docs/architecture.md §8.8): a
+// consumes from the auth package (dev-docs/design-record.md §8.8): a
 // header-driven authenticator, a CSRF check and binding authorizers built
 // from permissions.yaml. They let API, CLI and UI tests exercise the real
 // authorization path without sessions, tokens or an IdP.

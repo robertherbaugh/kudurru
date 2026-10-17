@@ -73,7 +73,7 @@ func (l *lockedBuffer) String() string {
 
 // dexConfig renders the dex configuration used by the test. It is JSON
 // (a YAML subset dex accepts) so it can be generated without a YAML
-// library; docs/spikes/auth-oidc.md shows it as YAML.
+// library; dev-docs/spikes/auth-oidc.md shows it as YAML.
 func dexConfig(t *testing.T, issuer, listen, redirectURL string) []byte {
 	t.Helper()
 	hash, err := bcrypt.GenerateFromPassword([]byte(e2ePassword), 10) // dex's minimum cost

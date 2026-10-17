@@ -1,4 +1,4 @@
-# /etc/kudurru/kudurru.yaml (docs/architecture.md §6.2). Every key is listed
+# /etc/kudurru/kudurru.yaml (dev-docs/design-record.md §6.2). Every key is listed
 # by `kudurru config schema`; node-scoped keys are host-only, cluster-scoped
 # keys (upstreams, cache, blocking, querylog, ratelimit) are the settings the
 # UI edits. Objects (zones, lists, groups, policies) go into objects.d/.

@@ -64,6 +64,7 @@ describeDb('migrations against Postgres', () => {
     expect(rows.map((r) => r.table_name)).toEqual([
       'audit_events',
       'blocked_emails',
+      'business_requests',
       'customer_members',
       'customers',
       'license_keys',

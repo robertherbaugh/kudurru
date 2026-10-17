@@ -1,7 +1,7 @@
 // Package policy turns ClientGroups, Policies and BlockLists into an
 // immutable Index that answers, per query and without allocating, "which
 // groups is this client in, and which policy applies to it right now?"
-// (docs/architecture.md §7.1 steps 3 and 7, §7.2, §4.1).
+// (dev-docs/design-record.md §7.1 steps 3 and 7, §7.2, §4.1).
 //
 // # Client identification
 //

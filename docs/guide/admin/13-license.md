@@ -16,7 +16,7 @@ commercial agreement and Order Form, including for no-key features.
 A school or research organization must meet the nonprofit eligibility rules.
 
 The enterprise code and documentation have their own notices in
-[ee/LICENSE.md](../../../ee/LICENSE.md) and [site/LICENSE.md](../../../site/LICENSE.md).
+[ee/LICENSE.md](../../../ee/LICENSE.md) and [docs-site/LICENSE.md](../../../docs-site/LICENSE.md).
 Anyone can read the docs. The website and license-server source have separate
 source-viewing licenses and are excluded from the community and commercial grants.
 

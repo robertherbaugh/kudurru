@@ -1,10 +1,18 @@
-// /requests (requests.read): personal key requests that wait for a license
-// admin (open first, filtered by state), why each waits, what approving
-// would renew, and the decisions: Approve (a wizard: customer, key,
-// review) and Reject (a FormDialog whose note is mailed to the requester).
-// The admin mail of each new request links here and, for an ordinary
-// request, to the one-click /approve page. The Blocked emails tab lists
-// the addresses whose requests always wait; a superadmin removes them.
+// /requests (requests.read), in tabs:
+// - Personal: personal key requests that wait for a license admin (open
+//   first, filtered by state), why each waits, what approving would renew,
+//   and the decisions: Approve (a wizard: customer, key, review) and Reject
+//   (a FormDialog whose note is mailed to the requester). The admin mail of
+//   each new request links here and, for an ordinary request, to the
+//   one-click /approve page.
+// - Business (?tab=business): business license requests from the
+//   kudurru.io form (open first, filtered by state), and the decisions:
+//   Issue license (the issue wizard with the request filled in; the
+//   request becomes issued with the license) and Close (a FormDialog whose
+//   note stays with the request; nothing is mailed). The admin mail of each
+//   new business request links here.
+// - Blocked emails: the addresses whose personal requests always wait; a
+//   superadmin removes them.
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -14,43 +22,49 @@ import { Tab, TabList } from '@astryxdesign/core/TabList';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { useState } from 'react';
-import type { BlockedEmail, LicenseRequest, RequestStatus } from '@shared/api';
+import type { BlockedEmail, BusinessRequest, BusinessRequestStatus, LicenseRequest, RequestStatus } from '@shared/api';
+import { BUSINESS_EDITIONS } from '@shared/catalog';
 import { useCan } from '../api/context';
 import { useFieldErrors } from '../api/fieldErrors';
-import { useBlockedEmails, useRequests, useRouteMutation } from '../api/hooks';
+import { useBlockedEmails, useBusinessRequests, useRequests, useRouteMutation } from '../api/hooks';
 import { ApproveRequestWizardDialog } from '../components/ApproveRequestWizard';
-import { RequestStatusBadge } from '../components/badges';
+import { BusinessRequestStatusBadge, RequestStatusBadge } from '../components/badges';
+import { IssueLicenseWizardDialog } from '../components/IssueLicenseWizard';
 import { utcDay } from '../lib/dates';
-import { REQUEST_SOURCE_LABEL, REQUEST_STATUS_LABEL, REVIEW_REASON_LABEL } from '../lib/words';
+import { BUSINESS_REQUEST_STATUS_LABEL, REQUEST_SOURCE_LABEL, REQUEST_STATUS_LABEL, REVIEW_REASON_LABEL } from '../lib/words';
 import { ErrorBanner, Loading, useNotify } from '../ui/components/Feedback';
 import { DialogForm, FormDialog } from '../ui/components/FormDialog';
 import { Page, PageHeader, Panel } from '../ui/components/layout/Page';
 import { SelectField } from '../ui/fields/SelectField';
 import { TextAreaField } from '../ui/fields/TextField';
+import { formatExact } from '../ui/lib/format';
 import { useSearchParams } from '../ui/lib/router';
 
 type RequestRow = LicenseRequest & Record<string, unknown>;
+type BusinessRow = BusinessRequest & Record<string, unknown>;
 type BlockedRow = BlockedEmail & Record<string, unknown>;
 
 const STATUSES: RequestStatus[] = ['open', 'approved', 'rejected', 'canceled'];
 
+type Section = 'requests' | 'business' | 'blocked';
+
 export default function RequestsPage() {
   const can = useCan();
   const [sp, setParams] = useSearchParams();
-  const tab = sp.get('tab') === 'blocked' && can('blocklist.read') ? 'blocked' : 'requests';
+  const asked = sp.get('tab');
+  const tab: Section = asked === 'business' ? 'business' : asked === 'blocked' && can('blocklist.read') ? 'blocked' : 'requests';
   return (
     <Page>
       <PageHeader
         title="Requests"
-        description="Personal key requests that wait for a license admin to approve or reject them. Requests from a blocked address, or from a person who had a license withdrawn, always wait here."
+        description="Requests that wait for a license admin: free personal keys to approve or reject, and business licenses asked for on the kudurru.io form to issue or close."
       />
-      {can('blocklist.read') ? (
-        <TabList value={tab} onChange={(v) => setParams({ tab: v === 'requests' ? null : v, status: null })} aria-label="Request sections">
-          <Tab value="requests" label="Requests" />
-          <Tab value="blocked" label="Blocked emails" />
-        </TabList>
-      ) : null}
-      {tab === 'requests' ? <RequestList /> : <BlockedList />}
+      <TabList value={tab} onChange={(v) => setParams({ tab: v === 'requests' ? null : v, status: null })} aria-label="Request sections">
+        <Tab value="requests" label="Personal" />
+        <Tab value="business" label="Business" />
+        {can('blocklist.read') ? <Tab value="blocked" label="Blocked emails" /> : null}
+      </TabList>
+      {tab === 'requests' ? <RequestList /> : tab === 'business' ? <BusinessRequestList /> : <BlockedList />}
     </Page>
   );
 }
@@ -125,7 +139,10 @@ function RequestList() {
   }
 
   return (
-    <Panel title="Personal key requests">
+    <Panel
+      title="Personal key requests"
+      description="Requests from a blocked address, or from a person who had a license withdrawn, always wait here."
+    >
       <HStack gap={2}>
         <SelectField label="State" value={status} emptyLabel="Every state, open first" options={STATUSES.map((s) => ({ value: s, label: REQUEST_STATUS_LABEL[s] }))} onChange={(v) => setParams({ status: v })} width={260} />
       </HStack>
@@ -202,6 +219,167 @@ function RejectForm({ request: r, onClose }: { request: LicenseRequest; onClose:
         error={(showErrors ? err : null) ?? fe.field('note')}
       />
       {fe.summary ? <Banner status="error" title="The request was not rejected" description={fe.summary} /> : null}
+    </DialogForm>
+  );
+}
+
+const BUSINESS_STATUSES: BusinessRequestStatus[] = ['open', 'issued', 'closed'];
+
+function BusinessRequestList() {
+  const can = useCan();
+  const [sp, setParams] = useSearchParams();
+  const status = (sp.get('status') ?? '') as BusinessRequestStatus | '';
+  const q = useBusinessRequests(status ? { status } : {});
+  const [issuing, setIssuing] = useState<BusinessRequest | null>(null);
+  const [closing, setClosing] = useState<BusinessRequest | null>(null);
+  const decide = can('requests.decide');
+  const issue = decide && can('licenses.issue');
+
+  const columns: TableColumn<BusinessRow>[] = [
+    { key: 'createdAt', header: 'Received (UTC)', width: pixel(140), renderCell: (r) => utcDay(r.createdAt) },
+    {
+      key: 'company',
+      header: 'Requester',
+      width: proportional(2, { minWidth: 160 }),
+      renderCell: (r) => (
+        <VStack gap={0.5}>
+          <Text>{r.company}</Text>
+          <Text type="supporting">
+            {r.name} · <Link href={`mailto:${r.email}`}>{r.email}</Link>
+          </Text>
+        </VStack>
+      ),
+    },
+    {
+      key: 'edition',
+      header: 'Asks for',
+      width: proportional(2, { minWidth: 140 }),
+      renderCell: (r) => (
+        <VStack gap={0.5}>
+          <Text>{BUSINESS_EDITIONS[r.edition].label}</Text>
+          <Text type="supporting">
+            {formatExact(r.nodes)} {r.nodes === 1 ? 'node' : 'nodes'}
+          </Text>
+        </VStack>
+      ),
+    },
+    { key: 'details', header: 'Details', width: proportional(3, { minWidth: 150 }), renderCell: (r) => (r.details ? <Text>{r.details}</Text> : <Text color="secondary">–</Text>) },
+    {
+      key: 'status',
+      header: 'State',
+      width: pixel(140),
+      renderCell: (r) => (
+        <VStack gap={0.5} hAlign="start">
+          <BusinessRequestStatusBadge status={r.status} />
+          {r.resultingLicenseId ? <Link href={`/licenses/${encodeURIComponent(r.resultingLicenseId)}`}>{r.resultingLicenseId}</Link> : null}
+          {r.decisionNote ? <Text type="supporting">{r.decisionNote}</Text> : null}
+        </VStack>
+      ),
+    },
+  ];
+  if (decide) {
+    columns.push({
+      key: 'actions',
+      header: '',
+      width: pixel(220),
+      align: 'end',
+      renderCell: (r) =>
+        r.status === 'open' ? (
+          <HStack gap={1} hAlign="end">
+            {issue ? (
+              <Button label={`Issue a license for ${r.company}`} size="sm" variant="primary" onClick={() => setIssuing(r)}>
+                Issue license
+              </Button>
+            ) : null}
+            <Button label={`Close the request of ${r.company}`} size="sm" variant="ghost" onClick={() => setClosing(r)}>
+              Close
+            </Button>
+          </HStack>
+        ) : null,
+    });
+  }
+
+  return (
+    <Panel
+      title="Business requests"
+      description="Asked for on the kudurru.io form. The requester was told we reply by email: write to them, then issue a license from the request or close it with a note."
+    >
+      <HStack gap={2}>
+        <SelectField
+          label="State"
+          value={status}
+          emptyLabel="Every state, open first"
+          options={BUSINESS_STATUSES.map((s) => ({ value: s, label: BUSINESS_REQUEST_STATUS_LABEL[s] }))}
+          onChange={(v) => setParams({ status: v })}
+          width={260}
+        />
+      </HStack>
+      {q.error ? <ErrorBanner error={q.error} /> : null}
+      {q.isPending ? <Loading /> : null}
+      {q.data ? (
+        <Table<BusinessRow>
+          data={q.data.items as BusinessRow[]}
+          columns={columns}
+          idKey="id"
+          density="compact"
+          verticalAlign="top"
+          emptyState={<Text color="secondary">{status === 'open' ? 'No business request waits.' : 'No business requests.'}</Text>}
+        />
+      ) : null}
+      <IssueLicenseWizardDialog key={issuing?.id ?? 'none'} request={issuing ?? undefined} isOpen={issuing !== null} onClose={() => setIssuing(null)} />
+      <FormDialog isOpen={closing !== null} onClose={() => setClosing(null)} title="Close business request" subtitle={closing ? `${closing.company} · ${closing.email}` : undefined} width={520}>
+        {closing ? <CloseBusinessForm request={closing} onClose={() => setClosing(null)} /> : null}
+      </FormDialog>
+    </Panel>
+  );
+}
+
+function CloseBusinessForm({ request: r, onClose }: { request: BusinessRequest; onClose: () => void }) {
+  const notify = useNotify();
+  const m = useRouteMutation('businessRequestClose');
+  const [note, setNote] = useState('');
+  const [showErrors, setShowErrors] = useState(false);
+  const err = note.trim() ? (note.length > 2000 ? 'At most 2000 characters' : null) : 'Write a note: why it is closed, or what was agreed';
+  const fe = useFieldErrors(m.error, ['note']);
+  return (
+    <DialogForm
+      onSubmit={() => {
+        setShowErrors(true);
+        if (err) return;
+        m.mutate(
+          { params: { id: r.id }, body: { note: note.trim() } },
+          {
+            onSuccess: () => {
+              notify.success(`Closed the request of ${r.company}`);
+              onClose();
+            },
+          },
+        );
+      }}
+      noValidate
+      gap={3}
+      footer={
+        <>
+          <Button label="Cancel" variant="ghost" onClick={onClose} />
+          <Button type="submit" label="Close request" variant="primary" isLoading={m.isPending} />
+        </>
+      }
+    >
+      <Text as="p">
+        They asked for {BUSINESS_EDITIONS[r.edition].label}, {formatExact(r.nodes)} {r.nodes === 1 ? 'node' : 'nodes'}.
+      </Text>
+      <TextAreaField
+        label="Note"
+        value={note}
+        onChange={(v) => {
+          setNote(v);
+          fe.edited('note');
+        }}
+        isRequired
+        help={`Kept with the request for license admins; nothing is mailed. Reply to ${r.email} yourself.`}
+        error={(showErrors ? err : null) ?? fe.field('note')}
+      />
+      {fe.summary ? <Banner status="error" title="The request was not closed" description={fe.summary} /> : null}
     </DialogForm>
   );
 }

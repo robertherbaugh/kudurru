@@ -1,5 +1,5 @@
 // Package localdb is the last-good config snapshot in local.db
-// (docs/architecture.md §4.4, §4.5, decisions D7 and D33).
+// (dev-docs/design-record.md §4.4, §4.5, decisions D7 and D33).
 //
 // It lives beside the drivers rather than inside the kube driver because
 // its writer and reader is internal/zonecache, which is driver-independent

@@ -1,5 +1,5 @@
 // The short license actions of an admin's license page, each a FormDialog
-// (docs/m3/ui.md: dialogs for short, single-purpose actions):
+// (dev-docs/milestones/m3/ui.md: dialogs for short, single-purpose actions):
 // - Renew: a later expiry day (presets counted from the later of today and
 //   the current expiry), the same claims, optionally mailed;
 // - Withdraw: the internal reason, a message for the customer and whether

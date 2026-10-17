@@ -3,7 +3,7 @@
 package license
 
 // This file is compiled only with -tags licensetest, which the Playwright
-// suite (make web-e2e) and nothing else uses. It makes a binary trust a
+// suite (make dashboard-e2e) and nothing else uses. It makes a binary trust a
 // throwaway key whose private half was discarded after it signed
 // testdata/e2e-license.key (all features, 10 nodes, expires in 2126), so the
 // dashboard suite can run a real server with a license without the licensor's

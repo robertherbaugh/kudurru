@@ -1,5 +1,5 @@
 // Package internalapi is kudurru's node-to-node listener (":8082",
-// docs/architecture.md §3.1 "internal" row, §4.5, decision D47) and its
+// dev-docs/design-record.md §3.1 "internal" row, §4.5, decision D47) and its
 // client.
 //
 // The listener is always TLS. Unless overridden by files, the bearer token

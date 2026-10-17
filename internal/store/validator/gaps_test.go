@@ -10,7 +10,7 @@ import (
 // TestSchemaGaps lists inputs the current CRDs accept although they are
 // meaningless. The apiserver accepts them too, so the validator must as
 // well: closing a gap is a marker change in api/v1alpha1 (see
-// docs/spikes/store-validator.md), after which the case fails here and
+// dev-docs/spikes/store-validator.md), after which the case fails here and
 // moves to invalidCases.
 func TestSchemaGaps(t *testing.T) {
 	v := testValidator(t)

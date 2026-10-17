@@ -1,4 +1,4 @@
-// Copied from web/src/components/fields/FieldGroup.tsx at dd3dcb0; keep in step by hand.
+// Copied from dashboard/src/components/fields/FieldGroup.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
 // A labeled group of fields (what a <fieldset> with a <legend> was): a
 // bordered box named by its label, the label on top (or only for screen

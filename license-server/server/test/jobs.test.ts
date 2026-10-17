@@ -45,9 +45,18 @@ describeDb('cleanup', () => {
       values (${Buffer.from(tag)}, ${requestId}, 'admin@example.org', ${new Date(now.getTime() - (expiredDaysAgo + 7) * day)}, ${new Date(now.getTime() - expiredDaysAgo * day)})`;
     await link('kept', 29);
     await link('gone', 31);
+    const business = async (createdDaysAgo: number) => {
+      const id = newId('businessRequest');
+      await t.db`
+        insert into business_requests (id, name, email, company, edition, nodes, ip, user_agent, created_at)
+        values (${id}, 'Ana', 'ana@example.org', 'Example GmbH', 'core', 5, '192.0.2.7', 'Firefox', ${new Date(now.getTime() - createdDaysAgo * day)})`;
+      return id;
+    };
+    const oldBusiness = await business(100);
+    const recentBusiness = await business(1);
 
     const r = await cleanup(t.db, now);
-    expect(r).toEqual({ sessions: 1, logins: 1, publicRequests: 1, approvalLinks: 1, anonymizedPublicRequests: 1, anonymizedSessions: 0 });
+    expect(r).toEqual({ sessions: 1, logins: 1, publicRequests: 1, approvalLinks: 1, anonymizedPublicRequests: 1, anonymizedBusinessRequests: 1, anonymizedSessions: 0 });
     expect((await t.db<{ token_hash: Buffer }[]>`select token_hash from request_approval_links`).map((l) => l.token_hash.toString())).toEqual(['kept']);
 
     const sessions = await t.db<{ id_hash: Buffer }[]>`select id_hash from sessions where user_id = ${user.id}`;
@@ -60,9 +69,14 @@ describeDb('cleanup', () => {
       { id: recentUnverified, ip: '192.0.2.1', user_agent: 'Firefox' },
     ]);
     expect(pkr.find((p) => p.id === oldUnverified)).toBeUndefined();
+    const brq = await t.db<{ id: string; ip: string | null; user_agent: string | null }[]>`select id, host(ip) as ip, user_agent from business_requests order by created_at`;
+    expect(brq).toEqual([
+      { id: oldBusiness, ip: null, user_agent: null },
+      { id: recentBusiness, ip: '192.0.2.7', user_agent: 'Firefox' },
+    ]);
 
     // Nothing left to do.
-    expect(await cleanup(t.db, now)).toEqual({ sessions: 0, logins: 0, publicRequests: 0, approvalLinks: 0, anonymizedPublicRequests: 0, anonymizedSessions: 0 });
+    expect(await cleanup(t.db, now)).toEqual({ sessions: 0, logins: 0, publicRequests: 0, approvalLinks: 0, anonymizedPublicRequests: 0, anonymizedBusinessRequests: 0, anonymizedSessions: 0 });
   });
 
   test('sessions older than 90 days lose ip and user agent', async () => {

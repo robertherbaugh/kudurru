@@ -1,6 +1,6 @@
 // What a kudurru license key can say, and how people read it: the plans and
 // features of internal/license (license.go) and the labels of the dashboard
-// (web/src/lib/license.ts). The server validates against these lists and the
+// (dashboard/src/lib/license.ts). The server validates against these lists and the
 // UI words them; server/test/catalog.test.ts fails when they drift from the
 // Go code.
 
@@ -24,7 +24,7 @@ export const EXPIRY_WARNING_DAYS = 30;
 
 // Policy. The portal's own rules for what it signs (the nodes know none of
 // them; a key is checked for its shape and its dates only). They change by
-// release, next to the public copy that promises them (www, LICENSING.md),
+// release, next to the public copy that promises them (website, LICENSING.md),
 // never by configuration.
 
 /** A personal key covers at most this many nodes. */
@@ -84,18 +84,42 @@ export const ATTESTATION_LICENSE = 'LicenseRef-Kudurru-Community';
 
 /**
  * The certification a person ticks before a personal key is issued, word
- * for word as the kudurru.io form (www) and the portal show it. Stored in
+ * for word as the kudurru.io form (website) and the portal show it. Stored in
  * every personal attestation (licenses.attestation, license_requests.attestation).
  */
 export const ATTESTATION_STATEMENT =
   'I agree and certify this key will only be used for eligible personal, qualifying nonprofit or community-development use in accordance with the license (Kudurru Community License)';
 
-/** Where the Kudurru Community License is published (www LICENSE_TEXT_PATH). */
+/** Where the Kudurru Community License is published (website LICENSE_TEXT_PATH). */
 export const NONCOMMERCIAL_LICENSE_URL = 'https://kudurru.io/license/text/';
 
-/** Where business inquiries go (the user's direction: not through the server). */
+/**
+ * Where people write about a business license. The kudurru.io form sends
+ * business requests to the portal (Requests, Business); this address stays
+ * for the signed-in page's button and the form's fallback when the portal is
+ * unavailable.
+ */
 export const BUSINESS_CONTACT = 'hello@kudurru.io';
 export const BUSINESS_MAILTO = 'mailto:hello@kudurru.io?subject=Business%20License';
+
+/** The editions the kudurru.io form offers (website COMMERCIAL_PLANS), by key. */
+export interface BusinessEditionInfo {
+  label: string;
+  /** The plan a license for this edition is issued with. */
+  plan: Extract<Plan, 'business' | 'enterprise'>;
+}
+
+/** Commercial Core is issued as plan business, Enterprise as plan enterprise. */
+export const BUSINESS_EDITIONS = {
+  core: { label: 'Commercial Core', plan: 'business' },
+  enterprise: { label: 'Enterprise', plan: 'enterprise' },
+} as const satisfies Record<string, BusinessEditionInfo>;
+
+/** An edition of the kudurru.io form (BusinessRequest.edition). */
+export type BusinessEdition = keyof typeof BUSINESS_EDITIONS;
+
+/** The most nodes a business request may ask for (the kudurru.io form's limit). */
+export const BUSINESS_REQUEST_MAX_NODES = 10_000;
 
 /** The page that explains the license and how to get a key. */
 export const LICENSE_PAGE_URL = 'https://kudurru.io/license';

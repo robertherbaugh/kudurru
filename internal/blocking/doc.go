@@ -1,4 +1,4 @@
-// Package blocking is kudurru's blocking engine core (docs/architecture.md
+// Package blocking is kudurru's blocking engine core (dev-docs/design-record.md
 // §7.1 step 7, §7.2, §7.3): it compiles BlockList sources into immutable
 // matcher chains and answers "is this name blocked for this client, and by
 // which rule?" without allocating.

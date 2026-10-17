@@ -1,0 +1,238 @@
+{{- $svc := .Values.service.dns -}}
+{{- $s := .Values.service -}}
+{{- $edgeSeparate := include "kudurru.edge.separate" . -}}
+{{- $prefix := ternary "edge-" "" .Values.edge.enabled -}}
+{{- /* Service-level annotations: VIP provider and shared-IP for split Services. */ -}}
+{{- $ann := deepCopy ($svc.annotations | default dict) -}}
+{{- if eq .Values.vip.provider "kube-vip" -}}
+{{- $_ := set $ann "kube-vip.io/loadbalancerIPs" .Values.vip.address -}}
+{{- else if eq .Values.vip.provider "metallb" -}}
+{{- $_ := set $ann "metallb.io/loadBalancerIPs" .Values.vip.address -}}
+{{- if .Values.vip.metallbPool }}{{ $_ := set $ann "metallb.io/address-pool" .Values.vip.metallbPool }}{{ end -}}
+{{- end -}}
+{{- if $svc.splitProtocols -}}
+{{- $_ := set $ann "metallb.io/allow-shared-ip" (include "kudurru.fullname" .) -}}
+{{- end -}}
+{{- /* Ports by protocol; the mixed Service carries both lists. */ -}}
+{{- $udp := list (dict "name" "dns-udp" "port" $svc.port "target" (printf "%sdns-udp" $prefix)) -}}
+{{- $tcp := list (dict "name" "dns-tcp" "port" $svc.port "target" (printf "%sdns-tcp" $prefix)) -}}
+{{- if $s.dot.enabled }}{{ $tcp = append $tcp (dict "name" "dot" "port" $s.dot.port "target" (printf "%sdot" $prefix)) }}{{ end -}}
+{{- if $s.doh.enabled }}{{ $tcp = append $tcp (dict "name" "doh" "port" $s.doh.port "target" (printf "%sdoh" $prefix)) }}{{ end -}}
+{{- if $s.doq.enabled }}{{ $udp = append $udp (dict "name" "doq" "port" $s.doq.port "target" (printf "%sdoq" $prefix)) }}{{ end -}}
+{{- if $s.doh3.enabled }}{{ $udp = append $udp (dict "name" "doh3" "port" $s.doh3.port "target" (printf "%sdoh3" $prefix)) }}{{ end -}}
+{{- $groups := list (dict "suffix" "dns" "udp" $udp "tcp" $tcp) -}}
+{{- if $svc.splitProtocols -}}
+{{- $groups = list (dict "suffix" "dns-udp" "udp" $udp "tcp" list) (dict "suffix" "dns-tcp" "udp" list "tcp" $tcp) -}}
+{{- end -}}
+{{- range $g := $groups }}
+---
+# DNS clients. One mixed-protocol Service by default (GA since 1.26);
+# splitProtocols emits dns-udp and dns-tcp sharing one address.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" $ }}-{{ $g.suffix }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" $ | nindent 4 }}
+    kudurru.io/service: {{ $g.suffix }}
+  {{- with $ann }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $svc.type }}
+  {{- if and $svc.loadBalancerIP (eq $svc.type "LoadBalancer") }}
+  loadBalancerIP: {{ $svc.loadBalancerIP }}
+  {{- end }}
+  {{- if and $svc.loadBalancerClass (eq $svc.type "LoadBalancer") }}
+  loadBalancerClass: {{ $svc.loadBalancerClass }}
+  {{- end }}
+  {{- with $svc.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if or (eq $svc.type "LoadBalancer") (eq $svc.type "NodePort") }}
+  externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
+  {{- end }}
+  ipFamilyPolicy: {{ $svc.ipFamilyPolicy }}
+  {{- with $svc.ipFamilies }}
+  ipFamilies:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if $svc.trafficDistribution }}
+  trafficDistribution: {{ $svc.trafficDistribution }}
+  {{- end }}
+  selector:
+    {{- if $edgeSeparate }}
+    {{- include "kudurru.edge.selectorLabels" $ | nindent 4 }}
+    {{- else }}
+    {{- include "kudurru.selectorLabels" $ | nindent 4 }}
+    {{- end }}
+  ports:
+    {{- range $g.udp }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .target }}
+      protocol: UDP
+    {{- end }}
+    {{- range $g.tcp }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .target }}
+      protocol: TCP
+    {{- end }}
+{{- end }}
+---
+# API, UI and metrics (expose the API through the Ingress).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+    kudurru.io/service: api
+  {{- with (include "kudurru.api.annotations" . | fromYaml) }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.api.type }}
+  sessionAffinity: {{ .Values.service.api.sessionAffinity }}
+  {{- if and (eq .Values.service.api.sessionAffinity "ClientIP") .Values.service.api.sessionAffinityConfig }}
+  sessionAffinityConfig:
+    {{- toYaml .Values.service.api.sessionAffinityConfig | nindent 4 }}
+  {{- end }}
+  selector:
+    {{- include "kudurru.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: api
+      port: {{ .Values.service.api.port }}
+      targetPort: api
+      protocol: TCP
+    - name: metrics
+      port: 9153
+      targetPort: metrics
+      protocol: TCP
+    {{- if .Values.externalDNS.webhook.enabled }}
+    - name: webhook
+      port: {{ .Values.externalDNS.webhook.port }}
+      targetPort: webhook
+      protocol: TCP
+    {{- end }}
+{{- with .Values.dhcp }}
+{{- if .enabled }}
+---
+# DHCPv4 (docs/deploy/dhcp.md): relays send to serverAddress. Only the pod
+# that holds the kudurru-dhcp Lease carries kudurru.io/dhcp-active, so the
+# LoadBalancer has one endpoint; Local keeps the relay's source address.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" $ }}-dhcp
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" $ | nindent 4 }}
+    kudurru.io/service: dhcp
+  {{- with .service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .service.type }}
+  {{- if eq .service.type "LoadBalancer" }}
+  loadBalancerIP: {{ .serverAddress }}
+  {{- with .service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- end }}
+  {{- if or (eq .service.type "LoadBalancer") (eq .service.type "NodePort") }}
+  externalTrafficPolicy: {{ .service.externalTrafficPolicy }}
+  {{- end }}
+  selector:
+    {{- include "kudurru.selectorLabels" $ | nindent 4 }}
+    kudurru.io/dhcp-active: "true"
+  ports:
+    - name: dhcp
+      port: 67
+      targetPort: dhcp
+      protocol: UDP
+{{- end }}
+{{- end }}
+{{- with .Values.blockPage }}
+{{- if .enabled }}
+---
+# Block page (docs/deploy/blocking-page.md): blocked names resolve to its
+# address (blockPage.ipv4/ipv6). It selects the kudurru pods, which serve
+# the page, also when an edge answers DNS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" $ }}-blockpage
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" $ | nindent 4 }}
+    kudurru.io/service: blockpage
+  {{- with .service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .service.type }}
+  {{- if eq .service.type "LoadBalancer" }}
+  {{- if .ipv4 }}
+  loadBalancerIP: {{ .ipv4 }}
+  {{- end }}
+  {{- with .service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- end }}
+  {{- if or (eq .service.type "LoadBalancer") (eq .service.type "NodePort") }}
+  externalTrafficPolicy: {{ .service.externalTrafficPolicy }}
+  {{- end }}
+  {{- if and .ipv4 .ipv6 }}
+  ipFamilyPolicy: PreferDualStack
+  {{- end }}
+  selector:
+    {{- include "kudurru.selectorLabels" $ | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .service.httpPort }}
+      targetPort: blockpage-http
+      protocol: TCP
+    {{- if .https.enabled }}
+    - name: https
+      port: {{ .service.httpsPort }}
+      targetPort: blockpage-tls
+      protocol: TCP
+    {{- end }}
+{{- end }}
+{{- end }}
+---
+# Headless: edge backends (EndpointSlice), <pod>.<headless> for list pulls
+# from the leader over :8082, NOTIFY source. Not-ready pods are published so
+# the edge sees surge pods and peers can reach a starting leader.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.headlessName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+    kudurru.io/service: headless
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: {{ .Values.service.headless.publishNotReadyAddresses }}
+  selector:
+    {{- include "kudurru.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: dns-udp
+      port: {{ include "kudurru.dnsPort" . }}
+      protocol: UDP
+    - name: dns-tcp
+      port: {{ include "kudurru.dnsPort" . }}
+      protocol: TCP
+    - name: internal
+      port: 8082
+      protocol: TCP

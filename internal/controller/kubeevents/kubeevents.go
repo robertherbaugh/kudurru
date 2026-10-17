@@ -1,5 +1,5 @@
 // Package kubeevents records the controller's operational transitions as
-// Kubernetes core/v1 Events on the kudurru objects (docs/architecture.md
+// Kubernetes core/v1 Events on the kudurru objects (dev-docs/design-record.md
 // §5.1), so `kubectl describe zone home` shows SerialBumped, Duplicated,
 // OutsideZone and Invalid.
 //

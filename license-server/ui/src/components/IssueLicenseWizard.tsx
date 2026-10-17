@@ -1,5 +1,5 @@
 // "Issue license" (POST /api/v1/licenses) in a WizardDialog over the page
-// the admin is on (docs/m3/ui.md: wizards only for creation), in four
+// the admin is on (dev-docs/milestones/m3/ui.md: wizards only for creation), in four
 // steps:
 // 1. Customer: an existing one (CustomerField) or a new one created inline
 //    (a wizard never opens another dialog);
@@ -13,16 +13,20 @@
 //    the Stepper lets the admin change an earlier step and jump back).
 // Signing closes the dialog and opens the new license's page. A 400 that
 // names fields takes the admin to the first step they belong to and shows
-// the server's message under the control (api/fieldErrors).
+// the server's message under the control (api/fieldErrors). Opened from a
+// business request (Requests, Business), the wizard starts with a new
+// organization customer named after the company, the requester's email as
+// its contact, the edition's plan (catalog BUSINESS_EDITIONS) and the nodes
+// asked for; issuing marks the request issued with the license.
 
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { MetadataList } from '@astryxdesign/core/MetadataList';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useRef, useState } from 'react';
-import type { CustomerKind, IssueLicenseBody } from '@shared/api';
-import { PLANS, planLabel, PERSONAL_MAX_NODES, type Feature, type Plan } from '@shared/catalog';
+import type { BusinessRequest, CustomerKind, IssueLicenseBody } from '@shared/api';
+import { BUSINESS_EDITIONS, PLANS, planLabel, PERSONAL_MAX_NODES, type Feature, type Plan } from '@shared/catalog';
 import { graceEndsOn, todayUtc } from '@shared/dates';
 import { firstField, useFieldErrors } from '../api/fieldErrors';
 import { useCatalog, useRouteMutation } from '../api/hooks';
@@ -48,12 +52,20 @@ export interface IssueLicenseWizardProps {
   onClose: () => void;
   /** Opened from a customer's page: that customer, chosen. */
   customer?: CustomerChoice | undefined;
+  /** Opened from a business request: the request's company, contact, plan and nodes filled in; issuing answers it. */
+  request?: BusinessRequest | undefined;
 }
 
-export function IssueLicenseWizardDialog({ isOpen, onClose, customer }: IssueLicenseWizardProps) {
+export function IssueLicenseWizardDialog({ isOpen, onClose, customer, request }: IssueLicenseWizardProps) {
   return (
-    <WizardDialog isOpen={isOpen} onClose={onClose} title="Issue license" subtitle="Signs a key for a customer." what="license">
-      <IssueLicenseWizard onClose={onClose} customer={customer} />
+    <WizardDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Issue license"
+      subtitle={request ? `Signs a key for the business request of ${request.company}.` : 'Signs a key for a customer.'}
+      what="license"
+    >
+      <IssueLicenseWizard onClose={onClose} customer={customer} request={request} />
     </WizardDialog>
   );
 }
@@ -73,7 +85,7 @@ function stepOfField(field: string): string {
   return 'term';
 }
 
-function IssueLicenseWizard({ onClose, customer: preset }: { onClose: () => void; customer?: CustomerChoice | undefined }) {
+function IssueLicenseWizard({ onClose, customer: preset, request }: { onClose: () => void; customer?: CustomerChoice | undefined; request?: BusinessRequest | undefined }) {
   const catalog = useCatalog();
   const notify = useNotify();
   const navigate = useNavigate();
@@ -83,18 +95,19 @@ function IssueLicenseWizard({ onClose, customer: preset }: { onClose: () => void
   const today = catalog.data?.today ?? todayUtc();
   const mailConfigured = catalog.data?.mail.configured ?? false;
 
-  const [mode, setMode] = useState<'existing' | 'new'>('existing');
+  const initialPlan: Plan = request ? BUSINESS_EDITIONS[request.edition].plan : 'business';
+  const [mode, setMode] = useState<'existing' | 'new'>(request ? 'new' : 'existing');
   const [customer, setCustomer] = useState<CustomerChoice | null>(preset ?? null);
-  const [newName, setNewName] = useState('');
+  const [newName, setNewName] = useState(request?.company ?? '');
   const [newKind, setNewKind] = useState<CustomerKind>('organization');
-  const [newEmail, setNewEmail] = useState('');
-  const [plan, setPlan] = useState<Plan>('business');
-  const [showMore, setShowMore] = useState(false);
-  const [licensee, setLicensee] = useState(preset?.name ?? '');
+  const [newEmail, setNewEmail] = useState(request?.email ?? '');
+  const [plan, setPlan] = useState<Plan>(initialPlan);
+  const [showMore, setShowMore] = useState(MORE_PLANS.includes(initialPlan));
+  const [licensee, setLicensee] = useState(request?.company ?? preset?.name ?? '');
   const [licenseeEdited, setLicenseeEdited] = useState(false);
-  const [nodes, setNodes] = useState('1');
+  const [nodes, setNodes] = useState(() => String(request ? Math.min(request.nodes, maxNodesFor(initialPlan)) : 1));
   const [features, setFeatures] = useState<Feature[] | null>(null);
-  const [expiresOn, setExpiresOn] = useState(() => defaultExpiry('business', today));
+  const [expiresOn, setExpiresOn] = useState(() => defaultExpiry(initialPlan, today));
   const [agreementRef, setAgreementRef] = useState('');
   const [notes, setNotes] = useState('');
   const [emailCustomer, setEmailCustomer] = useState(false);
@@ -158,6 +171,7 @@ function IssueLicenseWizard({ onClose, customer: preset }: { onClose: () => void
       ...(agreementRef.trim() ? { agreementRef: agreementRef.trim() } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
       ...(emailCustomer && contactEmail ? { emailCustomer: true } : {}),
+      ...(request ? { businessRequestId: request.id } : {}),
     };
     // Never send an empty explicit list (spec §0.3); the steps' checks already refused it.
     if (featuresError(fields.features)) return;
@@ -391,6 +405,11 @@ function IssueLicenseWizard({ onClose, customer: preset }: { onClose: () => void
         <VStack gap={3}>
           <WizardNavHandle navRef={navRef} />
           <MetadataList>
+            {request ? (
+              <MetadataListItem label="Business request">
+                {request.company} ({request.email}): {BUSINESS_EDITIONS[request.edition].label}, {formatExact(request.nodes)} {request.nodes === 1 ? 'node' : 'nodes'}. Issuing marks it issued.
+              </MetadataListItem>
+            ) : null}
             <ReviewRow label="Customer" step="customer" what="customer">
               {mode === 'existing' ? customerName : `${customerName} (new ${KIND_LABEL[newKind].toLowerCase()}${newEmail.trim() ? `, ${newEmail.trim()}` : ''})`}
             </ReviewRow>

@@ -32,7 +32,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/license"
 )
 
-// edgeFlags are the `kudurru edge render|run` flags (docs/architecture.md
+// edgeFlags are the `kudurru edge render|run` flags (dev-docs/design-record.md
 // §3.6, §6.5).
 type edgeFlags struct {
 	backends, backendsFrom          string
@@ -137,7 +137,7 @@ func newEdgeCmd() *cobra.Command {
 	rf.register(render, false)
 	run := &cobra.Command{
 		Use:   "run",
-		Short: "Render, check, exec and supervise dnsdist (docs/architecture.md §3.6)",
+		Short: "Render, check, exec and supervise dnsdist (dev-docs/design-record.md §3.6)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runEdgeRun(c, &uf)
 		},

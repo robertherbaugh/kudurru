@@ -144,25 +144,26 @@ first start of an edge deployment is refused; a lapsed key never stops a restart
 ## The dashboard
 
 `GET /api/v1/license` feeds the License page and the banner
-(`web/src/pages/LicensePage.tsx`, `components/LicenseBanner.tsx`; see
-docs/m3/ui.md, "Licensed features"). A page whose feature is locked shows a
+(`dashboard/src/pages/LicensePage.tsx`, `components/LicenseBanner.tsx`; see
+dev-docs/milestones/m3/ui.md, "Licensed features"). A page whose feature is locked shows a
 short explanation instead of its content and makes none of the requests the
 server would refuse with 402. The license text is published from the one `LICENSE` file on kudurru.io
-(`/license/text/`, rendered by `www/src/markdown.ts`, with a plain text
-download) and in the docs (`site/hugo.yaml` mounts `LICENSE` and `LICENSING.md`
+(`/license/text/`, rendered by `website/src/markdown.ts`, with a plain text
+download) and in the docs (`docs-site/hugo.yaml` mounts `LICENSE` and `LICENSING.md`
 as `/project/license/` and `/project/licensing/`); the dashboard, the README and
 the key form link to them. The public page is [kudurru.io/license](https://kudurru.io/license)
-(`www/src/pages/license.ts`, content in `www/src/content.ts`); its "Request a
-key" form sends a personal request to the license server and opens a mail to
-hello@kudurru.io for anything else, including the selected Commercial Core or
-Enterprise edition (`www/README.md`, "The Request a key form"), and the
+(`website/src/pages/license.ts`, content in `website/src/content.ts`); its "Request a
+key" form sends a personal request and a business request (with the selected
+Commercial Core or Enterprise edition) to the license server, and opens a mail
+to hello@kudurru.io for a business request the server cannot take
+(`website/README.md`, "The Request a key form"; D181), and the
 administrator guide has a chapter on it (`docs/guide/admin/13-license.md`).
 
 ## Test builds
 
 The dashboard's Playwright suite needs a node with a license, and it cannot
 have the licensor's signing key. A binary built with `-tags licensetest`
-(`make web-e2e` does it) also trusts a throwaway key, `e2e-test`, whose
+(`make dashboard-e2e` does it) also trusts a throwaway key, `e2e-test`, whose
 private half was discarded after it signed `internal/license/testdata/e2e-license.key`
 (all features, 10 nodes, expires in 2126). A default build trusts only the
 keys in `internal/license/keys/`, and `TestDefaultBuildTrustsNoTestKey` fails
@@ -173,7 +174,8 @@ if that ever changes. Never build a release with the tag.
 Keys are issued by the license portal, `license-server/` (D165): license
 admins issue, renew, change and withdraw licenses there after an OIDC
 sign-in, customers download their keys, and the kudurru.io form requests
-free personal keys. It signs with the same key and in the same format as
+free personal keys and sends business requests, which license admins answer
+on its Requests page (D181). It signs with the same key and in the same format as
 `hack/licensegen`, and no node ever contacts it (D163). How it works:
 `license-server/docs/architecture.md`; how to run it:
 `license-server/README.md`.

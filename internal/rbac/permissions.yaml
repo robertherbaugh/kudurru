@@ -1,5 +1,5 @@
 # Single source for roles, aggregated ClusterRoles, the docs table and the
-# route-permission lint (docs/architecture.md §8.5, decision D31).
+# route-permission lint (dev-docs/design-record.md §8.5, decision D31).
 #
 # resources: name -> verbs it supports
 # roles:     name -> permissions as "<resource>.<verb>"; "*" wildcards allowed
@@ -103,7 +103,7 @@ scoped:
   - zone-admin
 
 # Kubernetes ClusterRoles (§5.3, §8.5): `make rbac-manifests` generates
-# charts/kudurru/templates/rbac-aggregated.yaml from the roles above.
+# deploy/helm/kudurru/templates/rbac-aggregated.yaml from the roles above.
 # clusterRole is the name suffix (<release>-<clusterRole>); aggregateTo
 # names the built-in ClusterRole it aggregates into. The auditor role
 # reads query logs and the audit trail, so it aggregates nowhere: holders

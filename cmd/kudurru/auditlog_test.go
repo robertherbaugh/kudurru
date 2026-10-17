@@ -144,7 +144,7 @@ func auditLogTestAPI(t *testing.T) *rest.Config {
 	}
 	env := &envtest.Environment{
 		BinaryAssetsDirectory: assets,
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "audit")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "deploy", "kustomize", "crd", "audit")},
 		ErrorIfCRDPathMissing: true,
 	}
 	args := env.ControlPlane.GetAPIServer().Configure()

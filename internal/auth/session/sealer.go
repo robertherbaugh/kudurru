@@ -1,4 +1,4 @@
-// Package session implements the sealed SessionStore of docs/architecture.md
+// Package session implements the sealed SessionStore of dev-docs/design-record.md
 // §8.2 (decisions D23, D48, D54, D57) and the cookie-authenticating
 // middleware of §8.8.
 //

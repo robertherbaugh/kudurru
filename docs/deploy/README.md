@@ -4,8 +4,8 @@
 |---|---|---|
 | One container (Docker, Podman) | [docker.md](docker.md) | `deploy/compose/single`, `deploy/compose/single-edge` |
 | Three hosts with a VIP (dnsdist + keepalived, `ha-static`) | [compose-ha.md](compose-ha.md) | `deploy/compose/ha/node-{a,b,c}` |
-| Kubernetes with Helm | [helm.md](helm.md) | `charts/kudurru`, `charts/kudurru-crds` |
-| Kubernetes with kustomize | [kustomize.md](kustomize.md) | `config/` |
+| Kubernetes with Helm | [helm.md](helm.md) | `deploy/helm/kudurru`, `deploy/helm/kudurru-crds` |
+| Kubernetes with kustomize | [kustomize.md](kustomize.md) | `deploy/kustomize/` |
 | Linux packages (deb, rpm, apk) with systemd | [docker.md#linux-packages-and-systemd](docker.md#linux-packages-and-systemd) | `deploy/systemd` |
 | Monitoring | [helm.md#monitoring](helm.md#monitoring) | `deploy/grafana/kudurru-overview.json`, `deploy/prometheus/rules.yaml` |
 
@@ -14,14 +14,15 @@ The optional central database for the audit log, query log and statistics of eve
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
-The optional DHCPv4 server in development for v0.2.0: [dhcp.md](dhcp.md).
+The optional DHCPv4 server included in v0.1.0: [dhcp.md](dhcp.md).
 
-Built-in DHCPv4 is in development for v0.2.0 in
-[PR #66](https://github.com/robertherbaugh/kudurru/pull/66): Linux/SQLite
-standalone or three-node quorum failover, complete dashboard setup, persistent
+Built-in DHCPv4 is disabled by default and runs on Linux with either store:
+SQLite standalone or three-node quorum failover, or the Kubernetes store with
+`DHCPScope`/`DHCPLease` objects and one elected replica behind a relay
+([dhcp.md#kubernetes](dhcp.md#kubernetes)). It has complete dashboard setup, persistent
 leases/reservations, multiple subnets, trusted relays, conflict checks,
 network/boot options, import/export and local DNS ownership. DHCPv6 is excluded.
-The released v0.1.0 server still requires an external DHCP service.
+Keep IPv6 router and DNS advertisements on your router.
 
 ## Release artifacts
 
@@ -33,7 +34,7 @@ use the `0.1.0` image and chart versions.
 Releases are cut by merging `main` into `release-candidate` (a
 `v<version>-rc.<N>` pre-release) and `release-candidate` into `release` (the
 `v<version>` release, which also moves `latest`); the version comes from the
-`VERSION` file ([release-checklist.md](../release-checklist.md#release-pipeline)).
+`VERSION` file ([release-checklist.md](../../dev-docs/release-checklist.md#release-pipeline)).
 Both run `.github/workflows/publish.yml`, which runs goreleaser
 (`.goreleaser.yaml`) and publishes:
 
@@ -44,7 +45,7 @@ Both run `.github/workflows/publish.yml`, which runs goreleaser
   release candidate does not;
 - binaries for linux and darwin on amd64 and arm64, deb/rpm/apk packages with
   a hardened systemd unit, a compose bundle, `crds.yaml` and `install.yaml`
-  (`kustomize build config/default`), all covered by `checksums.txt`, which is
+  (`kustomize build deploy/kustomize/default`), all covered by `checksums.txt`, which is
   cosign-signed, plus GitHub build provenance;
 - the Helm charts at `oci://ghcr.io/robertherbaugh/charts/kudurru` and
   `.../kudurru-crds`, cosign-signed.
@@ -66,7 +67,7 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
 | Port | Protocol | Purpose |
 |---|---|---|
 | 53 | udp, tcp | DNS (5353 PROXYv2-only behind the dnsdist edge) |
-| 67 | udp | DHCPv4 (optional, v0.2.0 development); replies go to client UDP 68 or the relay's authorized UDP source port |
+| 67 | udp | DHCPv4 (optional, v0.1.0); replies go to client UDP 68 or the relay's authorized UDP source port |
 | 853 | tcp / udp | DNS over TLS / DNS over QUIC |
 | 443 | tcp / udp | DNS over HTTPS / HTTP/3 |
 | 8080 | tcp | API and UI |

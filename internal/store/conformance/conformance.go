@@ -114,7 +114,7 @@ func testOptimistic(t *testing.T, s store.Store) {
 
 // testStatusSeparation pins the apiserver's split: Apply writes the main
 // resource and ignores status; UpdateStatus writes the status subresource
-// and ignores spec (docs/architecture.md §4.3, decision D70).
+// and ignores spec (dev-docs/design-record.md §4.3, decision D70).
 func testStatusSeparation(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	z := zone("home", "home.example.")

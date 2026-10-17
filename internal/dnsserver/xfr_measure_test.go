@@ -18,7 +18,7 @@ import (
 
 // TestMeasureAXFR100k transfers a 100,000-record zone over TCP loopback
 // with dns.Transfer, unsigned and TSIG-signed, and logs the time, the
-// message count and the bytes on the wire (docs/m2/xfr.md). It runs with
+// message count and the bytes on the wire (dev-docs/milestones/m2/xfr.md). It runs with
 // KUDURRU_MEASURE=1.
 func TestMeasureAXFR100k(t *testing.T) {
 	if os.Getenv("KUDURRU_MEASURE") == "" {

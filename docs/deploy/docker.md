@@ -1,6 +1,6 @@
 # kudurru in one container
 
-The single-instance shape (docs/architecture.md §4.4, §6): the sqlite store
+The single-instance shape (dev-docs/design-record.md §4.4, §6): the sqlite store
 in `/var/lib/kudurru/state.db`, configuration in `/etc/kudurru/kudurru.yaml`
 plus `objects.d/`, the API and UI on :8080.
 
@@ -80,7 +80,7 @@ first visit; set `listeners.api.tls.certFile`/`keyFile` for a trusted one.
   variable such changes live in memory only (`persisted: false`).
 - `objects.d/*.yaml`: zones, record sets, block lists, client groups and
   policies in the CRD format (`kubectl apply` YAML; examples in
-  `config/samples/`). They are file-managed (`managedBy: file:<path>`),
+  `deploy/kustomize/samples/`). They are file-managed (`managedBy: file:<path>`),
   re-applied on change, and read-only in the UI.
 - Environment: `KUDURRU_<SECTION>__<KEY>` overrides scalar keys, for example
   `KUDURRU_LOG__LEVEL: debug`.

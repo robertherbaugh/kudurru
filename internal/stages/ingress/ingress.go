@@ -1,6 +1,6 @@
 // Package ingress is the first pipeline stage: the per-prefix QPM rate
 // limiter (ratelimit.go), message sanity checks and the locally answered
-// CHAOS and health names (docs/architecture.md §7.1 step 2).
+// CHAOS and health names (dev-docs/design-record.md §7.1 step 2).
 package ingress
 
 import (

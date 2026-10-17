@@ -18,7 +18,7 @@ import (
 
 // Endpoint is one kudurru node address reported by a MembershipSource:
 // what the dnsdist supervisor renders as a backend (`kudurru edge run
-// --backends-from`, docs/architecture.md §3.6 step 1).
+// --backends-from`, dev-docs/design-record.md §3.6 step 1).
 type Endpoint struct {
 	// Name is the node identity (the pod name in Kubernetes, node.name in
 	// compose); empty for an anonymous static address.

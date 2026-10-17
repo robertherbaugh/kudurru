@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -89,8 +90,22 @@ func probeARP(ctx context.Context, cfg Config, iface net.Interface, address neti
 	return receiveProbe(ctx, cfg.ProbeTimeout, fd, func(data []byte, _ unix.Sockaddr) bool { return arpConflict(data, iface.HardwareAddr, address) })
 }
 
+// openRawICMP opens the raw ICMP probe socket; tests replace it.
+var openRawICMP = func() (int, error) {
+	return unix.Socket(unix.AF_INET, unix.SOCK_RAW|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, unix.IPPROTO_ICMP)
+}
+
 func probeICMP(ctx context.Context, cfg Config, iface net.Interface, address netip.Addr) (bool, error) {
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, unix.IPPROTO_ICMP)
+	// Without CAP_NET_RAW (a non-root pod), fall back to an unprivileged ICMP
+	// datagram socket, which net.ipv4.ping_group_range permits in container
+	// runtimes' pod network namespaces. The kernel then owns the echo
+	// identifier and strips the IP header from replies.
+	datagram := false
+	fd, err := openRawICMP()
+	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) {
+		datagram = true
+		fd, err = unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, unix.IPPROTO_ICMP)
+	}
 	if err != nil {
 		return false, fmt.Errorf("dhcp: ICMP probe socket: %w", err)
 	}
@@ -112,7 +127,14 @@ func probeICMP(ctx context.Context, cfg Config, iface net.Interface, address net
 	}
 	return receiveProbe(ctx, cfg.ProbeTimeout, fd, func(data []byte, source unix.Sockaddr) bool {
 		peer, ok := source.(*unix.SockaddrInet4)
-		if !ok || peer.Addr != address.As4() || len(data) < 20 || data[0]>>4 != 4 {
+		if !ok || peer.Addr != address.As4() {
+			return false
+		}
+		if datagram {
+			// The kernel matched the identifier; compare sequence and payload.
+			return len(data) >= len(echo) && data[0] == 0 && data[1] == 0 && bytes.Equal(data[6:len(echo)], echo[6:])
+		}
+		if len(data) < 20 || data[0]>>4 != 4 {
 			return false
 		}
 		offset := int(data[0]&15) * 4

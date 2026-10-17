@@ -135,7 +135,7 @@ func ingest(t testing.TB, rate, seconds int, mode querylog.Mode) ingestResult {
 	return res
 }
 
-// TestMeasureIngest produces the numbers in docs/m2/querylog.md: write
+// TestMeasureIngest produces the numbers in dev-docs/milestones/m2/querylog.md: write
 // capacity, duty cycle and bytes per row at 1 000 and 10 000 events/s.
 // KUDURRU_MEASURE=1 runs the full 5-minute and 1-minute simulations
 // (300 000 and 600 000 rows); the default run is a 20 s / 3 s smoke test

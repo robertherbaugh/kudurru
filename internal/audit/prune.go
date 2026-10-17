@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Retention defaults (docs/architecture.md §11.4).
+// Retention defaults (dev-docs/design-record.md §11.4).
 const (
 	// DefaultRetention is how long stored audit events are kept: 400 days.
 	DefaultRetention = 400 * 24 * time.Hour

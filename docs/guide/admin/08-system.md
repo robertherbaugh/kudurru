@@ -107,7 +107,7 @@ Chapter 6 explains the block page.
 
 ### All settings
 
-The [settings reference](../../../site/content/reference/configuration.md)
+The [settings reference](../../../docs-site/content/reference/configuration.md)
 lists each setting with its type, its default value and its limits. On the
 host you can print the list:
 

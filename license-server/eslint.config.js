@@ -1,4 +1,4 @@
-// ESLint flat config for the license portal, adapted from web/eslint.config.js:
+// ESLint flat config for the license portal, adapted from dashboard/eslint.config.js:
 // typescript-eslint (type-aware, through the solution tsconfig.json) and the
 // React hooks rules, zero warnings allowed (`bun run lint`). The UI keeps
 // the dashboard's form-control rules; the server and the scripts get Node
@@ -56,7 +56,7 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node, Bun: 'readonly' } },
   },
   {
-    // Every form control is an Astryx component (docs/m3/ui.md): no raw
+    // Every form control is an Astryx component (dev-docs/milestones/m3/ui.md): no raw
     // <select>/<input>/<textarea> and no .k-native-* styling outside the
     // field wrappers in ui/src/ui/fields/. A justified exception carries
     // a disable comment for the next line saying why.

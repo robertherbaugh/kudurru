@@ -39,7 +39,7 @@ import (
 // algorithm of a key by name. Names are compared in canonical form
 // (lower-case, absolute). v0.1 implements it with StaticKeyring loaded
 // from the tsigKeys setting (KeyringFromConfig); the store-backed internal
-// TSIGKey kind (docs/architecture.md §4.1, encrypted at rest) is a later
+// TSIGKey kind (dev-docs/design-record.md §4.1, encrypted at rest) is a later
 // implementation of the same interface.
 type TSIGKeyring interface {
 	// Lookup returns the raw secret and the algorithm (a TSIG algorithm

@@ -1,4 +1,4 @@
-// Package audit is the audit seam of docs/architecture.md §11.4: one
+// Package audit is the audit seam of dev-docs/design-record.md §11.4: one
 // immutable Event per mutating API action, denied attempt or runtime
 // action that is not already audited by a store write, handed to a
 // Recorder. Store writes are audited by the store driver itself (the

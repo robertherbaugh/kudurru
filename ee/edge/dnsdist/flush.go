@@ -37,7 +37,7 @@ const maxScheduledFlush = 366 * 24 * time.Hour
 // BlockingChanged from the toggle's change path (POST /dns/blocking and
 // the replicated Toggle.Apply) and FlushResolver after a list refresh.
 // Remote edges (edge Deployments in Kubernetes) cannot be reached this
-// way; see docs/followups.md.
+// way; see dev-docs/followups.md.
 type CacheFlusher struct {
 	// API is the local dnsdist API; KeyFile is read on every flush
 	// because the key changes on every dnsdist start.

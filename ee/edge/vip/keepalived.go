@@ -13,7 +13,7 @@ import (
 )
 
 // Names of the audit action and event a VIP transition produces
-// (docs/architecture.md §3.6). Consumers of Provider.Events write them.
+// (dev-docs/design-record.md §3.6). Consumers of Provider.Events write them.
 const (
 	AuditVIPChanged    = "cluster.vip.changed"
 	EventMasterChanged = "vip.master_changed"

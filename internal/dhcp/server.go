@@ -37,6 +37,9 @@ type Server struct {
 
 	processMu sync.Mutex // packets and managed configuration commits
 	dispatch  func(context.Context, []byte, *net.UDPAddr) ([]byte, *net.UDPAddr, error)
+	// serving, when set, fences every reply like a replicated backend's
+	// CheckServing: a replica that does not hold the allocator term is silent.
+	serving func(context.Context) error
 
 	mu       sync.Mutex
 	conn     net.PacketConn
@@ -144,7 +147,7 @@ func (s *Server) Run(ctx context.Context) error {
 				return nil
 			}
 			level := slog.LevelError
-			if errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrNotServing) {
 				level = slog.LevelDebug
 			}
 			if s.logger != nil {

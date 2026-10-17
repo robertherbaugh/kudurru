@@ -9,6 +9,7 @@
 import type {
   ApprovalPreview,
   AuditEvent,
+  BusinessRequest,
   Catalog,
   CustomerDetail,
   LicenseDetail,
@@ -162,6 +163,40 @@ export const openRequest: LicenseRequest = {
   createdAt: '2026-10-11T12:00:00.000Z',
   personCustomer: null,
   renews: null,
+};
+
+/** A business request from the kudurru.io form that waits for a license admin. */
+export const openBusinessRequest: BusinessRequest = {
+  id: 'brq_one',
+  name: 'Ada Admin',
+  email: 'ada@example.org',
+  company: 'Example GmbH',
+  edition: 'enterprise',
+  nodes: 12,
+  details: 'OIDC sign-in and edge nodes in three offices; we would like to start in Q3.',
+  status: 'open',
+  decidedBy: null,
+  decidedAt: null,
+  decisionNote: '',
+  resultingLicenseId: null,
+  createdAt: '2026-10-12T08:30:00.000Z',
+};
+
+/** A business request a license admin answered with a license. */
+export const issuedBusinessRequest: BusinessRequest = {
+  ...openBusinessRequest,
+  id: 'brq_two',
+  name: 'Lin Ops',
+  email: 'lin@initech.example',
+  company: 'Initech',
+  edition: 'core',
+  nodes: 3,
+  details: '',
+  status: 'issued',
+  decidedBy: { id: 'usr_admin', label: 'Alan Admin' },
+  decidedAt: '2026-10-10T15:00:00.000Z',
+  resultingLicenseId: 'lic_example12',
+  createdAt: '2026-10-09T11:00:00.000Z',
 };
 
 /** A portal renewal waiting for approval: approving renews lic_example12 (expires 2026-10-30, inside the renew window). */

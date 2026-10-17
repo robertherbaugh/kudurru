@@ -1,5 +1,5 @@
 // Package adminsock serves the break-glass admin socket of
-// docs/architecture.md §8.7 (/run/kudurru/kudurru.sock by default) that
+// dev-docs/design-record.md §8.7 (/run/kudurru/kudurru.sock by default) that
 // `kudurru admin` uses from `docker exec` and `kubectl exec`.
 //
 // The protocol is HTTP/1.1 with JSON bodies over the unix socket, so the

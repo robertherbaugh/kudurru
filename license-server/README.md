@@ -11,9 +11,10 @@ The licensor's service that issues kudurru license keys: the Ed25519
 signed tokens of `internal/license` (`docs/architecture/licensing.md`).
 People sign in with OpenID Connect. Customers see and download their keys
 and ask for a free personal key; license admins issue, renew, change and
-withdraw licenses and approve personal keys; superadmins manage users and
-see the audit trail and the configuration. The kudurru.io form requests
-free personal keys without an account. By default
+withdraw licenses, approve personal keys and answer business requests;
+superadmins manage and delete users and see the audit trail and the
+configuration. The kudurru.io form requests free personal keys and sends
+business requests without an account. By default
 (`PERSONAL_AUTO_APPROVE=false`) no personal key is signed on its own: each
 one waits until a license admin approves it, usually with one click from a
 mail ("Approving personal keys" below).
@@ -57,11 +58,11 @@ Hosting on Cloudflare Containers: [cloudflare/README.md](cloudflare/README.md).
 | `server/http/` | The router built from `shared/routes.ts`, the request pipeline (client address, security headers, CORS, CSRF, rate limits), body validation, the static UI |
 | `server/auth/` | OIDC sign-in (openid-client), sessions in Postgres, identity and role mapping, member linking |
 | `server/licensing/` | The JWS signer that matches `license.Sign` byte for byte, the keyring and the issuing policy |
-| `server/services/`, `server/api/` | Customers, members, licenses, personal and public key requests, users, the block list, audit and system pages; `api/` holds the thin handlers |
+| `server/services/`, `server/api/` | Customers, members, licenses, personal and public key requests, business requests, users, the block list, audit and system pages; `api/` holds the thin handlers |
 | `server/mail/` | SMTP (nodemailer), mail texts and the shared branded HTML layout |
-| `server/migrations/` | The schema; `0002` grants the runtime role exactly what the code uses (`0003` adds the approval links' table and its grant) |
+| `server/migrations/` | The schema; `0002` grants the runtime role exactly what the code uses (`0003` adds the approval links' table, `0004` deleting users, `0005` the business requests' table, each with its grant) |
 | `server/test/` | `bun test` against Postgres; the Go golden vectors and node oracle in `golden/` |
-| `ui/` | The UI (Vite, React 19, Astryx 0.6.8); `ui/src/ui/` is the kit copied from `web/src`, each file marked with where it came from |
+| `ui/` | The UI (Vite, React 19, Astryx 0.6.8); `ui/src/ui/` is the kit copied from `dashboard/src`, each file marked with where it came from |
 | `e2e/` | Playwright: every role, the kudurru.io form and the one-click approval through Dex and Mailpit; every key handed out is judged by the node's own code |
 | `deploy/postgres-roles.sql` | The one-time database role setup |
 | `cloudflare/` | The Cloudflare Containers deployment (a package of its own) |
@@ -168,19 +169,21 @@ migration:
 - `license_portal_owner` owns the schema and is used only by
   `bun dist/server.js migrate` (CI, a workstation or a one-off container);
 - `license_portal_app` is the only role the serving container holds.
-  Migration `0002` grants it exactly what the server's SQL uses, and `0003`
-  adds the approval links' table:
+  Migration `0002` grants it exactly what the server's SQL uses; `0003`
+  adds the approval links' table, `0004` deleting users and `0005` the
+  business requests' table:
 
 | Table | Runtime privileges |
 |---|---|
-| `users`, `customers`, `licenses`, `license_keys`, `license_requests` | SELECT, INSERT, UPDATE |
+| `users` | SELECT, INSERT, UPDATE, DELETE |
+| `customers`, `licenses`, `license_keys`, `license_requests`, `business_requests` | SELECT, INSERT, UPDATE |
 | `sessions`, `customer_members`, `public_key_requests`, `request_approval_links` | SELECT, INSERT, UPDATE, DELETE |
 | `oidc_logins`, `blocked_emails` | SELECT, INSERT, DELETE |
 | `audit_events` | SELECT, INSERT (and USAGE on `audit_events_id_seq`) |
 | `schema_migrations` | SELECT |
 
-It cannot change the schema, truncate anything, delete a license, key or
-user, or rewrite the audit trail (triggers also refuse UPDATE, DELETE and
+It cannot change the schema, truncate anything, delete a license, a key or
+a request, or rewrite the audit trail (triggers also refuse UPDATE, DELETE and
 TRUNCATE on `audit_events` for every role). `server/test/roles.test.ts`
 runs every route as this role and proves what it cannot do.
 
@@ -224,10 +227,11 @@ Mail goes over SMTP (`SMTP_URL`): `smtps://user:pass@host:465` (implicit
 TLS) or `smtp://user:pass@host:587` (STARTTLS required). With Cloudflare
 Email Service: `smtps://api_token:<API token with Email Sending: Edit>@smtp.mx.cloudflare.net:465`,
 with `MAIL_FROM` on a domain onboarded for Email Sending. Without
-`SMTP_URL` the public form answers 503 and the rest of the portal works
-(keys are shown in the portal; "Email key" is unavailable; no approval
-mail goes out, so license admins find waiting requests on the Requests
-page). Set up SPF, DKIM and DMARC for the `MAIL_FROM` domain: the public
+`SMTP_URL` the public form answers 503 for personal keys and the rest of
+the portal works (keys are shown in the portal; "Email key" is
+unavailable; no approval mail goes out, so license admins find waiting
+requests on the Requests page; business requests are still taken and
+listed there, without mail). Set up SPF, DKIM and DMARC for the `MAIL_FROM` domain: the public
 flow delivers keys only by mail.
 
 ## The kudurru.io form
@@ -245,6 +249,51 @@ license admin: the page says "Your request is waiting for approval", and
 the key goes out by mail with an invite link to the portal once an admin
 approves it (below). The Community License eligibility
 certification is recorded with the request and then with the license.
+
+## Business requests
+
+The form's business choice posts `{"name", "email", "company", "edition",
+"nodes", "details", "website": ""}` to `POST
+/api/v1/public/business-requests` from an origin in
+`PUBLIC_FORM_ORIGINS`: `edition` is `core` (Commercial Core) or
+`enterprise`, `nodes` a whole number from 1 to 10000, `details` optional
+(up to 1500 characters), `website` the honeypot. It answers 202 for every
+valid request, 400 with `fields` or 429 with `Retry-After`; when the
+portal cannot be reached or answers anything else, the form opens an email
+to hello@kudurru.io instead. There is no confirmation link (nothing is
+signed until a license admin issues a license): the request is stored at
+once, the requester gets "We have your kudurru business license request"
+(fixed text plus the edition and node count: the address is unconfirmed,
+so the mail never repeats the name, company or details), and each address of `ADMIN_NOTIFY_EMAIL` (or, when it
+is unset, every enabled license admin and superadmin with a verified
+email) gets "Business license request from <company>" with a link to the
+Requests page. The `PUBLIC_LIMIT_*` limits apply, counted apart from
+personal requests.
+
+On the Requests page, the Business tab lists them, open first. A license
+admin replies to the requester by email, then either:
+
+- **Issue license**: the issue wizard opens with a new organization
+  customer named after the company, the requester's email as its contact,
+  the plan of the edition (Commercial Core as `business`, Enterprise as
+  `enterprise`) and the nodes asked for, all editable. Signing marks the
+  request issued, with a link to the license.
+- **Close**: with a note for the record (nothing is mailed).
+
+A request is decided once. The audit trail records
+`business_request.received` (without the unconfirmed address),
+`business_request.issued` and `business_request.closed`.
+
+## Users
+
+The Users page lists everyone who signed in. A superadmin grants roles,
+disables and enables a user, ends their sessions and deletes them. Delete
+removes the user, their sessions and their customer memberships; licenses,
+keys, requests and the block list keep the name they recorded, and the
+audit trail records `user.deleted` with the issuer, subject and email.
+Nobody deletes themselves or the last enabled superadmin. Someone who signs
+in again after a delete gets a new user without roles; to keep a person
+out, disable them instead (and remove them at the identity provider).
 
 ## Approving personal keys
 
@@ -339,10 +388,10 @@ the System page shows the non-secret part.
 | `SMTP_URL` | unset | `smtp://user:pass@host:587` (STARTTLS) or `smtps://…:465` (secret) |
 | `MAIL_FROM` | `kudurru license portal <licenses@kudurru.io>` | From header of every mail |
 | `MAIL_REPLY_TO` | `hello@kudurru.io` | Reply-To header of every mail |
-| `ADMIN_NOTIFY_EMAIL` | unset | Who gets the approval mail of each personal key request, with its one-click link (comma list). Unset: every enabled license admin and superadmin with a verified email |
+| `ADMIN_NOTIFY_EMAIL` | unset | Who gets the approval mail of each personal key request, with its one-click link, and the mail of each business request (comma list). Unset: every enabled license admin and superadmin with a verified email |
 | `PUBLIC_FORM_ORIGINS` | `https://kudurru.io` | Exact origins of the public form (comma list); `-` disables the public routes |
-| `PUBLIC_LIMIT_PER_IP_PER_HOUR` | `5` | Public form requests per IPv4 address or IPv6 /64 per hour |
-| `PUBLIC_LIMIT_PER_EMAIL_PER_DAY` | `3` | Public form requests per email per day (silent 202 beyond) |
+| `PUBLIC_LIMIT_PER_IP_PER_HOUR` | `5` | Public form requests per IPv4 address or IPv6 /64 per hour (personal and business requests counted apart) |
+| `PUBLIC_LIMIT_PER_EMAIL_PER_DAY` | `3` | Public form requests per email per day (silent 202 beyond; personal and business requests counted apart) |
 | `PERSONAL_AUTO_APPROVE` | `false` | `true` signs personal keys and renewals without an admin's approval |
 | `PERSONAL_AUTO_APPROVE_MAX_PER_DAY` | `50` | With automatic approval: beyond this many automatic personal keys a day, requests wait for approval |
 | `ISSUE_MAX_PER_ACTOR_PER_DAY` | `50` | Admin signatures per person per 24 h (429 `issuing_quota`); approvals through a link that names no single admin are not counted |

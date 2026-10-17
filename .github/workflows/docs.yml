@@ -1,9 +1,9 @@
 name: docs
-# Builds the docs site (site/, Hugo) on every change: the generated
+# Builds the docs site (docs-site/, Hugo) on every change: the generated
 # references must be current, the Hugo build fails on any unresolved link in
 # the markdown (--panicOnWarning), htmltest checks the HTML, and
 # `wrangler deploy --dry-run` checks the Workers config. Cloudflare Workers
-# Builds publishes docs.kudurru.io from GitHub (site/README.md, "Publishing");
+# Builds publishes docs.kudurru.io from GitHub (docs-site/README.md, "Publishing");
 # this workflow holds no Cloudflare credentials.
 on:
   push:
@@ -12,7 +12,7 @@ on:
 permissions:
   contents: read
 jobs:
-  site:
+  docs-site:
     runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,8 +28,8 @@ jobs:
       - name: Generated references are current
         run: |
           make docs-gen
-          git diff --exit-code -- site/content/reference
-          test -z "$(git status --porcelain -- site/content/reference)" || { git status --porcelain -- site/content/reference; echo "run make docs-gen and commit the result"; exit 1; }
+          git diff --exit-code -- docs-site/content/reference
+          test -z "$(git status --porcelain -- docs-site/content/reference)" || { git status --porcelain -- docs-site/content/reference; echo "run make docs-gen and commit the result"; exit 1; }
       - name: Build (fails on broken links)
         run: make docs-site
       - name: Check the HTML (links, assets, fragments)
@@ -42,5 +42,5 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docs-site
-          path: site/public
+          path: docs-site/public
           retention-days: 7

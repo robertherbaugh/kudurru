@@ -3,10 +3,10 @@
 // request states. One place, so every table and header words a state the
 // same way.
 import { Badge } from '@astryxdesign/core/Badge';
-import type { MemberStatus, RequestStatus } from '@shared/api';
+import type { BusinessRequestStatus, MemberStatus, RequestStatus } from '@shared/api';
 import { stateLabel, stateTone, type LicenseState } from '@shared/catalog';
 import { roleLabel, type Role } from '@shared/permissions';
-import { MEMBER_STATUS_LABEL, REQUEST_STATUS_LABEL } from '../lib/words';
+import { BUSINESS_REQUEST_STATUS_LABEL, MEMBER_STATUS_LABEL, REQUEST_STATUS_LABEL } from '../lib/words';
 
 export function StateBadge({ state }: { state: LicenseState }) {
   return <Badge variant={stateTone(state)} label={stateLabel(state)} />;
@@ -30,4 +30,9 @@ export function MemberStatusBadge({ status }: { status: MemberStatus }) {
 export function RequestStatusBadge({ status }: { status: RequestStatus }) {
   const variant = status === 'open' ? 'warning' : status === 'approved' ? 'success' : 'neutral';
   return <Badge variant={variant} label={REQUEST_STATUS_LABEL[status]} />;
+}
+
+export function BusinessRequestStatusBadge({ status }: { status: BusinessRequestStatus }) {
+  const variant = status === 'open' ? 'warning' : status === 'issued' ? 'success' : 'neutral';
+  return <Badge variant={variant} label={BUSINESS_REQUEST_STATUS_LABEL[status]} />;
 }

@@ -1,7 +1,7 @@
 // Package objcache mirrors one kind of the store in memory, fed by
 // Store.Watch. The identity layer reads users, tokens, service accounts,
 // role bindings and identity providers from such caches on every request,
-// so authentication never costs a store round trip (docs/architecture.md
+// so authentication never costs a store round trip (dev-docs/design-record.md
 // §8.2: "checked per request from the store snapshot").
 //
 // Every driver delivers the current objects as Added, then a Bookmark, then

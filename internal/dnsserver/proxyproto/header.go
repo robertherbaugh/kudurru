@@ -1,6 +1,6 @@
 // Package proxyproto parses HAProxy PROXY protocol version 2 headers and
 // decides whether one may replace the transport peer as the DNS client
-// address (docs/architecture.md §3.3, decisions D45 and D56).
+// address (dev-docs/design-record.md §3.3, decisions D45 and D56).
 //
 // The parser is written from the HAProxy specification
 // (https://www.haproxy.org/download/3.0/doc/proxy-protocol.txt, section
