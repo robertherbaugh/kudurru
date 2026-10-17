@@ -36,7 +36,7 @@ rules:
       - caches
       - clientgroups
       - clients
-      - dhcp
+      - dhcpscopes
       - dnsrecordsets
       - dnszones
       - policies
@@ -74,7 +74,7 @@ rules:
       - caches
       - clientgroups
       - clients
-      - dhcp
+      - dhcpscopes
       - dnsrecordsets
       - dnszones
       - policies
@@ -118,7 +118,7 @@ rules:
   - apiGroups:
       - kudurru.io
     resources:
-      - dhcp
+      - dhcpscopes
       - dnszones
       - querylogs
       - settings
@@ -250,6 +250,7 @@ rules:
       - clientgroups
       - policies
       - unblockrequests
+      - dhcpscopes
     verbs:
       - get
       - list
@@ -266,6 +267,7 @@ rules:
       - clientgroups/status
       - policies/status
       - unblockrequests/status
+      - dhcpscopes/status
     verbs:
       - update
       - patch

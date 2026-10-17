@@ -116,19 +116,21 @@ tidy:
 ## CRD run reads api/v1alpha1 only, because the internal kinds are never CRDs
 ## (Secrets in Kubernetes, JSON rows in state.db; D26).
 generate: manifests
-	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/... paths=./api/audit/v1alpha1/...
+	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/... paths=./api/audit/v1alpha1/... paths=./api/dhcp/v1alpha1/...
 
 ## manifests: the kudurru.io CRDs into config/crd/bases (the store's kinds:
 ## validator, CRD reference) and the audit.kudurru.io AuditLog CRD into
-## config/crd/audit (runtime data the store never serves, D157); both are
-## copied into the kudurru-crds chart.
+## config/crd/audit (runtime data the store never serves, D157) and the
+## dhcp.kudurru.io DHCPLease CRD into config/crd/dhcp (runtime data, D180);
+## all are copied into the kudurru-crds chart.
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/audit/v1alpha1/... output:crd:artifacts:config=config/crd/audit
+	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/dhcp/v1alpha1/... output:crd:artifacts:config=config/crd/dhcp
 	mkdir -p charts/kudurru-crds/templates
 	@# The chart copies carry helm.sh/resource-policy: keep so that
 	@# `helm uninstall kudurru-crds` never deletes the CRDs and every object (§5.1).
-	for f in config/crd/bases/*.yaml config/crd/audit/*.yaml; do \
+	for f in config/crd/bases/*.yaml config/crd/audit/*.yaml config/crd/dhcp/*.yaml; do \
 		awk '{ print } /^    controller-gen.kubebuilder.io\/version:/ { print "    helm.sh/resource-policy: keep" }' $$f > charts/kudurru-crds/templates/$$(basename $$f); \
 	done
 	$(MAKE) --no-print-directory validator-crds

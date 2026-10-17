@@ -44,6 +44,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/controller"
+	"github.com/robertherbaugh/kudurru/internal/dhcpkube"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
@@ -229,6 +230,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	defer func() { _ = st.Close() }()
 	defer func() { _ = snapDB.Close() }()
+	var dhcpKube *dhcpkube.Runtime
+	if cfg.Store.Driver == "kube" && cfg.DHCP.Enabled {
+		if dhcpKube, err = openDHCPKube(cfg, st, restCfg, logger); err != nil {
+			return fmt.Errorf("dhcp: %w", err)
+		}
+		leaseDNS.SetSource(dhcpKube.Stores)
+	}
 
 	// Use the release namespace for seeds, policy fallback and API writes.
 	// Preserve the namespace of a legacy default policy on upgrades.
@@ -807,8 +815,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
+	var dhcpCluster api.DHCPCluster
+	if dhcpKube != nil {
+		dhcpCluster = dhcpKube
+	}
 	apiSrv, err := api.New(api.Options{
 		DHCP:            dhcpServer,
+		DHCPKube:        dhcpCluster,
 		DHCPSetup:       dhcpSetup,
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
@@ -1001,6 +1014,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	if dhcpServer != nil {
 		if err := add("dhcp", false, dhcpServer.Run); err != nil {
+			return err
+		}
+	}
+	if dhcpKube != nil {
+		if err := add("dhcp", false, dhcpKube.Run); err != nil {
 			return err
 		}
 	}

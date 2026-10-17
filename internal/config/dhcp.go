@@ -157,6 +157,30 @@ func (d DHCP) Configs() ([]dhcp.Config, error) {
 	return configs, nil
 }
 
+// Kubernetes returns this replica's DHCP network identity on the kube store:
+// the pod interface receiving relayed packets (default eth0) and the
+// LoadBalancer address advertised as the server identifier. Scopes come from
+// DHCPScope objects, so host scope fields and quorum failover are rejected.
+func (d DHCP) Kubernetes() (iface string, server netip.Addr, err error) {
+	host := d
+	host.Interface, host.ServerIP = "", ""
+	switch {
+	case len(d.Scopes) > 0 || host.hasLegacyScope():
+		return "", netip.Addr{}, errors.New("dhcp: with store.driver kube, scopes are DHCPScope objects; remove dhcp.scopes and the flat scope settings")
+	case d.Failover.Enabled:
+		return "", netip.Addr{}, errors.New("dhcp.failover: with store.driver kube, one replica serves at a time through a Kubernetes Lease; remove the failover settings")
+	}
+	server, err = netip.ParseAddr(d.ServerIP)
+	if err != nil || !server.Is4() || !server.IsGlobalUnicast() {
+		return "", netip.Addr{}, errors.New("dhcp.serverIP: with store.driver kube, set the IPv4 LoadBalancer address that relays send to")
+	}
+	iface = d.Interface
+	if iface == "" {
+		iface = "eth0"
+	}
+	return iface, server, nil
+}
+
 func (d DHCP) hasLegacyScope() bool {
 	return d.ConflictDetection != "" && d.ConflictDetection != "auto" || d.ProbeTimeout != 0 || len(d.NTPServers) > 0 || len(d.DomainSearch) > 0 || len(d.ClasslessRoutes) > 0 || d.BootServer != "" || d.BootServerName != "" || d.BootFile != "" || len(d.BootProfiles) > 0 || len(d.FailoverServers) > 0 || d.Interface != "" || d.ServerIP != "" || d.Subnet != "" || d.RangeStart != "" ||
 		d.RangeEnd != "" || d.Router != "" || len(d.DNSServers) > 0 || d.DomainName != "" ||
@@ -164,6 +188,21 @@ func (d DHCP) hasLegacyScope() bool {
 		d.Management != "" && d.Management != "file" ||
 		d.LeaseDuration != 0 && d.LeaseDuration != Duration(12*time.Hour) ||
 		d.DNSTTL != 0 && d.DNSTTL != Duration(30*time.Second)
+}
+
+// Runtime translates and validates one named scope with the defaults of
+// dhcp.scopes entries (12h leases, 30s DNS TTL). path prefixes errors.
+func (d DHCPScope) Runtime(path string) (dhcp.Config, error) {
+	if d.LeaseDuration == 0 {
+		d.LeaseDuration = Duration(12 * time.Hour)
+	}
+	if d.DNSTTL == 0 {
+		d.DNSTTL = Duration(30 * time.Second)
+	}
+	if d.Management == "" {
+		d.Management = "api"
+	}
+	return d.runtime(path)
 }
 
 func (d DHCPScope) runtime(path string) (dhcp.Config, error) {
@@ -248,8 +287,17 @@ func (c *Config) validateDHCP() []error {
 			}
 		}
 	}
-	if c.Store.Driver != "sqlite" {
-		errs = append(errs, errors.New("dhcp.enabled: requires store.driver=sqlite for local durable lease replicas"))
+	switch c.Store.Driver {
+	case "kube":
+		// Scopes are DHCPScope objects and leases DHCPLease objects; only
+		// this replica's network identity is a node setting.
+		if _, _, err := c.DHCP.Kubernetes(); err != nil {
+			errs = append(errs, err)
+		}
+		return errs
+	case "sqlite":
+	default:
+		errs = append(errs, errors.New("dhcp.enabled: requires store.driver sqlite (local lease databases) or kube (DHCPScope and DHCPLease objects)"))
 	}
 	if scopes, err := c.DHCP.Configs(); err != nil {
 		errs = append(errs, err)

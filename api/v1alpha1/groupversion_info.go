@@ -52,6 +52,7 @@ func addKnownTypes(s *runtime.Scheme) error {
 		&ClientGroup{}, &ClientGroupList{},
 		&Policy{}, &PolicyList{},
 		&UnblockRequest{}, &UnblockRequestList{},
+		&DHCPScope{}, &DHCPScopeList{},
 	)
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil

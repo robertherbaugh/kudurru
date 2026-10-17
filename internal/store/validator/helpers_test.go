@@ -46,6 +46,7 @@ var sampleFiles = map[store.Kind]string{
 	"ClientGroup":    "kudurru.io_v1alpha1_clientgroup.yaml",
 	"Policy":         "kudurru.io_v1alpha1_policy.yaml",
 	"UnblockRequest": "kudurru.io_v1alpha1_unblockrequest.yaml",
+	"DHCPScope":      "kudurru.io_v1alpha1_dhcpscope.yaml",
 }
 
 func readSample(t testing.TB, kind store.Kind) []byte {
@@ -73,6 +74,8 @@ func newTyped(t testing.TB, kind store.Kind) store.Object {
 		return &v1alpha1.Policy{}
 	case "UnblockRequest":
 		return &v1alpha1.UnblockRequest{}
+	case "DHCPScope":
+		return &v1alpha1.DHCPScope{}
 	}
 	t.Fatalf("no Go type for %s", kind)
 	return nil

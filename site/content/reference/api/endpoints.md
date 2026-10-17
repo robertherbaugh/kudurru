@@ -102,6 +102,12 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | PUT | `/api/v1/node/dhcp/v4/setup` | Save DHCPv4 setup for the next restart | `dhcp.write` (cluster) |
 | GET | `/api/v1/node/dhcp/v4/status` | DHCPv4 scopes on this node | `dhcp.read` (cluster) |
 
+## dhcpscopes
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| POST | `/api/v1/dhcpscopes:batchDelete` | Delete several dhcpscopes | `dhcp.delete` (cluster) |
+
 ## dnsrecordsets
 
 | Method | Path | Summary | Permission |

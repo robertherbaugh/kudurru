@@ -24,6 +24,7 @@ var kinds = []kindInfo{
 	{plural: "blocklists", kind: "BlockList", resource: "blocklists", namespaced: true, newObject: func() store.Object { return &v1alpha1.BlockList{} }},
 	{plural: "clientgroups", kind: "ClientGroup", resource: "clientgroups", namespaced: true, newObject: func() store.Object { return &v1alpha1.ClientGroup{} }},
 	{plural: "policies", kind: "Policy", resource: "policies", namespaced: true, newObject: func() store.Object { return &v1alpha1.Policy{} }},
+	{plural: "dhcpscopes", kind: "DHCPScope", resource: "dhcp", newObject: func() store.Object { return &v1alpha1.DHCPScope{} }},
 }
 
 func kindByPlural(plural string) (kindInfo, bool) {

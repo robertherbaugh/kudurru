@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dhcp"
@@ -73,20 +74,35 @@ type DHCPTopology struct {
 type DHCPScopeSummary struct {
 	Name       string `json:"name"`
 	Management string `json:"management" enum:"file,api"`
-	Revision   string `json:"revision"`
-	Interface  string `json:"interface"`
-	ServerIP   string `json:"serverIP"`
-	Subnet     string `json:"subnet"`
-	RelayOnly  bool   `json:"relayOnly"`
+	// ManagedBy is the writer of a Kubernetes DHCPScope that the dashboard
+	// may not change, e.g. "gitops:argocd"; empty when the dashboard may.
+	ManagedBy string `json:"managedBy,omitempty"`
+	Revision  string `json:"revision"`
+	Interface string `json:"interface"`
+	ServerIP  string `json:"serverIP"`
+	Subnet    string `json:"subnet"`
+	RelayOnly bool   `json:"relayOnly"`
 }
 
 // DHCPStatus reports DHCP availability and scopes on the connected node.
 type DHCPStatus struct {
-	Failover  *dhcp.ReplicationStatus `json:"failover,omitempty"`
-	Node      string                  `json:"node"`
-	Enabled   bool                    `json:"enabled"`
-	Available bool                    `json:"available"`
-	Scopes    []DHCPScopeSummary      `json:"scopes" nullable:"false"`
+	Failover *dhcp.ReplicationStatus `json:"failover,omitempty"`
+	// Mode is node (SQLite: setup and leases belong to the connected node)
+	// or kubernetes (DHCPScope and DHCPLease objects, the same on every
+	// replica; one replica serves).
+	Mode string `json:"mode" enum:"node,kubernetes"`
+	// ServingNode is the replica that answers DHCP (kubernetes mode).
+	ServingNode string `json:"servingNode,omitempty"`
+	// ServerAddress is the LoadBalancer address relays send to (kubernetes mode).
+	ServerAddress string `json:"serverAddress,omitempty"`
+	// RuntimeError reports why scopes are not served (kubernetes mode).
+	RuntimeError string `json:"runtimeError,omitempty"`
+	// InvalidScopes maps scopes that are not served to the reason (kubernetes mode).
+	InvalidScopes map[string]string  `json:"invalidScopes,omitempty"`
+	Node          string             `json:"node"`
+	Enabled       bool               `json:"enabled"`
+	Available     bool               `json:"available"`
+	Scopes        []DHCPScopeSummary `json:"scopes" nullable:"false"`
 	Took
 }
 
@@ -95,6 +111,7 @@ type DHCPConfig struct {
 	Node         string            `json:"node"`
 	Scope        string            `json:"scope"`
 	Management   string            `json:"management" enum:"file,api"`
+	ManagedBy    string            `json:"managedBy,omitempty"`
 	Revision     string            `json:"revision"`
 	ETag         string            `json:"etag"`
 	Topology     DHCPTopology      `json:"topology"`
@@ -244,6 +261,13 @@ func (s *Server) registerDHCP() {
 }
 
 func (s *Server) dhcpScope(name string) (*dhcp.LeaseStore, error) {
+	if s.opts.DHCPKube != nil {
+		store, err := s.opts.DHCPKube.Store(name)
+		if err != nil {
+			return nil, errNotFound("DHCP scope " + name)
+		}
+		return store, nil
+	}
 	if s.opts.DHCP == nil {
 		return nil, errUnavailable("DHCPv4 service is not available on this node")
 	}
@@ -267,8 +291,16 @@ func dhcpSummary(cfg dhcp.Config, revision uint64) DHCPScopeSummary {
 	return DHCPScopeSummary{Name: cfg.Name, Management: dhcpManagement(cfg.Management), Revision: strconv.FormatUint(revision, 10), Interface: cfg.Interface, ServerIP: cfg.ServerIP.String(), Subnet: cfg.Subnet.String(), RelayOnly: cfg.RelayOnly}
 }
 
-func (s *Server) dhcpStatus(_ context.Context, _ *struct{}) (*dhcpStatusOutput, error) {
-	out := &DHCPStatus{Node: s.opts.NodeName, Enabled: s.opts.DHCP != nil && s.config().DHCP.Enabled, Available: s.opts.DHCP != nil, Scopes: []DHCPScopeSummary{}}
+func (s *Server) dhcpStatus(ctx context.Context, _ *struct{}) (*dhcpStatusOutput, error) {
+	if s.opts.DHCPKube != nil {
+		return s.kubeDHCPStatus(ctx)
+	}
+	if s.kubeStore() {
+		// dhcp.enabled is off in this release: nothing serves, and setup is a
+		// Helm setting rather than this replica's.
+		return &dhcpStatusOutput{Body: &DHCPStatus{Mode: dhcpKubeNode, Node: s.opts.NodeName, Scopes: []DHCPScopeSummary{}}}, nil
+	}
+	out := &DHCPStatus{Mode: "node", Node: s.opts.NodeName, Enabled: s.opts.DHCP != nil && s.config().DHCP.Enabled, Available: s.opts.DHCP != nil, Scopes: []DHCPScopeSummary{}}
 	if s.opts.DHCP != nil {
 		status := s.opts.DHCP.Replication()
 		if status.Enabled {
@@ -335,7 +367,14 @@ func (s *Server) dhcpConfig(name string, state dhcp.ManagementState) *dhcpConfig
 	return &dhcpConfigOutput{ETag: tag, Body: &DHCPConfig{Node: s.opts.NodeName, Scope: name, Management: dhcpManagement(cfg.Management), Revision: strconv.FormatUint(state.Revision, 10), ETag: tag, Topology: DHCPTopology{ConflictDetection: cfg.ConflictDetection, ProbeTimeout: cfg.ProbeTimeout.String(), FailoverServers: extra.FailoverServers, Interface: cfg.Interface, ServerIP: cfg.ServerIP.String(), Subnet: cfg.Subnet.String(), RelayOnly: cfg.RelayOnly, TrustedRelays: relays}, Options: dhcpOptions(cfg), Reservations: reservations, EnvLocked: s.dhcpLocks(name)}}
 }
 
-func (s *Server) dhcpGetConfig(_ context.Context, in *dhcpScopeInput) (*dhcpConfigOutput, error) {
+func (s *Server) dhcpGetConfig(ctx context.Context, in *dhcpScopeInput) (*dhcpConfigOutput, error) {
+	if s.opts.DHCPKube != nil {
+		scope, err := s.kubeDHCPScope(ctx, in.Scope)
+		if err != nil {
+			return nil, err
+		}
+		return s.kubeDHCPConfig(scope), nil
+	}
 	store, err := s.dhcpScope(in.Scope)
 	if err != nil {
 		return nil, err
@@ -397,6 +436,11 @@ func dhcpError(err error) error {
 }
 
 func (s *Server) dhcpPutConfig(ctx context.Context, in *dhcpConfigInput) (*dhcpConfigOutput, error) {
+	if s.opts.DHCPKube != nil {
+		return s.kubeDHCPWrite(ctx, in.Scope, in.IfMatch, "dhcp.write", func(scope *v1alpha1.DHCPScope) error {
+			return kubeApplyOptions(&scope.Spec, in.Body)
+		})
+	}
 	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.write", func(ctx context.Context, state dhcp.ManagementState) error {
 		if dhcpManagement(state.Config.Management) != "api" {
 			return dhcp.ErrManagedByFile
@@ -489,7 +533,15 @@ func dhcpMAC(value string) (string, error) {
 	return mac.String(), nil
 }
 
-func (s *Server) dhcpListReservations(_ context.Context, in *dhcpScopeInput) (*dhcpReservationsOutput, error) {
+func (s *Server) dhcpListReservations(ctx context.Context, in *dhcpScopeInput) (*dhcpReservationsOutput, error) {
+	if s.opts.DHCPKube != nil {
+		scope, err := s.kubeDHCPScope(ctx, in.Scope)
+		if err != nil {
+			return nil, err
+		}
+		cfg := s.kubeDHCPConfig(scope)
+		return &dhcpReservationsOutput{ETag: cfg.ETag, Body: &DHCPReservations{Node: cfg.Body.Node, Scope: in.Scope, Revision: cfg.Body.Revision, ETag: cfg.ETag, Items: cfg.Body.Reservations}}, nil
+	}
 	store, err := s.dhcpScope(in.Scope)
 	if err != nil {
 		return nil, err
@@ -499,6 +551,23 @@ func (s *Server) dhcpListReservations(_ context.Context, in *dhcpScopeInput) (*d
 }
 
 func (s *Server) dhcpPutReservation(ctx context.Context, in *dhcpReservationInput) (*dhcpConfigOutput, error) {
+	if s.opts.DHCPKube != nil {
+		return s.kubeDHCPWrite(ctx, in.Scope, in.IfMatch, "dhcp.write", func(scope *v1alpha1.DHCPScope) error {
+			mac, err := dhcpMAC(in.MAC)
+			if err != nil {
+				return err
+			}
+			reservation := v1alpha1.DHCPReservation{MAC: mac, IP: in.Body.IP, Hostname: in.Body.Hostname}
+			for i, r := range scope.Spec.Reservations {
+				if canonical, err := dhcpMAC(r.MAC); err == nil && canonical == mac {
+					scope.Spec.Reservations[i] = reservation
+					return nil
+				}
+			}
+			scope.Spec.Reservations = append(scope.Spec.Reservations, reservation)
+			return nil
+		})
+	}
 	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.write", func(ctx context.Context, state dhcp.ManagementState) error {
 		if dhcpManagement(state.Config.Management) != "api" {
 			return dhcp.ErrManagedByFile
@@ -526,6 +595,19 @@ func (s *Server) dhcpPutReservation(ctx context.Context, in *dhcpReservationInpu
 }
 
 func (s *Server) dhcpDeleteReservation(ctx context.Context, in *dhcpReservationDeleteInput) (*dhcpConfigOutput, error) {
+	if s.opts.DHCPKube != nil {
+		return s.kubeDHCPWrite(ctx, in.Scope, in.IfMatch, "dhcp.delete", func(scope *v1alpha1.DHCPScope) error {
+			mac, err := dhcpMAC(in.MAC)
+			if err != nil {
+				return err
+			}
+			scope.Spec.Reservations = slices.DeleteFunc(scope.Spec.Reservations, func(r v1alpha1.DHCPReservation) bool {
+				canonical, err := dhcpMAC(r.MAC)
+				return err == nil && canonical == mac
+			})
+			return nil
+		})
+	}
 	return s.dhcpMutate(ctx, in.Scope, in.IfMatch, "dhcp.delete", func(ctx context.Context, state dhcp.ManagementState) error {
 		if dhcpManagement(state.Config.Management) != "api" {
 			return dhcp.ErrManagedByFile
@@ -553,7 +635,7 @@ func (s *Server) dhcpListLeases(ctx context.Context, in *dhcpLeasesInput) (*dhcp
 			return nil, err
 		}
 		var cursor struct{ Node, Scope, State, Q, Address string }
-		if json.Unmarshal([]byte(raw), &cursor) != nil || cursor.Node != s.opts.NodeName || cursor.Scope != in.Scope || cursor.State != in.State || cursor.Q != in.Q {
+		if json.Unmarshal([]byte(raw), &cursor) != nil || cursor.Node != s.dhcpCursorNode() || cursor.Scope != in.Scope || cursor.State != in.State || cursor.Q != in.Q {
 			return nil, errInvalid("continue: not a token for this DHCP lease query")
 		}
 		after, err = netip.ParseAddr(cursor.Address)
@@ -580,7 +662,7 @@ func (s *Server) dhcpListLeases(ctx context.Context, in *dhcpLeasesInput) (*dhcp
 			continue
 		}
 		if len(items) == limit {
-			raw, _ := json.Marshal(struct{ Node, Scope, State, Q, Address string }{s.opts.NodeName, in.Scope, in.State, in.Q, items[len(items)-1].Address})
+			raw, _ := json.Marshal(struct{ Node, Scope, State, Q, Address string }{s.dhcpCursorNode(), in.Scope, in.State, in.Q, items[len(items)-1].Address})
 			next = encodeCursor(string(raw))
 			break
 		}
@@ -612,7 +694,13 @@ func (s *Server) dhcpImport(ctx context.Context, in *dhcpImportInput) (*dhcpImpo
 	if len(in.Body.Data) > dhcp.MaxImportBytes {
 		return nil, dhcpError(dhcp.ErrImportTooLarge)
 	}
-	result, err := s.opts.DHCP.Import(ctx, in.Scope, in.Body.Format, []byte(in.Body.Data))
+	var result dhcp.ImportResult
+	var err error
+	if s.opts.DHCPKube != nil {
+		result, err = s.opts.DHCPKube.Import(ctx, in.Scope, in.Body.Format, []byte(in.Body.Data))
+	} else {
+		result, err = s.opts.DHCP.Import(ctx, in.Scope, in.Body.Format, []byte(in.Body.Data))
+	}
 	s.recordAction(ctx, "dhcpleases.import", audit.Resource{Kind: "dhcpleases", Name: in.Scope}, err, nil, result)
 	if err != nil {
 		return nil, dhcpError(err)

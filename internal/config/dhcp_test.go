@@ -147,8 +147,28 @@ func TestDHCPValidation(t *testing.T) {
 		t.Fatalf("enabled DHCP with SQLite: %v", err)
 	}
 	cfg.Store.Driver = "kube"
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "store.driver=sqlite") {
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "DHCPScope objects") {
+		t.Fatalf("enabled DHCP with Kubernetes and file scopes: %v", err)
+	}
+	defaults, err := Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.DHCP = defaults.DHCP
+	cfg.DHCP.Enabled = true
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "LoadBalancer address") {
+		t.Fatalf("enabled DHCP with Kubernetes without serverIP: %v", err)
+	}
+	cfg.DHCP.ServerIP = "198.51.100.67"
+	if err := cfg.Validate(); err != nil {
 		t.Fatalf("enabled DHCP with Kubernetes: %v", err)
+	}
+	if iface, server, err := cfg.DHCP.Kubernetes(); err != nil || iface != "eth0" || server.String() != "198.51.100.67" {
+		t.Fatalf("Kubernetes() = %q, %v, %v", iface, server, err)
+	}
+	cfg.DHCP.Failover.Enabled = true
+	if _, _, err := cfg.DHCP.Kubernetes(); err == nil {
+		t.Fatal("quorum failover accepted on the kube store")
 	}
 }
 
