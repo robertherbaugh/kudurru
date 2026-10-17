@@ -12,7 +12,9 @@ import type { components } from './generated';
 
 type S = components['schemas'];
 
-// DHCPv4 setup is node-local; quorum management writes route to its leader.
+// DHCPv4 setup is node-local on SQLite (quorum management writes route to its
+// leader); in Kubernetes mode scopes are cluster-wide DHCPScope objects and
+// every replica answers the DHCP API identically.
 export type DHCPFailover = S['DHCPFailover'];
 export type DHCPPoolOptions = S['DHCPPoolOptions'];
 export type DHCPReservation = S['DHCPReservation'];

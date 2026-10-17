@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest';
 import { delay, http, HttpResponse } from 'msw';
 import { server } from '../test/setup';
-import { mockDHCP, mockDHCPSetup } from '../mocks/dhcp';
+import { mockDHCP, mockDHCPSetup, mockKubeDHCP } from '../mocks/dhcp';
 import { renderWithApp } from '../test/utils';
 import DHCPPage from './DHCPPage';
 import DHCPScopePage from './DHCPScopePage';
@@ -161,5 +161,83 @@ describe('DHCP setup', () => {
     renderWithApp(<DHCPPage />);
     expect(await screen.findByText('DHCP is controlled by environment variables')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New scope' })).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('DHCP setup in Kubernetes mode', () => {
+  it('keeps the enable switch read-only and offers no restart, adoption or failover', async () => {
+    mockKubeDHCP();
+    renderWithApp(<DHCPPage />);
+    const toggle = await screen.findByRole('switch', { name: 'DHCP enabled' });
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText('Set dhcp.enabled in the Helm values.')).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Enable DHCP after restart' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Configure failover' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage in dashboard' })).not.toBeInTheDocument();
+  });
+
+  it('creates a relay-only scope at the LoadBalancer address without topology inputs', async () => {
+    mockKubeDHCP();
+    renderWithApp(<DHCPPage />, { route: '/dhcp' });
+    fireEvent.click(await screen.findByRole('button', { name: 'New scope' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'New DHCP scope' }));
+    expect(dialog.queryByRole('combobox', { name: 'Host interface' })).not.toBeInTheDocument();
+    expect(dialog.queryByRole('textbox', { name: 'Server address' })).not.toBeInTheDocument();
+    expect(dialog.queryByRole('switch', { name: 'Relay-only scope' })).not.toBeInTheDocument();
+    expect(dialog.getByText('10.200.200.67')).toBeInTheDocument();
+    change('Scope name', 'lan');
+    change('Client subnet', '198.51.100.0/24');
+    next();
+    expect(await screen.findByText('Add at least one trusted relay for a relay-only scope.')).toBeInTheDocument();
+    fireEvent.click(within(dialog.getByRole('group', { name: 'Trusted relays' })).getByRole('button', { name: 'Add' }));
+    change('Relay source address', '198.51.100.1'); change('Relay gateway address', '198.51.100.1');
+    next();
+    await screen.findByRole('heading', { name: 'Addresses' });
+    change('First address', '198.51.100.100'); change('Last address', '198.51.100.199'); change('Router', '198.51.100.1');
+    fireEvent.click(screen.getByRole('button', { name: 'Add DNS server' }));
+    change('DNS servers 1', '198.51.100.1');
+    next();
+    await screen.findByRole('heading', { name: 'DNS' });
+    next();
+    await screen.findByRole('heading', { name: 'Review' });
+    expect(dialog.getByText(/Saved changes apply right away/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save scope' }));
+    await waitFor(() => expect(mockDHCP().setup?.scopes[1]?.name).toBe('lan'));
+    expect(mockDHCP().setup?.scopes[1]).toMatchObject({ interface: '', serverIP: '10.200.200.67', relayOnly: true, trustedRelays: [{ sourceIP: '198.51.100.1', gatewayIP: '198.51.100.1' }] });
+    expect(mockDHCP().setup?.enabled).toBe(true);
+    expect(mockDHCP().setup?.restartRequired).toBe(false);
+    expect(window.location.pathname).toBe('/dhcp/lan');
+  });
+
+  it('saves a scope with the LoadBalancer address and relay-only set, applying right away', async () => {
+    mockKubeDHCP();
+    mockDHCPSetup().scopes[0]!.serverIP = '';
+    renderWithApp(<DHCPScopePage params={{ scope: 'default' }} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit setup' }));
+    const form = within(screen.getByRole('form', { name: 'Saved scope setup' }));
+    expect(form.queryByRole('combobox', { name: 'Host interface' })).not.toBeInTheDocument();
+    expect(form.queryByRole('textbox', { name: 'Server address' })).not.toBeInTheDocument();
+    expect(form.getByText(/Changes apply right away/)).toBeInTheDocument();
+    fireEvent.change(form.getByRole('textbox', { name: 'Domain name' }), { target: { value: 'new.home.arpa' } });
+    fireEvent.click(form.getByRole('button', { name: 'Save scope' }));
+    await waitFor(() => expect(mockDHCP().setup?.scopes[0]?.domainName).toBe('new.home.arpa'));
+    expect(mockDHCP().setup?.scopes[0]).toMatchObject({ serverIP: '10.200.200.67', relayOnly: true });
+    expect(screen.queryByText('Restart required')).not.toBeInTheDocument();
+  });
+
+  it('keeps a Git-managed scope read-only and names its owner', async () => {
+    mockKubeDHCP({ scopeOwners: { default: 'gitops:argocd' } });
+    mockDHCP().config.management = 'file';
+    mockDHCP().config.managedBy = 'gitops:argocd';
+    renderWithApp(<DHCPScopePage params={{ scope: 'default' }} />);
+    expect(await screen.findByRole('textbox', { name: 'Router' })).toBeDisabled();
+    expect(screen.getAllByText('Managed by gitops:argocd; change it there.').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Managed by the configuration file')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove scope' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add reservation' })).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    const form = within(screen.getByRole('form', { name: 'Saved scope setup' }));
+    expect(form.getByRole('textbox', { name: 'Client subnet' })).toBeDisabled();
+    expect(form.getByRole('button', { name: 'Save scope' })).toHaveAttribute('aria-disabled', 'true');
   });
 });

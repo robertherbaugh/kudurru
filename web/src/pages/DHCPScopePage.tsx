@@ -15,6 +15,7 @@ import type { DHCPConfig, DHCPLease, DHCPPoolOptions, DHCPReservation } from '..
 import { DHCPSavedScope, DHCPSetupNotices, useDHCPSetup } from '../components/DHCPSetup';
 import { DHCPAdvancedFields, advancedOptionsError } from '../components/DHCPAdvancedFields';
 import { DHCPFailoverStatus } from '../components/DHCPFailover';
+import { isKube, managedText } from '../components/DHCPSetupFields';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { DurationField, durationError } from '../components/fields/DurationField';
@@ -25,7 +26,7 @@ import { formatError } from '../components/fields/formats';
 import { PageHeader } from '../components/layout/Page';
 import { formatRelative, parseDuration } from '../lib/format';
 import type { PageProps } from '../routes';
-import { DHCPFrame } from './DHCPPage';
+import { DHCPFrame, dhcpServingText } from './DHCPPage';
 
 const ipError = (v: string) => v.trim() ? formatError('ipv4', v) : 'An IPv4 address is required';
 const hostnameError = (v: string) => !v || (v.length <= 253 && v.replace(/\.$/, '').split('.').every((p) => /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(p))) ? undefined : 'Use a hostname such as printer or printer.home.arpa';
@@ -102,7 +103,7 @@ function OptionsEditor({ config, saved }: { config: DHCPConfig; saved: (v: DHCPC
       {submitted && advancedError ? <Banner status="error" title="Check additional options" description={advancedError} /> : null}
       <HStack gap={2}>
         <Button label="Save network options" type="submit" variant="primary" isLoading={mutation.isPending} isDisabled={!writable || stale}
-          tooltip={!writable ? config.management === 'file' ? 'Managed by the configuration file' : 'Requires dhcp.write' : undefined} />
+          tooltip={!writable ? config.managedBy ? managedText(config.managedBy) : config.management === 'file' ? 'Managed by the configuration file' : 'Requires dhcp.write' : undefined} />
         <Button label="Reset changes" onClick={reset} isDisabled={mutation.isPending} />
       </HStack>
     </VStack>
@@ -135,6 +136,7 @@ function Reservations({ config, saved }: { config: DHCPConfig; saved: (v: DHCPCo
   const [editing, setEditing] = useState<{ reservation?: DHCPReservation } | null>(null);
   const [removing, setRemoving] = useState<{ reservation: DHCPReservation; etag: string } | null>(null);
   const managed = config.management === 'api' && !config.envLocked.includes('reservations');
+  const readOnly = config.managedBy ? managedText(config.managedBy) : 'Managed outside the dashboard';
   const mutation = useMutation({
     onError: onConflict,
     mutationFn: async () => { if (!removing) throw new Error('Choose a reservation'); return api.dhcp.removeReservation(config.scope, removing.reservation.mac, removing.etag); },
@@ -146,13 +148,13 @@ function Reservations({ config, saved }: { config: DHCPConfig; saved: (v: DHCPCo
     { key: 'ip', header: 'Reserved address', width: proportional(2) },
     { key: 'hostname', header: 'Hostname', width: proportional(2), renderCell: (r) => <Text>{r.hostname || '—'}</Text> },
     { key: 'actions', header: 'Actions', width: proportional(2), renderCell: (r) => <HStack gap={1}>
-      <Button label={`Edit ${r.mac}`} variant="ghost" size="sm" isDisabled={!managed || !can('dhcp', 'write')} tooltip={!managed ? 'Managed outside the dashboard' : !can('dhcp', 'write') ? 'Requires dhcp.write' : undefined} onClick={() => setEditing({ reservation: r })} />
-      <Button label={`Remove ${r.mac}`} variant="ghost" size="sm" isDisabled={!managed || !can('dhcp', 'delete')} tooltip={!managed ? 'Managed outside the dashboard' : !can('dhcp', 'delete') ? 'Requires dhcp.delete' : undefined} onClick={() => { mutation.reset(); setRemoving({ reservation: r, etag: config.etag }); }} />
+      <Button label={`Edit ${r.mac}`} variant="ghost" size="sm" isDisabled={!managed || !can('dhcp', 'write')} tooltip={!managed ? readOnly : !can('dhcp', 'write') ? 'Requires dhcp.write' : undefined} onClick={() => setEditing({ reservation: r })} />
+      <Button label={`Remove ${r.mac}`} variant="ghost" size="sm" isDisabled={!managed || !can('dhcp', 'delete')} tooltip={!managed ? readOnly : !can('dhcp', 'delete') ? 'Requires dhcp.delete' : undefined} onClick={() => { mutation.reset(); setRemoving({ reservation: r, etag: config.etag }); }} />
     </HStack> },
   ];
   return <Section padding={0} variant="transparent"><VStack gap={4}>
     <HStack hAlign="between" wrap="wrap" gap={2} vAlign="center"><Heading level={2}>Reservations</Heading>
-      <Button label="Add reservation" isDisabled={!managed || !can('dhcp', 'write')} tooltip={!managed ? 'Managed outside the dashboard' : !can('dhcp', 'write') ? 'Requires dhcp.write' : undefined} onClick={() => setEditing({})} /></HStack>
+      <Button label="Add reservation" isDisabled={!managed || !can('dhcp', 'write')} tooltip={!managed ? readOnly : !can('dhcp', 'write') ? 'Requires dhcp.write' : undefined} onClick={() => setEditing({})} /></HStack>
     <Table<Row> aria-label="DHCP reservations" density="compact" idKey="mac" data={config.reservations} columns={columns} />
     {editing ? <ReservationDialog config={config} {...editing} close={() => setEditing(null)} saved={saved} /> : null}
     <FormDialog isOpen={!!removing} onClose={() => setRemoving(null)} title="Remove reservation"
@@ -246,8 +248,11 @@ export default function DHCPScopePage({ params }: PageProps) {
     void qc.invalidateQueries({ queryKey: qk.dhcp('setup') });
   };
   const c = config.data;
+  const kube = isKube(status.data) || isKube(setup.data);
+  const invalid = status.data?.invalidScopes?.[scope];
+  const meta = kube ? status.data && dhcpServingText(status.data) : c && `Connected node: ${c.node}`;
   return <DHCPFrame>
-    <PageHeader title={`DHCP: ${scope}`} back={{ href: '/dhcp', label: 'DHCP scopes' }} meta={c ? <Text type="supporting">Connected node: {c.node}</Text> : undefined} />
+    <PageHeader title={`DHCP: ${scope}`} back={{ href: '/dhcp', label: 'DHCP scopes' }} meta={meta ? <Text type="supporting">{meta}</Text> : undefined} />
     {!can('dhcp', 'read') ? <Text>Viewing this scope requires dhcp.read permission.</Text> : null}
     {config.error ? <ErrorBanner error={config.error} /> : null}
     {can('dhcp', 'read') && (setup.isPending || status.isPending || (running && config.isPending)) ? <Loading label="Loading DHCP scope" /> : null}
@@ -255,11 +260,12 @@ export default function DHCPScopePage({ params }: PageProps) {
     {status.error ? <ErrorBanner error={status.error} /> : null}
     {setup.data ? <DHCPSetupNotices setup={setup.data} /> : null}
     <DHCPFailoverStatus value={status.data?.failover} />
+    {invalid ? <Banner status="warning" title="This scope is not served" description={invalid} /> : null}
     {setup.data && desired && status.data ? <DHCPSavedScope key={scope} setup={setup.data} scope={desired} running={running} /> : null}
     {!desired && setup.data && !running ? <Text>This scope is not in the saved setup. Return to DHCP scopes to create one.</Text> : null}
     {running && c ? <>
       <Heading level={2}>Running scope</Heading>
-      {setup.data?.pendingScopes.includes(scope) ? <Banner status="info" title="This scope also has changes saved for restart"
+      {!kube && setup.data?.pendingScopes.includes(scope) ? <Banner status="info" title="This scope also has changes saved for restart"
         description="If you change running options or reservations below, re-save the pending setup before restarting so it uses the latest settings revision." /> : null}
       <MetadataList columns="multi">
         <MetadataListItem label="Interface">{c.topology.interface}</MetadataListItem>
@@ -268,7 +274,8 @@ export default function DHCPScopePage({ params }: PageProps) {
         <MetadataListItem label="Clients">{c.topology.relayOnly ? 'Via trusted relay' : 'Direct LAN'}</MetadataListItem>
       </MetadataList>
       {c.topology.trustedRelays.length ? <Text type="supporting">Trusted relays: {c.topology.trustedRelays.map((r) => `${r.sourceIP} (gateway ${r.gatewayIP})`).join(', ')}</Text> : null}
-      {c.management === 'file' ? <Banner status="info" title="Managed by the configuration file" description="Network options and reservations are read-only here. Choose Manage in dashboard on the DHCP page to adopt this setup, then restart to enable dashboard editing." /> : null}
+      {c.managedBy ? setup.data?.scopeOwners?.[scope] ? null : <Banner status="info" title={managedText(c.managedBy)} description="Network options and reservations are read-only here." />
+        : c.management === 'file' ? <Banner status="info" title="Managed by the configuration file" description="Network options and reservations are read-only here. Choose Manage in dashboard on the DHCP page to adopt this setup, then restart to enable dashboard editing." /> : null}
       {c.envLocked.length ? <Banner status="info" title="Some values are set by the environment" description={`Locked fields: ${c.envLocked.join(', ')}. Change those environment variables and restart the node.`} /> : null}
       <OptionsEditor key={scope} config={c} saved={saved} />
       <Reservations key={`${scope}-reservations`} config={c} saved={saved} />

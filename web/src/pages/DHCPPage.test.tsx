@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { mockDHCP } from '../mocks/dhcp';
+import { mockDHCP, mockDHCPSetup, mockKubeDHCP } from '../mocks/dhcp';
 import { server } from '../test/setup';
 import { renderWithApp } from '../test/utils';
 import DHCPPage from './DHCPPage';
@@ -99,5 +99,35 @@ describe('DHCP dashboard', () => {
     expect(await screen.findByText('Viewing lease inventory requires dhcpleases.read permission.')).toBeInTheDocument();
     expect(leaseRequests).toBe(0);
     expect(screen.getByRole('button', { name: 'Save network options' })).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('DHCP dashboard in Kubernetes mode', () => {
+  it('shows the serving replica, relay address and runtime problems instead of node texts', async () => {
+    mockKubeDHCP({ runtimeError: 'listen eth0: address already in use', pendingScopes: ['guest', 'iot'] });
+    const [lan] = mockDHCPSetup().scopes;
+    if (!lan) throw new Error('fixture scope missing');
+    mockDHCPSetup().scopes.push({ ...lan, name: 'guest', subnet: '198.51.100.0/24' }, { ...lan, name: 'iot', subnet: '203.0.113.0/24' });
+    mockDHCP().status = { ...mockDHCP().status, invalidScopes: { iot: 'subnet overlaps scope lan' } };
+    renderWithApp(<DHCPPage />, { route: '/dhcp' });
+    expect(await screen.findByText('Serving replica: kudurru-1 · Relays send to 10.200.200.67')).toBeInTheDocument();
+    expect(screen.queryByText(/Connected node/)).not.toBeInTheDocument();
+    expect(await screen.findByText('DHCP reports an error')).toBeInTheDocument();
+    expect(screen.getByText('listen eth0: address already in use')).toBeInTheDocument();
+    expect(screen.getByText('Some scopes are not served')).toBeInTheDocument();
+    expect(screen.getByText('iot: subnet overlaps scope lan')).toBeInTheDocument();
+    const table = within(screen.getByRole('table', { name: 'DHCP scopes' }));
+    expect(table.getByRole('row', { name: /^default/ })).toHaveTextContent('Running');
+    expect(table.getByRole('row', { name: /^guest/ })).toHaveTextContent('Applying');
+    expect(table.getByRole('row', { name: /^iot/ })).toHaveTextContent('Not served');
+    for (const text of ['Restart required', 'DHCP is disabled on this node', 'DHCP could not start', 'Automatic failover', 'Manage in dashboard', 'DHCP is controlled by environment variables'])
+      expect(screen.queryByText(text)).not.toBeInTheDocument();
+  });
+
+  it('says when no replica is serving', async () => {
+    mockKubeDHCP();
+    mockDHCP().status = { ...mockDHCP().status, servingNode: '' };
+    renderWithApp(<DHCPPage />, { route: '/dhcp' });
+    expect(await screen.findByText('No replica is serving · Relays send to 10.200.200.67')).toBeInTheDocument();
   });
 });
