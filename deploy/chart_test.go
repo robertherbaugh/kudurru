@@ -505,6 +505,8 @@ var chartCases = []chartCase{
 		if role := fmt.Sprint(dig(r.object(t, "Role", "kudurru"), "rules")); !strings.Contains(role, "dhcpleases") || !strings.Contains(role, "pods") {
 			t.Errorf("Role lacks the DHCP rules: %s", role)
 		}
+		r.wantObject(t, "ValidatingAdmissionPolicy", "kudurru-"+releaseNS+"-dhcp-label")
+		r.wantObject(t, "ValidatingAdmissionPolicyBinding", "kudurru-"+releaseNS+"-dhcp-label")
 		if np := r.object(t, "NetworkPolicy", "kudurru"); !strings.Contains(fmt.Sprint(dig(np, "spec", "ingress")), "67") {
 			t.Errorf("NetworkPolicy does not admit UDP 67")
 		}

@@ -23,6 +23,7 @@ type rendered struct {
 
 var clusterScoped = map[string]bool{
 	"ClusterRole": true, "ClusterRoleBinding": true, "DNSZone": true, "Namespace": true,
+	"ValidatingAdmissionPolicy": true, "ValidatingAdmissionPolicyBinding": true,
 	"CustomResourceDefinition": true, "PriorityClass": true,
 }
 
