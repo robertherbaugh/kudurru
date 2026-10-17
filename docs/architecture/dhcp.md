@@ -443,14 +443,19 @@ flowchart LR
   `node.dataDir/dhcp-kube/`, rebuilt from the objects at every start and
   whenever the scope set or a scope's subnet, relays or conflict detection
   changes. It serves lease lists, exports and the DNS snapshot. Option and
-  reservation changes apply live. A watch keeps the copy current; a replica
-  skips the events that predate its own writes.
+  reservation changes apply live. A watch keeps the copy current. While a
+  replica writes an object, events for it wait until the write is recorded,
+  and its own and older events are skipped. An event is applied only if it
+  is still the latest the replica knows once it holds the scope's packet
+  lock, so it cannot revert a write that committed while it waited.
 - **Serving.** The replica that holds the `kudurru-dhcp` Lease first rebuilds
   its copies from a consistent list, ranks DNS claims, then sets the
   `kudurru.io/dhcp-active` label on its pod and removes it from the others.
   The chart's DHCP Service selects that label, so the LoadBalancer has one
   endpoint. Other replicas drop DHCP packets. Leases survive a failover in
-  the objects, and clients keep their addresses.
+  the objects, and clients keep their addresses. A ValidatingAdmissionPolicy
+  lets the ServiceAccount change only that label, and only on its release's
+  pods, which RBAC alone cannot express.
 - **Commit order.** A lease decision runs in the local SQLite transaction. Its
   exact row changes are written to the apiserver before the local commit:
   deletes, then updates and creates. A refused write rolls back the local

@@ -355,7 +355,9 @@ In `mode: kubernetes`, `dhcp.enabled=true` with `dhcp.serverAddress` (the
 LoadBalancer address the router's DHCP relay sends to) serves the
 `DHCPScope` objects from one replica, the holder of the `kudurru-dhcp`
 Lease, and keeps leases as `DHCPLease` objects. Upgrade the `kudurru-crds`
-chart of the release first; it adds both CRDs. Steps, relay setup and
+chart of the release first; it adds both CRDs. The chart also installs a
+cluster-scoped ValidatingAdmissionPolicy that limits the pod-label patches of
+kudurru's ServiceAccount. Steps, relay setup and
 scopes from Git: [DHCPv4 on Kubernetes](dhcp.md#kubernetes). In
 `mode: standalone`, configure DHCP with `config.node.dhcp` as on any SQLite
 node.

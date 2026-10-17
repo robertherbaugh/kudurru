@@ -42,8 +42,17 @@ client's address. How it works: [DHCP on the Kubernetes store](../architecture/d
 
    The chart adds a `<release>-dhcp` Service (UDP 67,
    `externalTrafficPolicy: Local`) that selects only the serving pod, RBAC for
-   `dhcpleases` and pod labels, and `dhcp.enabled`, `dhcp.serverIP` and
-   `dhcp.interface` (default `eth0`) in the node configuration.
+   `dhcpleases` and pod labels, the low-port sysctl for UDP 67, and
+   `dhcp.enabled`, `dhcp.serverIP` and `dhcp.interface` (default `eth0`) in
+   the node configuration.
+
+   RBAC cannot limit `patch` on pods to kudurru's own pods, because a
+   Deployment's pod names are random. The chart therefore also installs a
+   cluster-scoped ValidatingAdmissionPolicy and binding: a pod update by
+   kudurru's ServiceAccount may only set or remove `kudurru.io/dhcp-active`,
+   and only on this release's kudurru pods. Whoever installs the chart needs
+   the right to create those (Argo CD and cluster administrators normally
+   have it).
 3. Point the router's DHCP relay for each client VLAN at that address, and
    allow UDP 67 from the router to it. Note the relay's source address as the
    LoadBalancer sees it and the gateway address (giaddr) it writes for the
@@ -92,7 +101,9 @@ with this store, and `hostNetwork.enabled` is not supported.
 Back up scopes with the usual `kudurru` backup (they are `kudurru.io`
 objects). Leases are runtime data and are not in backups; export them from
 a scope's page (or `GET /api/v1/node/dhcp/v4/scopes/{scope}/export`) before
-deleting a namespace.
+deleting a namespace. An import writes one `DHCPLease` per lease while the
+scope waits, so the scope answers no clients until it finishes; an import
+that takes more than five minutes is rolled back. Split very large imports.
 
 ## Start in the dashboard (SQLite)
 
