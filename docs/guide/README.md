@@ -24,7 +24,7 @@ kudurru has these functions:
 - It blocks names that are on block lists.
 - It applies different rules to different client groups.
 - It has a dashboard that shows what happens on the network.
-- It can assign IPv4 addresses with an optional DHCPv4 server on Linux with the SQLite store.
+- It can assign IPv4 addresses with an optional DHCPv4 server on Linux, with either store.
 
 ## Parts of this guide
 

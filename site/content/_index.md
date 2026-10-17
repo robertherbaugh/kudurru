@@ -20,8 +20,9 @@ links:
 resolver (forwarding, or recursive with DNSSEC validation), primary and
 forward zones, outbound zone transfers, blocking, the dashboard and CLI,
 Kubernetes CRDs and Helm charts, optional edge supervisors, and
-[opt-in DHCPv4 on Linux/SQLite](/deploy/dhcp/), with dashboard setup and
-optional three-node quorum failover. Use `ghcr.io/robertherbaugh/kudurru:0.1.0` for Docker and
+[opt-in DHCPv4 on Linux](/deploy/dhcp/) with either store, with dashboard
+setup and optional three-node quorum failover on SQLite or an elected serving
+replica on [Kubernetes](/deploy/dhcp/#kubernetes). Use `ghcr.io/robertherbaugh/kudurru:0.1.0` for Docker and
 `--version 0.1.0` with the Helm charts. See the
 [changelog](/project/changelog/) for the release scope and known limitations,
 or the [release assets](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)

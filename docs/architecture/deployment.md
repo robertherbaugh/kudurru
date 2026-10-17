@@ -19,10 +19,15 @@ container.
 Operator docs: [deploy/](../deploy/README.md). This page shows how the
 pieces talk to each other.
 
-The v0.1.0 [DHCPv4 server](dhcp.md) supports a standalone Linux node or three quorum voters
+The v0.1.0 [DHCPv4 server](dhcp.md) is opt-in, runs on Linux with either
+store, and independent allocators must never share a pool. On the Kubernetes
+store, scopes are `DHCPScope` objects, leases are `DHCPLease` objects, and
+the holder of the `kudurru-dhcp` Lease serves clients that a router relays
+to a LoadBalancer address (`dhcp.enabled`, `dhcp.serverAddress`); see
+[DHCP on the Kubernetes store](dhcp.md#kubernetes-store). On the SQLite
+store, it supports a standalone Linux node or three quorum voters
 with local SQLite replicas and direct broadcast access or configured trusted
-relays for its subnets. It is opt-in,
-and independent allocators must never share a pool. Configure the explicit
+relays for its subnets. Configure the explicit
 three-voter failover group before serving the same scopes from multiple nodes. Fresh setup is
 available in the dashboard without DHCP YAML. Setup saves stage the next
 restart; live options and reservations use the active scope API. Keep both

@@ -11,7 +11,7 @@ kudurru separates three kinds of state, and keeps them apart on purpose:
 This page covers the first two: how an object gets from a writer to every
 node's query path, and how settings reload.
 
-The v0.1.0 [DHCPv4 server](dhcp.md) adds a separate node-local
+With the SQLite store, the v0.1.0 [DHCPv4 server](dhcp.md) adds a separate node-local
 setup registry, `dhcp-settings.json`, and per-scope `dhcp.db`/`dhcp-<name>.db`
 databases. Fresh setup can be entered entirely in the dashboard. Existing host
 `dhcp.*` configuration stays file-owned until explicit adoption; generic
@@ -28,6 +28,10 @@ replication; local setup tokens cannot override established replica settings.
 Keep its Raft directory and hidden DNS claim registry with lease databases.
 Ordinary object backup does not include this state. Committed lease
 snapshots supply DNS and policy names without query-time storage reads.
+With the Kubernetes store, scopes are `DHCPScope` objects in the store
+instead, and leases are `DHCPLease` objects of the separate runtime group
+`dhcp.kudurru.io`, which the store does not serve or back up
+([Kubernetes store](dhcp.md#kubernetes-store), D180).
 
 ![Writers go through one validator into the store; every node's zonecache watches the store and builds the snapshot the pipeline reads; the leader's controller writes status back](diagrams/config-flow.excalidraw.svg)
 
@@ -90,6 +94,7 @@ erDiagram
 | `ClientGroup` | namespaced | public | who a client is |
 | `Policy` | namespaced | public | what a group gets: lists, schedule, upstream group, safe search |
 | `UnblockRequest` | namespaced | public | a block-page request and its decision |
+| `DHCPScope` | cluster | public | a DHCPv4 pool, its options, relays and reservations (served with the Kubernetes store, D180) |
 | `LocalUser` | cluster | internal | local account with an Argon2id hash |
 | `APIToken` | cluster | internal | SHA-256 of a `kdr_` token, owned by a user or service account |
 | `ServiceAccount` | namespaced | internal | a non-human principal |

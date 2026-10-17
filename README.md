@@ -103,12 +103,15 @@ and [`deploy/compose/`](deploy/compose/).
 
 | Release | Name | Headline |
 |---|---|---|
-| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, opt-in DHCPv4 on Linux/SQLite with dashboard setup and three-node quorum failover, primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
+| v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, opt-in DHCPv4 on Linux with dashboard setup, on SQLite (with three-node quorum failover) or Kubernetes (DHCPScope and DHCPLease objects), primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
 | v0.2.0 | clay copies | secondary/stub zones, RFC 2136, Active Directory DNS replacement (single-domain forest), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
 | v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
 
-v0.1.0 includes opt-in standalone and three-node quorum DHCPv4 for Linux/SQLite.
-Configure fresh scopes entirely through **DNS → DHCP**, without DHCP YAML;
+v0.1.0 includes opt-in DHCPv4 for Linux. In Kubernetes, scopes are
+`DHCPScope` objects from the dashboard or Git, leases are `DHCPLease`
+objects, and one elected replica serves clients relayed to a LoadBalancer
+address. With SQLite it runs standalone or as a three-node quorum; there,
+configure fresh scopes entirely through **DNS → DHCP**, without DHCP YAML;
 existing host setup requires explicit adoption. Enabling, disabling and
 topology changes are saved for restart, while active scope options and
 reservations apply live. Durable lease state and revision checks preserve

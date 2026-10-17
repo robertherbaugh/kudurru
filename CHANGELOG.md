@@ -61,6 +61,16 @@ configuration store.
 - Bounded ARP/ICMP pre-offer conflict detection, trusted relay link selection,
   server-ID override and alternate ports; NTP/search/classless-route options,
   architecture-specific PXE/HTTP boot settings and client FQDN handling.
+- DHCPv4 on the Kubernetes store: `DHCPScope` objects (from the dashboard or
+  from Git with `kudurru.io/managed-by`) and `DHCPLease` objects
+  (`dhcp.kudurru.io`) replace node-local setup and lease files. One replica,
+  elected through the `kudurru-dhcp` Lease, serves relayed clients at a
+  LoadBalancer address (`dhcp.enabled`, `dhcp.serverAddress` in the chart);
+  leases survive failover, and every replica shows the same DHCP pages and
+  answers lease DNS names. The dashboard's DHCP pages no longer depend on
+  which replica a sticky session reaches. Install the `kudurru-crds` chart
+  first. In Kubernetes RBAC, the `dhcp` permission is now the `dhcpscopes`
+  resource.
 - Persistent earliest-established DHCP DNS name ownership across scopes,
   with reservation precedence and import-safe claim ordering. Indexed lease
   transactions and incremental DNS publication keep renewals fast: median

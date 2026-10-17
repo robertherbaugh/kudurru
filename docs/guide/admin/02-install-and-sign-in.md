@@ -180,8 +180,11 @@ node.
 
 Make the devices on your network use kudurru as their DNS server. kudurru
 v0.1.0 can also assign IPv4 addresses with its optional DHCPv4 server.
-This function needs Linux and the SQLite store. It is off by default.
+This function needs Linux and works with both stores. It is off by default.
 For setup in the dashboard, read the [DHCPv4 guide](../../deploy/dhcp.md).
+
+On Kubernetes, one replica serves DHCP and your router relays DHCP requests
+to a LoadBalancer address. Read [Kubernetes](../../deploy/dhcp.md#kubernetes).
 
 For Docker, build a local image from source with the required capabilities.
 The published Docker images do not have these capabilities.
