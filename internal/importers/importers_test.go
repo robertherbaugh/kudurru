@@ -197,7 +197,7 @@ func TestTechnitiumExportsAndErrors(t *testing.T) {
 		case "/api/zones/list":
 			_, _ = fmt.Fprint(w, `{"status":"ok","response":{"zones":[{"name":"home.arpa","type":"Primary"},{"name":"secondary.example","type":"Secondary"},{"name":"disabled.example","type":"Primary","disabled":true}]}}`)
 		case "/api/settings/get":
-			_, _ = fmt.Fprint(w, `{"status":"ok","response":{"enableBlocking":true,"blockingType":"NxDomain","blockingAnswerTtl":30,"blockListUrls":["https://example.net/hosts","!https://example.net/allow","https://example.net/more-hosts","!https://example.net/more-allow"],"forwarders":["192.0.2.53"],"forwarderProtocol":"Udp"}}`)
+			_, _ = fmt.Fprint(w, `{"status":"ok","response":{"enableBlocking":true,"blockingType":"NxDomain","blockingAnswerTtl":30,"blockListUrls":["https://example.net/hosts","!https://example.net/allow","https://example.net/more-hosts","!https://example.net/more-allow","  # Allow Lists Below  ","","  ","  ! https://example.net/last-allow  "],"forwarders":["192.0.2.53"],"forwarderProtocol":"Udp"}}`)
 		case "/api/allowed/export":
 			_, _ = fmt.Fprintln(w, "needed.tracker.example")
 		case "/api/blocked/export":
@@ -251,7 +251,7 @@ func TestTechnitiumExportsAndErrors(t *testing.T) {
 	}
 	wantSubscriptions := map[string]map[string]string{
 		"block": {"subscription-1": "https://example.net/hosts", "subscription-3": "https://example.net/more-hosts"},
-		"allow": {"subscription-2": "https://example.net/allow", "subscription-4": "https://example.net/more-allow"},
+		"allow": {"subscription-2": "https://example.net/allow", "subscription-4": "https://example.net/more-allow", "subscription-8": "https://example.net/last-allow"},
 	}
 	if !reflect.DeepEqual(subscriptions, wantSubscriptions) {
 		t.Errorf("subscriptions=%v, want %v", subscriptions, wantSubscriptions)
