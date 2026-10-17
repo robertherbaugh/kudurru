@@ -387,13 +387,18 @@ export interface BusinessRequestFacts {
   details: string;
 }
 
-/** The facts paragraph of both business request mails and its HTML rows. */
-function businessFacts(r: BusinessRequestFacts, withId: boolean): { text: string; rows: [string, string][] } {
+/**
+ * The facts paragraph of a business request mail and its HTML rows. The
+ * approver copy has every field and the request ID. The requester copy has
+ * only the edition (a closed set) and the node count (a number): the address
+ * is not confirmed, so mail to it never repeats text the submitter wrote,
+ * which would let anyone send a third party their own words from the portal.
+ */
+function businessFacts(r: BusinessRequestFacts, audience: 'requester' | 'approver'): { text: string; rows: [string, string][] } {
   const rows: [string, string][] = [
-    ...(withId ? [['Request', r.id] as [string, string]] : []),
-    ['Name', r.name],
-    ['Company', r.company],
-    ['Email', r.email],
+    ...(audience === 'approver'
+      ? [['Request', r.id], ['Name', r.name], ['Company', r.company], ['Email', r.email]] as [string, string][]
+      : []),
     ['Edition', BUSINESS_EDITIONS[r.edition].label],
     ['Nodes', String(r.nodes)],
   ];
@@ -408,11 +413,11 @@ export interface BusinessReceivedMail {
 
 /**
  * To the requester: we have the business request and reply by email. The
- * address is not confirmed (no link to follow), so the mail says what was
- * asked and invites a reply, nothing more.
+ * address is not confirmed (no link to follow), so the mail is fixed text
+ * plus the edition and node count, and invites a reply, nothing more.
  */
 export function businessReceivedMail(m: BusinessReceivedMail): MailMessage {
-  const facts = businessFacts(m.request, false);
+  const facts = businessFacts(m.request, 'requester');
   return brandedMail({
     to: m.to,
     subject: 'We have your kudurru business license request',
@@ -421,7 +426,6 @@ export function businessReceivedMail(m: BusinessReceivedMail): MailMessage {
       'Hello,',
       'Thank you for your interest in a kudurru business license. We have your request and will reply to this address. There is nothing else you need to do.',
       facts.text,
-      m.request.details && `Your details:\n${m.request.details}`,
       `If you did not send this request, ignore this message, or reply and tell us. Questions in the meantime go to ${BUSINESS_CONTACT}.`,
       signature(m.publicUrl),
     ),
@@ -443,7 +447,7 @@ export interface BusinessRequestNeededMail {
 /** To one approver: a new business request waits in the portal. No one-click link: an admin issues or closes it there. */
 export function businessRequestNeededMail(m: BusinessRequestNeededMail): MailMessage {
   const r = m.request;
-  const facts = businessFacts(r, true);
+  const facts = businessFacts(r, 'approver');
   const url = `${m.publicUrl}/requests?tab=business`;
   return brandedMail({
     to: m.to,

@@ -263,7 +263,8 @@ portal cannot be reached or answers anything else, the form opens an email
 to hello@kudurru.io instead. There is no confirmation link (nothing is
 signed until a license admin issues a license): the request is stored at
 once, the requester gets "We have your kudurru business license request"
-with what they sent, and each address of `ADMIN_NOTIFY_EMAIL` (or, when it
+(fixed text plus the edition and node count: the address is unconfirmed,
+so the mail never repeats the name, company or details), and each address of `ADMIN_NOTIFY_EMAIL` (or, when it
 is unset, every enabled license admin and superadmin with a verified
 email) gets "Business license request from <company>" with a link to the
 Requests page. The `PUBLIC_LIMIT_*` limits apply, counted apart from

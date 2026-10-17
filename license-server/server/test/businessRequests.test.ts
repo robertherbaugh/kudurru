@@ -77,12 +77,18 @@ describeDb('POST /api/v1/public/business-requests', () => {
     expect(toRequester).toHaveLength(1);
     expect(toRequester[0]!.subject).toBe('We have your kudurru business license request');
     expect(toRequester[0]!.text).toContain('Edition:    Enterprise');
-    expect(toRequester[0]!.text).toContain('OIDC and edge.\nBy Q3.');
+    expect(toRequester[0]!.text).toContain('Nodes:      12');
+    // The address is unconfirmed: nothing the submitter wrote is repeated to it.
+    for (const written of ['Ada Admin', 'Example GmbH', 'OIDC and edge.', email]) {
+      expect(toRequester[0]!.text).not.toContain(written);
+      expect(toRequester[0]!.html).not.toContain(written);
+    }
     const toAdmin = app.mailer.to('admin@example.org');
     expect(toAdmin).toHaveLength(1);
     expect(toAdmin[0]!.subject).toBe('Business license request from Example GmbH');
     expect(toAdmin[0]!.text).toContain(`Request:    ${rows[0]!.id}`);
     expect(toAdmin[0]!.text).toContain('about the Enterprise edition for 12 nodes.');
+    expect(toAdmin[0]!.text).toContain('OIDC and edge.\nBy Q3.');
     expect(toAdmin[0]!.text).toContain('http://localhost:8790/requests?tab=business');
 
     const event = (await t.db<{ actor_label: string; ip: string | null; details: unknown }[]>`

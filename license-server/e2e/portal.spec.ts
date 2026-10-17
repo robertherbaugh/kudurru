@@ -297,7 +297,8 @@ test('the kudurru.io form: a business request, mail to the requester and the adm
   expect(answer).toEqual({ status: 202, body: { status: 'sent' } });
 
   const received = await waitForMail(request.email, exactly('We have your kudurru business license request'));
-  expect(received.text).toContain(request.company);
+  expect(received.text).toContain('Enterprise');
+  expect(received.text).not.toContain(request.company);
   const notice = await waitForMail(ADMIN_NOTIFY, exactly(`Business license request from ${request.company}`));
   expect(notice.text).toContain('/requests?tab=business');
 
