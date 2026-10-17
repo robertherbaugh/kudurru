@@ -67,7 +67,8 @@ func newDHCP(cfg *config.Config, logger *slog.Logger) (*dhcp.Service, func(), er
 
 func newDHCPWithSetup(cfg *config.Config, logger *slog.Logger, plans []dhcpsetup.ScopePlan) (*dhcp.Service, func(), error) {
 	cleanup := func() {}
-	if !cfg.DHCP.Enabled {
+	if !cfg.DHCP.Enabled || cfg.Store.Driver == "kube" {
+		// On the kube store, internal/dhcpkube serves DHCPScope objects.
 		return nil, cleanup, nil
 	}
 	if cfg.Store.Driver != "sqlite" {

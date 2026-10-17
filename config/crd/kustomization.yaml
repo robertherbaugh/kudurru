@@ -7,4 +7,6 @@ resources:
   - bases/kudurru.io_clientgroups.yaml
   - bases/kudurru.io_policies.yaml
   - bases/kudurru.io_unblockrequests.yaml
+  - bases/kudurru.io_dhcpscopes.yaml
   - audit/audit.kudurru.io_auditlogs.yaml
+  - dhcp/dhcp.kudurru.io_dhcpleases.yaml

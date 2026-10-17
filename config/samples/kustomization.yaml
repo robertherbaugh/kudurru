@@ -6,3 +6,4 @@ resources:
   - kudurru.io_v1alpha1_blocklist.yaml
   - kudurru.io_v1alpha1_clientgroup.yaml
   - kudurru.io_v1alpha1_policy.yaml
+  - kudurru.io_v1alpha1_dhcpscope.yaml

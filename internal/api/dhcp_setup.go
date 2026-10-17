@@ -52,19 +52,27 @@ type DHCPSetupScope struct {
 type DHCPSetup struct {
 	Failover            config.DHCPFailover `json:"failover"`
 	FailoverInitialized bool                `json:"failoverInitialized"`
-	Node                string              `json:"node"`
-	Enabled             bool                `json:"enabled"`
-	ManagedBy           string              `json:"managedBy" enum:"file,api"`
-	EnvironmentLocked   bool                `json:"environmentLocked"`
-	RestartRequired     bool                `json:"restartRequired"`
-	Available           bool                `json:"available"`
-	UnavailableReason   string              `json:"unavailableReason"`
-	RuntimeError        string              `json:"runtimeError"`
-	Revision            string              `json:"revision"`
-	ETag                string              `json:"etag"`
-	Scopes              []DHCPSetupScope    `json:"scopes" nullable:"false"`
-	ScopeRevisions      map[string]string   `json:"scopeRevisions" nullable:"false"`
-	PendingScopes       []string            `json:"pendingScopes" nullable:"false"`
+	// Mode is node (setup for the connected node, applied at restart) or
+	// kubernetes (DHCPScope objects, applied live on every replica).
+	Mode string `json:"mode" enum:"node,kubernetes"`
+	// ScopeOwners maps Kubernetes DHCPScopes the dashboard may not change to
+	// their writer, e.g. "gitops:argocd".
+	ScopeOwners map[string]string `json:"scopeOwners,omitempty"`
+	// ServerAddress is the LoadBalancer address relays send to (kubernetes mode).
+	ServerAddress     string            `json:"serverAddress,omitempty"`
+	Node              string            `json:"node"`
+	Enabled           bool              `json:"enabled"`
+	ManagedBy         string            `json:"managedBy" enum:"file,api"`
+	EnvironmentLocked bool              `json:"environmentLocked"`
+	RestartRequired   bool              `json:"restartRequired"`
+	Available         bool              `json:"available"`
+	UnavailableReason string            `json:"unavailableReason"`
+	RuntimeError      string            `json:"runtimeError"`
+	Revision          string            `json:"revision"`
+	ETag              string            `json:"etag"`
+	Scopes            []DHCPSetupScope  `json:"scopes" nullable:"false"`
+	ScopeRevisions    map[string]string `json:"scopeRevisions" nullable:"false"`
+	PendingScopes     []string          `json:"pendingScopes" nullable:"false"`
 	Took
 }
 
@@ -120,7 +128,7 @@ func dhcpSetupETag(node string, revision uint64) string {
 
 func (s *Server) dhcpSetupResponse(state dhcpsetup.State) *dhcpSetupOutput {
 	tag := dhcpSetupETag(s.opts.NodeName, state.Revision)
-	out := &DHCPSetup{FailoverInitialized: state.FailoverInitialized, Failover: state.Failover.Clone(), Node: s.opts.NodeName, Enabled: state.Enabled, ManagedBy: state.ManagedBy,
+	out := &DHCPSetup{Mode: "node", FailoverInitialized: state.FailoverInitialized, Failover: state.Failover.Clone(), Node: s.opts.NodeName, Enabled: state.Enabled, ManagedBy: state.ManagedBy,
 		EnvironmentLocked: state.EnvironmentLocked, RestartRequired: state.RestartRequired || s.opts.DHCPSetupError != "",
 		Available: s.opts.DHCPSetup != nil, RuntimeError: s.opts.DHCPSetupError,
 		Revision: strconv.FormatUint(state.Revision, 10), ETag: tag, Scopes: []DHCPSetupScope{},
@@ -188,6 +196,15 @@ func (scope DHCPSetupScope) config() (config.DHCPScope, error) {
 }
 
 func (s *Server) dhcpGetSetup(ctx context.Context, _ *struct{}) (*dhcpSetupOutput, error) {
+	if s.opts.DHCPKube != nil {
+		return s.kubeDHCPSetup(ctx)
+	}
+	if s.kubeStore() {
+		out := s.dhcpSetupResponse(dhcpsetup.State{ManagedBy: "api", Revision: 1})
+		out.Body.Mode = dhcpKubeNode
+		out.Body.UnavailableReason = "DHCP is off in this release: set dhcp.enabled and dhcp.serverAddress in the Helm values"
+		return out, nil
+	}
 	state := dhcpsetup.State{ManagedBy: "api", Revision: 1}
 	if s.opts.DHCPSetup != nil {
 		var err error
@@ -200,6 +217,9 @@ func (s *Server) dhcpGetSetup(ctx context.Context, _ *struct{}) (*dhcpSetupOutpu
 }
 
 func (s *Server) dhcpPutSetup(ctx context.Context, in *dhcpSetupInput) (*dhcpSetupOutput, error) {
+	if s.opts.DHCPKube != nil {
+		return s.kubeDHCPPutSetup(ctx, in)
+	}
 	manager := s.opts.DHCPSetup
 	if manager == nil {
 		return nil, errUnavailable("DHCP setup manager is not available on this node")
@@ -268,6 +288,11 @@ func dhcpSetupError(err error) error {
 }
 
 func (s *Server) dhcpListInterfaces(_ context.Context, _ *struct{}) (*dhcpInterfacesOutput, error) {
+	if s.opts.DHCPKube != nil {
+		// The pod interface is a node setting (dhcp.interface); pods have no
+		// LAN interfaces to choose from.
+		return &dhcpInterfacesOutput{Body: &DHCPInterfaces{Node: s.opts.NodeName, Items: []DHCPInterface{}}}, nil
+	}
 	items, err := discoverDHCPInterfaces(net.Interfaces, func(iface net.Interface) ([]net.Addr, error) { return iface.Addrs() })
 	if err != nil {
 		return nil, errUnavailable("DHCP interface inventory: %v", err)

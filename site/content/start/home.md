@@ -43,8 +43,9 @@ dig @<host> example.com
 ```
 
 To use kudurru for DHCPv4, follow the [DHCPv4 setup guide](/deploy/dhcp/).
-It supports Linux/SQLite standalone or three-node quorum operation and
-dashboard setup. For Docker, build a local DHCP-capable image from source
+It supports Linux/SQLite standalone or three-node quorum operation,
+[Kubernetes](/deploy/dhcp/#kubernetes) with one elected replica behind a
+relay, and dashboard setup. For Docker, build a local DHCP-capable image from source
 with `make docker-dhcp`; the published images lack the required file
 capabilities. Packaged systemd installs need a capability drop-in. Follow
 [Network and privileges](/deploy/dhcp/#network-and-privileges) before setup.

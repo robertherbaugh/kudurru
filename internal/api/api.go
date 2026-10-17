@@ -156,6 +156,10 @@ type Options struct {
 	DHCPSetup *dhcpsetup.Manager
 	// DHCPSetupError reports failure to activate saved UI setup without disabling its API.
 	DHCPSetupError string
+	// DHCPKube is the DHCP service of the kube store (DHCPScope and
+	// DHCPLease objects); when set, the DHCP routes use it instead of DHCP
+	// and DHCPSetup.
+	DHCPKube DHCPCluster
 
 	// Store is the object store; Validator checks every object write
 	// (ValidateUnstructured first, D70).

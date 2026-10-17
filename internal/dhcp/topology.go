@@ -31,7 +31,7 @@ func ValidateTopology(configs []Config) error {
 			if cfg.Interface != other.Interface {
 				continue
 			}
-			if cfg.ServerIP != other.ServerIP {
+			if cfg.ServerIP != other.ServerIP || cfg.ServerIdentifier != other.ServerIdentifier {
 				return fmt.Errorf("dhcp: scopes %q and %q sharing an interface must share server IP", cfg.Name, other.Name)
 			}
 			if !cfg.RelayOnly && !other.RelayOnly {
@@ -70,6 +70,9 @@ func ValidateTopology(configs []Config) error {
 	for _, cfg := range configs {
 		// Routers are mutable; only topology exclusions survive live edits.
 		excluded := map[netip.Addr]bool{cfg.ServerIP: true}
+		if cfg.ServerIdentifier.IsValid() {
+			excluded[cfg.ServerIdentifier] = true
+		}
 		for _, server := range cfg.FailoverServers {
 			excluded[server.Address] = true
 		}
@@ -89,6 +92,9 @@ func ValidateTopology(configs []Config) error {
 			// and reservation edits must never make an infrastructure IP available.
 			if cfg.ServerIP != other.ServerIP && cfg.usable(other.ServerIP) {
 				return fmt.Errorf("dhcp: scope %q subnet includes another server address %s from scope %q", cfg.Name, other.ServerIP, other.Name)
+			}
+			if other.ServerIdentifier.IsValid() && !excluded[other.ServerIdentifier] && cfg.usable(other.ServerIdentifier) {
+				return fmt.Errorf("dhcp: scope %q subnet includes advertised server address %s from scope %q", cfg.Name, other.ServerIdentifier, other.Name)
 			}
 		}
 		for _, gateway := range gateways {

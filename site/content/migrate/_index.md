@@ -42,7 +42,7 @@ check the version you run.
 | Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
 | Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding |
 | DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | Validation in recursive groups; no signing |
-| DHCP | Built in | Built in | Built in | Opt-in DHCPv4 on Linux/SQLite; dashboard setup and optional three-node quorum failover; no DHCPv6 |
+| DHCP | Built in | Built in | Built in | Opt-in DHCPv4 on Linux; dashboard setup; three-node quorum failover on SQLite or an elected replica behind a relay on Kubernetes; no DHCPv6 |
 | Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
 | Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
 | Kubernetes configuration | Container configuration; no native CRDs | Container configuration; no native CRDs | Container configuration; no native CRDs | Native CRDs, Helm, external-dns webhook |
@@ -63,7 +63,9 @@ per-policy answer rewrites are not implemented in v0.1.0.
 ### DHCPv4 support
 
 Built-in DHCPv4 is included in v0.1.0 and disabled by default. It supports
-standalone Linux/SQLite nodes or a three-node quorum, durable leases and
+standalone Linux/SQLite nodes or a three-node quorum, the
+[Kubernetes store](/deploy/dhcp/#kubernetes) (`DHCPScope` and `DHCPLease`
+objects, one elected replica serving relayed clients), durable leases and
 reservations, complete dashboard setup, multiple subnets and trusted relays,
 conflict checks, network/boot options, live management, lease import/export
 and persistent local DNS ownership. See the [DHCPv4 deployment guide](/deploy/dhcp/)

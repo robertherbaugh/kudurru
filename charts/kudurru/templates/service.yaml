@@ -121,6 +121,45 @@ spec:
       targetPort: webhook
       protocol: TCP
     {{- end }}
+{{- with .Values.dhcp }}
+{{- if .enabled }}
+---
+# DHCPv4 (docs/deploy/dhcp.md): relays send to serverAddress. Only the pod
+# that holds the kudurru-dhcp Lease carries kudurru.io/dhcp-active, so the
+# LoadBalancer has one endpoint; Local keeps the relay's source address.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" $ }}-dhcp
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" $ | nindent 4 }}
+    kudurru.io/service: dhcp
+  {{- with .service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .service.type }}
+  {{- if eq .service.type "LoadBalancer" }}
+  loadBalancerIP: {{ .serverAddress }}
+  {{- with .service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- end }}
+  {{- if or (eq .service.type "LoadBalancer") (eq .service.type "NodePort") }}
+  externalTrafficPolicy: {{ .service.externalTrafficPolicy }}
+  {{- end }}
+  selector:
+    {{- include "kudurru.selectorLabels" $ | nindent 4 }}
+    kudurru.io/dhcp-active: "true"
+  ports:
+    - name: dhcp
+      port: 67
+      targetPort: dhcp
+      protocol: UDP
+{{- end }}
+{{- end }}
 {{- with .Values.blockPage }}
 {{- if .enabled }}
 ---

@@ -80,7 +80,7 @@ interchange format.
 | Allowed/blocked zones and URL lists | Allow/block `BlockList` objects and policies | Convert entries and attach lists explicitly |
 | Advanced Blocking DNS App | Client groups, policy lists, schedules, service blocking and safe search | Rebuild supported behavior; app configuration is not imported |
 | `APP`, `ANAME`, split-horizon or other app-specific behavior | No Technitium app runtime; no general per-client answer rewrites | Replace each dependency explicitly before moving affected zones |
-| DHCP | Opt-in DHCPv4 on Linux/SQLite; no DHCPv6 | Configure scopes and reservations, preserve active leases and review lease DNS behavior separately |
+| DHCP | Opt-in DHCPv4 on Linux with the SQLite or Kubernetes store; no DHCPv6 | Configure scopes and reservations, preserve active leases and review lease DNS behavior separately |
 | Clustering | Kubernetes shared store, or file-managed Compose HA | Choose a kudurru deployment; Technitium cluster membership does not transfer |
 | OIDC, LDAP, local users and permissions | Local users, OIDC and scoped roles; no native LDAP | Recreate credentials and grants; OIDC/scoped roles require a key |
 

@@ -38,6 +38,11 @@ func (s *Server) handlePacket(ctx context.Context, wire []byte, source *net.UDPA
 			return nil, nil, err
 		}
 	}
+	if s.serving != nil {
+		if err := s.serving(ctx); err != nil {
+			return nil, nil, err
+		}
+	}
 	options := request.Options
 	server := optionAddress(options.Get(dhcpv4.OptionServerIdentifier))
 	if server.IsValid() && server != s.serverIdentifier(request) {
@@ -491,6 +496,9 @@ func (s *Server) serverIdentifier(request *dhcpv4.DHCPv4) netip.Addr {
 	extensions, ok := relayExtensions(request.Options)
 	if ok && extensions.server.IsValid() {
 		return extensions.server
+	}
+	if s.cfg.ServerIdentifier.IsValid() {
+		return s.cfg.ServerIdentifier
 	}
 	return s.cfg.ServerIP
 }

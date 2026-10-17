@@ -5,8 +5,10 @@ a client's policy is chosen, how configuration travels from a YAML file or
 the dashboard to every node, and how the deployment shapes fit together.
 Every page leads with a picture and then explains it.
 
-The optional [DHCPv4 server](dhcp.md) is included in v0.1.0 on Linux/SQLite,
-with dashboard setup and standalone or three-node quorum operation.
+The optional [DHCPv4 server](dhcp.md) is included in v0.1.0 on Linux with
+either store: node-local SQLite with standalone or three-node quorum operation,
+or `DHCPScope`/`DHCPLease` objects and one elected replica on the Kubernetes
+store. Both have dashboard setup.
 
 This tour is for contributors and for operators who want to know what
 happens inside. For running kudurru, read the [guide](../guide/README.md)
@@ -116,7 +118,7 @@ code. The main gaps between the two:
 | client match by MAC, hostname, DoT/DoH client ID | match by IP and CIDR (the index supports the rest; no transport fills them in) |
 | `cluster.role: static` read-only twins | no such key; each twin is an independent sqlite node |
 | secondary zones, NOTIFY in, dynamic UPDATE | NOTIMP; kudurru only sends NOTIFY |
-| DHCP server support | DHCPv4 ships in v0.1.0: Linux/SQLite standalone or three-node quorum failover, dashboard setup, direct/relayed subnets, conflict checks, advanced network/boot options, live management, lease import/export and persistent A/PTR ownership; DHCPv6 is excluded |
+| DHCP server support | DHCPv4 ships in v0.1.0 on Linux: SQLite standalone or three-node quorum failover, or the Kubernetes store with `DHCPScope`/`DHCPLease` objects and one elected replica behind a relay; dashboard setup, direct/relayed subnets, conflict checks, advanced network/boot options, live management, lease import/export and persistent A/PTR ownership; DHCPv6 is excluded |
 | Kubernetes Events from the controller | events are logged only |
 
 The open list lives in [follow-ups](../followups.md).

@@ -93,6 +93,7 @@ a key that covers the `edge` feature.** `kudurru license status` and
 | Single-node cluster with dnsdist | `edge.enabled=true`, `edge.mode=sidecar` |
 | Bare-metal VIP with keepalived | `edge.enabled=true`, `vip.provider=keepalived`, `vip.address=10.0.0.53/24`, `vip.keepalived.interface=eth0` |
 | DNS before the control plane | `priorityClassName=system-cluster-critical`, `persistence.local.enabled=true` |
+| DHCPv4 for relayed clients ([DHCPv4](#dhcpv4)) | `dhcp.enabled=true`, `dhcp.serverAddress=10.200.200.67` |
 
 ### Dashboard sticky sessions with Traefik
 
@@ -347,6 +348,19 @@ is false, supply that permission yourself.
 the edge kudurru terminates TLS with the `kubernetes.io/tls` Secret named by
 `tls.secretName`; with the edge dnsdist terminates it with
 `edge.tlsSecretName`.
+
+### DHCPv4
+
+In `mode: kubernetes`, `dhcp.enabled=true` with `dhcp.serverAddress` (the
+LoadBalancer address the router's DHCP relay sends to) serves the
+`DHCPScope` objects from one replica, the holder of the `kudurru-dhcp`
+Lease, and keeps leases as `DHCPLease` objects. Upgrade the `kudurru-crds`
+chart of the release first; it adds both CRDs. The chart also installs a
+cluster-scoped ValidatingAdmissionPolicy that limits the pod-label patches of
+kudurru's ServiceAccount. Steps, relay setup and
+scopes from Git: [DHCPv4 on Kubernetes](dhcp.md#kubernetes). In
+`mode: standalone`, configure DHCP with `config.node.dhcp` as on any SQLite
+node.
 
 ## Configuration
 

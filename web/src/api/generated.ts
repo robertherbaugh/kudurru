@@ -707,6 +707,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dhcpscopes:batchDelete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete several dhcpscopes */
+        post: operations["batchDeleteDhcpscopes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dns/blocking": {
         parameters: {
             query?: never;
@@ -2201,6 +2218,7 @@ export interface components {
         DHCPConfig: {
             envLocked: string[];
             etag: string;
+            managedBy?: string;
             /** @enum {string} */
             management: "file" | "api";
             node: string;
@@ -2369,6 +2387,7 @@ export interface components {
         };
         DHCPScopeSummary: {
             interface: string;
+            managedBy?: string;
             /** @enum {string} */
             management: "file" | "api";
             name: string;
@@ -2386,15 +2405,21 @@ export interface components {
             failoverInitialized: boolean;
             /** @enum {string} */
             managedBy: "file" | "api";
+            /** @enum {string} */
+            mode: "node" | "kubernetes";
             node: string;
             pendingScopes: string[];
             restartRequired: boolean;
             revision: string;
             runtimeError: string;
+            scopeOwners?: {
+                [key: string]: string;
+            };
             scopeRevisions: {
                 [key: string]: string;
             };
             scopes: components["schemas"]["DHCPSetupScope"][];
+            serverAddress?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -2446,8 +2471,16 @@ export interface components {
             available: boolean;
             enabled: boolean;
             failover?: components["schemas"]["ReplicationStatus"];
+            invalidScopes?: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            mode: "node" | "kubernetes";
             node: string;
+            runtimeError?: string;
             scopes: components["schemas"]["DHCPScopeSummary"][];
+            serverAddress?: string;
+            servingNode?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -8985,6 +9018,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomainWriteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    batchDeleteDhcpscopes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchDeleteInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Processed"];
                 };
             };
             /** @description Bad Request */

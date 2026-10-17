@@ -85,6 +85,13 @@ spec:
       from:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    {{- if .Values.dhcp.enabled }}
+    # DHCP relays (trusted by source address in each DHCPScope) and
+    # clients renewing directly.
+    - ports:
+        - port: 67
+          protocol: UDP
+    {{- end }}
     {{- if .Values.blockPage.enabled }}
     # Block page: every client a blocked name was sent to.
     - ports:

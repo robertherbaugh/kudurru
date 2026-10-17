@@ -68,7 +68,7 @@ survive a restart. Complete the validation and cutover checklist afterward.
 | Local DNS and CNAME records | Primary zones and records | Create the containing zone, then copy records |
 | Conditional forwarding | Named upstream groups and suffix rules, or forward zones | Recreate both local-domain and reverse-DNS routes |
 | Temporary blocking pause | Dashboard toggle or `kudurru blocking disable 5m` | Pause is node-local in v0.1.0; check the node you manage |
-| DHCP | Opt-in DHCPv4 on Linux/SQLite; no DHCPv6 | Configure kudurru or another DHCP server and preserve leases and reservations before retiring Pi-hole |
+| DHCP | Opt-in DHCPv4 on Linux with the SQLite or Kubernetes store; no DHCPv6 | Configure kudurru or another DHCP server and preserve leases and reservations before retiring Pi-hole |
 | DNSSEC validation | No local validation | Retain a validating upstream if required; this does not add validation to kudurru |
 | Pi-hole-specific API integrations | kudurru REST API and CLI | Rewrite integrations; no Pi-hole API compatibility layer in v0.1.0 |
 | Teleporter and historical query database | kudurru object backup and separate logs | Keep the source backup/history separately; neither is directly importable |
@@ -260,9 +260,10 @@ query-log privacy and retention in **Settings** before moving real traffic.
 
 ## DHCP handoff
 
-kudurru v0.1.0 includes an opt-in DHCPv4 server on Linux/SQLite, with
-dashboard setup, durable leases and reservations, trusted relays and optional
-three-node quorum failover. Follow the [DHCPv4 deployment guide](/deploy/dhcp/)
+kudurru v0.1.0 includes an opt-in DHCPv4 server on Linux with either store,
+with dashboard setup, durable leases and reservations, trusted relays and
+optional three-node quorum failover on SQLite. On Kubernetes, one elected
+replica serves clients that your router relays to it. Follow the [DHCPv4 deployment guide](/deploy/dhcp/)
 to prepare it. You can also keep DHCP on your router or another server.
 Keep IPv6 router and DNS advertisements on your router; kudurru does not
 serve DHCPv6.

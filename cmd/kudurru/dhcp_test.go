@@ -311,13 +311,15 @@ func TestDHCPRuntimeRetainsLeasesAndCleansUpOnBindFailure(t *testing.T) {
 	}
 }
 
-func TestDHCPRuntimeRefusesSharedStore(t *testing.T) {
+// On the kube store, internal/dhcpkube serves DHCPScope objects: the
+// node-local service is not created and no local lease database appears.
+func TestNodeDHCPLeavesTheKubeStoreToDHCPKube(t *testing.T) {
 	cfg := dhcpTestConfig(t)
 	cfg.Store.Driver = "kube"
 	server, cleanup, err := newDHCP(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	defer cleanup()
-	if err == nil || server != nil {
-		t.Fatalf("shared-store DHCP must fail: server=%v, error=%v", server, err)
+	if err != nil || server != nil {
+		t.Fatalf("node-local DHCP on the kube store: server=%v, error=%v", server, err)
 	}
 	if _, err := os.Stat(filepath.Join(cfg.Node.DataDir, "dhcp.db")); !os.IsNotExist(err) {
 		t.Fatalf("unsupported mode created lease state: %v", err)
