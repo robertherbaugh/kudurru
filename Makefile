@@ -585,6 +585,14 @@ license-server-e2e: license-server-install license-server-image license-server-k
 ##                         Docker; -hostnetwork and kudurru-base add only
 ##                         distroless and the same binary)
 ##   trivy-license-server: the license portal image (license-server-image)
+##   trivy-published:      the images publish.yml pushed for
+##                         PUBLISHED_TAG=v<VERSION>[-rc.<N>], pulled from
+##                         ghcr.io (needs `docker login ghcr.io` while the
+##                         packages are private) rather than built: the ko
+##                         kudurru and -debug, -hostnetwork, kudurru-dnsdist
+##                         and kudurru-keepalived. Run it from a checkout of
+##                         the tag, whose images/*/Dockerfile give the
+##                         supervisor image tags.
 ## The Semgrep rules come from the registry at run time, so a new rule can
 ## fail a run without a code change, like a new CVE. Excluded rules: Go
 ## checks gosec already enforces in `make lint` (G404, G705, G204, G110,
@@ -620,8 +628,10 @@ TRIVY_SHA256_darwin_arm64  := e7ec0d21fe842553f59af99aba2efbcc822369fbaed27019c5
 TRIVY_DIR                  := $(CURDIR)/bin/trivy-$(TRIVY_VERSION)
 TRIVY                      ?= $(TRIVY_DIR)/trivy
 SCAN_TAG                   ?= scan
+PUBLISHED_REPO             ?= ghcr.io/robertherbaugh
+PUBLISHED_TAG              ?=
 
-.PHONY: sast vulncheck trivy trivy-fs trivy-images trivy-license-server
+.PHONY: sast vulncheck trivy trivy-fs trivy-images trivy-license-server trivy-published
 
 sast:
 	docker run --rm -u "$$(id -u):$$(id -g)" -e HOME=/tmp -v "$(CURDIR):/src" -w /src \
@@ -659,3 +669,22 @@ trivy-images: $(TRIVY)
 
 trivy-license-server: $(TRIVY) license-server-image
 	$(TRIVY) image $(LICENSE_SERVER_IMAGE)
+
+# linux/amd64 only, as security.yml's trivy-images: the arm64 images carry
+# the same package versions and Go modules. The supervisor image tags are
+# derived the way publish.yml's supervisor-manifests derives them.
+trivy-published: $(TRIVY)
+	@if ! echo '$(PUBLISHED_TAG)' | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?'; then \
+	  echo "usage: make trivy-published PUBLISHED_TAG=v<VERSION>[-rc.<N>]"; exit 1; \
+	fi; \
+	version='$(PUBLISHED_TAG)'; version=$${version#v}; \
+	dnsdist=$$(sed -n 's/^FROM powerdns\/dnsdist-[0-9]*:\([^@]*\)@.*$$/\1/p' images/dnsdist/Dockerfile); \
+	keepalived=$$(sed -n 's/^ARG KEEPALIVED_VERSION=\(.*\)$$/\1/p' images/keepalived/Dockerfile); \
+	if [ -z "$$dnsdist" ] || [ -z "$$keepalived" ]; then echo "error: no dnsdist or keepalived version in images/*/Dockerfile"; exit 1; fi; \
+	status=0; \
+	for image in kudurru:$$version kudurru:$$version-debug kudurru:$$version-hostnetwork \
+	  kudurru-dnsdist:$$dnsdist-k$$version kudurru-keepalived:$$keepalived-k$$version; do \
+	  echo "== $(PUBLISHED_REPO)/$$image"; \
+	  $(TRIVY) image --image-src remote --platform linux/amd64 $(PUBLISHED_REPO)/$$image || status=1; \
+	done; \
+	exit $$status
