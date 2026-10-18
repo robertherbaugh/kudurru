@@ -13,8 +13,13 @@ import (
 
 func ownershipHarness(t *testing.T) (*harness, *settings.Manager) {
 	t.Helper()
+	return ownershipHarnessForDriver(t, "kube")
+}
+
+func ownershipHarnessForDriver(t *testing.T, driver string) (*harness, *settings.Manager) {
+	t.Helper()
 	file := filepath.Join(t.TempDir(), "settings.yaml")
-	env := []string{config.EnvSettingsFile + "=" + file, "KUDURRU_STORE__DRIVER=kube"}
+	env := []string{config.EnvSettingsFile + "=" + file, "KUDURRU_STORE__DRIVER=" + driver}
 	// File persistence makes API authorization/validation tests independent of a cluster.
 	h := newHarness(t, func(o *Options) {
 		cfg, err := config.Load("", env)
@@ -88,4 +93,15 @@ func TestSettingsOwnershipPatchRevisionAndSourceFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.do(http.MethodGet, "/api/v1/settings", "admin", nil).want(http.StatusServiceUnavailable)
+}
+
+func TestSettingsRevisionOnlyGuardsUpstreamEdits(t *testing.T) {
+	h, m := ownershipHarnessForDriver(t, "sqlite")
+	old := m.Status().Sections["upstreams"].Revision
+	h.do(http.MethodPatch, "/api/v1/settings", "admin", map[string]any{"upstreams": map[string]any{"bootstrap": []string{"192.0.2.1:53"}}}).want(http.StatusOK)
+	cache := map[string]any{"cache": map[string]any{"maxEntries": 42}}
+	h.serve(h.req(http.MethodPatch, "/api/v1/settings", "admin", cache, "If-Match", old)).want(http.StatusOK)
+	if m.Reload.Current().Cache.MaxEntries != 42 || m.Reload.Current().Upstreams.Bootstrap[0] != "192.0.2.1:53" {
+		t.Fatal("unrelated cache edit lost the current upstream settings")
+	}
 }

@@ -211,6 +211,31 @@ func TestFileOwnershipAndLegacyWrites(t *testing.T) {
 	}
 }
 
+func TestFileNonUpstreamWritePreservesNewerUpstreams(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "settings.yaml")
+	m := newManager(t, FileBackend{Path: file}, "", []string{config.EnvSettingsFile + "=" + file})
+	reviewed := revision(m)
+	cache := *m.Reload.Current()
+	cache.Cache.MaxEntries = 42
+	upstreams := *m.Reload.Current()
+	upstreams.Upstreams.Bootstrap = []string{"192.0.2.1:53"}
+	if err := m.Write(t.Context(), reviewed, &upstreams, []string{"upstreams.bootstrap"}); err != nil {
+		t.Fatal(err)
+	}
+	if revision(m) == reviewed {
+		t.Fatal("upstream edit did not change its revision")
+	}
+	if err := m.Write(t.Context(), reviewed, &cache, []string{"upstreams.bootstrap", "cache.maxEntries"}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("mixed stale upstream edit: %v", err)
+	}
+	if err := m.Write(t.Context(), reviewed, &cache, []string{"cache.maxEntries"}); err != nil {
+		t.Fatalf("unrelated cache edit rejected: %v", err)
+	}
+	if m.Reload.Current().Cache.MaxEntries != 42 || m.Reload.Current().Upstreams.Bootstrap[0] != "192.0.2.1:53" {
+		t.Fatal("cache edit lost the newer upstream configuration")
+	}
+}
+
 func TestSharedSettingsPollWithoutFileAndLastGood(t *testing.T) {
 	backend := &memoryBackend{}
 	env := []string{"KUDURRU_STORE__DRIVER=kube"}

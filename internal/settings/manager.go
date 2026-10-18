@@ -82,13 +82,7 @@ func (m *Manager) statusFor(d Document, revision string, c *config.Config) Statu
 		section, _, _ := strings.Cut(key.Path, ".")
 		s.Sections[section] = Section{Owner: m.owner(d, section)}
 	}
-	env := false
-	for _, path := range c.EnvLocked {
-		if strings.HasPrefix(path, "upstreams.") {
-			env = true
-		}
-	}
-	s.Sections["upstreams"] = Section{Owner: m.owner(d, "upstreams"), Switchable: m.Backend != nil, Revision: token, EnvLocked: env}
+	s.Sections["upstreams"] = Section{Owner: m.owner(d, "upstreams"), Switchable: m.Backend != nil, Revision: token, EnvLocked: len(locked) > 0}
 	if d.Owners["upstreams"] == UI && c.Store.Driver == "kube" && slices.Contains(c.DeclaredSections, "upstreams") {
 		s.Conflicts = append(s.Conflicts, "upstreams")
 	}
@@ -167,7 +161,7 @@ func (m *Manager) Write(ctx context.Context, expected string, next *config.Confi
 	if err != nil {
 		return err
 	}
-	if m.statusFor(d, rev, fresh).Sections["upstreams"].Revision != expected {
+	if slices.ContainsFunc(paths, func(path string) bool { return strings.HasPrefix(path, "upstreams.") }) && m.statusFor(d, rev, fresh).Sections["upstreams"].Revision != expected {
 		return ErrConflict
 	}
 	for _, path := range paths {

@@ -328,14 +328,14 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		cur, status = s.opts.SettingsOwnership.Snapshot()
 		expected = status.Sections["upstreams"].Revision
 	}
-	if ifMatch != "" && strings.Trim(ifMatch, "\"") != expected {
-		return nil, ownershipError(settings.ErrConflict)
-	}
 	var paths []string
 	for p := range changes {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
+	if ifMatch != "" && slices.ContainsFunc(paths, func(path string) bool { return strings.HasPrefix(path, "upstreams.") }) && strings.Trim(ifMatch, "\"") != expected {
+		return nil, ownershipError(settings.ErrConflict)
+	}
 	var restart []string
 	for _, p := range paths {
 		k, _ := config.Lookup(p)
