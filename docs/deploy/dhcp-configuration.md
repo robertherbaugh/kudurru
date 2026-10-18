@@ -9,7 +9,7 @@ addresses, persistent data volume and the [network privileges](dhcp-host.md#netw
 in the host guide. The browser can select existing interfaces and addresses; it cannot
 create a VLAN interface, assign a host address or grant container capabilities.
 
-1. Open **DNS → DHCP** on the node that will allocate addresses. All setup and
+1. Open **DHCP → Scopes** on the node that will allocate addresses. All setup and
    lease operations apply to that connected node.
 2. Choose **New scope**. Enter a stable name, interface, server IPv4 address,
    client subnet and any trusted relay pairs. Interface discovery lists local

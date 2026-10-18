@@ -52,7 +52,7 @@ export default function DHCPPage() {
   const rows: ScopeRow[] = (setup.data?.scopes ?? []).map((s) => ({ ...s, management: setup.data?.managedBy ?? 'api', revision: '', activation: activation(s.name) }));
   for (const s of active) if (!rows.some((row) => row.name === s.name)) rows.push({ ...s, activation: setup.data ? 'Removal pending' : 'Running' });
   return <DHCPFrame>
-    <PageHeader title="DHCP" description="IPv4 address allocation, reservations and local names."
+    <PageHeader title="DHCP scopes" description="IPv4 address allocation, reservations and local names."
       meta={status.data ? <Text type="supporting">{dhcpServingText(status.data)}</Text> : undefined} />
     {!allowed ? <EmptyState title="DHCP access is restricted" description="Viewing DHCP requires dhcp.read permission." /> : null}
     {status.error ? <ErrorBanner error={status.error} /> : null}

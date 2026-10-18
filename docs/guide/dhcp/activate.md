@@ -12,7 +12,7 @@ reusing addresses that the old server assigned to other clients.
 ## 1. Prepare the cutover
 
 1. Save the old server's options and reservations.
-2. Open **DNS** > **DHCP** in kudurru.
+2. Open **DHCP** > **Scopes** in kudurru.
 3. Turn on **Enable DHCP after restart**.
 
 ![The DHCP page with Enable DHCP after restart on, a Restart required notice and the saved scope.](../images/dhcp-restart-required.png)
@@ -32,7 +32,7 @@ The scope can show **Changes pending** or **Saved, not running**.
    For Docker, use `docker restart kudurru`.
    For systemd, use `sudo systemctl restart kudurru`.
 
-5. Import the final leases from the scope page, if needed.
+5. Import the final leases in **DHCP** > **Leases**, if needed.
 6. Allow client DHCP traffic to reach kudurru.
 
 Use a nonoverlapping pool or wait for old leases to expire if you cannot import them.
@@ -41,14 +41,14 @@ lists supported formats. Do not start two independent allocators on the same poo
 
 ## 3. Test one client
 
-1. Open **DNS** > **DHCP**.
+1. Open **DHCP** > **Scopes**.
 2. Confirm that the scope says **Running**.
 3. Renew the DHCP lease on one test client.
-4. Open the scope and find the client in **Leases**.
+4. Open **DHCP** > **Leases** and find the client.
 5. Check the client's address, subnet mask, gateway and DNS server.
 6. Run `nslookup example.com` on the client.
 
-![The running scope's Leases section with addresses, MAC addresses, hostnames, lease states and expiration times.](../images/dhcp-leases.png)
+![The DHCP leases page with the scope, addresses, MAC addresses, hostnames, lease states and expiration times.](../images/dhcp-leases.png)
 
 *Figure 2. A bound client appears as Leased.*
 

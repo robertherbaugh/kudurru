@@ -10,7 +10,7 @@ The reserved address can be outside the dynamic pool, but it must be inside the 
 
 ## 1. Add the reservation
 
-1. Open **DNS** > **DHCP**.
+1. Open **DHCP** > **Scopes**.
 2. Open the running scope.
 3. Find **Reservations**.
 4. Click **Add reservation**.
@@ -30,7 +30,7 @@ An address that another client still leases cannot become this device's reservat
 ## 2. Renew and verify
 
 1. Renew the device's lease or reconnect it to the network.
-2. Find it in **Leases**.
+2. Find it in **DHCP** > **Leases**.
 3. Confirm that its address matches **Reserved address**.
 4. Query `printer.lan.home.arpa` if lease DNS registration is on.
 

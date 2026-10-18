@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { mockDHCP, mockDHCPSetup, mockKubeDHCP } from '../mocks/dhcp';
 import { server } from '../test/setup';
 import { renderWithApp } from '../test/utils';
+import DHCPLeasesPage from './DHCPLeasesPage';
 import DHCPPage from './DHCPPage';
 import DHCPScopePage from './DHCPScopePage';
 
@@ -68,8 +69,14 @@ describe('DHCP dashboard', () => {
     expect(mockDHCP().leases.find((l) => l.address === '192.0.2.10')).toBeDefined();
   });
 
-  it('filters lease inventory and reports import results', async () => {
+  it('links a running scope to its leases', async () => {
     renderWithApp(scopePage());
+    expect(await screen.findByRole('link', { name: 'View leases' })).toHaveAttribute('href', '/leases?scope=default');
+    expect(screen.queryByRole('table', { name: 'DHCP leases' })).not.toBeInTheDocument();
+  });
+
+  it('filters lease inventory and reports import results', async () => {
+    renderWithApp(<DHCPLeasesPage />, { route: '/leases?scope=default' });
     const table = await screen.findByRole('table', { name: 'DHCP leases' });
     expect(within(table).getByText('printer')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Find a lease' }), { target: { value: 'laptop' } });
@@ -89,16 +96,36 @@ describe('DHCP dashboard', () => {
     expect((await screen.findAllByText('Managed by the configuration file')).length).toBeGreaterThan(0);
     expect(screen.getByRole('textbox', { name: 'Router' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Add reservation' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('keeps lease import available for a file-owned scope', async () => {
+    mockDHCP().config.management = 'file';
+    renderWithApp(<DHCPLeasesPage />, { route: '/leases' });
+    await screen.findByRole('table', { name: 'DHCP leases' });
     expect(screen.getByRole('button', { name: 'Import leases' })).not.toBeDisabled();
+  });
+
+  it('explains a requested scope that is not running', async () => {
+    renderWithApp(<DHCPLeasesPage />, { route: '/leases?scope=guest' });
+    expect(await screen.findByText('Scope guest is not running')).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: 'DHCP leases' })).toBeInTheDocument();
+  });
+
+  it('says when no scope is running', async () => {
+    mockDHCP().enabled = false;
+    renderWithApp(<DHCPLeasesPage />, { route: '/leases' });
+    expect(await screen.findByText('No DHCP scope is running')).toBeInTheDocument();
   });
 
   it('does not request protected lease data for a viewer', async () => {
     let leaseRequests = 0;
     server.use(http.get('*/api/v1/node/dhcp/v4/scopes/default/leases', () => { leaseRequests++; return HttpResponse.json({ items: [] }); }));
-    renderWithApp(scopePage(), { user: 'viewer' });
+    const view = renderWithApp(scopePage(), { user: 'viewer' });
+    expect(await screen.findByRole('button', { name: 'Save network options' })).toHaveAttribute('aria-disabled', 'true');
+    view.unmount();
+    renderWithApp(<DHCPLeasesPage />, { route: '/leases', user: 'viewer' });
     expect(await screen.findByText('Viewing lease inventory requires dhcpleases.read permission.')).toBeInTheDocument();
     expect(leaseRequests).toBe(0);
-    expect(screen.getByRole('button', { name: 'Save network options' })).toHaveAttribute('aria-disabled', 'true');
   });
 });
 

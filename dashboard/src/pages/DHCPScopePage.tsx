@@ -1,17 +1,16 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Heading } from '@astryxdesign/core/Heading';
-import { Link } from '@astryxdesign/core/Link';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { Section } from '@astryxdesign/core/Section';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Table, proportional, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useDeferredValue, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
-import type { DHCPConfig, DHCPLease, DHCPPoolOptions, DHCPReservation } from '../api/types';
+import type { DHCPConfig, DHCPPoolOptions, DHCPReservation } from '../api/types';
 import { DHCPSavedScope, DHCPSetupNotices, useDHCPSetup } from '../components/DHCPSetup';
 import { DHCPAdvancedFields, advancedOptionsError } from '../components/DHCPAdvancedFields';
 import { DHCPFailoverStatus } from '../components/DHCPFailover';
@@ -19,12 +18,11 @@ import { isKube, managedText } from '../components/DHCPSetupFields';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { DurationField, durationError } from '../components/fields/DurationField';
-import { SelectField } from '../components/fields/SelectField';
 import { StringListField, cleanList } from '../components/fields/StringListField';
-import { SwitchField, TextAreaField, TextField } from '../components/fields/TextField';
+import { SwitchField, TextField } from '../components/fields/TextField';
 import { formatError } from '../components/fields/formats';
 import { PageHeader } from '../components/layout/Page';
-import { formatRelative, parseDuration } from '../lib/format';
+import { parseDuration } from '../lib/format';
 import type { PageProps } from '../routes';
 import { DHCPFrame, dhcpServingText } from './DHCPPage';
 
@@ -166,71 +164,6 @@ function Reservations({ config, saved }: { config: DHCPConfig; saved: (v: DHCPCo
   </VStack></Section>;
 }
 
-function ImportDialog({ scope, close }: { scope: string; close: () => void }) {
-  const api = useApi();
-  const qc = useQueryClient();
-  const [format, setFormat] = useState<'native' | 'dnsmasq'>('native');
-  const [data, setData] = useState('');
-  const tooLarge = new TextEncoder().encode(data).byteLength > 4 * 1024 * 1024;
-  const mutation = useMutation({ mutationFn: () => api.dhcp.import(scope, format, data), onSuccess: () => void qc.invalidateQueries({ queryKey: qk.dhcp(scope, 'leases') }) });
-  return <FormDialog isOpen onClose={close} title="Import leases" onSubmit={() => { if (data.trim() && !tooLarge) mutation.mutate(); }}
-    footer={<><Button label={mutation.isSuccess ? 'Close' : 'Cancel'} onClick={close} /><Button label="Import leases" type="submit" variant="primary" isLoading={mutation.isPending} isDisabled={!data.trim() || tooLarge || mutation.isSuccess} /></>}>
-    <Text type="supporting">Merge active leases without replacing an existing allocation or shortening its expiry. Stop the old DHCP service before cutover.</Text>
-    <SelectField label="Lease format" value={format} options={[{ value: 'native', label: 'kudurru JSON' }, { value: 'dnsmasq', label: 'dnsmasq leases' }]} onChange={(v) => { setFormat(v as 'native' | 'dnsmasq'); mutation.reset(); }} />
-    <TextAreaField label="Lease data" value={data} onChange={(v) => { setData(v); mutation.reset(); }} rows={8} mono hasSpellCheck={false}
-      help="Paste the exported file contents. Maximum size: 4 MiB." error={tooLarge ? 'The import exceeds 4 MiB' : undefined} />
-    {mutation.error ? <ErrorBanner error={mutation.error} /> : null}
-    {mutation.data ? <Banner status="success" title="Lease import complete" description={`${mutation.data.imported} imported, ${mutation.data.unchanged ?? 0} unchanged, ${mutation.data.skippedExpired} expired rows skipped.`} /> : null}
-  </FormDialog>;
-}
-
-function Leases({ scope }: { scope: string }) {
-  const api = useApi();
-  const can = useCan();
-  const notify = useNotify();
-  const [search, setSearch] = useState('');
-  const q = useDeferredValue(search);
-  const [state, setState] = useState('');
-  const [importing, setImporting] = useState(false);
-  const leases = useInfiniteQuery({
-    queryKey: qk.dhcp(scope, 'leases', q, state),
-    queryFn: ({ pageParam, signal }) => api.dhcp.leases(scope, { q, state, limit: 100, ...(pageParam ? { continue: pageParam } : {}) }, signal),
-    initialPageParam: '', getNextPageParam: (last) => last.continue || undefined,
-    enabled: can('dhcpleases', 'read'), refetchInterval: 15_000,
-  });
-  const exporting = useMutation({ mutationFn: () => api.dhcp.export(scope), onSuccess: (result) => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(result.document, null, 2) + '\n'], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url; link.download = `dhcp-${scope}-leases.json`; link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }, onError: (error) => notify.error(error) });
-  type Row = DHCPLease & Record<string, unknown>;
-  const columns: TableColumn<Row>[] = [
-    { key: 'address', header: 'Address', width: proportional(2), renderCell: (l) => <Link href={`/clients/${encodeURIComponent(l.address)}`}>{l.address}</Link> },
-    { key: 'mac', header: 'MAC address', width: proportional(2) },
-    { key: 'hostname', header: 'Hostname', width: proportional(2), renderCell: (l) => <Text>{l.hostname || '—'}</Text> },
-    { key: 'state', header: 'State', renderCell: (l) => <Text>{l.state === 'bound' ? 'Leased' : l.state === 'declined' ? 'Quarantined' : 'Offered'}</Text> },
-    { key: 'expiresAt', header: 'Expires', width: proportional(2), renderCell: (l) => <Text>{formatRelative(l.expiresAt)}</Text> },
-  ];
-  return <Section padding={0} variant="transparent"><VStack gap={4}>
-    <HStack hAlign="between" wrap="wrap" gap={2} vAlign="center"><Heading level={2}>Leases</Heading><HStack gap={2}>
-      <Button label="Export leases" isDisabled={!can('dhcpleases', 'export')} tooltip={!can('dhcpleases', 'export') ? 'Requires dhcpleases.export' : undefined} isLoading={exporting.isPending} onClick={() => exporting.mutate()} />
-      <Button label="Import leases" isDisabled={!can('dhcpleases', 'import')} tooltip={!can('dhcpleases', 'import') ? 'Requires dhcpleases.import' : undefined} onClick={() => setImporting(true)} />
-    </HStack></HStack>
-    {!can('dhcpleases', 'read') ? <Text type="supporting">Viewing lease inventory requires dhcpleases.read permission.</Text> : <>
-      <HStack gap={3} wrap="wrap" vAlign="start">
-        <TextField label="Find a lease" value={search} onChange={setSearch} placeholder="Address, MAC or hostname" />
-        <SelectField label="Lease state" value={state} onChange={setState} options={[{ value: '', label: 'All states' }, { value: 'bound', label: 'Leased' }, { value: 'offered', label: 'Offered' }, { value: 'declined', label: 'Quarantined' }]} />
-      </HStack>
-      {leases.error ? <ErrorBanner error={leases.error} /> : null}
-      {leases.isPending ? <Loading label="Loading leases" /> : null}
-      {leases.data ? <Table<Row> aria-label="DHCP leases" density="compact" idKey="address" data={leases.data.pages.flatMap((p) => p.items)} columns={columns} /> : null}
-      {leases.hasNextPage ? <Button label="Load more leases" isLoading={leases.isFetchingNextPage} onClick={() => void leases.fetchNextPage()} /> : null}
-    </>}
-    {importing ? <ImportDialog scope={scope} close={() => setImporting(false)} /> : null}
-  </VStack></Section>;
-}
-
 export default function DHCPScopePage({ params }: PageProps) {
   const scope = params.scope ?? 'default';
   const api = useApi();
@@ -252,7 +185,8 @@ export default function DHCPScopePage({ params }: PageProps) {
   const invalid = status.data?.invalidScopes?.[scope];
   const meta = kube ? status.data && dhcpServingText(status.data) : c && `Connected node: ${c.node}`;
   return <DHCPFrame>
-    <PageHeader title={`DHCP: ${scope}`} back={{ href: '/dhcp', label: 'DHCP scopes' }} meta={meta ? <Text type="supporting">{meta}</Text> : undefined} />
+    <PageHeader title={`DHCP scope: ${scope}`} back={{ href: '/dhcp', label: 'DHCP scopes' }} meta={meta ? <Text type="supporting">{meta}</Text> : undefined}
+      actions={running ? <Button label="View leases" href={`/leases?scope=${encodeURIComponent(scope)}`} /> : undefined} />
     {!can('dhcp', 'read') ? <Text>Viewing this scope requires dhcp.read permission.</Text> : null}
     {config.error ? <ErrorBanner error={config.error} /> : null}
     {can('dhcp', 'read') && (setup.isPending || status.isPending || (running && config.isPending)) ? <Loading label="Loading DHCP scope" /> : null}
@@ -279,7 +213,6 @@ export default function DHCPScopePage({ params }: PageProps) {
       {c.envLocked.length ? <Banner status="info" title="Some values are set by the environment" description={`Locked fields: ${c.envLocked.join(', ')}. Change those environment variables and restart the node.`} /> : null}
       <OptionsEditor key={scope} config={c} saved={saved} />
       <Reservations key={`${scope}-reservations`} config={c} saved={saved} />
-      <Leases key={`${scope}-leases`} scope={scope} />
     </> : null}
   </DHCPFrame>;
 }
