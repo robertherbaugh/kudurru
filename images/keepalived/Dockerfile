@@ -57,7 +57,11 @@ RUN curl -fsSLo keepalived.tar.gz "https://www.keepalived.org/software/keepalive
  && mkdir -p /out/usr/share/keepalived && cp COPYING /out/usr/share/keepalived/COPYING
 
 FROM alpine:${ALPINE_VERSION}
-RUN apk add --no-cache libcrypto3 libmagic iproute2 tini \
+# apk upgrade first: apk add leaves a package the base image already has
+# (libcrypto3) at that image's version, so a stale alpine:3.23 on the
+# builder would ship an OpenSSL without its latest fixes (make trivy-images).
+RUN apk upgrade --no-cache \
+ && apk add --no-cache libcrypto3 libmagic iproute2 tini \
  && addgroup -S -g 953 keepalived_script \
  && adduser -S -D -H -u 953 -G keepalived_script keepalived_script \
  && mkdir -p /etc/keepalived /run/kudurru /run/secrets \
