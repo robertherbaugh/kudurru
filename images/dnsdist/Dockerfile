@@ -24,13 +24,16 @@
 #
 # `make edge-check` runs `dnsdist --check-config` on the golden files inside
 # this pinned upstream image.
-ARG DNSDIST_IMAGE=powerdns/dnsdist-21:2.1.2
-ARG DNSDIST_DIGEST=sha256:efabf173811e27438bebee5f1f40e047f263ea39093a8f7d6097df494cf1ed67
+#
+# The upstream image is pinned on a literal FROM line, which Dependabot
+# updates (.github/dependabot.yml); the Makefile's EDGE_DNSDIST_IMAGE and
+# the release tag (publish.yml) read it from here, and TestSupervisorVersions
+# fails until the chart's edge.dnsdistVersion follows.
 ARG KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:0.1.0-dev
 
 FROM ${KUDURRU_IMAGE} AS kudurru
 
-FROM ${DNSDIST_IMAGE}@${DNSDIST_DIGEST}
+FROM powerdns/dnsdist-21:2.1.3@sha256:c70ae7363712188ab2878d22bc9f1801cae29190688474a224caee2089f74837
 # ko puts the binary at /ko-app/kudurru (the Dockerfile at the repository
 # root mirrors that layout).
 COPY --from=kudurru /ko-app/kudurru /usr/local/bin/kudurru
@@ -42,7 +45,15 @@ USER root
 # (953) all write there. /etc/dnsdist is group-writable for a supervisor
 # started as root with group 953 and no CAP_DAC_OVERRIDE (--dnsdist-user:
 # eBPF, host networking).
-RUN mkdir -p /etc/dnsdist /run/kudurru /certs \
+# PowerDNS rebuilds the upstream image only for a dnsdist release, so the
+# Debian packages are upgraded here: their security fixes ship with the
+# next kudurru build, and `make trivy-images` fails on any that are
+# missing. dnsdist itself is /usr/local/bin/dnsdist, not a package, and
+# stays the pinned upstream build.
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /etc/dnsdist /run/kudurru /certs \
  && chown -R 953:953 /etc/dnsdist && chmod 0775 /etc/dnsdist \
  && chmod 1777 /run/kudurru
 # The licenses of the programs this image ships: the kudurru supervisor

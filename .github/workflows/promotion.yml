@@ -11,6 +11,7 @@ on:
     types: [opened, synchronize, reopened, edited]
 permissions:
   contents: read
+  actions: read          # hack/candidate-published.sh reads the candidate's run
 jobs:
   promotion:
     runs-on: ubicloud-standard-2-ubuntu-2404

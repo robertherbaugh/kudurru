@@ -2,8 +2,9 @@ package recursor
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
-	"math/rand/v2"
 	"net/netip"
 	"time"
 
@@ -70,11 +71,20 @@ func (q *query) send(server netip.AddrPort, name string, qtype uint16) (*dns.Msg
 
 var errCase = errors.New("recursor: answer changed the case of the query name")
 
+// cryptoUint64 supplies the 0x20 case bits. Like the query ID (dns.Id),
+// they are what a spoofed answer has to guess, so they come from
+// crypto/rand, whose Read never fails.
+func cryptoUint64() uint64 {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return binary.LittleEndian.Uint64(b[:])
+}
+
 func (q *query) exchangeOnce(server netip.AddrPort, name string, qtype uint16, use0x20 bool) (*dns.Msg, time.Duration, error) {
 	r := q.r
 	qname := name
 	if use0x20 && q.s.cfg.CaseRandomization {
-		qname = randomizeCase(name, rand.Uint64)
+		qname = randomizeCase(name, cryptoUint64)
 	}
 	m := &dns.Msg{MsgHdr: dns.MsgHdr{Id: dns.Id(), Opcode: dns.OpcodeQuery}}
 	m.Question = []dns.Question{{Name: qname, Qtype: qtype, Qclass: dns.ClassINET}}

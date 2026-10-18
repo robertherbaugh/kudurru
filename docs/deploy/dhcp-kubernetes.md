@@ -42,7 +42,7 @@ How it works: [DHCP on the Kubernetes store](../architecture/dhcp.md#kubernetes-
    allow UDP 67 from the router to it. Note the relay's source address as the
    LoadBalancer sees it and the gateway address (giaddr) it writes for the
    VLAN; both go into the scope's `trustedRelays`.
-4. Create the scopes in **DNS → DHCP**, or apply them from Git:
+4. Create the scopes in **DHCP → Scopes**, or apply them from Git:
 
    ```yaml
    apiVersion: kudurru.io/v1alpha1

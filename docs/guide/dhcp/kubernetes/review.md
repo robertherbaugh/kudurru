@@ -14,7 +14,7 @@ DHCP immediately when the release has DHCP enabled.
 2. Check the subnet, pool, gateway, DNS server and domain.
 3. Confirm that the summary lists the required trusted relay.
 4. Click **Save scope**.
-5. Open **DNS** > **DHCP**.
+5. Open **DHCP** > **Scopes**.
 
 ![The Kubernetes Review step with the client subnet, relay and DHCP options before Save scope.](../../images/dhcp-kubernetes-review.png)
 

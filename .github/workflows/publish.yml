@@ -2,7 +2,9 @@
 # the GitHub release), the Helm charts, the -hostnetwork image and the
 # supervisor images, all cosign-signed. Called by release-candidate.yml (v<VERSION>-rc.<N>, a GitHub
 # pre-release, no `latest`) and release.yml (v<VERSION>, `latest`) after they
-# push the tag; workflow_dispatch re-publishes an existing tag by hand.
+# push the tag; workflow_dispatch re-publishes an existing tag by hand. A
+# release candidate's pushed images are then scanned with Trivy (the scan
+# job).
 # dev-docs/release-checklist.md, "Release pipeline".
 name: publish
 on:
@@ -434,7 +436,7 @@ jobs:
         run: |
           version="${TAG#v}"
           case "${IMAGE}" in
-            dnsdist)    program=$(sed -n 's/^ARG DNSDIST_IMAGE=.*:\(.*\)$/\1/p' images/dnsdist/Dockerfile) ;;
+            dnsdist)    program=$(sed -n 's/^FROM powerdns\/dnsdist-[0-9]*:\([^@]*\)@.*$/\1/p' images/dnsdist/Dockerfile) ;;
             keepalived) program=$(sed -n 's/^ARG KEEPALIVED_VERSION=\(.*\)$/\1/p' images/keepalived/Dockerfile) ;;
           esac
           test -n "${program}"
@@ -479,3 +481,32 @@ jobs:
           subject-name: ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+  scan:
+    # Release candidates only: Trivy on the images the jobs above pushed, as
+    # pulled from ghcr.io (`make trivy-published`), not the Dockerfile builds
+    # security.yml scans. A finding fails the run, and release.yml and the
+    # promotion check refuse to release a candidate whose run failed
+    # (hack/candidate-published.sh): fix it on main and cut a new candidate.
+    # A release ships its candidate's tree, so its publish does not scan
+    # again; security.yml rescans the latest release daily.
+    needs: [release, hostnetwork-image, supervisor-manifests]
+    if: contains(inputs.tag, '-rc.')
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read         # pull the ghcr.io images
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Trivy on the published images
+        env:
+          TAG: ${{ inputs.tag }}
+        run: make trivy-published PUBLISHED_TAG="${TAG}"

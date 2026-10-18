@@ -1,0 +1,201 @@
+# Security scans (Makefile, "Security scans"):
+#   sast                  Semgrep CE static analysis of the Go, TypeScript,
+#                         Dockerfiles, manifests and workflows
+#   vulncheck             govulncheck: known vulnerabilities the Go code reaches
+#   trivy-fs              Trivy on the checkout: go.mod and bun.lock
+#                         dependencies, secrets, misconfigurations
+#   trivy-images          the kudurru, -debug, kudurru-keepalived and
+#                         kudurru-dnsdist images built from this commit
+#   trivy-license-server  the license portal image
+#   latest-release        daily and by hand only: the latest release as
+#                         published, its tag's checkout and its images
+#   security-ok           passes when every scan above passed or was skipped:
+#                         the one check to require
+# On every pull request and on main, and daily: new CVEs and new Semgrep
+# rules arrive without a code change, and GitHub mails a failed scheduled
+# run to whoever last changed its cron. The repository is private without
+# GitHub Advanced Security, so there is no code scanning to upload SARIF
+# to: a finding fails the job and the log lists it. The changes job gates
+# the slower jobs as ci.yml and license-server.yml do (a skipped job
+# satisfies a required status check); schedule and workflow_dispatch run
+# everything.
+name: security
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  changes:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      portal: ${{ steps.filter.outputs.portal }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # code: anything outside docs/, dev-docs/, docs-site/, website/,
+          # branding/ and license-server/ (ci.yml). portal: what can change
+          # the license portal image (license-server.yml). Both also run on
+          # changes to the scan policy. A new branch, an unreachable
+          # force-pushed base or a scheduled run runs everything.
+          code=true
+          portal=true
+          policy='^(Makefile|trivy\.yaml|\.trivyignore\.yaml|\.github/workflows/security\.yml)$'
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|dev-docs|docs-site|website|license-server|branding)/' <<<"$files"; then
+              code=false
+            fi
+            if [[ -n "$files" ]] && ! grep -Eq "^(license-server/|branding/|internal/license/|hack/licensegen/)|${policy}" <<<"$files"; then
+              portal=false
+            fi
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+          echo "portal=$portal" | tee -a "$GITHUB_OUTPUT"
+  # Every change: the website, the docs site and the license portal are
+  # code too, and the scan takes about a minute.
+  sast:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep
+        run: make sast
+  vulncheck:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: make vulncheck
+  # Every change: it covers every lockfile, including license-server/ and
+  # docs-site/, and takes seconds after the database download.
+  trivy-fs:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Trivy on the checkout
+        run: make trivy-fs
+  # linux/amd64 only: the arm64 images carry the same package versions and
+  # Go modules.
+  trivy-images:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-4-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the images and scan them
+        run: make trivy-images
+  trivy-license-server:
+    needs: changes
+    if: needs.changes.outputs.portal == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the license portal image and scan it
+        run: make trivy-license-server
+  # The latest release (not a candidate), as users run it. Merging into
+  # release does not scan: a release ships the tree of its last candidate,
+  # whose pushed images publish.yml's scan job checked. New CVEs arrive
+  # after that, so the scheduled run checks the release every day:
+  # govulncheck and Trivy on its tag's checkout, and Trivy on the images
+  # publish.yml pushed for it (`make trivy-published`). Every scan runs even
+  # when one fails. Before the first release there is nothing to scan.
+  latest-release:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read         # pull the ghcr.io images
+    steps:
+      - name: Find the latest release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if out=$(gh release view --repo "${REPO}" --json tagName --jq .tagName 2>&1); then
+            if ! [[ "${out}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::the latest release's tag ${out} is not v<MAJOR.MINOR.PATCH>"; exit 1
+            fi
+            echo "tag=${out}" | tee -a "$GITHUB_OUTPUT"
+          elif [[ "${out}" == *"release not found"* ]]; then
+            echo "::notice::no release yet: nothing to scan"
+          else
+            echo "::error::${out}"; exit 1
+          fi
+      - if: steps.latest.outputs.tag != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.latest.outputs.tag }}
+          persist-credentials: false
+      - if: steps.latest.outputs.tag != ''
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - if: steps.latest.outputs.tag != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: govulncheck
+        if: ${{ !cancelled() && steps.latest.outputs.tag != '' }}
+        run: make vulncheck
+      - name: Trivy on the checkout
+        if: ${{ !cancelled() && steps.latest.outputs.tag != '' }}
+        run: make trivy-fs
+      - name: Trivy on the published images
+        if: ${{ !cancelled() && steps.latest.outputs.tag != '' }}
+        env:
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: make trivy-published PUBLISHED_TAG="${TAG}"
+  # The one check to watch and to require, as ci-ok in ci.yml: it passes
+  # when every scan passed or was skipped and fails otherwise, and runs
+  # even when one fails because a skipped job satisfies a required status
+  # check. Add new jobs to needs.
+  security-ok:
+    needs: [changes, sast, vulncheck, trivy-fs, trivy-images, trivy-license-server, latest-release]
+    if: always()
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Every scan passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS"
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$NEEDS" >/dev/null

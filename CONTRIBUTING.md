@@ -48,7 +48,10 @@ make build        # bin/kudurru
 make test         # unit tests with -race
 make lint         # golangci-lint, go vet, generated-file drift
 make generate     # controller-gen: deepcopy, CRDs, RBAC
+make sast         # Semgrep (Docker); make vulncheck, make trivy-fs, make trivy-images
 ```
+
+The security scans (`.github/workflows/security.yml`, and publish.yml's scan of a release candidate's pushed images, `make trivy-published`) fail on a finding. Fix it, or, for a false positive, add a `// nosemgrep: <rule> -- <reason>` comment above the line or an entry with its reason to `.trivyignore.yaml`.
 
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
 

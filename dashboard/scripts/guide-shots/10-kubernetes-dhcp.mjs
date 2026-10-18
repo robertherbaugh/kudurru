@@ -41,10 +41,8 @@ export default async function () {
     });
     await go('/dhcp');
     await shot('dhcp-kubernetes-overview');
-    await go('/dhcp/lan');
+    await go('/leases');
     await page.getByRole('table', { name: 'DHCP leases' }).waitFor();
-    const section = page.getByRole('heading', { name: 'Leases', exact: true }).locator('..').locator('..');
-    await section.scrollIntoViewIfNeeded();
-    await shot('dhcp-kubernetes-leases', { locator: section });
+    await shot('dhcp-kubernetes-leases');
   });
 }

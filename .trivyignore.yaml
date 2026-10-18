@@ -1,0 +1,39 @@
+# Findings Trivy reports that are accepted, each with the reason (trivy.yaml
+# points here). Scope every entry to the paths it is about, and give a
+# vulnerability an expired_at so it comes back for review.
+misconfigurations:
+  - id: KSV-0046
+    paths:
+      - deploy/helm/kudurru/templates/rbac-aggregated.yaml
+      - deploy/kustomize/rbac/rbac.yaml
+    statement: >-
+      kudurru-admin is the user-facing admin role (permissions.yaml): every
+      verb on the kudurru.io API group only, aggregated to the built-in
+      admin role. It grants nothing outside kudurru.io.
+  - id: KSV-0009
+    paths:
+      - deploy/kustomize/overlays/hostnetwork-daemonset/resources.yaml
+    statement: >-
+      The hostnetwork-daemonset overlay exists to run on the host network
+      (chart value hostNetwork.enabled, docs/deploy/helm.md).
+  - id: DS-0002
+    paths:
+      - images/keepalived/Dockerfile
+    statement: >-
+      keepalived must run as root for VRRP (raw sockets, NET_ADMIN); the
+      image comment explains the capability set it needs.
+  - id: DS-0002
+    paths:
+      - license-server/cloudflare/local/Dockerfile
+    statement: >-
+      FROM the portal image without changes, so it inherits USER
+      65532:65532 from license-server/Dockerfile; Trivy only sees the
+      missing USER line.
+  - id: KSV-0014
+    paths:
+      - hack/kind/postgres.yaml
+    statement: PostgreSQL test fixture for hack/kind-e2e.sh; never deployed.
+  - id: KSV-0118
+    paths:
+      - hack/kind/postgres.yaml
+    statement: PostgreSQL test fixture for hack/kind-e2e.sh; never deployed.

@@ -14,7 +14,7 @@ Stop the old server before you let the relay forward client traffic to kudurru.
 1. Save the old server's options and reservations.
 2. Stop the old DHCP service for this VLAN.
 3. Export its final leases if your migration uses an import.
-4. Import the final leases from the kudurru scope page, if needed.
+4. Import the final leases in **DHCP** > **Leases**, if needed.
 5. Enable the prepared router relay to the DHCP LoadBalancer.
 6. Allow the relay traffic through any temporary cutover rules.
 
@@ -25,13 +25,13 @@ The [lease import reference](../../../deploy/dhcp-leases.md#lease-import-and-exp
 ## Test a client
 
 1. Renew the DHCP lease on one test client.
-2. Open **DNS** > **DHCP**.
-3. Open the scope and find the client under **Leases**.
+2. Open **DHCP** > **Leases**.
+3. Choose the scope and find the client.
 4. Check the client's address, subnet mask, gateway and DNS server.
 5. Run `nslookup example.com` on the client.
 6. Query its local name if lease DNS is enabled.
 
-![The Kubernetes scope's Leases section with client addresses, hostnames and lease states.](../../images/dhcp-kubernetes-leases.png)
+![The DHCP leases page for a Kubernetes scope with client addresses, hostnames and lease states.](../../images/dhcp-kubernetes-leases.png)
 
 *Figure 1. A bound client appears as Leased.*
 

@@ -23,6 +23,7 @@ jobs:
     runs-on: ubicloud-standard-2-ubuntu-2404
     permissions:
       contents: write        # push the tag
+      actions: read          # hack/candidate-published.sh reads the candidate's run
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       previous: ${{ steps.tag.outputs.previous }}
