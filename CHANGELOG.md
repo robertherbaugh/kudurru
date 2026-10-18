@@ -14,6 +14,16 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   require a final success/failure exit code must add `--wait`. Inspect saved
   results with `kudurru import runs RUN_ID` or the dashboard's migration history.
 
+### Fixed
+
+- Statistics no longer drop queries that arrive for an hour that was already
+  summarized (late events, or a new query log in its first minutes): until
+  the hour is summarized again, the summary, rankings and time series, and
+  the hourly rollups sent to the central database, use the per-minute data.
+- A token, user or other object written while a node re-reads its object
+  cache is no longer dropped from that cache until the next re-read, so a
+  new API token works on that node at once.
+
 ## [0.1.0] - 2026-10-18
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or

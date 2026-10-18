@@ -213,7 +213,7 @@ func (w *Writer) ExportRollup(ctx context.Context, t RollupTable, from, until in
 func (w *Writer) RollupProgress() (hourDone, dayDone int64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.hourDone, w.dayDone
+	return w.readableProgress()
 }
 
 // MaxID returns the id of the newest fact row written.
