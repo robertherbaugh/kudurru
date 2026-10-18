@@ -201,3 +201,82 @@ After a successful migration, take a new backup, record the final DNS
 advertisements and retire the old service only after its query log stays
 quiet through the observation period. Use the [backup instructions](/deploy/docker/#persistence-and-backups)
 for ongoing recovery.
+
+## Replace imported authoritative nameservers
+
+API imports preserve source authority by default. To advertise kudurru's DNS
+names immediately, select **Update nameservers during import** in the Tools
+migration wizard. **DNS names** starts with the hostname used to open the
+dashboard. It stays editable: a management proxy may resolve to a different
+address from the DNS service. Confirm the name resolves directly to kudurru
+on UDP and TCP port 53. Opening the dashboard through an IP selects
+**Serving IPs or VIPs** instead. **Use detected VIPs** fills the observed cluster
+VIP addresses when you have `edge.read`; you can also enter serving addresses.
+Discovery never replaces edits automatically.
+
+The address option generates a stable name in every imported zone for each
+address and creates matching A/AAAA records. For example, `192.0.2.53` becomes
+`ns-c0000235.home.arpa.` in `home.arpa`, with an A record pointing to the VIP.
+IPv6 addresses generate AAAA records. The first address supplies the SOA
+primary name. Review the generated names and addresses before applying.
+Loopback and link-local addresses are refused; choose addresses reachable by
+the clients that will query these zones.
+Conflicting existing records are refused. Later cutovers create address
+records before changing authority; failed writes remain in migration history.
+Zones with custom record-set selectors require explicit DNS names.
+
+The CLI can use the destination context with `--update-nameservers`, discover
+VIPs with `--use-vips` (requires `edge.read`), or accept repeatable
+`--nameserver-address 192.0.2.53 --nameserver-address 2001:db8::53`.
+Explicit DNS names use repeatable
+`--nameserver dns1.example.com --nameserver dns2.example.com`
+on `import technitium` or `import pihole`. The first name becomes SOA MNAME;
+all names replace the zone's apex NS set. Existing records, the SOA mailbox and
+timers, and zone access policies are preserved.
+
+Alternatively, keep the source names during parallel validation. **Tools →
+Migration history** records each API import, its source server origin, actor,
+time, per-object outcomes, warnings and subsequent cutovers. Source
+credentials are never saved. Open **Review run → Decommission source
+nameservers**, review the suggested hostname or choose serving IPs/VIPs, then
+review the changes and apply them when ready. Failed writes remain visible, and successful writes remain in place;
+preview again before retrying. Zones reimported by a newer run, recreated,
+or whose authority was edited are refused by older runs.
+Cutover checks journal capacity before writing DNS changes. If a run has no
+room for another complete attempt, start a new run with fewer zones.
+
+For imports made before migration history was available, choose **Track
+previous imports**, select the recognized API imports, and review them before
+tracking. This adds a run for their current state without reimporting records;
+the original import time and source URL are unknown. It only offers
+API-managed zones whose names match the API importer's stable naming format.
+File-managed and Kubernetes-managed objects must be edited at their source.
+
+CLI users can save and review a versioned cutover plan. A preview without
+nameserver options uses the destination context hostname or IP. Use explicit
+names, addresses, or `--use-vips` to override it:
+
+```sh
+kudurru import runs
+kudurru import runs <run-id>
+kudurru import decommission <run-id> \
+  --nameserver dns1.example.com --nameserver dns2.example.com \
+  -o json > cutover.json
+kudurru import decommission <run-id> --apply --plan-file cutover.json
+```
+
+To track older imports first:
+
+```sh
+kudurru import track-existing -o json > previous-imports.json
+# Review items; remove any zones you do not want to track.
+kudurru import track-existing --apply --plan-file previous-imports.json
+```
+
+Use names that resolve to kudurru's serving addresses, including IPv6 where
+applicable. Existing hostname address records, parent/registrar delegations,
+glue and delegations in other zones need separate updates. The flow changes
+the imported zones' apex NS and SOA primary and adds address records for
+generated names when serving IPs/VIPs are selected. It does not shut down the
+source, change DHCP DNS advertisements, or migrate DNSSEC signing. Wait for relevant TTLs and
+validate authoritative answers before retiring the old service.

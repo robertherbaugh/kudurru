@@ -665,6 +665,27 @@ Flags:
       --origin string     zone apex, to create the DNSZone when it does not exist yet
 ```
 
+### kudurru import decommission
+
+Replace apex NS and SOA primary names in zones tracked by this migration, creating A/AAAA records when serving IPs or VIPs are selected. Preview using the destination hostname or IP by default, explicit --nameserver or --nameserver-address values, or --use-vips. Save the JSON output, then apply that reviewed file with --apply --plan-file. The source server is not shut down; update parent delegations and glue separately.
+
+```text
+kudurru import decommission <run-id> [flags]
+```
+
+Flags:
+
+```text
+      --apply                        apply a saved and reviewed cutover preview
+      --nameserver strings           kudurru authoritative DNS names (repeatable; first
+                                     becomes SOA primary)
+      --nameserver-address strings   kudurru serving IPs or VIPs; generate in-zone NS names
+                                     and A/AAAA records (repeatable)
+      --plan-file string             JSON preview to apply (produce with -o json)
+      --use-vips                     use discovered kudurru VIPs for nameservers and address
+                                     records
+```
+
 ### kudurru import pihole
 
 Connect to the source API using its v6 application password. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to import directly into the selected kudurru server using its normal validation, ownership and license checks. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
@@ -687,11 +708,27 @@ Flags:
       --dry-run                           preview only (the default)
       --local-zone strings                local DNS suffixes to make authoritative (default:
                                           Pi-hole's local domain)
+      --nameserver strings                kudurru authoritative DNS names; replace imported NS
+                                          and SOA primary (repeatable; first is primary)
+      --nameserver-address strings        kudurru serving IPs or VIPs; generate in-zone NS
+                                          names and A/AAAA records (repeatable)
       --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
                                           self-signed certificate
       --source-key-file string            file containing the source v6 application password
                                           (otherwise $PIHOLE_APP_PASSWORD)
       --source-url string                 source console URL (including any reverse-proxy prefix)
+      --update-nameservers                use the destination context hostname or IP for
+                                          imported authority
+      --use-vips                          use discovered kudurru VIPs for nameservers and
+                                          address records
+```
+
+### kudurru import runs
+
+List migration runs or inspect a run and its cutovers.
+
+```text
+kudurru import runs [id]
 ```
 
 ### kudurru import technitium
@@ -714,11 +751,35 @@ Flags:
 ```text
       --apply                             apply the converted configuration directly to kudurru
       --dry-run                           preview only (the default)
+      --nameserver strings                kudurru authoritative DNS names; replace imported NS
+                                          and SOA primary (repeatable; first is primary)
+      --nameserver-address strings        kudurru serving IPs or VIPs; generate in-zone NS
+                                          names and A/AAAA records (repeatable)
       --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
                                           self-signed certificate
       --source-key-file string            file containing the source API token (otherwise
                                           $TECHNITIUM_API_TOKEN)
       --source-url string                 source console URL (including any reverse-proxy prefix)
+      --update-nameservers                use the destination context hostname or IP for
+                                          imported authority
+      --use-vips                          use discovered kudurru VIPs for nameservers and
+                                          address records
+```
+
+### kudurru import track-existing
+
+Review or track previous API imports without reimporting records.
+
+```text
+kudurru import track-existing [flags]
+```
+
+Flags:
+
+```text
+      --apply              track the reviewed previous imports
+      --plan-file string   JSON candidate list to track (produce with -o json; remove unwanted
+                           items before applying)
 ```
 
 ## kudurru lameduck

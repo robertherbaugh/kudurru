@@ -322,3 +322,36 @@ func next(t *testing.T, w store.Watcher) store.Event {
 	}
 	return store.Event{}
 }
+
+func TestEnvtestMigrationJournalSecret(t *testing.T) {
+	requireEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	s := newTestStore(t, Options{Scheme: internalScheme(t), InternalKinds: internalKindList()})
+	run := &internalkinds.MigrationRun{ObjectMeta: metav1.ObjectMeta{Name: "migration-secret-test"}, Spec: internalkinds.MigrationRunSpec{Source: "technitium", Actor: "admin", StartedAt: metav1.NewTime(time.Now()), Status: "completed", Items: []internalkinds.MigrationItem{{Kind: "DNSZone", Name: "home", Result: "updated"}}, Zones: []internalkinds.MigrationZone{{Name: "home", ZoneName: "home.test.", UID: "zone-uid", Nameservers: []string{"dns.test."}, Primary: "dns.test."}}}}
+	out, err := s.Apply(ctx, run, store.ApplyOptions{Manager: store.ManagerSystem})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = s.Delete(context.Background(), store.KeyOf(out), store.DeleteOptions{Manager: store.ManagerSystem})
+	})
+	var sec corev1.Secret
+	if err := shared.admin.Get(ctx, client.ObjectKey{Namespace: "kudurru-system", Name: InternalSecretName(internalkinds.KindMigrationRun, "", run.Name)}, &sec); err != nil {
+		t.Fatal(err)
+	}
+	if sec.Labels[InternalKindLabel] != internalkinds.KindMigrationRun || sec.Type != InternalSecretType {
+		t.Fatal("journal not stored using the internal Secret path")
+	}
+	var read internalkinds.MigrationRun
+	if err := s.Get(ctx, store.KeyOf(out), &read); err != nil {
+		t.Fatal(err)
+	}
+	if read.Spec.Zones[0].UID != "zone-uid" || read.ResourceVersion != out.GetResourceVersion() {
+		t.Fatal("journal identity was lost")
+	}
+	read.Spec.Status = "partial"
+	if _, err := s.Apply(ctx, &read, store.ApplyOptions{Manager: store.ManagerSystem, ExpectedResourceVersion: "stale"}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("stale journal revision was accepted: %v", err)
+	}
+}

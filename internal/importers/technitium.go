@@ -278,6 +278,5 @@ func (c *sourceClient) techPrimary(ctx context.Context, req MigrationRequest, p 
 		}
 	}
 	im.Spec.Policy = v1alpha1.ZonePolicy{QueryAccess: a, QueryACL: query.QueryACL, ZoneTransfer: "deny", Notify: "none"}
-	p.zone("technitium", req.Namespace, z.Name, im)
-	return nil
+	return p.zone("technitium", req.Namespace, z.Name, im)
 }

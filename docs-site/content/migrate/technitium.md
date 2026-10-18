@@ -19,6 +19,13 @@ preview and warnings, then choose **Import configuration**. The kudurru
 server reads the source API and writes supported configuration directly;
 no backup files or hand-written manifests are needed.
 
+Select **Update nameservers during import** to replace apex NS and SOA primary
+with kudurru's DNS hostnames, or keep source authority during validation and
+use **Migration history → Review run → Decommission source nameservers** later.
+CLI imports accept repeatable `--nameserver` flags. Previous API imports can
+be tracked without reimporting records. See the
+[authority cutover flow](/migrate/cutover/#replace-imported-authoritative-nameservers).
+
 The importer transfers allowed/blocked names (including subdomains), list
 subscriptions, supported default forwarders and unsigned primary zones
 through Technitium's standard zone export API. Primary zones in a cluster

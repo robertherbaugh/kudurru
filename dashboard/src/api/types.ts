@@ -1023,3 +1023,6 @@ export type DomainWriteResult = Omit<S['DomainWriteResult'], 'took_ms'> & { took
 export type MigrationRequest = S['MigrationRequest'];
 export type MigrationPlan = Omit<S['Plan'], 'objects'> & { objects: AnyObject[] };
 export type MigrationResult = S['MigrationResult'];
+export type MigrationRun = S['MigrationRun'];
+export type MigrationCutoverPlan = S['MigrationCutoverPlan'];
+export type MigrationAuthorityChange = S['MigrationAuthorityChange'];
