@@ -220,6 +220,7 @@ func newSettingsCmd(o *cliOpts) *cobra.Command {
 	}
 	get.Flags().StringVar(&scope, "scope", "", "only cluster or node keys")
 
+	var revision string
 	set := &cobra.Command{
 		Use:   "set key=value... [key-]",
 		Short: "Change settings (JSON merge patch); key- resets a key to its default",
@@ -228,7 +229,11 @@ PATCH /api/v1/settings and apply to every node; node-scope keys go to
 PATCH /api/v1/node/config on the node that serves the request. hostOnly keys
 (listener addresses, dataDir, ...) can never be set through the API: put them
 in kudurru.yaml or the KUDURRU_<SECTION>__<KEY> environment variable on the
-host. "key-" removes the override so the default applies again.`,
+host. "key-" removes the override so the default applies again.
+
+For safe concurrent upstream edits, run kudurru settings ownership to review
+the revision and pass it with --revision. Omitting --revision preserves legacy behavior:
+your upstream edit can overwrite values changed since you reviewed them.`,
 		Example: `  kudurru settings set cache.maxEntries=200000
   kudurru settings set blocking.refreshInterval=12h log.level=debug
   kudurru settings set upstreams.bootstrap=9.9.9.9,1.1.1.1
@@ -282,7 +287,7 @@ host. "key-" removes the override so the default applies again.`,
 				if !ok {
 					continue
 				}
-				res, err := patchSettings(cmd, c, settingsPath(s), p)
+				res, err := patchSettingsWithRevision(cmd, c, settingsPath(s), p, revision)
 				if err != nil {
 					if apiclient.IsKey(err, "host_only") {
 						return fmt.Errorf("%w: hostOnly keys are set in kudurru.yaml or KUDURRU_* environment variables on the host", err)
@@ -314,6 +319,7 @@ host. "key-" removes the override so the default applies again.`,
 			return nil
 		},
 	}
+	set.Flags().StringVar(&revision, "revision", "", "reviewed upstreams revision from settings ownership (If-Match)")
 	cmd.AddCommand(get, set)
 	addSettingsOwnershipCommands(cmd, o)
 	return cmd
@@ -327,12 +333,20 @@ type patchResult struct {
 }
 
 func patchSettings(cmd *cobra.Command, c *apiclient.Client, path string, patch map[string]any) (patchResult, error) {
+	return patchSettingsWithRevision(cmd, c, path, patch, "")
+}
+
+func patchSettingsWithRevision(cmd *cobra.Command, c *apiclient.Client, path string, patch map[string]any, revision string) (patchResult, error) {
 	var res patchResult
 	b, err := json.Marshal(patch)
 	if err != nil {
 		return res, err
 	}
-	resp, err := c.Raw(cmd.Context(), apiclient.Request{Method: http.MethodPatch, Path: path, Body: bytes.NewReader(b), ContentType: "application/merge-patch+json"})
+	header := http.Header{}
+	if _, upstreams := patch["upstreams"]; path == "/settings" && upstreams && revision != "" {
+		header.Set("If-Match", revision)
+	}
+	resp, err := c.Raw(cmd.Context(), apiclient.Request{Method: http.MethodPatch, Path: path, Body: bytes.NewReader(b), ContentType: "application/merge-patch+json", Header: header})
 	if err != nil {
 		return res, err
 	}

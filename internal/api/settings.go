@@ -133,7 +133,7 @@ type SettingsBody struct {
 type settingsOutput struct{ Body *SettingsBody }
 
 type patchSettingsInput struct {
-	IfMatch string `header:"If-Match"`
+	IfMatch string `header:"If-Match" doc:"Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams."`
 	Body    map[string]any
 }
 

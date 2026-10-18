@@ -5313,6 +5313,7 @@ type PatchSettingsJSONBody map[string]interface{}
 
 // PatchSettingsParams defines parameters for PatchSettings.
 type PatchSettingsParams struct {
+	// IfMatch Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams.
 	IfMatch *string `json:"If-Match,omitempty"`
 }
 

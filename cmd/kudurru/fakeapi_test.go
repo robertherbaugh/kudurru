@@ -511,6 +511,12 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 		}
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if _, upstreams := body["upstreams"]; r.URL.Path == "/api/v1/settings" && upstreams {
+			if revision := r.Header.Get("If-Match"); revision != "" && revision != "reviewed" {
+				f.writeErr(w, 412, "precondition_failed", "settings changed", "")
+				return
+			}
+		}
 		var changed, restart []string
 		var walk func(prefix string, m map[string]any)
 		walk = func(prefix string, m map[string]any) {

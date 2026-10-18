@@ -438,8 +438,13 @@ authoritative. Other sections continue following the settings ConfigMap.
 Ownership and values share a Kubernetes `resourceVersion`; concurrent
 adoptions, releases and edits use compare-and-swap. The API exposes section
 owners and reviewed revisions in the `sections` field of `GET /settings`, accepts
-`If-Match` on settings patches, and authorizes transitions with
-`settings.write`. Writes and transitions are audited. Every replica uses the
+`If-Match` on upstream settings patches, and authorizes transitions with
+`settings.write`. The header is optional for backward compatibility, but
+safe concurrent upstream edits require a reviewed revision; omitting it can
+overwrite newer client edits. Other sections do not use the upstream revision.
+For CLI edits, review `kudurru settings ownership`, then pass the token to
+`kudurru settings set upstreams.bootstrap=9.9.9.9:53 --revision TOKEN`.
+Writes and transitions are audited. Every replica uses the
 same reload subscriptions, including upstream set swaps and cache flushes.
 Invalid or unavailable sources leave the running configuration intact.
 A node-local `ui-settings-<identity>.json` cache retains the last confirmed

@@ -45,3 +45,21 @@ func TestSettingsOwnershipCommands(t *testing.T) {
 		t.Fatal("proposed section was not sent")
 	}
 }
+
+func TestSettingsSetReviewedRevision(t *testing.T) {
+	h := loggedIn(t)
+	h.mustRun("settings", "set", "upstreams.bootstrap=192.0.2.1:53", "log.level=debug", "--revision", "reviewed")
+	if got := h.api.lastHeader("PATCH", "/api/v1/settings").Get("If-Match"); got != "reviewed" {
+		t.Fatalf("upstream revision header: %q", got)
+	}
+	if got := h.api.lastHeader("PATCH", "/api/v1/node/config").Get("If-Match"); got != "" {
+		t.Fatalf("upstream revision sent to node configuration: %q", got)
+	}
+	if _, _, err := h.run("settings", "set", "upstreams.bootstrap=192.0.2.2:53", "--revision", "stale"); err == nil || !strings.Contains(err.Error(), "settings changed") {
+		t.Fatalf("stale upstream revision: %v", err)
+	}
+	h.mustRun("settings", "set", "cache.maxEntries=42", "--revision", "stale")
+	if got := h.api.lastHeader("PATCH", "/api/v1/settings").Get("If-Match"); got != "" {
+		t.Fatalf("upstream revision sent to unrelated cache edit: %q", got)
+	}
+}
