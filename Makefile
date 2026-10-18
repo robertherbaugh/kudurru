@@ -638,7 +638,7 @@ $(TRIVY_DIR)/trivy:
 	@platform='$(HUGO_OS)_$(HUGO_ARCH)'; asset='$(TRIVY_ASSET_$(HUGO_OS)_$(HUGO_ARCH))'; sha='$(TRIVY_SHA256_$(HUGO_OS)_$(HUGO_ARCH))'; \
 	if [ -z "$$sha" ]; then echo "error: no pinned Trivy checksum for $$platform; install Trivy $(TRIVY_VERSION) and pass TRIVY=/path/to/trivy"; exit 1; fi; \
 	rm -rf $(TRIVY_DIR).dl && mkdir -p $(TRIVY_DIR).dl && \
-	curl -fsSL -o $(TRIVY_DIR).dl/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v$(TRIVY_VERSION)/trivy_$(TRIVY_VERSION)_$$asset.tar.gz && \
+	curl -fsSL --retry 3 --retry-all-errors -o $(TRIVY_DIR).dl/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v$(TRIVY_VERSION)/trivy_$(TRIVY_VERSION)_$$asset.tar.gz && \
 	echo "$$sha  $(TRIVY_DIR).dl/trivy.tar.gz" | sha256sum -c - && \
 	mkdir -p $(TRIVY_DIR) && tar -xzf $(TRIVY_DIR).dl/trivy.tar.gz -C $(TRIVY_DIR) trivy && \
 	rm -rf $(TRIVY_DIR).dl
