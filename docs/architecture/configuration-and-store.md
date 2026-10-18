@@ -95,9 +95,12 @@ remains reachable through Tools' migration history after navigation or reload.
 
 Background workers retain the caller's identity and authorization, copy mutable
 request state and run independently of browser disconnects. At most two imports
-run on one API server; overload is refused before journal creation. Each job is
-bounded to ten minutes. Server shutdown cancels and joins workers before the store
-closes; final journal updates get a separate ten-second context. Reviewed plans
+run per API server process; overload is refused before journal creation. Replicas
+sharing a store each admit their own two workers. There is no cross-run lock on
+zones: overlapping imports still use normal ownership and optimistic version
+checks, so avoid starting simultaneous imports for the same destination objects.
+Each job is bounded to ten minutes. Server shutdown cancels and joins workers
+before the store closes; final journal updates get a separate ten-second context. Reviewed plans
 live only in worker memory: jobs are not replayed or resumed after restart. Once
 a running job's recorded deadline plus fifteen seconds passes, reads show it as
 `interrupted` and unresolved items as `unconfirmed`. Check the destination before

@@ -10,7 +10,10 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/importers"
 )
 
-const migrationTimeout = 10 * time.Minute
+const (
+	migrationTimeout    = 10 * time.Minute
+	maxMigrationWorkers = 2
+)
 
 // The store owns progress; only the reviewed, credential-free payload lives in
 // memory. Bound concurrency and stop workers before the API's store is closed.
@@ -45,7 +48,7 @@ func (s *Server) startMigration(ctx context.Context, plan *importers.Plan) (*Mig
 	}
 	s.imports.mu.Lock()
 	defer s.imports.mu.Unlock()
-	if s.imports.closed || len(s.imports.cancels) >= 2 {
+	if s.imports.closed || len(s.imports.cancels) >= maxMigrationWorkers {
 		return nil, errUnavailable("Import workers are busy or shutting down; review migration history before starting another import")
 	}
 	run, err := s.newMigrationRun(ctx, plan, "")
