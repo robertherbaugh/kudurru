@@ -4756,6 +4756,7 @@ type ZoneDeleteResult struct {
 // ZoneDetail defines model for ZoneDetail.
 type ZoneDetail struct {
 	DeleteRefusal   *ZoneDetailDeleteRefusal `json:"deleteRefusal,omitempty"`
+	Fallback        *ZoneFallbackSpec        `json:"fallback,omitempty"`
 	ManagedBy       *string                  `json:"managedBy,omitempty"`
 	Message         *string                  `json:"message,omitempty"`
 	Name            string                   `json:"name"`
@@ -4777,6 +4778,11 @@ type ZoneDetail struct {
 // ZoneDetailDeleteRefusal defines model for ZoneDetail.DeleteRefusal.
 type ZoneDetailDeleteRefusal string
 
+// ZoneFallbackSpec defines model for ZoneFallbackSpec.
+type ZoneFallbackSpec struct {
+	UpstreamGroup *string `json:"upstreamGroup,omitempty"`
+}
+
 // ZoneRecord defines model for ZoneRecord.
 type ZoneRecord struct {
 	DnsName       string             `json:"dnsName"`
@@ -4793,6 +4799,7 @@ type ZoneRecord struct {
 // ZoneSummary defines model for ZoneSummary.
 type ZoneSummary struct {
 	DeleteRefusal   *ZoneSummaryDeleteRefusal `json:"deleteRefusal,omitempty"`
+	Fallback        *ZoneFallbackSpec         `json:"fallback,omitempty"`
 	ManagedBy       *string                   `json:"managedBy,omitempty"`
 	Message         *string                   `json:"message,omitempty"`
 	Name            string                    `json:"name"`

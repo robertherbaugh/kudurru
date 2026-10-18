@@ -8260,6 +8260,9 @@
             ],
             "type": "string"
           },
+          "fallback": {
+            "$ref": "#/components/schemas/ZoneFallbackSpec"
+          },
           "managedBy": {
             "type": "string"
           },
@@ -8323,6 +8326,15 @@
         ],
         "type": "object"
       },
+      "ZoneFallbackSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "upstreamGroup": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ZoneRecord": {
         "additionalProperties": false,
         "properties": {
@@ -8379,6 +8391,9 @@
               "managed_by"
             ],
             "type": "string"
+          },
+          "fallback": {
+            "$ref": "#/components/schemas/ZoneFallbackSpec"
           },
           "managedBy": {
             "type": "string"

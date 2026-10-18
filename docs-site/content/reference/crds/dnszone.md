@@ -29,6 +29,8 @@ Columns of `kubectl get dnszones`:
 
 DNSZoneSpec defines the desired state of a zone.
 
+Validation: fallback is only supported for primary zones (`!has(self.fallback) || self.type == 'primary'`)
+
 | Field | Type | Description |
 |---|---|---|
 | `spec.defaultTTL` | `integer` | Default: `300`<br>Format: `int32` |
@@ -43,6 +45,8 @@ DNSZoneSpec defines the desired state of a zone.
 | `spec.external.gateway` | `boolean` |  |
 | `spec.external.ingress` | `boolean` |  |
 | `spec.external.loadBalancerServices` | `boolean` |  |
+| `spec.fallback` | `object` | Fallback enables public resolution for names not defined locally. Omit it to remain authoritative for the entire zone. Generated apex SOA/NS records do not suppress fallback for other types at an unconfigured apex. Zones with fallback do not support zone transfers or NOTIFY. |
+| `spec.fallback.upstreamGroup` | `string` | UpstreamGroup selects a forwarding or recursive group. Empty uses normal resolver routing (client policy, conditional forwarding, then default). |
 | `spec.forward` | `object` | ForwardSpec configures a forward zone. |
 | `spec.forward.dnssecValidation` | `boolean` |  |
 | `spec.forward.upstreamGroup` | `string` | UpstreamGroup names a group in the Kudurru settings.<br>Default: `default` |

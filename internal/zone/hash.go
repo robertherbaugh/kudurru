@@ -35,6 +35,11 @@ func contentHash(z *Zone) string {
 		}
 		return true
 	})
+	// The edge flushes its packet cache on serial changes. A change in
+	// fallback routing changes answers even when the local RRsets do not.
+	if z.fallback {
+		h.Write([]byte("\x00fallback\x00" + z.fallbackGroup))
+	}
 	return HashPrefix + hex.EncodeToString(h.Sum(nil))
 }
 

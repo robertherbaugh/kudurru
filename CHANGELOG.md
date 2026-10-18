@@ -12,6 +12,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   shared persistence, revision-checked adoption, YAML previews, a checked
   handoff back to GitOps, dashboard controls, and CLI commands. Existing
   Kubernetes installs stay GitOps-managed; Docker settings remain editable.
+- Primary zones can opt into missing-name fallback to a forwarding or native
+  recursive upstream group. Local names keep their own answers, including
+  missing-type responses; dashboard zone creation and settings expose the
+  option. Existing primary zones remain authoritative by default (#95).
 
 ### Changed
 

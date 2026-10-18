@@ -11,14 +11,15 @@
 //     anything that does not parse or conflicts (CNAME exclusivity,
 //     duplicates across objects) is reported as a field.Error whose path
 //     points into the offending object, ready for a condition.
-//   - Builder.Build synthesises the SOA (serial from status.serial, D12)
-//     and the apex NS RRset from the DNSZone spec, normalises every RRset
+//   - Builder.Build synthesizes the SOA (serial from status.serial, D12)
+//     and the apex NS RRset from the DNSZone spec, normalizes every RRset
 //     and computes the canonical ContentHash. The leader compares it with
 //     status.contentHash and calls StampSerial (max(prev+1, unix_now)).
 //   - Zone.Lookup answers one question from the tree: Success, NoData,
-//     NXDomain, Delegation, or CNAME when a CNAME/DNAME chain leaves the
-//     zone, with RFC 4592 wildcards, RFC 6672 DNAME and a shared chain
-//     budget of MaxChain hops.
+//     NXDomain, Delegation, CNAME when an alias leaves the zone, or Fallback
+//     for a name absent from an overlay. LookupStep stops at each alias so
+//     overlay routing can honor more-specific zones. RFC 4592 wildcards,
+//     RFC 6672 DNAME and a shared MaxChain hop budget apply.
 //   - Snapshot is an immutable set of zones with longest-suffix routing
 //     (Match; the root zone "." is allowed). The zone cache publishes one
 //     through a Holder (an atomic.Pointer) and the authoritative stage

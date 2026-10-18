@@ -56,7 +56,7 @@ flowchart TD
 
 The precedence, from strongest to weakest:
 
-1. A forward zone's own group, when it is not `default`.
+1. A forward zone's or primary zone fallback's own group, when it is not `default`.
 2. The client's `Policy.upstreamGroup` (the highest-priority Policy that sets one).
 3. The longest suffix in `upstreams.conditional`.
 4. The `default` group, which must exist.
