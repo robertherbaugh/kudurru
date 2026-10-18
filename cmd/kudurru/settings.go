@@ -287,7 +287,7 @@ your upstream edit can overwrite values changed since you reviewed them.`,
 				if !ok {
 					continue
 				}
-				res, err := patchSettingsWithRevision(cmd, c, settingsPath(s), p, revision)
+				res, err := patchSettings(cmd, c, settingsPath(s), p, revision)
 				if err != nil {
 					if apiclient.IsKey(err, "host_only") {
 						return fmt.Errorf("%w: hostOnly keys are set in kudurru.yaml or KUDURRU_* environment variables on the host", err)
@@ -332,11 +332,7 @@ type patchResult struct {
 	Persisted       *bool    `json:"persisted"`
 }
 
-func patchSettings(cmd *cobra.Command, c *apiclient.Client, path string, patch map[string]any) (patchResult, error) {
-	return patchSettingsWithRevision(cmd, c, path, patch, "")
-}
-
-func patchSettingsWithRevision(cmd *cobra.Command, c *apiclient.Client, path string, patch map[string]any, revision string) (patchResult, error) {
+func patchSettings(cmd *cobra.Command, c *apiclient.Client, path string, patch map[string]any, revision string) (patchResult, error) {
 	var res patchResult
 	b, err := json.Marshal(patch)
 	if err != nil {
