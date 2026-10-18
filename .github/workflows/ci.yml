@@ -375,3 +375,20 @@ jobs:
         run: |
           go install github.com/google/go-licenses@latest
           go-licenses check ./... --disallowed_types=forbidden,restricted
+  # The one check to watch and to require: it passes when every job above
+  # passed or was skipped (docs-only changes) and fails otherwise. It runs
+  # even when a job fails, rather than being skipped, because a skipped job
+  # satisfies a required status check; the same goes for a canceled run.
+  # Add new jobs to needs.
+  ci-ok:
+    needs: [changes, go, postgres, dashboard, dashboard-e2e, e2e, dhcp-acceptance, fuzz-targets, fuzz, lint, helm, licenses]
+    if: always()
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS"
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$NEEDS" >/dev/null
