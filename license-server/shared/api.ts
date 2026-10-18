@@ -1110,8 +1110,15 @@ export type AuditAction =
   | 'blocklist.added'
   | 'blocklist.removed';
 
-/** The kind of record an event is about. Member events target their customer (details.email names the member). */
-export type AuditTargetType = 'user' | 'customer' | 'license' | 'request' | 'public_request' | 'business_request' | 'order_form' | 'blocked_email';
+/**
+ * Every kind of record an event is about: the one list the audit API
+ * validates its targetType filter against and the Audit page offers.
+ * Member events target their customer (details.email names the member).
+ */
+export const AUDIT_TARGET_TYPES = ['user', 'customer', 'license', 'request', 'public_request', 'business_request', 'order_form', 'blocked_email'] as const;
+
+/** The kind of record an event is about. */
+export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 /** One audit event. Details never contain a key token. */
 export interface AuditEvent {
