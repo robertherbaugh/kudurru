@@ -16,7 +16,7 @@ set -euo pipefail
 image=${1:?usage: hack/hostnetwork-check.sh <hostnetwork image> <plain image>}
 plain=${2:?usage: hack/hostnetwork-check.sh <hostnetwork image> <plain image>}
 mode=${HOSTNETWORK_CHECK_NETWORK:-netns}
-probe=${HOSTNETWORK_CHECK_PROBE_IMAGE:-alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0}
+probe=${HOSTNETWORK_CHECK_PROBE_IMAGE:-alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6}
 docker=${DOCKER:-docker}
 
 dir=$(mktemp -d)

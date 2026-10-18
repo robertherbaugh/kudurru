@@ -29,7 +29,7 @@ FROM ${KUDURRU_IMAGE} AS kudurru
 
 # setcap only writes the security.capability extended attribute, so this
 # stage runs on the build platform for every target platform.
-FROM --platform=$BUILDPLATFORM alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0 AS caps
+FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS caps
 ARG DHCP_CAPABILITIES=false
 RUN apk add --no-cache libcap-utils
 COPY --from=kudurru /ko-app/kudurru /out/kudurru
