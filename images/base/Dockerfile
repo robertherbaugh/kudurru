@@ -21,7 +21,7 @@
 ARG BASE_IMAGE=gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 
 # Only directories: the stage runs on the build platform for every target.
-FROM --platform=$BUILDPLATFORM alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0 AS dirs
+FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS dirs
 RUN mkdir -p /out/var/lib/kudurru /out/run/kudurru \
  && chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru \
  && chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru
