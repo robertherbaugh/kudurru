@@ -357,7 +357,7 @@ spec:
                   optional: true
             - name: KUDURRU_ENCRYPTION_KEY_FILE
               value: /etc/kudurru/secrets/encryption/key
-          image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0-rc.1
+          image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.3-k0.1.0-rc.1
           imagePullPolicy: IfNotPresent
           livenessProbe:
             failureThreshold: 3

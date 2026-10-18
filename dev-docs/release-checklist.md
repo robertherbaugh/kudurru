@@ -265,15 +265,16 @@ On the owner's hardware:
       --app-version <version>`, pushes them to
       `oci://ghcr.io/robertherbaugh/charts` and cosign-signs each chart digest.
 - [ ] The `supervisor-images` job (after `release`) builds and pushes
-      `ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k<version>` and
+      `ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.3-k<version>` and
       `ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k<version>` from
       `images/dnsdist` and `images/keepalived` with
       `KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<version>` for
       linux/amd64 and linux/arm64, each natively on an x64 or arm64 runner
       and pushed by digest; `supervisor-manifests` joins the two platforms
       into the tagged index and cosign-signs its digest (the program
-      versions come from the Dockerfile ARGs). Check all four builds and
-      both manifest jobs succeeded; the image READMEs carry the GPL notices
+      versions come from the dnsdist FROM line and the keepalived ARG;
+      `TestSupervisorVersions` checks the chart's defaults against them).
+      Check all four builds and both manifest jobs succeeded; the image READMEs carry the GPL notices
       and source offer.
 - [ ] The `hostnetwork-image` job (after `release`) builds and pushes
       `ghcr.io/robertherbaugh/kudurru:<version>-hostnetwork` (and

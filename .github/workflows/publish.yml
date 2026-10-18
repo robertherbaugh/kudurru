@@ -434,7 +434,7 @@ jobs:
         run: |
           version="${TAG#v}"
           case "${IMAGE}" in
-            dnsdist)    program=$(sed -n 's/^ARG DNSDIST_IMAGE=.*:\(.*\)$/\1/p' images/dnsdist/Dockerfile) ;;
+            dnsdist)    program=$(sed -n 's/^FROM powerdns\/dnsdist-[0-9]*:\([^@]*\)@.*$/\1/p' images/dnsdist/Dockerfile) ;;
             keepalived) program=$(sed -n 's/^ARG KEEPALIVED_VERSION=\(.*\)$/\1/p' images/keepalived/Dockerfile) ;;
           esac
           test -n "${program}"
