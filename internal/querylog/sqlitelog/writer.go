@@ -769,6 +769,21 @@ func (w *Writer) Maintain(ctx context.Context) error {
 	return nil
 }
 
+// readableProgress returns the hour and day before which the _1h and _1d
+// rollups hold every event: hourDone and dayDone, held back to the first
+// dirty hour. A late event for a derived hour (or, on a new database, for
+// the hour before it was opened) leaves that hour's _1h and _1d rows stale
+// until the next derive, so reads take it from the finer tiers meanwhile.
+// Caller holds mu.
+func (w *Writer) readableProgress() (hourDone, dayDone int64) {
+	hourDone, dayDone = w.hourDone, w.dayDone
+	for h := range w.acc.dirty {
+		hourDone = min(hourDone, h)
+		dayDone = min(dayDone, floorTo(h, 86400))
+	}
+	return hourDone, dayDone
+}
+
 // rollup flushes closed minutes and derives due or dirty hours and days.
 func (w *Writer) rollup(ctx context.Context, now time.Time) error {
 	w.mu.Lock()

@@ -22,6 +22,11 @@ import (
 
 const migrationRunAnnotation = "kudurru.io/migration-run"
 
+// Journals are Kubernetes Secret data on the kube driver, whose decoded data
+// limit is smaller than the general store/etcd object cap. Use it on all drivers
+// so previews and complete outcomes fit either deployment.
+const migrationJournalMaxBytes = 1 << 20
+
 // MigrationRun is the administrator-facing view of the internal journal.
 type MigrationRun struct {
 	ID       string                    `json:"id"`
@@ -30,7 +35,22 @@ type MigrationRun struct {
 }
 
 func migrationView(r *internal.MigrationRun) MigrationRun {
-	return MigrationRun{ID: r.Name, Revision: r.ResourceVersion, Data: r.Spec}
+	return MigrationRun{ID: r.Name, Revision: r.ResourceVersion, Data: r.DeepCopy().Spec}
+}
+
+func (s *Server) migrationRunView(r *internal.MigrationRun) MigrationRun {
+	view := migrationView(r)
+	if r.Spec.Status == "running" && r.Spec.Deadline != nil && s.opts.Now().After(r.Spec.Deadline.Add(15*time.Second)) {
+		view.Data.Status = "interrupted"
+		for i := range view.Data.Items {
+			if view.Data.Items[i].Result == "pending" || view.Data.Items[i].Result == "running" {
+				view.Data.Items[i].Result = "unconfirmed"
+				view.Data.Items[i].Hint = "The worker stopped reporting. Check the destination before retrying."
+			}
+		}
+		view.Data.Failure = "The import worker stopped reporting before completion. Successful writes remain; pending results are unconfirmed. Review the destination before starting another import."
+	}
+	return view
 }
 
 type migrationRunInput struct {
@@ -93,7 +113,7 @@ func (s *Server) registerMigrationRuns() {
 		}
 		items := make([]MigrationRun, 0, len(list.Items))
 		for _, obj := range list.Items {
-			items = append(items, migrationView(obj.(*internal.MigrationRun)))
+			items = append(items, s.migrationRunView(obj.(*internal.MigrationRun)))
 		}
 		return &migrationRunsOutput{Body: newList(items, list.Continue)}, nil
 	})
@@ -102,7 +122,7 @@ func (s *Server) registerMigrationRuns() {
 		if err != nil {
 			return nil, err
 		}
-		return &migrationRunOutput{Body: migrationView(run)}, nil
+		return &migrationRunOutput{Body: s.migrationRunView(run)}, nil
 	})
 	register(s, operation(http.MethodPost, "/imports/runs/{id}/decommission/preview", "previewMigrationDecommission", "Preview replacing an imported zone's NS and SOA primary", "imports"), perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *migrationCutoverPreviewInput) (*migrationCutoverOutput, error) {
 		run, err := s.getMigrationRun(ctx, in.ID)
@@ -136,7 +156,7 @@ func (s *Server) saveMigrationRun(ctx context.Context, r *internal.MigrationRun)
 	if err != nil {
 		return err
 	}
-	if len(b) > store.MaxObjectBytes {
+	if len(b) > migrationJournalMaxBytes {
 		return store.ErrTooLarge
 	}
 	out, err := s.opts.Store.Apply(ctx, r, store.ApplyOptions{Manager: store.ManagerSystem, ExpectedResourceVersion: r.ResourceVersion})
@@ -147,6 +167,10 @@ func (s *Server) saveMigrationRun(ctx context.Context, r *internal.MigrationRun)
 	return nil
 }
 func (s *Server) newMigrationRun(ctx context.Context, plan *importers.Plan, source string) (*internal.MigrationRun, error) {
+	selected, settings, err := plan.Selected()
+	if err != nil {
+		return nil, errInvalid("%s", err)
+	}
 	// Reverse timestamp order makes paginated store listings newest first.
 	if source == "" {
 		source = "manual"
@@ -154,6 +178,8 @@ func (s *Server) newMigrationRun(ctx context.Context, plan *importers.Plan, sour
 	r := &internal.MigrationRun{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("migration-%016x-%s", 1<<63-1-s.opts.Now().UnixMilli(), uuid.NewString())}, Spec: internal.MigrationRunSpec{
 		Source: source, Actor: s.actor(ctx), StartedAt: metav1.NewTime(s.opts.Now()), Status: "running", Items: []internal.MigrationItem{}, Zones: []internal.MigrationZone{}, Warnings: append([]string{}, plan.Warnings...), Cutovers: []internal.MigrationCutover{},
 	}}
+	deadline := metav1.NewTime(s.opts.Now().Add(migrationTimeout))
+	r.Spec.Deadline = &deadline
 	if plan.Source != nil {
 		if plan.Source.Type != "pihole" && plan.Source.Type != "technitium" {
 			return nil, errInvalid("unknown migration source")
@@ -179,8 +205,12 @@ func (s *Server) newMigrationRun(ctx context.Context, plan *importers.Plan, sour
 			return nil, errInvalid("duplicate migration object %s", key)
 		}
 		seen[key] = true
-		r.Spec.Items = append(r.Spec.Items, internal.MigrationItem{Kind: kind, Namespace: ns, Name: name, Result: "pending"})
-		if kind != "DNSZone" {
+		result := "pending"
+		if !selected[importers.ObjectID(doc)] {
+			result = "skipped"
+		}
+		r.Spec.Items = append(r.Spec.Items, internal.MigrationItem{Kind: kind, Namespace: ns, Name: name, Result: result})
+		if kind != "DNSZone" || result == "skipped" {
 			continue
 		}
 		var z v1alpha1.DNSZone
@@ -201,24 +231,86 @@ func (s *Server) newMigrationRun(ctx context.Context, plan *importers.Plan, sour
 		}
 		r.Spec.Zones = append(r.Spec.Zones, tracked)
 	}
+	keys := make([]string, 0, len(plan.Settings))
+	for key := range plan.Settings {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		result := "pending"
+		if _, ok := settings[key]; !ok {
+			result = "skipped"
+		}
+		r.Spec.Items = append(r.Spec.Items, internal.MigrationItem{Kind: "Settings", Name: key, Result: result})
+	}
+	if err := migrationImportCapacity(r); err != nil {
+		return nil, err
+	}
 	if err := s.saveMigrationRun(ctx, r); err != nil {
+		s.log.Error("migration progress could not be saved", "run", r.Name, "error", err)
 		return nil, storeError(err)
 	}
 	return r, nil
 }
 func migrationItem(r ApplyResult) internal.MigrationItem {
-	return internal.MigrationItem{Kind: r.Kind, Namespace: r.Namespace, Name: r.Name, Result: r.Result, Error: truncateMigrationError(r.Error)}
+	return internal.MigrationItem{Kind: r.Kind, Namespace: r.Namespace, Name: r.Name, Result: r.Result, Error: truncateMigrationError(r.Error), ErrorKey: r.ErrorKey, Hint: truncateMigrationError(r.Hint), ResourceVersion: r.ResourceVersion}
 }
 func truncateMigrationError(s string) string {
-	if len(s) > 1024 {
-		return s[:1024] + "…"
+	if len(s) <= 1024 {
+		if b, _ := json.Marshal(s); len(b) <= 1024 {
+			return s
+		}
 	}
-	return s
+	// Bound encoded bytes too, preserving valid Unicode and room for the suffix.
+	runes := []rune(s[:min(len(s), 1024)])
+	lo, hi := 0, len(runes)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		b, _ := json.Marshal(string(runes[:mid]) + "…")
+		if len(b) <= 1024 {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return string(runes[:lo]) + "…"
+}
+
+func reserveMigrationItem(item *internal.MigrationItem) {
+	item.Result = "not_applied"
+	item.Error = strings.Repeat("x", 1024)
+	item.Hint = strings.Repeat("x", 1024)
+	item.ErrorKey = strings.Repeat("x", 64)
+	item.ResourceVersion = strings.Repeat("x", 64)
+}
+
+// Every selected item must fit even when every write returns an error.
+func migrationImportCapacity(r *internal.MigrationRun) error {
+	projected := r.DeepCopy()
+	for i := range projected.Spec.Items {
+		if projected.Spec.Items[i].Result != "skipped" {
+			reserveMigrationItem(&projected.Spec.Items[i])
+		}
+	}
+	for i := range projected.Spec.Zones {
+		if projected.Spec.Zones[i].UID == "" {
+			projected.Spec.Zones[i].UID = strings.Repeat("x", 64)
+		}
+	}
+	b, err := json.Marshal(projected)
+	if err != nil {
+		return err
+	}
+	if len(b)+8192 > migrationJournalMaxBytes {
+		return errInvalid("This selection cannot fit a complete migration report; select fewer objects per import")
+	}
+	return nil
 }
 
 // persistMigrationProgress stops further writes if the journal cannot keep up.
 func (s *Server) persistMigrationProgress(ctx context.Context, r *internal.MigrationRun, result *MigrationResult) bool {
 	if err := s.saveMigrationRun(ctx, r); err != nil {
+		s.log.Error("migration progress could not be saved", "run", r.Name, "error", err)
 		result.JournalError = "Migration journal could not be saved; further writes stopped. Read run " + r.Name + " before retrying."
 		return false
 	}
@@ -232,12 +324,18 @@ func (s *Server) finishMigrationRun(ctx context.Context, r *internal.MigrationRu
 	r.Spec.FinishedAt = &now
 	r.Spec.Status = "completed"
 	r.Spec.SettingsError = truncateMigrationError(result.SettingsError)
-	for _, item := range r.Spec.Items {
-		if item.Result == ResultError || item.Result == "pending" {
+	r.Spec.JournalError = result.JournalError
+	for i := range r.Spec.Items {
+		item := &r.Spec.Items[i]
+		if item.Result == "pending" || item.Result == "running" {
+			item.Result = "not_applied"
+			item.Hint = "The import stopped before this item was attempted."
+		}
+		if item.Result == ResultError || item.Result == "pending" || item.Result == "running" || item.Result == "not_applied" || item.Result == "unconfirmed" {
 			r.Spec.Status = "partial"
 		}
 	}
-	if result.SettingsError != "" || result.JournalError != "" {
+	if result.SettingsError != "" || result.JournalError != "" || r.Spec.Failure != "" {
 		r.Spec.Status = "partial"
 	}
 	s.persistMigrationProgress(finishCtx, r, result)
@@ -291,7 +389,7 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 	if (len(ns) == 0) == (len(ips) == 0) {
 		return nil, errInvalid("Choose kudurru DNS names or serving IP addresses")
 	}
-	if r.Spec.Status == "running" && s.opts.Now().Sub(r.Spec.StartedAt.Time) < 10*time.Minute {
+	if r.Spec.Status == "running" && (r.Spec.Deadline != nil && !s.opts.Now().After(r.Spec.Deadline.Add(15*time.Second)) || r.Spec.Deadline == nil && s.opts.Now().Sub(r.Spec.StartedAt.Time) < 10*time.Minute) {
 		return nil, errConflict("Migration is still running", "Wait for the import to finish")
 	}
 	if len(r.Spec.Cutovers) > 0 {
@@ -472,16 +570,19 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 }
 
 // Reserve enough room for every outcome before claiming an attempt or writing
-// DNS data. Errors can expand sixfold when JSON escapes control characters.
+// DNS data. Error details are bounded by their encoded JSON size.
 func migrationCutoverCapacity(r *internal.MigrationRun, p *MigrationCutoverPlan) error {
 	projected := r.DeepCopy()
 	last := &projected.Spec.Cutovers[len(projected.Spec.Cutovers)-1]
-	worstError := strings.Repeat("\x00", 1024) + "…"
 	for i, change := range p.Zones {
-		last.Items = append(last.Items, internal.MigrationItem{Kind: "DNSZone", Namespace: change.Namespace, Name: change.Name, Result: ResultUnchanged, Error: worstError})
+		item := internal.MigrationItem{Kind: "DNSZone", Namespace: change.Namespace, Name: change.Name}
+		reserveMigrationItem(&item)
+		last.Items = append(last.Items, item)
 		if change.AddressRecordSet != nil {
 			rs := change.AddressRecordSet
-			last.Items = append(last.Items, internal.MigrationItem{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name, Result: ResultUnchanged, Error: worstError})
+			item := internal.MigrationItem{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name}
+			reserveMigrationItem(&item)
+			last.Items = append(last.Items, item)
 		}
 		// Include both old and target authority to bound every partial outcome.
 		tracked := &projected.Spec.Zones[i]
@@ -498,7 +599,7 @@ func migrationCutoverCapacity(r *internal.MigrationRun, p *MigrationCutoverPlan)
 		return err
 	}
 	// Allow for finish timestamps and store-assigned metadata growth as well.
-	if len(b)+4096 > store.MaxObjectBytes {
+	if len(b)+4096 > migrationJournalMaxBytes {
 		return errConflict("Migration journal has insufficient space for another complete cutover attempt", "Start a new migration run with fewer zones before retrying; no DNS changes were made")
 	}
 	return nil

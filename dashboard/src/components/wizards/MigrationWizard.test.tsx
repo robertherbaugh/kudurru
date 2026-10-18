@@ -5,9 +5,17 @@ import { describe, expect, it } from 'vitest';
 import { server } from '../../test/setup';
 import { getSelector, pick } from '../../test/controls';
 import { renderWithApp } from '../../test/utils';
+import MigrationRunPage from '../../pages/MigrationRunPage';
+import { useLocation } from '../../lib/router';
 import { MigrationImport } from './MigrationWizard';
 
-describe('API migration wizard', () => {
+function TestFlow() {
+  const location = useLocation();
+  return location.path.startsWith('/tools/migrations/') ? <MigrationRunPage params={{ id: 'migration-test' }} /> : <MigrationImport />;
+}
+const startedRun = { id: 'migration-test', revision: '1', data: { source: 'technitium', actor: 'admin', startedAt: '2026-10-18T00:00:00Z', status: 'running', items: [{ kind: 'Policy', namespace: 'default', name: 'default', result: 'pending' }], zones: [], warnings: [], cutovers: [] } };
+
+describe('API migration wizard' , () => {
   it('imports generated authority using discovered VIPs after review', async () => {
     const previews: unknown[] = [];
     server.use(
@@ -20,7 +28,7 @@ describe('API migration wizard', () => {
         ], settings: {}, warnings: [] });
       }),
     );
-    renderWithApp(<MigrationImport />);
+    renderWithApp(<TestFlow />);
     const launch = await screen.findByRole('button', { name: 'Import from DNS server' });
     await waitFor(() => { expect(launch).toBeEnabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
     fireEvent.click(launch);
@@ -45,12 +53,12 @@ describe('API migration wizard', () => {
         previews.push(await request.json());
         return HttpResponse.json({ objects: [{ apiVersion: 'kudurru.io/v1alpha1', kind: 'Policy', metadata: { name: 'default', namespace: 'default' }, spec: {} }], settings: {}, warnings: ['DHCP is not migrated.'] });
       }),
-      http.post('/api/v1/imports/apply', async ({ request }) => {
+      http.post('/api/v1/imports/start', async ({ request }) => {
         applied.push(await request.json());
-        return HttpResponse.json({ items: [{ kind: 'Policy', namespace: 'default', name: 'default', result: 'updated' }] });
+        return HttpResponse.json(startedRun, { status: 202 });
       }),
     );
-    renderWithApp(<MigrationImport />);
+    renderWithApp(<TestFlow />);
     const launch = await screen.findByRole('button', { name: 'Import from DNS server' });
     await waitFor(() => { expect(launch).toBeEnabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
     fireEvent.click(launch);
@@ -69,7 +77,9 @@ describe('API migration wizard', () => {
     expect(applied).toHaveLength(0);
     fireEvent.click(within(dialog).getByRole('checkbox', { name: 'I reviewed the configuration and migration warnings' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Import configuration' }));
-    await screen.findByText('Configuration imported');
+    await screen.findByText('Import in progress');
+    expect(window.location.pathname).toBe('/tools/migrations/migration-test');
+    expect(applied[0]).toEqual(expect.objectContaining({ selection: { objects: ['Policy/default/default'], settings: [] } }));
     expect(applied).toHaveLength(1);
     expect(JSON.stringify(applied)).not.toContain('source-secret');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -77,7 +87,7 @@ describe('API migration wizard', () => {
 
   it('shows a failed connection without advancing to import', async () => {
     server.use(http.post('/api/v1/imports/preview', () => HttpResponse.json({ error: { key: 'invalid', message: 'Source authentication failed' } }, { status: 400 })));
-    renderWithApp(<MigrationImport />);
+    renderWithApp(<TestFlow />);
     const launch = await screen.findByRole('button', { name: 'Import from DNS server' });
     await waitFor(() => { expect(launch).toBeEnabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
     fireEvent.click(launch);
@@ -89,25 +99,40 @@ describe('API migration wizard', () => {
     expect(within(dialog).queryByRole('button', { name: 'Import configuration' })).not.toBeInTheDocument();
   });
 
-  it('keeps partial import errors visible so the user can resolve them', async () => {
+  it('selects individual objects and settings and requires renewed acknowledgment', async () => {
+    const started: unknown[] = [];
     server.use(
-      http.post('/api/v1/imports/preview', () => HttpResponse.json({ objects: [{ apiVersion: 'kudurru.io/v1alpha1', kind: 'Policy', metadata: { name: 'default' }, spec: {} }], settings: {}, warnings: ['Writes are not transactional.'] })),
-      http.post('/api/v1/imports/apply', () => HttpResponse.json({ items: [{ kind: 'Policy', name: 'default', result: 'error', error: 'Managed by a configuration file' }] })),
+      http.post('/api/v1/imports/preview', () => HttpResponse.json({ objects: [
+        { kind: 'Policy', metadata: { name: 'default', namespace: 'default' }, spec: {} },
+        { kind: 'DNSZone', metadata: { name: 'home' }, spec: { zoneName: 'home.test.' } },
+      ], settings: { blocking: { enabled: true }, upstreams: {} }, warnings: [] })),
+      http.post('/api/v1/imports/start', async ({ request }) => { started.push(await request.json()); return HttpResponse.json(startedRun, { status: 202 }); }),
     );
-    renderWithApp(<MigrationImport />);
+    renderWithApp(<TestFlow />);
     const launch = await screen.findByRole('button', { name: 'Import from DNS server' });
-    await waitFor(() => { expect(launch).toBeEnabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
+    await waitFor(() => expect(launch).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(launch);
     const dialog = await screen.findByRole('dialog', { name: 'Import from DNS server' });
-    fireEvent.change(within(dialog).getByLabelText('Server URL'), { target: { value: 'http://dns.local:5380' } });
+    fireEvent.change(within(dialog).getByLabelText('Server URL'), { target: { value: 'http://source.test' } });
     fireEvent.change(within(dialog).getByLabelText('API token'), { target: { value: 'source-secret' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
     await within(dialog).findByRole('table', { name: 'Migration objects' });
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'I reviewed the configuration and migration warnings' }));
+    expect(within(dialog).getByRole('checkbox', { name: 'Import DNSZone/home' })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'Import settings: blocking' })).toBeChecked();
+    const acknowledgment = within(dialog).getByRole('checkbox', { name: 'I reviewed the configuration and migration warnings' });
+    fireEvent.click(acknowledgment);
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Import DNSZone/home' }));
+    expect(acknowledgment).not.toBeChecked();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Clear selection' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Import configuration' }));
-    await within(dialog).findByText('Some changes could not be imported');
-    expect(within(dialog).getByText(/Managed by a configuration file/)).toBeVisible();
-    expect(dialog).toBeVisible();
-    expect(screen.queryByText('Configuration imported')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getAllByText('Select at least one object or settings section.').length).toBeGreaterThan(0));
+    expect(started).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Import Policy/default/default' }));
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Import settings: blocking' }));
+    fireEvent.click(acknowledgment);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Import configuration' }));
+    await screen.findByText('Import in progress');
+    expect(started).toEqual([expect.objectContaining({ selection: { objects: ['Policy/default/default'], settings: ['blocking'] } })]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

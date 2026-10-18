@@ -519,3 +519,93 @@ func TestFullPendingHourReadsFacts(t *testing.T) {
 		t.Errorf("summary with a full hour:\n%+v\nwant\n%+v", gotSum.Queries, wantSum.Queries)
 	}
 }
+
+// TestDirtyHourReadsFinerTiers: a new database counts the hour it was
+// opened in as derived, so events for the hour before (here 11:58 on a
+// database opened at 12:00:10) mark that hour dirty. Until the next
+// maintenance step re-derives it, its _1h rows are stale and reads and
+// RollupProgress must not use them; afterwards the answers are the same.
+func TestDirtyHourReadsFinerTiers(t *testing.T) {
+	ctx := context.Background()
+	now := t0.Add(10 * time.Second)
+	w, _ := newWriter(t, now)
+	at := now.Add(-2 * time.Minute)
+	mustWrite(t, w,
+		event(at, "10.0.0.1", "a.example"),
+		event(at.Add(time.Second), "10.0.0.2", "ads.example", withStatus(pipeline.StatusBlockedList), withList("default/ads", "||ads.example^")),
+		event(at.Add(2*time.Second), "10.0.0.1", "b.example", withZone("example")),
+	)
+	if err := w.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := w.acc.dirty[t0.Add(-time.Hour).Unix()]; !ok {
+		t.Fatalf("11:00 not dirty: %v", w.acc.dirty)
+	}
+	if h, d := w.RollupProgress(); h != t0.Add(-time.Hour).Unix() || d != floorTo(t0.Unix(), 86400) {
+		t.Errorf("RollupProgress with 11:00 dirty = %d, %d", h, d)
+	}
+	type answer struct {
+		total, blocked, active int64
+		clients, domains       []string
+		lists, zones           []string
+		series                 int64
+	}
+	read := func() map[string]answer {
+		out := map[string]answer{}
+		for name, win := range map[string]Window{
+			"1h":  {From: now.Add(-time.Hour), Until: now},
+			"24h": {From: now.Add(-24 * time.Hour), Until: now},
+		} {
+			r := w.Reader()
+			s, err := r.Summary(ctx, SummaryQuery{Window: win})
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := answer{total: s.Queries.Total, blocked: s.Queries.Blocked, active: s.Clients.Active}
+			for _, top := range []struct {
+				f   func(context.Context, TopQuery) (*TopList, error)
+				dst *[]string
+				q   TopQuery
+			}{
+				{r.TopClients, &a.clients, TopQuery{Window: win}},
+				{r.TopDomains, &a.domains, TopQuery{Window: win}},
+				{r.TopLists, &a.lists, TopQuery{Window: win, Blocked: true}},
+				{r.TopZones, &a.zones, TopQuery{Window: win}},
+			} {
+				l, err := top.f(ctx, top.q)
+				if err != nil {
+					t.Fatal(err)
+				}
+				*top.dst = keys(l.Items)
+			}
+			ts, err := r.Timeseries(ctx, TimeseriesQuery{Window: win})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, p := range ts.Points {
+				a.series += p.Total
+			}
+			out[name] = a
+		}
+		return out
+	}
+	before := read()
+	for name, a := range before {
+		if a.total != 3 || a.blocked != 1 || a.active != 2 || len(a.clients) != 1 || len(a.domains) != 2 ||
+			len(a.lists) != 1 || len(a.zones) != 1 || a.series != 3 {
+			t.Errorf("%s window with 11:00 dirty: %+v", name, a)
+		}
+	}
+	if err := w.Maintain(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(w.acc.dirty) != 0 {
+		t.Fatalf("dirty hours left: %v", w.acc.dirty)
+	}
+	if h, _ := w.RollupProgress(); h != t0.Unix() {
+		t.Errorf("RollupProgress after re-deriving 11:00 = %d", h)
+	}
+	if after := read(); !reflect.DeepEqual(after, before) {
+		t.Errorf("answers changed when 11:00 was re-derived:\n%+v\n%+v", before, after)
+	}
+}

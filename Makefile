@@ -20,7 +20,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: test-postgres all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest dashboard-install dashboard-build dashboard-test dashboard-lint dashboard-dev dashboard-e2e
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e compose-e2e check-generated-code
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork docker-dhcp hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
@@ -52,9 +52,11 @@ run: build
 ## test: the race detector needs cgo, so the test run re-enables it; shipped
 ## binaries stay CGO_ENABLED=0 (`make build`). The kube store driver tests run
 ## when `make envtest` has installed the control-plane binaries and skip
-## otherwise.
+## otherwise. TEST_PKGS narrows the run (ci.yml passes one shard of
+## hack/go-test-shard.sh).
+TEST_PKGS ?= ./...
 test:
-	CGO_ENABLED=1 go test -race -count=1 ./...
+	CGO_ENABLED=1 go test -race -count=1 $(TEST_PKGS)
 
 ## test-short: no race detector, no cgo; what `go test` gives on a plain checkout
 test-short:
@@ -144,9 +146,15 @@ validator-crds:
 ## check-generated: fail if `make generate` or `make docs-gen` would change
 ## tracked files (the docs site's references follow the CRDs, the settings
 ## table, the CLI and the OpenAPI document)
-check-generated: generate
+check-generated: check-generated-code
 	$(MAKE) --no-print-directory docs-gen
-	git diff --exit-code -- api deploy/kustomize/crd deploy/helm/kudurru-crds internal/store/validator/crds docs-site/content/reference
+	git diff --exit-code -- docs-site/content/reference
+
+## check-generated-code: the `make generate` half of check-generated. ci.yml
+## runs only this: `make test` fails on stale references (TestReferenceDrift,
+## TestCLIReferenceDrift) and docs.yml checks them with `make docs-gen`.
+check-generated-code: generate
+	git diff --exit-code -- api deploy/kustomize/crd deploy/helm/kudurru-crds internal/store/validator/crds
 
 ## dex: build the pinned dex release (Apache-2.0; a separate test program,
 ## never linked) from its source tarball for the OIDC end-to-end test. dex
@@ -441,6 +449,14 @@ edge-check: edge-images
 ## helm, kubectl, jq, dig).
 kind-e2e:
 	hack/kind-e2e.sh
+
+## compose-e2e: the single and single-edge deployments of deploy/compose/ on
+## Docker with images built from this checkout: DNS over UDP, TCP, DoT and
+## DoH, the API, the query and audit logs, a clean stop and persistence
+## across `down` and `up` (hack/compose-e2e.sh; needs docker with compose,
+## jq, curl, openssl, dig).
+compose-e2e:
+	hack/compose-e2e.sh
 
 docker:
 	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .

@@ -4,11 +4,14 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // MigrationItem is the durable outcome of one destination write.
 type MigrationItem struct {
-	Kind      string `json:"kind"`
-	Namespace string `json:"namespace,omitempty"`
-	Name      string `json:"name"`
-	Result    string `json:"result"`
-	Error     string `json:"error,omitempty"`
+	Kind            string `json:"kind"`
+	Namespace       string `json:"namespace,omitempty"`
+	Name            string `json:"name"`
+	Result          string `json:"result"`
+	Error           string `json:"error,omitempty"`
+	ErrorKey        string `json:"errorKey,omitempty"`
+	Hint            string `json:"hint,omitempty"`
+	ResourceVersion string `json:"resourceVersion,omitempty"`
 }
 
 // MigrationZone tracks authority without retaining source records or credentials.
@@ -36,17 +39,21 @@ type MigrationCutover struct {
 
 // MigrationRunSpec is a credential-free journal of an API import and its cutovers.
 type MigrationRunSpec struct {
-	Source        string             `json:"source"`
-	SourceURL     string             `json:"sourceURL,omitempty"`
-	Actor         string             `json:"actor"`
-	StartedAt     metav1.Time        `json:"startedAt"`
-	FinishedAt    *metav1.Time       `json:"finishedAt,omitempty"`
-	Status        string             `json:"status"`
-	Items         []MigrationItem    `json:"items" nullable:"false"`
-	Zones         []MigrationZone    `json:"zones" nullable:"false"`
-	Warnings      []string           `json:"warnings" nullable:"false"`
-	SettingsError string             `json:"settingsError,omitempty"`
-	Cutovers      []MigrationCutover `json:"cutovers" nullable:"false"`
+	Source            string             `json:"source"`
+	SourceURL         string             `json:"sourceURL,omitempty"`
+	Actor             string             `json:"actor"`
+	StartedAt         metav1.Time        `json:"startedAt"`
+	FinishedAt        *metav1.Time       `json:"finishedAt,omitempty"`
+	Status            string             `json:"status"`
+	Items             []MigrationItem    `json:"items" nullable:"false"`
+	Zones             []MigrationZone    `json:"zones" nullable:"false"`
+	Warnings          []string           `json:"warnings" nullable:"false"`
+	SettingsError     string             `json:"settingsError,omitempty"`
+	SettingsPersisted *bool              `json:"settingsPersisted,omitempty"`
+	JournalError      string             `json:"journalError,omitempty"`
+	Failure           string             `json:"failure,omitempty"`
+	Deadline          *metav1.Time       `json:"deadline,omitempty"`
+	Cutovers          []MigrationCutover `json:"cutovers" nullable:"false"`
 }
 
 // MigrationRun is an internal journal stored as a row or a Kubernetes Secret.

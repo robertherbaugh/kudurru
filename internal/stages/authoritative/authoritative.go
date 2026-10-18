@@ -8,10 +8,10 @@
 // zones while serving a stale local.db).
 //
 // Authoritative answers are final: they are not passed to the blocking,
-// cache or upstream stages (a zone cannot be blocked by a list). The one
-// exception is a CNAME chain that leaves every local zone: with RD set the
-// target is resolved by the rest of the chain and spliced after the local
-// part of the answer.
+// cache or upstream stages (a local record cannot be blocked by a list).
+// With RD set, names absent from an overlay zone and alias targets outside
+// local data continue through the rest of the chain. Mixed alias answers
+// do not assert authority or whole-chain DNSSEC security.
 package authoritative
 
 import (
@@ -181,18 +181,54 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return s.unsynced(req, gate), nil
 	}
 
-	res := z.Lookup(q.Name, q.Qtype)
+	var res zone.Result
+	if z.HasFallback() && gate == zone.GateOpen {
+		res = z.LookupStep(q.Name, q.Qtype, 0)
+	} else {
+		res = z.Lookup(q.Name, q.Qtype)
+	}
 	if gate == zone.GateUnsynced && !res.Positive() {
 		return s.unsynced(req, gate), nil
 	}
 	if res.Kind == zone.CNAME {
 		return s.chase(req, set, z, res, next)
 	}
+	if res.Kind == zone.Fallback {
+		return s.fallback(req, gate, z, res, next)
+	}
 	answer := res.Answer
 	if q.Qtype == dns.TypeANY && req.Client.Proto == pipeline.ProtoUDP {
 		answer = minimalANY(answer)
 	}
 	return s.reply(req, z, &res, answer), nil
+}
+
+// fallback continues after the authoritative stage so native recursion never
+// reenters the local zone. A local name with a missing type is NODATA and never
+// reaches this path. Snapshot gates and query ACLs still apply to every miss.
+func (s *Stage) fallback(req *pipeline.Request, gate zone.Gate, z *zone.Zone, res zone.Result, next pipeline.Next) (*pipeline.Response, error) {
+	if gate != zone.GateOpen {
+		return s.unsynced(req, gate), nil
+	}
+	if !req.Msg.RecursionDesired || !s.RecursionAvailable {
+		return s.refused(req, z), nil
+	}
+	if len(res.Answer) == 0 {
+		req.UpstreamGroup = z.FallbackGroup()
+		resp, err := next(req)
+		if err != nil || resp == nil || resp.Msg == nil {
+			return resp, err
+		}
+		out := *resp
+		out.Msg = resp.Msg.Copy()
+		out.Msg.Authoritative = false
+		out.Msg.RecursionAvailable = s.RecursionAvailable
+		return &out, nil
+	}
+	sub := subRequest(req, res.Target, req.Question().Qtype, req.Question().Qclass)
+	sub.UpstreamGroup = z.FallbackGroup()
+	resp, err := next(sub)
+	return s.splice(req, z, res.Answer, resp, err), nil
 }
 
 // minimalANY applies RFC 8482 §4.2 to ANY over UDP: answer with one RRset
@@ -221,7 +257,12 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 		target := last.Target
 		z2 := set.Match(target)
 		if z2 != nil && z2.Type() == v1alpha1.ZoneTypePrimary && z2.QueryAllowed(client) {
-			r2 := z2.LookupFrom(target, q.Qtype, last.Hops)
+			var r2 zone.Result
+			if z2.HasFallback() && set.Gate() == zone.GateOpen {
+				r2 = z2.LookupStep(target, q.Qtype, last.Hops)
+			} else {
+				r2 = z2.LookupFrom(target, q.Qtype, last.Hops)
+			}
 			switch r2.Kind {
 			case zone.CNAME:
 				answer = append(answer, r2.Answer...)
@@ -229,6 +270,9 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 				continue
 			case zone.Delegation:
 				// The target is served elsewhere: treat it as leaving.
+			case zone.Fallback:
+				r2.Answer = append(answer, r2.Answer...)
+				return s.fallback(req, set.Gate(), z2, r2, next)
 			default:
 				answer = append(answer, r2.Answer...)
 				return s.reply(req, z2, &r2, answer), nil
@@ -277,21 +321,28 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 		return r
 	}
 	in := resp.Msg
-	out := new(dns.Msg)
-	out.SetRcode(req.Msg, in.Rcode)
+	out := in.Copy()
+	out.Id = req.Msg.Id
+	out.Question = append([]dns.Question(nil), req.Msg.Question...)
+	out.RecursionDesired = req.Msg.RecursionDesired
+	out.CheckingDisabled = req.Msg.CheckingDisabled
 	out.Authoritative = false
+	// A validated public target does not authenticate the local aliases.
+	out.AuthenticatedData = false
 	out.RecursionAvailable = s.RecursionAvailable || in.RecursionAvailable
 	out.Answer = append(chain, in.Answer...)
-	if len(in.Answer) == 0 {
-		out.Ns = in.Ns
-	}
 	s.finish(req, out)
+	security := pipeline.DNSSECUnknown
+	if resp.DNSSEC == pipeline.DNSSECBogus {
+		security = pipeline.DNSSECBogus
+	}
 	return &pipeline.Response{
 		Msg:      out,
 		Status:   resp.Status,
 		Upstream: resp.Upstream,
 		List:     resp.List,
 		Rule:     resp.Rule,
+		DNSSEC:   security,
 	}
 }
 

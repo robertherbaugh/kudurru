@@ -481,7 +481,23 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/settings", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		f.writeJSON(w, 200, map[string]any{"scope": "cluster", "node": "node-a", "settings": f.settings, "took_ms": 0.2})
+		f.writeJSON(w, 200, map[string]any{"scope": "cluster", "node": "node-a", "settings": f.settings, "sections": map[string]any{"upstreams": map[string]any{"owner": "gitops", "revision": "reviewed", "switchable": true}}, "took_ms": 0.2})
+	})
+	mux.HandleFunc("POST /api/v1/settings/sections/upstreams/yaml", func(w http.ResponseWriter, _ *http.Request) {
+		f.writeJSON(w, 200, map[string]string{"yaml": "config:\n  settings:\n    upstreams: {}\n", "revision": "reviewed"})
+	})
+	mux.HandleFunc("POST /api/v1/settings/sections/upstreams/ownership/{action}", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["revision"] != "reviewed" {
+			f.writeErr(w, 412, "precondition_failed", "settings changed", "")
+			return
+		}
+		owner := "ui"
+		if r.PathValue("action") == "release" {
+			owner = "gitops"
+		}
+		f.writeJSON(w, 200, map[string]any{"sections": map[string]any{"upstreams": map[string]any{"owner": owner}}})
 	})
 	mux.HandleFunc("GET /api/v1/node/config", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
@@ -495,6 +511,12 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 		}
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if _, upstreams := body["upstreams"]; r.URL.Path == "/api/v1/settings" && upstreams {
+			if revision := r.Header.Get("If-Match"); revision != "" && revision != "reviewed" {
+				f.writeErr(w, 412, "precondition_failed", "settings changed", "")
+				return
+			}
+		}
 		var changed, restart []string
 		var walk func(prefix string, m map[string]any)
 		walk = func(prefix string, m map[string]any) {

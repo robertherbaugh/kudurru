@@ -688,7 +688,7 @@ Flags:
 
 ### kudurru import pihole
 
-Connect to the source API using its v6 application password. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to import directly into the selected kudurru server using its normal validation, ownership and license checks. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
+Connect to the source API using its v6 application password. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Without --wait, exit status 0 means the server accepted the job, not that every item imported successfully. Scripts that need the final success/failure exit status must use --apply --wait. Use import runs RUN\_ID to inspect the report later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
 
 ```text
 kudurru import pihole --source-url URL [flags]
@@ -704,7 +704,8 @@ kudurru import pihole --source-url http://dns.local --source-key-file ./source-k
 Flags:
 
 ```text
-      --apply                             apply the converted configuration directly to kudurru
+      --apply                             start a tracked background import of the converted
+                                          configuration
       --dry-run                           preview only (the default)
       --local-zone strings                local DNS suffixes to make authoritative (default:
                                           Pi-hole's local domain)
@@ -712,6 +713,11 @@ Flags:
                                           and SOA primary (repeatable; first is primary)
       --nameserver-address strings        kudurru serving IPs or VIPs; generate in-zone NS
                                           names and A/AAAA records (repeatable)
+      --select-object strings             import only these Kind/[namespace/]name objects
+                                          (repeatable; combine with --select-setting)
+      --select-setting strings            import only these top-level settings sections
+                                          (repeatable; combine with --select-object)
+      --skip-settings                     leave settings unchanged
       --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
                                           self-signed certificate
       --source-key-file string            file containing the source v6 application password
@@ -721,6 +727,8 @@ Flags:
                                           imported authority
       --use-vips                          use discovered kudurru VIPs for nameservers and
                                           address records
+      --wait                              wait for the background import and report its final
+                                          results (requires --apply)
 ```
 
 ### kudurru import runs
@@ -733,7 +741,7 @@ kudurru import runs [id]
 
 ### kudurru import technitium
 
-Connect to the source API using its API token. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to import directly into the selected kudurru server using its normal validation, ownership and license checks. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
+Connect to the source API using its API token. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Without --wait, exit status 0 means the server accepted the job, not that every item imported successfully. Scripts that need the final success/failure exit status must use --apply --wait. Use import runs RUN\_ID to inspect the report later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
 
 ```text
 kudurru import technitium --source-url URL [flags]
@@ -749,12 +757,18 @@ kudurru import technitium --source-url http://dns.local --source-key-file ./sour
 Flags:
 
 ```text
-      --apply                             apply the converted configuration directly to kudurru
+      --apply                             start a tracked background import of the converted
+                                          configuration
       --dry-run                           preview only (the default)
       --nameserver strings                kudurru authoritative DNS names; replace imported NS
                                           and SOA primary (repeatable; first is primary)
       --nameserver-address strings        kudurru serving IPs or VIPs; generate in-zone NS
                                           names and A/AAAA records (repeatable)
+      --select-object strings             import only these Kind/[namespace/]name objects
+                                          (repeatable; combine with --select-setting)
+      --select-setting strings            import only these top-level settings sections
+                                          (repeatable; combine with --select-object)
+      --skip-settings                     leave settings unchanged
       --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
                                           self-signed certificate
       --source-key-file string            file containing the source API token (otherwise
@@ -764,6 +778,8 @@ Flags:
                                           imported authority
       --use-vips                          use discovered kudurru VIPs for nameservers and
                                           address records
+      --wait                              wait for the background import and report its final
+                                          results (requires --apply)
 ```
 
 ### kudurru import track-existing
@@ -1108,6 +1124,20 @@ Flags:
 
 Read and change runtime settings (cluster keys and this node's keys).
 
+### kudurru settings adopt
+
+adopt upstream settings ownership. Read the revision with `kudurru settings ownership`. Before release, export with `kudurru settings yaml upstreams`, commit and apply those Helm values, then read the updated revision. Release refuses a handoff if the file settings differ.
+
+```text
+kudurru settings adopt upstreams [flags]
+```
+
+Flags:
+
+```text
+      --revision string   reviewed revision from settings ownership
+```
+
 ### kudurru settings get
 
 Show settings (redacted) with their scope.
@@ -1122,12 +1152,36 @@ Flags:
       --scope string   only cluster or node keys
 ```
 
+### kudurru settings ownership
+
+Show section ownership and revisions.
+
+```text
+kudurru settings ownership
+```
+
+### kudurru settings release
+
+release upstream settings ownership. Read the revision with `kudurru settings ownership`. Before release, export with `kudurru settings yaml upstreams`, commit and apply those Helm values, then read the updated revision. Release refuses a handoff if the file settings differ.
+
+```text
+kudurru settings release upstreams [flags]
+```
+
+Flags:
+
+```text
+      --revision string   reviewed revision from settings ownership
+```
+
 ### kudurru settings set
 
 Change settings with a JSON merge patch. Cluster-scope keys go to PATCH /api/v1/settings and apply to every node; node-scope keys go to PATCH /api/v1/node/config on the node that serves the request. hostOnly keys (listener addresses, dataDir, ...) can never be set through the API: put them in kudurru.yaml or the KUDURRU\_&lt;SECTION&gt;\_\_&lt;KEY&gt; environment variable on the host. "key-" removes the override so the default applies again.
 
+For safe concurrent upstream edits, run kudurru settings ownership to review the revision and pass it with --revision. Omitting --revision preserves legacy behavior: your upstream edit can overwrite values changed since you reviewed them.
+
 ```text
-kudurru settings set key=value... [key-]
+kudurru settings set key=value... [key-] [flags]
 ```
 
 Examples:
@@ -1137,6 +1191,26 @@ kudurru settings set cache.maxEntries=200000
 kudurru settings set blocking.refreshInterval=12h log.level=debug
 kudurru settings set upstreams.bootstrap=9.9.9.9,1.1.1.1
 kudurru settings set log.level-
+```
+
+Flags:
+
+```text
+      --revision string   reviewed upstreams revision from settings ownership (If-Match)
+```
+
+### kudurru settings yaml
+
+Generate Helm values without saving (optionally from a proposed JSON section).
+
+```text
+kudurru settings yaml upstreams [flags]
+```
+
+Flags:
+
+```text
+      --proposed-file string   complete proposed upstreams section as JSON
 ```
 
 ## kudurru stats

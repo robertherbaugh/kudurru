@@ -51,6 +51,7 @@ export function lockFor(key: SettingKey, canWrite: boolean): Lock {
   if (key.envLocked) {
     return { locked: true, reason: `Set by the environment variable ${envVarName(key.path)}; unset it to edit here.` };
   }
+  if (key.managedBy === 'gitops') return { locked: true, reason: 'Managed by GitOps: edit Helm values or the settings file. Upstreams can be adopted on the Upstreams page.' };
   if (!canWrite) {
     return { locked: true, reason: key.scope === 'node' ? 'Needs the node.config permission.' : 'Needs the settings.write permission.' };
   }

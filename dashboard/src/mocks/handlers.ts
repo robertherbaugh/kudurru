@@ -28,6 +28,7 @@ import type {
   ZoneRecord,
   ZoneSummary,
 } from '../api/types';
+import { toYAML } from '../lib/yaml';
 import { createDB, CLIENTS, makeQueryRow, setPath, type MockDB } from './fixtures';
 import {
   approveEntry,
@@ -388,6 +389,7 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     managedBy: z.metadata.annotations?.[MANAGED] ?? '',
     ...(z.metadata.resourceVersion ? { resourceVersion: z.metadata.resourceVersion } : {}),
     ...(z.spec.forward?.upstreamGroup ? { upstreamGroup: z.spec.forward.upstreamGroup } : {}),
+    ...(z.spec.fallback ? { fallback: z.spec.fallback } : {}),
     ...(zoneDeleteRefusal(z) ? { deleteRefusal: zoneDeleteRefusal(z) } : {}),
   };
 }
@@ -517,7 +519,8 @@ function topFrom(dim: TopDim, blocked: boolean, n: number, scale: number): TopIt
         group = r.client.group;
         break;
       case 'upstreams':
-        key = r.upstream;
+        // Answers from a local zone count as "zone:<name>", as on a node.
+        key = r.upstream ?? (r.zone ? `zone:${r.zone.replace(/\.$/, '')}` : undefined);
         break;
       case 'lists':
         key = r.list;
@@ -1442,6 +1445,22 @@ export const handlers = [
   }),
 
   // settings ----------------------------------------------------------------
+  http.post(`${B}/settings/sections/:section/ownership/:action`, async ({ request, params }) => {
+    const g = guard(request, 'settings', 'write'); if (g) return g;
+    if (params.section !== 'upstreams') return fail(400, 'invalid', 'Only upstreams supports ownership.');
+    const { revision } = await request.json() as { revision: string };
+    if (revision !== String(db.settingsRevision ?? 0)) return fail(412, 'precondition_failed', 'Settings changed. Refresh and review.');
+    if (params.action !== 'adopt' && params.action !== 'release') return fail(400, 'invalid', 'Unknown ownership action.');
+    db.settingsOwner = params.action === 'adopt' ? 'ui' : 'gitops';
+    db.settingsRevision = (db.settingsRevision ?? 0) + 1;
+    return ok({ ...settingsBody('cluster'), persisted: true });
+  }),
+  http.post(`${B}/settings/sections/:section/yaml`, async ({ request, params }) => {
+    const g = guard(request, 'settings', 'read'); if (g) return g;
+    if (params.section !== 'upstreams') return fail(400, 'invalid', 'Only upstreams supports YAML generation.');
+    const { proposed } = await request.json() as { proposed?: Record<string, unknown> };
+    return ok({ yaml: toYAML({ config: { settings: { upstreams: proposed ?? db.settings.upstreams } } }), revision: String(db.settingsRevision ?? 0) });
+  }),
   http.get(`${B}/settings/_schema`, ({ request }) =>
     guard(request, 'settings', 'read') ??
     ok({ items: db.schema.map((k) => ({ ...k, value: k.writeOnly ? '<redacted>' : getPath(k.scope === 'node' ? db.nodeConfig : db.settings, k.path) })) }),
@@ -1450,7 +1469,10 @@ export const handlers = [
   http.patch(`${B}/settings`, async ({ request }) => {
     const g = guard(request, 'settings', 'write');
     if (g) return g;
-    if (db.settingsManagedBy) {
+    const expected = request.headers.get('If-Match');
+    if (expected && expected !== String(db.settingsRevision ?? 0)) return fail(412, 'precondition_failed', 'Settings changed. Refresh and review.');
+    if (db.settingsOwner === 'gitops') return fail(409, 'managed_by', 'upstreams are managed by GitOps');
+    if (db.settingsManagedBy && db.settingsOwner !== 'ui') {
       return fail(409, 'managed_by', `cluster settings are managed by ${db.settingsManagedBy}; change them there`, 'set config.settings in the Helm values (or edit the ConfigMap); every pod reloads it without a restart');
     }
     const patch = (await request.json()) as Record<string, unknown>;
@@ -1465,6 +1487,7 @@ export const handlers = [
     const invalid = validateUpstreams(next) ?? validateBlockPage(next);
     if (invalid) return fail(400, 'invalid', invalid);
     db.settings = next;
+    db.settingsRevision = (db.settingsRevision ?? 0) + 1;
     return ok({ ...settingsBody('cluster', changed), persisted: db.settingsPersisted });
   }),
   http.get(`${B}/node/config`, ({ request }) => guard(request, 'node', 'config') ?? ok(settingsBody('node'))),
@@ -1668,6 +1691,7 @@ function settingsBody(scope: 'cluster' | 'node', changed?: string[]) {
     scope,
     node: 'kudurru-0',
     settings: scope === 'node' ? db.nodeConfig : db.settings,
+    ...(scope === 'cluster' && db.settingsOwner ? { sections: { upstreams: { owner: db.settingsOwner, switchable: true, revision: String(db.settingsRevision ?? 0), envLocked: false } }, conflicts: db.settingsConflict ? ['upstreams'] : [] } : {}),
     ...(changed?.length ? { changed } : {}),
     ...(restart.length ? { restartRequired: restart } : {}),
   };

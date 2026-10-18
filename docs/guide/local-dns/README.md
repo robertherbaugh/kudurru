@@ -10,3 +10,6 @@ Give a device a name that clients can use on your network.
 
 A primary zone stores your own records. An upstream answers names outside
 your zones. A forward zone sends one domain to a specific upstream group.
+For local overrides within a public domain, enable
+[Resolve missing names publicly](../admin/07-zones-and-upstreams.md#override-local-names-and-resolve-the-rest-publicly)
+on a primary zone. Names absent locally then use forwarding or native recursion.

@@ -19,6 +19,17 @@ preview and warnings, then choose **Import configuration**. The kudurru
 server reads the source API and writes supported configuration directly;
 no backup files or hand-written manifests are needed.
 
+The review step lets you select individual objects and settings sections, with
+**Select all** and **Clear selection** controls. Select referenced dependencies
+too, or make sure they already exist. Starting the import opens a migration run
+page with live progress. You can leave or close the browser: the server continues
+in the background. Return through **Tools → Migration history → Review run**.
+The report shows a green check for successful items, a red X for errors and full
+error details. Unselected items are recorded as skipped. A failed item does not
+roll back successful changes; selected settings wait until every selected object
+succeeds. Imports interrupted by a server restart are not resumed automatically;
+check any unconfirmed outcomes before retrying.
+
 Select **Update nameservers during import** to replace apex NS and SOA primary
 with kudurru's DNS hostnames, or keep source authority during validation and
 use **Migration history → Review run → Decommission source nameservers** later.
@@ -61,11 +72,14 @@ kudurru import technitium --source-url http://dns.local:5380 \
   --source-key-file ./technitium-token --apply
 ```
 
-The first command previews; `--apply` writes to your selected kudurru CLI
-context. Use `-n` for the namespace of your existing default policy. Matching
+The first command previews; `--apply` starts a background import on your selected kudurru CLI
+context and returns its run ID. Add `--wait` to wait for the final report, or run
+`kudurru import runs RUN_ID` later. Use `-n` for the namespace of your existing default policy. Matching
 object names and the default upstream group are replaced. Read every result:
-writes are not transactional, and settings change only after every object
-succeeds. Complete the validation and cutover checklist afterward. The
+writes are not transactional, and settings change only after every selected object
+succeeds. Use repeatable `--select-object Kind/[namespace/]name` and
+`--select-setting SECTION` flags to import only those items, or `--skip-settings`
+to import objects while leaving settings unchanged. Complete the validation and cutover checklist afterward. The
 sections below cover manual adjustments and features needing a separate plan.
 
 **Before you start:** complete [preparation and CLI setup](/migrate/cutover/#prepare).

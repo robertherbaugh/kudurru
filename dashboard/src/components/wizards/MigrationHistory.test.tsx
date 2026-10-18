@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { MigrationRun } from '../../api/types';
 import { server } from '../../test/setup';
 import { renderWithApp } from '../../test/utils';
+import MigrationRunPage from '../../pages/MigrationRunPage';
 import { MigrationHistory } from './MigrationHistory';
 
 const zone = { name: 'home', zoneName: 'home.test.', nameservers: ['old.test.'], primary: 'old.test.', resourceVersion: '8' };
@@ -16,7 +17,6 @@ function mockRun() {
   );
 }
 async function openCutover() {
-  fireEvent.click(await screen.findByRole('button', { name: 'Review migration migration-test' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Decommission source nameservers' }));
   return screen.findByRole('dialog', { name: 'Decommission source nameservers' });
 }
@@ -29,7 +29,7 @@ describe('Migration history', () => {
       http.post('/api/v1/imports/runs/migration-test/decommission/preview', async ({ request }) => { previews.push(await request.json()); return HttpResponse.json({ revision: '7', nameservers: ['dns.kudurru.test.'], zones: [zone], warnings: ['Update parent delegation separately.'] }); }),
       http.post('/api/v1/imports/runs/migration-test/decommission', async ({ request }) => { applied.push(await request.json()); return HttpResponse.json({ runID: run.id, items: [{ kind: 'DNSZone', name: 'home', result: 'updated' }] }); }),
     );
-    renderWithApp(<MigrationHistory />);
+    renderWithApp(<MigrationRunPage params={{ id: run.id }} />);
     const dialog = await openCutover();
     const nameserver = within(dialog).getByPlaceholderText('dns1.example.com');
     expect(nameserver).toHaveValue('dns.kudurru.test');
@@ -56,7 +56,7 @@ describe('Migration history', () => {
       http.post('/api/v1/imports/runs/migration-test/decommission/preview', () => { previews++; return HttpResponse.json({ revision: String(previews), nameservers: ['dns.kudurru.test.'], zones: [zone], warnings: [] }); }),
       http.post('/api/v1/imports/runs/migration-test/decommission', () => { writes++; return HttpResponse.json({ runID: run.id, items: [{ kind: 'DNSZone', name: 'home', result: 'error', error: 'Zone is managed by a file' }] }); }),
     );
-    renderWithApp(<MigrationHistory />); const dialog = await openCutover();
+    renderWithApp(<MigrationRunPage params={{ id: run.id }} />); const dialog = await openCutover();
     fireEvent.change(within(dialog).getByPlaceholderText('dns1.example.com'), { target: { value: 'dns.kudurru.test' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
     await within(dialog).findByRole('table', { name: 'Nameserver changes' });

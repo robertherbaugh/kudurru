@@ -45,9 +45,11 @@ Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 `internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
 objects, a settings merge patch and conversion warnings. The dashboard's
 Tools wizard uses `POST /imports/preview` and submits the reviewed result to
-`POST /imports/apply`. The CLI's `import pihole|technitium` uses the same
-converter locally; `--apply` sends its preview to the same writer. A preview
-never writes destination state. Both REST routes require `settings.write`,
+`POST /imports/start`. This returns HTTP 202, a run ID and a Location header
+before object writes finish. The CLI's `import pihole|technitium` uses the same
+converter locally; `--apply` starts the same background job and `--wait` polls
+its report. `POST /imports/apply` remains available for synchronous callers.
+A preview never writes destination state. These REST routes require `settings.write`,
 because administrators intentionally connect to private source networks.
 This permission grants SSRF-equivalent network access: even a role with
 only `settings.write` can send credentialed requests to caller-selected
@@ -63,20 +65,48 @@ after reading. Source redirects are refused, response sizes and request time
 are bounded, and upstream errors never echo credentials or response bodies.
 Import writes use the existing object authorization, schema, ownership and
 license checks. They are not transactional and return a result per object;
-the settings patch is applied only when every object succeeds. Unsupported
+the selected settings patch is applied only when every selected object succeeds. Unsupported
 source semantics are reported in the preview. See the
 [migration guides](../../docs-site/content/migrate/_index.md) for supported data.
 
-Each apply starts an internal `MigrationRun` journal before destination writes
-(D182), using the existing store: SQLite JSON rows or labeled Kubernetes
+Each import starts an internal `MigrationRun` journal before destination writes
+(D182, D184), using the existing store: SQLite JSON rows or labeled Kubernetes
 Secrets. It retains source type and URL origin, actor, times, planned objects,
 per-object outcomes, zone UIDs, original/current authority and cutover attempts.
 Credentials, source URL paths/query parameters and source records are excluded.
-Progress is saved after each destination write; a journal failure stops further
-writes and returns the run ID plus a journal error. Settings follow all object
-writes; final journal updates use a bounded context independent of a disconnected
-caller. The journal has the store's object size cap; a run accepts at most 100
-cutover attempts. Before claiming an attempt, apply checks that the journal has
+An optional selection lists object identities (`Kind/[namespace/]name`) and
+top-level settings sections; omitting it selects the full plan for compatibility.
+Unknown or duplicate selections and explicitly empty selections are refused before
+writes. Dependencies are not automatically selected: choose them too or ensure they
+already exist. Unselected objects and settings are journaled as `skipped`; only
+selected primary zones are tracked for later cutover.
+
+Selected items progress from `pending` to `running`, then `created`, `updated`,
+`unchanged` or `error`, with the error key, explanation, hint and saved version.
+Settings have separate rows and are applied in one merge patch after all selected
+objects succeed, or become `not_applied` if an object fails. Progress is saved
+before the first object write, then each completed result and the next object's
+running marker share one journal update. Settings have a separate running marker.
+A journal failure stops further writes and records a journal error. Capacity for
+bounded error details is checked before any writes.
+The dashboard opens `/tools/migrations/{id}`, polls progress and shows counts and
+per-item results, including retained successes when other items fail. The report
+remains reachable through Tools' migration history after navigation or reload.
+
+Background workers retain the caller's identity and authorization, copy mutable
+request state and run independently of browser disconnects. At most two imports
+run per API server process; overload is refused before journal creation. Replicas
+sharing a store each admit their own two workers. There is no cross-run lock on
+zones: overlapping imports still use normal ownership and optimistic version
+checks, so avoid starting simultaneous imports for the same destination objects.
+Each job is bounded to ten minutes. Server shutdown cancels and joins workers
+before the store closes; final journal updates get a separate ten-second context. Reviewed plans
+live only in worker memory: jobs are not replayed or resumed after restart. Once
+a running job's recorded deadline plus fifteen seconds passes, reads show it as
+`interrupted` and unresolved items as `unconfirmed`. Check the destination before
+retrying, since a write may have committed just before its journal update.
+Journals use a 1 MiB cap on both drivers to fit Kubernetes Secret data; a run
+accepts at most 100 cutover attempts. Before claiming an attempt, apply checks that the journal has
 room for every zone and address-record outcome, bounded errors, and authority
 updates. An attempt that cannot fit is refused before any destination writes.
 Full backups include internal journals; safe exports omit them.
@@ -124,13 +154,20 @@ sequenceDiagram
     participant U as Dashboard or CLI
     participant A as Migration API
     participant S as Store (SQLite or Kubernetes)
-    U->>A: Apply reviewed import
-    A->>S: Create MigrationRun
-    loop Each object
-        A->>S: Normal authorized object write
-        A->>S: Record outcome and zone identity
+    participant W as Background worker
+    U->>A: Start reviewed import and selection
+    A->>S: Create MigrationRun with pending/skipped items
+    A-->>U: 202 Accepted, run ID and Location
+    A->>W: Selected plan and caller identity
+    loop Each selected object
+        W->>S: Journal running and normal authorized object write
+        W->>S: Record outcome and zone identity
+        U->>A: GET run progress (may leave or reload)
+        A->>S: Read durable journal
+        A-->>U: Counts and item results
     end
-    A->>S: Record finished/partial run
+    W->>S: Apply selected settings if all objects succeeded
+    W->>S: Record completed/partial run
     U->>A: Preview decommission with DNS names or serving IPs/VIPs
     A->>S: Read run and live zones
     A-->>U: Current/target authority, generated addresses, versions and warnings
@@ -382,17 +419,69 @@ flowchart LR
 ```
 
 An environment variable wins and locks the key in the dashboard. In
-Kubernetes the cluster settings are the `kudurru-settings` ConfigMap (the API
-refuses to write them; edit the ConfigMap or the Helm values); in Docker the
-API writes the settings file.
+Kubernetes, sections default to `gitops`: edit Helm values or the settings
+ConfigMap. Only `upstreams` can currently switch to `ui` ownership, through
+an explicit, revision-checked adoption. Adoption copies the entire effective
+section (groups, servers, bootstrap, conditional rules, ECS and recursion)
+without changing routing. Host-only restrictions remain in place.
+
+UI-owned upstreams live with their ownership record in a separate ConfigMap,
+`<release>-ui-settings` by default (`KUDURRU_SETTINGS_RESOURCE`). Helm never
+renders that resource. Each replica reads it at startup and on the settings
+watcher's ten-second poll. Its values replace the entire file section; file
+keys are never merged into a UI-owned section. The environment still wins
+and locks individual keys; any upstream environment override blocks ownership
+transitions. File declarations under a UI-owned section produce a warning,
+the `conflicts` field in `GET /settings` and a dashboard banner while UI values remain
+authoritative. Other sections continue following the settings ConfigMap.
+
+Ownership and values share a Kubernetes `resourceVersion`; concurrent
+adoptions, releases and edits use compare-and-swap. The API exposes section
+owners and reviewed revisions in the `sections` field of `GET /settings`, accepts
+`If-Match` on upstream settings patches, and authorizes transitions with
+`settings.write`. The header is optional for backward compatibility, but
+safe concurrent upstream edits require a reviewed revision; omitting it can
+overwrite newer client edits. Other sections do not use the upstream revision.
+For CLI edits, review `kudurru settings ownership`, then pass the token to
+`kudurru settings set upstreams.bootstrap=9.9.9.9:53 --revision TOKEN`.
+Writes and transitions are audited. Every replica uses the
+same reload subscriptions, including upstream set swaps and cache flushes.
+Invalid or unavailable sources leave the running configuration intact.
+A node-local `ui-settings-<identity>.json` cache retains the last confirmed
+shared ownership and values for offline startup; writes always require the
+apiserver. Preserve the node data directory alongside `local.db`.
+
+In Docker, the API keeps writing the existing writable settings file. A
+`settingsOwnership` map in that file records explicit adoption/release, in the
+same atomic rename as complete section values. Existing Docker settings remain
+UI-editable; a deployment without a writable settings file retains its existing
+in-memory behavior and cannot change ownership.
+
+Generate current or proposed Helm values with
+`POST /settings/sections/upstreams/yaml` (no write). To return ownership to
+GitOps, commit and apply the current exported values, wait for the settings
+volume to update on every replica, refresh the preview, then call
+`POST /settings/sections/upstreams/ownership/release` with its
+revision. Release refuses mismatched file values on the serving replica;
+it does not collect acknowledgments from other replicas. Kubernetes volume
+projection is asynchronous, so the operator must verify that all replicas
+have received the applied values before releasing. Adoption uses the same
+path ending in `/adopt`. Only ownership is transferred; no new CRD is required.
+Include the API-owned ConfigMap in your
+Kubernetes backups; ordinary object-store exports do not include it.
+
+![Explicit GitOps or UI section ownership feeds every replica's settings reload](diagrams/settings-ownership.svg)
 
 ```mermaid
 sequenceDiagram
-    participant SRC as settings file / ConfigMap / PATCH /api/v1/settings
+    participant SRC as file / Helm ConfigMap / API-owned settings
+    participant M as ownership manager (every node)
     participant W as settings watcher (every node)
     participant R as reload subscribers
     SRC->>W: change (fsnotify + 10 s poll)
-    W->>W: merge cluster-scope keys only
+    W->>M: read both sources and ownership revision
+    M->>M: replace UI-owned sections; report file conflicts
+    M->>W: validated effective cluster settings
     W->>R: log level, upstream groups (swap + cache flush),<br/>cache, blocking, block page, rate limiter,<br/>query log privacy, edge cache flush
 ```
 

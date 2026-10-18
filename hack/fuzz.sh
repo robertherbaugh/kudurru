@@ -2,9 +2,12 @@
 # Run kudurru's Go fuzz targets (dev-docs/milestones/m5/e2e.md, "Fuzzing").
 #
 #   hack/fuzz.sh                 every target for FUZZTIME (default 60s)
-#   hack/fuzz.sh --list          print "package target" pairs (CI matrix)
+#   hack/fuzz.sh --list          print the "package target" pairs
 #   hack/fuzz.sh FuzzDoHRequest  only entries ("<package> <target>") matching the regex
-#   hack/fuzz.sh --one ./internal/zone FuzzImportBIND   exactly one target (CI)
+#   hack/fuzz.sh --one ./internal/zone FuzzImportBIND   exactly one target
+#   hack/fuzz.sh --shard 2/4     the second of four contiguous slices (CI): a
+#                                package's targets stay together, so its
+#                                instrumented test binary is built once
 #   hack/fuzz.sh --save-corpus 12 ./test/fuzz FuzzDoHRequest   keep found inputs as seeds
 #
 # FUZZTIME     per-target budget (go test -fuzztime), default 60s
@@ -86,6 +89,20 @@ fi
 if [[ "${1:-}" == "--one" ]]; then
 	run_one "$2" "$3"
 	exit $?
+fi
+
+if [[ "${1:-}" == "--shard" ]]; then
+	if ! [[ "${2:-}" =~ ^([0-9]+)/([0-9]+)$ ]] || ((BASH_REMATCH[1] < 1 || BASH_REMATCH[1] > BASH_REMATCH[2])); then
+		echo "usage: hack/fuzz.sh --shard <i>/<n> (1 <= i <= n)" >&2
+		exit 2
+	fi
+	shard=$((BASH_REMATCH[1] - 1)) shards=${BASH_REMATCH[2]} n=${#TARGETS[@]} failed=0
+	for ((i = 0; i < n; i++)); do
+		((i * shards / n == shard)) || continue
+		read -r pkg target <<<"${TARGETS[i]}"
+		run_one "$pkg" "$target" || failed=1
+	done
+	exit $failed
 fi
 
 filter="${1:-.}"

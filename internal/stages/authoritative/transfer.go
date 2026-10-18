@@ -43,7 +43,7 @@ const (
 var (
 	// ErrZoneNotFound: no zone with exactly that name is loaded.
 	ErrZoneNotFound = errors.New("authoritative: no such zone")
-	// ErrNotTransferable: the zone holds no data of its own (a forward zone).
+	// ErrNotTransferable: a forward zone or a partial zone with fallback.
 	ErrNotTransferable = errors.New("authoritative: zone is not transferable")
 	// ErrUnsynced: the zone cache cannot vouch for its data (D80).
 	ErrUnsynced = errors.New("authoritative: zone cache is not synced")
@@ -212,7 +212,7 @@ func (s *Stage) Transfer(name string, serial uint32) (<-chan []dns.RR, error) {
 	if z == nil || z.Name() != dns.CanonicalName(name) {
 		return nil, ErrZoneNotFound
 	}
-	if z.Type() != v1alpha1.ZoneTypePrimary {
+	if z.Type() != v1alpha1.ZoneTypePrimary || z.HasFallback() {
 		return nil, ErrNotTransferable
 	}
 	var chunks [][]dns.RR

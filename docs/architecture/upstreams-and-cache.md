@@ -16,6 +16,18 @@ Code: `internal/upstream` (groups, strategies, health, ECS),
 
 ![Where a forwarded query goes: the cache in front of the routing decision, then one of the upstream groups](diagrams/upstreams.excalidraw.svg)
 
+## Settings ownership
+
+In Kubernetes, upstreams start as GitOps-managed. **DNS > Upstreams** can
+explicitly adopt the complete section into UI management, preserving every
+group and routing rule. UI-owned settings use a separate API-owned ConfigMap,
+survive Helm reconciliation and restart, and reach every replica through the
+settings watcher. Conflicting file declarations are reported and ignored for
+this section. A return to GitOps requires matching exported Helm values first.
+See [configuration and the store](configuration-and-store.md#settings) for
+revision checks, environment locks, persistence and the handoff flow.
+Changes still swap the upstream set and flush cached answers as described below.
+
 ## Which group answers
 
 Three places can name a group, and they are checked in a fixed order. The
@@ -44,7 +56,7 @@ flowchart TD
 
 The precedence, from strongest to weakest:
 
-1. A forward zone's own group, when it is not `default`.
+1. A forward zone's or primary zone fallback's own group, when it is not `default`.
 2. The client's `Policy.upstreamGroup` (the highest-priority Policy that sets one).
 3. The longest suffix in `upstreams.conditional`.
 4. The `default` group, which must exist.

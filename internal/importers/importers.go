@@ -57,8 +57,61 @@ type Plan struct {
 	Objects     []map[string]any `json:"objects" nullable:"false"`
 	Settings    map[string]any   `json:"settings"`
 	Warnings    []string         `json:"warnings" nullable:"false"`
+	Selection   *Selection       `json:"selection,omitempty"`
 	nameservers []string
 	addresses   []string
+}
+
+// Selection lists the reviewed objects and top-level settings to import.
+// A missing selection preserves compatibility by selecting the entire plan.
+type Selection struct {
+	Objects  []string `json:"objects" nullable:"false"`
+	Settings []string `json:"settings" nullable:"false"`
+}
+
+// ObjectID is stable across previews and includes the namespace when present.
+func ObjectID(doc map[string]any) string {
+	kind, _ := doc["kind"].(string)
+	meta, _ := doc["metadata"].(map[string]any)
+	name, _ := meta["name"].(string)
+	ns, _ := meta["namespace"].(string)
+	if ns != "" {
+		return kind + "/" + ns + "/" + name
+	}
+	return kind + "/" + name
+}
+
+// Selected validates every requested identity before any destination writes.
+func (p *Plan) Selected() (map[string]bool, map[string]any, error) {
+	objects := map[string]bool{}
+	settings := map[string]any{}
+	for _, doc := range p.Objects {
+		objects[ObjectID(doc)] = p.Selection == nil
+	}
+	if p.Selection == nil {
+		for key, value := range p.Settings {
+			settings[key] = value
+		}
+		return objects, settings, nil
+	}
+	for _, id := range p.Selection.Objects {
+		selected, exists := objects[id]
+		if !exists || selected {
+			return nil, nil, fmt.Errorf("selection contains an unknown or duplicate object: %s", id)
+		}
+		objects[id] = true
+	}
+	for _, key := range p.Selection.Settings {
+		value, exists := p.Settings[key]
+		if _, duplicate := settings[key]; !exists || duplicate {
+			return nil, nil, fmt.Errorf("selection contains an unknown or duplicate settings section: %s", key)
+		}
+		settings[key] = value
+	}
+	if len(p.Selection.Objects) == 0 && len(settings) == 0 {
+		return nil, nil, errors.New("select at least one object or settings section to import")
+	}
+	return objects, settings, nil
 }
 
 type sourceClient struct {

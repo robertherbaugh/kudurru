@@ -16,18 +16,30 @@ import (
 	"github.com/miekg/dns"
 )
 
-// dnsServer answers health TXT on one loopback port over UDP and TCP.
+// dnsServer answers health TXT on one loopback port over UDP and TCP. A
+// free UDP port is not necessarily free for TCP (parallel test binaries
+// hold ephemeral TCP ports), so it retries until both bind.
 func dnsServer(t *testing.T, rcode *atomic.Int32) string {
 	t.Helper()
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	var (
+		pc net.PacketConn
+		ln net.Listener
+	)
+	for range 20 {
+		var err error
+		if pc, err = net.ListenPacket("udp", "127.0.0.1:0"); err != nil {
+			t.Fatal(err)
+		}
+		if ln, err = net.Listen("tcp", pc.LocalAddr().String()); err == nil {
+			break
+		}
+		_ = pc.Close()
+		pc = nil
+	}
+	if pc == nil {
+		t.Fatal("no loopback port free for both UDP and TCP")
 	}
 	addr := pc.LocalAddr().String()
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
 	h := dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
 		m := new(dns.Msg)
 		m.SetRcode(r, int(rcode.Load()))

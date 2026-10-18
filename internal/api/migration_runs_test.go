@@ -262,7 +262,7 @@ func (f *failingMigrationJournal) Apply(ctx context.Context, obj store.Object, o
 	return f.Store.Apply(ctx, obj, opts)
 }
 func TestMigrationJournalFailureStopsWrites(t *testing.T) {
-	for _, failAt := range []int{1, 2} {
+	for _, failAt := range []int{1, 2, 3} {
 		t.Run(fmt.Sprint(failAt), func(t *testing.T) {
 			h := newHarness(t)
 			f := &failingMigrationJournal{Store: h.st, failAt: failAt}
@@ -274,7 +274,7 @@ func TestMigrationJournalFailureStopsWrites(t *testing.T) {
 				r.want(http.StatusOK)
 				var result MigrationResult
 				r.json(&result)
-				if result.JournalError == "" || len(result.Items) != 1 {
+				if result.JournalError == "" || len(result.Items) != failAt-2 {
 					t.Fatalf("journal failure: %+v", result)
 				}
 				var run MigrationRun
@@ -477,7 +477,7 @@ func TestMigrationCutoverRejectsFullJournalBeforeWrites(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			stored.Spec.Cutovers[0].Items[0].Error = strings.Repeat("x", store.MaxObjectBytes-len(b)-2048)
+			stored.Spec.Cutovers[0].Items[0].Error = strings.Repeat("x", migrationJournalMaxBytes-len(b)-2048)
 			if err := h.srv.saveMigrationRun(context.Background(), stored); err != nil {
 				t.Fatal(err)
 			}

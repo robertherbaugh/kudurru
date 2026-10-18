@@ -23,6 +23,14 @@ Every settings key of `kudurru.yaml`, generated from the metadata table in
    can only be set in a file. A key set from the environment is read-only in
    the UI, and a variable that names no key stops the server at start.
 
+In Kubernetes, cluster sections default to GitOps ownership. Explicit adoption
+of the complete upstreams section enables UI/API writes to a separate shared
+ConfigMap; other file keys are never merged into that owned section. Generate
+Helm values, apply matching configuration and release ownership to return to
+GitOps. See [settings ownership](../../../docs/architecture/configuration-and-store.md#settings).
+Docker retains its writable settings-file behavior; explicit ownership is
+stored in its settingsOwnership metadata.
+
 **Scope.** `node` keys belong to one host. `cluster` keys are shared by every
 node of a deployment.
 
@@ -35,7 +43,7 @@ the API reject anything else with an error naming the key.
 
 **Flags.** *host-only* keys can only be set in the file or the environment
 on the host, never through the API or the UI (they name listeners, files and
-privileged behaviour). *restart* keys take effect after a restart (in
+privileged behavior). *restart* keys take effect after a restart (in
 Kubernetes the chart rolls the pods); every other key is applied while the
 server runs. *write-only* keys are never returned by the API.
 

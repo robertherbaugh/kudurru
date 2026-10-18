@@ -390,8 +390,28 @@ They render into two ConfigMaps (D25): `<release>-node` is the file
 The binary reads and watches that settings file. The chart also merges
 the settings into the node file, so Helm settings changes roll the pods
 through its checksum annotation. Direct edits to the mounted settings
-ConfigMap reload hot keys without a restart. In Kubernetes, kudurru's API
-refuses settings writes; edit the ConfigMap or Helm values. See
+ConfigMap reload hot keys without a restart. Cluster settings default to GitOps ownership. For `upstreams`, choose
+**Adopt into UI management** on **DNS > Upstreams** to persist the entire
+section in `<release>-ui-settings`, an API-owned ConfigMap that Helm never
+renders. `config.uiSettingsResource` optionally selects its name; keep that
+name stable after adoption. Existing release-namespace ConfigMap RBAC already
+allows the required get/create/update operations; no CRD change is needed.
+
+UI-owned upstreams survive Helm upgrades and propagate to every replica on
+the settings poll (up to ten seconds). If Helm still declares upstream keys,
+the API reports `conflicts: [upstreams]`, logs a warning and keeps UI values.
+Set `config.settings.upstreams: null` to remove the chart's upstream defaults
+while UI ownership is active. Do not put ownership in Helm values: ownership
+changes require the explicit API/dashboard adoption or release flow.
+
+To return to GitOps, export the current Helm values, commit and apply them,
+wait for the settings volume to update on every replica, refresh the ownership
+revision, then release. The API requires the serving replica's effective
+file configuration to match the UI values before handoff; it does not check
+the mounted volumes on other replicas.
+Upstream environment overrides block ownership transitions. Back up the
+API-owned ConfigMap separately from ordinary object-store exports and keep
+the node data directory for offline startup state. See
 [configuration and the store](../architecture/configuration-and-store.md#settings).
 
 Seed objects with `objects:` (post-install hook resources in

@@ -222,6 +222,8 @@ spec:
                   fieldPath: metadata.name
             - name: KUDURRU_HEADLESS_SERVICE
               value: kudurru-headless.kudurru-system.svc.cluster.local
+            - name: KUDURRU_SETTINGS_RESOURCE
+              value: kudurru-ui-settings
             - name: KUDURRU_SETTINGS_FILE
               value: /etc/kudurru/settings/settings.yaml
             - name: KUDURRU_ENCRYPTION_KEY_FILE

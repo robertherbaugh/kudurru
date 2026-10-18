@@ -41,6 +41,8 @@ type ZoneSummary struct {
 	ResourceVersion string `json:"resourceVersion,omitempty"`
 	// Upstream is the upstream group of a forward zone.
 	Upstream string `json:"upstreamGroup,omitempty"`
+	// Fallback resolves missing names through normal routing or a chosen group.
+	Fallback *v1alpha1.ZoneFallbackSpec `json:"fallback,omitempty"`
 	// DeleteRefusal is the error key DELETE /zones/{zone} answers for this
 	// zone whatever the caller's permissions: default_zone for the root
 	// zone ".", managed_by when the zone or one of its record sets is
@@ -224,6 +226,7 @@ func zoneSummary(z *v1alpha1.DNSZone, recordSets, managedSets int) ZoneSummary {
 	out := ZoneSummary{
 		Name: z.Name, ZoneName: z.Spec.ZoneName, Type: string(z.Spec.Type), Serial: z.Status.Serial,
 		RecordCount: z.Status.RecordCount, RecordSets: recordSets, ManagedBy: store.ManagedBy(z), ResourceVersion: z.ResourceVersion,
+		Fallback: z.Spec.Fallback.DeepCopy(),
 	}
 	switch {
 	case isRootZone(z):
@@ -895,6 +898,11 @@ func (s *Server) notifyZone(ctx context.Context, in *zonePathInput) (*notifyOutp
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err
+	}
+	if z.Spec.Fallback != nil {
+		return nil, newError(http.StatusUnprocessableEntity, KeyUnprocessable,
+			"NOTIFY is unavailable for zones with missing-name fallback",
+			"ordinary secondaries cannot reproduce this zone's fallback behavior")
 	}
 	if s.opts.Notifier == nil {
 		return nil, errNotImplemented("NOTIFY")

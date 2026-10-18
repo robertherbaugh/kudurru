@@ -6,11 +6,12 @@
 # that compile Go or run parallel test workers (go, dashboard, dashboard-e2e, e2e,
 # dev-image, edge, publish's test and release) use standard-4: half the wall
 # time for about the same cost, and the `go` job is the critical path of
-# this workflow. Short, network-bound or wait-bound jobs, and the fuzz matrix
-# (60 s of fuzzing a job whatever the size), stay on standard-2; the
-# supervisor images build natively on standard-2 x64 and arm64 runners
-# instead of under QEMU. 8 vCPU doubles the price per minute for 18 % less
-# time on the `go` job, about 1.6x the cost per run.
+# this workflow. Short, network-bound or wait-bound jobs, the build job and
+# the fuzz shards (60 s of fuzzing a target whatever the size) stay on
+# standard-2; the supervisor images build natively on standard-2 x64 and
+# arm64 runners instead of under QEMU. 8 vCPU doubles the price per minute
+# for 18 % less time on the `go` job, about 1.6x the cost per run; two
+# standard-4 shards cut its test step about in half instead.
 # Pinned to Ubuntu 24.04, the image ubuntu-latest was.
 name: ci
 on:
@@ -19,12 +20,17 @@ on:
   pull_request:
 permissions:
   contents: read
+# A new push to a pull request cancels the run of the previous one (about a
+# fifth of the runs, October 2026). Other events group by commit: GitHub
+# replaces a pending run in a group even without cancel-in-progress, so a
+# shared group for main could leave a commit with no run (and no cache save).
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  # Changes confined to docs/, dev-docs/, docs-site/, website/, branding/ and license-server/ skip the
-  # jobs below; docs.yml, website.yml and license-server.yml still check them.
-  # Jobs are skipped rather than filtering the workflow with paths-ignore,
-  # because a skipped job satisfies a
-  # required status check and a workflow that never runs does not.
+  # Changes confined to docs/, dev-docs/, docs-site/, website/, branding/
+  # and license-server/ skip the jobs below (hack/ci-changes.sh code);
+  # docs.yml, website.yml and license-server.yml still check them.
   changes:
     runs-on: ubicloud-standard-2-ubuntu-2404
     outputs:
@@ -33,25 +39,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: filter
-        env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          # Run everything unless git can list the changes and every one is
-          # under docs/, dev-docs/, docs-site/, website/, branding/ or license-server/ (a new branch or an
-          # unreachable force-pushed base runs everything).
-          code=true
-          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|dev-docs|docs-site|website|license-server|branding)/' <<<"$files"; then
-              code=false
-            fi
-          fi
-          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+        # bash -o pipefail: a failing filter fails the job instead of skipping
+        # every gated job.
+        shell: bash
+        run: hack/ci-changes.sh code | tee -a "$GITHUB_OUTPUT"
+  # The unit and integration tests under the race detector, in two shards
+  # of packages balanced by their test time (hack/go-test-shard.sh). Each
+  # shard keeps its own Go build and module cache, saved by main and
+  # restored by pull requests (the shared setup-go cache is saved by
+  # whichever job of the commit finishes first, which compiled other
+  # packages).
   go:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-4-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    name: go test ${{ matrix.shard }}/2
     # PostgreSQL for the central-database tests (internal/central, D158):
     # with KUDURRU_REQUIRE_POSTGRES they fail instead of skipping.
     services:
@@ -70,10 +78,17 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Verify generated files are current
-        run: make check-generated
-      - name: Vet
-        run: make vet
+          cache: false
+      - name: Restore the Go build and module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-
       # kube-apiserver and etcd for the kube driver tests: keyed on the
       # Makefile, which pins ENVTEST_K8S_VERSION and the setup-envtest version.
       - name: Cache envtest control-plane binaries
@@ -86,13 +101,65 @@ jobs:
         if: steps.envtest-cache.outputs.cache-hit != 'true'
         run: make envtest
       - name: Test
-        run: make test
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
+      # Only what this run used: go marks a cache entry used by touching it
+      # (when it is over an hour old), so the cache does not grow forever.
+      - name: Drop cache entries this run did not use (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: find ~/.cache/go-build -type f -mmin +90 -delete
+      - name: Save the Go build and module cache (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+  # Generated files, the release build (CGO_ENABLED=0) with its size
+  # budget and a smoke test of the binary, beside the tests rather than
+  # after them. The docs references are checked by `make test`
+  # (TestReferenceDrift, TestCLIReferenceDrift) and docs.yml.
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore the Go build and module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-build-${{ runner.os }}-${{ runner.arch }}-
+      - name: Verify generated files are current
+        run: make check-generated-code
       - name: Build
         run: make build
       - name: Binary-size budget (D75)
         run: make size
       - name: Smoke test the binary
         run: ./bin/kudurru version
+      - name: Drop cache entries this run did not use (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: find ~/.cache/go-build -type f -mmin +90 -delete
+      - name: Save the Go build and module cache (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
   # The central-database tests on the oldest and newest supported
   # PostgreSQL (16 and 18); the go job runs 17, the preferred version.
   # Only the packages that reach the server: the SQLite query-log
@@ -276,45 +343,54 @@ jobs:
             .context/dhcp-acceptance.*/
             !.context/dhcp-acceptance.*/fixture
           retention-days: 14
-  # Fuzzing: every target of hack/fuzz.sh for 60 s, one matrix job each.
-  fuzz-targets:
+  # Fuzzing: every target of hack/fuzz.sh for 60 s, in seven shards of two
+  # or three consecutive targets fuzzed one after another (about 5 min a
+  # shard, no longer than the go shards), so a package's instrumented test
+  # binary is built once per shard rather than once per target (a job per
+  # target spent more on setup and compiling than on fuzzing).
+  fuzz:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-2-ubuntu-2404
-    outputs:
-      targets: ${{ steps.list.outputs.targets }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - id: list
-        run: echo "targets=$(hack/fuzz.sh --list | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
-  fuzz:
-    needs: fuzz-targets
-    runs-on: ubicloud-standard-2-ubuntu-2404
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.fuzz-targets.outputs.targets) }}
-    name: fuzz ${{ matrix.target }}
+        shard: [1, 2, 3, 4, 5, 6, 7]
+    name: fuzz ${{ matrix.shard }}/7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Fuzz for 60 s
+      - name: Fuzz each target for 60 s
         env:
           FUZZTIME: 60s
           FUZZ_PARALLEL: 2
-        run: hack/fuzz.sh --one ${{ matrix.target }}
+          SHARD: ${{ matrix.shard }}
+        run: hack/fuzz.sh --shard "$SHARD/7"
       - name: Upload the crasher
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: fuzz-crasher-${{ strategy.job-index }}
+          name: fuzz-crasher-${{ matrix.shard }}
           path: |
             **/testdata/fuzz/
             bin/fuzz/
           retention-days: 14
+  # go vet's own analyzers, beside the tests (about 4 min on 2 vCPU, which
+  # would make lint the slowest job if it ran there).
+  vet:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: make vet
   lint:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -381,7 +457,7 @@ jobs:
   # satisfies a required status check; the same goes for a canceled run.
   # Add new jobs to needs.
   ci-ok:
-    needs: [changes, go, postgres, dashboard, dashboard-e2e, e2e, dhcp-acceptance, fuzz-targets, fuzz, lint, helm, licenses]
+    needs: [changes, go, build, postgres, dashboard, dashboard-e2e, e2e, dhcp-acceptance, fuzz, vet, lint, helm, licenses]
     if: always()
     runs-on: ubicloud-standard-2-ubuntu-2404
     timeout-minutes: 5
