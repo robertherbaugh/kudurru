@@ -106,24 +106,30 @@ func TestNodePeersSync(t *testing.T) {
 	if _, err := cs.CoreV1().Nodes().Create(context.Background(), testNode("c", nil, "10.0.0.13"), metav1.CreateOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		got, _ := ReadPeersFile(path)
-		if reflect.DeepEqual(got, []string{"10.0.0.12", "10.0.0.13"}) {
-			break
+	waitPeers := func(want ...string) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			got, _ := ReadPeersFile(path)
+			if reflect.DeepEqual(got, want) {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("peers file not updated: %v, want %v", got, want)
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("peers file not updated: %v", got)
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
-	// Losing every peer keeps the previous file.
-	for _, n := range []string{"b", "c"} {
-		_ = cs.CoreV1().Nodes().Delete(context.Background(), n, metav1.DeleteOptions{})
-	}
+	waitPeers("10.0.0.12", "10.0.0.13")
+	// Losing every peer keeps the previous file. One node at a time: Sync
+	// re-lists every 10 ms, so a tick between two deletes rightly writes
+	// the one-peer set.
+	_ = cs.CoreV1().Nodes().Delete(context.Background(), "b", metav1.DeleteOptions{})
+	waitPeers("10.0.0.13")
+	_ = cs.CoreV1().Nodes().Delete(context.Background(), "c", metav1.DeleteOptions{})
 	time.Sleep(50 * time.Millisecond)
-	if got, _ := ReadPeersFile(path); len(got) != 2 {
-		t.Errorf("peers file emptied: %v", got)
+	if got, _ := ReadPeersFile(path); !reflect.DeepEqual(got, []string{"10.0.0.13"}) {
+		t.Errorf("peers file changed after losing every peer: %v", got)
 	}
 	cancel()
 	<-done

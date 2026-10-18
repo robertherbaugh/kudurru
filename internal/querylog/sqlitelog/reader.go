@@ -36,10 +36,13 @@ const (
 // snapshot is a consistent copy of the writer state a read needs.
 type snapshot struct {
 	now      time.Time
-	hourDone int64
-	dayDone  int64
-	minutes  map[int64]*minuteAcc
-	hours    map[int64]*hourAcc
+	hourDone int64 // the _1h rollups are readable for hours < hourDone
+	dayDone  int64 // the _1d rollups are readable for days < dayDone
+	// pendingFrom is the writer's hourDone: hours from here on are in
+	// hours. It differs from hourDone while a derived hour is dirty.
+	pendingFrom int64
+	minutes     map[int64]*minuteAcc
+	hours       map[int64]*hourAcc
 }
 
 // read runs fn in a read transaction with a snapshot of the pending
@@ -60,7 +63,8 @@ func (r *Reader) read(ctx context.Context, withHours bool, fn func(tx *rtx, s *s
 			return ErrClosed
 		}
 		seq := w.flushSeq.Load()
-		s := &snapshot{now: w.clock.Now(), hourDone: w.hourDone, dayDone: w.dayDone, minutes: make(map[int64]*minuteAcc, len(w.acc.minutes))}
+		hourDone, dayDone := w.readableProgress()
+		s := &snapshot{now: w.clock.Now(), hourDone: hourDone, dayDone: dayDone, pendingFrom: w.hourDone, minutes: make(map[int64]*minuteAcc, len(w.acc.minutes))}
 		for ts, m := range w.acc.minutes {
 			c := newMinuteAcc()
 			c.merge(m)
@@ -307,7 +311,7 @@ func (r *Reader) keyed(ctx context.Context, tx *rtx, s *snapshot, src keyedSourc
 	nowS := s.now.Unix()
 	for _, sg := range segs {
 		if sg.t.facts {
-			if src.hour != nil && s.hours != nil && sg.from >= s.hourDone && sg.from%3600 == 0 && sg.until >= nowS && !anyFull(src, s.hours, sg.from, sg.until) {
+			if src.hour != nil && s.hours != nil && sg.from >= s.pendingFrom && sg.from%3600 == 0 && sg.until >= nowS && !anyFull(src, s.hours, sg.from, sg.until) {
 				for h, acc := range s.hours {
 					if h >= sg.from && h < sg.until {
 						src.hour(acc, func(k, a, b int64) { pending.add(bucketOf(h, step), k, a, b) })

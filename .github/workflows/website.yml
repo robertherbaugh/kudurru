@@ -28,6 +28,9 @@ on:
       - .github/workflows/website.yml
 permissions:
   contents: read
+concurrency:
+  group: website-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   website:
     runs-on: ubicloud-standard-2-ubuntu-2404

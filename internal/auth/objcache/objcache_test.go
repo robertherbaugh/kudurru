@@ -79,3 +79,99 @@ func TestUpsertDoesNotResurrect(t *testing.T) {
 		t.Fatal("Upsert after Remove put the removed copy back")
 	}
 }
+
+// scriptedStore hands the cache a watch whose events the test sends.
+type scriptedStore struct {
+	store.Store
+	events chan store.Event
+}
+
+type scriptedWatcher struct{ ch chan store.Event }
+
+func (w scriptedWatcher) ResultChan() <-chan store.Event { return w.ch }
+func (w scriptedWatcher) Stop()                          {}
+
+func (s *scriptedStore) Watch(context.Context, store.Kind, store.WatchOptions) (store.Watcher, error) {
+	return scriptedWatcher{s.events}, nil
+}
+
+func userAt(name, rv string) *internalv1.LocalUser {
+	u := user(name)
+	u.ResourceVersion = rv
+	return u
+}
+
+// bookmark is the end of the initial list; rv is the resourceVersion the
+// driver read the list at ("" when it does not report one).
+func bookmark(rv string) store.Event {
+	bm := &internalv1.LocalUser{}
+	bm.ResourceVersion = rv
+	return store.Event{Type: store.Bookmark, Object: bm}
+}
+
+// TestPruneKeepsWritesAfterTheList is the regression test of a new token
+// that was unknown on its node: a write (Upsert) between the initial list
+// of a watch and its Bookmark is not in the list, and prune dropped it and
+// left a tombstone that then ignored the object's own Added event. The
+// sqlite and kube drivers report the list's resourceVersion on the
+// Bookmark; objects newer than it are kept. Without that version (the
+// memory driver) prune drops every object the list did not contain, and
+// objects older than the list's version are dropped as before.
+func TestPruneKeepsWritesAfterTheList(t *testing.T) {
+	for _, tc := range []struct {
+		name, listRV string
+		keepFresh    bool
+	}{
+		{"bookmark with the list's version", "10", true},
+		{"bookmark without a version", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			st := &scriptedStore{Store: memory.New(), events: make(chan store.Event)}
+			c := New[*internalv1.LocalUser](st, internalv1.KindLocalUser, Options{})
+			done := make(chan struct{})
+			go func() { _ = c.Run(ctx); close(done) }()
+			defer func() { cancel(); <-done }()
+
+			// A cached object the new list no longer has (deleted while
+			// the watch was down), older than the list.
+			c.Upsert(userAt("gone", "5"))
+			// The initial list holds "listed"; "fresh" is written by this
+			// node after the list was read, before its Bookmark.
+			st.events <- store.Event{Type: store.Added, Object: userAt("listed", "9")}
+			c.Upsert(userAt("fresh", "11"))
+			st.events <- bookmark(tc.listRV)
+			<-c.Synced()
+
+			get := func(name string) bool {
+				_, ok := c.Get(store.Key{Kind: internalv1.KindLocalUser, Name: name})
+				return ok
+			}
+			// The cache applies events in order: an Added event after the
+			// Bookmark shows that the Bookmark was handled.
+			st.events <- store.Event{Type: store.Added, Object: userAt("probe", "12")}
+			waitFor(t, "the probe object", func() bool { return get("probe") })
+			if !get("listed") {
+				t.Error("the listed object is missing")
+			}
+			if get("gone") {
+				t.Error("an object older than the list and not in it was kept")
+			}
+			if got := get("fresh"); got != tc.keepFresh {
+				t.Errorf("object written after the list: cached %v, want %v", got, tc.keepFresh)
+			}
+			// The fresh object's own Added event does not change that: with
+			// the list's version it was never dropped; without it, the
+			// tombstone is at the object's own version, which the event does
+			// not supersede, so it stays out until a newer write (the limit
+			// of a driver that reports no list version).
+			st.events <- store.Event{Type: store.Added, Object: userAt("fresh", "11")}
+			st.events <- store.Event{Type: store.Added, Object: userAt("probe2", "13")}
+			waitFor(t, "the second probe", func() bool { return get("probe2") })
+			if got := get("fresh"); got != tc.keepFresh {
+				t.Errorf("after its Added event: cached %v, want %v", got, tc.keepFresh)
+			}
+		})
+	}
+}
