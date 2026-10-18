@@ -3,7 +3,8 @@
 // linked identity (add, which shows the invite link once; re-invite, which
 // replaces the link; remove, which ends access at once); the customer's
 // licenses with "Issue license" (the wizard with this customer chosen);
-// and the personal requests of its people.
+// its Order Forms with "New Order Form" (the Order Form wizard with this
+// customer chosen); and the personal requests of its people.
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -14,17 +15,19 @@ import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
-import { Plus, UserPlus } from 'lucide-react';
+import { FileSignature, Plus, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import type { CustomerDetail, CustomerKind, LicenseRequest, Member, MemberInviteResult } from '@shared/api';
 import { INVITE_TTL_DAYS } from '@shared/catalog';
 import { useCan } from '../api/context';
 import { bannerError, useFieldErrors } from '../api/fieldErrors';
-import { useCatalog, useCustomer, useRouteMutation } from '../api/hooks';
+import { useCatalog, useCustomer, useOrderForms, useRouteMutation } from '../api/hooks';
 import { RecentAudit } from '../components/AuditTable';
 import { MemberStatusBadge, RequestStatusBadge } from '../components/badges';
 import { IssueLicenseWizardDialog } from '../components/IssueLicenseWizard';
 import { licenseColumns, type LicenseRow } from '../components/licenseColumns';
+import { orderFormColumns, type OrderFormRow } from '../components/orderFormColumns';
+import { OrderFormWizardDialog } from '../components/OrderFormWizard';
 import type { PageProps } from '../routes';
 import { utcDay } from '../lib/dates';
 import { emailError, nameError } from '../lib/validate';
@@ -48,6 +51,7 @@ interface DetailsDraft {
 }
 
 const licenseCols = licenseColumns({ customer: false });
+const orderFormCols = orderFormColumns({ customer: false });
 
 const requestColumns: TableColumn<RequestRow>[] = [
   { key: 'createdAt', header: 'Requested (UTC)', width: pixel(170), renderCell: (r) => utcDay(r.createdAt) },
@@ -158,6 +162,7 @@ export default function CustomerPage({ params }: PageProps) {
           >
             <Table<LicenseRow> data={c.licenses as LicenseRow[]} columns={licenseCols} idKey="id" density="compact" emptyState={<Text color="secondary">No licenses yet.</Text>} />
           </Panel>
+          {can('orders.read') ? <OrderForms customer={c} /> : null}
           {c.requests.length ? (
             <Panel title="Personal key requests" description="Requests from this customer's people.">
               <Table<RequestRow> data={c.requests as RequestRow[]} columns={requestColumns} idKey="id" density="compact" />
@@ -168,6 +173,28 @@ export default function CustomerPage({ params }: PageProps) {
         </>
       ) : null}
     </Page>
+  );
+}
+
+/** The customer's Order Forms, and "New Order Form" with this customer chosen. */
+function OrderForms({ customer: c }: { customer: CustomerDetail }) {
+  const can = useCan();
+  const q = useOrderForms({ customerId: c.id });
+  const [drafting, setDrafting] = useState(false);
+  const write = can('orders.write');
+  return (
+    <Panel
+      title="Order Forms"
+      description="Schedule A of the commercial agreement for this customer: drafted here, accepted by its authorized contacts in the portal."
+      actions={write ? <Button label="New Order Form" size="sm" variant="secondary" icon={<FileSignature size={16} aria-hidden="true" />} onClick={() => setDrafting(true)} /> : null}
+    >
+      {q.error ? <ErrorBanner error={q.error} /> : null}
+      {q.isPending ? <Loading /> : null}
+      {q.data ? (
+        <Table<OrderFormRow> data={q.data.items as OrderFormRow[]} columns={orderFormCols} idKey="id" density="compact" verticalAlign="top" emptyState={<Text color="secondary">No Order Forms yet.</Text>} />
+      ) : null}
+      <OrderFormWizardDialog isOpen={drafting} onClose={() => setDrafting(false)} customer={customerChoice(c)} />
+    </Panel>
   );
 }
 

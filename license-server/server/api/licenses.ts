@@ -12,6 +12,7 @@ import { HttpError, json, keyFile } from '../http/errors';
 import type { PartialHandlerMap } from '../http/types';
 import { licenseeField } from '../licensing/claims';
 import { lockOpenBusinessRequest, markBusinessRequestIssued } from '../services/businessRequests';
+import { lockOrderFormForLicense, markOrderFormLicensed } from '../services/orderForms';
 import {
   changeLicense,
   downloadLicenseKey,
@@ -45,6 +46,7 @@ const IssueShape = v.object({
   notes: v.optional(notesField),
   emailCustomer: v.optional(v.bool()),
   businessRequestId: v.optional(v.id('businessRequest')),
+  orderFormId: v.optional(v.id('orderForm')),
 });
 
 const ImportShape = v.object({
@@ -97,11 +99,17 @@ export const licenseHandlers: PartialHandlerMap = {
     if ((body.customerId === undefined) === (body.newCustomer === undefined)) {
       throw new HttpError(400, 'invalid', 'Choose an existing customer or a new one, not both.', { fields: ['customerId', 'newCustomer'] });
     }
+    if (body.orderFormId && body.businessRequestId) {
+      throw new HttpError(400, 'invalid', 'Issue from the Order Form alone: it names its business request itself.', { fields: ['businessRequestId'] });
+    }
     const detail = await inTransaction(ctx, actorFromCtx(ctx), async (s) => {
       // From a business request: it must still be open, and becomes issued with the license.
       if (body.businessRequestId) await lockOpenBusinessRequest(s, body.businessRequestId);
+      // From an Order Form: executed, without a license yet, covering this customer, plan, nodes, features and expiry; it records the license.
+      const fromForm = body.orderFormId ? await lockOrderFormForLicense(s, body.orderFormId, body) : null;
       const id = await issueLicense(s, body);
       if (body.businessRequestId) await markBusinessRequestIssued(s, body.businessRequestId, id);
+      if (body.orderFormId && fromForm) await markOrderFormLicensed(s, body.orderFormId, id, fromForm.businessRequestId);
       return licenseDetail(s.tx, id, s.now, s.signing);
     });
     return json<ResponseOf<'licenseIssue'>>(detail);

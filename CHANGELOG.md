@@ -130,6 +130,8 @@ configuration store.
   step navigation and full-size screenshots. Separate Linux and Kubernetes
   DHCP walkthroughs cover host preparation, router relays, required trusted
   addresses, safe cutover and lease verification.
+- The website and docs-site footers link to the license portal
+  (licenses.kudurru.io) and the auth portal (auth.kudurru.io).
 
 ### Changed
 
@@ -202,6 +204,11 @@ and [final feature review](dev-docs/milestones/m5/features-v0.1.md).
   separate [license portal](license-server/README.md) issues keys after
   approval; no kudurru node contacts it. See [LICENSING.md](LICENSING.md)
   for terms and feature limits, or [request a key](https://kudurru.io/license).
+- The license portal holds Order Forms: license admins draft one for a
+  customer or from a business request, with the fees of the price list,
+  and send it; an authorized contact of the customer accepts it (or
+  declines it) signed in, a license admin countersigns it, and the license
+  is issued from the executed form. Both parties keep the signed copy.
 
 ### Installation and upgrade notes
 

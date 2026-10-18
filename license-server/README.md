@@ -11,7 +11,9 @@ The licensor's service that issues kudurru license keys: the Ed25519
 signed tokens of `internal/license` (`docs/architecture/licensing.md`).
 People sign in with OpenID Connect. Customers see and download their keys
 and ask for a free personal key; license admins issue, renew, change and
-withdraw licenses, approve personal keys and answer business requests;
+withdraw licenses, approve personal keys, answer business requests and
+draft Order Forms, which the customer's authorized contacts accept in the
+portal ("Order Forms" below);
 superadmins manage and delete users and see the audit trail and the
 configuration. The kudurru.io form requests free personal keys and sends
 business requests without an account. By default
@@ -53,14 +55,14 @@ Hosting on Cloudflare Containers: [cloudflare/README.md](cloudflare/README.md).
 
 | Path | What it is |
 |---|---|
-| `shared/` | What server and UI share: the wire types (`api.ts`), the route manifest (`routes.ts`, the one list of routes with their access rule), roles and permissions, the plan and feature catalog (checked against `internal/license/license.go` by a test) and UTC date helpers |
+| `shared/` | What server and UI share: the wire types (`api.ts`), the route manifest (`routes.ts`, the one list of routes with their access rule), roles and permissions, the plan and feature catalog (checked against `internal/license/license.go` by a test), the commercial price list (`pricing.ts`, checked against the website's by a test), the Order Form's defaults, rules and document text (`orderForms.ts`) and UTC date helpers |
 | `server/main.ts` | The entry point: `serve`, `migrate`, `grant-superadmin`; `server/healthcheck.ts` is the image's health check |
 | `server/http/` | The router built from `shared/routes.ts`, the request pipeline (client address, security headers, CORS, CSRF, rate limits), body validation, the static UI |
 | `server/auth/` | OIDC sign-in (openid-client), sessions in Postgres, identity and role mapping, member linking |
 | `server/licensing/` | The JWS signer that matches `license.Sign` byte for byte, the keyring and the issuing policy |
-| `server/services/`, `server/api/` | Customers, members, licenses, personal and public key requests, business requests, users, the block list, audit and system pages; `api/` holds the thin handlers |
+| `server/services/`, `server/api/` | Customers, members, licenses, personal and public key requests, business requests, Order Forms, users, the block list, audit and system pages; `api/` holds the thin handlers |
 | `server/mail/` | SMTP (nodemailer), mail texts and the shared branded HTML layout |
-| `server/migrations/` | The schema; `0002` grants the runtime role exactly what the code uses (`0003` adds the approval links' table, `0004` deleting users, `0005` the business requests' table, each with its grant) |
+| `server/migrations/` | The schema; `0002` grants the runtime role exactly what the code uses (`0003` adds the approval links' table, `0004` deleting users, `0005` the business requests' table, `0006` the Order Forms' table and number sequence, each with its grant) |
 | `server/test/` | `bun test` against Postgres; the Go golden vectors and node oracle in `golden/` |
 | `ui/` | The UI (Vite, React 19, Astryx 0.6.8); `ui/src/ui/` is the kit copied from `dashboard/src`, each file marked with where it came from |
 | `e2e/` | Playwright: every role, the kudurru.io form and the one-click approval through Dex and Mailpit; every key handed out is judged by the node's own code |
@@ -170,20 +172,21 @@ migration:
   `bun dist/server.js migrate` (CI, a workstation or a one-off container);
 - `license_portal_app` is the only role the serving container holds.
   Migration `0002` grants it exactly what the server's SQL uses; `0003`
-  adds the approval links' table, `0004` deleting users and `0005` the
-  business requests' table:
+  adds the approval links' table, `0004` deleting users, `0005` the
+  business requests' table and `0006` the Order Forms' table:
 
 | Table | Runtime privileges |
 |---|---|
 | `users` | SELECT, INSERT, UPDATE, DELETE |
-| `customers`, `licenses`, `license_keys`, `license_requests`, `business_requests` | SELECT, INSERT, UPDATE |
+| `customers`, `licenses`, `license_keys`, `license_requests`, `business_requests`, `order_forms` | SELECT, INSERT, UPDATE |
 | `sessions`, `customer_members`, `public_key_requests`, `request_approval_links` | SELECT, INSERT, UPDATE, DELETE |
 | `oidc_logins`, `blocked_emails` | SELECT, INSERT, DELETE |
 | `audit_events` | SELECT, INSERT (and USAGE on `audit_events_id_seq`) |
+| `order_form_number_seq` | USAGE (the next Order Form No.) |
 | `schema_migrations` | SELECT |
 
-It cannot change the schema, truncate anything, delete a license, a key or
-a request, or rewrite the audit trail (triggers also refuse UPDATE, DELETE and
+It cannot change the schema, truncate anything, delete a license, a key, a
+request or an Order Form, or rewrite the audit trail (triggers also refuse UPDATE, DELETE and
 TRUNCATE on `audit_events` for every role). `server/test/roles.test.ts`
 runs every route as this role and proves what it cannot do.
 
@@ -283,6 +286,63 @@ admin replies to the requester by email, then either:
 A request is decided once. The audit trail records
 `business_request.received` (without the unconfirmed address),
 `business_request.issued` and `business_request.closed`.
+
+## Order Forms
+
+An Order Form is Schedule A of the
+[commercial agreement](../COMMERCIAL_LICENSE_AGREEMENT.md): the plan, the
+included modules, the Licensed Production Nodes, scope, the subscription
+term, the fees and the legal terms of one customer's commercial license.
+The portal drafts it, the customer accepts it electronically, the licensor
+countersigns it, and a license is issued from it. License admins work on
+the Order Forms page (`/orders`); customers find their forms on My
+licenses.
+
+- **Draft.** "New Order Form" (on Order Forms or a customer's page) or
+  "Draft Order Form" on a business request (Requests, Business: a new
+  organization customer named after the company, the requester as the
+  first authorized contact, the edition and the nodes asked for). The fees
+  start from the website's price list (`shared/pricing.ts`: platform fee
+  plus nodes × the per-node fee, 10% off the node fee from 25 nodes, a quote
+  from 50) and may be changed to what was agreed. An empty licensor address
+  takes the last form's. A draft is changed on its page; it may have gaps
+  (the customer's address, governing law, …), and the page lists them.
+- **Send.** Freezes the text: the portal renders the document
+  (`orderFormDocument`, Markdown) and stores the text with its SHA-256;
+  every copy and download is made from that stored text, so the hash stays
+  verifiable whatever later versions of the template render. Every
+  authorized contact becomes a member of the customer and gets a mail with
+  a link to the form, and, when they have no access yet, an invite link.
+- **Accept or decline.** Signed in, an authorized contact (a member whose
+  membership address is listed on the form) reads the form, types their
+  full name and title, confirms they may bind the customer and accepts the
+  SHA-256 they read; the portal keeps the time, client address and user
+  agent with it. Or they decline with a note. Either way the approvers
+  (`ADMIN_NOTIFY_EMAIL`, or the license admins and superadmins) get a mail.
+  Other members see the form but cannot answer it.
+- **Revise.** A sent or declined form goes back to a draft as the next
+  version; the earlier text can no longer be accepted (the hash differs).
+- **Countersign.** A license admin types their name and title and accepts
+  the same SHA-256: the form is executed, final, and the authorized
+  contacts get the signed copy (`OF-<year>-<number>.md`, both acceptances
+  and the hash) by mail. Either party downloads it from the form's page.
+- **Issue license.** On an executed form: the issue wizard with the form's
+  customer, the edition's plan, the nodes, the features of the included
+  modules (all of them, the named ones, or, for none, the admin's choice:
+  a key cannot list no feature), the subscription end as the expiry and
+  the form's number as the agreement reference. The server refuses a key
+  the form does not cover (another customer or plan, more nodes than its
+  production plus nonproduction nodes, other features, an expiry after the
+  subscription end). One license per form; the business request it was
+  drafted from becomes issued.
+- **Void.** Any form that is not executed, with an internal reason. The
+  contacts of a sent form are told it was withdrawn (never why).
+
+Every step is audited (`order_form.created`, `.updated`, `.sent`,
+`.revised`, `.accepted`, `.declined`, `.countersigned`, `.voided`,
+`.licensed`). Forms are never deleted. Without mail nothing is mailed:
+customers find sent forms on My licenses, and admins see answers on the
+Order Forms page.
 
 ## Users
 

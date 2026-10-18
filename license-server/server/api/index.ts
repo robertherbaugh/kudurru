@@ -15,12 +15,13 @@ import { customerHandlers } from './customers';
 import { healthHandlers } from './health';
 import { licenseHandlers } from './licenses';
 import { meHandlers } from './me';
+import { orderFormHandlers } from './orderForms';
 import { publicHandlers } from './public';
 import { requestHandlers } from './requests';
 import { systemHandlers } from './system';
 import { userHandlers } from './users';
 
-/** The licensing domain (catalog, me*, customers*, members*, licenses*, requests*, business requests, blocked emails, the public form, the approval link) and the admin pages (users*, audit, system). */
+/** The licensing domain (catalog, me*, customers*, members*, licenses*, requests*, business requests, Order Forms, blocked emails, the public form, the approval link) and the admin pages (users*, audit, system). */
 export const domainHandlers: PartialHandlerMap = mergeHandlers(
   catalogHandlers,
   meHandlers,
@@ -28,6 +29,7 @@ export const domainHandlers: PartialHandlerMap = mergeHandlers(
   licenseHandlers,
   requestHandlers,
   businessRequestHandlers,
+  orderFormHandlers,
   blocklistHandlers,
   userHandlers,
   auditHandlers,

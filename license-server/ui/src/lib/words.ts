@@ -1,10 +1,11 @@
 // How the portal words the wire's closed sets (shared/api.ts) that the
 // catalog does not already label: customer kinds, sources, key reasons,
-// request states and review reasons, audit actions and targets. Plans,
+// request and Order Form states and review reasons, audit actions and
+// targets. Plans,
 // features, license states and roles are labeled in shared/catalog.ts and
 // shared/permissions.ts; this file only adds what those leave out, so a
 // page never prints a raw enum value.
-import type { AuditAction, AuditTargetType, BusinessRequestStatus, CustomerKind, KeyReason, LicenseSource, MemberStatus, PersonalOutcome, RequestSource, RequestStatus, ReviewReason } from '@shared/api';
+import type { AuditAction, AuditTargetType, BusinessRequestStatus, CustomerKind, KeyReason, LicenseSource, MemberStatus, OrderFormStatus, PersonalOutcome, RequestSource, RequestStatus, ReviewReason } from '@shared/api';
 import { BUSINESS_CONTACT } from '@shared/catalog';
 
 /** The product name everywhere (design spec: never "license server"). */
@@ -35,6 +36,19 @@ export const MEMBER_STATUS_LABEL: Record<MemberStatus, string> = { invited: 'Inv
 export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = { open: 'Open', approved: 'Approved', rejected: 'Rejected', canceled: 'Canceled' };
 
 export const BUSINESS_REQUEST_STATUS_LABEL: Record<BusinessRequestStatus, string> = { open: 'Open', issued: 'Issued', closed: 'Closed' };
+
+/** Where an Order Form stands (README, "Order Forms"). */
+export const ORDER_FORM_STATUS_LABEL: Record<OrderFormStatus, string> = {
+  draft: 'Draft',
+  sent: 'Sent for acceptance',
+  accepted: 'Accepted, awaiting countersignature',
+  executed: 'Executed',
+  declined: 'Declined',
+  void: 'Void',
+};
+
+/** The states in the order the Order Forms filter lists them. */
+export const ORDER_FORM_STATUSES: readonly OrderFormStatus[] = ['draft', 'sent', 'accepted', 'executed', 'declined', 'void'];
 
 export const REQUEST_SOURCE_LABEL: Record<RequestSource, string> = { web: 'kudurru.io form', portal: 'Portal' };
 
@@ -108,6 +122,15 @@ export const AUDIT_ACTIONS: readonly AuditAction[] = [
   'business_request.received',
   'business_request.issued',
   'business_request.closed',
+  'order_form.created',
+  'order_form.updated',
+  'order_form.sent',
+  'order_form.revised',
+  'order_form.accepted',
+  'order_form.declined',
+  'order_form.countersigned',
+  'order_form.voided',
+  'order_form.licensed',
   'blocklist.added',
   'blocklist.removed',
 ];
@@ -119,6 +142,7 @@ export const TARGET_LABEL: Record<AuditTargetType, string> = {
   request: 'Request',
   public_request: 'Public request',
   business_request: 'Business request',
+  order_form: 'Order Form',
   blocked_email: 'Blocked email',
 };
 
@@ -133,6 +157,8 @@ export function targetHref(type: AuditTargetType, id: string): string | null {
       return `/licenses/${encodeURIComponent(id)}`;
     case 'business_request':
       return '/requests?tab=business';
+    case 'order_form':
+      return `/orders/${encodeURIComponent(id)}`;
     default:
       return null;
   }

@@ -8,8 +8,10 @@
 // approval and gets the key by mail; another request is rejected from its
 // link and the note reaches the requester; a business request from the
 // form reaches the Requests page and both mailboxes, and a license admin
-// issues a license from it; the superadmin sees users, the audit trail and
-// the system page, and deletes a user. Every key the portal hands out is
+// issues a license from it; another becomes an Order Form that its contact
+// accepts, the licensor countersigns and a license is issued from; the
+// superadmin sees users, the audit trail and the system page, and deletes a
+// user. Every key the portal hands out is
 // judged by the node's own code (internal/license via nodestatus.go).
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { createServer } from 'node:http';
@@ -318,6 +320,99 @@ test('the kudurru.io form: a business request, mail to the requester and the adm
   await admin.waitForURL(/\/licenses\/lic_/);
   await admin.goto('/requests?tab=business&status=issued');
   await expect(admin.getByText(request.company).first()).toBeVisible();
+  await admin.context().close();
+});
+
+test('an Order Form: drafted from a business request, accepted by its contact, countersigned, and a license issued from it', async ({ page, browser }) => {
+  const contact = 'other@example.org';
+  const orderCompany = `Order Co ${run}`;
+  const answer = await postFromForm(page, '/api/v1/public/business-requests', { name: 'Olga Other', email: contact, company: orderCompany, edition: 'enterprise', nodes: 5, website: '' });
+  expect(answer.status).toBe(202);
+
+  // The license admin drafts the form from the request: the company, the contact and the price list filled in.
+  const admin = await asUser(browser, 'admin@example.org');
+  await admin.goto('/requests?tab=business');
+  await admin.getByRole('button', { name: `Draft an Order Form for ${orderCompany}` }).click();
+  const wizard = admin.getByRole('dialog');
+  await expect(wizard.getByRole('textbox', { name: /Organization name/ })).toHaveValue(orderCompany);
+  await wizard.getByRole('button', { name: 'Next' }).click();
+  await wizard.getByRole('textbox', { name: 'Licensor address and billing contact' }).fill('1 Main Street, Springfield\nbilling@kudurru.io');
+  await wizard.getByRole('textbox', { name: 'Customer address' }).fill('Hauptstrasse 1, 10115 Berlin');
+  await wizard.getByRole('button', { name: 'Next' }).click();
+  await expect(wizard.getByRole('spinbutton', { name: 'Licensed Production Nodes' })).toHaveValue('5');
+  await wizard.getByRole('button', { name: 'Next' }).click();
+  await expect(wizard.getByRole('textbox', { name: 'Annual fee' })).toHaveValue('1994.00');
+  await shot(admin, '14-order-form-fees');
+  await wizard.getByRole('button', { name: 'Next' }).click();
+  await wizard.getByRole('textbox', { name: 'Governing law and venue' }).fill('Delaware, USA');
+  await wizard.getByRole('button', { name: 'Next' }).click();
+  await wizard.getByRole('button', { name: 'Create draft' }).click();
+  await admin.waitForURL(/\/orders\/ord_/);
+  const formId = decodeURIComponent(admin.url().split('/orders/')[1]!);
+  // The page loads the form after the URL changes: wait until the heading names its number.
+  const heading = admin.getByRole('heading', { level: 1 });
+  await expect(heading).toHaveText(/OF-\d{4}-\d{4,}/);
+  const number = /OF-\d{4}-\d{4,}/.exec((await heading.textContent()) ?? '')![0];
+  await shot(admin, '15-order-form-draft');
+
+  // Send: the contact becomes a member and gets the form with an invite link.
+  await admin.getByRole('button', { name: 'Send', exact: true }).click();
+  await admin.getByRole('alertdialog').getByRole('button', { name: /^Send/ }).click();
+  await expect(admin.getByText('Sent for acceptance').first()).toBeVisible();
+  const sentMail = await waitForMail(contact, exactly(`Kudurru Order Form ${number} for ${orderCompany} is ready for review`));
+  const invite = /https?:\/\/\S+\/invites\/[A-Za-z0-9_-]{43}/.exec(sentMail.text)?.[0];
+  expect(invite).toBeTruthy();
+
+  // The contact accepts the invite, reads the form and accepts it.
+  const customer = await asUser(browser, contact);
+  await customer.goto(invite!);
+  await customer.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect(customer.getByText(`You now have access to the licenses of ${orderCompany}`)).toBeVisible();
+  await customer.goto('/my/licenses');
+  await customer.getByRole('link', { name: number }).click();
+  await customer.waitForURL(/\/my\/orders\/ord_/);
+  await expect(customer.getByText(orderCompany).first()).toBeVisible();
+  await shot(customer, '16-order-form-customer');
+  await customer.getByRole('button', { name: 'Accept', exact: true }).click();
+  const accept = customer.getByRole('dialog');
+  await accept.getByRole('textbox', { name: 'Full name' }).fill('Olga Other');
+  await accept.getByRole('textbox', { name: 'Title' }).fill('CTO');
+  await accept.getByRole('checkbox', { name: /I am authorized to bind/ }).check();
+  await shot(customer, '17-order-form-accept');
+  await accept.getByRole('button', { name: 'Accept Order Form' }).click();
+  await expect(customer.getByText(/Accepted/).first()).toBeVisible();
+  await waitForMail(ADMIN_NOTIFY, exactly(`Countersign Order Form ${number}: accepted by ${orderCompany}`));
+
+  // The license admin countersigns: executed, the signed copy goes to the contact.
+  await admin.reload();
+  await admin.getByRole('button', { name: 'Countersign' }).click();
+  const sign = admin.getByRole('dialog');
+  await sign.getByRole('textbox', { name: 'Full name' }).fill('Robert Herbaugh');
+  await sign.getByRole('textbox', { name: 'Title' }).fill('Owner');
+  await sign.getByRole('button', { name: 'Countersign' }).click();
+  await expect(admin.getByText('Executed').first()).toBeVisible();
+  const executed = await waitForMail(contact, exactly(`Kudurru Order Form ${number} is executed`), { withAttachment: true });
+  const copy = executed.attachments.find((a) => a.name === `${number}.md`);
+  expect(copy?.body).toContain('Customer acceptance: Olga Other, CTO');
+  expect(copy?.body).toContain('Licensor acceptance: Robert Herbaugh, Owner');
+  await shot(admin, '18-order-form-executed');
+
+  // Issue the license from it: the form's terms filled in, the key as the node reads it.
+  await admin.getByRole('button', { name: 'Issue license' }).click();
+  const issue = admin.getByRole('form', { name: 'Issue license' });
+  for (let i = 0; i < 3; i++) await issue.getByRole('button', { name: 'Next' }).click();
+  await issue.getByRole('button', { name: 'Sign and issue' }).click();
+  await admin.waitForURL(/\/licenses\/lic_/);
+  const issuedId = decodeURIComponent(admin.url().split('/licenses/')[1]!);
+  await expect(admin.getByRole('link', { name: number })).toBeVisible();
+  const detail = (await (await admin.request.get(`/api/v1/licenses/${issuedId}`)).json()) as { currentKey: { token: string }; agreementRef: string; orderForm: { id: string } };
+  expect(detail.orderForm.id).toBe(formId);
+  expect(detail.agreementRef).toBe(number);
+  const node = nodeStatus(detail.currentKey.token);
+  if (node) expect(node).toMatchObject({ state: 'active', plan: 'enterprise', licensee: orderCompany, id: issuedId, nodes: 5 });
+  await admin.goto('/requests?tab=business&status=issued');
+  await expect(admin.getByText(orderCompany).first()).toBeVisible();
+  await customer.context().close();
   await admin.context().close();
 });
 

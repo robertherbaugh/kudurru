@@ -113,6 +113,11 @@ export const ROUTES = {
   // (spec §7). POST keeps the token out of URLs and logs; nothing changes.
   myInvitePreview: { method: 'POST', path: '/api/v1/me/invites/preview', access: 'self.request' },
   myInviteRedeem: { method: 'POST', path: '/api/v1/me/invites/redeem', access: 'self.request' },
+  // The Order Forms of the person's customers (sent at least once); an authorized contact accepts or declines.
+  myOrderForms: { method: 'GET', path: '/api/v1/me/order-forms', access: 'self.read' },
+  myOrderForm: { method: 'GET', path: '/api/v1/me/order-forms/:id', access: 'self.read' },
+  myOrderFormAccept: { method: 'POST', path: '/api/v1/me/order-forms/:id/accept', access: 'self.order' },
+  myOrderFormDecline: { method: 'POST', path: '/api/v1/me/order-forms/:id/decline', access: 'self.order' },
 
   // Customers and their members.
   customersList: { method: 'GET', path: '/api/v1/customers', access: 'customers.read' },
@@ -142,6 +147,16 @@ export const ROUTES = {
   blockedEmailRemove: { method: 'DELETE', path: '/api/v1/blocked-emails/:email', access: 'blocklist.write' },
   businessRequestsList: { method: 'GET', path: '/api/v1/business-requests', access: 'requests.read' },
   businessRequestClose: { method: 'POST', path: '/api/v1/business-requests/:id/close', access: 'requests.decide' },
+
+  // Order Forms (Schedule A of the commercial agreement): drafted, sent, countersigned and voided by license admins.
+  orderFormsList: { method: 'GET', path: '/api/v1/order-forms', access: 'orders.read' },
+  orderFormCreate: { method: 'POST', path: '/api/v1/order-forms', access: 'orders.write' },
+  orderFormGet: { method: 'GET', path: '/api/v1/order-forms/:id', access: 'orders.read' },
+  orderFormUpdate: { method: 'PATCH', path: '/api/v1/order-forms/:id', access: 'orders.write' },
+  orderFormSend: { method: 'POST', path: '/api/v1/order-forms/:id/send', access: 'orders.write' },
+  orderFormRevise: { method: 'POST', path: '/api/v1/order-forms/:id/revise', access: 'orders.write' },
+  orderFormCountersign: { method: 'POST', path: '/api/v1/order-forms/:id/countersign', access: 'orders.write' },
+  orderFormVoid: { method: 'POST', path: '/api/v1/order-forms/:id/void', access: 'orders.write' },
 
   // Users, the audit log and the System page.
   usersList: { method: 'GET', path: '/api/v1/users', access: 'users.read' },
