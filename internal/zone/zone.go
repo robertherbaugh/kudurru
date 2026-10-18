@@ -29,13 +29,16 @@ const (
 // need no locks. Changes produce a new Zone that is swapped in through a
 // Snapshot.
 type Zone struct {
-	name     string // lowercased absolute origin
-	key      string
-	typ      v1alpha1.ZoneType
-	serial   uint32
-	upstream string // forward zones
-	access   accessPolicy
-	transfer accessPolicy
+	name          string // lowercased absolute origin
+	key           string
+	typ           v1alpha1.ZoneType
+	serial        uint32
+	upstream      string // forward zones
+	fallback      bool
+	fallbackGroup string
+	apexOverride  bool // apex has user records, beyond generated SOA/NS
+	access        accessPolicy
+	transfer      accessPolicy
 	// transferKeys are the canonical names of spec.policy.transferTSIGKeyRefs.
 	transferKeys []string
 	notify       v1alpha1.NotifyMode
@@ -80,9 +83,17 @@ func (z *Zone) Generation() int64 { return z.generation }
 // empty for other zone types.
 func (z *Zone) UpstreamGroup() string { return z.upstream }
 
+// HasFallback reports whether names absent locally use resolver routing.
+func (z *Zone) HasFallback() bool { return z.fallback }
+
+// FallbackGroup is the chosen forwarding or recursive group; empty uses
+// normal resolver routing.
+func (z *Zone) FallbackGroup() string { return z.fallbackGroup }
+
 // ContentHash returns the canonical content hash ("sha256:<hex>") the
 // controller compares with status.contentHash to decide on a serial bump.
-// It covers every served RR including the SOA fields, except the serial.
+// It covers every served RR including the SOA fields, except the serial,
+// and the fallback routing settings.
 func (z *Zone) ContentHash() string { return z.hash }
 
 // RecordCount returns the number of served RRs excluding the SOA.
@@ -121,9 +132,9 @@ func (z *Zone) QueryAllowed(client netip.Addr) bool { return z.access.allowed(cl
 // mode is deny); when transferTSIGKeyRefs is non-empty the request must
 // also have been signed with one of those keys. tsigKey is the verified
 // key name ("" for an unsigned request), compared case-insensitively.
-// Forward zones are never transferable.
+// Forward zones and primary zones with fallback are never transferable.
 func (z *Zone) TransferAllowed(client netip.Addr, tsigKey string) bool {
-	if z.typ != v1alpha1.ZoneTypePrimary || !z.transfer.allowed(client) {
+	if z.typ != v1alpha1.ZoneTypePrimary || z.fallback || !z.transfer.allowed(client) {
 		return false
 	}
 	if len(z.transferKeys) == 0 {
@@ -136,7 +147,7 @@ func (z *Zone) TransferAllowed(client netip.Addr, tsigKey string) bool {
 // in spec order. The first one also signs outbound NOTIFY messages.
 func (z *Zone) TransferKeys() []string { return slices.Clone(z.transferKeys) }
 
-// NotifyMode returns spec.policy.notify, "none" when unset.
+// NotifyMode returns spec.policy.notify, "none" when unset or using fallback.
 func (z *Zone) NotifyMode() v1alpha1.NotifyMode { return z.notify }
 
 // NotifyTargets returns spec.policy.notifyTargets as addresses with the
@@ -265,6 +276,9 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		errs = append(errs, field.NotSupported(specPath.Child("type"), spec.Type,
 			[]v1alpha1.ZoneType{v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeForward}))
 	}
+	if spec.Fallback != nil && spec.Type != v1alpha1.ZoneTypePrimary {
+		errs = append(errs, field.Forbidden(specPath.Child("fallback"), "fallback is only supported for primary zones"))
+	}
 	policyPath := specPath.Child("policy")
 	access, aerrs := compileAccess(spec.Policy, policyPath)
 	errs = append(errs, aerrs...)
@@ -317,6 +331,11 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		notify:       notify,
 		notifyTo:     targets,
 		generation:   dz.Generation,
+	}
+	if spec.Fallback != nil {
+		z.fallback = true
+		z.fallbackGroup = spec.Fallback.UpstreamGroup
+		z.notify = v1alpha1.NotifyNone
 	}
 	if spec.Type == v1alpha1.ZoneTypeForward {
 		z.upstream = DefaultUpstreamGroup
@@ -508,6 +527,7 @@ func (b *Builder) Build() *Zone {
 		z.hash = hashForward(z)
 		return z
 	}
+	z.apexOverride = !z.apex.empty()
 	ttl := b.defaultTTL()
 	soaSpec := v1alpha1.SOASpec{}
 	if b.spec.SOA != nil {

@@ -6,6 +6,13 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Added
+
+- Primary zones can opt into missing-name fallback to a forwarding or native
+  recursive upstream group. Local names keep their own answers, including
+  missing-type responses; dashboard zone creation and settings expose the
+  option. Existing primary zones remain authoritative by default (#95).
+
 ### Changed
 
 - API migrations run as tracked background jobs with selectable objects and

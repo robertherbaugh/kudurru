@@ -116,6 +116,15 @@ type ForwardSpec struct {
 	DNSSECValidation *bool `json:"dnssecValidation,omitempty"`
 }
 
+// ZoneFallbackSpec resolves names absent from a primary zone using an upstream
+// group. Names defined locally never fall back for a missing record type.
+type ZoneFallbackSpec struct {
+	// UpstreamGroup selects a forwarding or recursive group. Empty uses normal
+	// resolver routing (client policy, conditional forwarding, then default).
+	// +optional
+	UpstreamGroup string `json:"upstreamGroup,omitempty"`
+}
+
 // SecondarySpec configures a secondary zone (v0.2).
 type SecondarySpec struct {
 	Primaries []string `json:"primaries"`
@@ -181,6 +190,7 @@ type PublishRule struct {
 }
 
 // DNSZoneSpec defines the desired state of a zone.
+// +kubebuilder:validation:XValidation:rule="!has(self.fallback) || self.type == 'primary'",message="fallback is only supported for primary zones"
 type DNSZoneSpec struct {
 	// ZoneName is the fully qualified zone name with a trailing dot.
 	// +kubebuilder:validation:MinLength=1
@@ -199,6 +209,12 @@ type DNSZoneSpec struct {
 	Policy ZonePolicy `json:"policy,omitempty"`
 	// +optional
 	Forward *ForwardSpec `json:"forward,omitempty"`
+	// Fallback enables public resolution for names not defined locally. Omit
+	// it to remain authoritative for the entire zone. Generated apex SOA/NS
+	// records do not suppress fallback for other types at an unconfigured apex.
+	// Zones with fallback do not support zone transfers or NOTIFY.
+	// +optional
+	Fallback *ZoneFallbackSpec `json:"fallback,omitempty"`
 	// +optional
 	Secondary *SecondarySpec `json:"secondary,omitempty"`
 	// +optional

@@ -35,9 +35,12 @@ const (
 	// YXDomain: a DNAME substitution produced a name longer than 255
 	// octets (RFC 6672 §2.2); answer YXDOMAIN with the DNAME.
 	YXDomain
+	// Fallback: the name is absent from an opt-in overlay zone. Target is
+	// the unresolved name, possibly after local CNAME/DNAME records in Answer.
+	Fallback
 )
 
-var kindNames = [...]string{"success", "nodata", "nxdomain", "delegation", "cname", "loop", "yxdomain"}
+var kindNames = [...]string{"success", "nodata", "nxdomain", "delegation", "cname", "loop", "yxdomain", "fallback"}
 
 // String returns a lower-case name for logs and tests.
 func (k Kind) String() string {
@@ -55,8 +58,7 @@ type Result struct {
 	Answer []dns.RR
 	Ns     []dns.RR
 	Extra  []dns.RR
-	// Target is set for Kind CNAME: the out-of-zone name the chain points
-	// at.
+	// Target is set for Kind CNAME or Fallback: the name to resolve next.
 	Target string
 	// Hops counts the CNAME/DNAME hops taken, including any the caller
 	// passed to LookupFrom.
@@ -78,9 +80,11 @@ func (r *Result) Rcode() int {
 	return dns.RcodeSuccess
 }
 
-// Authoritative reports whether the AA bit is set for the result: always,
-// except on a referral.
-func (r *Result) Authoritative() bool { return r.Kind != Delegation && r.Kind != Loop }
+// Authoritative reports whether the result can carry AA. Referrals,
+// unresolved fallback and alias loops do not assert authority.
+func (r *Result) Authoritative() bool {
+	return r.Kind != Delegation && r.Kind != Loop && r.Kind != Fallback
+}
 
 // Positive reports whether the result is complete data the zone positively
 // asserts (an answer or a referral), as opposed to a denial or a chain that
@@ -100,16 +104,27 @@ func (z *Zone) Lookup(qname string, qtype uint16) Result { return z.LookupFrom(q
 // LookupFrom is Lookup for the continuation of a chain that already took
 // hops hops in other zones; the MaxChain budget is shared.
 func (z *Zone) LookupFrom(qname string, qtype uint16, hops int) Result {
+	return z.lookupFrom(qname, qtype, hops, false)
+}
+
+// LookupStep stops at the first alias target. Overlay queries use it so the
+// authoritative stage can select a more-specific zone before following an
+// alias, even if the parent overlay also contains records for that target.
+func (z *Zone) LookupStep(qname string, qtype uint16, hops int) Result {
+	return z.lookupFrom(qname, qtype, hops, true)
+}
+
+func (z *Zone) lookupFrom(qname string, qtype uint16, hops int, stopAtAlias bool) Result {
 	r := Result{Hops: hops}
 	if z.apex == nil {
 		r.Kind, r.Target = CNAME, qname
 		return r
 	}
-	z.resolve(&r, qname, qtype)
+	z.resolve(&r, qname, qtype, stopAtAlias)
 	return r
 }
 
-func (z *Zone) resolve(r *Result, qname string, qtype uint16) {
+func (z *Zone) resolve(r *Result, qname string, qtype uint16, stopAtAlias bool) {
 	var kb [256]byte
 	start := r.Hops
 	for {
@@ -122,8 +137,18 @@ func (z *Zone) resolve(r *Result, qname string, qtype uint16) {
 			r.Kind, r.Target = CNAME, qname
 			return
 		}
+		// The generated SOA/NS describes local zone management, not an apex
+		// hostname override. Keep those types local while allowing public apex
+		// addresses and mail records until the operator defines an apex record.
+		if z.fallback && len(key) == len(z.key) && !z.apexOverride && qtype != dns.TypeSOA && qtype != dns.TypeNS && qtype != dns.TypeANY {
+			r.Kind, r.Target = Fallback, qname
+			return
+		}
 		next, done := z.step(r, qname, key, qtype)
 		if done {
+			if r.Kind == NXDomain && z.fallback {
+				r.Kind, r.Target, r.Ns, r.Extra = Fallback, qname, nil, nil
+			}
 			if r.Kind == Delegation && r.Hops > start {
 				// A chain ran into a zone cut: the target is served by
 				// another server, so it leaves the zone.
@@ -134,6 +159,10 @@ func (z *Zone) resolve(r *Result, qname string, qtype uint16) {
 		r.Hops++
 		if r.Hops > MaxChain {
 			r.Kind, r.Ns, r.Extra = Loop, nil, nil
+			return
+		}
+		if stopAtAlias {
+			r.Kind, r.Target = CNAME, next
 			return
 		}
 		qname = next

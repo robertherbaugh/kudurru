@@ -8,6 +8,7 @@ import type { DNSZoneSpec } from '../api/types';
 import { mockDB, signIn } from '../mocks/handlers';
 import { ownership } from '../lib/managedBy';
 import { API, renderWithApp } from '../test/utils';
+import { findSelector, pick } from '../test/controls';
 import { applyDraft, draftFromZone } from './wizards/ZoneWizard';
 import { ZoneDeleteDialog } from './ZoneDeleteDialog';
 import { ZoneSettingsSection } from './ZoneSettingsSection';
@@ -40,6 +41,14 @@ describe('applyDraft', () => {
     const fwd: DNSZoneSpec = { zoneName: 'corp.example.', type: 'forward', forward: { upstreamGroup: 'corp', dnssecValidation: true } };
     const next = applyDraft(fwd, { ...draftFromZone(fwd), upstreamGroup: 'default', dnssec: '' });
     expect(next.forward).toEqual({ upstreamGroup: 'default' });
+  });
+
+  it('round-trips and disables a primary zone fallback without changing other settings', () => {
+    const overlay: DNSZoneSpec = { ...spec, fallback: { upstreamGroup: 'resolver' } };
+    expect(applyDraft(overlay, draftFromZone(overlay))).toEqual(overlay);
+    const d = draftFromZone(overlay);
+    expect(applyDraft(overlay, { ...d, fallbackGroup: '' }).fallback).toEqual({});
+    expect(applyDraft(overlay, { ...d, fallback: false })).toEqual(spec);
   });
 });
 
@@ -75,6 +84,23 @@ describe('ZoneDeleteDialog', () => {
 });
 
 describe('ZoneSettingsSection', () => {
+  it('enables missing-name resolution and selects native recursion', async () => {
+    signIn('admin');
+    const a = endpoints(new ApiClient({ baseUrl: API, csrf: () => 'csrf-mock-token' }));
+    await a.objects.create('dnszones', { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name: 'public-example' }, spec: { zoneName: 'public.example.', type: 'primary' } });
+    renderWithApp(<ZoneSettingsSection zone="public-example" own={ownership('api')} />);
+    const section = await screen.findByTestId('section-zone-settings');
+    fireEvent.click(within(section).getByRole('button', { name: /Edit/ }));
+    const enabled = await within(section).findByRole('checkbox', { name: 'Resolve missing names publicly' });
+    expect(enabled).not.toBeChecked();
+    fireEvent.click(enabled);
+    const selector = await findSelector('Fallback upstream group');
+    pick(selector, /^resolver$/);
+    fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
+    await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'public-example')?.spec.fallback).toEqual({ upstreamGroup: 'resolver' }));
+    expect(await within(section).findByText('Resolve through resolver')).toBeInTheDocument();
+  });
+
   it('edits a forward zone and saves it', async () => {
     signIn('admin');
     const a = endpoints(new ApiClient({ baseUrl: API, csrf: () => 'csrf-mock-token' }));
