@@ -94,11 +94,17 @@ func (z *tzone) genKeys(t testing.TB) {
 	}
 	mk := func(flags uint16) (*dns.DNSKEY, crypto.Signer) {
 		k := &dns.DNSKEY{Hdr: dns.RR_Header{Name: z.name, Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}, Flags: flags, Protocol: 3, Algorithm: dns.ECDSAP256SHA256}
-		priv, err := k.Generate(256)
-		if err != nil {
-			t.Fatal(err)
+		for {
+			priv, err := k.Generate(256)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// miekg/dns treats key tag 0 as unset and refuses to sign
+			// with it ("dns: bad key"): about one key in 65,536.
+			if k.KeyTag() != 0 {
+				return k, priv.(crypto.Signer)
+			}
 		}
-		return k, priv.(crypto.Signer)
 	}
 	z.ksk, z.kskKey = mk(257)
 	z.zsk, z.zskKey = mk(256)
