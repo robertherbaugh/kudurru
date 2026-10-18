@@ -53,7 +53,7 @@ old copy while clients hold leases absent from it.
 
 ## Lease import and export
 
-The dashboard exports native version 1 JSON preserving scope, subnet,
+The dashboard's **DHCP** > **Leases** page exports native version 1 JSON preserving scope, subnet,
 client identity, address, hostname, absolute expiry and offered/bound/declined
 state. When using the API directly, save the `document` field, not its response
 wrapper. Native imports require a matching scope and subnet. Client IDs are

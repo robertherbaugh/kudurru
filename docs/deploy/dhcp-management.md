@@ -4,7 +4,7 @@
 
 ## Dashboard and API ownership
 
-Open **DNS → DHCP** to see saved scopes and whether they are running or have
+Open **DHCP → Scopes** to see saved scopes and whether they are running or have
 pending changes, then open a scope for setup, live options and lease inventory.
 With the SQLite store, these pages and `/api/v1/node/dhcp/v4` are local to
 the connected node; no peer forwarding or cluster aggregation occurs. With the

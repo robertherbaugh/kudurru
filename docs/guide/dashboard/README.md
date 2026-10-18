@@ -36,9 +36,15 @@ to check. Screenshots show demo data.
 | Dashboard page | How to use it |
 |---|---|
 | **Zones** and **Zone details** | [Create a local name](../local-dns/create-name.md) or [manage records and zone files](zones.md) |
-| **DHCP** | [Choose Kubernetes or Linux setup](../dhcp/README.md) |
-| **DHCP scope** | [Check leases on Kubernetes](../dhcp/kubernetes/check.md), [on Linux](../dhcp/activate.md), or [reserve an address](../dhcp/reservations.md) |
 | **Upstreams** and **Upstream group** | [Choose resolvers and check their health](upstreams.md) |
+
+## DHCP
+
+| Dashboard page | How to use it |
+|---|---|
+| **Scopes** | [Choose Kubernetes or Linux setup](../dhcp/README.md) |
+| **DHCP scope** | [Change network options or reserve an address](../dhcp/reservations.md) |
+| **Leases** | [Check leases on Kubernetes](../dhcp/kubernetes/check.md) or [on Linux](../dhcp/activate.md) |
 
 ## System
 

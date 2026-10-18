@@ -8,7 +8,7 @@
 
 ## Describe the subnet
 
-1. Open **DNS** > **DHCP**.
+1. Open **DHCP** > **Scopes**.
 2. Click **New scope**.
 3. Enter `lan` in **Scope name**.
 4. Confirm that **Relays send to** shows your DHCP LoadBalancer address.

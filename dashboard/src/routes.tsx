@@ -12,7 +12,9 @@ import {
   KeyRound,
   ListChecks,
   Monitor,
+  MonitorSmartphone,
   Network,
+  Router,
   Scale,
   ScrollText,
   Server,
@@ -48,7 +50,7 @@ export interface RouteDef {
   hidden?: boolean;
 }
 
-export const SECTIONS = ['Overview', 'Filtering', 'DNS', 'System'] as const;
+export const SECTIONS = ['Overview', 'Filtering', 'DNS', 'DHCP', 'System'] as const;
 export type Section = (typeof SECTIONS)[number];
 
 const Dashboard = lazy(() => import('./pages/DashboardPage'));
@@ -72,6 +74,7 @@ const UpstreamGroup = lazy(() => import('./pages/UpstreamGroupPage'));
 const Nodes = lazy(() => import('./pages/NodesPage'));
 const DHCP = lazy(() => import('./pages/DHCPPage'));
 const DHCPScope = lazy(() => import('./pages/DHCPScopePage'));
+const DHCPLeases = lazy(() => import('./pages/DHCPLeasesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const Tools = lazy(() => import('./pages/ToolsPage'));
 const Messages = lazy(() => import('./pages/MessagesPage'));
@@ -100,13 +103,14 @@ export const ROUTES: RouteDef[] = [
   { path: '/policies/new', navKey: 'policies', label: 'New policy', section: 'Filtering', icon: Scale, page: newRedirect('/policies'), hidden: true },
   { path: '/policies/:ns/:name', navKey: 'policies', label: 'Policy', section: 'Filtering', icon: Scale, page: PolicyDetail, hidden: true },
   { path: '/zones', navKey: 'zones', label: 'Zones', section: 'DNS', icon: Globe, page: Zones },
-  { path: '/dhcp', navKey: 'dhcp', label: 'DHCP', section: 'DNS', icon: Network, page: DHCP },
-  { path: '/dhcp/:scope', navKey: 'dhcp', label: 'DHCP scope', section: 'DNS', icon: Network, page: DHCPScope, hidden: true },
   { path: '/zones/new', navKey: 'zones', label: 'New zone', section: 'DNS', icon: Globe, page: newRedirect('/zones'), hidden: true },
   { path: '/zones/:zone', navKey: 'zones', label: 'Zone', section: 'DNS', icon: Globe, page: ZoneDetail, hidden: true },
   { path: '/upstreams', navKey: 'upstreams', label: 'Upstreams', section: 'DNS', icon: Network, page: Upstreams },
   { path: '/upstreams/new', navKey: 'upstreams', label: 'New upstream group', section: 'DNS', icon: Network, page: newRedirect('/upstreams'), hidden: true },
   { path: '/upstreams/:group', navKey: 'upstreams', label: 'Upstream group', section: 'DNS', icon: Network, page: UpstreamGroup, hidden: true },
+  { path: '/dhcp', navKey: 'dhcp', label: 'Scopes', section: 'DHCP', icon: Router, page: DHCP },
+  { path: '/dhcp/:scope', navKey: 'dhcp', label: 'DHCP scope', section: 'DHCP', icon: Router, page: DHCPScope, hidden: true },
+  { path: '/leases', navKey: 'leases', label: 'Leases', section: 'DHCP', icon: MonitorSmartphone, page: DHCPLeases },
   { path: '/nodes', navKey: 'nodes', label: 'Nodes', section: 'System', icon: Server, page: Nodes },
   { path: '/settings', navKey: 'settings', label: 'Settings', section: 'System', icon: Settings, page: SettingsPage },
   { path: '/tools', navKey: 'tools', label: 'Tools', section: 'System', icon: Wrench, page: Tools },

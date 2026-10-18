@@ -1,4 +1,4 @@
-// DHCP walkthrough: saved setup and the running lease/reservation editors.
+// DHCP walkthrough: saved setup, the lease list and the reservation editor.
 import { choose, fresh, getPage, go, group, settle, shot } from './lib.mjs';
 
 export default async function () {
@@ -48,13 +48,10 @@ export default async function () {
       const { mockDHCP } = await import('/src/mocks/dhcp.ts');
       mockDHCP().config.scope = 'lan';
     });
+    await go('/leases');
+    await page.getByRole('table', { name: 'DHCP leases' }).waitFor();
+    await shot('dhcp-leases');
     await go('/dhcp/lan');
-    const leases = page.getByRole('table', { name: 'DHCP leases' });
-    await leases.waitFor();
-    // Capture the full section, including filters and the table, at readable size.
-    const section = page.getByRole('heading', { name: 'Leases', exact: true }).locator('..').locator('..');
-    await section.scrollIntoViewIfNeeded();
-    await shot('dhcp-leases', { locator: section });
     await page.getByRole('button', { name: 'Add reservation', exact: true }).click();
     await page.getByRole('textbox', { name: 'MAC address', exact: true }).fill('02:00:00:00:00:10');
     await page.getByRole('textbox', { name: 'Reserved address', exact: true }).fill('192.0.2.10');

@@ -111,7 +111,7 @@ v0.1.0 includes opt-in DHCPv4 for Linux. In Kubernetes, scopes are
 `DHCPScope` objects from the dashboard or Git, leases are `DHCPLease`
 objects, and one elected replica serves clients relayed to a LoadBalancer
 address. With SQLite it runs standalone or as a three-node quorum; there,
-configure fresh scopes entirely through **DNS → DHCP**, without DHCP YAML;
+configure fresh scopes entirely through **DHCP → Scopes**, without DHCP YAML;
 existing host setup requires explicit adoption. Enabling, disabling and
 topology changes are saved for restart, while active scope options and
 reservations apply live. Durable lease state and revision checks preserve

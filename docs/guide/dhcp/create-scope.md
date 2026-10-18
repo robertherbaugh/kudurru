@@ -14,7 +14,7 @@ If the page says **Managed by the configuration file**, follow
 
 ## Describe the subnet
 
-1. Open **DNS** > **DHCP** on the node that assigns addresses.
+1. Open **DHCP** > **Scopes** on the node that assigns addresses.
 2. Click **New scope**.
 3. Enter `lan` in **Scope name**.
 4. Select your **Host interface**.
