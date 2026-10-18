@@ -2638,6 +2638,29 @@ type DNSQueryResult struct {
 	Upstream *string `json:"upstream,omitempty"`
 }
 
+// DNSRecordSet defines model for DNSRecordSet.
+type DNSRecordSet struct {
+	ApiVersion *string             `json:"apiVersion,omitempty"`
+	Kind       *string             `json:"kind,omitempty"`
+	Metadata   *ObjectMeta         `json:"metadata,omitempty"`
+	Spec       DNSRecordSetSpec    `json:"spec"`
+	Status     *DNSRecordSetStatus `json:"status,omitempty"`
+}
+
+// DNSRecordSetSpec defines model for DNSRecordSetSpec.
+type DNSRecordSetSpec struct {
+	Endpoints *[]Endpoint `json:"endpoints"`
+	ZoneRef   ObjectRef   `json:"zoneRef"`
+}
+
+// DNSRecordSetStatus defines model for DNSRecordSetStatus.
+type DNSRecordSetStatus struct {
+	Conditions         *[]Condition        `json:"conditions,omitempty"`
+	Names              *int64              `json:"names,omitempty"`
+	ObservedGeneration *int64              `json:"observedGeneration,omitempty"`
+	Publications       *[]PublicationState `json:"publications,omitempty"`
+}
+
 // DhcpReservationInputBody defines model for DhcpReservationInputBody.
 type DhcpReservationInputBody struct {
 	Hostname *string `json:"hostname,omitempty"`
@@ -3244,6 +3267,17 @@ type LoginRequest struct {
 	Username string `json:"username"`
 }
 
+// ManagedFieldsEntry defines model for ManagedFieldsEntry.
+type ManagedFieldsEntry struct {
+	ApiVersion  *string                 `json:"apiVersion,omitempty"`
+	FieldsType  *string                 `json:"fieldsType,omitempty"`
+	FieldsV1    *map[string]interface{} `json:"fieldsV1,omitempty"`
+	Manager     *string                 `json:"manager,omitempty"`
+	Operation   *string                 `json:"operation,omitempty"`
+	Subresource *string                 `json:"subresource,omitempty"`
+	Time        *time.Time              `json:"time,omitempty"`
+}
+
 // Me defines model for Me.
 type Me struct {
 	Csrf *string `json:"csrf,omitempty"`
@@ -3276,18 +3310,21 @@ type MigrationAdoptInputBody struct {
 
 // MigrationAuthorityChange defines model for MigrationAuthorityChange.
 type MigrationAuthorityChange struct {
-	Error           *string  `json:"error,omitempty"`
-	Name            string   `json:"name"`
-	Nameservers     []string `json:"nameservers"`
-	Namespace       *string  `json:"namespace,omitempty"`
-	Primary         string   `json:"primary"`
-	ResourceVersion string   `json:"resourceVersion"`
-	ZoneName        string   `json:"zoneName"`
+	AddressRecordSet  *DNSRecordSet `json:"addressRecordSet,omitempty"`
+	Error             *string       `json:"error,omitempty"`
+	Name              string        `json:"name"`
+	Nameservers       []string      `json:"nameservers"`
+	Namespace         *string       `json:"namespace,omitempty"`
+	Primary           string        `json:"primary"`
+	ResourceVersion   string        `json:"resourceVersion"`
+	TargetNameservers *[]string     `json:"targetNameservers,omitempty"`
+	ZoneName          string        `json:"zoneName"`
 }
 
 // MigrationCutover defines model for MigrationCutover.
 type MigrationCutover struct {
 	Actor       string          `json:"actor"`
+	Addresses   *[]string       `json:"addresses,omitempty"`
 	FinishedAt  *time.Time      `json:"finishedAt,omitempty"`
 	Items       []MigrationItem `json:"items"`
 	Nameservers []string        `json:"nameservers"`
@@ -3297,6 +3334,7 @@ type MigrationCutover struct {
 
 // MigrationCutoverPlan defines model for MigrationCutoverPlan.
 type MigrationCutoverPlan struct {
+	Addresses   *[]string                  `json:"addresses,omitempty"`
 	Nameservers []string                   `json:"nameservers"`
 	Revision    string                     `json:"revision"`
 	Warnings    []string                   `json:"warnings"`
@@ -3305,7 +3343,8 @@ type MigrationCutoverPlan struct {
 
 // MigrationCutoverPreviewInputBody defines model for MigrationCutoverPreviewInputBody.
 type MigrationCutoverPreviewInputBody struct {
-	Nameservers []string `json:"nameservers"`
+	Addresses   *[]string `json:"addresses,omitempty"`
+	Nameservers []string  `json:"nameservers"`
 }
 
 // MigrationItem defines model for MigrationItem.
@@ -3327,6 +3366,9 @@ type MigrationRequest struct {
 
 	// LocalZones Pi-hole local DNS suffixes to make authoritative, for example home.arpa.
 	LocalZones *[]string `json:"localZones,omitempty"`
+
+	// NameserverAddresses Serving IPs or VIPs. Generates in-zone NS names and matching A/AAAA records. Mutually exclusive with nameservers.
+	NameserverAddresses *[]string `json:"nameserverAddresses,omitempty"`
 
 	// Nameservers Replace imported authoritative NS names and SOA primary with these kudurru DNS names; first name becomes SOA primary. Empty preserves source authority for a later cutover.
 	Nameservers *[]string              `json:"nameservers,omitempty"`
@@ -3447,12 +3489,47 @@ type ObjectList struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// ObjectMeta defines model for ObjectMeta.
+type ObjectMeta struct {
+	Annotations                *map[string]string    `json:"annotations,omitempty"`
+	CreationTimestamp          *time.Time            `json:"creationTimestamp,omitempty"`
+	DeletionGracePeriodSeconds *int64                `json:"deletionGracePeriodSeconds,omitempty"`
+	DeletionTimestamp          *time.Time            `json:"deletionTimestamp,omitempty"`
+	Finalizers                 *[]string             `json:"finalizers,omitempty"`
+	GenerateName               *string               `json:"generateName,omitempty"`
+	Generation                 *int64                `json:"generation,omitempty"`
+	Labels                     *map[string]string    `json:"labels,omitempty"`
+	ManagedFields              *[]ManagedFieldsEntry `json:"managedFields,omitempty"`
+	Name                       *string               `json:"name,omitempty"`
+	Namespace                  *string               `json:"namespace,omitempty"`
+	OwnerReferences            *[]OwnerReference     `json:"ownerReferences,omitempty"`
+	ResourceVersion            *string               `json:"resourceVersion,omitempty"`
+	SelfLink                   *string               `json:"selfLink,omitempty"`
+	Uid                        *string               `json:"uid,omitempty"`
+}
+
 // ObjectOwner defines model for ObjectOwner.
 type ObjectOwner struct {
 	Kind      string  `json:"kind"`
 	ManagedBy *string `json:"managedBy,omitempty"`
 	Name      string  `json:"name"`
 	Namespace *string `json:"namespace,omitempty"`
+}
+
+// ObjectRef defines model for ObjectRef.
+type ObjectRef struct {
+	Name      string  `json:"name"`
+	Namespace *string `json:"namespace,omitempty"`
+}
+
+// OwnerReference defines model for OwnerReference.
+type OwnerReference struct {
+	ApiVersion         string `json:"apiVersion"`
+	BlockOwnerDeletion *bool  `json:"blockOwnerDeletion,omitempty"`
+	Controller         *bool  `json:"controller,omitempty"`
+	Kind               string `json:"kind"`
+	Name               string `json:"name"`
+	Uid                string `json:"uid"`
 }
 
 // PasswordChangeRequest defines model for PasswordChangeRequest.
@@ -3714,6 +3791,13 @@ type ProcessedItems struct {
 type ProviderSpecific struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+// PublicationState defines model for PublicationState.
+type PublicationState struct {
+	Integration string  `json:"integration"`
+	Message     *string `json:"message,omitempty"`
+	State       string  `json:"state"`
 }
 
 // PurgeResult defines model for PurgeResult.

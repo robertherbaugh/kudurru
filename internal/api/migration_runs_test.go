@@ -341,3 +341,126 @@ func TestMigrationCutoverCreatesMissingSOA(t *testing.T) {
 		t.Fatalf("cutover without explicit source SOA: %+v", result)
 	}
 }
+
+func TestMigrationVIPCutover(t *testing.T) {
+	h := newHarness(t)
+	run := importRun(t, h, migrationPlan("one", "two"))
+	var p MigrationCutoverPlan
+	h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission/preview", "admin", map[string]any{"nameservers": []string{}, "addresses": []string{"192.0.2.53/24", "2001:db8::53"}}).want(http.StatusOK).json(&p)
+	if len(p.Zones) != 2 || len(p.Zones[0].TargetNameservers) != 2 || p.Zones[0].AddressRecordSet == nil || p.Zones[0].AddressRecordSet.Spec.Endpoints[0].Targets[0] != "192.0.2.53" {
+		t.Fatalf("preview: %+v", p)
+	}
+	result := applyCutover(t, h, run.ID, p)
+	if len(result.Items) != 4 || result.JournalError != "" {
+		t.Fatalf("result: %+v", result)
+	}
+	for _, item := range result.Items {
+		if item.Result == ResultError {
+			t.Fatal(item.Error)
+		}
+	}
+	for i, name := range []string{"one", "two"} {
+		z := getMigrationZone(t, h, name)
+		if !reflect.DeepEqual(z.Spec.Nameservers, p.Zones[i].TargetNameservers) || z.Spec.SOA.MName != p.Zones[i].TargetNameservers[0] {
+			t.Fatalf("authority: %+v", z.Spec)
+		}
+		var rs v1alpha1.DNSRecordSet
+		reviewed := p.Zones[i].AddressRecordSet
+		if err := h.st.Get(context.Background(), store.Key{Kind: "DNSRecordSet", Namespace: reviewed.Namespace, Name: reviewed.Name}, &rs); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(rs.Spec, reviewed.Spec) {
+			t.Fatalf("records: %+v", rs.Spec)
+		}
+	}
+	h.do(http.MethodGet, "/api/v1/imports/runs/"+run.ID, "admin", nil).want(http.StatusOK).json(&run)
+	if run.Data.Cutovers[0].Status != "completed" || len(run.Data.Cutovers[0].Addresses) != 2 || len(run.Data.Cutovers[0].Items) != 4 {
+		t.Fatalf("journal: %+v", run.Data)
+	}
+	var retry MigrationCutoverPlan
+	h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission/preview", "admin", map[string]any{"nameservers": []string{}, "addresses": p.Addresses}).want(http.StatusOK).json(&retry)
+	result = applyCutover(t, h, run.ID, retry)
+	for _, item := range result.Items {
+		if item.Result != ResultUnchanged {
+			t.Fatalf("retry changed objects: %+v", result)
+		}
+	}
+}
+
+func TestMigrationVIPCutoverRefusesConflictsAndStaleRecords(t *testing.T) {
+	h := newHarness(t)
+	run := importRun(t, h, migrationPlan("one"))
+	preview := func() MigrationCutoverPlan {
+		var p MigrationCutoverPlan
+		h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission/preview", "admin", map[string]any{"nameservers": []string{}, "addresses": []string{"192.0.2.53"}}).want(http.StatusOK).json(&p)
+		return p
+	}
+	p := preview()
+	h.seed(store.ManagerAPI, recordSetObj("default", "conflict", "one", ep("ns-c0000235.one.test.", "CNAME", "old.test.")))
+	h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission", "admin", p).want(http.StatusConflict)
+	if p := preview(); p.Zones[0].Error == "" {
+		t.Fatal("ignored existing alias")
+	}
+	if getMigrationZone(t, h, "one").Spec.SOA.MName != "old.dns.test." {
+		t.Fatal("changed authority despite conflict")
+	}
+}
+
+type rejectingMigrationRecords struct{ store.Store }
+
+func (s rejectingMigrationRecords) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
+	if store.KindOf(obj) == "DNSRecordSet" {
+		return nil, fmt.Errorf("record writes unavailable")
+	}
+	return s.Store.Apply(ctx, obj, opts)
+}
+
+func TestMigrationAddressFailureLeavesAuthorityAndCanRetry(t *testing.T) {
+	h := newHarness(t)
+	run := importRun(t, h, migrationPlan("one"))
+	preview := func() MigrationCutoverPlan {
+		var p MigrationCutoverPlan
+		h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission/preview", "admin", map[string]any{"nameservers": []string{}, "addresses": []string{"192.0.2.53"}}).want(http.StatusOK).json(&p)
+		return p
+	}
+	p := preview()
+	h.srv.opts.Store = rejectingMigrationRecords{h.st}
+	result := applyCutover(t, h, run.ID, p)
+	if len(result.Items) != 2 || result.Items[0].Result != ResultError || result.Items[1].Result != ResultError || getMigrationZone(t, h, "one").Spec.SOA.MName != "old.dns.test." {
+		t.Fatalf("failed address write: %+v", result)
+	}
+	h.srv.opts.Store = h.st
+	result = applyCutover(t, h, run.ID, preview())
+	if result.Items[0].Result != ResultCreated || result.Items[1].Result != ResultUpdated {
+		t.Fatalf("retry failed: %+v", result)
+	}
+	stale := preview()
+	rs := stale.Zones[0].AddressRecordSet
+	rs.Labels = map[string]string{"review": "edited"}
+	h.seed(store.ManagerAPI, rs)
+	h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission", "admin", stale).want(http.StatusConflict)
+}
+
+func TestMigrationCutoverReusesImportedVIPMapping(t *testing.T) {
+	h := newHarness(t)
+	p := migrationPlan("one")
+	rs := recordSetObj("default", "imported-addresses", "one", v1alpha1.Endpoint{DNSName: "ns-c0000235.one.test.", RecordType: "A", Targets: []string{"192.0.2.53"}, RecordTTL: 300})
+	k, _ := kindByKind("DNSRecordSet")
+	doc, err := objectMap(k, rs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Objects = append(p.Objects, doc)
+	run := importRun(t, h, p)
+	var preview MigrationCutoverPlan
+	h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission/preview", "admin", map[string]any{"nameservers": []string{}, "addresses": []string{"192.0.2.53"}}).want(http.StatusOK).json(&preview)
+	if preview.Zones[0].Error != "" {
+		t.Fatal(preview.Zones[0].Error)
+	}
+	result := applyCutover(t, h, run.ID, preview)
+	for _, item := range result.Items {
+		if item.Result == ResultError {
+			t.Fatal(item.Error)
+		}
+	}
+}

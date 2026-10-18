@@ -79,7 +79,14 @@ caller. The journal has the store's object size cap; a run accepts at most 100
 cutover attempts. Full backups include internal journals; safe exports omit them.
 
 An optional `nameservers` list replaces apex NS and SOA MNAME during conversion.
-Otherwise they remain as imported. `/imports/runs` lists durable history;
+Alternatively, `nameserverAddresses` generates stable `ns-<hex-address>` names
+within each imported zone and matching A/AAAA endpoints. Both options are
+mutually exclusive; empty options preserve source authority. The dashboard
+suggests its navigated hostname (an IP URL selects serving addresses instead),
+with editable targets and opt-in VIP discovery from `/edge` (`edge.read`). The
+CLI uses its destination context for `--update-nameservers` or a decommission
+preview without explicit targets, and offers `--use-vips` discovery.
+`/imports/runs` lists durable history;
 `/imports/runs/{id}/decommission/preview` reads tracked live zones and shows
 current authority and target names. Apply recomputes those changes from stored
 run data, claims the run using its revision, and writes through normal zone
@@ -89,8 +96,14 @@ imports, recreated zones and manual authority changes. Cutovers are partial,
 retryable operations; after ten minutes an interrupted attempt can be recovered,
 including a write committed just before its journal update. Work is bounded to
 two minutes; all write races still use optimistic versions. A retry records the
-abandoned attempt as partial. Parent delegation/glue and address changes remain
-external to this flow.
+abandoned attempt as partial. Address cutovers use per-zone generated record
+sets scoped to the run and addresses: preview includes endpoints and versions,
+refuses existing name conflicts, requires `records.write`, and refuses zones
+with custom record-set selectors. Apply creates/verifies address records before
+changing NS/SOA and journals each result. Existing records are never implicitly
+adopted or overwritten. Record write failures leave authority intact; retries
+reuse identical generated records. Parent delegation/glue and existing hostname
+address changes remain external to this flow.
 
 `GET /imports/existing` finds API-managed primary zones matching the converter's
 stable IDs without a run annotation. Explicit `POST /imports/adopt` tracks a
@@ -112,12 +125,15 @@ sequenceDiagram
         A->>S: Record outcome and zone identity
     end
     A->>S: Record finished/partial run
-    U->>A: Preview decommission with target DNS names
+    U->>A: Preview decommission with DNS names or serving IPs/VIPs
     A->>S: Read run and live zones
-    A-->>U: Current authority, versions and warnings
+    A-->>U: Current/target authority, generated addresses, versions and warnings
     U->>A: Apply reviewed versions
     A->>S: Claim run revision and record attempt
     loop Each tracked zone
+        opt Serving IPs/VIPs selected
+            A->>S: Check conflicts, write address records and journal result
+        end
         A->>S: Check identity/authority and write NS + SOA under version
         A->>S: Record outcome
     end

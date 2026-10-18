@@ -97,7 +97,7 @@ export function endpoints(c: ApiClient) {
       apply: (plan: MigrationPlan) => c.post<MigrationResult>('/imports/apply', plan),
       runs: (cursor?: string) => c.get<ListEnvelope<MigrationRun>>('/imports/runs', { limit: 25, continue: cursor }),
       run: (id: string) => c.get<MigrationRun>(`/imports/runs/${enc(id)}`),
-      cutoverPreview: (id: string, nameservers: string[]) => c.post<MigrationCutoverPlan>(`/imports/runs/${enc(id)}/decommission/preview`, { nameservers }),
+      cutoverPreview: (id: string, nameservers: string[], addresses: string[] = []) => c.post<MigrationCutoverPlan>(`/imports/runs/${enc(id)}/decommission/preview`, { nameservers, ...(addresses.length ? { addresses } : {}) }),
       cutover: (id: string, plan: MigrationCutoverPlan) => c.post<MigrationResult>(`/imports/runs/${enc(id)}/decommission`, plan),
       existing: () => c.get<ListEnvelope<MigrationAuthorityChange>>('/imports/existing'),
       adopt: (zones: MigrationAuthorityChange[]) => c.post<MigrationResult>('/imports/adopt', { zones }),

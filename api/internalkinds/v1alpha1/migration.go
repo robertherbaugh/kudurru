@@ -30,6 +30,7 @@ type MigrationCutover struct {
 	Actor       string          `json:"actor"`
 	Status      string          `json:"status"`
 	Nameservers []string        `json:"nameservers" nullable:"false"`
+	Addresses   []string        `json:"addresses,omitempty"`
 	Items       []MigrationItem `json:"items" nullable:"false"`
 }
 

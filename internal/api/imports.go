@@ -57,7 +57,7 @@ func (s *Server) registerImports() {
 		failed := false
 		for i, obj := range in.Body.Objects {
 			doc := normalizeNumbers(obj).(map[string]any)
-			if doc["kind"] == "DNSZone" {
+			if doc["kind"] == "DNSZone" || doc["kind"] == "DNSRecordSet" {
 				meta, ok := doc["metadata"].(map[string]any)
 				if ok {
 					ann, ok := meta["annotations"].(map[string]any)

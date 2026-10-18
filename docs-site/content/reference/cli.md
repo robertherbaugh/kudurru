@@ -667,7 +667,7 @@ Flags:
 
 ### kudurru import decommission
 
-Replace apex NS and SOA primary names only in zones tracked by this migration. First preview with --nameserver and save the JSON output, then apply that reviewed file with --apply --plan-file. The source server is not shut down; update parent delegations and glue separately.
+Replace apex NS and SOA primary names in zones tracked by this migration, creating A/AAAA records when serving IPs or VIPs are selected. Preview using the destination hostname or IP by default, explicit --nameserver or --nameserver-address values, or --use-vips. Save the JSON output, then apply that reviewed file with --apply --plan-file. The source server is not shut down; update parent delegations and glue separately.
 
 ```text
 kudurru import decommission <run-id> [flags]
@@ -676,10 +676,14 @@ kudurru import decommission <run-id> [flags]
 Flags:
 
 ```text
-      --apply                apply a saved and reviewed cutover preview
-      --nameserver strings   kudurru authoritative DNS names (repeatable; first becomes SOA
-                             primary)
-      --plan-file string     JSON preview to apply (produce with -o json)
+      --apply                        apply a saved and reviewed cutover preview
+      --nameserver strings           kudurru authoritative DNS names (repeatable; first
+                                     becomes SOA primary)
+      --nameserver-address strings   kudurru serving IPs or VIPs; generate in-zone NS names
+                                     and A/AAAA records (repeatable)
+      --plan-file string             JSON preview to apply (produce with -o json)
+      --use-vips                     use discovered kudurru VIPs for nameservers and address
+                                     records
 ```
 
 ### kudurru import pihole
@@ -706,11 +710,17 @@ Flags:
                                           Pi-hole's local domain)
       --nameserver strings                kudurru authoritative DNS names; replace imported NS
                                           and SOA primary (repeatable; first is primary)
+      --nameserver-address strings        kudurru serving IPs or VIPs; generate in-zone NS
+                                          names and A/AAAA records (repeatable)
       --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
                                           self-signed certificate
       --source-key-file string            file containing the source v6 application password
                                           (otherwise $PIHOLE_APP_PASSWORD)
       --source-url string                 source console URL (including any reverse-proxy prefix)
+      --update-nameservers                use the destination context hostname or IP for
+                                          imported authority
+      --use-vips                          use discovered kudurru VIPs for nameservers and
+                                          address records
 ```
 
 ### kudurru import runs
@@ -743,11 +753,17 @@ Flags:
       --dry-run                           preview only (the default)
       --nameserver strings                kudurru authoritative DNS names; replace imported NS
                                           and SOA primary (repeatable; first is primary)
+      --nameserver-address strings        kudurru serving IPs or VIPs; generate in-zone NS
+                                          names and A/AAAA records (repeatable)
       --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
                                           self-signed certificate
       --source-key-file string            file containing the source API token (otherwise
                                           $TECHNITIUM_API_TOKEN)
       --source-url string                 source console URL (including any reverse-proxy prefix)
+      --update-nameservers                use the destination context hostname or IP for
+                                          imported authority
+      --use-vips                          use discovered kudurru VIPs for nameservers and
+                                          address records
 ```
 
 ### kudurru import track-existing

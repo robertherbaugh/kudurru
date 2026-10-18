@@ -445,6 +445,11 @@ func (in *MigrationCutover) DeepCopyInto(out *MigrationCutover) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.Addresses != nil {
+		in, out := &in.Addresses, &out.Addresses
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]MigrationItem, len(*in))

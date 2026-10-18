@@ -1,3 +1,4 @@
+// @vitest-environment-options {"url":"https://dns.kudurru.test:8443/kudurru/"}
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -31,6 +32,7 @@ describe('Migration history', () => {
     renderWithApp(<MigrationHistory />);
     const dialog = await openCutover();
     const nameserver = within(dialog).getByPlaceholderText('dns1.example.com');
+    expect(nameserver).toHaveValue('dns.kudurru.test');
     fireEvent.change(nameserver, { target: { value: '192.0.2.1' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(within(dialog).getAllByText(/Enter a DNS hostname/).length).toBeGreaterThan(0));

@@ -2407,6 +2407,84 @@
         ],
         "type": "object"
       },
+      "DNSRecordSet": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMeta"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/DNSRecordSetSpec"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DNSRecordSetStatus"
+          }
+        },
+        "required": [
+          "spec"
+        ],
+        "type": "object"
+      },
+      "DNSRecordSetSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/Endpoint"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "zoneRef": {
+            "$ref": "#/components/schemas/ObjectRef"
+          }
+        },
+        "required": [
+          "zoneRef",
+          "endpoints"
+        ],
+        "type": "object"
+      },
+      "DNSRecordSetStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "names": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "observedGeneration": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "publications": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationState"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "DhcpReservationInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -4063,6 +4141,35 @@
         ],
         "type": "object"
       },
+      "ManagedFieldsEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "fieldsType": {
+            "type": "string"
+          },
+          "fieldsV1": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "manager": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "subresource": {
+            "type": "string"
+          },
+          "time": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Me": {
         "additionalProperties": false,
         "properties": {
@@ -4159,6 +4266,9 @@
       "MigrationAuthorityChange": {
         "additionalProperties": false,
         "properties": {
+          "addressRecordSet": {
+            "$ref": "#/components/schemas/DNSRecordSet"
+          },
           "error": {
             "type": "string"
           },
@@ -4180,6 +4290,15 @@
           "resourceVersion": {
             "type": "string"
           },
+          "targetNameservers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "zoneName": {
             "type": "string"
           }
@@ -4198,6 +4317,15 @@
         "properties": {
           "actor": {
             "type": "string"
+          },
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "finishedAt": {
             "format": "date-time",
@@ -4235,12 +4363,21 @@
       "MigrationCutoverPlan": {
         "additionalProperties": false,
         "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "nameservers": {
             "items": {
               "type": "string"
             },
             "maxItems": 16,
-            "minItems": 1,
             "type": "array"
           },
           "revision": {
@@ -4271,12 +4408,21 @@
       "MigrationCutoverPreviewInputBody": {
         "additionalProperties": false,
         "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "nameservers": {
             "items": {
               "type": "string"
             },
             "maxItems": 16,
-            "minItems": 1,
             "type": "array"
           }
         },
@@ -4329,6 +4475,17 @@
             "items": {
               "type": "string"
             },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "nameserverAddresses": {
+            "description": "Serving IPs or VIPs. Generates in-zone NS names and matching A/AAAA records. Mutually exclusive with nameservers.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
             "type": [
               "array",
               "null"
@@ -4695,6 +4852,85 @@
         ],
         "type": "object"
       },
+      "ObjectMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "annotations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "creationTimestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deletionGracePeriodSeconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deletionTimestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "finalizers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "generateName": {
+            "type": "string"
+          },
+          "generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "managedFields": {
+            "items": {
+              "$ref": "#/components/schemas/ManagedFieldsEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "ownerReferences": {
+            "items": {
+              "$ref": "#/components/schemas/OwnerReference"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "resourceVersion": {
+            "type": "string"
+          },
+          "selfLink": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ObjectOwner": {
         "additionalProperties": false,
         "properties": {
@@ -4714,6 +4950,51 @@
         "required": [
           "kind",
           "name"
+        ],
+        "type": "object"
+      },
+      "ObjectRef": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "OwnerReference": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "blockOwnerDeletion": {
+            "type": "boolean"
+          },
+          "controller": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind",
+          "name",
+          "uid"
         ],
         "type": "object"
       },
@@ -5391,6 +5672,25 @@
         "required": [
           "name",
           "value"
+        ],
+        "type": "object"
+      },
+      "PublicationState": {
+        "additionalProperties": false,
+        "properties": {
+          "integration": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration",
+          "state"
         ],
         "type": "object"
       },

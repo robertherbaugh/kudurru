@@ -8,11 +8,10 @@ import { useState } from 'react';
 import { useApi, useCan } from '../../api/context';
 import type { MigrationAuthorityChange, MigrationCutoverPlan, MigrationResult, MigrationRun } from '../../api/types';
 import { ErrorBanner, errorText, Loading } from '../Feedback';
-import { cleanList } from '../fields/StringListField';
 import { CheckboxField } from '../fields/TextField';
 import { Panel } from '../layout/Page';
 import { Wizard, WizardDialog } from '../Wizard';
-import { MigrationNameservers, migrationNameserverError } from './MigrationNameservers';
+import { MigrationNameservers, migrationNameserverError, initialNameservers, nameserverRequest } from './MigrationNameservers';
 
 type ZoneRow = MigrationAuthorityChange & Record<string, unknown>;
 const authorityColumns: TableColumn<ZoneRow>[] = [
@@ -20,6 +19,11 @@ const authorityColumns: TableColumn<ZoneRow>[] = [
   { key: 'nameservers', header: 'Current NS', renderCell: (z) => <Text>{z.nameservers.join(', ') || '—'}</Text> },
   { key: 'primary', header: 'Current SOA primary', renderCell: (z) => <Text>{z.primary || '—'}</Text> },
   { key: 'error', header: 'Review', renderCell: (z) => <Text>{z.error || 'Ready'}</Text> },
+];
+type AddressRow = { id: string; name: string; address: string } & Record<string, unknown>;
+const addressColumns: TableColumn<AddressRow>[] = [
+  { key: 'name', header: 'Nameserver', renderCell: (r) => <Text type="code">{r.name}</Text> },
+  { key: 'address', header: 'Address record', renderCell: (r) => <Text>{r.address}</Text> },
 ];
 type Item = MigrationRun['data']['items'][number] & Record<string, unknown>;
 const itemColumns: TableColumn<Item>[] = [
@@ -37,7 +41,7 @@ const succeeded = (r: MigrationResult) => !r.journalError && !r.settingsError &&
 function CutoverWizard({ run, onDone }: { run: MigrationRun; onDone: () => void }) {
   const api = useApi();
   const qc = useQueryClient();
-  const [nameservers, setNameservers] = useState<string[]>(['']);
+  const [nameservers, setNameservers] = useState(initialNameservers);
   const [plan, setPlan] = useState<MigrationCutoverPlan>();
   const [reviewed, setReviewed] = useState(false);
   const [needsPreview, setNeedsPreview] = useState(false);
@@ -47,11 +51,17 @@ function CutoverWizard({ run, onDone }: { run: MigrationRun; onDone: () => void 
   return <Wizard label="Decommission source nameservers" finishLabel="Update nameservers" isFinishing={pending} error={error ? <ErrorBanner error={error} /> : undefined} steps={[
     { id: 'nameservers', label: 'Kudurru nameservers', description: 'Choose the DNS names kudurru will advertise for this migration’s zones.', content: <MigrationNameservers value={nameservers} onChange={(v) => { setNameservers(v); setPlan(undefined); setReviewed(false); setResult(undefined); }} />, validate: async () => {
       const problem = migrationNameserverError(nameservers); if (problem) return problem;
-      try { setPlan(await api.imports.cutoverPreview(run.id, cleanList(nameservers))); setReviewed(false); setNeedsPreview(false); setError(undefined); return null; } catch (err) { return errorText(err); }
+      try { setPlan(await api.imports.cutoverPreview(run.id, nameserverRequest(nameservers).nameservers, nameserverRequest(nameservers).nameserverAddresses)); setReviewed(false); setNeedsPreview(false); setError(undefined); return null; } catch (err) { return errorText(err); }
     } },
     { id: 'review', label: 'Review cutover', content: plan ? <VStack gap={4}>
-      <VStack gap={2}><Text>New NS: {plan.nameservers.join(', ')}</Text><Text>New SOA primary: {plan.nameservers[0]}</Text></VStack>
-      <Table<ZoneRow> aria-label="Nameserver changes" data={plan.zones} columns={authorityColumns} idKey="name" density="compact" />
+      <VStack gap={2}><Text>{plan.addresses?.length ? `Serving IPs or VIPs: ${plan.addresses.join(', ')}` : `New NS: ${plan.nameservers.join(', ')}; SOA primary: ${plan.nameservers[0]}`}</Text></VStack>
+      <Table<ZoneRow> aria-label="Nameserver changes" data={plan.zones} columns={[
+        authorityColumns[0]!,
+        { key: 'nameservers', header: 'Current authority', renderCell: (z) => <VStack gap={1}><Text>NS: {z.nameservers.join(', ') || '—'}</Text><Text>SOA: {z.primary || '—'}</Text></VStack> },
+        { key: 'targetNameservers', header: 'New NS (SOA primary first)', renderCell: (z) => <Text>{(z.targetNameservers ?? plan.nameservers).join(', ')}</Text> },
+        authorityColumns[3]!,
+      ]} idKey="name" density="compact" />
+      {plan.addresses?.length ? <Table<AddressRow> aria-label="Generated nameserver addresses" data={plan.zones.flatMap((z) => (z.addressRecordSet?.spec.endpoints ?? []).map((e) => ({ id: `${z.name}/${e.dnsName}/${e.recordType}`, name: e.dnsName, address: `${e.recordType} ${e.targets?.join(', ') ?? ''}` })))} columns={addressColumns} idKey="id" density="compact" /> : null}
       <Banner status="warning" title="Before retiring the source" collapsible={false}><VStack gap={2}>{plan.warnings.map((w) => <Text as="p" key={w}>{w}</Text>)}</VStack></Banner>
       <CheckboxField label="I reviewed the nameserver changes" value={reviewed} onChange={setReviewed} />
       {result ? <WriteErrors result={result} /> : null}
@@ -80,8 +90,8 @@ function RunDetails({ id, onClose, onCutover }: { id: string; onClose: () => voi
     {run.data.warnings.length ? <Banner status="warning" title="Migration warnings" collapsible={false}><VStack gap={2}>{run.data.warnings.map((w, i) => <Text as="p" key={i}>{w}</Text>)}</VStack></Banner> : null}
     {run.data.cutovers.map((cutover, i) => <VStack gap={2} key={i}>
       <Text type="label">Cutover {i + 1}: {cutover.status} — {new Date(cutover.startedAt).toLocaleString()}</Text>
-      <Text>NS: {cutover.nameservers.join(', ')}; SOA primary: {cutover.nameservers[0]}; requested by {cutover.actor}</Text>
-      <Table<Item> aria-label={`Cutover ${i + 1} results`} data={cutover.items} columns={itemColumns} idKey="name" density="compact" />
+      <Text>{cutover.addresses?.length ? `Serving IPs or VIPs: ${cutover.addresses.join(', ')}` : `NS: ${cutover.nameservers.join(', ')}; SOA primary: ${cutover.nameservers[0]}`}; requested by {cutover.actor}</Text>
+      <Table<Item> aria-label={`Cutover ${i + 1} results`} data={cutover.items} columns={itemColumns} idKey={(item) => `${item.kind}/${item.namespace}/${item.name}`} density="compact" />
     </VStack>)}
     <Button label="Decommission source nameservers" isDisabled={!run.data.zones.length} onClick={() => onCutover(run)} />
   </VStack> : <Loading label="Loading migration run" /> }]} />;

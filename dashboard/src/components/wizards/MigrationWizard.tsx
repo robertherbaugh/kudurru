@@ -7,17 +7,31 @@ import { Text } from '@astryxdesign/core/Text';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApi, useCan } from '../../api/context';
-import type { AnyObject, MigrationPlan, MigrationRequest, MigrationResult } from '../../api/types';
+import type { AnyObject, MigrationPlan, MigrationRequest, MigrationResult, DNSZone } from '../../api/types';
 import { ErrorBanner, errorText } from '../Feedback';
 import { SelectField } from '../fields/SelectField';
 import { cleanList, StringListField } from '../fields/StringListField';
 import { CheckboxField, TextField } from '../fields/TextField';
 import { Panel } from '../layout/Page';
-import { MigrationNameservers, migrationNameserverError } from './MigrationNameservers';
+import { MigrationNameservers, migrationNameserverError, initialNameservers, nameserverRequest } from './MigrationNameservers';
 import { MigrationHistory } from './MigrationHistory';
 import { Wizard, WizardDialog, type WizardStep } from '../Wizard';
 
 type ObjectRow = { id: string; kind: string; name: string } & Record<string, unknown>;
+type AuthorityRow = { name: string; names: string; primary: string; addresses: string } & Record<string, unknown>;
+function authorityRows(plan: MigrationPlan): AuthorityRow[] {
+  return plan.objects.filter((o): o is DNSZone => o.kind === 'DNSZone').map((zone) => {
+    const names = zone.spec.nameservers ?? [];
+    const addresses = plan.objects.filter((o) => o.kind === 'DNSRecordSet').flatMap((o) => o.spec.zoneRef.name === zone.metadata.name ? o.spec.endpoints : []).filter((e) => names.includes(e.dnsName) && (e.recordType === 'A' || e.recordType === 'AAAA')).map((e) => `${e.dnsName} ${e.recordType} ${e.targets.join(', ')}`).join('; ');
+    return { name: zone.spec.zoneName, names: names.join(', '), primary: zone.spec.soa?.mname ?? '', addresses };
+  });
+}
+const authorityColumns: TableColumn<AuthorityRow>[] = [
+  { key: 'name', header: 'Zone', renderCell: (r) => <Text>{r.name}</Text> },
+  { key: 'names', header: 'New NS', renderCell: (r) => <Text>{r.names}</Text> },
+  { key: 'primary', header: 'SOA primary', renderCell: (r) => <Text>{r.primary}</Text> },
+  { key: 'addresses', header: 'Address records', renderCell: (r) => <Text>{r.addresses || '—'}</Text> },
+];
 const columns: TableColumn<ObjectRow>[] = [
   { key: 'kind', header: 'Kind', renderCell: (r) => <Text>{r.kind}</Text> },
   { key: 'name', header: 'Name', renderCell: (r) => <Text type="code">{r.name}</Text> },
@@ -38,7 +52,7 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
   const [insecure, setInsecure] = useState(false);
   const [localZones, setLocalZones] = useState<string[]>([]);
   const [replaceNameservers, setReplaceNameservers] = useState(false);
-  const [nameservers, setNameservers] = useState<string[]>(['']);
+  const [nameservers, setNameservers] = useState(initialNameservers);
   const [plan, setPlan] = useState<MigrationPlan>();
   const [reviewed, setReviewed] = useState(false);
   const [showObjects, setShowObjects] = useState(false);
@@ -68,7 +82,7 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
         if (replaceNameservers) { const problem = migrationNameserverError(nameservers); if (problem) return problem; }
         setError(undefined);
         try {
-          const preview = await api.imports.preview({ source, url: url.trim(), credential, namespace: namespace.trim(), insecureSkipVerify: insecure, localZones: cleanList(localZones), nameservers: replaceNameservers ? cleanList(nameservers) : [] });
+          const preview = await api.imports.preview({ source, url: url.trim(), credential, namespace: namespace.trim(), insecureSkipVerify: insecure, localZones: cleanList(localZones), ...(replaceNameservers ? nameserverRequest(nameservers) : { nameservers: [] }) });
           setPlan(preview);
           setReviewed(false);
           return null;
@@ -80,7 +94,8 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
       content: plan ? (
         <VStack gap={4}>
           <Text>{plan.objects.length} objects are ready to import.</Text>
-          <Text>{replaceNameservers ? `NS records will use ${cleanList(nameservers).join(', ')}; SOA primary will use ${cleanList(nameservers)[0]}.` : 'Source nameservers will be preserved. Use migration history to decommission them later.'}</Text>
+          <Text>{replaceNameservers ? nameservers.mode === 'addresses' ? `Generated nameservers will use these serving addresses: ${cleanList(nameservers.addresses).join(', ')}.` : `NS records will use ${cleanList(nameservers.names).join(', ')}; SOA primary will use ${cleanList(nameservers.names)[0]}.` : 'Source nameservers will be preserved. Use migration history to decommission them later.'}</Text>
+          {replaceNameservers ? <Table<AuthorityRow> aria-label="Nameserver and address changes" density="compact" idKey="name" data={authorityRows(plan)} columns={authorityColumns} /> : null}
           <Table<ObjectRow> aria-label="Migration objects" density="compact" idKey="id" data={plan.objects.map(objectRow)} columns={columns} />
           <Button label={showObjects ? 'Hide converted objects' : 'Show converted objects'} variant="secondary" onClick={() => setShowObjects((v) => !v)} />
           {showObjects ? <CodeBlock code={JSON.stringify(plan.objects, null, 2)} aria-label="Converted objects" width="100%" /> : null}

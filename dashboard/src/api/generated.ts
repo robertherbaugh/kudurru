@@ -2650,6 +2650,25 @@ export interface components {
             type: string;
             upstream?: string;
         };
+        DNSRecordSet: {
+            apiVersion?: string;
+            kind?: string;
+            metadata?: components["schemas"]["ObjectMeta"];
+            spec: components["schemas"]["DNSRecordSetSpec"];
+            status?: components["schemas"]["DNSRecordSetStatus"];
+        };
+        DNSRecordSetSpec: {
+            endpoints: components["schemas"]["Endpoint"][] | null;
+            zoneRef: components["schemas"]["ObjectRef"];
+        };
+        DNSRecordSetStatus: {
+            conditions?: components["schemas"]["Condition"][] | null;
+            /** Format: int64 */
+            names?: number;
+            /** Format: int64 */
+            observedGeneration?: number;
+            publications?: components["schemas"]["PublicationState"][] | null;
+        };
         DhcpReservationInputBody: {
             hostname?: string;
             /** Format: ipv4 */
@@ -3190,6 +3209,18 @@ export interface components {
             password: string;
             username: string;
         };
+        ManagedFieldsEntry: {
+            apiVersion?: string;
+            fieldsType?: string;
+            fieldsV1?: {
+                [key: string]: unknown;
+            };
+            manager?: string;
+            operation?: string;
+            subresource?: string;
+            /** Format: date-time */
+            time?: string;
+        };
         Me: {
             csrf?: string;
             /** @description The local user must change the password (POST /auth/password) before using the API. */
@@ -3217,16 +3248,19 @@ export interface components {
             zones: components["schemas"]["MigrationAuthorityChange"][];
         };
         MigrationAuthorityChange: {
+            addressRecordSet?: components["schemas"]["DNSRecordSet"];
             error?: string;
             name: string;
             nameservers: string[];
             namespace?: string;
             primary: string;
             resourceVersion: string;
+            targetNameservers?: string[] | null;
             zoneName: string;
         };
         MigrationCutover: {
             actor: string;
+            addresses?: string[] | null;
             /** Format: date-time */
             finishedAt?: string;
             items: components["schemas"]["MigrationItem"][];
@@ -3236,12 +3270,14 @@ export interface components {
             status: string;
         };
         MigrationCutoverPlan: {
+            addresses?: string[] | null;
             nameservers: string[];
             revision: string;
             warnings: string[];
             zones: components["schemas"]["MigrationAuthorityChange"][];
         };
         MigrationCutoverPreviewInputBody: {
+            addresses?: string[] | null;
             nameservers: string[];
         };
         MigrationItem: {
@@ -3258,6 +3294,8 @@ export interface components {
             insecureSkipVerify?: boolean;
             /** @description Pi-hole local DNS suffixes to make authoritative, for example home.arpa. */
             localZones?: string[] | null;
+            /** @description Serving IPs or VIPs. Generates in-zone NS names and matching A/AAAA records. Mutually exclusive with nameservers. */
+            nameserverAddresses?: string[] | null;
             /** @description Replace imported authoritative NS names and SOA primary with these kudurru DNS names; first name becomes SOA primary. Empty preserves source authority for a later cutover. */
             nameservers?: string[] | null;
             namespace?: string;
@@ -3363,11 +3401,48 @@ export interface components {
              */
             took_ms: number;
         };
+        ObjectMeta: {
+            annotations?: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            creationTimestamp?: string;
+            /** Format: int64 */
+            deletionGracePeriodSeconds?: number;
+            /** Format: date-time */
+            deletionTimestamp?: string;
+            finalizers?: string[] | null;
+            generateName?: string;
+            /** Format: int64 */
+            generation?: number;
+            labels?: {
+                [key: string]: string;
+            };
+            managedFields?: components["schemas"]["ManagedFieldsEntry"][] | null;
+            name?: string;
+            namespace?: string;
+            ownerReferences?: components["schemas"]["OwnerReference"][] | null;
+            resourceVersion?: string;
+            selfLink?: string;
+            uid?: string;
+        };
         ObjectOwner: {
             kind: string;
             managedBy?: string;
             name: string;
             namespace?: string;
+        };
+        ObjectRef: {
+            name: string;
+            namespace?: string;
+        };
+        OwnerReference: {
+            apiVersion: string;
+            blockOwnerDeletion?: boolean;
+            controller?: boolean;
+            kind: string;
+            name: string;
+            uid: string;
         };
         PasswordChangeRequest: {
             /** @description The current password. */
@@ -3598,6 +3673,11 @@ export interface components {
         ProviderSpecific: {
             name: string;
             value: string;
+        };
+        PublicationState: {
+            integration: string;
+            message?: string;
+            state: string;
         };
         PurgeResult: {
             /** Format: int64 */

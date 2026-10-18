@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -44,26 +45,30 @@ type migrationRunsOutput struct{ Body *List[MigrationRun] }
 
 // MigrationAuthorityChange is one reviewed change, fenced by object version.
 type MigrationAuthorityChange struct {
-	Name            string   `json:"name"`
-	Namespace       string   `json:"namespace,omitempty"`
-	ZoneName        string   `json:"zoneName"`
-	ResourceVersion string   `json:"resourceVersion"`
-	Nameservers     []string `json:"nameservers" nullable:"false"`
-	Primary         string   `json:"primary"`
-	Error           string   `json:"error,omitempty"`
+	Name              string                 `json:"name"`
+	Namespace         string                 `json:"namespace,omitempty"`
+	ZoneName          string                 `json:"zoneName"`
+	ResourceVersion   string                 `json:"resourceVersion"`
+	Nameservers       []string               `json:"nameservers" nullable:"false"`
+	Primary           string                 `json:"primary"`
+	Error             string                 `json:"error,omitempty"`
+	TargetNameservers []string               `json:"targetNameservers,omitempty"`
+	AddressRecordSet  *v1alpha1.DNSRecordSet `json:"addressRecordSet,omitempty"`
 }
 
 // MigrationCutoverPlan can only change authority of zones recorded in a run.
 type MigrationCutoverPlan struct {
 	Revision    string                     `json:"revision" minLength:"1"`
-	Nameservers []string                   `json:"nameservers" nullable:"false" minItems:"1" maxItems:"16"`
+	Nameservers []string                   `json:"nameservers" nullable:"false" maxItems:"16"`
+	Addresses   []string                   `json:"addresses,omitempty" maxItems:"16"`
 	Zones       []MigrationAuthorityChange `json:"zones" nullable:"false"`
 	Warnings    []string                   `json:"warnings" nullable:"false"`
 }
 type migrationCutoverPreviewInput struct {
 	ID   string `path:"id"`
 	Body struct {
-		Nameservers []string `json:"nameservers" nullable:"false" minItems:"1" maxItems:"16"`
+		Nameservers []string `json:"nameservers" nullable:"false" maxItems:"16"`
+		Addresses   []string `json:"addresses,omitempty" maxItems:"16"`
 	}
 }
 type migrationCutoverInput struct {
@@ -102,7 +107,7 @@ func (s *Server) registerMigrationRuns() {
 		if err != nil {
 			return nil, err
 		}
-		plan, err := s.previewMigrationCutover(ctx, run, in.Body.Nameservers)
+		plan, err := s.previewMigrationCutover(ctx, run, in.Body.Nameservers, in.Body.Addresses)
 		if err != nil {
 			return nil, err
 		}
@@ -260,8 +265,8 @@ func (s *Server) migrationZone(ctx context.Context, r *internal.MigrationRun, z 
 	// Recover a completed write whose following journal update was interrupted.
 	if !expected && len(r.Spec.Cutovers) > 0 {
 		last := r.Spec.Cutovers[len(r.Spec.Cutovers)-1]
-		if len(last.Nameservers) > 0 {
-			expected = equalAuthority(current.Spec.Nameservers, zonePrimary(current), last.Nameservers, last.Nameservers[0])
+		if ns, _, err := importers.Authority(z.ZoneName, last.Nameservers, last.Addresses); err == nil && len(ns) > 0 {
+			expected = equalAuthority(current.Spec.Nameservers, zonePrimary(current), ns, ns[0])
 		}
 	}
 	if !expected {
@@ -269,13 +274,20 @@ func (s *Server) migrationZone(ctx context.Context, r *internal.MigrationRun, z 
 	}
 	return current, nil
 }
-func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.MigrationRun, names []string) (*MigrationCutoverPlan, error) {
+func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.MigrationRun, names, addresses []string) (*MigrationCutoverPlan, error) {
 	if len(r.Spec.Zones) == 0 {
 		return nil, errInvalid("This migration has no authoritative zones to decommission")
 	}
 	ns, err := importers.Nameservers(names)
-	if err != nil || len(ns) == 0 {
-		return nil, errInvalid("Enter at least one valid kudurru nameserver DNS name")
+	if err != nil {
+		return nil, errInvalid("%s", err)
+	}
+	ips, err := importers.NameserverAddresses(addresses)
+	if err != nil {
+		return nil, errInvalid("%s", err)
+	}
+	if (len(ns) == 0) == (len(ips) == 0) {
+		return nil, errInvalid("Choose kudurru DNS names or serving IP addresses")
 	}
 	if r.Spec.Status == "running" && s.opts.Now().Sub(r.Spec.StartedAt.Time) < 10*time.Minute {
 		return nil, errConflict("Migration is still running", "Wait for the import to finish")
@@ -286,9 +298,9 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 			return nil, errConflict("A cutover is still running", "Wait for it to finish; interrupted attempts can be retried after ten minutes")
 		}
 	}
-	p := &MigrationCutoverPlan{Revision: r.ResourceVersion, Nameservers: ns, Zones: []MigrationAuthorityChange{}, Warnings: []string{
+	p := &MigrationCutoverPlan{Revision: r.ResourceVersion, Nameservers: ns, Addresses: ips, Zones: []MigrationAuthorityChange{}, Warnings: []string{
 		"Nameserver DNS names must resolve to kudurru's serving addresses. Check DNS answers before retiring the source server.",
-		"This updates apex NS and SOA primary names in the imported zones. Update registrar/parent delegations, glue, and delegations in other zones separately. The source server is not shut down.",
+		"This updates apex NS and SOA primary names in the imported zones, plus generated A/AAAA records when serving IPs are selected. Update registrar/parent delegations, glue, and delegations in other zones separately. The source server is not shut down.",
 		"Writes are not transactional. Successful changes remain if another zone fails; review errors and preview again to retry.",
 	}}
 	for _, tracked := range r.Spec.Zones {
@@ -298,6 +310,12 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 			k, _ := kindByKind("DNSZone")
 			body, _ := objectMap(k, z)
 			err = s.authorizeWrite(ctx, k, writeRequest{kind: k, body: body})
+		}
+		if err == nil {
+			c.TargetNameservers, _, err = importers.Authority(z.Spec.ZoneName, ns, ips)
+		}
+		if err == nil && len(ips) > 0 {
+			c.AddressRecordSet, err = s.migrationAddressRecordSet(ctx, r, z, ips)
 		}
 		if err != nil {
 			c.Error = err.Error()
@@ -321,7 +339,7 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 	if r.ResourceVersion != p.Revision {
 		return nil, errPrecondition(p.Revision, r.ResourceVersion)
 	}
-	fresh, err := s.previewMigrationCutover(ctx, r, p.Nameservers)
+	fresh, err := s.previewMigrationCutover(ctx, r, p.Nameservers, p.Addresses)
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +348,7 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 	}
 	for i, z := range fresh.Zones {
 		reviewed := p.Zones[i]
-		if reviewed.Name != z.Name || reviewed.Namespace != z.Namespace || reviewed.ResourceVersion != z.ResourceVersion || reviewed.Error != z.Error {
+		if reviewed.Name != z.Name || reviewed.Namespace != z.Namespace || reviewed.ResourceVersion != z.ResourceVersion || reviewed.Error != z.Error || !reflect.DeepEqual(reviewed.AddressRecordSet, z.AddressRecordSet) {
 			return nil, errConflict("A zone changed after the preview", "Preview the cutover again")
 		}
 	}
@@ -355,7 +373,7 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 			r.Spec.Zones[i].Primary = c.Primary
 		}
 	}
-	attempt := internal.MigrationCutover{StartedAt: metav1.NewTime(s.opts.Now()), Actor: s.actor(ctx), Status: "running", Nameservers: fresh.Nameservers, Items: []internal.MigrationItem{}}
+	attempt := internal.MigrationCutover{StartedAt: metav1.NewTime(s.opts.Now()), Actor: s.actor(ctx), Status: "running", Nameservers: fresh.Nameservers, Addresses: fresh.Addresses, Items: []internal.MigrationItem{}}
 	r.Spec.Cutovers = append(r.Spec.Cutovers, attempt)
 	if err := s.saveMigrationRun(ctx, r); err != nil {
 		return nil, storeError(err)
@@ -364,19 +382,31 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 	// Bound an attempt so a crashed worker's lease can eventually be recovered.
 	workCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	visited := 0
 	for i, c := range fresh.Zones {
+		visited++
 		item := ApplyResult{Kind: "DNSZone", Namespace: c.Namespace, Name: c.Name, Result: ResultError, Error: c.Error}
 		if c.Error == "" {
 			z, e := s.migrationZone(workCtx, r, r.Spec.Zones[i])
 			if e == nil && z.ResourceVersion != c.ResourceVersion {
 				e = errPrecondition(c.ResourceVersion, z.ResourceVersion)
 			}
+			if e == nil && c.AddressRecordSet != nil {
+				var addressItem ApplyResult
+				addressItem, e = s.writeMigrationAddresses(workCtx, r, z, fresh.Addresses, c.AddressRecordSet)
+				result.Items = append(result.Items, addressItem)
+				last := &r.Spec.Cutovers[len(r.Spec.Cutovers)-1]
+				last.Items = append(last.Items, migrationItem(addressItem))
+				if !s.persistMigrationProgress(workCtx, r, result) {
+					break
+				}
+			}
 			if e == nil {
-				z.Spec.Nameservers = append([]string{}, fresh.Nameservers...)
+				z.Spec.Nameservers = append([]string{}, c.TargetNameservers...)
 				if z.Spec.SOA == nil {
 					z.Spec.SOA = &v1alpha1.SOASpec{}
 				}
-				z.Spec.SOA.MName = fresh.Nameservers[0]
+				z.Spec.SOA.MName = c.TargetNameservers[0]
 				k, _ := kindByKind("DNSZone")
 				body, mapErr := objectMap(k, z)
 				e = mapErr
@@ -392,8 +422,8 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 						item.ResourceVersion = wr.obj.GetResourceVersion()
 						tracked := &r.Spec.Zones[i]
 						tracked.UID = string(wr.obj.GetUID())
-						tracked.Nameservers = fresh.Nameservers
-						tracked.Primary = fresh.Nameservers[0]
+						tracked.Nameservers = c.TargetNameservers
+						tracked.Primary = c.TargetNameservers[0]
 					}
 				}
 			}
@@ -414,7 +444,7 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 	now = metav1.NewTime(s.opts.Now())
 	last.FinishedAt = &now
 	last.Status = "completed"
-	if len(last.Items) != len(fresh.Zones) || result.JournalError != "" {
+	if visited != len(fresh.Zones) || result.JournalError != "" {
 		last.Status = "partial"
 	}
 	for _, item := range last.Items {
