@@ -36,3 +36,18 @@ TLS settings; override or disable affinity under `ingress.traefik.sticky`.
 Standard Ingress resources with `ingress.className=traefik` get the same
 cookie settings through Service annotations. Direct Service clients can
 opt into `service.api.sessionAffinity=ClientIP`.
+
+Cluster settings default to GitOps ownership. On **DNS > Upstreams**, explicit
+adoption enables UI/API management of the entire upstreams section. Values and
+ownership then live in `<fullname>-ui-settings`, created by the API and never
+rendered by Helm. `config.uiSettingsResource` overrides this name; keep it
+stable after adoption. Existing release-namespace ConfigMap RBAC is sufficient.
+The other settings sections keep their current management behavior.
+
+After adoption, set `config.settings.upstreams: null` to remove Helm's upstream
+declarations and clear the ownership-conflict warning. For a return to GitOps,
+generate current Helm values, commit and apply them, wait for the settings
+volume to update on every replica, refresh the preview, then release ownership.
+Release checks the serving replica's configuration before handoff.
+See the [upstreams guide](../../../docs/guide/dashboard/upstreams.md) and
+[settings architecture](../../../docs/architecture/configuration-and-store.md#settings).

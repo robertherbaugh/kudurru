@@ -4908,6 +4908,18 @@
         ],
         "type": "object"
       },
+      "OwnershipInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "type": "object"
+      },
       "PasswordChangeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -6258,6 +6270,33 @@
         ],
         "type": "object"
       },
+      "Section": {
+        "additionalProperties": false,
+        "properties": {
+          "envLocked": {
+            "type": "boolean"
+          },
+          "owner": {
+            "enum": [
+              "gitops",
+              "ui"
+            ],
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "switchable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "owner",
+          "switchable",
+          "envLocked"
+        ],
+        "type": "object"
+      },
       "Selection": {
         "additionalProperties": false,
         "properties": {
@@ -6588,6 +6627,13 @@
           "label": {
             "type": "string"
           },
+          "managedBy": {
+            "enum": [
+              "gitops",
+              "ui"
+            ],
+            "type": "string"
+          },
           "max": {
             "format": "int64",
             "type": "integer"
@@ -6766,6 +6812,13 @@
             "nullable": true,
             "type": "array"
           },
+          "conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
           "node": {
             "type": "string"
           },
@@ -6786,6 +6839,12 @@
             ],
             "type": "string"
           },
+          "sections": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Section"
+            },
+            "type": "object"
+          },
           "settings": {
             "additionalProperties": {},
             "type": "object"
@@ -6802,6 +6861,32 @@
           "settings",
           "took_ms"
         ],
+        "type": "object"
+      },
+      "SettingsYAMLBody": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "type": "string"
+          },
+          "yaml": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "yaml",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "SettingsYAMLInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "proposed": {
+            "additionalProperties": {},
+            "type": "object"
+          }
+        },
         "type": "object"
       },
       "SourceEntries": {
@@ -22644,6 +22729,15 @@
       },
       "patch": {
         "operationId": "patchSettings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -22834,6 +22928,266 @@
           }
         },
         "summary": "The settings metadata table",
+        "tags": [
+          "settings"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/settings/sections/{section}/ownership/{action}": {
+      "post": {
+        "operationId": "changeSettingsOwnership",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnershipInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Adopt or release a settings section using its reviewed revision",
+        "tags": [
+          "settings"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/settings/sections/{section}/yaml": {
+      "post": {
+        "operationId": "exportSettingsSectionYAML",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsYAMLInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsYAMLBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Generate Helm values for the current or proposed complete section without writing",
         "tags": [
           "settings"
         ],

@@ -61,6 +61,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
+	"github.com/robertherbaugh/kudurru/internal/settings"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -92,7 +93,19 @@ file-managed objects, zonecache, the query pipeline (ingress, authoritative,
 cache, upstream) on every configured transport, the Lease-elected controller,
 the ops and metrics listeners. The API and UI land in milestone M3.`,
 		RunE: func(c *cobra.Command, _ []string) error {
-			cfg, err := loadConfig(c, *configPath)
+			cfg, err := loadConfigWithSections(c, *configPath, func(base *config.Config) (map[string]any, error) {
+				backend, err := settingsBackend(base)
+				if err != nil {
+					return nil, err
+				}
+				if backend == nil {
+					return nil, nil
+				}
+				ctx, cancel := context.WithTimeout(c.Context(), 15*time.Second)
+				defer cancel()
+				d, _, err := settings.ReadStartup(ctx, backend)
+				return d.Sections(), err
+			})
 			if err != nil {
 				return err
 			}
@@ -230,6 +243,21 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	defer func() { _ = st.Close() }()
 	defer func() { _ = snapDB.Close() }()
+	backend, err := settingsBackend(cfg)
+	if err != nil {
+		return err
+	}
+	var settingsManager *settings.Manager
+	if backend != nil {
+		settingsManager = &settings.Manager{Backend: backend, Reload: reload, Environ: os.Environ(), Logger: logger}
+		initCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err = settingsManager.Initialize(initCtx)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("settings ownership: %w", err)
+		}
+		cfg = reload.Current()
+	}
 	var dhcpKube *dhcpkube.Runtime
 	if cfg.Store.Driver == "kube" && cfg.DHCP.Enabled {
 		if dhcpKube, err = openDHCPKube(cfg, st, restCfg, logger); err != nil {
@@ -830,7 +858,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
-		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
+		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient, License: lic,
 		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
 		Refresher:  listRefresher(membership, fetcher),
@@ -913,7 +941,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		{"license", false, func(ctx context.Context) error { return lic.Run(ctx, licSources, time.Minute, logger) }},
 		{"zonecache", false, zc.Start},
 		{"settings", false, func(ctx context.Context) error {
-			return config.WatchSettings(ctx, reload, config.WatchOptions{Environ: os.Environ(), Logger: logger})
+			opts := config.WatchOptions{Environ: os.Environ(), Logger: logger}
+			if settingsManager != nil {
+				opts.Refresh = settingsManager.Refresh
+			}
+			return config.WatchSettings(ctx, reload, opts)
 		}},
 		{"objects", false, loader.Watch},
 		{"dns", false, registry.Run},

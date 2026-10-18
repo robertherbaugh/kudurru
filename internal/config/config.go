@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -64,6 +66,11 @@ type Config struct {
 	// this file, before the environment, and watched for hot reload.
 	// KUDURRU_SETTINGS_FILE overrides it; Load stores the effective path.
 	SettingsFile string `koanf:"settingsFile" json:"settingsFile"`
+
+	// DeclaredSections records explicit file declarations, before UI ownership
+	// replaces a section. FileRevision fences upstream ownership changes against file edits.
+	DeclaredSections []string `koanf:"-" json:"-"`
+	FileRevision     string   `koanf:"-" json:"-"`
 
 	// EnvLocked lists the key paths that came from the environment.
 	EnvLocked []string `koanf:"-" json:"-"`
@@ -463,7 +470,31 @@ func subMap(m map[string]any, path ...string) (map[string]any, bool) {
 // settings file (settingsFile or KUDURRU_SETTINGS_FILE, cluster-scope keys
 // only), then the environment overrides, and validates the result.
 func Load(path string, environ []string) (*Config, error) {
+	return LoadWithSections(path, environ, nil)
+}
+
+// SectionLoader returns complete UI-owned sections before validation. A section
+// replaces every lower-layer key, including defaults; environment locks still win.
+type SectionLoader func(*Config) (map[string]any, error)
+
+// LoadWithSections reads the normal layers, then replaces owned sections before
+// decoding and validating. This also permits startup with stale Git declarations.
+func LoadWithSections(path string, environ []string, owned SectionLoader) (*Config, error) {
 	k := koanf.New(".")
+	declared := map[string]bool{}
+	if path != "" {
+		b, err := os.ReadFile(path) //nolint:gosec // operator-selected node configuration file
+		if err != nil {
+			return nil, err
+		}
+		raw, err := yaml.Parser().Unmarshal(b)
+		if err != nil {
+			return nil, err
+		}
+		for section := range raw {
+			declared[section] = true
+		}
+	}
 	if err := k.Load(confmap.Provider(Defaults(), "."), nil); err != nil {
 		return nil, fmt.Errorf("config: defaults: %w", err)
 	}
@@ -477,13 +508,65 @@ func Load(path string, environ []string) (*Config, error) {
 		return nil, err
 	}
 	settingsPath := settingsFilePath(k, overrides, environ)
-	if settingsPath != "" {
-		layer, err := ReadSettingsFile(settingsPath)
+	var sections map[string]any
+	if owned != nil {
+		// Decode only node identity and storage here: stale UI-owned section
+		// declarations must not fail decoding before they can be replaced.
+		var location struct {
+			Node  Node        `koanf:"node"`
+			Store StoreConfig `koanf:"store"`
+		}
+		nodeLayer := koanf.New(".")
+		if err := nodeLayer.Load(confmap.Provider(k.Raw(), "."), nil); err != nil {
+			return nil, err
+		}
+		if err := nodeLayer.Load(confmap.Provider(overrides, "."), nil); err != nil {
+			return nil, err
+		}
+		if err := nodeLayer.Unmarshal("", &location); err != nil {
+			return nil, err
+		}
+		base := Config{Node: location.Node, Store: location.Store, SettingsFile: settingsPath}
+		sections, err = owned(&base)
 		if err != nil {
 			return nil, err
 		}
-		if err := k.Load(confmap.Provider(layer, "."), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
+		for section := range sections {
+			if section != "upstreams" {
+				return nil, fmt.Errorf("config: unsupported UI-owned section %q", section)
+			}
+		}
+	}
+	if settingsPath != "" {
+		tree, err := readSettingsTree(settingsPath)
+		if err != nil {
+			return nil, err
+		}
+		// Validate only authoritative file sections. Even malformed or unknown
+		// keys in a UI-owned section are ignored as a whole, before decoding.
+		checked := map[string]any{}
+		for section, value := range tree {
+			declared[section] = true
+			if _, uiOwned := sections[section]; !uiOwned {
+				checked[section] = value
+			}
+		}
+		if _, err := flattenSettingsTree(settingsPath, checked); err != nil {
+			return nil, err
+		}
+		if err := k.Load(confmap.Provider(tree, "."), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
 			return nil, fmt.Errorf("config: settings file %s: %w", settingsPath, err)
+		}
+	}
+	fileBytes, err := json.Marshal(k.Get("upstreams"))
+	if err != nil {
+		return nil, err
+	}
+	fileHash := fmt.Sprintf("%x", sha256.Sum256(fileBytes))
+	for section, value := range sections {
+		k.Delete(section)
+		if err := k.Load(confmap.Provider(map[string]any{section: value}, "."), nil); err != nil {
+			return nil, err
 		}
 	}
 	if err := k.Load(confmap.Provider(overrides, "."), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
@@ -498,6 +581,11 @@ func Load(path string, environ []string) (*Config, error) {
 	cfg.EnvLocked = locked
 	cfg.Source = path
 	cfg.SettingsFile = settingsPath
+	cfg.FileRevision = fileHash
+	for section := range declared {
+		cfg.DeclaredSections = append(cfg.DeclaredSections, section)
+	}
+	sort.Strings(cfg.DeclaredSections)
 	if cfg.Node.Name == "" {
 		if h, err := os.Hostname(); err == nil {
 			cfg.Node.Name = h

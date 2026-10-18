@@ -315,6 +315,7 @@ host. "key-" removes the override so the default applies again.`,
 		},
 	}
 	cmd.AddCommand(get, set)
+	addSettingsOwnershipCommands(cmd, o)
 	return cmd
 }
 

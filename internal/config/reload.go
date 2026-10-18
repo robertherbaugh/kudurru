@@ -51,6 +51,14 @@ func settingsFilePath(k *koanf.Koanf, overrides map[string]any, environ []string
 // settings writer creates it). Unknown keys and node-scope keys are
 // errors: the file only carries the Kudurru singleton.
 func ReadSettingsFile(path string) (map[string]any, error) {
+	tree, err := readSettingsTree(path)
+	if err != nil {
+		return nil, err
+	}
+	return flattenSettingsTree(path, tree)
+}
+
+func readSettingsTree(path string) (map[string]any, error) {
 	b, err := os.ReadFile(path) //nolint:gosec // the operator names the file (settingsFile, KUDURRU_SETTINGS_FILE)
 	if errors.Is(err, fs.ErrNotExist) {
 		return map[string]any{}, nil
@@ -58,19 +66,31 @@ func ReadSettingsFile(path string) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: settings file: %w", err)
 	}
-	return parseSettings(path, b)
+	return parseSettingsTree(path, b)
 }
 
-func parseSettings(path string, b []byte) (map[string]any, error) {
+func parseSettingsTree(path string, b []byte) (map[string]any, error) {
 	var tree map[string]any
 	if err := yaml.Unmarshal(b, &tree); err != nil {
 		return nil, fmt.Errorf("config: settings file %s: %w", path, err)
 	}
+	delete(tree, "settingsOwnership")
+	return tree, nil
+}
+
+func flattenSettingsTree(path string, tree map[string]any) (map[string]any, error) {
 	out := map[string]any{}
 	if err := settingsLeaves("", tree, out); err != nil {
 		return nil, fmt.Errorf("config: settings file %s: %w", path, err)
 	}
 	return out, nil
+}
+
+// SectionValues validates and flattens a complete cluster settings section.
+func SectionValues(section string, values map[string]any) (map[string]any, error) {
+	out := map[string]any{}
+	err := settingsLeaves("", map[string]any{section: values}, out)
+	return out, err
 }
 
 // settingsLeaves flattens tree onto schema paths, refusing unknown and
@@ -122,6 +142,12 @@ func hasPrefix(prefix string) bool {
 // replaces the file atomically (write to a temporary file, fsync, rename).
 // Comments in the file are not preserved.
 func WriteSettingsFile(path string, values map[string]any) error {
+	return WriteSettingsFileWithOwners(path, values, nil)
+}
+
+// WriteSettingsFileWithOwners persists values and ownership in one atomic rename.
+// A nil owners map preserves existing ownership metadata.
+func WriteSettingsFileWithOwners(path string, values map[string]any, owners map[string]string) error {
 	cur, err := ReadSettingsFile(path)
 	if err != nil {
 		return err
@@ -139,6 +165,21 @@ func WriteSettingsFile(path string, values map[string]any) error {
 	tree := map[string]any{}
 	for p, v := range cur {
 		setPath(tree, p, v)
+	}
+	if owners == nil {
+		if b, err := os.ReadFile(path); err == nil { //nolint:gosec // operator-selected settings file
+			var old map[string]any
+			if err := yaml.Unmarshal(b, &old); err != nil {
+				return err
+			}
+			if meta, ok := old["settingsOwnership"]; ok {
+				tree["settingsOwnership"] = meta
+			}
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	} else {
+		tree["settingsOwnership"] = owners
 	}
 	var buf bytes.Buffer
 	buf.WriteString("# kudurru cluster-scope settings (D25); written by PATCH /api/v1/settings.\n")
@@ -264,6 +305,7 @@ func MergeCluster(cur, fresh *Config) (*Config, error) {
 	}
 	next.EnvLocked, next.Source, next.SettingsFile = cur.EnvLocked, cur.Source, cur.SettingsFile
 	next.Node.Name = cur.Node.Name
+	next.DeclaredSections, next.FileRevision = fresh.DeclaredSections, fresh.FileRevision
 	return next, nil
 }
 
@@ -380,16 +422,19 @@ type WatchOptions struct {
 	// OnReload, when set, is told the outcome of every reload attempt
 	// (metrics, audit).
 	OnReload func(changed []string, err error)
+	// Refresh also reads shared settings on each poll, including without a file.
+	Refresh func(context.Context) ([]string, error)
 }
 
 // WatchSettings watches the settings file of r.Current() (fsnotify on its
 // directory, which covers Kubernetes ConfigMap symlink swaps and editors
 // that rename, plus polling) and calls r.Reload when its content changes.
 // An invalid file is logged and ignored: the last good configuration stays.
-// It returns when ctx is done; without a settings file it just waits.
+// It returns when ctx is done. Refresh enables shared-state polling even
+// without a settings file.
 func WatchSettings(ctx context.Context, r *Reloadable, opts WatchOptions) error {
 	path := r.Current().SettingsFile
-	if path == "" {
+	if path == "" && opts.Refresh == nil {
 		<-ctx.Done()
 		return nil
 	}
@@ -441,10 +486,16 @@ func WatchSettings(ctx context.Context, r *Reloadable, opts WatchOptions) error 
 	}()
 	check := func() {
 		d := digest()
-		if d == last {
+		if d == last && opts.Refresh == nil {
 			return
 		}
-		changed, err := r.Reload(opts.Environ)
+		var changed []string
+		var err error
+		if opts.Refresh != nil {
+			changed, err = opts.Refresh(ctx)
+		} else {
+			changed, err = r.Reload(opts.Environ)
+		}
 		if opts.OnReload != nil {
 			opts.OnReload(changed, err)
 		}

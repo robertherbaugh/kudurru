@@ -77,6 +77,10 @@ spec:
         - name: KUDURRU_VIP_SUPERVISED
           value: {{ eq .Values.vip.provider "keepalived" | quote }}
         {{- end }}
+        {{- if not (include "kudurru.standalone" .) }}
+        - name: KUDURRU_SETTINGS_RESOURCE
+          value: {{ default (printf "%s-ui-settings" (include "kudurru.fullname" .)) .Values.config.uiSettingsResource | quote }}
+        {{- end }}
         - name: KUDURRU_SETTINGS_FILE
           value: /etc/kudurru/settings/settings.yaml
         - name: KUDURRU_ENCRYPTION_KEY_FILE

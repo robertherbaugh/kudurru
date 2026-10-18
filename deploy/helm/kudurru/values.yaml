@@ -350,6 +350,11 @@ persistence:
     accessModes: [ReadWriteOnce]
 
 config:
+  # -- Name of the API-owned settings ConfigMap (Kubernetes mode only).
+  # Empty uses <fullname>-ui-settings. Created by explicit UI/API adoption;
+  # Helm never renders or reconciles its contents. Ownership defaults to
+  # GitOps and is changed through the upstreams adoption/release flow.
+  uiSettingsResource: ""
   # -- Node-scoped keys (node, listeners, store, log, tsigKeys, notify, ...).
   # Rendered into the <fullname>-node ConfigMap whose checksum rolls the pods
   # (D25). The chart sets node.dataDir, the listener addresses, store.driver

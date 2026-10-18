@@ -53,6 +53,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/settings"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
@@ -194,9 +195,10 @@ type Options struct {
 	// changes stay in memory). Reload, when set, is the live configuration:
 	// reads use Reload.Current() and PATCHes are applied with Reload.Set,
 	// which notifies the hot-reload subscribers; Config is then ignored.
-	Config   *config.Config
-	Settings SettingsWriter
-	Reload   *config.Reloadable
+	Config            *config.Config
+	Settings          SettingsWriter
+	SettingsOwnership *settings.Manager
+	Reload            *config.Reloadable
 	// Objects is the file-managed objects loader (CheckAPIWrite for the
 	// ha-static shape, diagnoses for /info/messages).
 	Objects *objects.Loader

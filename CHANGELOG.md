@@ -6,6 +6,13 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Added
+
+- Explicit UI or GitOps ownership for upstream settings in Kubernetes, with
+  shared persistence, revision-checked adoption, YAML previews, a checked
+  handoff back to GitOps, dashboard controls, and CLI commands. Existing
+  Kubernetes installs stay GitOps-managed; Docker settings remain editable.
+
 ### Changed
 
 - API migrations run as tracked background jobs with selectable objects and

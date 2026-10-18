@@ -19,6 +19,7 @@ import { pixel, proportional, Table, type TableColumn, type TablePlugin } from '
 import { Text } from '@astryxdesign/core/Text';
 import { useEffect, useMemo, useState } from 'react';
 import type { UpstreamItem, UpstreamServer } from '../api/types';
+import { SettingsOwnership } from '../components/SettingsOwnership';
 import { ErrorBanner, errorText, Loading } from '../components/Feedback';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { EnumSelect } from '../components/fields/EnumSelect';
@@ -383,6 +384,7 @@ export default function UpstreamsPage() {
           <Button label="New group" variant="primary" isDisabled={!u.canWrite} tooltip={u.canWriteSetting ? undefined : 'Needs settings.write'} onClick={() => setCreating(true)} />
         }
       />
+      {u.settings.data ? <SettingsOwnership body={u.settings.data} /> : null}
       {u.readOnlyReason ? <Banner status="info" title="Read-only here" description={u.readOnlyReason} /> : null}
       {!u.readOnlyReason && !u.canWriteSetting ? <Banner status="info" title="Read-only" description="Changing upstreams needs the settings.write permission." /> : null}
       {u.notPersisted ? (
