@@ -31,6 +31,9 @@ on:
       - Dockerfile
 permissions:
   contents: read
+concurrency:
+  group: edge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   edge-check:
     runs-on: ubicloud-standard-4-ubuntu-2404

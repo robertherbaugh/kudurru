@@ -20,8 +20,9 @@ concurrency:
   group: dev-image-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
-  # Same check as ci.yml's changes job: false only when every file the pull
-  # request changes is under docs/, dev-docs/, docs-site/, website/, branding/ or license-server/.
+  # Same check as ci.yml's changes job (hack/ci-changes.sh code): false only
+  # when every file the pull request changes is under docs/, dev-docs/,
+  # docs-site/, website/, branding/ or license-server/.
   changes:
     runs-on: ubicloud-standard-2-ubuntu-2404
     outputs:
@@ -31,17 +32,10 @@ jobs:
         with:
           fetch-depth: 0
       - id: filter
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          code=true
-          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|dev-docs|docs-site|website|license-server|branding)/' <<<"$files"; then
-              code=false
-            fi
-          fi
-          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+        # bash -o pipefail: a failing filter fails the job instead of skipping
+        # every gated job.
+        shell: bash
+        run: hack/ci-changes.sh code | tee -a "$GITHUB_OUTPUT"
   image:
     needs: changes
     if: needs.changes.outputs.code == 'true' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
