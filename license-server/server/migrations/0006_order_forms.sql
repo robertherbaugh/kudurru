@@ -3,7 +3,8 @@
 -- form for a customer (often from a business request), sends it (its text
 -- is frozen and its SHA-256 stored), an authorized contact of the customer
 -- accepts it signed in (customer_acceptance: name, title, address, time,
--- client and the hash accepted) or declines it, and a license admin
+-- client and the hash accepted; document_text keeps the text sent, so the
+-- hash stays verifiable whatever later renderings look like) or declines it, and a license admin
 -- countersigns it (licensor_acceptance): executed, final. One license may
 -- be issued from an executed form (license_id). Forms are never deleted;
 -- void records a withdrawal before execution. Numbers come from
@@ -22,6 +23,8 @@ create table order_forms (
   -- OrderFormTerms (shared/api.ts), validated by the server.
   terms jsonb not null check (jsonb_typeof(terms) = 'object'),
   document_sha256 text null check (document_sha256 ~ '^[0-9a-f]{64}$'),
+  -- The Markdown text sent, exactly as hashed (shared/orderForms.ts orderFormDocument).
+  document_text text null,
   sent_at timestamptz null,
   sent_by text null references users (id) on delete set null,
   sent_by_label text not null default '',
@@ -42,7 +45,8 @@ create table order_forms (
   check ((status = 'draft') = (document_sha256 is null and sent_at is null) or status = 'void'),
   check ((status in ('accepted', 'executed')) = (customer_acceptance is not null) or status = 'void'),
   check ((status = 'executed') = (licensor_acceptance is not null)),
-  check ((status = 'declined') = (declined_at is not null)),
+  check ((status = 'declined') = (declined_at is not null) or status = 'void'),
+  check ((document_text is null) = (document_sha256 is null)),
   check ((status = 'void') = (voided_at is not null)),
   check (license_id is null or status = 'executed')
 );
