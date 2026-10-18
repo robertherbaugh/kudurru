@@ -349,8 +349,10 @@ test('an Order Form: drafted from a business request, accepted by its contact, c
   await wizard.getByRole('button', { name: 'Create draft' }).click();
   await admin.waitForURL(/\/orders\/ord_/);
   const formId = decodeURIComponent(admin.url().split('/orders/')[1]!);
-  const number = /OF-\d{4}-\d{4,}/.exec((await admin.getByRole('heading', { level: 1 }).textContent()) ?? '')?.[0] ?? '';
-  expect(number).not.toBe('');
+  // The page loads the form after the URL changes: wait until the heading names its number.
+  const heading = admin.getByRole('heading', { level: 1 });
+  await expect(heading).toHaveText(/OF-\d{4}-\d{4,}/);
+  const number = /OF-\d{4}-\d{4,}/.exec((await heading.textContent()) ?? '')![0];
   await shot(admin, '15-order-form-draft');
 
   // Send: the contact becomes a member and gets the form with an invite link.
