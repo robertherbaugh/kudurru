@@ -26,9 +26,11 @@ describe('API migration wizard', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Import from DNS server' });
     fireEvent.change(within(dialog).getByLabelText('Server URL'), { target: { value: 'http://dns.local:5380' } });
     fireEvent.change(within(dialog).getByLabelText('API token'), { target: { value: 'source-secret' } });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Update nameservers during import' }));
+    fireEvent.change(within(dialog).getByPlaceholderText('dns1.example.com'), { target: { value: 'dns.kudurru.test' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
     await within(dialog).findByRole('table', { name: 'Migration objects' });
-    expect(previews).toEqual([expect.objectContaining({ source: 'technitium', credential: 'source-secret' })]);
+    expect(previews).toEqual([expect.objectContaining({ source: 'technitium', credential: 'source-secret', nameservers: ['dns.kudurru.test'] })]);
     expect(applied).toHaveLength(0);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Import configuration' }));
     await waitFor(() => expect(within(dialog).getAllByText('Review the configuration and acknowledge the migration warnings.').length).toBeGreaterThan(0));

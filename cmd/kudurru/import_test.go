@@ -126,3 +126,54 @@ func TestMigrationCLIMissingCredentialAndConflictingFlags(t *testing.T) {
 		t.Fatalf("conflicting flags: %v", err)
 	}
 }
+
+func TestMigrationCLICutoverRequiresReviewedFile(t *testing.T) {
+	h := newHarness(t)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/imports/runs/migration-test/decommission/preview":
+			if r.Method != http.MethodPost {
+				t.Error("preview method")
+			}
+			var body struct {
+				Nameservers []string `json:"nameservers"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if len(body.Nameservers) != 1 || body.Nameservers[0] != "dns.test." {
+				t.Errorf("nameservers: %v", body.Nameservers)
+			}
+			_, _ = fmt.Fprint(w, `{"revision":"42","nameservers":["dns.test."],"zones":[],"warnings":[]}`)
+		case "/api/v1/imports/runs/migration-test/decommission":
+			var p struct {
+				Revision string `json:"revision"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&p)
+			if p.Revision != "42" {
+				t.Error("reviewed revision not preserved")
+			}
+			_, _ = fmt.Fprint(w, `{"runID":"migration-test","items":[{"kind":"DNSZone","name":"home","result":"updated"}]}`)
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer target.Close()
+	h.env[cli.EnvServer] = target.URL
+	h.env[cli.EnvToken] = "target-secret"
+	out, _, err := h.run("import", "decommission", "migration-test", "--nameserver", "DNS.TEST", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "preview.json")
+	if err := os.WriteFile(file, []byte(out), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := h.run("import", "decommission", "migration-test", "--apply"); err == nil {
+		t.Fatal("applied without reviewed preview")
+	}
+	out, _, err = h.run("import", "decommission", "migration-test", "--apply", "--plan-file", file, "-o", "json")
+	if err != nil || !strings.Contains(out, "updated") {
+		t.Fatalf("apply reviewed preview: %v %s", err, out)
+	}
+}

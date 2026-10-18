@@ -13,6 +13,8 @@ import { SelectField } from '../fields/SelectField';
 import { cleanList, StringListField } from '../fields/StringListField';
 import { CheckboxField, TextField } from '../fields/TextField';
 import { Panel } from '../layout/Page';
+import { MigrationNameservers, migrationNameserverError } from './MigrationNameservers';
+import { MigrationHistory } from './MigrationHistory';
 import { Wizard, WizardDialog, type WizardStep } from '../Wizard';
 
 type ObjectRow = { id: string; kind: string; name: string } & Record<string, unknown>;
@@ -35,6 +37,8 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
   const [namespace, setNamespace] = useState('default');
   const [insecure, setInsecure] = useState(false);
   const [localZones, setLocalZones] = useState<string[]>([]);
+  const [replaceNameservers, setReplaceNameservers] = useState(false);
+  const [nameservers, setNameservers] = useState<string[]>(['']);
   const [plan, setPlan] = useState<MigrationPlan>();
   const [reviewed, setReviewed] = useState(false);
   const [showObjects, setShowObjects] = useState(false);
@@ -52,6 +56,8 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
           <TextField label={source === 'technitium' ? 'API token' : 'Application password'} value={credential} onChange={(v) => change(() => setCredential(v))} type="password" autoComplete="off" help={source === 'technitium' ? 'Create a token in Technitium with access to settings, allowed/blocked zones and the zones you want to move.' : 'Generate an application password in Pi-hole Settings → Web interface / API. Pi-hole v6 uses this password to open a temporary API session.'} />
           <TextField label="Destination namespace" value={namespace} onChange={(v) => change(() => setNamespace(v))} help="Use the namespace of your existing default policy." />
           {source === 'pihole' ? <StringListField label="Local DNS suffixes" value={localZones} onChange={(v) => change(() => setLocalZones(v))} placeholder="home.arpa" description="Optional: defaults to Pi-hole’s configured local domain. Each imported suffix becomes authoritative; missing names under it will stop forwarding upstream." /> : null}
+          <CheckboxField label="Update nameservers during import" value={replaceNameservers} onChange={(v) => change(() => setReplaceNameservers(v))} help="Use kudurru’s authoritative DNS names now, or preserve the source names and decommission later from migration history." />
+          {replaceNameservers ? <MigrationNameservers value={nameservers} onChange={(v) => change(() => setNameservers(v))} /> : null}
           <CheckboxField label="Trust a self-signed source certificate" value={insecure} onChange={(v) => change(() => setInsecure(v))} />
         </VStack>
       ),
@@ -59,9 +65,10 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
         if (!credential.trim()) return 'Enter the source API token or application password.';
         try { const u = new URL(url); if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || u.search || u.hash) return 'Enter an HTTP or HTTPS server URL without credentials or query parameters.'; } catch { return 'Enter a valid server URL.'; }
         if (!namespace.trim()) return 'Enter a destination namespace.';
+        if (replaceNameservers) { const problem = migrationNameserverError(nameservers); if (problem) return problem; }
         setError(undefined);
         try {
-          const preview = await api.imports.preview({ source, url: url.trim(), credential, namespace: namespace.trim(), insecureSkipVerify: insecure, localZones: cleanList(localZones) });
+          const preview = await api.imports.preview({ source, url: url.trim(), credential, namespace: namespace.trim(), insecureSkipVerify: insecure, localZones: cleanList(localZones), nameservers: replaceNameservers ? cleanList(nameservers) : [] });
           setPlan(preview);
           setReviewed(false);
           return null;
@@ -73,6 +80,7 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
       content: plan ? (
         <VStack gap={4}>
           <Text>{plan.objects.length} objects are ready to import.</Text>
+          <Text>{replaceNameservers ? `NS records will use ${cleanList(nameservers).join(', ')}; SOA primary will use ${cleanList(nameservers)[0]}.` : 'Source nameservers will be preserved. Use migration history to decommission them later.'}</Text>
           <Table<ObjectRow> aria-label="Migration objects" density="compact" idKey="id" data={plan.objects.map(objectRow)} columns={columns} />
           <Button label={showObjects ? 'Hide converted objects' : 'Show converted objects'} variant="secondary" onClick={() => setShowObjects((v) => !v)} />
           {showObjects ? <CodeBlock code={JSON.stringify(plan.objects, null, 2)} aria-label="Converted objects" width="100%" /> : null}
@@ -81,7 +89,7 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
             <VStack gap={2}>{plan.warnings.map((w, i) => <Text as="p" key={i}>{w}</Text>)}</VStack>
           </Banner>
           <CheckboxField label="I reviewed the configuration and migration warnings" value={reviewed} onChange={setReviewed} />
-          {result ? <Banner status="error" title="Some changes could not be imported" description={[...result.items.filter((r) => r.result === 'error').map((r) => `${r.kind}/${r.name}: ${r.error}`), result.settingsError].filter(Boolean).join('\n')} /> : null}
+          {result ? <Banner status="error" title="Some changes could not be imported" description={[...result.items.filter((r) => r.result === 'error').map((r) => `${r.kind}/${r.name}: ${r.error}`), result.settingsError, result.journalError].filter(Boolean).join('\n')} /> : null}
         </VStack>
       ) : <Text>Go back to connect to the source server again.</Text>,
       validate: () => !plan ? 'Connect to the source server again.' : !reviewed ? 'Review the configuration and acknowledge the migration warnings.' : null,
@@ -94,7 +102,7 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
       const imported = await api.imports.apply(plan);
       setResult(imported);
       await qc.invalidateQueries();
-      if (!imported.settingsError && imported.items.every((r) => r.result !== 'error')) { setCredential(''); onImported(imported); }
+      if (!imported.settingsError && !imported.journalError && imported.items.every((r) => r.result !== 'error')) { setCredential(''); onImported(imported); }
     } catch (err) { setError(err); } finally { setPending(false); }
   }} />;
 }
@@ -104,12 +112,15 @@ export function MigrationImport() {
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<MigrationResult>();
   return (
-    <Panel title="Move from another DNS server" headingId="migration-title" description="Connect to Pi-hole v6 or Technitium, preview your configuration, then import lists, groups, supported zones and upstreams directly.">
-      <Button label="Import from DNS server" variant="primary" isDisabled={!can('settings', 'write')} onClick={() => setOpen(true)} />
-      {result ? <Banner status="success" title="Configuration imported" description={`${result.items.length} objects processed. Validate DNS answers before switching clients.${result.settings?.persisted === false ? ' Settings are currently in memory only; configure a settings file to keep them after restart.' : ''}`} /> : null}
-      <WizardDialog isOpen={open} onClose={() => setOpen(false)} title="Import from DNS server" what="migration">
-        <MigrationWizard onImported={(r) => { setResult(r); setOpen(false); }} />
-      </WizardDialog>
-    </Panel>
+    <>
+      <Panel title="Move from another DNS server" headingId="migration-title" description="Connect to Pi-hole v6 or Technitium, preview your configuration, then import lists, groups, supported zones and upstreams directly.">
+        <Button label="Import from DNS server" variant="primary" isDisabled={!can('settings', 'write')} onClick={() => setOpen(true)} />
+        {result ? <Banner status="success" title="Configuration imported" description={`${result.items.length} objects processed. Validate DNS answers before switching clients.${result.settings?.persisted === false ? ' Settings are currently in memory only; configure a settings file to keep them after restart.' : ''}`} /> : null}
+        <WizardDialog isOpen={open} onClose={() => setOpen(false)} title="Import from DNS server" what="migration">
+          <MigrationWizard onImported={(r) => { setResult(r); setOpen(false); }} />
+        </WizardDialog>
+      </Panel>
+      <MigrationHistory />
+    </>
   );
 }

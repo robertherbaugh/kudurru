@@ -151,8 +151,14 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
+| POST | `/api/v1/imports/adopt` | Track reviewed previous imports without reimporting records | `settings.write` (cluster) |
 | POST | `/api/v1/imports/apply` | Apply a reviewed migration preview | `settings.write` (cluster) |
+| GET | `/api/v1/imports/existing` | Find previous API imports without a migration run | `settings.write` (cluster) |
 | POST | `/api/v1/imports/preview` | Preview an API migration from Pi-hole v6 or Technitium | `settings.write` (cluster) |
+| GET | `/api/v1/imports/runs` | List migration runs | `settings.write` (cluster) |
+| GET | `/api/v1/imports/runs/{id}` | Read a migration run and its cutovers | `settings.write` (cluster) |
+| POST | `/api/v1/imports/runs/{id}/decommission` | Replace imported zone authority and record the results | `settings.write` (cluster) |
+| POST | `/api/v1/imports/runs/{id}/decommission/preview` | Preview replacing an imported zone's NS and SOA primary | `settings.write` (cluster) |
 
 ## meta
 

@@ -67,6 +67,63 @@ the settings patch is applied only when every object succeeds. Unsupported
 source semantics are reported in the preview. See the
 [migration guides](../../docs-site/content/migrate/_index.md) for supported data.
 
+Each apply starts an internal `MigrationRun` journal before destination writes
+(D182), using the existing store: SQLite JSON rows or labeled Kubernetes
+Secrets. It retains source type and URL origin, actor, times, planned objects,
+per-object outcomes, zone UIDs, original/current authority and cutover attempts.
+Credentials, source URL paths/query parameters and source records are excluded.
+Progress is saved after each destination write; a journal failure stops further
+writes and returns the run ID plus a journal error. Settings follow all object
+writes; final journal updates use a bounded context independent of a disconnected
+caller. The journal has the store's object size cap; a run accepts at most 100
+cutover attempts. Full backups include internal journals; safe exports omit them.
+
+An optional `nameservers` list replaces apex NS and SOA MNAME during conversion.
+Otherwise they remain as imported. `/imports/runs` lists durable history;
+`/imports/runs/{id}/decommission/preview` reads tracked live zones and shows
+current authority and target names. Apply recomputes those changes from stored
+run data, claims the run using its revision, and writes through normal zone
+validation, ownership and authorization with each reviewed resourceVersion.
+The run annotation, UID and expected authority fence old runs from newer
+imports, recreated zones and manual authority changes. Cutovers are partial,
+retryable operations; after ten minutes an interrupted attempt can be recovered,
+including a write committed just before its journal update. Work is bounded to
+two minutes; all write races still use optimistic versions. A retry records the
+abandoned attempt as partial. Parent delegation/glue and address changes remain
+external to this flow.
+
+`GET /imports/existing` finds API-managed primary zones matching the converter's
+stable IDs without a run annotation. Explicit `POST /imports/adopt` tracks a
+reviewed selection under resourceVersion checks without reimporting records.
+History and adoption use `settings.write`; each destination zone still requires
+its own `zones.write` grant. CLI `import runs`, `import decommission` and
+`import track-existing` use these same routes, with saved JSON previews required
+for the latter two writes.
+
+```mermaid
+sequenceDiagram
+    participant U as Dashboard or CLI
+    participant A as Migration API
+    participant S as Store (SQLite or Kubernetes)
+    U->>A: Apply reviewed import
+    A->>S: Create MigrationRun
+    loop Each object
+        A->>S: Normal authorized object write
+        A->>S: Record outcome and zone identity
+    end
+    A->>S: Record finished/partial run
+    U->>A: Preview decommission with target DNS names
+    A->>S: Read run and live zones
+    A-->>U: Current authority, versions and warnings
+    U->>A: Apply reviewed versions
+    A->>S: Claim run revision and record attempt
+    loop Each tracked zone
+        A->>S: Check identity/authority and write NS + SOA under version
+        A->>S: Record outcome
+    end
+    A->>S: Finish cutover attempt
+```
+
 Technitium catalog member primary zones become independent primary zones.
 The converter reads `overrideCatalogQueryAccess`: an override keeps the
 member's local query policy; otherwise it reads the catalog's policy and
@@ -79,7 +136,7 @@ imported. Comment and blank lines in subscription URLs are ignored.
 ## The objects
 
 All kinds share `kudurru.io/v1alpha1`. Public kinds are CRDs in Kubernetes;
-internal kinds hold credentials and are never CRDs (Secrets in Kubernetes,
+internal kinds hold identity data and migration journals and are never CRDs (Secrets in Kubernetes,
 rows in `state.db` in Docker).
 
 ```mermaid
