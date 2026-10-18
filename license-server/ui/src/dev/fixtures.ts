@@ -2,7 +2,8 @@
 // person per role, the catalog on a fixed day (2026-10-12, UTC; approval
 // required, the default), licenses in each shape the pages render
 // (personal and business, current and withdrawn), a customer, requests
-// (a new key and a renewal), the preview of a one-click approval link,
+// (a new key and a renewal), Order Forms in each state the pages act on
+// (a draft with gaps, sent, accepted, executed; the customer's view), the preview of a one-click approval link,
 // users, audit events and the System page. Every object is typed by
 // shared/api.ts, so a wire change breaks the fixtures at compile time
 // rather than the pages at run time.
@@ -18,10 +19,14 @@ import type {
   Me,
   MyLicense,
   MyLicenseDetail,
+  MyOrderForm,
+  OrderForm,
+  OrderFormSummary,
   SystemInfo,
   UserDetail,
 } from '@shared/api';
 import { ATTESTATION_STATEMENT, FEATURES, PLANS, POLICY } from '@shared/catalog';
+import { defaultOrderFormTerms } from '@shared/orderForms';
 import { permissionsFor, type Role } from '@shared/permissions';
 
 /** The day the fixtures live on (UTC). */
@@ -119,6 +124,7 @@ export const licenseDetail: LicenseDetail = {
   notes: 'Annual contract.',
   createdBy: actor,
   worksWithKudurru: null,
+  orderForm: null,
   withdrawn: null,
 };
 
@@ -180,6 +186,7 @@ export const openBusinessRequest: BusinessRequest = {
   decisionNote: '',
   resultingLicenseId: null,
   createdAt: '2026-10-12T08:30:00.000Z',
+  orderForm: null,
 };
 
 /** A business request a license admin answered with a license. */
@@ -280,3 +287,119 @@ export const systemInfo: SystemInfo = {
   policy: { ...POLICY },
   build: { version: 'dev', commit: 'dev', builtAt: null },
 };
+
+// --- Order Forms ---------------------------------------------------------------
+
+/** A SHA-256-shaped hex string (never a real hash). */
+export const DOCUMENT_SHA256 = '3f7a1c9e5b2d4f60a8e7c1b9d3f5a7c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f3';
+
+/** Complete terms: an Enterprise form for Acme GmbH, 10 nodes, nothing missing. */
+export const orderFormTerms = {
+  ...defaultOrderFormTerms({ edition: 'enterprise', nodes: 10, customerLegalName: 'Acme GmbH', contact: 'ops@acme.example', today: TODAY }),
+  licensorContact: 'Robert Herbaugh, 1 Example Way, Springfield, USA; billing@kudurru.io',
+  customerAddress: 'Hauptstrasse 1, 10115 Berlin, Germany',
+  billingContact: 'Acme GmbH Accounts, Hauptstrasse 1, 10115 Berlin',
+  authorizedContacts: ['ops@acme.example', 'cfo@acme.example'],
+  governingLaw: 'The laws of the State of Delaware; courts in Wilmington, Delaware.',
+};
+
+export const orderFormSummary: OrderFormSummary = {
+  id: 'ord_draft01',
+  number: 'OF-2026-0001',
+  status: 'draft',
+  version: 1,
+  customer: { id: 'cus_acme', name: 'Acme GmbH', kind: 'organization' },
+  edition: 'enterprise',
+  nodes: 10,
+  annualFeeCents: orderFormTerms.annualFeeCents,
+  subscriptionStart: orderFormTerms.subscriptionStart,
+  subscriptionEnd: orderFormTerms.subscriptionEnd,
+  sentAt: null,
+  licenseId: null,
+  createdAt: '2026-10-12T09:00:00.000Z',
+  updatedAt: '2026-10-12T09:00:00.000Z',
+};
+
+/** A draft that still lacks the governing law and the customer's address. */
+export const draftOrderForm: OrderForm = {
+  ...orderFormSummary,
+  terms: { ...orderFormTerms, governingLaw: '', customerAddress: '' },
+  documentSha256: null,
+  businessRequestId: null,
+  sentBy: null,
+  customerAcceptance: null,
+  licensorAcceptance: null,
+  declined: null,
+  voided: null,
+  createdBy: actor,
+  gaps: ['terms.customerAddress', 'terms.governingLaw'],
+};
+
+export const sentOrderForm: OrderForm = {
+  ...draftOrderForm,
+  id: 'ord_sent01',
+  number: 'OF-2026-0002',
+  status: 'sent',
+  terms: orderFormTerms,
+  documentSha256: DOCUMENT_SHA256,
+  sentAt: '2026-10-12T10:00:00.000Z',
+  sentBy: actor,
+  gaps: [],
+};
+
+const customerSignature = { name: 'Olga Ops', title: 'Head of Operations', email: 'ops@acme.example', at: '2026-10-13T08:00:00.000Z', documentSha256: DOCUMENT_SHA256 };
+const licensorSignature = { name: 'Robert Herbaugh', title: 'Licensor', email: 'admin@example.org', at: '2026-10-13T12:00:00.000Z', documentSha256: DOCUMENT_SHA256 };
+
+export const acceptedOrderForm: OrderForm = {
+  ...sentOrderForm,
+  id: 'ord_accepted01',
+  number: 'OF-2026-0003',
+  status: 'accepted',
+  customerAcceptance: { ...customerSignature, userId: 'usr_ops', ip: '203.0.113.7', userAgent: 'Mozilla/5.0' },
+};
+
+export const executedOrderForm: OrderForm = {
+  ...acceptedOrderForm,
+  id: 'ord_executed01',
+  number: 'OF-2026-0004',
+  status: 'executed',
+  licensorAcceptance: { ...licensorSignature, by: actor },
+};
+
+/** The sent form as one of its authorized contacts sees it. */
+export const myOrderForm: MyOrderForm = {
+  id: sentOrderForm.id,
+  number: sentOrderForm.number,
+  status: 'sent',
+  version: 1,
+  customer: { id: 'cus_acme', name: 'Acme GmbH' },
+  terms: orderFormTerms,
+  documentSha256: DOCUMENT_SHA256,
+  sentAt: '2026-10-12T10:00:00.000Z',
+  customerAcceptance: null,
+  licensorAcceptance: null,
+  declined: null,
+  voidedAt: null,
+  authorized: true,
+  licenseId: null,
+};
+
+/** The summary of a full Order Form, as the list answers it. */
+export function summaryOf(f: OrderForm): OrderFormSummary {
+  return {
+    id: f.id,
+    number: f.number,
+    status: f.status,
+    version: f.version,
+    customer: f.customer,
+    edition: f.terms.edition,
+    nodes: f.terms.nodes,
+    annualFeeCents: f.terms.annualFeeCents,
+    subscriptionStart: f.terms.subscriptionStart,
+    subscriptionEnd: f.terms.subscriptionEnd,
+    sentAt: f.sentAt,
+    licenseId: f.licenseId,
+    createdAt: f.createdAt,
+    updatedAt: f.updatedAt,
+  };
+}

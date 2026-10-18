@@ -38,7 +38,7 @@ describe('roles', () => {
   test('superadmin ⊇ license_admin ⊇ customer', () => {
     for (const p of ROLE_PERMISSIONS.customer) expect(ROLE_PERMISSIONS.license_admin).toContain(p);
     for (const p of ROLE_PERMISSIONS.license_admin) expect(ROLE_PERMISSIONS.superadmin).toContain(p);
-    expect(ROLE_PERMISSIONS.customer).toEqual(['self.read', 'self.request']);
+    expect(ROLE_PERMISSIONS.customer).toEqual(['self.read', 'self.request', 'self.order']);
     expect(ROLE_PERMISSIONS.superadmin.filter((p) => !ROLE_PERMISSIONS.license_admin.includes(p))).toEqual(['blocklist.write', 'users.write']);
   });
 

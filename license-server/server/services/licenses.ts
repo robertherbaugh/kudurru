@@ -499,6 +499,7 @@ export async function licenseDetail(q: Queryable, id: string, now: Date, signing
   const latest = keys.reduce((m, k) => (k.expires_at > m ? k.expires_at : m), keys[0]!.expires_at);
   const keepsWorkingUntil = keepsWorkingUntilOf(latest);
   const createdBy: ActorRef = actorRef(row.created_by, row.created_by_label);
+  const orderForm = maybeOne(await q<{ id: string; number: string }[]>`select id, number from order_forms where license_id = ${id}`);
   return {
     id: row.id,
     customer: customerRef({ id: row.customer_id, name: row.customer_name, kind: row.customer_kind }),
@@ -519,6 +520,7 @@ export async function licenseDetail(q: Queryable, id: string, now: Date, signing
     notes: row.notes,
     createdBy,
     worksWithKudurru: worksWithKudurru(signing, current.kid),
+    orderForm,
     withdrawn:
       row.status === 'withdrawn' && row.withdrawn_at
         ? {

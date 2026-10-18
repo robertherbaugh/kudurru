@@ -13,8 +13,12 @@
 // (blocked, withdrawn history), a one-click approve link of their own. A
 // business request from the form mails the requester ("we have your
 // request") and each approver (the details and a link to the Requests page).
+// An Order Form mails its authorized contacts when it is sent (with an
+// invite link for a contact without portal access), executed (the signed
+// copy attached) or withdrawn, and the approvers when a contact accepts or
+// declines it.
 
-import type { BusinessEdition, RequestSource, ReviewReason } from '../../shared/api';
+import type { BusinessEdition, OrderFormTerms, RequestSource, ReviewReason } from '../../shared/api';
 import {
   ALL_FEATURES_LABEL,
   APPROVAL_LINK_TTL_DAYS,
@@ -29,6 +33,7 @@ import {
   OFFLINE_NOTE,
   planLabel,
 } from '../../shared/catalog';
+import { editionLabel, feesInWords, modulesInWords, orderFormFileName } from '../../shared/orderForms';
 import type { MailAttachment, MailMessage } from './types';
 import { brandedMail, PRODUCT_NAME } from './html';
 
@@ -466,6 +471,171 @@ export function businessRequestNeededMail(m: BusinessRequestNeededMail): MailMes
     publicUrl: m.publicUrl,
     details: [{ text: facts.text, heading: 'The request', rows: facts.rows }],
     action: { label: 'Open business requests', url },
+  });
+}
+
+// --- Order Forms ---------------------------------------------------------------------
+
+/** What every Order Form mail names. */
+export interface OrderFormFacts {
+  id: string;
+  number: string;
+  version: number;
+  customerName: string;
+  terms: OrderFormTerms;
+  documentSha256: string;
+}
+
+/** The facts paragraph of an Order Form mail and its HTML rows. */
+function orderFacts(f: OrderFormFacts): { text: string; rows: [string, string][] } {
+  const t = f.terms;
+  const rows: [string, string][] = [
+    ['Order Form', `${f.number} (version ${f.version})`],
+    ['Customer', t.customerLegalName],
+    ['Plan', editionLabel(t.edition)],
+    ['Modules', modulesInWords(t).replace(/`/g, '')],
+    ['Nodes', String(t.nodes)],
+    ['Term', `${t.subscriptionStart} to ${t.subscriptionEnd} (UTC)`],
+    ['Fees', feesInWords(t)],
+  ];
+  return { text: rows.map(([k, v]) => `${`${k}:`.padEnd(12)}${v}`).join('\n'), rows };
+}
+
+export interface OrderFormSentMail {
+  /** One authorized contact. */
+  to: string;
+  form: OrderFormFacts;
+  /** ${PUBLIC_URL}/invites/<token> when the contact has no portal access to the customer yet. */
+  inviteUrl: string | null;
+  publicUrl: string;
+}
+
+/** To an authorized contact: an Order Form waits for their review and acceptance in the portal. */
+export function orderFormSentMail(m: OrderFormSentMail): MailMessage {
+  const f = m.form;
+  const facts = orderFacts(f);
+  const url = `${m.publicUrl}/my/orders/${encodeURIComponent(f.id)}`;
+  return brandedMail({
+    to: m.to,
+    subject: `Kudurru Order Form ${f.number} for ${oneLine(f.customerName)} is ready for review`,
+    text: paragraphs(
+      'Hello,',
+      `The Order Form ${f.number} for ${f.customerName} is ready in the ${PRODUCT_NAME}. It sets out the plan, the Nodes, the term and the fees of your kudurru commercial license under the Kudurru Commercial Software License Agreement. You are named as an authorized contact: review it and accept it there, or decline it with a note.`,
+      facts.text,
+      m.inviteUrl
+        ? `You have no access to the licenses of ${f.customerName} in the portal yet. Accept this invite first (it works for ${INVITE_TTL_DAYS} days and gives access, so do not forward it):\n${m.inviteUrl}\n\nThen open the Order Form:\n${url}`
+        : `Open the Order Form:\n${url}`,
+      'Nothing is binding until both parties have accepted the Order Form. Only accept it if you are authorized to bind the customer.',
+      `Questions go to ${BUSINESS_CONTACT}.`,
+      signature(m.publicUrl),
+    ),
+  }, {
+    title: 'Your Order Form is ready.',
+    preview: `${f.number}: ${editionLabel(f.terms.edition)}, ${f.terms.nodes} ${f.terms.nodes === 1 ? 'Node' : 'Nodes'}, ${f.terms.subscriptionStart} to ${f.terms.subscriptionEnd}.`,
+    publicUrl: m.publicUrl,
+    details: [{ text: facts.text, heading: 'The Order Form', rows: facts.rows }],
+    action: m.inviteUrl ? { label: 'Accept your invite', url: m.inviteUrl } : { label: 'Review the Order Form', url },
+  });
+}
+
+export interface OrderFormAnsweredMail {
+  /** One approver (ADMIN_NOTIFY_EMAIL, or a license admin or superadmin). */
+  to: string;
+  form: OrderFormFacts;
+  /** Who answered: the name and title they typed and their address. */
+  by: { name: string; title: string; email: string };
+  /** accepted: countersign next; declined: with their note. */
+  answer: { kind: 'accepted' } | { kind: 'declined'; note: string };
+  publicUrl: string;
+}
+
+/** To an approver: an authorized contact accepted (countersign it) or declined an Order Form. */
+export function orderFormAnsweredMail(m: OrderFormAnsweredMail): MailMessage {
+  const f = m.form;
+  const facts = orderFacts(f);
+  const url = `${m.publicUrl}/orders/${encodeURIComponent(f.id)}`;
+  const who = m.by.title ? `${m.by.name} (${m.by.title}, ${m.by.email})` : `${m.by.name} (${m.by.email})`;
+  const accepted = m.answer.kind === 'accepted';
+  return brandedMail({
+    to: m.to,
+    subject: accepted ? `Countersign Order Form ${f.number}: accepted by ${oneLine(f.customerName)}` : `Order Form ${f.number} declined by ${oneLine(f.customerName)}`,
+    text: paragraphs(
+      'Hello,',
+      accepted
+        ? `${who} accepted the Order Form ${f.number} for ${f.customerName} in the ${PRODUCT_NAME}. It becomes binding once a license admin countersigns it; then a license can be issued from it.`
+        : `${who} declined the Order Form ${f.number} for ${f.customerName}. Revise it and send it again, or void it.`,
+      facts.text,
+      m.answer.kind === 'declined' ? `Their note:\n${m.answer.note}` : `Document SHA-256: ${f.documentSha256}`,
+      `${accepted ? 'Countersign it' : 'Open it'} on its page:\n${url}`,
+      signature(m.publicUrl),
+    ),
+  }, {
+    title: accepted ? 'An Order Form was accepted.' : 'An Order Form was declined.',
+    preview: `${f.number} for ${oneLine(f.customerName)}: ${accepted ? 'accepted, countersign it' : 'declined'}.`,
+    publicUrl: m.publicUrl,
+    details: [{ text: facts.text, heading: 'The Order Form', rows: facts.rows }],
+    action: { label: accepted ? 'Countersign the Order Form' : 'Open the Order Form', url },
+  });
+}
+
+export interface OrderFormExecutedMail {
+  /** One authorized contact. */
+  to: string;
+  form: OrderFormFacts;
+  /** The signed copy (orderFormDocument with both acceptances). */
+  document: string;
+  publicUrl: string;
+}
+
+/** To an authorized contact: both parties accepted; the signed copy is attached. */
+export function orderFormExecutedMail(m: OrderFormExecutedMail): MailMessage {
+  const f = m.form;
+  const facts = orderFacts(f);
+  const url = `${m.publicUrl}/my/orders/${encodeURIComponent(f.id)}`;
+  return brandedMail({
+    to: m.to,
+    subject: `Kudurru Order Form ${f.number} is executed`,
+    text: paragraphs(
+      'Hello,',
+      `Both parties have accepted the Order Form ${f.number} for ${f.customerName}. It is now part of your Kudurru Commercial Software License Agreement. The signed copy is attached as ${orderFormFileName(f.number)}; keep it with your records.`,
+      facts.text,
+      `Document SHA-256: ${f.documentSha256}`,
+      `Your license key follows separately once it is issued. The Order Form and your licenses are in the ${PRODUCT_NAME}:\n${url}`,
+      signature(m.publicUrl),
+    ),
+    attachments: [{ filename: orderFormFileName(f.number), content: m.document, contentType: 'text/markdown; charset=utf-8' }],
+  }, {
+    title: 'Your Order Form is executed.',
+    preview: `${f.number} for ${oneLine(f.customerName)} is accepted by both parties.`,
+    publicUrl: m.publicUrl,
+    details: [{ text: facts.text, heading: 'The Order Form', rows: facts.rows }],
+    action: { label: 'View the Order Form', url },
+  });
+}
+
+export interface OrderFormVoidedMail {
+  /** One authorized contact. */
+  to: string;
+  number: string;
+  customerName: string;
+  publicUrl: string;
+}
+
+/** To an authorized contact: the licensor withdrew an Order Form before it was executed (the reason is internal). */
+export function orderFormVoidedMail(m: OrderFormVoidedMail): MailMessage {
+  return brandedMail({
+    to: m.to,
+    subject: `Kudurru Order Form ${m.number} was withdrawn`,
+    text: paragraphs(
+      'Hello,',
+      `The licensor withdrew the Order Form ${m.number} for ${m.customerName}. It can no longer be accepted, and nothing in it binds either party. If you expected a new Order Form, it follows separately.`,
+      `Questions go to ${BUSINESS_CONTACT}.`,
+      signature(m.publicUrl),
+    ),
+  }, {
+    title: 'An Order Form was withdrawn.',
+    preview: `${m.number} for ${oneLine(m.customerName)} can no longer be accepted.`,
+    publicUrl: m.publicUrl,
   });
 }
 

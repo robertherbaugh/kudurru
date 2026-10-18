@@ -8,9 +8,11 @@
 // - Business (?tab=business): business license requests from the
 //   kudurru.io form (open first, filtered by state), and the decisions:
 //   Issue license (the issue wizard with the request filled in; the
-//   request becomes issued with the license) and Close (a FormDialog whose
-//   note stays with the request; nothing is mailed). The admin mail of each
-//   new business request links here.
+//   request becomes issued with the license), Draft Order Form (the Order
+//   Form wizard with the request filled in) and Close (a FormDialog whose
+//   note stays with the request; nothing is mailed). The state shows the
+//   newest Order Form drafted from the request. The admin mail of each new
+//   business request links here.
 // - Blocked emails: the addresses whose personal requests always wait; a
 //   superadmin removes them.
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
@@ -28,8 +30,9 @@ import { useCan } from '../api/context';
 import { useFieldErrors } from '../api/fieldErrors';
 import { useBlockedEmails, useBusinessRequests, useRequests, useRouteMutation } from '../api/hooks';
 import { ApproveRequestWizardDialog } from '../components/ApproveRequestWizard';
-import { BusinessRequestStatusBadge, RequestStatusBadge } from '../components/badges';
+import { BusinessRequestStatusBadge, OrderFormStatusBadge, RequestStatusBadge } from '../components/badges';
 import { IssueLicenseWizardDialog } from '../components/IssueLicenseWizard';
+import { OrderFormWizardDialog } from '../components/OrderFormWizard';
 import { utcDay } from '../lib/dates';
 import { BUSINESS_REQUEST_STATUS_LABEL, REQUEST_SOURCE_LABEL, REQUEST_STATUS_LABEL, REVIEW_REASON_LABEL } from '../lib/words';
 import { ErrorBanner, Loading, useNotify } from '../ui/components/Feedback';
@@ -232,8 +235,10 @@ function BusinessRequestList() {
   const q = useBusinessRequests(status ? { status } : {});
   const [issuing, setIssuing] = useState<BusinessRequest | null>(null);
   const [closing, setClosing] = useState<BusinessRequest | null>(null);
+  const [drafting, setDrafting] = useState<BusinessRequest | null>(null);
   const decide = can('requests.decide');
   const issue = decide && can('licenses.issue');
+  const order = can('orders.write');
 
   const columns: TableColumn<BusinessRow>[] = [
     { key: 'createdAt', header: 'Received (UTC)', width: pixel(140), renderCell: (r) => utcDay(r.createdAt) },
@@ -267,21 +272,27 @@ function BusinessRequestList() {
     {
       key: 'status',
       header: 'State',
-      width: pixel(140),
+      width: pixel(220),
       renderCell: (r) => (
         <VStack gap={0.5} hAlign="start">
           <BusinessRequestStatusBadge status={r.status} />
           {r.resultingLicenseId ? <Link href={`/licenses/${encodeURIComponent(r.resultingLicenseId)}`}>{r.resultingLicenseId}</Link> : null}
+          {r.orderForm ? (
+            <VStack gap={0.5} hAlign="start" data-testid="request-order-form">
+              <Link href={`/orders/${encodeURIComponent(r.orderForm.id)}`}>Order Form {r.orderForm.number}</Link>
+              <OrderFormStatusBadge status={r.orderForm.status} />
+            </VStack>
+          ) : null}
           {r.decisionNote ? <Text type="supporting">{r.decisionNote}</Text> : null}
         </VStack>
       ),
     },
   ];
-  if (decide) {
+  if (decide || order) {
     columns.push({
       key: 'actions',
       header: '',
-      width: pixel(220),
+      width: pixel(360),
       align: 'end',
       renderCell: (r) =>
         r.status === 'open' ? (
@@ -291,9 +302,16 @@ function BusinessRequestList() {
                 Issue license
               </Button>
             ) : null}
-            <Button label={`Close the request of ${r.company}`} size="sm" variant="ghost" onClick={() => setClosing(r)}>
-              Close
-            </Button>
+            {order ? (
+              <Button label={`Draft an Order Form for ${r.company}`} size="sm" variant="secondary" onClick={() => setDrafting(r)}>
+                Draft Order Form
+              </Button>
+            ) : null}
+            {decide ? (
+              <Button label={`Close the request of ${r.company}`} size="sm" variant="ghost" onClick={() => setClosing(r)}>
+                Close
+              </Button>
+            ) : null}
           </HStack>
         ) : null,
     });
@@ -302,7 +320,7 @@ function BusinessRequestList() {
   return (
     <Panel
       title="Business requests"
-      description="Asked for on the kudurru.io form. The requester was told we reply by email: write to them, then issue a license from the request or close it with a note."
+      description="Asked for on the kudurru.io form. The requester was told we reply by email: write to them, then draft an Order Form or issue a license from the request, or close it with a note."
     >
       <HStack gap={2}>
         <SelectField
@@ -327,6 +345,7 @@ function BusinessRequestList() {
         />
       ) : null}
       <IssueLicenseWizardDialog key={issuing?.id ?? 'none'} request={issuing ?? undefined} isOpen={issuing !== null} onClose={() => setIssuing(null)} />
+      <OrderFormWizardDialog key={`order-${drafting?.id ?? 'none'}`} request={drafting ?? undefined} isOpen={drafting !== null} onClose={() => setDrafting(null)} />
       <FormDialog isOpen={closing !== null} onClose={() => setClosing(null)} title="Close business request" subtitle={closing ? `${closing.company} · ${closing.email}` : undefined} width={520}>
         {closing ? <CloseBusinessForm request={closing} onClose={() => setClosing(null)} /> : null}
       </FormDialog>

@@ -6,6 +6,16 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Added
+
+- The license portal holds Order Forms: license admins draft one for a
+  customer or from a business request, with the fees of the price list,
+  and send it; an authorized contact of the customer accepts it (or
+  declines it) signed in, a license admin countersigns it, and the license
+  is issued from the executed form. Both parties keep the signed copy.
+- The website and docs-site footers link to the license portal
+  (licenses.kudurru.io) and the auth portal (auth.kudurru.io).
+
 ### Changed
 
 - The repository layout names each part by what it is: the dashboard moved

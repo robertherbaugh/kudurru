@@ -1,5 +1,5 @@
 // The least-privilege database roles (design spec §14; README "Database
-// roles"; deploy/postgres-roles.sql; migrations 0002 to 0005): a database
+// roles"; deploy/postgres-roles.sql; migrations 0002 to 0006): a database
 // owned by license_portal_owner, migrated by it, and every route of the
 // portal run through the real handlers connected as license_portal_app,
 // the only role a production container holds (automatic approval and the
@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { addDays, todayUtc } from '../../shared/dates';
+import { defaultOrderFormTerms } from '../../shared/orderForms';
 import { handlers } from '../api';
 import { migrate } from '../db/migrate';
 import { connect, type Db } from '../db/sql';
@@ -36,12 +37,13 @@ function grantLines(sql: string): string[] {
 }
 
 describe('the grants', () => {
-  test('deploy/postgres-roles.sql repeats the grants of the migrations (0002 to 0005), grant for grant', () => {
+  test('deploy/postgres-roles.sql repeats the grants of the migrations (0002 to 0006), grant for grant', () => {
     const migrations = MIGRATIONS.map((m) => m.sql).join('\n');
     const setup = readFileSync(join(import.meta.dir, '..', '..', 'deploy', 'postgres-roles.sql'), 'utf8');
     expect(grantLines(migrations).length).toBeGreaterThan(0);
     expect(grantLines(migrations)).toContain('grant select, insert, update, delete on request_approval_links to license_portal_app;');
     expect(grantLines(migrations)).toContain('grant select, insert, update on business_requests to license_portal_app;');
+    expect(grantLines(migrations)).toContain('grant usage on sequence order_form_number_seq to license_portal_app;');
     expect(grantLines(setup)).toEqual(grantLines(migrations));
   });
 });
@@ -186,6 +188,41 @@ describeDb('as license_portal_app', () => {
     expect(fromRequest.status).toBe(200);
     expect((await callJson(app, 'businessRequestClose', { as, params: { id: toClose! }, body: { note: 'done' } })).status).toBe(200);
 
+    // Order Forms: draft, change, send (the contact becomes a member), the customer's view, accept, countersign, issue; revise, decline and void.
+    const contact = customer.email!;
+    const terms = {
+      ...defaultOrderFormTerms({ edition: 'core', nodes: 5, customerLegalName: 'Roles GmbH', contact, today: todayUtc() }),
+      licensorContact: 'Robert Herbaugh, hello@kudurru.io',
+      customerAddress: '1 Roles Street',
+      governingLaw: 'Delaware',
+    };
+    const draft = await callJson(app, 'orderFormCreate', { as, body: { customerId, terms } });
+    expect(draft.status).toBe(200);
+    const formId = draft.body.id;
+    ok((await callJson(app, 'orderFormsList', { as })).status);
+    expect((await callJson(app, 'orderFormUpdate', { as, params: { id: formId }, body: { terms: { nodes: 6 } } })).status).toBe(200);
+    app.mailer.clear();
+    const sentForm = await callJson(app, 'orderFormSend', { as, params: { id: formId } });
+    expect(sentForm.status).toBe(200);
+    const invite = /\/invites\/([A-Za-z0-9_-]{43})/.exec(app.mailer.to(contact)[0]!.text)![1]!;
+    expect((await callJson(app, 'myInviteRedeem', { as: cu, body: { token: invite } })).status).toBe(200);
+    ok((await callJson(app, 'myOrderForms', { as: cu })).status);
+    expect((await callJson(app, 'myOrderForm', { as: cu, params: { id: formId } })).status).toBe(200);
+    const sha = sentForm.body.documentSha256!;
+    expect((await callJson(app, 'myOrderFormAccept', { as: cu, params: { id: formId }, body: { name: 'C', title: 'CTO', documentSha256: sha, authorized: true } })).status).toBe(200);
+    expect((await callJson(app, 'orderFormCountersign', { as, params: { id: formId }, body: { name: 'R', title: 'Owner', documentSha256: sha } })).status).toBe(200);
+    const fromForm = await callJson(app, 'licenseIssue', {
+      as,
+      body: { customerId, licensee: 'Roles GmbH', plan: 'business', nodes: 6, features: ['audit'], expiresOn: terms.subscriptionEnd, orderFormId: formId },
+    });
+    expect(fromForm.status).toBe(200);
+    expect((await callJson(app, 'orderFormGet', { as, params: { id: formId } })).body.licenseId).toBe(fromForm.body.id);
+    const second = (await callJson(app, 'orderFormCreate', { as, body: { customerId, terms } })).body.id;
+    expect((await callJson(app, 'orderFormSend', { as, params: { id: second } })).status).toBe(200);
+    expect((await callJson(app, 'myOrderFormDecline', { as: cu, params: { id: second }, body: { note: 'no' } })).status).toBe(200);
+    expect((await callJson(app, 'orderFormRevise', { as, params: { id: second } })).status).toBe(200);
+    expect((await callJson(app, 'orderFormVoid', { as, params: { id: second }, body: { reason: 'test' } })).status).toBe(200);
+
     // Import a key signed by hand.
     expect((await callJson(app, 'licenseImport', { as, body: { token: GOLDEN_VECTORS[0]!.key, customerId } })).status).toBe(200);
 
@@ -231,6 +268,8 @@ describeDb('as license_portal_app', () => {
     await denied(appDb`delete from licenses`);
     await denied(appDb`delete from license_keys`);
     await denied(appDb`delete from business_requests`);
+    await denied(appDb`delete from order_forms`);
+    await denied(appDb`select setval('order_form_number_seq', 1)`);
     await denied(appDb`insert into schema_migrations (version, name) values (999, 'intruder')`);
     await denied(appDb`truncate sessions`);
     await denied(appDb`drop table blocked_emails`);

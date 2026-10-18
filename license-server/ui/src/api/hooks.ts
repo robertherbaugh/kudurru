@@ -6,7 +6,7 @@
 // catalog and the sign-in config), which keeps lists, detail pages, counts
 // and the audit trail in step without a hand-kept invalidation map.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import type { AuditQuery, BusinessRequestListQuery, CustomerListQuery, LicenseListQuery, RequestListQuery, ResponseOf, UserListQuery } from '@shared/api';
+import type { AuditQuery, BusinessRequestListQuery, CustomerListQuery, LicenseListQuery, OrderFormListQuery, RequestListQuery, ResponseOf, UserListQuery } from '@shared/api';
 import type { RouteId } from '@shared/routes';
 import type { ApiClient, CallArgs } from './client';
 import { SESSION_KEY, useApi, useCan } from './context';
@@ -82,6 +82,15 @@ export function useMyRequests() {
   return useRouteQuery('myRequests', {});
 }
 
+/** GET /api/v1/me/order-forms: the Order Forms of the person's customers (sent at least once). */
+export function useMyOrderForms(opts: QueryOpts<'myOrderForms'> = {}) {
+  return useRouteQuery('myOrderForms', {}, opts);
+}
+
+export function useMyOrderForm(id: string) {
+  return useRouteQuery('myOrderForm', { params: { id } });
+}
+
 /** POST /api/v1/me/invites/preview: names the customer before the person accepts (changes nothing). */
 export function useInvitePreview(token: string) {
   return useRouteQuery('myInvitePreview', { body: { token } }, { retry: false, staleTime: Infinity });
@@ -123,6 +132,14 @@ export function useRequests(query: RequestListQuery) {
 
 export function useBusinessRequests(query: BusinessRequestListQuery) {
   return useRouteQuery('businessRequestsList', { query });
+}
+
+export function useOrderForms(query: OrderFormListQuery, opts: QueryOpts<'orderFormsList'> = {}) {
+  return useRouteQuery('orderFormsList', { query }, { placeholderData: (prev) => prev, ...opts });
+}
+
+export function useOrderForm(id: string, opts: QueryOpts<'orderFormGet'> = {}) {
+  return useRouteQuery('orderFormGet', { params: { id } }, { ...opts, enabled: Boolean(id) && opts.enabled !== false });
 }
 
 /** The number of open requests, personal and business, for the navigation badge; nothing is asked without requests.read. */

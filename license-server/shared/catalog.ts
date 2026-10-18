@@ -121,6 +121,21 @@ export type BusinessEdition = keyof typeof BUSINESS_EDITIONS;
 /** The most nodes a business request may ask for (the kudurru.io form's limit). */
 export const BUSINESS_REQUEST_MAX_NODES = 10_000;
 
+/** The licensor named on every Order Form (COMMERCIAL_LICENSE_AGREEMENT.md); the address is the form's licensorContact. */
+export const LICENSOR_NAME = 'Robert Herbaugh';
+
+/** Where the Kudurru Commercial Software License Agreement an Order Form references is published. */
+export const COMMERCIAL_AGREEMENT_URL = 'https://docs.kudurru.io/project/commercial-license/';
+
+/** The most authorized contacts one Order Form names. */
+export const ORDER_FORM_MAX_CONTACTS = 10;
+
+/** The longest subscription term an Order Form records, in days (ten years, as MAX_TERM_DAYS). */
+export const ORDER_FORM_MAX_TERM_DAYS = MAX_TERM_DAYS;
+
+/** The highest fee an Order Form records, in cents (USD 100 million). */
+export const ORDER_FORM_MAX_FEE_CENTS = 10_000_000_000;
+
 /** The page that explains the license and how to get a key. */
 export const LICENSE_PAGE_URL = 'https://kudurru.io/license';
 

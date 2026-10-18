@@ -32,7 +32,7 @@ flowchart LR
     A --> UI
     S --> UI
     F -->|"POST /api/v1/public/key-requests<br/>and /business-requests (CORS)"| API
-    API --> PG[("Postgres<br/>users, sessions, customers,<br/>licenses, keys, requests,<br/>business requests,<br/>approval links, audit")]
+    API --> PG[("Postgres<br/>users, sessions, customers,<br/>licenses, keys, requests,<br/>business requests, Order Forms,<br/>approval links, audit")]
     API -->|"SMTP"| MAIL["mail server"]
     API -->|"OIDC (code + PKCE)"| IDP["identity provider"]
     SIGN -. "keys by mail and download" .-> N["kudurru nodes<br/>(verify offline)"]
@@ -201,6 +201,61 @@ issues a license, so the request is stored at once. When the portal cannot
 be reached or cannot take it, the form opens an email to hello@kudurru.io
 with the same fields instead.
 
+## An Order Form
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor A as license admin
+    participant P as portal
+    participant DB as Postgres
+    actor C as authorized contact
+    A->>P: New Order Form, or Draft Order Form on a business request
+    P->>DB: order_forms (draft, OF-year-number), fees from the price list
+    A->>P: change the draft on its page, then Send
+    P->>DB: status sent, SHA-256 of the document text, each contact a member
+    P->>C: mail: the form's link (and an invite link without access)
+    C->>P: sign in, read the form
+    alt accept
+        C->>P: POST /api/v1/me/order-forms/:id/accept (name, title, the SHA-256 read)
+        P->>DB: status accepted, the acceptance with time, address and user agent
+        P->>A: mail per approver: countersign it
+        A->>P: Countersign (name, title, the same SHA-256)
+        P->>DB: status executed (final)
+        P->>C: mail: the signed copy (OF-year-number.md)
+        A->>P: Issue license (the wizard filled in from the form)
+        P->>DB: the license, the form's license_id, its business request issued
+    else decline (with a note)
+        C->>P: POST /api/v1/me/order-forms/:id/decline
+        P->>A: mail per approver: the note
+        A->>P: Revise (draft again, the next version) or Void
+    end
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft: create
+    draft --> sent: send (text frozen and hashed)
+    sent --> accepted: an authorized contact accepts that hash
+    sent --> declined: an authorized contact declines
+    sent --> draft: revise (next version)
+    declined --> draft: revise (next version)
+    accepted --> executed: countersign
+    draft --> void: void
+    sent --> void: void
+    accepted --> void: void
+    declined --> void: void
+    executed --> [*]: one license may be issued from it
+```
+
+The text a party accepts is `orderFormDocument` without signatures
+(`shared/orderForms.ts`); both acceptances record its SHA-256, and the
+accept and countersign bodies name the hash the person saw, so an answer
+to a revised form's earlier text is refused (409). Only a signed-in member
+of the customer whose membership address is one of the form's authorized
+contacts answers it; other members see it. Customers never see drafts,
+void reasons or who did what in the back office.
+
 ## A license's keys
 
 ```mermaid
@@ -240,6 +295,9 @@ erDiagram
     license_requests ||--o{ request_approval_links : "one-click links (one per recipient)"
     public_key_requests }o--o| license_requests : "may become (when it waits for approval)"
     business_requests }o--o| licenses : "issued as"
+    customers ||--o{ order_forms : "agrees"
+    business_requests |o--o{ order_forms : "drafted from"
+    order_forms |o--o| licenses : "issued as"
     users {
         text id
         text issuer
@@ -281,6 +339,17 @@ erDiagram
         int nodes
         text status "open issued closed"
     }
+    order_forms {
+        text id
+        text number "OF-year-number"
+        text status "draft sent accepted executed declined void"
+        int version
+        jsonb terms "Schedule A"
+        text document_sha256 "of the text sent"
+        jsonb customer_acceptance
+        jsonb licensor_acceptance
+        text license_id "one per form"
+    }
     request_approval_links {
         bytea token_hash "SHA-256 of the token"
         text request_id
@@ -301,14 +370,15 @@ runtime role may only read and append it (migration 0002). The cleanup
 job deletes approval links 30 days after they expire (migration 0003 adds
 the table and its grant). Deleting a user (migration 0004 grants it)
 deletes their sessions and memberships; every other reference keeps its
-label and loses the link. Migration 0005 adds `business_requests`.
+label and loses the link. Migration 0005 adds `business_requests`, 0006
+`order_forms` and its number sequence (forms are never deleted).
 
 ## Roles
 
 | Permission | customer | license admin | superadmin |
 |---|---|---|---|
-| Own licenses and keys (members of a customer), personal key requests, asking for the renewal of a personal key, accepting invites | yes | yes | yes |
-| Customers, members, licenses (issue, import, renew, change, withdraw, email), requests (approve, reject; business requests: issue, close), the block list, users (read), audit, system | | yes | yes |
+| Own licenses and keys (members of a customer), personal key requests, asking for the renewal of a personal key, accepting invites, the Order Forms of member customers (accepting and declining them as an authorized contact) | yes | yes | yes |
+| Customers, members, licenses (issue, import, renew, change, withdraw, email), Order Forms (draft, change, send, revise, countersign, void), requests (approve, reject; business requests: issue, close), the block list, users (read), audit, system | | yes | yes |
 | Granting roles, disabling and deleting users, ending sessions, removing block list entries | | | yes |
 
 `shared/permissions.ts` is the source; every route in `shared/routes.ts`

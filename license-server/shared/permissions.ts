@@ -21,6 +21,8 @@ export type Permission =
   | 'self.read'
   /** Request a personal key, renew an own personal key, redeem an invite. */
   | 'self.request'
+  /** Accept or decline an Order Form of a member customer (as one of its authorized contacts). */
+  | 'self.order'
   | 'customers.read'
   | 'customers.write'
   | 'licenses.read'
@@ -29,6 +31,10 @@ export type Permission =
   | 'licenses.renew'
   | 'licenses.change'
   | 'licenses.withdraw'
+  /** Order Forms: the list and the detail. */
+  | 'orders.read'
+  /** Draft, change, send, revise, countersign and void Order Forms. */
+  | 'orders.write'
   | 'requests.read'
   | 'requests.decide'
   | 'blocklist.read'
@@ -45,6 +51,7 @@ export type Permission =
 export const PERMISSIONS: readonly Permission[] = [
   'self.read',
   'self.request',
+  'self.order',
   'customers.read',
   'customers.write',
   'licenses.read',
@@ -52,6 +59,8 @@ export const PERMISSIONS: readonly Permission[] = [
   'licenses.renew',
   'licenses.change',
   'licenses.withdraw',
+  'orders.read',
+  'orders.write',
   'requests.read',
   'requests.decide',
   'blocklist.read',
@@ -62,7 +71,7 @@ export const PERMISSIONS: readonly Permission[] = [
   'system.read',
 ];
 
-const CUSTOMER: readonly Permission[] = ['self.read', 'self.request'];
+const CUSTOMER: readonly Permission[] = ['self.read', 'self.request', 'self.order'];
 
 const LICENSE_ADMIN: readonly Permission[] = [
   ...CUSTOMER,
@@ -73,6 +82,8 @@ const LICENSE_ADMIN: readonly Permission[] = [
   'licenses.renew',
   'licenses.change',
   'licenses.withdraw',
+  'orders.read',
+  'orders.write',
   'requests.read',
   'requests.decide',
   'blocklist.read',
@@ -99,8 +110,8 @@ export interface RoleInfo {
 
 /** The roles as people read them, in the order of ROLES. */
 export const ROLE_INFO: readonly RoleInfo[] = [
-  { key: 'customer', label: 'Customer', description: 'Sees the licenses and keys of the customers they belong to, and requests a free personal key.' },
-  { key: 'license_admin', label: 'License admin', description: 'Manages customers, issues, renews, changes and withdraws licenses, and decides requests.' },
+  { key: 'customer', label: 'Customer', description: 'Sees the licenses, keys and Order Forms of the customers they belong to, accepts Order Forms as an authorized contact, and requests a free personal key.' },
+  { key: 'license_admin', label: 'License admin', description: 'Manages customers and Order Forms, issues, renews, changes and withdraws licenses, and decides requests.' },
   { key: 'superadmin', label: 'Superadmin', description: 'Everything a license admin does, plus user roles, sessions, deleting users and the blocklist.' },
 ];
 
