@@ -2,9 +2,8 @@
 
 ## Reporting a vulnerability
 
-Please report vulnerabilities privately through GitHub's private
-vulnerability reporting:
-<https://github.com/robertherbaugh/kudurru/security/advisories/new>.
+Please report vulnerabilities privately by email to
+[security@kudurru.io](mailto:security@kudurru.io).
 Do not open a public issue, pull request or discussion for a suspected
 vulnerability.
 
