@@ -28,7 +28,7 @@
 #                     trailing newline (openssl rand -hex 16 | tr -d '\n')
 # Port 8085/tcp: supervisor /healthz/*, /status, /metrics (kudurru_vip_master).
 # Needs cap_add NET_ADMIN, NET_RAW, NET_BROADCAST and host networking.
-ARG ALPINE_VERSION=3.23
+ARG ALPINE_VERSION=3.24
 ARG KEEPALIVED_VERSION=2.4.3
 ARG KEEPALIVED_SHA256=a0faef8e401c143487b131b526df7541c1e33d9b8814642fa9dfe8bb250a9632
 ARG KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:0.1.0-dev
@@ -58,7 +58,7 @@ RUN curl -fsSLo keepalived.tar.gz "https://www.keepalived.org/software/keepalive
 
 FROM alpine:${ALPINE_VERSION}
 # apk upgrade first: apk add leaves a package the base image already has
-# (libcrypto3) at that image's version, so a stale alpine:3.23 on the
+# (libcrypto3) at that image's version, so a stale alpine:3.24 on the
 # builder would ship an OpenSSL without its latest fixes (make trivy-images).
 RUN apk upgrade --no-cache \
  && apk add --no-cache libcrypto3 libmagic iproute2 tini \

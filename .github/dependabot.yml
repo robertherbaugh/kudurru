@@ -13,7 +13,7 @@
 # gcr.io/distroless/static, whose digest is also in .goreleaser.yaml,
 # images/base and publish.yml (TestDockerfile; dev-docs/release-checklist.md
 # has the bump). keepalived is built from a release tarball and Alpine
-# 3.23 through ARGs, which Dependabot does not read. Between bumps the daily
+# 3.24 through ARGs, which Dependabot does not read. Between bumps the daily
 # Trivy scan (security.yml) fails when an image needs one.
 #
 # All of them wait 7 days after a release before proposing it (cooldown), so
