@@ -21,7 +21,7 @@
 
 kudurru combines **Kubernetes CRDs as the source of truth in a cluster**, **OIDC sign-in and role-based access control** (viewer, auditor, operator, zone-admin and admin, with zone-scoped permissions), and **an integration framework with an external-dns webhook provider**. OIDC, scoped roles and integrations need a license key; eligible personal users can request one for free. The Cloudflare split-horizon sink and UniFi inventory source are planned for v0.2. See [access](docs/architecture/access.md), [licensing](LICENSING.md) and the [roadmap](#roadmap).
 
-> **v0.1.0 — “stone” · 16 October 2026.** Read the [release notes](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0) and [changelog](CHANGELOG.md) for the first release's scope and known limitations. The [architecture tour](docs/architecture/README.md#built-and-not-built) distinguishes implemented features from future plans.
+> **v0.1.0 — “stone” · 18 October 2026.** Read the [release notes](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0) and [changelog](CHANGELOG.md) for the first release's scope and known limitations. The [architecture tour](docs/architecture/README.md#built-and-not-built) distinguishes implemented features from future plans.
 
 ## Dashboard
 

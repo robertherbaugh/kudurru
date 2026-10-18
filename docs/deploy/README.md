@@ -29,7 +29,7 @@ Keep IPv6 router and DNS advertisements on your router.
 
 ## Release artifacts
 
-v0.1.0 ("stone"), dated 16 October 2026, is the first release. Its
+v0.1.0 ("stone"), dated 18 October 2026, is the first release. Its
 [release page](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)
 has binaries, packages and deployment assets. The examples in these guides
 use the `0.1.0` image and chart versions.
