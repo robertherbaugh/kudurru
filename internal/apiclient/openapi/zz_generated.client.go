@@ -3349,11 +3349,14 @@ type MigrationCutoverPreviewInputBody struct {
 
 // MigrationItem defines model for MigrationItem.
 type MigrationItem struct {
-	Error     *string `json:"error,omitempty"`
-	Kind      string  `json:"kind"`
-	Name      string  `json:"name"`
-	Namespace *string `json:"namespace,omitempty"`
-	Result    string  `json:"result"`
+	Error           *string `json:"error,omitempty"`
+	ErrorKey        *string `json:"errorKey,omitempty"`
+	Hint            *string `json:"hint,omitempty"`
+	Kind            string  `json:"kind"`
+	Name            string  `json:"name"`
+	Namespace       *string `json:"namespace,omitempty"`
+	ResourceVersion *string `json:"resourceVersion,omitempty"`
+	Result          string  `json:"result"`
 }
 
 // MigrationRequest defines model for MigrationRequest.
@@ -3400,17 +3403,21 @@ type MigrationRun struct {
 
 // MigrationRunSpec defines model for MigrationRunSpec.
 type MigrationRunSpec struct {
-	Actor         string             `json:"actor"`
-	Cutovers      []MigrationCutover `json:"cutovers"`
-	FinishedAt    *time.Time         `json:"finishedAt,omitempty"`
-	Items         []MigrationItem    `json:"items"`
-	SettingsError *string            `json:"settingsError,omitempty"`
-	Source        string             `json:"source"`
-	SourceURL     *string            `json:"sourceURL,omitempty"`
-	StartedAt     time.Time          `json:"startedAt"`
-	Status        string             `json:"status"`
-	Warnings      []string           `json:"warnings"`
-	Zones         []MigrationZone    `json:"zones"`
+	Actor             string             `json:"actor"`
+	Cutovers          []MigrationCutover `json:"cutovers"`
+	Deadline          *time.Time         `json:"deadline,omitempty"`
+	Failure           *string            `json:"failure,omitempty"`
+	FinishedAt        *time.Time         `json:"finishedAt,omitempty"`
+	Items             []MigrationItem    `json:"items"`
+	JournalError      *string            `json:"journalError,omitempty"`
+	SettingsError     *string            `json:"settingsError,omitempty"`
+	SettingsPersisted *bool              `json:"settingsPersisted,omitempty"`
+	Source            string             `json:"source"`
+	SourceURL         *string            `json:"sourceURL,omitempty"`
+	StartedAt         time.Time          `json:"startedAt"`
+	Status            string             `json:"status"`
+	Warnings          []string           `json:"warnings"`
+	Zones             []MigrationZone    `json:"zones"`
 }
 
 // MigrationZone defines model for MigrationZone.
@@ -3546,11 +3553,12 @@ type PasswordChangeRequest struct {
 
 // Plan defines model for Plan.
 type Plan struct {
-	Objects  []map[string]interface{} `json:"objects"`
-	Settings map[string]interface{}   `json:"settings"`
-	Source   *SourceInfo              `json:"source,omitempty"`
-	Warnings []string                 `json:"warnings"`
-	Zones    *[]ZoneAuthority         `json:"zones,omitempty"`
+	Objects   []map[string]interface{} `json:"objects"`
+	Selection *Selection               `json:"selection,omitempty"`
+	Settings  map[string]interface{}   `json:"settings"`
+	Source    *SourceInfo              `json:"source,omitempty"`
+	Warnings  []string                 `json:"warnings"`
+	Zones     *[]ZoneAuthority         `json:"zones,omitempty"`
 }
 
 // Point defines model for Point.
@@ -4019,6 +4027,12 @@ type SafeSearchEngine struct {
 
 	// Target CNAME target in strict mode.
 	Target *string `json:"target,omitempty"`
+}
+
+// Selection defines model for Selection.
+type Selection struct {
+	Objects  []string `json:"objects"`
+	Settings []string `json:"settings"`
 }
 
 // ServiceAccountInfo defines model for ServiceAccountInfo.
@@ -5483,6 +5497,9 @@ type DecommissionMigrationJSONRequestBody = MigrationCutoverPlan
 // PreviewMigrationDecommissionJSONRequestBody defines body for PreviewMigrationDecommission for application/json ContentType.
 type PreviewMigrationDecommissionJSONRequestBody = MigrationCutoverPreviewInputBody
 
+// StartMigrationJSONRequestBody defines body for StartMigration for application/json ContentType.
+type StartMigrationJSONRequestBody = Plan
+
 // PatchNodeConfigJSONRequestBody defines body for PatchNodeConfig for application/json ContentType.
 type PatchNodeConfigJSONRequestBody PatchNodeConfigJSONBody
 
@@ -6296,6 +6313,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
 	PreviewMigrationDecommission(ctx context.Context, id string, body PreviewMigrationDecommissionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartMigrationWithBody Start a reviewed migration in the background
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /imports/start (the `StartMigration` operationId).
+	StartMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartMigration Start a reviewed migration in the background
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /imports/start (the `StartMigration` operationId).
+	StartMigration(ctx context.Context, body StartMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// InfoMessages Diagnosis messages (objects, policies, lists, readiness)
 	//
@@ -8501,6 +8532,40 @@ func (c *Client) PreviewMigrationDecommissionWithBody(ctx context.Context, id st
 // Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
 func (c *Client) PreviewMigrationDecommission(ctx context.Context, id string, body PreviewMigrationDecommissionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewMigrationDecommissionRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartMigrationWithBody Start a reviewed migration in the background
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /imports/start (the `StartMigration` operationId).
+func (c *Client) StartMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartMigrationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartMigration Start a reviewed migration in the background
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /imports/start (the `StartMigration` operationId).
+func (c *Client) StartMigration(ctx context.Context, body StartMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartMigrationRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -13569,6 +13634,46 @@ func NewPreviewMigrationDecommissionRequestWithBody(server string, id string, co
 	return req, nil
 }
 
+// NewStartMigrationRequest calls the generic StartMigration builder with application/json body
+func NewStartMigrationRequest(server string, body StartMigrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartMigrationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewStartMigrationRequestWithBody constructs an http.Request for the StartMigration method, with any body, and a specified content type
+func NewStartMigrationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/imports/start")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewInfoMessagesRequest constructs an http.Request for the InfoMessages method
 func NewInfoMessagesRequest(server string) (*http.Request, error) {
 	var err error
@@ -18245,6 +18350,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
 	PreviewMigrationDecommissionWithResponse(ctx context.Context, id string, body PreviewMigrationDecommissionJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewMigrationDecommissionResponse, error)
+
+	// StartMigrationWithBodyWithResponse Start a reviewed migration in the background
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/start (the `StartMigration` operationId).
+	StartMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartMigrationResponse, error)
+
+	// StartMigrationWithResponse Start a reviewed migration in the background
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /imports/start (the `StartMigration` operationId).
+	StartMigrationWithResponse(ctx context.Context, body StartMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*StartMigrationResponse, error)
 
 	// InfoMessagesWithResponse Diagnosis messages (objects, policies, lists, readiness)
 	//
@@ -25690,6 +25809,110 @@ func (r PreviewMigrationDecommissionResponse) ContentType() string {
 	return ""
 }
 
+// StartMigrationResponse202Headers the declared response headers of an HTTP 202 response for StartMigration
+type StartMigrationResponse202Headers struct {
+	Location *string
+}
+
+type StartMigrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *MigrationRun
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers202 the parsed response headers for an HTTP 202 response
+	Headers202 *StartMigrationResponse202Headers
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r StartMigrationResponse) GetJSON202() *MigrationRun {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r StartMigrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r StartMigrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r StartMigrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r StartMigrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r StartMigrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r StartMigrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r StartMigrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r StartMigrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r StartMigrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StartMigrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartMigrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StartMigrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type InfoMessagesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -33081,6 +33304,32 @@ func (c *ClientWithResponses) PreviewMigrationDecommissionWithResponse(ctx conte
 	return ParsePreviewMigrationDecommissionResponse(rsp)
 }
 
+// StartMigrationWithBodyWithResponse Start a reviewed migration in the background
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/start (the `StartMigration` operationId).
+func (c *ClientWithResponses) StartMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartMigrationResponse, error) {
+	rsp, err := c.StartMigrationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartMigrationResponse(rsp)
+}
+
+// StartMigrationWithResponse Start a reviewed migration in the background
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /imports/start (the `StartMigration` operationId).
+func (c *ClientWithResponses) StartMigrationWithResponse(ctx context.Context, body StartMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*StartMigrationResponse, error) {
+	rsp, err := c.StartMigration(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartMigrationResponse(rsp)
+}
+
 // InfoMessagesWithResponse Diagnosis messages (objects, policies, lists, readiness)
 //
 // Returns a wrapper object for the known response body format(s).
@@ -40051,6 +40300,101 @@ func ParsePreviewMigrationDecommissionResponse(rsp *http.Response) (*PreviewMigr
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseStartMigrationResponse parses an HTTP response from a StartMigrationWithResponse call
+func ParseStartMigrationResponse(rsp *http.Response) (*StartMigrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartMigrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest MigrationRun
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		var headers StartMigrationResponse202Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers202 = &headers
 	}
 
 	return response, nil

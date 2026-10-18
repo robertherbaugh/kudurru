@@ -159,6 +159,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/imports/runs/{id}` | Read a migration run and its cutovers | `settings.write` (cluster) |
 | POST | `/api/v1/imports/runs/{id}/decommission` | Replace imported zone authority and record the results | `settings.write` (cluster) |
 | POST | `/api/v1/imports/runs/{id}/decommission/preview` | Preview replacing an imported zone's NS and SOA primary | `settings.write` (cluster) |
+| POST | `/api/v1/imports/start` | Start a reviewed migration in the background | `settings.write` (cluster) |
 
 ## meta
 

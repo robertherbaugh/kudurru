@@ -688,7 +688,7 @@ Flags:
 
 ### kudurru import pihole
 
-Connect to the source API using its v6 application password. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to import directly into the selected kudurru server using its normal validation, ownership and license checks. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
+Connect to the source API using its v6 application password. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Without --wait, exit status 0 means the server accepted the job, not that every item imported successfully. Scripts that need the final success/failure exit status must use --apply --wait. Use import runs RUN\_ID to inspect the report later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
 
 ```text
 kudurru import pihole --source-url URL [flags]
@@ -704,7 +704,8 @@ kudurru import pihole --source-url http://dns.local --source-key-file ./source-k
 Flags:
 
 ```text
-      --apply                             apply the converted configuration directly to kudurru
+      --apply                             start a tracked background import of the converted
+                                          configuration
       --dry-run                           preview only (the default)
       --local-zone strings                local DNS suffixes to make authoritative (default:
                                           Pi-hole's local domain)
@@ -712,6 +713,11 @@ Flags:
                                           and SOA primary (repeatable; first is primary)
       --nameserver-address strings        kudurru serving IPs or VIPs; generate in-zone NS
                                           names and A/AAAA records (repeatable)
+      --select-object strings             import only these Kind/[namespace/]name objects
+                                          (repeatable; combine with --select-setting)
+      --select-setting strings            import only these top-level settings sections
+                                          (repeatable; combine with --select-object)
+      --skip-settings                     leave settings unchanged
       --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
                                           self-signed certificate
       --source-key-file string            file containing the source v6 application password
@@ -721,6 +727,8 @@ Flags:
                                           imported authority
       --use-vips                          use discovered kudurru VIPs for nameservers and
                                           address records
+      --wait                              wait for the background import and report its final
+                                          results (requires --apply)
 ```
 
 ### kudurru import runs
@@ -733,7 +741,7 @@ kudurru import runs [id]
 
 ### kudurru import technitium
 
-Connect to the source API using its API token. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to import directly into the selected kudurru server using its normal validation, ownership and license checks. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
+Connect to the source API using its API token. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Without --wait, exit status 0 means the server accepted the job, not that every item imported successfully. Scripts that need the final success/failure exit status must use --apply --wait. Use import runs RUN\_ID to inspect the report later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
 
 ```text
 kudurru import technitium --source-url URL [flags]
@@ -749,12 +757,18 @@ kudurru import technitium --source-url http://dns.local --source-key-file ./sour
 Flags:
 
 ```text
-      --apply                             apply the converted configuration directly to kudurru
+      --apply                             start a tracked background import of the converted
+                                          configuration
       --dry-run                           preview only (the default)
       --nameserver strings                kudurru authoritative DNS names; replace imported NS
                                           and SOA primary (repeatable; first is primary)
       --nameserver-address strings        kudurru serving IPs or VIPs; generate in-zone NS
                                           names and A/AAAA records (repeatable)
+      --select-object strings             import only these Kind/[namespace/]name objects
+                                          (repeatable; combine with --select-setting)
+      --select-setting strings            import only these top-level settings sections
+                                          (repeatable; combine with --select-object)
+      --skip-settings                     leave settings unchanged
       --source-insecure-skip-tls-verify   skip source TLS verification for a lab with a
                                           self-signed certificate
       --source-key-file string            file containing the source API token (otherwise
@@ -764,6 +778,8 @@ Flags:
                                           imported authority
       --use-vips                          use discovered kudurru VIPs for nameservers and
                                           address records
+      --wait                              wait for the background import and report its final
+                                          results (requires --apply)
 ```
 
 ### kudurru import track-existing

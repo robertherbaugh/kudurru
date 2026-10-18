@@ -565,6 +565,15 @@ func (in *MigrationRunSpec) DeepCopyInto(out *MigrationRunSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.SettingsPersisted != nil {
+		in, out := &in.SettingsPersisted, &out.SettingsPersisted
+		*out = new(bool)
+		**out = **in
+	}
+	if in.Deadline != nil {
+		in, out := &in.Deadline, &out.Deadline
+		*out = (*in).DeepCopy()
+	}
 	if in.Cutovers != nil {
 		in, out := &in.Cutovers, &out.Cutovers
 		*out = make([]MigrationCutover, len(*in))

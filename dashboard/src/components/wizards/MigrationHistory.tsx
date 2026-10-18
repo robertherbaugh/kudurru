@@ -7,6 +7,8 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useState } from 'react';
 import { useApi, useCan } from '../../api/context';
 import type { MigrationAuthorityChange, MigrationCutoverPlan, MigrationResult, MigrationRun } from '../../api/types';
+import { useNavigate } from '../../lib/router';
+import { migrationCounts } from '../migration/results';
 import { ErrorBanner, errorText, Loading } from '../Feedback';
 import { CheckboxField } from '../fields/TextField';
 import { Panel } from '../layout/Page';
@@ -25,20 +27,13 @@ const addressColumns: TableColumn<AddressRow>[] = [
   { key: 'name', header: 'Nameserver', renderCell: (r) => <Text type="code">{r.name}</Text> },
   { key: 'address', header: 'Address record', renderCell: (r) => <Text>{r.address}</Text> },
 ];
-type Item = MigrationRun['data']['items'][number] & Record<string, unknown>;
-const itemColumns: TableColumn<Item>[] = [
-  { key: 'kind', header: 'Kind', renderCell: (i) => <Text>{i.kind}</Text> },
-  { key: 'name', header: 'Object', renderCell: (i) => <Text type="code">{i.namespace ? `${i.namespace}/` : ''}{i.name}</Text> },
-  { key: 'result', header: 'Result', renderCell: (i) => <Text>{i.result}</Text> },
-  { key: 'error', header: 'Error', renderCell: (i) => <Text>{i.error || '—'}</Text> },
-];
 function WriteErrors({ result }: { result: MigrationResult }) {
   const errors = [...result.items.filter((i) => i.result === 'error').map((i) => `${i.name}: ${i.error}`), result.journalError, result.settingsError].filter(Boolean);
   return errors.length ? <Banner status="error" title="Some changes failed" description={errors.join('\n')} /> : null;
 }
 const succeeded = (r: MigrationResult) => !r.journalError && !r.settingsError && r.items.every((i) => i.result !== 'error');
 
-function CutoverWizard({ run, onDone }: { run: MigrationRun; onDone: () => void }) {
+export function CutoverWizard({ run, onDone }: { run: MigrationRun; onDone: () => void }) {
   const api = useApi();
   const qc = useQueryClient();
   const [nameservers, setNameservers] = useState(initialNameservers);
@@ -76,27 +71,6 @@ function CutoverWizard({ run, onDone }: { run: MigrationRun; onDone: () => void 
   }} />;
 }
 
-function RunDetails({ id, onClose, onCutover }: { id: string; onClose: () => void; onCutover: (run: MigrationRun) => void }) {
-  const api = useApi();
-  const query = useQuery({ queryKey: ['migration-runs', id], queryFn: () => api.imports.run(id) });
-  const run = query.data;
-  return <Wizard label="Migration run" finishLabel="Close" onFinish={onClose} steps={[{ id: 'details', label: 'Run details', content: query.error ? <ErrorBanner error={query.error} /> : run ? <VStack gap={4}>
-    <Text type="code">{run.id}</Text>
-    <Text>{run.data.source} {run.data.sourceURL} — {run.data.status}. Started {new Date(run.data.startedAt).toLocaleString()} by {run.data.actor}.</Text>
-    <Table<Item> aria-label="Import results" data={run.data.items} columns={itemColumns} idKey={(i) => `${i.kind}/${i.namespace}/${i.name}`} density="compact" />
-    <Text type="supporting">Tracked authority at the latest recorded write. The cutover preview checks the live zones before changing them.</Text>
-    <Table<ZoneRow> aria-label="Tracked zone authority" data={run.data.zones.map((z) => ({ ...z, resourceVersion: '', error: `Imported NS: ${z.originalNameservers.join(', ') || 'default'}; SOA primary: ${z.originalPrimary || 'default'}` }))} columns={authorityColumns} idKey="name" density="compact" />
-    {run.data.settingsError ? <Banner status="error" title="Settings import failed" description={run.data.settingsError} /> : null}
-    {run.data.warnings.length ? <Banner status="warning" title="Migration warnings" collapsible={false}><VStack gap={2}>{run.data.warnings.map((w, i) => <Text as="p" key={i}>{w}</Text>)}</VStack></Banner> : null}
-    {run.data.cutovers.map((cutover, i) => <VStack gap={2} key={i}>
-      <Text type="label">Cutover {i + 1}: {cutover.status} — {new Date(cutover.startedAt).toLocaleString()}</Text>
-      <Text>{cutover.addresses?.length ? `Serving IPs or VIPs: ${cutover.addresses.join(', ')}` : `NS: ${cutover.nameservers.join(', ')}; SOA primary: ${cutover.nameservers[0]}`}; requested by {cutover.actor}</Text>
-      <Table<Item> aria-label={`Cutover ${i + 1} results`} data={cutover.items} columns={itemColumns} idKey={(item) => `${item.kind}/${item.namespace}/${item.name}`} density="compact" />
-    </VStack>)}
-    <Button label="Decommission source nameservers" isDisabled={!run.data.zones.length} onClick={() => onCutover(run)} />
-  </VStack> : <Loading label="Loading migration run" /> }]} />;
-}
-
 function TrackWizard({ onDone }: { onDone: () => void }) {
   const api = useApi();
   const qc = useQueryClient();
@@ -120,28 +94,24 @@ export function MigrationHistory() {
   const api = useApi();
   const can = useCan();
   const enabled = can('settings', 'write');
-  const [details, setDetails] = useState<string>();
-  const [cutover, setCutover] = useState<MigrationRun>();
+  const navigate = useNavigate();
   const [track, setTrack] = useState(false);
-  const [updated, setUpdated] = useState(false);
-  const query = useInfiniteQuery({ queryKey: ['migration-runs'], queryFn: ({ pageParam }) => api.imports.runs(pageParam), initialPageParam: undefined as string | undefined, getNextPageParam: (last) => last.continue || undefined, enabled, refetchInterval: 15000 });
+  const query = useInfiniteQuery({ queryKey: ['migration-runs'], queryFn: ({ pageParam }) => api.imports.runs(pageParam), initialPageParam: undefined as string | undefined, getNextPageParam: (last) => last.continue || undefined, enabled, refetchInterval: (q) => q.state.data?.pages.some((p) => p.items.some((r) => r.data.status === 'running')) ? 2000 : 15000 });
   type Row = MigrationRun & Record<string, unknown>;
   const columns: TableColumn<Row>[] = [
     { key: 'startedAt', header: 'Started', renderCell: (r) => <Text>{new Date(r.data.startedAt).toLocaleString()}</Text> },
     { key: 'source', header: 'Source', renderCell: (r) => <Text>{r.data.source} {r.data.sourceURL}</Text> },
     { key: 'status', header: 'Import / latest cutover', renderCell: (r) => <Text>{r.data.status} / {r.data.cutovers.at(-1)?.status ?? 'No cutover'}</Text> },
+    { key: 'progress', header: 'Results', renderCell: (r) => { const counts = migrationCounts(r); return <Text>{counts.succeeded} succeeded · {counts.failed} failed · {counts.pending} pending · {counts.notApplied} not applied · {counts.skipped} skipped</Text>; } },
     { key: 'zones', header: 'Zones', renderCell: (r) => <Text>{r.data.zones.length}</Text> },
-    { key: 'actions', header: 'Actions', renderCell: (r) => <Button label={`Review migration ${r.id}`} size="sm" onClick={() => setDetails(r.id)}>Review run</Button> },
+    { key: 'actions', header: 'Actions', renderCell: (r) => <Button label={`Review migration ${r.id}`} size="sm" onClick={() => navigate(`/tools/migrations/${encodeURIComponent(r.id)}`)}>Review run</Button> },
   ];
   return <Panel title="Migration history" headingId="migration-history" description="Review import results and replace source nameservers when kudurru is ready to take over.">
     {!enabled ? <Text>Migration history requires settings.write.</Text> : <VStack gap={4}>
       <Button label="Track previous imports" onClick={() => setTrack(true)} />
-      {updated ? <Banner status="success" title="Nameservers updated" description="The cutover results are saved in migration history. Validate DNS answers and parent delegations before retiring the source." /> : null}
       {query.error ? <ErrorBanner error={query.error} /> : query.isPending ? <Loading label="Loading migration history" /> : <Table<Row> aria-label="Migration runs" data={query.data?.pages.flatMap((p) => p.items) ?? []} columns={columns} idKey="id" density="compact" />}
       {query.hasNextPage ? <Button label="Load more runs" isLoading={query.isFetchingNextPage} onClick={() => { void query.fetchNextPage(); }} /> : null}
     </VStack>}
-    <WizardDialog isOpen={!!details} onClose={() => setDetails(undefined)} title="Migration run" what="migration review"><RunDetails id={details ?? ''} onClose={() => setDetails(undefined)} onCutover={(run) => { setDetails(undefined); setCutover(run); setUpdated(false); }} /></WizardDialog>
-    <WizardDialog isOpen={!!cutover} onClose={() => setCutover(undefined)} title="Decommission source nameservers" what="nameserver cutover">{cutover ? <CutoverWizard run={cutover} onDone={() => { setCutover(undefined); setUpdated(true); }} /> : null}</WizardDialog>
     <WizardDialog isOpen={track} onClose={() => setTrack(false)} title="Track previous imports" what="migration tracking"><TrackWizard onDone={() => setTrack(false)} /></WizardDialog>
   </Panel>;
 }

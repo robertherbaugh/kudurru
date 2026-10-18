@@ -76,6 +76,7 @@ func newHarness(t testing.TB, mods ...func(*Options)) *harness {
 		t.Fatal(err)
 	}
 	h.srv = srv
+	t.Cleanup(srv.Close)
 	return h
 }
 
