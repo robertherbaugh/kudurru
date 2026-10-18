@@ -23,6 +23,10 @@ params:
   description: "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver, blocking with client groups, a dashboard, OIDC and RBAC."
   tagline: "authority over every zone."
   repo: https://github.com/robertherbaugh/kudurru
+  # The license portal (keys and Order Forms) and the identity provider it
+  # signs people in with; linked from the footer.
+  licensePortal: https://licenses.kudurru.io
+  authPortal: https://auth.kudurru.io
   # Links from docs/ to repository files that are not pages point at this
   # ref; the Pages workflow sets HUGO_PARAMS_REPOREF to the tag it builds.
   repoRef: main

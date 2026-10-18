@@ -16,6 +16,11 @@ export const LICENSE_CONTACT = "hello@kudurru.io";
 // with WWW_LICENSE_API; the CSP (src/headers.ts) allows exactly this origin,
 // and the server's PUBLIC_FORM_ORIGINS must list https://kudurru.io.
 export const DEFAULT_LICENSE_API = "https://licenses.kudurru.io";
+// The footer's links to the license portal (sign in for keys and Order
+// Forms) and the identity provider it signs people in with. Fixed, unlike
+// DEFAULT_LICENSE_API: a preview build still points people at production.
+export const LICENSE_PORTAL_URL = "https://licenses.kudurru.io";
+export const AUTH_PORTAL_URL = "https://auth.kudurru.io";
 // When the server cannot take a business request, the form opens this subject
 // in the visitor's mail program with every field filled in.
 export const BUSINESS_SUBJECT = "Business License";
@@ -711,6 +716,13 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
       { label: "Changelog", href: docs("/project/changelog/") },
       { label: "Security", href: docs("/project/security/") },
       { label: "Contributing", href: docs("/project/contributing/") },
+    ],
+  },
+  {
+    title: "Portals",
+    links: [
+      { label: "License portal", href: LICENSE_PORTAL_URL },
+      { label: "Auth portal", href: AUTH_PORTAL_URL },
     ],
   },
 ];
