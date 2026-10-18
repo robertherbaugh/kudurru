@@ -20,9 +20,9 @@ import {
   getOrderForm,
   listMyOrderForms,
   listOrderForms,
+  lockTermsForUpdate,
   reviseOrderForm,
   sendOrderForm,
-  storedTerms,
   updateOrderForm,
   voidOrderForm,
 } from '../services/orderForms';
@@ -116,7 +116,7 @@ export const orderFormHandlers: PartialHandlerMap = {
   orderFormUpdate: async (ctx) => {
     const patch = await readJson(ctx, parsePatch);
     const form = await inTransaction(ctx, actorFromCtx(ctx), async (s) => {
-      const merged = { ...(await storedTerms(s.tx, ctx.params.id)), ...patch };
+      const merged = { ...(await lockTermsForUpdate(s, ctx.params.id)), ...patch };
       const { terms } = validate(WholeTerms, { terms: merged });
       await updateOrderForm(s, ctx.params.id, terms);
       return getOrderForm(s.tx, ctx.params.id);
