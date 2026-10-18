@@ -86,6 +86,7 @@ func (s *Server) executeMigration(ctx context.Context, run *internal.MigrationRu
 		s.finishMigrationRun(ctx, run, result)
 	}()
 	failed := false
+	nextPrepared := false
 	for i, obj := range plan.Objects {
 		if run.Spec.Items[i].Result == "skipped" {
 			continue
@@ -96,7 +97,7 @@ func (s *Server) executeMigration(ctx context.Context, run *internal.MigrationRu
 			break
 		}
 		run.Spec.Items[i].Result = "running"
-		if !s.persistMigrationProgress(ctx, run, result) {
+		if !nextPrepared && !s.persistMigrationProgress(ctx, run, result) {
 			failed = true
 			break
 		}
@@ -126,6 +127,16 @@ func (s *Server) executeMigration(ctx context.Context, run *internal.MigrationRu
 			}
 		}
 		result.Items = append(result.Items, r)
+		// Save this outcome and the next in-flight marker together. The first
+		// object needs its own marker; later objects reuse the preceding save.
+		nextPrepared = false
+		for j := i + 1; j < len(plan.Objects); j++ {
+			if run.Spec.Items[j].Result == "pending" {
+				run.Spec.Items[j].Result = "running"
+				nextPrepared = true
+				break
+			}
+		}
 		if !s.persistMigrationProgress(ctx, run, result) {
 			failed = true
 			break

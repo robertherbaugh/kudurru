@@ -85,8 +85,10 @@ Selected items progress from `pending` to `running`, then `created`, `updated`,
 `unchanged` or `error`, with the error key, explanation, hint and saved version.
 Settings have separate rows and are applied in one merge patch after all selected
 objects succeed, or become `not_applied` if an object fails. Progress is saved
-before and after object writes; a journal failure stops further writes and records
-a journal error. Capacity for bounded error details is checked before any writes.
+before the first object write, then each completed result and the next object's
+running marker share one journal update. Settings have a separate running marker.
+A journal failure stops further writes and records a journal error. Capacity for
+bounded error details is checked before any writes.
 The dashboard opens `/tools/migrations/{id}`, polls progress and shows counts and
 per-item results, including retained successes when other items fail. The report
 remains reachable through Tools' migration history after navigation or reload.

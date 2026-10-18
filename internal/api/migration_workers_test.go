@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -21,13 +22,14 @@ import (
 
 type blockingMigrationStore struct {
 	store.Store
-	entered chan struct{}
-	release chan struct{}
-	once    sync.Once
+	entered   chan struct{}
+	release   chan struct{}
+	once      sync.Once
+	blockName string
 }
 
 func (s *blockingMigrationStore) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
-	if store.KeyOf(obj).Kind == "DNSZone" {
+	if key := store.KeyOf(obj); key.Kind == "DNSZone" && (s.blockName == "" || s.blockName == key.Name) {
 		s.once.Do(func() { close(s.entered) })
 		select {
 		case <-s.release:
@@ -61,6 +63,7 @@ func awaitTestMigration(t *testing.T, h *harness, id string) MigrationRun {
 	t.Fatal("migration did not finish")
 	return MigrationRun{}
 }
+
 func TestMigrationBackgroundSurvivesDisconnectAndReportsProgress(t *testing.T) {
 	h := newHarness(t)
 	blocked := &blockingMigrationStore{Store: h.st, entered: make(chan struct{}), release: make(chan struct{})}
@@ -90,6 +93,7 @@ func TestMigrationBackgroundSurvivesDisconnectAndReportsProgress(t *testing.T) {
 		t.Fatal("start response mutated")
 	}
 }
+
 func TestMigrationBackgroundPartialSuccessAndSelection(t *testing.T) {
 	h := newHarness(t)
 	p := migrationPlan("good", "bad", "skip")
@@ -117,6 +121,7 @@ func TestMigrationBackgroundPartialSuccessAndSelection(t *testing.T) {
 		t.Fatal("successful object was not retained")
 	}
 }
+
 func TestMigrationBackgroundSelectedSettingsOnly(t *testing.T) {
 	h := newHarness(t)
 	p := migrationPlan("skip")
@@ -127,6 +132,7 @@ func TestMigrationBackgroundSelectedSettingsOnly(t *testing.T) {
 		t.Fatalf("selected settings: %+v", run)
 	}
 }
+
 func TestMigrationBackgroundRejectsInvalidSelectionBeforeWrites(t *testing.T) {
 	for _, selection := range []*importers.Selection{
 		{Objects: []string{}, Settings: []string{}},
@@ -149,6 +155,7 @@ func TestMigrationBackgroundRejectsInvalidSelectionBeforeWrites(t *testing.T) {
 	h.do(http.MethodPost, "/api/v1/imports/start", "viewer", migrationPlan("one")).want(http.StatusForbidden)
 	h.do(http.MethodPost, "/api/v1/imports/start", "admin", migrationPlan()).want(http.StatusBadRequest)
 }
+
 func TestMigrationBackgroundConcurrencyAndShutdown(t *testing.T) {
 	h := newHarness(t)
 	blocked := &blockingMigrationStore{Store: h.st, entered: make(chan struct{}), release: make(chan struct{})}
@@ -166,6 +173,7 @@ func TestMigrationBackgroundConcurrencyAndShutdown(t *testing.T) {
 	}
 	h.do(http.MethodPost, "/api/v1/imports/start", "admin", migrationPlan("five")).want(http.StatusServiceUnavailable)
 }
+
 func TestMigrationBackgroundInterruptedView(t *testing.T) {
 	h := newHarness(t)
 	run := &internal.MigrationRun{ObjectMeta: metav1.ObjectMeta{Name: "interrupted"}, Spec: internal.MigrationRunSpec{Status: "running", Deadline: &metav1.Time{Time: time.Now().Add(-time.Minute)}, Items: []internal.MigrationItem{{Kind: "DNSZone", Name: "one", Result: "running"}, {Kind: "DNSZone", Name: "two", Result: ResultCreated}}}}
@@ -181,6 +189,7 @@ func TestMigrationBackgroundInterruptedView(t *testing.T) {
 		t.Fatal("view mutated stored state")
 	}
 }
+
 func TestMigrationErrorFitsJournal(t *testing.T) {
 	for _, value := range []string{strings.Repeat("界", 1000), strings.Repeat("\x00", 1000), strings.Repeat("<", 1000), "short"} {
 		truncated := truncateMigrationError(value)
@@ -209,6 +218,7 @@ func TestMigrationBackgroundKeepsObjectAuthorization(t *testing.T) {
 		t.Fatalf("object authorization bypassed: %+v", done)
 	}
 }
+
 func TestMigrationBackgroundCapacityCheckedBeforeWrites(t *testing.T) {
 	h := newHarness(t)
 	names := []string{}
@@ -230,11 +240,59 @@ func (s panickingMigrationStore) Apply(ctx context.Context, obj store.Object, op
 	}
 	return s.Store.Apply(ctx, obj, opts)
 }
+
 func TestMigrationBackgroundUnexpectedStopIsUnconfirmed(t *testing.T) {
 	h := newHarness(t)
 	h.srv.opts.Store = panickingMigrationStore{Store: h.st}
 	run := awaitTestMigration(t, h, startTestMigration(t, h, migrationPlan("one", "two")).ID)
 	if run.Data.Status != "partial" || run.Data.Failure == "" || run.Data.Items[0].Result != "unconfirmed" || run.Data.Items[1].Result != "not_applied" {
 		t.Fatalf("unexpected stop: %+v", run)
+	}
+}
+
+type migrationJournalCounter struct {
+	store.Store
+	writes atomic.Int64
+}
+
+func (s *migrationJournalCounter) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
+	if store.KindOf(obj) == internal.KindMigrationRun {
+		s.writes.Add(1)
+	}
+	return s.Store.Apply(ctx, obj, opts)
+}
+
+func TestMigrationCombinesOutcomeWithNextRunningMarker(t *testing.T) {
+	h := newHarness(t)
+	counter := &migrationJournalCounter{Store: h.st}
+	blocked := &blockingMigrationStore{Store: counter, blockName: "two", entered: make(chan struct{}), release: make(chan struct{})}
+	h.srv.opts.Store = blocked
+	plan := migrationPlan("one", "skip", "two", "three")
+	plan.Selection = &importers.Selection{Objects: []string{"DNSZone/one", "DNSZone/two", "DNSZone/three"}, Settings: []string{}}
+	run := startTestMigration(t, h, plan)
+	select {
+	case <-blocked.entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("second write did not start")
+	}
+	var progress MigrationRun
+	h.do(http.MethodGet, "/api/v1/imports/runs/"+run.ID, "admin", nil).want(http.StatusOK).json(&progress)
+	want := []string{ResultCreated, "skipped", "running", "pending"}
+	for i, result := range want {
+		if progress.Data.Items[i].Result != result {
+			t.Fatalf("item %d: %+v", i, progress.Data.Items[i])
+		}
+	}
+	if got := counter.writes.Load(); got != 3 {
+		t.Fatalf("journal writes before second object: %d, want 3", got)
+	}
+	close(blocked.release)
+	done := awaitTestMigration(t, h, run.ID)
+	if done.Data.Status != "completed" {
+		t.Fatalf("report: %+v", done)
+	}
+	// Initial plan, first running marker, one save per selected outcome, finish.
+	if got := counter.writes.Load(); got != 6 {
+		t.Fatalf("journal writes: %d, want 6", got)
 	}
 }
