@@ -63,6 +63,8 @@ type MigrationCutoverPlan struct {
 	Addresses   []string                   `json:"addresses,omitempty" maxItems:"16"`
 	Zones       []MigrationAuthorityChange `json:"zones" nullable:"false"`
 	Warnings    []string                   `json:"warnings" nullable:"false"`
+	// Request-local snapshot, reloaded at apply. Never accept it from the client.
+	recordSets map[string][]*v1alpha1.DNSRecordSet
 }
 type migrationCutoverPreviewInput struct {
 	ID   string `path:"id"`
@@ -303,6 +305,16 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 		"This updates apex NS and SOA primary names in the imported zones, plus generated A/AAAA records when serving IPs are selected. Update registrar/parent delegations, glue, and delegations in other zones separately. The source server is not shut down.",
 		"Writes are not transactional. Successful changes remain if another zone fails; review errors and preview again to retry.",
 	}}
+	if len(ips) > 0 {
+		sets, err := s.allRecordSets(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		p.recordSets = make(map[string][]*v1alpha1.DNSRecordSet)
+		for _, set := range sets {
+			p.recordSets[set.Spec.ZoneRef.Name] = append(p.recordSets[set.Spec.ZoneRef.Name], set)
+		}
+	}
 	for _, tracked := range r.Spec.Zones {
 		c := MigrationAuthorityChange{Name: tracked.Name, Namespace: tracked.Namespace, ZoneName: tracked.ZoneName, Nameservers: []string{}}
 		z, err := s.migrationZone(ctx, r, tracked)
@@ -315,7 +327,7 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 			c.TargetNameservers, _, err = importers.Authority(z.Spec.ZoneName, ns, ips)
 		}
 		if err == nil && len(ips) > 0 {
-			c.AddressRecordSet, err = s.migrationAddressRecordSet(ctx, r, z, ips)
+			c.AddressRecordSet, err = s.migrationAddressRecordSet(ctx, r, z, ips, p.recordSets[z.Name])
 		}
 		if err != nil {
 			c.Error = err.Error()
@@ -393,7 +405,7 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 			}
 			if e == nil && c.AddressRecordSet != nil {
 				var addressItem ApplyResult
-				addressItem, e = s.writeMigrationAddresses(workCtx, r, z, fresh.Addresses, c.AddressRecordSet)
+				addressItem, e = s.writeMigrationAddresses(workCtx, r, z, fresh.Addresses, c.AddressRecordSet, fresh.recordSets[z.Name])
 				result.Items = append(result.Items, addressItem)
 				last := &r.Spec.Cutovers[len(r.Spec.Cutovers)-1]
 				last.Items = append(last.Items, migrationItem(addressItem))

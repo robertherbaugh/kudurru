@@ -396,13 +396,58 @@ func TestMigrationVIPCutoverRefusesConflictsAndStaleRecords(t *testing.T) {
 		return p
 	}
 	p := preview()
-	h.seed(store.ManagerAPI, recordSetObj("default", "conflict", "one", ep("ns-c0000235.one.test.", "CNAME", "old.test.")))
+	h.seed(store.ManagerAPI, recordSetObj("other", "conflict", "one", ep("ns-c0000235.one.test.", "CNAME", "old.test.")))
 	h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission", "admin", p).want(http.StatusConflict)
 	if p := preview(); p.Zones[0].Error == "" {
 		t.Fatal("ignored existing alias")
 	}
 	if getMigrationZone(t, h, "one").Spec.SOA.MName != "old.dns.test." {
 		t.Fatal("changed authority despite conflict")
+	}
+}
+
+type countingMigrationRecords struct {
+	store.Store
+	scans, pages int
+}
+
+func (s *countingMigrationRecords) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+	if kind == "DNSRecordSet" {
+		if opts.Continue == "" {
+			s.scans++
+		}
+		s.pages++
+		// Exercise pagination as well as grouping records across namespaces.
+		opts.Limit = 2
+	}
+	return s.Store.List(ctx, kind, opts)
+}
+
+func TestMigrationVIPCutoverScansRecordsOncePerRequest(t *testing.T) {
+	h := newHarness(t)
+	run := importRun(t, h, migrationPlan("one", "two", "three"))
+	for _, name := range []string{"one", "two", "three"} {
+		h.seed(store.ManagerAPI, recordSetObj("other", name, name, ep("www."+name+".test.", "A", "192.0.2.10")))
+	}
+	counter := &countingMigrationRecords{Store: h.st}
+	h.srv.opts.Store = counter
+	var p MigrationCutoverPlan
+	h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission/preview", "admin", map[string]any{"nameservers": []string{}, "addresses": []string{"192.0.2.53"}}).want(http.StatusOK).json(&p)
+	if counter.scans != 1 || counter.pages != 2 {
+		t.Fatalf("preview scans=%d pages=%d; want 1 paginated scan", counter.scans, counter.pages)
+	}
+	counter.scans, counter.pages = 0, 0
+	result := applyCutover(t, h, run.ID, p)
+	if len(result.Items) != 6 || result.JournalError != "" {
+		t.Fatalf("cutover: %+v", result)
+	}
+	for _, item := range result.Items {
+		if item.Result == ResultError {
+			t.Fatal(item.Error)
+		}
+	}
+	if counter.scans != 1 || counter.pages != 2 {
+		t.Fatalf("apply scans=%d pages=%d; want 1 paginated scan", counter.scans, counter.pages)
 	}
 }
 

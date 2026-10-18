@@ -18,7 +18,7 @@ import (
 
 // Generated records are additive and scoped to the run, zone and address set.
 // Existing records are never adopted or overwritten implicitly.
-func (s *Server) migrationAddressRecordSet(ctx context.Context, run *internal.MigrationRun, z *v1alpha1.DNSZone, ips []string) (*v1alpha1.DNSRecordSet, error) {
+func (s *Server) migrationAddressRecordSet(ctx context.Context, run *internal.MigrationRun, z *v1alpha1.DNSZone, ips []string, sets []*v1alpha1.DNSRecordSet) (*v1alpha1.DNSRecordSet, error) {
 	if z.Spec.RecordSetSelector != nil {
 		return nil, errInvalid("Zone %s has a record-set selector; use explicit nameserver DNS names", z.Name)
 	}
@@ -40,10 +40,6 @@ func (s *Server) migrationAddressRecordSet(ctx context.Context, run *internal.Mi
 		rs.ResourceVersion = existing.ResourceVersion
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return nil, storeError(err)
-	}
-	sets, err := s.zoneRecordSets(ctx, z.Name)
-	if err != nil {
-		return nil, err
 	}
 	for _, set := range sets {
 		for _, endpoint := range set.Spec.Endpoints {
@@ -67,9 +63,9 @@ func (s *Server) migrationAddressRecordSet(ctx context.Context, run *internal.Mi
 	return rs, err
 }
 
-func (s *Server) writeMigrationAddresses(ctx context.Context, run *internal.MigrationRun, z *v1alpha1.DNSZone, ips []string, reviewed *v1alpha1.DNSRecordSet) (ApplyResult, error) {
+func (s *Server) writeMigrationAddresses(ctx context.Context, run *internal.MigrationRun, z *v1alpha1.DNSZone, ips []string, reviewed *v1alpha1.DNSRecordSet, sets []*v1alpha1.DNSRecordSet) (ApplyResult, error) {
 	item := ApplyResult{Kind: "DNSRecordSet", Namespace: reviewed.Namespace, Name: reviewed.Name, Result: ResultError}
-	rs, err := s.migrationAddressRecordSet(ctx, run, z, ips)
+	rs, err := s.migrationAddressRecordSet(ctx, run, z, ips, sets)
 	if err == nil && rs.ResourceVersion != reviewed.ResourceVersion {
 		err = errPrecondition(reviewed.ResourceVersion, rs.ResourceVersion)
 	}
