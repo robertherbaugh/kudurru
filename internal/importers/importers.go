@@ -26,20 +26,39 @@ import (
 
 // MigrationRequest contains transient source credentials. Never persist or log it.
 type MigrationRequest struct {
-	Source             string   `json:"source" enum:"pihole,technitium"`
-	URL                string   `json:"url" minLength:"1" doc:"Source web console URL, including any reverse-proxy prefix."`
-	Credential         string   `json:"credential" minLength:"1" writeOnly:"true" doc:"Technitium API token or Pi-hole v6 application password."`
-	Namespace          string   `json:"namespace,omitempty"`
-	InsecureSkipVerify bool     `json:"insecureSkipVerify,omitempty" doc:"Skip source TLS verification for a lab with a self-signed certificate."`
-	LocalZones         []string `json:"localZones,omitempty" doc:"Pi-hole local DNS suffixes to make authoritative, for example home.arpa."`
+	Source              string   `json:"source" enum:"pihole,technitium"`
+	URL                 string   `json:"url" minLength:"1" doc:"Source web console URL, including any reverse-proxy prefix."`
+	Credential          string   `json:"credential" minLength:"1" writeOnly:"true" doc:"Technitium API token or Pi-hole v6 application password."`
+	Namespace           string   `json:"namespace,omitempty"`
+	InsecureSkipVerify  bool     `json:"insecureSkipVerify,omitempty" doc:"Skip source TLS verification for a lab with a self-signed certificate."`
+	LocalZones          []string `json:"localZones,omitempty" doc:"Pi-hole local DNS suffixes to make authoritative, for example home.arpa."`
+	NameserverAddresses []string `json:"nameserverAddresses,omitempty" maxItems:"16" doc:"Serving IPs or VIPs. Generates in-zone NS names and matching A/AAAA records. Mutually exclusive with nameservers."`
+	Nameservers         []string `json:"nameservers,omitempty" maxItems:"16" doc:"Replace imported authoritative NS names and SOA primary with these kudurru DNS names; first name becomes SOA primary. Empty preserves source authority for a later cutover."`
+}
+
+// SourceInfo identifies the source without credentials or URL query parameters.
+type SourceInfo struct {
+	Type string `json:"type" enum:"pihole,technitium"`
+	URL  string `json:"url"`
+}
+
+// ZoneAuthority preserves the source authority when the preview replaces it.
+type ZoneAuthority struct {
+	Name        string   `json:"name"`
+	Nameservers []string `json:"nameservers"`
+	Primary     string   `json:"primary"`
 }
 
 // Plan has no source credentials. Objects use the regular apply path;
 // Settings is a merge patch through the regular settings path.
 type Plan struct {
-	Objects  []map[string]any `json:"objects" nullable:"false"`
-	Settings map[string]any   `json:"settings"`
-	Warnings []string         `json:"warnings" nullable:"false"`
+	Source      *SourceInfo      `json:"source,omitempty"`
+	Zones       []ZoneAuthority  `json:"zones,omitempty"`
+	Objects     []map[string]any `json:"objects" nullable:"false"`
+	Settings    map[string]any   `json:"settings"`
+	Warnings    []string         `json:"warnings" nullable:"false"`
+	nameservers []string
+	addresses   []string
 }
 
 type sourceClient struct {
@@ -56,6 +75,17 @@ const maxResponseBytes = 32 << 20
 // The REST settings.write gate grants this network access even when a role
 // has no other administrator permissions; it is not a network sandbox.
 func Preview(ctx context.Context, req MigrationRequest) (*Plan, error) {
+	nameservers, err := Nameservers(req.Nameservers)
+	if err != nil {
+		return nil, err
+	}
+	addresses, err := NameserverAddresses(req.NameserverAddresses)
+	if err != nil {
+		return nil, err
+	}
+	if len(nameservers) > 0 && len(addresses) > 0 {
+		return nil, errors.New("choose nameservers or nameserverAddresses, not both")
+	}
 	if req.Source != "pihole" && req.Source != "technitium" {
 		return nil, errors.New("source must be pihole or technitium")
 	}
@@ -89,6 +119,9 @@ func Preview(ctx context.Context, req MigrationRequest) (*Plan, error) {
 		"Imports are not transactional: successful object writes remain if another object fails. Settings change only after all objects succeed.",
 		"DHCP, query history, users, credentials, certificates, DNSSEC and source-specific extensions are not migrated. Keep the source backup and validate DNS before switching clients.",
 	}}
+	p.Source = &SourceInfo{Type: req.Source, URL: u.String()}
+	p.nameservers = nameservers
+	p.addresses = addresses
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	if req.Source == "pihole" {
@@ -237,8 +270,35 @@ func zoneName(source, domain string) string {
 	return fmt.Sprintf("%s-%s-%x", source, slug, h[:4])
 }
 
-func (p *Plan) zone(source, ns, name string, im *zone.Imported) {
+func (p *Plan) zone(source, ns, name string, im *zone.Imported) error {
+	nameservers, records, err := Authority(im.Spec.ZoneName, p.nameservers, p.addresses)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		for _, existing := range im.Endpoints {
+			if strings.EqualFold(strings.TrimSuffix(existing.DNSName, "."), strings.TrimSuffix(record.DNSName, ".")) {
+				return fmt.Errorf("generated nameserver %s conflicts with an imported record; use explicit DNS names instead", record.DNSName)
+			}
+		}
+	}
+	im.Endpoints = append(im.Endpoints, records...)
 	id := zoneName(source, name)
+	primary := ""
+	if im.Spec.SOA != nil {
+		primary = im.Spec.SOA.MName
+	}
+	p.Zones = append(p.Zones, ZoneAuthority{Name: id, Nameservers: append([]string{}, im.Spec.Nameservers...), Primary: primary})
+	if len(nameservers) > 0 {
+		im.Spec.Nameservers = append([]string(nil), nameservers...)
+		if im.Spec.SOA == nil {
+			im.Spec.SOA = &v1alpha1.SOASpec{}
+		} else {
+			soa := *im.Spec.SOA
+			im.Spec.SOA = &soa
+		}
+		im.Spec.SOA.MName = nameservers[0]
+	}
 	dz, sets := im.Objects(id, ns, id)
 	p.add(dz)
 	for _, set := range sets {
@@ -247,4 +307,5 @@ func (p *Plan) zone(source, ns, name string, im *zone.Imported) {
 	for _, w := range im.Warnings {
 		p.Warnings = append(p.Warnings, name+": "+w)
 	}
+	return nil
 }

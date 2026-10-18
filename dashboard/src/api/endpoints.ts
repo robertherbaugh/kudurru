@@ -63,7 +63,7 @@ import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntriesPage,
 import type { CatalogueCategory, CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList, UnblockState } from './types';
 import type { ZoneDeleteResult } from './types';
-import type { MigrationPlan, MigrationRequest, MigrationResult } from './types';
+import type { MigrationPlan, MigrationRequest, MigrationResult, MigrationRun, MigrationCutoverPlan, MigrationAuthorityChange } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -95,6 +95,12 @@ export function endpoints(c: ApiClient) {
     imports: {
       preview: (request: MigrationRequest) => c.post<MigrationPlan>('/imports/preview', request),
       apply: (plan: MigrationPlan) => c.post<MigrationResult>('/imports/apply', plan),
+      runs: (cursor?: string) => c.get<ListEnvelope<MigrationRun>>('/imports/runs', { limit: 25, continue: cursor }),
+      run: (id: string) => c.get<MigrationRun>(`/imports/runs/${enc(id)}`),
+      cutoverPreview: (id: string, nameservers: string[], addresses: string[] = []) => c.post<MigrationCutoverPlan>(`/imports/runs/${enc(id)}/decommission/preview`, { nameservers, ...(addresses.length ? { addresses } : {}) }),
+      cutover: (id: string, plan: MigrationCutoverPlan) => c.post<MigrationResult>(`/imports/runs/${enc(id)}/decommission`, plan),
+      existing: () => c.get<ListEnvelope<MigrationAuthorityChange>>('/imports/existing'),
+      adopt: (zones: MigrationAuthorityChange[]) => c.post<MigrationResult>('/imports/adopt', { zones }),
     },
     /** Download URL of a whole object collection (JSON list envelope). */
     objectsURL: (kind: ObjectKind) => c.url(`/objects/${kind}`),

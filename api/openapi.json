@@ -2407,6 +2407,84 @@
         ],
         "type": "object"
       },
+      "DNSRecordSet": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMeta"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/DNSRecordSetSpec"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DNSRecordSetStatus"
+          }
+        },
+        "required": [
+          "spec"
+        ],
+        "type": "object"
+      },
+      "DNSRecordSetSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/Endpoint"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "zoneRef": {
+            "$ref": "#/components/schemas/ObjectRef"
+          }
+        },
+        "required": [
+          "zoneRef",
+          "endpoints"
+        ],
+        "type": "object"
+      },
+      "DNSRecordSetStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "names": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "observedGeneration": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "publications": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationState"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "DhcpReservationInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -3852,6 +3930,56 @@
         ],
         "type": "object"
       },
+      "ListMigrationAuthorityChange": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationAuthorityChange"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "ListMigrationRun": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationRun"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "ListNodeInfo": {
         "additionalProperties": false,
         "properties": {
@@ -4013,6 +4141,35 @@
         ],
         "type": "object"
       },
+      "ManagedFieldsEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "fieldsType": {
+            "type": "string"
+          },
+          "fieldsV1": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "manager": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "subresource": {
+            "type": "string"
+          },
+          "time": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Me": {
         "additionalProperties": false,
         "properties": {
@@ -4089,6 +4246,217 @@
         ],
         "type": "object"
       },
+      "MigrationAdoptInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationAuthorityChange"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "zones"
+        ],
+        "type": "object"
+      },
+      "MigrationAuthorityChange": {
+        "additionalProperties": false,
+        "properties": {
+          "addressRecordSet": {
+            "$ref": "#/components/schemas/DNSRecordSet"
+          },
+          "error": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nameservers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "string"
+          },
+          "resourceVersion": {
+            "type": "string"
+          },
+          "targetNameservers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "zoneName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "zoneName",
+          "resourceVersion",
+          "nameservers",
+          "primary"
+        ],
+        "type": "object"
+      },
+      "MigrationCutover": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "type": "string"
+          },
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationItem"
+            },
+            "type": "array"
+          },
+          "nameservers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "startedAt",
+          "actor",
+          "status",
+          "nameservers",
+          "items"
+        ],
+        "type": "object"
+      },
+      "MigrationCutoverPlan": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "nameservers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": "array"
+          },
+          "revision": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationAuthorityChange"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "revision",
+          "nameservers",
+          "zones",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "MigrationCutoverPreviewInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "nameservers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": "array"
+          }
+        },
+        "required": [
+          "nameservers"
+        ],
+        "type": "object"
+      },
+      "MigrationItem": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "result"
+        ],
+        "type": "object"
+      },
       "MigrationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4107,6 +4475,28 @@
             "items": {
               "type": "string"
             },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "nameserverAddresses": {
+            "description": "Serving IPs or VIPs. Generates in-zone NS names and matching A/AAAA records. Mutually exclusive with nameservers.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "nameservers": {
+            "description": "Replace imported authoritative NS names and SOA primary with these kudurru DNS names; first name becomes SOA primary. Empty preserves source authority for a later cutover.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
             "type": [
               "array",
               "null"
@@ -4144,6 +4534,12 @@
             },
             "type": "array"
           },
+          "journalError": {
+            "type": "string"
+          },
+          "runID": {
+            "type": "string"
+          },
           "settings": {
             "$ref": "#/components/schemas/SettingsBody"
           },
@@ -4152,7 +4548,135 @@
           }
         },
         "required": [
+          "runID",
           "items"
+        ],
+        "type": "object"
+      },
+      "MigrationRun": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MigrationRunSpec"
+          },
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "data"
+        ],
+        "type": "object"
+      },
+      "MigrationRunSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "type": "string"
+          },
+          "cutovers": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationCutover"
+            },
+            "type": "array"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationItem"
+            },
+            "type": "array"
+          },
+          "settingsError": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "sourceURL": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationZone"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "source",
+          "actor",
+          "startedAt",
+          "status",
+          "items",
+          "zones",
+          "warnings",
+          "cutovers"
+        ],
+        "type": "object"
+      },
+      "MigrationZone": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nameservers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "originalNameservers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "originalPrimary": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          },
+          "zoneName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "zoneName",
+          "originalNameservers",
+          "originalPrimary",
+          "nameservers",
+          "primary"
         ],
         "type": "object"
       },
@@ -4328,6 +4852,85 @@
         ],
         "type": "object"
       },
+      "ObjectMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "annotations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "creationTimestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deletionGracePeriodSeconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deletionTimestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "finalizers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "generateName": {
+            "type": "string"
+          },
+          "generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "managedFields": {
+            "items": {
+              "$ref": "#/components/schemas/ManagedFieldsEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "ownerReferences": {
+            "items": {
+              "$ref": "#/components/schemas/OwnerReference"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "resourceVersion": {
+            "type": "string"
+          },
+          "selfLink": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ObjectOwner": {
         "additionalProperties": false,
         "properties": {
@@ -4347,6 +4950,51 @@
         "required": [
           "kind",
           "name"
+        ],
+        "type": "object"
+      },
+      "ObjectRef": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "OwnerReference": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "blockOwnerDeletion": {
+            "type": "boolean"
+          },
+          "controller": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind",
+          "name",
+          "uid"
         ],
         "type": "object"
       },
@@ -4386,11 +5034,23 @@
             "additionalProperties": {},
             "type": "object"
           },
+          "source": {
+            "$ref": "#/components/schemas/SourceInfo"
+          },
           "warnings": {
             "items": {
               "type": "string"
             },
             "type": "array"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneAuthority"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -5012,6 +5672,25 @@
         "required": [
           "name",
           "value"
+        ],
+        "type": "object"
+      },
+      "PublicationState": {
+        "additionalProperties": false,
+        "properties": {
+          "integration": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration",
+          "state"
         ],
         "type": "object"
       },
@@ -6443,6 +7122,26 @@
         ],
         "type": "object"
       },
+      "SourceInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "pihole",
+              "technitium"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "url"
+        ],
+        "type": "object"
+      },
       "Stats": {
         "additionalProperties": false,
         "properties": {
@@ -7530,6 +8229,32 @@
           "node",
           "api",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "ZoneAuthority": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nameservers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "primary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "nameservers",
+          "primary"
         ],
         "type": "object"
       },
@@ -15711,6 +16436,122 @@
         }
       }
     },
+    "/imports/adopt": {
+      "post": {
+        "operationId": "adoptExistingImports",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationAdoptInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Track reviewed previous imports without reimporting records",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
     "/imports/apply": {
       "post": {
         "description": "Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.",
@@ -15828,6 +16669,92 @@
         }
       }
     },
+    "/imports/existing": {
+      "get": {
+        "operationId": "listExistingImports",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMigrationAuthorityChange"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Find previous API imports without a migration run",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
     "/imports/preview": {
       "post": {
         "description": "Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.",
@@ -15935,6 +16862,481 @@
           }
         },
         "summary": "Preview an API migration from Pi-hole v6 or Technitium",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/imports/runs": {
+      "get": {
+        "operationId": "listMigrationRuns",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMigrationRun"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List migration runs",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/imports/runs/{id}": {
+      "get": {
+        "operationId": "getMigrationRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationRun"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Read a migration run and its cutovers",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/imports/runs/{id}/decommission": {
+      "post": {
+        "operationId": "decommissionMigration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationCutoverPlan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Replace imported zone authority and record the results",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/imports/runs/{id}/decommission/preview": {
+      "post": {
+        "operationId": "previewMigrationDecommission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationCutoverPreviewInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationCutoverPlan"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Preview replacing an imported zone's NS and SOA primary",
         "tags": [
           "imports"
         ],

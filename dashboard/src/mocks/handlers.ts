@@ -811,6 +811,8 @@ export const handlers = [
   }),
   ...objectRoutes(`${B}/objects/:kind/:a`),
   ...objectRoutes(`${B}/objects/:kind/:a/:b`),
+  http.get(`${B}/imports/runs`, () => HttpResponse.json({ items: [] })),
+  http.get(`${B}/imports/existing`, () => HttpResponse.json({ items: [] })),
   http.post(`${B}/apply`, async ({ request }) => {
     const g = guard(request, 'zones', 'write');
     if (g) return g;
