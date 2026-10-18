@@ -327,7 +327,9 @@ func (p *Plan) piLocal(req MigrationRequest, cfg piDNS) error {
 		if err != nil {
 			return fmt.Errorf("source Pi-hole local zone %s: %w", suffix, err)
 		}
-		p.zone("pihole", req.Namespace, suffix, im)
+		if err := p.zone("pihole", req.Namespace, suffix, im); err != nil {
+			return err
+		}
 		p.Warnings = append(p.Warnings, fmt.Sprintf("%s becomes authoritative: missing names under this suffix will no longer forward upstream.", suffix))
 	}
 	return nil

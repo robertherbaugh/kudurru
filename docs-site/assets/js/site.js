@@ -4,6 +4,14 @@
 (() => {
   'use strict';
 
+  const sidebar = document.querySelector('.sidebar__tree');
+  if (sidebar) {
+    const narrow = window.matchMedia('(max-width: 900px)');
+    const syncSidebar = () => { sidebar.open = !narrow.matches; };
+    syncSidebar();
+    narrow.addEventListener('change', syncSidebar);
+  }
+
   const toggle = document.querySelector('.nav-toggle');
   const nav = document.getElementById('site-nav');
   if (toggle && nav) {

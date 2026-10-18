@@ -71,6 +71,7 @@ describeDb('migrations against Postgres', () => {
       'license_requests',
       'licenses',
       'oidc_logins',
+      'order_forms',
       'public_key_requests',
       'request_approval_links',
       'schema_migrations',

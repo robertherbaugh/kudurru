@@ -38,13 +38,14 @@ const (
 	KindServiceAccount   = "ServiceAccount"
 	KindRoleBinding      = "RoleBinding"
 	KindIdentityProvider = "IdentityProvider"
+	KindMigrationRun     = "MigrationRun"
 )
 
 // Kinds lists every internal kind, sorted. Store drivers receive it as
 // Options.InternalKinds: sqlite skips the CRD validator for them (they call
 // Validate instead) and omits them from safe snapshots; kube maps them to
 // Secrets.
-var Kinds = []string{KindAPIToken, KindIdentityProvider, KindLocalUser, KindRoleBinding, KindServiceAccount}
+var Kinds = []string{KindAPIToken, KindIdentityProvider, KindLocalUser, KindMigrationRun, KindRoleBinding, KindServiceAccount}
 
 // Namespaced reports whether an internal kind is namespaced.
 // ServiceAccount and RoleBinding are; the others are cluster-scoped.
@@ -79,6 +80,7 @@ func addKnownTypes(s *runtime.Scheme) error {
 		&ServiceAccount{}, &ServiceAccountList{},
 		&RoleBinding{}, &RoleBindingList{},
 		&IdentityProvider{}, &IdentityProviderList{},
+		&MigrationRun{}, &MigrationRunList{},
 	)
 	metav1.AddToGroupVersion(s, public.GroupVersion)
 	return nil

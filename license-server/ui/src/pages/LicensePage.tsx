@@ -1,6 +1,6 @@
 // /licenses/:id (licenses.read): one license for the licensor. The header
 // with its state and actions (Renew, Withdraw, Email key), the current key
-// panel, the facts, the Terms section (inline edit; "Sign new key" posts a
+// panel, the facts (with the Order Form it was issued from), the Terms section (inline edit; "Sign new key" posts a
 // change and warns that narrowing only takes effect once every earlier key
 // has stopped working), the key history with a download per key, the
 // non-commercial attestation and the recent audit events. A withdrawn
@@ -146,6 +146,11 @@ export default function LicensePage({ params }: PageProps) {
                 <MetadataListItem label="Keeps working until (UTC)">{utcDay(l.keepsWorkingUntil)}</MetadataListItem>
                 {l.worksWithKudurru ? <MetadataListItem label="Works with">kudurru {l.worksWithKudurru} or later</MetadataListItem> : null}
                 <MetadataListItem label="Source">{SOURCE_LABEL[l.source]}</MetadataListItem>
+                {l.orderForm ? (
+                  <MetadataListItem label="Order Form">
+                    <Link href={`/orders/${encodeURIComponent(l.orderForm.id)}`}>{l.orderForm.number}</Link>
+                  </MetadataListItem>
+                ) : null}
                 {l.agreementRef ? <MetadataListItem label="Agreement reference">{l.agreementRef}</MetadataListItem> : null}
                 <MetadataListItem label="Created">
                   {utcDay(l.createdAt)} by {l.createdBy.label}

@@ -17,7 +17,12 @@
 // business request (Requests, Business), the wizard starts with a new
 // organization customer named after the company, the requester's email as
 // its contact, the edition's plan (catalog BUSINESS_EDITIONS) and the nodes
-// asked for; issuing marks the request issued with the license.
+// asked for; issuing marks the request issued with the license. Opened
+// from an executed Order Form, the form's customer is chosen and fixed,
+// the plan follows the edition, the nodes, features (keyFeaturesFor: none
+// named means the admin chooses), expiry (the subscription end, within the
+// plan's bounds) and agreement reference (the form's number) are filled
+// in, and issuing records the license on the form (orderFormId).
 
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -25,11 +30,13 @@ import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useRef, useState } from 'react';
-import type { BusinessRequest, CustomerKind, IssueLicenseBody } from '@shared/api';
-import { BUSINESS_EDITIONS, PLANS, planLabel, PERSONAL_MAX_NODES, type Feature, type Plan } from '@shared/catalog';
-import { graceEndsOn, todayUtc } from '@shared/dates';
+import type { BusinessRequest, CustomerKind, IssueLicenseBody, OrderForm } from '@shared/api';
+import { BUSINESS_EDITIONS, MAX_NODES, PLANS, planLabel, PERSONAL_MAX_NODES, type Feature, type Plan } from '@shared/catalog';
+import { graceEndsOn, todayUtc, type ExpiresOn } from '@shared/dates';
+import { keyFeaturesFor } from '@shared/orderForms';
 import { firstField, useFieldErrors } from '../api/fieldErrors';
-import { useCatalog, useRouteMutation } from '../api/hooks';
+import { useCan } from '../api/context';
+import { useCatalog, useCustomer, useRouteMutation } from '../api/hooks';
 import { WizardNavHandle, type WizardNav } from './WizardNavHandle';
 import { utcDay } from '../lib/dates';
 import { defaultExpiry, termBounds, termPresets } from '../lib/terms';
@@ -54,18 +61,26 @@ export interface IssueLicenseWizardProps {
   customer?: CustomerChoice | undefined;
   /** Opened from a business request: the request's company, contact, plan and nodes filled in; issuing answers it. */
   request?: BusinessRequest | undefined;
+  /** Opened from an executed Order Form: its customer (fixed) and terms filled in; issuing records the license on the form. */
+  orderForm?: OrderForm | undefined;
 }
 
-export function IssueLicenseWizardDialog({ isOpen, onClose, customer, request }: IssueLicenseWizardProps) {
+export function IssueLicenseWizardDialog({ isOpen, onClose, customer, request, orderForm }: IssueLicenseWizardProps) {
   return (
     <WizardDialog
       isOpen={isOpen}
       onClose={onClose}
       title="Issue license"
-      subtitle={request ? `Signs a key for the business request of ${request.company}.` : 'Signs a key for a customer.'}
+      subtitle={
+        orderForm
+          ? `Signs a key for Order Form ${orderForm.number} (${orderForm.customer.name}).`
+          : request
+            ? `Signs a key for the business request of ${request.company}.`
+            : 'Signs a key for a customer.'
+      }
       what="license"
     >
-      <IssueLicenseWizard onClose={onClose} customer={customer} request={request} />
+      <IssueLicenseWizard onClose={onClose} customer={customer} request={request} orderForm={orderForm} />
     </WizardDialog>
   );
 }
@@ -85,8 +100,34 @@ function stepOfField(field: string): string {
   return 'term';
 }
 
-function IssueLicenseWizard({ onClose, customer: preset, request }: { onClose: () => void; customer?: CustomerChoice | undefined; request?: BusinessRequest | undefined }) {
+/** A day kept within bounds. */
+function clampDay(day: ExpiresOn, b: { min: ExpiresOn; max: ExpiresOn }): ExpiresOn {
+  return day < b.min ? b.min : day > b.max ? b.max : day;
+}
+
+/** Why an Order Form without modules leaves the features to the admin. */
+export const NO_MODULES_NOTE = 'The Order Form includes no Enterprise modules, and a key cannot list no feature: choose what the agreement covers, or all features.';
+
+function IssueLicenseWizard({
+  onClose,
+  customer: givenCustomer,
+  request,
+  orderForm,
+}: {
+  onClose: () => void;
+  customer?: CustomerChoice | undefined;
+  request?: BusinessRequest | undefined;
+  orderForm?: OrderForm | undefined;
+}) {
   const catalog = useCatalog();
+  const can = useCan();
+  // The form's customer, with its contact email once it is known (for "Mail the key").
+  const formCustomer = useCustomer(orderForm?.customer.id ?? '', { enabled: Boolean(orderForm) && can('customers.read') });
+  const fromForm: CustomerChoice | undefined = orderForm
+    ? { id: orderForm.customer.id, name: orderForm.customer.name, kind: orderForm.customer.kind, contactEmail: formCustomer.data?.contactEmail ?? null }
+    : undefined;
+  const preset = fromForm ?? givenCustomer;
+  const of = orderForm?.terms;
   const notify = useNotify();
   const navigate = useNavigate();
   const m = useRouteMutation('licenseIssue');
@@ -95,20 +136,22 @@ function IssueLicenseWizard({ onClose, customer: preset, request }: { onClose: (
   const today = catalog.data?.today ?? todayUtc();
   const mailConfigured = catalog.data?.mail.configured ?? false;
 
-  const initialPlan: Plan = request ? BUSINESS_EDITIONS[request.edition].plan : 'business';
+  const initialPlan: Plan = of ? BUSINESS_EDITIONS[of.edition].plan : request ? BUSINESS_EDITIONS[request.edition].plan : 'business';
   const [mode, setMode] = useState<'existing' | 'new'>(request ? 'new' : 'existing');
-  const [customer, setCustomer] = useState<CustomerChoice | null>(preset ?? null);
+  const [chosen, setCustomer] = useState<CustomerChoice | null>(preset ?? null);
+  // An Order Form's customer is fixed (its contact email arrives later).
+  const customer = fromForm ?? chosen;
   const [newName, setNewName] = useState(request?.company ?? '');
   const [newKind, setNewKind] = useState<CustomerKind>('organization');
   const [newEmail, setNewEmail] = useState(request?.email ?? '');
   const [plan, setPlan] = useState<Plan>(initialPlan);
   const [showMore, setShowMore] = useState(MORE_PLANS.includes(initialPlan));
-  const [licensee, setLicensee] = useState(request?.company ?? preset?.name ?? '');
+  const [licensee, setLicensee] = useState(of?.customerLegalName.trim() || request?.company || preset?.name || '');
   const [licenseeEdited, setLicenseeEdited] = useState(false);
-  const [nodes, setNodes] = useState(() => String(request ? Math.min(request.nodes, maxNodesFor(initialPlan)) : 1));
-  const [features, setFeatures] = useState<Feature[] | null>(null);
-  const [expiresOn, setExpiresOn] = useState(() => defaultExpiry(initialPlan, today));
-  const [agreementRef, setAgreementRef] = useState('');
+  const [nodes, setNodes] = useState(() => String(of ? Math.min(of.nodes, MAX_NODES) : request ? Math.min(request.nodes, maxNodesFor(initialPlan)) : 1));
+  const [features, setFeatures] = useState<Feature[] | null>(() => (of ? keyFeaturesFor(of) : null));
+  const [expiresOn, setExpiresOn] = useState(() => (of ? clampDay(of.subscriptionEnd, termBounds(initialPlan, today)) : defaultExpiry(initialPlan, today)));
+  const [agreementRef, setAgreementRef] = useState(orderForm?.number ?? '');
   const [notes, setNotes] = useState('');
   const [emailCustomer, setEmailCustomer] = useState(false);
   const [showErrors, setShowErrors] = useState<Record<string, boolean>>({});
@@ -171,7 +214,8 @@ function IssueLicenseWizard({ onClose, customer: preset, request }: { onClose: (
       ...(agreementRef.trim() ? { agreementRef: agreementRef.trim() } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
       ...(emailCustomer && contactEmail ? { emailCustomer: true } : {}),
-      ...(request ? { businessRequestId: request.id } : {}),
+      ...(request && !orderForm ? { businessRequestId: request.id } : {}),
+      ...(orderForm ? { orderFormId: orderForm.id } : {}),
     };
     // Never send an empty explicit list (spec §0.3); the steps' checks already refused it.
     if (featuresError(fields.features)) return;
@@ -197,7 +241,17 @@ function IssueLicenseWizard({ onClose, customer: preset, request }: { onClose: (
       id: 'customer',
       label: 'Customer',
       description: 'Who the license is for. Its members see the license and its key in the portal.',
-      content: (
+      content: orderForm ? (
+        <VStack gap={2}>
+          <MetadataList>
+            <MetadataListItem label="Customer">{orderForm.customer.name}</MetadataListItem>
+            <MetadataListItem label="Order Form">
+              {orderForm.number} (version {orderForm.version})
+            </MetadataListItem>
+          </MetadataList>
+          <Text type="supporting">A license issued from an Order Form is for the form's customer.</Text>
+        </VStack>
+      ) : (
         <VStack gap={4}>
           <ChoiceCards
             label="Customer"
@@ -314,6 +368,8 @@ function IssueLicenseWizard({ onClose, customer: preset, request }: { onClose: (
             help={plan === 'personal' ? `A personal key always covers ${PERSONAL_MAX_NODES} nodes.` : 'The most nodes one cluster may run with this key.'}
             error={fe.field('nodes')}
           />
+          {of && of.modules === 'none' ? <Text type="supporting">{NO_MODULES_NOTE}</Text> : null}
+          {of && of.modules === 'named' ? <Text type="supporting">The Order Form names these modules.</Text> : null}
           <FeaturesField
             value={features}
             onChange={(v) => {
@@ -405,6 +461,11 @@ function IssueLicenseWizard({ onClose, customer: preset, request }: { onClose: (
         <VStack gap={3}>
           <WizardNavHandle navRef={navRef} />
           <MetadataList>
+            {orderForm ? (
+              <MetadataListItem label="Order Form">
+                {orderForm.number} (version {orderForm.version}). Issuing records the license on the form.
+              </MetadataListItem>
+            ) : null}
             {request ? (
               <MetadataListItem label="Business request">
                 {request.company} ({request.email}): {BUSINESS_EDITIONS[request.edition].label}, {formatExact(request.nodes)} {request.nodes === 1 ? 'node' : 'nodes'}. Issuing marks it issued.

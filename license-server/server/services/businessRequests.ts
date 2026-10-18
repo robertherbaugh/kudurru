@@ -21,7 +21,7 @@
 // closes it with a note (no mail: the admin replies by email themselves).
 
 import { isIP } from 'node:net';
-import type { BusinessRequest, BusinessRequestStatus, Items } from '../../shared/api';
+import type { BusinessRequest, BusinessRequestStatus, Items, OrderFormStatus } from '../../shared/api';
 import type { BusinessEdition } from '../../shared/catalog';
 import { newId } from '../db/ids';
 import { maybeOne, toInt, type Queryable } from '../db/sql';
@@ -69,7 +69,17 @@ interface BusinessRequestRow {
   decision_note: string;
   resulting_license_id: string | null;
   created_at: Date;
+  /** The newest Order Form drafted from it (WITH_ORDER_FORM). */
+  order_form_id?: string | null;
+  order_form_number?: string | null;
+  order_form_status?: OrderFormStatus | null;
 }
+
+/** The request with the newest Order Form drafted from it (services/orderForms.ts). */
+const withOrderForm = (q: Queryable) => q`
+  select b.*, o.id as order_form_id, o.number as order_form_number, o.status as order_form_status
+    from business_requests b
+    left join lateral (select id, number, status from order_forms where business_request_id = b.id order by created_at desc, id desc limit 1) o on true`;
 
 function dto(r: BusinessRequestRow): BusinessRequest {
   return {
@@ -86,6 +96,7 @@ function dto(r: BusinessRequestRow): BusinessRequest {
     decisionNote: r.decision_note,
     resultingLicenseId: r.resulting_license_id,
     createdAt: r.created_at.toISOString(),
+    orderForm: r.order_form_id && r.order_form_number && r.order_form_status ? { id: r.order_form_id, number: r.order_form_number, status: r.order_form_status } : null,
   };
 }
 
@@ -172,14 +183,14 @@ async function notify(ctx: ServiceCtx, request: BusinessRequestFacts): Promise<v
 
 /** GET /business-requests: open requests first, then the newest (at most 500). */
 export async function listBusinessRequests(q: Queryable, status: BusinessRequestStatus | undefined): Promise<Items<BusinessRequest>> {
-  const where = status ? q`where status = ${status}` : q``;
-  const rows = await q<BusinessRequestRow[]>`select * from business_requests ${where} order by (status = 'open') desc, created_at desc, id limit 500`;
+  const where = status ? q`where b.status = ${status}` : q``;
+  const rows = await q<BusinessRequestRow[]>`${withOrderForm(q)} ${where} order by (b.status = 'open') desc, b.created_at desc, b.id limit 500`;
   return { items: rows.map(dto) };
 }
 
 /** One business request, or 404. */
 export async function getBusinessRequest(q: Queryable, id: string): Promise<BusinessRequest> {
-  const row = maybeOne(await q<BusinessRequestRow[]>`select * from business_requests where id = ${id}`);
+  const row = maybeOne(await q<BusinessRequestRow[]>`${withOrderForm(q)} where b.id = ${id}`);
   if (!row) notFound('There is no such business request.');
   return dto(row);
 }

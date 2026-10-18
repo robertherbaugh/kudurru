@@ -6,22 +6,7 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
-### Changed
-
-- The repository layout names each part by what it is: the dashboard moved
-  from `web/` to `dashboard/`, the kudurru.io website from `www/` to
-  `website/` and the docs site from `site/` to `docs-site/`. The Helm charts
-  (`charts/`) and the kustomize tree (`config/`) moved under
-  `deploy/helm/` and `deploy/kustomize/`. A remote kustomize overlay is now
-  `github.com/robertherbaugh/kudurru/deploy/kustomize/overlays/<name>`;
-  overlays pinned to v0.1.0 keep the `config/` path. `docs/` keeps the
-  published documentation; the design record (formerly
-  `docs/architecture.md`, now `dev-docs/design-record.md`), milestone
-  reports, research, spikes and follow-ups moved to `dev-docs/`. The
-  `make web-*` and `make www-*` targets are now `make dashboard-*` and
-  `make website-*`.
-
-## [0.1.0] - 2026-10-16
+## [0.1.0] - 2026-10-18
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or
 validating recursive resolver, blocking, optional DHCPv4 and a dashboard in
@@ -141,6 +126,27 @@ configuration store.
   tour and generated settings, CRD, CLI and API references at
   [docs.kudurru.io](https://docs.kudurru.io), plus the project website at
   [kudurru.io](https://kudurru.io).
+- Short, illustrated task guides for every dashboard page, with a page index,
+  step navigation and full-size screenshots. Separate Linux and Kubernetes
+  DHCP walkthroughs cover host preparation, router relays, required trusted
+  addresses, safe cutover and lease verification.
+- The website and docs-site footers link to the license portal
+  (licenses.kudurru.io) and the auth portal (auth.kudurru.io).
+
+### Changed
+
+- The repository layout names each part by what it is: the dashboard moved
+  from `web/` to `dashboard/`, the kudurru.io website from `www/` to
+  `website/` and the docs site from `site/` to `docs-site/`. The Helm charts
+  (`charts/`) and the kustomize tree (`config/`) moved under
+  `deploy/helm/` and `deploy/kustomize/`. A remote kustomize overlay is now
+  `github.com/robertherbaugh/kudurru/deploy/kustomize/overlays/<name>`;
+  overlays pinned to commits before this move keep the `config/` path.
+  `docs/` keeps the published documentation; the design record (formerly
+  `docs/architecture.md`, now `dev-docs/design-record.md`), milestone
+  reports, research, spikes and follow-ups moved to `dev-docs/`. The
+  `make web-*` and `make www-*` targets are now `make dashboard-*` and
+  `make website-*`.
 
 ### Fixed
 
@@ -198,6 +204,11 @@ and [final feature review](dev-docs/milestones/m5/features-v0.1.md).
   separate [license portal](license-server/README.md) issues keys after
   approval; no kudurru node contacts it. See [LICENSING.md](LICENSING.md)
   for terms and feature limits, or [request a key](https://kudurru.io/license).
+- The license portal holds Order Forms: license admins draft one for a
+  customer or from a business request, with the fees of the price list,
+  and send it; an authorized contact of the customer accepts it (or
+  declines it) signed in, a license admin countersigns it, and the license
+  is issued from the executed form. Both parties keep the signed copy.
 
 ### Installation and upgrade notes
 

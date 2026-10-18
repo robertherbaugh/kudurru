@@ -14,8 +14,9 @@
 //   paging) or { items } (short, unpaged);
 // - absent optional fields are omitted; fields that can be empty are null.
 //
-// Customer-facing DTOs (MyLicense, MyLicenseDetail, MyRequest) never carry
-// notes, agreement references, withdraw reasons or who did what (§9).
+// Customer-facing DTOs (MyLicense, MyLicenseDetail, MyRequest, MyOrderForm)
+// never carry notes, agreement references, withdraw or void reasons or who
+// did what (§9); an Order Form's signatures are part of the document.
 
 import type { BusinessEdition, Feature, FeatureInfo, LicenseState, Plan, PlanInfo, Policy } from './catalog';
 import type { ExpiresOn } from './dates';
@@ -46,6 +47,7 @@ export const ID_PREFIX = {
   request: 'req_',
   publicRequest: 'pkr_',
   businessRequest: 'brq_',
+  orderForm: 'ord_',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
@@ -193,6 +195,20 @@ export type RequestStatus = 'open' | 'approved' | 'rejected' | 'canceled';
 
 /** open: waits for a license admin; issued: a license answers it; closed: closed with a note. */
 export type BusinessRequestStatus = 'open' | 'issued' | 'closed';
+
+/**
+ * Where an Order Form stands (README, "Order Forms"): draft (a license admin
+ * edits it), sent (the customer's authorized contacts review it; its text is
+ * frozen and hashed), accepted (an authorized contact accepted it signed in;
+ * waits for the licensor's countersignature), executed (both parties
+ * accepted: a license can be issued from it), declined (the customer said
+ * no, with a note; a license admin may revise it) and void (withdrawn by the
+ * licensor before it was executed). An executed form is final.
+ */
+export type OrderFormStatus = 'draft' | 'sent' | 'accepted' | 'executed' | 'declined' | 'void';
+
+/** Which `ee/` modules an Order Form includes (Schedule A "Included Enterprise modules"). */
+export type OrderFormModules = 'all' | 'named' | 'none';
 
 /** Why a personal request waits for a person instead of getting a key at once. */
 export type ReviewReason = 'auto_approve_off' | 'daily_cap' | 'withdrawn_history' | 'blocked';
@@ -529,6 +545,8 @@ export interface LicenseDetail extends LicenseSummary {
   createdBy: ActorRef;
   /** "Works with kudurru <version> or later" for the current key's kid, when known. */
   worksWithKudurru: string | null;
+  /** The executed Order Form the license was issued from. */
+  orderForm: { id: string; number: string } | null;
   withdrawn: {
     at: Instant;
     by: ActorRef;
@@ -575,6 +593,13 @@ interface IssueLicenseFields {
   emailCustomer?: boolean;
   /** An open business request the license answers: it becomes issued, with this license. */
   businessRequestId?: string;
+  /**
+   * An executed Order Form the license is issued from (the customer must be
+   * the form's, chosen by customerId): the form records the license, and the
+   * business request it was drafted from, while still open, becomes issued.
+   * One license per Order Form.
+   */
+  orderFormId?: string;
 }
 
 /** POST /api/v1/licenses: for an existing customer or a new one, never both. */
@@ -779,6 +804,8 @@ export interface BusinessRequest {
   decisionNote: string;
   resultingLicenseId: string | null;
   createdAt: Instant;
+  /** The newest Order Form drafted from the request. */
+  orderForm: { id: string; number: string; status: OrderFormStatus } | null;
 }
 
 /** GET /api/v1/business-requests query. */
@@ -794,6 +821,191 @@ export interface CloseBusinessRequestBody {
 
 export interface CloseBusinessRequestResult {
   request: BusinessRequest;
+}
+
+// --- Order Forms ---------------------------------------------------------------
+
+/**
+ * The agreed terms of an Order Form: Schedule A of
+ * COMMERCIAL_LICENSE_AGREEMENT.md, field for field (shared/orderForms.ts
+ * renders the document from them). Every field is always present; a draft
+ * may leave text fields empty, and sending refuses the gaps
+ * (orderFormGaps). Fees are whole US cents.
+ */
+export interface OrderFormTerms {
+  /** The Effective Date; null: the subscription start. */
+  effectiveDate: ExpiresOn | null;
+  /** The licensor's address and billing contact (Robert Herbaugh is fixed). */
+  licensorContact: string;
+  /** The customer's legal name, as it binds. */
+  customerLegalName: string;
+  customerAddress: string;
+  /** Who receives invoices: a name and an address. */
+  billingContact: string;
+  /** The people who may accept the form for the customer; each becomes a member of the customer when it is sent. 1 to ORDER_FORM_MAX_CONTACTS. */
+  authorizedContacts: string[];
+  edition: BusinessEdition;
+  modules: OrderFormModules;
+  /** The named modules (modules 'named', 1 or more); empty otherwise. */
+  namedModules: Feature[];
+  /** Licensed Production Nodes: concurrent running nodes, 1 to MAX_NODES. */
+  nodes: number;
+  /** The environments the nodes run in. */
+  environments: string;
+  /** Permitted clusters and entities. */
+  permittedScope: string;
+  /** Running nonproduction and standby nodes on top of `nodes` (0: none, the agreement's default). */
+  nonproductionNodes: number;
+  /** Which nonproduction nodes, and whether running disaster recovery counts. */
+  nonproductionTerms: string;
+  serviceProvider: 'not_authorized' | 'authorized';
+  /** The clients, or the pooled scope, when authorized. */
+  serviceProviderScope: string;
+  government: 'no' | 'yes';
+  /** The agencies and the procurement addendum, for government use. */
+  governmentScope: string;
+  subscriptionStart: ExpiresOn;
+  /** After subscriptionStart. */
+  subscriptionEnd: ExpiresOn;
+  platformFeeCents: number;
+  perNodeFeeCents: number;
+  /** The annual fee the customer pays (the price list prefills platform + nodes × per node; an admin may agree another). */
+  annualFeeCents: number;
+  /** Invoicing and payment schedule. */
+  paymentTerms: string;
+  /** License key delivery, offline use, deployment id. */
+  keyPolicy: string;
+  /** Support and SLAs ("None" by default). */
+  support: string;
+  /** Renewal terms ("None" by default: the agreement never renews on its own). */
+  renewal: string;
+  /** Governing law, courts and venue. */
+  governingLaw: string;
+  /** Express overrides; empty for none. */
+  specialTerms: string;
+}
+
+/** A party's electronic acceptance of the document whose SHA-256 it names. */
+export interface OrderFormSignature {
+  /** The signatory's full name, as typed. */
+  name: string;
+  /** Their title or role. */
+  title: string;
+  /** The customer's: the authorized contact's address; the licensor's: the admin's verified email, if any. */
+  email: string | null;
+  at: Instant;
+  /** SHA-256 (hex) of the document text accepted (orderFormDocument without signatures). */
+  documentSha256: string;
+}
+
+/** An Order Form in lists. */
+export interface OrderFormSummary {
+  id: string;
+  /** "OF-2026-0001": the Order Form No. */
+  number: string;
+  status: OrderFormStatus;
+  /** 1 for the first text sent; each revision after a send adds one. */
+  version: number;
+  customer: CustomerRef;
+  edition: BusinessEdition;
+  nodes: number;
+  annualFeeCents: number;
+  subscriptionStart: ExpiresOn;
+  subscriptionEnd: ExpiresOn;
+  sentAt: Instant | null;
+  /** The license issued from it (executed only). */
+  licenseId: string | null;
+  createdAt: Instant;
+  updatedAt: Instant;
+}
+
+/** GET /api/v1/order-forms/:id and the answer of every Order Form action (admin). */
+export interface OrderForm extends OrderFormSummary {
+  terms: OrderFormTerms;
+  /** SHA-256 (hex) of the document text as sent; null while a draft (or a draft voided before sending). */
+  documentSha256: string | null;
+  /** The document text as sent (what documentSha256 hashes); null when documentSha256 is. */
+  documentText: string | null;
+  /** The business request it was drafted from. */
+  businessRequestId: string | null;
+  sentBy: ActorRef | null;
+  /** With where it was given from (the evidence of the electronic acceptance). */
+  customerAcceptance: (OrderFormSignature & { userId: string | null; ip: string | null; userAgent: string | null }) | null;
+  licensorAcceptance: (OrderFormSignature & { by: ActorRef }) | null;
+  declined: { at: Instant; by: string; note: string } | null;
+  voided: { at: Instant; by: ActorRef; reason: string } | null;
+  createdBy: ActorRef;
+  /** The terms sending still refuses (orderFormGaps), as body paths ("terms.governingLaw"); empty when it can be sent. */
+  gaps: string[];
+}
+
+/** GET /api/v1/order-forms query (open first: draft, sent, accepted; then the newest). */
+export interface OrderFormListQuery {
+  status?: OrderFormStatus;
+  customerId?: string;
+}
+
+/** POST /api/v1/order-forms: a draft for an existing customer or a new organization, never both. */
+export type CreateOrderFormBody = {
+  terms: OrderFormTerms;
+  /** Drafted from this business request (Requests, Business). */
+  businessRequestId?: string;
+} & ({ customerId: string; newCustomer?: undefined } | { newCustomer: NewCustomerBody; customerId?: undefined });
+
+/** PATCH /api/v1/order-forms/:id (draft only): the given terms replace the stored ones; the result is checked as a whole. */
+export interface UpdateOrderFormBody {
+  terms: Partial<OrderFormTerms>;
+}
+
+/** POST /api/v1/order-forms/:id/countersign (accepted only): the licensor's acceptance. */
+export interface CountersignOrderFormBody {
+  name: string;
+  title: string;
+  /** The SHA-256 the customer accepted, as the admin saw it (409 when it no longer matches). */
+  documentSha256: string;
+}
+
+/** POST /api/v1/order-forms/:id/void (draft, sent, accepted or declined). */
+export interface VoidOrderFormBody {
+  /** Internal; never shown to the customer. */
+  reason: string;
+}
+
+/** One Order Form as the customer's people see it (sent at least once; never a draft). */
+export interface MyOrderForm {
+  id: string;
+  number: string;
+  status: OrderFormStatus;
+  version: number;
+  customer: { id: string; name: string };
+  terms: OrderFormTerms;
+  documentSha256: string;
+  /** The document text as sent: what documentSha256 hashes and each party accepts. */
+  documentText: string;
+  sentAt: Instant;
+  customerAcceptance: OrderFormSignature | null;
+  licensorAcceptance: OrderFormSignature | null;
+  declined: { at: Instant; note: string } | null;
+  /** When the licensor withdrew it. */
+  voidedAt: Instant | null;
+  /** The signed-in person is one of its authorized contacts (they alone accept or decline). */
+  authorized: boolean;
+  licenseId: string | null;
+}
+
+/** POST /api/v1/me/order-forms/:id/accept (sent only; an authorized contact). */
+export interface AcceptOrderFormBody {
+  name: string;
+  title: string;
+  /** The SHA-256 shown with the text the person read (409 conflict when the form was revised in the meantime). */
+  documentSha256: string;
+  /** "I am authorized to bind <customerLegalName> …": exactly true. */
+  authorized: true;
+}
+
+/** POST /api/v1/me/order-forms/:id/decline (sent only; an authorized contact): the note goes to the licensor. */
+export interface DeclineOrderFormBody {
+  note: string;
 }
 
 // --- users (admin) -----------------------------------------------------------
@@ -886,11 +1098,27 @@ export type AuditAction =
   | 'business_request.received'
   | 'business_request.issued'
   | 'business_request.closed'
+  | 'order_form.created'
+  | 'order_form.updated'
+  | 'order_form.sent'
+  | 'order_form.revised'
+  | 'order_form.accepted'
+  | 'order_form.declined'
+  | 'order_form.countersigned'
+  | 'order_form.voided'
+  | 'order_form.licensed'
   | 'blocklist.added'
   | 'blocklist.removed';
 
-/** The kind of record an event is about. Member events target their customer (details.email names the member). */
-export type AuditTargetType = 'user' | 'customer' | 'license' | 'request' | 'public_request' | 'business_request' | 'blocked_email';
+/**
+ * Every kind of record an event is about: the one list the audit API
+ * validates its targetType filter against and the Audit page offers.
+ * Member events target their customer (details.email names the member).
+ */
+export const AUDIT_TARGET_TYPES = ['user', 'customer', 'license', 'request', 'public_request', 'business_request', 'order_form', 'blocked_email'] as const;
+
+/** The kind of record an event is about. */
+export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 /** One audit event. Details never contain a key token. */
 export interface AuditEvent {
@@ -1086,6 +1314,18 @@ export type RouteTypes = {
   blockedEmailRemove: Wire<None, None, void>;
   businessRequestsList: Wire<BusinessRequestListQuery, None, Items<BusinessRequest>>;
   businessRequestClose: Wire<None, CloseBusinessRequestBody, CloseBusinessRequestResult>;
+  orderFormsList: Wire<OrderFormListQuery, None, Items<OrderFormSummary>>;
+  orderFormCreate: Wire<None, CreateOrderFormBody, OrderForm>;
+  orderFormGet: Wire<None, None, OrderForm>;
+  orderFormUpdate: Wire<None, UpdateOrderFormBody, OrderForm>;
+  orderFormSend: Wire<None, None, OrderForm>;
+  orderFormRevise: Wire<None, None, OrderForm>;
+  orderFormCountersign: Wire<None, CountersignOrderFormBody, OrderForm>;
+  orderFormVoid: Wire<None, VoidOrderFormBody, OrderForm>;
+  myOrderForms: Wire<None, None, Items<MyOrderForm>>;
+  myOrderForm: Wire<None, None, MyOrderForm>;
+  myOrderFormAccept: Wire<None, AcceptOrderFormBody, MyOrderForm>;
+  myOrderFormDecline: Wire<None, DeclineOrderFormBody, MyOrderForm>;
   usersList: Wire<UserListQuery, None, Items<User>>;
   userGet: Wire<None, None, UserDetail>;
   userUpdate: Wire<None, UpdateUserBody, UserDetail>;

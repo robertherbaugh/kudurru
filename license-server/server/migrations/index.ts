@@ -9,6 +9,7 @@ import runtimeGrants from './0002_runtime_grants.sql' with { type: 'text' };
 import approvalLinks from './0003_request_approval_links.sql' with { type: 'text' };
 import userDelete from './0004_user_delete.sql' with { type: 'text' };
 import businessRequests from './0005_business_requests.sql' with { type: 'text' };
+import orderForms from './0006_order_forms.sql' with { type: 'text' };
 
 export interface Migration {
   /** The number in the file name; schema_migrations.version. */
@@ -24,4 +25,5 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 3, name: '0003_request_approval_links', sql: approvalLinks },
   { version: 4, name: '0004_user_delete', sql: userDelete },
   { version: 5, name: '0005_business_requests', sql: businessRequests },
+  { version: 6, name: '0006_order_forms', sql: orderForms },
 ];

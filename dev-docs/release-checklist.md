@@ -1,6 +1,6 @@
 # Release checklist
 
-How to cut a kudurru release. v0.1.0 ("stone") is dated 16 October 2026 in
+How to cut a kudurru release. v0.1.0 ("stone") is dated 18 October 2026 in
 the [changelog](../CHANGELOG.md). This is a reusable procedure: unchecked
 boxes are tasks for each release, not a live status board for v0.1.0.
 Record completed checks and deployment evidence in the release notes.

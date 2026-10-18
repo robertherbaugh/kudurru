@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -124,5 +125,114 @@ func TestMigrationCLIMissingCredentialAndConflictingFlags(t *testing.T) {
 	}
 	if _, _, err := h.run("import", "technitium", "--source-url", "http://dns.local", "--apply", "--dry-run"); err == nil || !strings.Contains(err.Error(), "cannot be used together") {
 		t.Fatalf("conflicting flags: %v", err)
+	}
+}
+
+func TestMigrationCLICutoverRequiresReviewedFile(t *testing.T) {
+	h := newHarness(t)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/imports/runs/migration-test/decommission/preview":
+			if r.Method != http.MethodPost {
+				t.Error("preview method")
+			}
+			var body struct {
+				Nameservers []string `json:"nameservers"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if len(body.Nameservers) != 1 || body.Nameservers[0] != "dns.test." {
+				t.Errorf("nameservers: %v", body.Nameservers)
+			}
+			_, _ = fmt.Fprint(w, `{"revision":"42","nameservers":["dns.test."],"zones":[],"warnings":[]}`)
+		case "/api/v1/imports/runs/migration-test/decommission":
+			var p struct {
+				Revision string `json:"revision"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&p)
+			if p.Revision != "42" {
+				t.Error("reviewed revision not preserved")
+			}
+			_, _ = fmt.Fprint(w, `{"runID":"migration-test","items":[{"kind":"DNSZone","name":"home","result":"updated"}]}`)
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer target.Close()
+	h.env[cli.EnvServer] = target.URL
+	h.env[cli.EnvToken] = "target-secret"
+	out, _, err := h.run("import", "decommission", "migration-test", "--nameserver", "DNS.TEST", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "preview.json")
+	if err := os.WriteFile(file, []byte(out), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := h.run("import", "decommission", "migration-test", "--apply"); err == nil {
+		t.Fatal("applied without reviewed preview")
+	}
+	out, _, err = h.run("import", "decommission", "migration-test", "--apply", "--plan-file", file, "-o", "json")
+	if err != nil || !strings.Contains(out, "updated") {
+		t.Fatalf("apply reviewed preview: %v %s", err, out)
+	}
+}
+
+func TestMigrationDestinationDefaults(t *testing.T) {
+	for _, tc := range []struct{ server, name, ip string }{
+		{"https://DNS.KUDURRU.TEST:8443/prefix", "dns.kudurru.test.", ""},
+		{"https://192.0.2.53:8443", "", "192.0.2.53"},
+		{"https://[2001:db8::53]:8443", "", "2001:db8::53"},
+	} {
+		h := newHarness(t)
+		h.env[cli.EnvServer] = tc.server
+		h.env[cli.EnvToken] = "target-secret"
+		names, ips, err := migrationTargets(context.Background(), h.opts(), nil, nil, false, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.name != "" && (len(names) != 1 || names[0] != tc.name || len(ips) != 0) {
+			t.Fatalf("hostname default: %v %v", names, ips)
+		}
+		if tc.ip != "" && (len(ips) != 1 || ips[0] != tc.ip || len(names) != 0) {
+			t.Fatalf("IP default: %v %v", names, ips)
+		}
+		names, ips, err = migrationTargets(context.Background(), h.opts(), []string{"custom.test"}, nil, false, true)
+		if err != nil || names[0] != "custom.test." || len(ips) != 0 {
+			t.Fatalf("explicit override: %v %v %v", names, ips, err)
+		}
+	}
+}
+
+func TestMigrationCLIVIPDiscovery(t *testing.T) {
+	h := newHarness(t)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/edge":
+			_, _ = fmt.Fprint(w, `{"vips":[{"address":"192.0.2.53/24"},{"address":"192.0.2.53/24"},{"address":"2001:db8::53/64"}]}`)
+		case "/api/v1/imports/runs/run/decommission/preview":
+			var body struct {
+				Addresses   []string `json:"addresses"`
+				Nameservers []string `json:"nameservers"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if len(body.Addresses) != 2 || body.Addresses[0] != "192.0.2.53" || len(body.Nameservers) != 0 {
+				t.Errorf("VIP targets: %+v", body)
+			}
+			_, _ = fmt.Fprint(w, `{"revision":"1","nameservers":[],"addresses":["192.0.2.53","2001:db8::53"],"zones":[],"warnings":[]}`)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer target.Close()
+	h.env[cli.EnvServer] = target.URL
+	h.env[cli.EnvToken] = "target-secret"
+	if _, _, err := h.run("import", "decommission", "run", "--use-vips", "-o", "json"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := h.run("import", "decommission", "run", "--use-vips", "--nameserver", "custom.test"); err == nil {
+		t.Fatal("accepted conflicting targets")
 	}
 }

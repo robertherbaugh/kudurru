@@ -7,7 +7,7 @@
 // (/invites/:token), and a Permission is checked against Me.permissions
 // inside the shell.
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
-import { Building2, Download, Inbox, KeyRound, ScrollText, Server, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
+import { Building2, Download, FileSignature, Inbox, KeyRound, ScrollText, Server, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
 import type { Permission } from '@shared/permissions';
 import { matchPath } from './ui/lib/router';
 
@@ -46,6 +46,9 @@ const License = lazy(() => import('./pages/LicensePage'));
 const Customers = lazy(() => import('./pages/CustomersPage'));
 const Customer = lazy(() => import('./pages/CustomerPage'));
 const Requests = lazy(() => import('./pages/RequestsPage'));
+const OrderForms = lazy(() => import('./pages/OrderFormsPage'));
+const OrderForm = lazy(() => import('./pages/OrderFormPage'));
+const MyOrderForm = lazy(() => import('./pages/MyOrderFormPage'));
 const UsersList = lazy(() => import('./pages/UsersPage'));
 const UserDetail = lazy(() => import('./pages/UserPage'));
 const Audit = lazy(() => import('./pages/AuditPage'));
@@ -59,12 +62,15 @@ export const ROUTES: RouteDef[] = [
   { path: '/', navKey: 'home', label: 'Home', access: 'session', page: Home },
   { path: '/my/licenses', navKey: 'my', label: 'My licenses', access: 'self.read', page: MyLicenses, section: 'Licenses', icon: KeyRound },
   { path: '/my/licenses/:id', navKey: 'my', label: 'License', access: 'self.read', page: MyLicense },
+  { path: '/my/orders/:id', navKey: 'my', label: 'Order Form', access: 'self.read', page: MyOrderForm },
   { path: '/downloads', navKey: 'downloads', label: 'Downloads', access: 'session', page: Downloads, section: 'Licenses', icon: Download },
   { path: '/licenses', navKey: 'licenses', label: 'Licenses', access: 'licenses.read', page: Licenses, section: 'Licensing', icon: ShieldCheck },
   { path: '/licenses/:id', navKey: 'licenses', label: 'License', access: 'licenses.read', page: License },
   { path: '/customers', navKey: 'customers', label: 'Customers', access: 'customers.read', page: Customers, section: 'Licensing', icon: Building2 },
   { path: '/customers/:id', navKey: 'customers', label: 'Customer', access: 'customers.read', page: Customer },
   { path: '/requests', navKey: 'requests', label: 'Requests', access: 'requests.read', page: Requests, section: 'Licensing', icon: Inbox },
+  { path: '/orders', navKey: 'orders', label: 'Order Forms', access: 'orders.read', page: OrderForms, section: 'Licensing', icon: FileSignature },
+  { path: '/orders/:id', navKey: 'orders', label: 'Order Form', access: 'orders.read', page: OrderForm },
   { path: '/users', navKey: 'users', label: 'Users', access: 'users.read', page: UsersList, section: 'Administration', icon: Users },
   { path: '/users/:id', navKey: 'users', label: 'User', access: 'users.read', page: UserDetail },
   { path: '/audit', navKey: 'audit', label: 'Audit', access: 'audit.read', page: Audit, section: 'Administration', icon: ScrollText },

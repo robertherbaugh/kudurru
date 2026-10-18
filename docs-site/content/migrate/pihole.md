@@ -24,6 +24,13 @@ enter its URL and an **application password** generated in Pi-hole's
 reach that URL. Review the preview and conversion warnings, then choose
 **Import configuration**. No configuration files need to be copied or edited.
 
+Select **Update nameservers during import** to replace apex NS and SOA primary
+with kudurru's DNS hostnames, or keep source authority during validation and
+use **Migration history → Review run → Decommission source nameservers** later.
+CLI imports accept repeatable `--nameserver` flags. Previous API imports can
+be tracked without reimporting records. See the
+[authority cutover flow](/migrate/cutover/#replace-imported-authoritative-nameservers).
+
 The importer transfers adlist URLs, exact and compatible RE2 domain rules,
 enabled switches, domain comments, group assignments, IP/CIDR clients,
 upstreams and local A/AAAA/CNAME records under the selected local suffixes.

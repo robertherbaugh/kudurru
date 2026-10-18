@@ -1,4 +1,8 @@
-# Administrator guide
+# Administrator reference
+
+New to the app? Start with the [short walkthroughs](../README.md).
+For one screen, use the [page-by-page dashboard guide](../dashboard/README.md).
+This reference covers complete dashboard pages and advanced operations.
 
 This guide is for the people who install, set up and run kudurru. It tells
 you how to do each task in the dashboard. Where a task is easier on the

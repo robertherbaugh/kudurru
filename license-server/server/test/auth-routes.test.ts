@@ -178,7 +178,7 @@ describeDb('sign-in', () => {
     expect(m.status).toBe(200);
     expect(m.body.user).toEqual({ id: u.id, name: p.name as string, email: u.email, emailVerified: true });
     expect(m.body.roles).toEqual(['customer']);
-    expect(m.body.permissions).toEqual(['self.read', 'self.request']);
+    expect(m.body.permissions).toEqual(['self.read', 'self.request', 'self.order']);
     expect(m.body.csrf).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(m.body.devMode).toBe(true);
 

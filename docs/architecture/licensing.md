@@ -175,7 +175,10 @@ Keys are issued by the license portal, `license-server/` (D165): license
 admins issue, renew, change and withdraw licenses there after an OIDC
 sign-in, customers download their keys, and the kudurru.io form requests
 free personal keys and sends business requests, which license admins answer
-on its Requests page (D181). It signs with the same key and in the same format as
+on its Requests page (D181). Commercial licenses follow an Order Form that
+license admins draft and send there, an authorized contact of the customer
+accepts signed in and a license admin countersigns before the license is
+issued from it (D183). It signs with the same key and in the same format as
 `hack/licensegen`, and no node ever contacts it (D163). How it works:
 `license-server/docs/architecture.md`; how to run it:
 `license-server/README.md`.

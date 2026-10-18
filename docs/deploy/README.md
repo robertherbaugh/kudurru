@@ -1,5 +1,8 @@
 # Deploying kudurru
 
+New to the app? Follow [First steps](../guide/first-steps/README.md).
+To assign client addresses, use the [DHCP walkthrough](../guide/dhcp/README.md).
+
 | Shape | Guide | Assets |
 |---|---|---|
 | One container (Docker, Podman) | [docker.md](docker.md) | `deploy/compose/single`, `deploy/compose/single-edge` |
@@ -19,14 +22,14 @@ The optional DHCPv4 server included in v0.1.0: [dhcp.md](dhcp.md).
 Built-in DHCPv4 is disabled by default and runs on Linux with either store:
 SQLite standalone or three-node quorum failover, or the Kubernetes store with
 `DHCPScope`/`DHCPLease` objects and one elected replica behind a relay
-([dhcp.md#kubernetes](dhcp.md#kubernetes)). It has complete dashboard setup, persistent
+([Kubernetes DHCP](dhcp-kubernetes.md)). It has complete dashboard setup, persistent
 leases/reservations, multiple subnets, trusted relays, conflict checks,
 network/boot options, import/export and local DNS ownership. DHCPv6 is excluded.
 Keep IPv6 router and DNS advertisements on your router.
 
 ## Release artifacts
 
-v0.1.0 ("stone"), dated 16 October 2026, is the first release. Its
+v0.1.0 ("stone"), dated 18 October 2026, is the first release. Its
 [release page](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)
 has binaries, packages and deployment assets. The examples in these guides
 use the `0.1.0` image and chart versions.

@@ -1,5 +1,6 @@
 // /my/licenses (self.read): the licenses of every customer the signed-in
-// person belongs to, their own personal key requests that wait for a
+// person belongs to, their Order Forms (sent at least once; shown also
+// before there is any license), their own personal key requests that wait for a
 // license admin's approval, and the ways in when there is nothing yet: a
 // waiting request, asking the licensor to add their address to an
 // existing license, a free personal key (FormDialog) or a business
@@ -13,11 +14,13 @@ import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core
 import { Text } from '@astryxdesign/core/Text';
 import { KeyRound } from 'lucide-react';
 import { useState } from 'react';
-import type { MyLicense, MyRequest } from '@shared/api';
+import type { MyLicense, MyOrderForm, MyRequest } from '@shared/api';
 import { BUSINESS_CONTACT, BUSINESS_MAILTO, planLabel } from '@shared/catalog';
+import { editionLabel } from '@shared/orderForms';
+import { usd } from '@shared/pricing';
 import { useCan, useMe } from '../api/context';
-import { useMyLicenses, useMyRequests } from '../api/hooks';
-import { StateBadge } from '../components/badges';
+import { useMyLicenses, useMyOrderForms, useMyRequests } from '../api/hooks';
+import { OrderFormStatusBadge, StateBadge } from '../components/badges';
 import { PersonalRequestDialog } from '../components/PersonalRequestDialog';
 import { utcDay } from '../lib/dates';
 import { featuresInWords } from '../ui/fields/FeaturesField';
@@ -27,6 +30,36 @@ import { formatExact } from '../ui/lib/format';
 
 type LicenseRow = MyLicense & Record<string, unknown>;
 type RequestRow = MyRequest & Record<string, unknown>;
+type OrderRow = MyOrderForm & Record<string, unknown>;
+
+const orderColumns: TableColumn<OrderRow>[] = [
+  {
+    key: 'number',
+    header: 'Order Form No.',
+    width: proportional(1, { minWidth: 170 }),
+    renderCell: (f) => (
+      <VStack gap={0.5}>
+        <Link href={`/my/orders/${encodeURIComponent(f.id)}`}>{f.number}</Link>
+        <Text type="supporting">{f.customer.name}</Text>
+      </VStack>
+    ),
+  },
+  { key: 'edition', header: 'Plan', width: proportional(1, { minWidth: 140 }), renderCell: (f) => editionLabel(f.terms.edition) },
+  { key: 'nodes', header: 'Nodes', width: pixel(90), align: 'end', renderCell: (f) => formatExact(f.terms.nodes) },
+  { key: 'fee', header: 'Annual fee', width: pixel(130), align: 'end', renderCell: (f) => usd(f.terms.annualFeeCents) },
+  { key: 'term', header: 'Term (UTC)', width: pixel(200), renderCell: (f) => `${f.terms.subscriptionStart} to ${f.terms.subscriptionEnd}` },
+  {
+    key: 'status',
+    header: 'State',
+    width: pixel(230),
+    renderCell: (f) => (
+      <VStack gap={0.5} hAlign="start">
+        <OrderFormStatusBadge status={f.status} />
+        {f.status === 'sent' && f.authorized ? <Text type="supporting">Waiting for your acceptance</Text> : null}
+      </VStack>
+    ),
+  },
+];
 
 const licenseColumns: TableColumn<LicenseRow>[] = [
   {
@@ -59,6 +92,8 @@ export default function MyLicensesPage() {
   const can = useCan();
   const licenses = useMyLicenses();
   const requests = useMyRequests();
+  const orders = useMyOrderForms();
+  const orderItems = orders.data?.items ?? [];
   const [requesting, setRequesting] = useState(false);
   const open = (requests.data?.items ?? []).filter((r) => r.status === 'open');
   const items = licenses.data?.items ?? [];
@@ -103,6 +138,12 @@ export default function MyLicensesPage() {
       {items.length ? (
         <Panel title="Licenses">
           <Table<LicenseRow> data={items as LicenseRow[]} columns={licenseColumns} idKey="id" density="compact" />
+        </Panel>
+      ) : null}
+      {orders.error ? <ErrorBanner error={orders.error} title="Your Order Forms could not be loaded" /> : null}
+      {orderItems.length ? (
+        <Panel title="Order Forms" description="The Order Forms the licensor sent to your organizations. Its authorized contacts accept or decline each one here.">
+          <Table<OrderRow> data={orderItems as OrderRow[]} columns={orderColumns} idKey="id" density="compact" verticalAlign="top" />
         </Panel>
       ) : null}
       {open.length ? (

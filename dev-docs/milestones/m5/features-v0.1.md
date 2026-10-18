@@ -1,7 +1,7 @@
 # Final v0.1 feature review
 
 This is the pre-publication review record. Its acceptance items describe
-the state at review time; the v0.1.0 release is dated 16 October 2026 in the
+the state at review time; the v0.1.0 release is dated 18 October 2026 in the
 [changelog](../../../CHANGELOG.md). This report does not establish the outcome
 of later deployment checks.
 

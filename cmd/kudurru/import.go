@@ -15,8 +15,8 @@ import (
 
 func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 	var sourceURL, keyFile string
-	var apply, dryRun, insecure bool
-	var localZones []string
+	var apply, dryRun, insecure, updateNameservers, useVIPs bool
+	var localZones, nameservers, addresses []string
 	env := "TECHNITIUM_API_TOKEN"
 	credential := "API token"
 	if source == "pihole" {
@@ -71,7 +71,11 @@ func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 					}
 				}
 			}
-			plan, err := importers.Preview(cmd.Context(), importers.MigrationRequest{Source: source, URL: sourceURL, Credential: key, Namespace: ns, InsecureSkipVerify: insecure, LocalZones: localZones})
+			nameservers, addresses, err := migrationTargets(cmd.Context(), o, nameservers, addresses, useVIPs, updateNameservers)
+			if err != nil {
+				return err
+			}
+			plan, err := importers.Preview(cmd.Context(), importers.MigrationRequest{Source: source, URL: sourceURL, Credential: key, Namespace: ns, InsecureSkipVerify: insecure, LocalZones: localZones, Nameservers: nameservers, NameserverAddresses: addresses})
 			if err != nil {
 				return err
 			}
@@ -89,7 +93,7 @@ func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 			if err := c.Post(cmd.Context(), "/imports/apply", nil, plan, &result); err != nil {
 				return err
 			}
-			failed := result.SettingsError != ""
+			failed := result.SettingsError != "" || result.JournalError != ""
 			for _, r := range result.Items {
 				if r.Result == api.ResultError {
 					failed = true
@@ -107,6 +111,10 @@ func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 	cmd.Flags().StringVar(&sourceURL, "source-url", "", "source console URL (including any reverse-proxy prefix)")
 	cmd.Flags().StringVar(&keyFile, "source-key-file", "", "file containing the source "+credential+" (otherwise $"+env+")")
 	cmd.Flags().BoolVar(&insecure, "source-insecure-skip-tls-verify", false, "skip source TLS verification for a lab with a self-signed certificate")
+	cmd.Flags().StringSliceVar(&nameservers, "nameserver", nil, "kudurru authoritative DNS names; replace imported NS and SOA primary (repeatable; first is primary)")
+	cmd.Flags().StringSliceVar(&addresses, "nameserver-address", nil, "kudurru serving IPs or VIPs; generate in-zone NS names and A/AAAA records (repeatable)")
+	cmd.Flags().BoolVar(&useVIPs, "use-vips", false, "use discovered kudurru VIPs for nameservers and address records")
+	cmd.Flags().BoolVar(&updateNameservers, "update-nameservers", false, "use the destination context hostname or IP for imported authority")
 	cmd.Flags().BoolVar(&apply, "apply", false, "apply the converted configuration directly to kudurru")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview only (the default)")
 	if source == "pihole" {

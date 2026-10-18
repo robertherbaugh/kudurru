@@ -5,13 +5,11 @@
 // key tokens.
 
 import type { AuditAction, AuditEvent, AuditTargetType, JsonObject, ResponseOf } from '../../shared/api';
-import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '../../shared/api';
+import { AUDIT_TARGET_TYPES, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '../../shared/api';
 import type { Queryable } from '../db/sql';
 import { HttpError, json } from '../http/errors';
 import { q } from '../http/body';
 import type { PartialHandlerMap } from '../http/types';
-
-const TARGET_TYPES: readonly AuditTargetType[] = ['user', 'customer', 'license', 'request', 'public_request', 'blocked_email'];
 
 interface AuditRow {
   id: string;
@@ -73,7 +71,7 @@ export const auditHandlers: PartialHandlerMap = {
     if (before !== undefined && !/^[1-9]\d{0,18}$/.test(before)) throw new HttpError(400, 'invalid', 'The query parameter before is not valid.', { fields: ['before'] });
     const page = await listAuditEvents(ctx.db, {
       action: q.string(query, 'action', { max: 64 }),
-      targetType: q.enum(query, 'targetType', TARGET_TYPES),
+      targetType: q.enum(query, 'targetType', AUDIT_TARGET_TYPES),
       targetId: q.string(query, 'targetId', { max: 200 }),
       actorId: q.string(query, 'actorId', { max: 100 }),
       before,
