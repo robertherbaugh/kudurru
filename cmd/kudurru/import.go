@@ -1,8 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -10,9 +13,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/cli"
 	"github.com/robertherbaugh/kudurru/internal/importers"
 )
+
+const maxMigrationPollFailures = 3
 
 func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 	var sourceURL, keyFile string
@@ -26,7 +32,7 @@ func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use: source + " --source-url URL", Short: "Import from a live " + source + " API",
-		Long:    "Connect to the source API using its " + credential + ". By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Use --wait to wait for its final report, or import runs RUN_ID to inspect it later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.",
+		Long:    "Connect to the source API using its " + credential + ". By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Without --wait, exit status 0 means the server accepted the job, not that every item imported successfully. Scripts that need the final success/failure exit status must use --apply --wait. Use import runs RUN_ID to inspect the report later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.",
 		Example: "  kudurru import " + source + " --source-url http://dns.local --source-key-file ./source-key\n  kudurru import " + source + " --source-url http://dns.local --source-key-file ./source-key --apply",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -114,6 +120,7 @@ func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 				return err
 			}
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Import started: %s. Inspect with kudurru import runs %s\n", run.ID, run.ID)
+			pollFailures := 0
 			for wait && run.Data.Status == "running" {
 				timer := time.NewTimer(time.Second)
 				select {
@@ -122,9 +129,21 @@ func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 					return fmt.Errorf("import continues in the background as %s: %w", run.ID, cmd.Context().Err())
 				case <-timer.C:
 				}
-				if err := c.Get(cmd.Context(), "/imports/runs/"+run.ID, nil, &run); err != nil {
-					return err
+				var next api.MigrationRun
+				err := c.Get(cmd.Context(), "/imports/runs/"+run.ID, nil, &next)
+				if err == nil && (next.ID != run.ID || next.Data.Status == "") {
+					err = errors.New("server returned an invalid migration report")
 				}
+				if err != nil {
+					pollFailures++
+					if cmd.Context().Err() != nil || !transientMigrationPollError(err) || pollFailures >= maxMigrationPollFailures {
+						return fmt.Errorf("cannot read import %s; the job may still be running; inspect with kudurru import runs %s: %w", run.ID, run.ID, err)
+					}
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Cannot read import %s; retrying (%d/%d).\n", run.ID, pollFailures, maxMigrationPollFailures-1)
+					continue
+				}
+				pollFailures = 0
+				run = next
 			}
 			if err := cli.WriteStructured(cmd.OutOrStdout(), f, run); err != nil {
 				return err
@@ -151,6 +170,17 @@ func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 	if source == "pihole" {
 		cmd.Flags().StringSliceVar(&localZones, "local-zone", nil, "local DNS suffixes to make authoritative (default: Pi-hole's local domain)")
 	}
+	cmd.MarkFlagsMutuallyExclusive("skip-settings", "select-setting")
 	_ = cmd.MarkFlagRequired("source-url")
 	return cmd
+}
+
+// Retry bounded read failures without replaying the import-start request.
+func transientMigrationPollError(err error) bool {
+	var apiError *apiclient.Error
+	if errors.As(err, &apiError) {
+		return apiError.StatusCode == http.StatusRequestTimeout || apiError.StatusCode == http.StatusTooManyRequests || apiError.StatusCode >= http.StatusInternalServerError
+	}
+	var networkError net.Error
+	return errors.As(err, &networkError) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }

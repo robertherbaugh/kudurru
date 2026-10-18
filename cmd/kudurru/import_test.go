@@ -131,6 +131,7 @@ func TestMigrationCLIStartsBackgroundAndWaitsForFinalReport(t *testing.T) {
 		})
 	}
 }
+
 func TestMigrationCLISelection(t *testing.T) {
 	source := migrationSource(t)
 	for _, tc := range []struct {
@@ -282,5 +283,84 @@ func TestMigrationCLIVIPDiscovery(t *testing.T) {
 	}
 	if _, _, err := h.run("import", "decommission", "run", "--use-vips", "--nameserver", "custom.test"); err == nil {
 		t.Fatal("accepted conflicting targets")
+	}
+}
+
+func TestMigrationCLIRejectsConflictingSelectionFlags(t *testing.T) {
+	for _, source := range []string{"technitium", "pihole"} {
+		h := newHarness(t)
+		_, _, err := h.run("import", source, "--source-url", "http://unused.test", "--skip-settings", "--select-setting", "upstreams")
+		if err == nil || !strings.Contains(err.Error(), "skip-settings") || !strings.Contains(err.Error(), "select-setting") {
+			t.Fatalf("conflicting selection: %v", err)
+		}
+	}
+}
+
+func TestMigrationCLIWaitRetriesWithoutRestartingImport(t *testing.T) {
+	source := migrationSource(t)
+	for _, tc := range []struct {
+		name      string
+		statuses  []int
+		wantError bool
+	}{
+		{"transient", []int{503, 503, 200}, false},
+		{"consecutive failures reset", []int{503, 503, 200, 503, 503, 200}, false},
+		{"persistent", []int{503, 503, 503}, true},
+		{"forbidden", []int{403}, true},
+		{"invalid report", []int{200}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			posts, polls := 0, 0
+			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/api/v1/imports/start" {
+					posts++
+					w.WriteHeader(http.StatusAccepted)
+					_, _ = fmt.Fprint(w, `{"id":"run-retry","data":{"status":"running"}}`)
+					return
+				}
+				if r.URL.Path != "/api/v1/imports/runs/run-retry" {
+					t.Errorf("unexpected path %s", r.URL.Path)
+					w.WriteHeader(404)
+					return
+				}
+				if polls >= len(tc.statuses) {
+					t.Error("too many polls")
+					w.WriteHeader(500)
+					return
+				}
+				status := tc.statuses[polls]
+				polls++
+				if tc.name == "invalid report" {
+					_, _ = fmt.Fprint(w, `{}`)
+					return
+				}
+				w.WriteHeader(status)
+				if status != 200 {
+					_, _ = fmt.Fprint(w, `{"error":{"key":"unavailable","message":"poll failed"}}`)
+					return
+				}
+				result := "running"
+				if polls == len(tc.statuses) {
+					result = "completed"
+				}
+				_, _ = fmt.Fprintf(w, `{"id":"run-retry","data":{"status":%q}}`, result)
+			}))
+			defer target.Close()
+			h := newHarness(t)
+			h.env["TECHNITIUM_API_TOKEN"] = "source-secret"
+			h.env[cli.EnvServer] = target.URL
+			h.env[cli.EnvToken] = "target-secret"
+			out, _, err := h.run("import", "technitium", "--source-url", source.URL, "--apply", "--wait", "-o", "json")
+			if (err != nil) != tc.wantError || posts != 1 || polls != len(tc.statuses) {
+				t.Fatalf("err=%v posts=%d polls=%d", err, posts, polls)
+			}
+			if tc.wantError && (!strings.Contains(err.Error(), "import runs run-retry") || !strings.Contains(err.Error(), "may still be running")) {
+				t.Fatalf("lost run context: %v", err)
+			}
+			if !tc.wantError && !strings.Contains(out, "completed") {
+				t.Fatalf("final report: %s", out)
+			}
+		})
 	}
 }

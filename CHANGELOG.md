@@ -6,6 +6,14 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Changed
+
+- API migrations run as tracked background jobs with selectable objects and
+  settings. `kudurru import pihole|technitium --apply` now exits successfully when
+  the server accepts the job, even if items later fail. Existing scripts that
+  require a final success/failure exit code must add `--wait`. Inspect saved
+  results with `kudurru import runs RUN_ID` or the dashboard's migration history.
+
 ## [0.1.0] - 2026-10-18
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or

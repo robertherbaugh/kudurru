@@ -688,7 +688,7 @@ Flags:
 
 ### kudurru import pihole
 
-Connect to the source API using its v6 application password. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Use --wait to wait for its final report, or import runs RUN\_ID to inspect it later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
+Connect to the source API using its v6 application password. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Without --wait, exit status 0 means the server accepted the job, not that every item imported successfully. Scripts that need the final success/failure exit status must use --apply --wait. Use import runs RUN\_ID to inspect the report later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
 
 ```text
 kudurru import pihole --source-url URL [flags]
@@ -741,7 +741,7 @@ kudurru import runs [id]
 
 ### kudurru import technitium
 
-Connect to the source API using its API token. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Use --wait to wait for its final report, or import runs RUN\_ID to inspect it later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
+Connect to the source API using its API token. By default, print a preview containing converted objects, settings and warnings without changing either server. Add --apply to start a tracked background import on the selected kudurru server using its normal validation, ownership and license checks. Without --wait, exit status 0 means the server accepted the job, not that every item imported successfully. Scripts that need the final success/failure exit status must use --apply --wait. Use import runs RUN\_ID to inspect the report later. All items are selected by default; --select-object and --select-setting select only the named items. Inspect every result: writes are not transactional. Source credentials are never stored by kudurru.
 
 ```text
 kudurru import technitium --source-url URL [flags]
