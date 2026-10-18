@@ -112,6 +112,17 @@ record named `@`. SOA, NS and ANY queries at the apex remain local. Zone
 transfers and NOTIFY are unavailable for zones using fallback. BIND files
 carry local records only; use object backups to preserve fallback settings.
 
+Local overrides are unsigned, even when the public zone uses DNSSEC. Clients
+that validate DNSSEC themselves can reject these local answers because they
+do not match the signed public zone. Public-only answers retain the resolver's
+validation result; an answer combining a local alias with a public target
+does not claim DNSSEC validation for the whole chain.
+
+The zones list marks these zones as **Public fallback**. A selected
+non-default fallback group takes precedence over client policies and
+conditional forwarding. Otherwise, routing uses the client's policy group,
+then the longest matching conditional rule, then the default group.
+
 For YAML configuration, an empty `fallback` object enables normal routing:
 
 ```yaml
