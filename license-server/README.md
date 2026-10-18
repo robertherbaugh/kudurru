@@ -308,7 +308,9 @@ licenses.
   takes the last form's. A draft is changed on its page; it may have gaps
   (the customer's address, governing law, …), and the page lists them.
 - **Send.** Freezes the text: the portal renders the document
-  (`orderFormDocument`, Markdown), stores its SHA-256 and shows both. Every
+  (`orderFormDocument`, Markdown) and stores the text with its SHA-256;
+  every copy and download is made from that stored text, so the hash stays
+  verifiable whatever later versions of the template render. Every
   authorized contact becomes a member of the customer and gets a mail with
   a link to the form, and, when they have no access yet, an invite link.
 - **Accept or decline.** Signed in, an authorized contact (a member whose
@@ -328,8 +330,11 @@ licenses.
   customer, the edition's plan, the nodes, the features of the included
   modules (all of them, the named ones, or, for none, the admin's choice:
   a key cannot list no feature), the subscription end as the expiry and
-  the form's number as the agreement reference. One license per form; the
-  business request it was drafted from becomes issued.
+  the form's number as the agreement reference. The server refuses a key
+  the form does not cover (another customer or plan, more nodes than its
+  production plus nonproduction nodes, other features, an expiry after the
+  subscription end). One license per form; the business request it was
+  drafted from becomes issued.
 - **Void.** Any form that is not executed, with an internal reason. The
   contacts of a sent form are told it was withdrawn (never why).
 

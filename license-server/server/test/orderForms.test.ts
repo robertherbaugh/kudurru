@@ -148,6 +148,22 @@ describeDb('drafting', () => {
     expect((await callJson(app, 'orderFormSend', { as: admin, params: { id: form.id } })).status).toBe(200);
     expect((await callJson(app, 'orderFormUpdate', { as: admin, params: { id: form.id }, body: { terms: { nodes: 2 } } })).status).toBe(409);
   });
+
+  test('parallel PATCHes of different terms all apply: each reads the terms under the row lock', async () => {
+    const { form } = await setup();
+    const edits: Partial<OrderFormTerms>[] = [
+      { nodes: 7 },
+      { specialTerms: 'Net 45.' },
+      { environments: 'eu-west' },
+      { support: 'Business hours' },
+      { renewal: 'By a new Order Form' },
+      { keyPolicy: 'Delivered by mail' },
+    ];
+    const answers = await Promise.all(edits.map((terms) => callJson(app, 'orderFormUpdate', { as: admin, params: { id: form.id }, body: { terms } })));
+    expect(answers.map((a) => a.status)).toEqual(edits.map(() => 200));
+    const stored = (await callJson(app, 'orderFormGet', { as: admin, params: { id: form.id } })).body.terms;
+    expect(stored).toMatchObject(Object.assign({}, ...edits) as Partial<OrderFormTerms>);
+  });
 });
 
 describeDb('sending', () => {
@@ -169,6 +185,9 @@ describeDb('sending', () => {
     const f = res.body;
     const expected = createHash('sha256').update(orderFormDocument({ number: f.number, version: 1, terms: f.terms }), 'utf8').digest('hex');
     expect(f).toMatchObject({ status: 'sent', documentSha256: expected, gaps: [], sentBy: { id: adminUser.id } });
+    // The text is stored with its hash, and the hash is the text's.
+    expect(f.documentText).toBe(orderFormDocument({ number: f.number, version: 1, terms: f.terms }));
+    expect(createHash('sha256').update(f.documentText!, 'utf8').digest('hex')).toBe(f.documentSha256!);
     expect(f.sentAt).not.toBeNull();
     const members = await t.db<{ email: string; user_id: string | null }[]>`select email, user_id from customer_members where customer_id = ${customerId} order by email`;
     expect(members.map((m) => m.email).sort()).toEqual([email, newcomer].sort());
@@ -295,8 +314,24 @@ describeDb('countersigning, issuing and voiding', () => {
     expect(String(copy?.content)).toContain('Customer acceptance: Carla Contact, CTO');
     expect(String(copy?.content)).toContain('Licensor acceptance: Robert Herbaugh, Owner');
     expect(String(copy?.content)).toContain(`Document SHA-256: ${form.documentSha256}`);
+    expect(String(copy?.content).startsWith(form.documentText!)).toBe(true);
     for (const route of ['orderFormRevise', 'orderFormSend'] as const) expect((await callJson(app, route, { as: admin, params: { id: form.id } })).status).toBe(409);
     expect((await callJson(app, 'orderFormVoid', { as: admin, params: { id: form.id }, body: { reason: 'x' } })).status).toBe(409);
+  });
+
+  test('the kept copy is the text as sent, even when a later rendering would differ', async () => {
+    const { form, contact, email } = await sent();
+    await accept(contact, form);
+    // A changed template (or anything else that renders the terms differently) after sending.
+    await t.db`update order_forms set terms = jsonb_set(terms, '{specialTerms}', '"Rendered differently today."') where id = ${form.id}`;
+    app.mailer.clear();
+    await callJson(app, 'orderFormCountersign', { as: admin, params: { id: form.id }, body: { name: 'R H', title: 'Owner', documentSha256: form.documentSha256! } });
+    const copy = String(app.mailer.to(email)[0]!.attachments?.find((a) => a.filename === `${form.number}.md`)?.content);
+    expect(copy.startsWith(form.documentText!)).toBe(true);
+    expect(copy).not.toContain('Rendered differently today.');
+    const mine = (await callJson(app, 'myOrderForm', { as: contact, params: { id: form.id } })).body;
+    expect(mine.documentText).toBe(form.documentText!);
+    expect(createHash('sha256').update(mine.documentText, 'utf8').digest('hex')).toBe(mine.documentSha256);
   });
 
   test('issue one license from an executed form, for its customer only; the business request becomes issued', async () => {
@@ -327,6 +362,18 @@ describeDb('countersigning, issuing and voiding', () => {
     expect(wrong.error?.fields).toEqual(['customerId']);
     expect((await callJson(app, 'licenseIssue', { as: admin, body: { ...license, newCustomer: { name: 'New', kind: 'organization' } } })).status).toBe(400);
     expect((await callJson(app, 'licenseIssue', { as: admin, body: { ...license, customerId: c.id, businessRequestId: requestId } })).status).toBe(400);
+    // The key must stay within the countersigned terms.
+    for (const [extra, field] of [
+      [{ plan: 'business' }, 'plan'],
+      [{ nodes: 6 }, 'nodes'],
+      [{ features: ['oidc'] }, 'features'],
+      [{ expiresOn: addDays(form.terms.subscriptionEnd, 1) }, 'expiresOn'],
+    ] as const) {
+      const outside = await callJson(app, 'licenseIssue', { as: admin, body: { ...license, ...extra, customerId: c.id } });
+      expect(outside.status).toBe(400);
+      expect(outside.error?.fields).toEqual([field]);
+    }
+    expect((await callJson(app, 'orderFormGet', { as: admin, params: { id: form.id } })).body.licenseId).toBeNull();
 
     const issued = await callJson(app, 'licenseIssue', { as: admin, body: { ...license, customerId: c.id } });
     expect(issued.status).toBe(200);
@@ -362,6 +409,20 @@ describeDb('countersigning, issuing and voiding', () => {
     expect(JSON.stringify(mine.body)).not.toContain('Pricing error');
     expect((await accept(contact, form)).status).toBe(409);
     expect((await callJson(app, 'orderFormVoid', { as: admin, params: { id: form.id }, body: { reason: 'again' } })).status).toBe(409);
+  });
+
+  test('void a declined form: the customer sees it withdrawn, the audit names where it came from', async () => {
+    const { form, contact, email } = await sent();
+    expect((await callJson(app, 'myOrderFormDecline', { as: contact, params: { id: form.id }, body: { note: 'Not now.' } })).status).toBe(200);
+    app.mailer.clear();
+    const voided = await callJson(app, 'orderFormVoid', { as: admin, params: { id: form.id }, body: { reason: 'They went elsewhere.' } });
+    expect(voided.status).toBe(200);
+    expect(voided.body).toMatchObject({ status: 'void', declined: { note: 'Not now.' }, voided: { reason: 'They went elsewhere.' } });
+    expect(app.mailer.to(email)).toHaveLength(1);
+    const mine = (await callJson(app, 'myOrderForm', { as: contact, params: { id: form.id } })).body;
+    expect(mine.status).toBe('void');
+    expect(mine.voidedAt).not.toBeNull();
+    expect((await auditOf(form.id)).at(-1)).toEqual({ action: 'order_form.voided', details: { number: form.number, from: 'declined', reason: 'They went elsewhere.' } });
   });
 
   test('the list: open first, by status and customer', async () => {

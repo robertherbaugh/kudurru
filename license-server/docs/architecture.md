@@ -224,7 +224,7 @@ sequenceDiagram
         P->>DB: status executed (final)
         P->>C: mail: the signed copy (OF-year-number.md)
         A->>P: Issue license (the wizard filled in from the form)
-        P->>DB: the license, the form's license_id, its business request issued
+        P->>DB: the license (within the form's customer, plan, nodes, features and term), the form's license_id, its business request issued
     else decline (with a note)
         C->>P: POST /api/v1/me/order-forms/:id/decline
         P->>A: mail per approver: the note
@@ -249,7 +249,9 @@ stateDiagram-v2
 ```
 
 The text a party accepts is `orderFormDocument` without signatures
-(`shared/orderForms.ts`); both acceptances record its SHA-256, and the
+(`shared/orderForms.ts`), stored when the form is sent; every kept copy
+is that stored text with the acceptances appended. Both acceptances record
+its SHA-256, and the
 accept and countersign bodies name the hash the person saw, so an answer
 to a revised form's earlier text is refused (409). Only a signed-in member
 of the customer whose membership address is one of the form's authorized
@@ -346,6 +348,7 @@ erDiagram
         int version
         jsonb terms "Schedule A"
         text document_sha256 "of the text sent"
+        text document_text "the text sent"
         jsonb customer_acceptance
         jsonb licensor_acceptance
         text license_id "one per form"

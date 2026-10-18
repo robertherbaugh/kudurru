@@ -924,6 +924,8 @@ export interface OrderForm extends OrderFormSummary {
   terms: OrderFormTerms;
   /** SHA-256 (hex) of the document text as sent; null while a draft (or a draft voided before sending). */
   documentSha256: string | null;
+  /** The document text as sent (what documentSha256 hashes); null when documentSha256 is. */
+  documentText: string | null;
   /** The business request it was drafted from. */
   businessRequestId: string | null;
   sentBy: ActorRef | null;
@@ -978,6 +980,8 @@ export interface MyOrderForm {
   customer: { id: string; name: string };
   terms: OrderFormTerms;
   documentSha256: string;
+  /** The document text as sent: what documentSha256 hashes and each party accepts. */
+  documentText: string;
   sentAt: Instant;
   customerAcceptance: OrderFormSignature | null;
   licensorAcceptance: OrderFormSignature | null;

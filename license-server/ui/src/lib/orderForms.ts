@@ -8,7 +8,7 @@
 import type { OrderFormSignature, OrderFormTerms } from '@shared/api';
 import { MAX_NODES, ORDER_FORM_MAX_CONTACTS, ORDER_FORM_MAX_FEE_CENTS, ORDER_FORM_MAX_TERM_DAYS } from '@shared/catalog';
 import { addDays, type ExpiresOn } from '@shared/dates';
-import { orderFormDocument, orderFormFileName, orderFormRules } from '@shared/orderForms';
+import { orderFormDocument, orderFormFileName, orderFormRules, signedOrderFormCopy } from '@shared/orderForms';
 import { listPrice, usd } from '@shared/pricing';
 import { dateError } from '../ui/fields/DateField';
 import { numberError } from '../ui/fields/NumberField';
@@ -245,6 +245,8 @@ export interface DocumentSource {
   version: number;
   terms: OrderFormTerms;
   documentSha256: string | null;
+  /** The text as sent (null for a draft, which is rendered from its terms). */
+  documentText: string | null;
   customerAcceptance: OrderFormSignature | null;
   licensorAcceptance: OrderFormSignature | null;
 }
@@ -253,15 +255,15 @@ function signatureOf(s: OrderFormSignature | null): OrderFormSignature | null {
   return s ? { name: s.name, title: s.title, email: s.email, at: s.at, documentSha256: s.documentSha256 } : null;
 }
 
-/** The document text: the hashed text, with both acceptances once there is any (the copy each party keeps). */
+/**
+ * The document text: the text as sent (stored by the server, what the hash
+ * covers), with both acceptances once there is any (the copy each party
+ * keeps); a draft's text as it would be sent now.
+ */
 export function documentText(f: DocumentSource): string {
-  const signed = (f.customerAcceptance || f.licensorAcceptance) && f.documentSha256;
-  return orderFormDocument({
-    number: f.number,
-    version: f.version,
-    terms: f.terms,
-    ...(signed ? { signatures: { customer: signatureOf(f.customerAcceptance), licensor: signatureOf(f.licensorAcceptance), documentSha256: f.documentSha256 as string } } : {}),
-  });
+  if (!f.documentText || !f.documentSha256) return orderFormDocument({ number: f.number, version: f.version, terms: f.terms });
+  if (!f.customerAcceptance && !f.licensorAcceptance) return f.documentText;
+  return signedOrderFormCopy(f.documentText, { customer: signatureOf(f.customerAcceptance), licensor: signatureOf(f.licensorAcceptance), documentSha256: f.documentSha256 });
 }
 
 /** Saves the document as OF-2026-0001.md through a Blob link. */

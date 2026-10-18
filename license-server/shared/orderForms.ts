@@ -2,11 +2,10 @@
 // COMMERCIAL_LICENSE_AGREEMENT.md as data. The server and the UI share the
 // defaults of a new form, the rules a form must meet before it is sent
 // (orderFormRules, orderFormGaps) and the document text itself
-// (orderFormDocument): the text sent is hashed (SHA-256, server side), each
-// party accepts that hash, and the customer downloads the same text. Change
-// the text only together with a new version of the template: a changed
-// rendering changes the hash of every form rendered afterwards (stored
-// hashes stay what was accepted).
+// (orderFormDocument): the text sent is stored and hashed (SHA-256, server
+// side), each party accepts that hash, and both download that stored text.
+// A changed rendering changes only forms sent afterwards: a sent form keeps
+// the text it was sent with (signedOrderFormCopy adds the acceptances).
 
 import type { OrderFormSignature, OrderFormTerms } from './api';
 import {
@@ -184,8 +183,8 @@ export interface OrderFormDocumentInput {
   number: string;
   version: number;
   terms: OrderFormTerms;
-  /** Both acceptances, for the executed copy; the text that is hashed has none. */
-  signatures?: { customer: OrderFormSignature | null; licensor: OrderFormSignature | null; documentSha256: string };
+  /** Both acceptances, for the kept copy; the text that is hashed has none. */
+  signatures?: OrderFormSignatures;
 }
 
 /**
@@ -237,20 +236,34 @@ export function orderFormDocument(input: OrderFormDocumentInput): string {
     ...rows.map(([k, v]) => `| ${k} | ${v} |`),
     '',
   ];
-  const s = input.signatures;
-  if (s) {
-    lines.push(
-      '## Acceptance',
-      '',
-      `Customer acceptance: ${s.customer ? signatureLine(s.customer) : 'not yet accepted'}`,
-      '',
-      `Licensor acceptance: ${s.licensor ? signatureLine(s.licensor) : 'not yet accepted'}`,
-      '',
-      `Document SHA-256: ${s.documentSha256}`,
-      '',
-    );
-  }
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+  const text = lines.join('\n').replace(/\n{3,}/g, '\n\n');
+  return input.signatures ? signedOrderFormCopy(text, input.signatures) : text;
+}
+
+/** The acceptances of both parties, as the kept copy prints them below the text. */
+export interface OrderFormSignatures {
+  customer: OrderFormSignature | null;
+  licensor: OrderFormSignature | null;
+  documentSha256: string;
+}
+
+/**
+ * The copy each party keeps: the text that was sent and hashed (as stored
+ * when it was sent, so later template changes never alter it), followed by
+ * both acceptances and the hash.
+ */
+export function signedOrderFormCopy(text: string, s: OrderFormSignatures): string {
+  return [
+    text,
+    '## Acceptance',
+    '',
+    `Customer acceptance: ${s.customer ? signatureLine(s.customer) : 'not yet accepted'}`,
+    '',
+    `Licensor acceptance: ${s.licensor ? signatureLine(s.licensor) : 'not yet accepted'}`,
+    '',
+    `Document SHA-256: ${s.documentSha256}`,
+    '',
+  ].join('\n');
 }
 
 /** The file name of the document: OF-2026-0001.md. */

@@ -36,9 +36,11 @@ import type {
   OrderFormSummary,
   OrderFormTerms,
 } from '../../shared/api';
-import { orderFormDocument, orderFormGaps, orderFormRules } from '../../shared/orderForms';
+import { keyFeaturesFor, orderFormDocument, orderFormGaps, orderFormRules, signedOrderFormCopy } from '../../shared/orderForms';
 import { newId } from '../db/ids';
 import { maybeOne, type Queryable } from '../db/sql';
+import { BUSINESS_EDITIONS, type Feature, type Plan } from '../../shared/catalog';
+import type { ExpiresOn } from '../../shared/dates';
 import { fail, HttpError, notFound } from '../http/errors';
 import { orderFormAnsweredMail, orderFormExecutedMail, orderFormSentMail, orderFormVoidedMail, type OrderFormFacts } from '../mail/templates';
 import { approvalRecipients } from './approvals';
@@ -71,6 +73,7 @@ interface OrderFormRow {
   version: number;
   terms: OrderFormTerms;
   document_sha256: string | null;
+  document_text: string | null;
   sent_at: Date | null;
   sent_by: string | null;
   sent_by_label: string;
@@ -125,6 +128,7 @@ function detailDto(r: OrderFormListRow): OrderForm {
     ...summaryDto(r),
     terms: r.terms,
     documentSha256: r.document_sha256,
+    documentText: r.document_text,
     businessRequestId: r.business_request_id,
     sentBy: r.sent_at ? actorRef(r.sent_by, r.sent_by_label) : null,
     customerAcceptance: c ? { ...signatureOf(c), userId: c.userId, ip: c.ip, userAgent: c.userAgent } : null,
@@ -145,6 +149,7 @@ function myDto(r: OrderFormListRow, authorized: boolean): MyOrderForm {
     customer: { id: r.customer_id, name: r.customer_name },
     terms: r.terms,
     documentSha256: r.document_sha256 ?? '',
+    documentText: r.document_text ?? '',
     sentAt: (r.sent_at ?? r.created_at).toISOString(),
     customerAcceptance: r.customer_acceptance ? signatureOf(r.customer_acceptance) : null,
     licensorAcceptance: r.licensor_acceptance ? signatureOf(r.licensor_acceptance) : null,
@@ -155,9 +160,9 @@ function myDto(r: OrderFormListRow, authorized: boolean): MyOrderForm {
   };
 }
 
-/** SHA-256 (hex) of the unsigned document of these terms: what each party accepts. */
-export function documentSha256(number: string, version: number, terms: OrderFormTerms): string {
-  return createHash('sha256').update(orderFormDocument({ number, version, terms }), 'utf8').digest('hex');
+/** SHA-256 (hex) of a document text: what each party accepts. */
+export function sha256Hex(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
 /** The facts the mails name. */
@@ -320,9 +325,13 @@ export async function updateOrderForm(ctx: ServiceCtx, id: string, terms: OrderF
   await auditCtx(ctx, { action: 'order_form.updated', targetType: 'order_form', targetId: id, details: { number: row.number, changed } });
 }
 
-/** The stored terms of a form, for the PATCH merge. */
-export async function storedTerms(q: Queryable, id: string): Promise<OrderFormTerms> {
-  const row = maybeOne(await q<{ terms: OrderFormTerms }[]>`select terms from order_forms where id = ${id}`);
+/**
+ * The stored terms of a form for the PATCH merge, with the row locked (FOR
+ * UPDATE) where they are read: two edits of one draft apply one after the
+ * other instead of the later one writing the merge of stale terms.
+ */
+export async function lockTermsForUpdate(ctx: Pick<ServiceCtx, 'tx'>, id: string): Promise<OrderFormTerms> {
+  const row = maybeOne(await ctx.tx<{ terms: OrderFormTerms }[]>`select terms from order_forms where id = ${id} for update`);
   if (!row) notFound('There is no such Order Form.');
   return row.terms;
 }
@@ -340,10 +349,12 @@ export async function sendOrderForm(ctx: ServiceCtx, id: string): Promise<void> 
   const gaps = orderFormGaps(row.terms);
   if (gaps.length > 0) throw new HttpError(400, 'invalid', 'Fill in every term before sending the Order Form.', { fields: gaps.map((f) => `terms.${f}`) });
   assertOrderFormRules(row.terms);
-  const sha = documentSha256(row.number, row.version, row.terms);
+  // The text is stored with its hash: the copies each party keeps are made from it, never re-rendered.
+  const text = orderFormDocument({ number: row.number, version: row.version, terms: row.terms });
+  const sha = sha256Hex(text);
   const by = actorColumns(ctx.actor);
   const rows = await ctx.tx<OrderFormRow[]>`
-    update order_forms set status = 'sent', document_sha256 = ${sha}, sent_at = ${ctx.now}, sent_by = ${by.id}, sent_by_label = ${by.label}, updated_at = ${ctx.now}
+    update order_forms set status = 'sent', document_sha256 = ${sha}, document_text = ${text}, sent_at = ${ctx.now}, sent_by = ${by.id}, sent_by_label = ${by.label}, updated_at = ${ctx.now}
      where id = ${id} returning *`;
   const sent = rows[0]!;
   const invites: { to: string; inviteUrl: string | null }[] = [];
@@ -365,7 +376,7 @@ export async function reviseOrderForm(ctx: ServiceCtx, id: string): Promise<void
   const row = await lockRow(ctx, id);
   expectStatus(row, ['sent', 'declined'], 'revised');
   await ctx.tx`
-    update order_forms set status = 'draft', version = version + 1, document_sha256 = null, sent_at = null, sent_by = null, sent_by_label = '',
+    update order_forms set status = 'draft', version = version + 1, document_sha256 = null, document_text = null, sent_at = null, sent_by = null, sent_by_label = '',
                            declined_at = null, declined_by_label = '', decline_note = '', updated_at = ${ctx.now}
      where id = ${id}`;
   await auditCtx(ctx, {
@@ -482,11 +493,10 @@ export async function countersignOrderForm(ctx: ServiceCtx, id: string, sig: Cou
     return;
   }
   const customer = await getCustomerRow(ctx.tx, row.customer_id);
-  const document = orderFormDocument({
-    number: done.number,
-    version: done.version,
-    terms: done.terms,
-    signatures: { customer: done.customer_acceptance, licensor: done.licensor_acceptance, documentSha256: done.document_sha256! },
+  const document = signedOrderFormCopy(done.document_text!, {
+    customer: signatureOf(done.customer_acceptance!),
+    licensor: signatureOf(done.licensor_acceptance!),
+    documentSha256: done.document_sha256!,
   });
   const facts = factsOf(done, customer.name);
   for (const to of done.terms.authorizedContacts) {
@@ -497,12 +507,46 @@ export async function countersignOrderForm(ctx: ServiceCtx, id: string, sig: Cou
 
 // --- issuing a license from a form -------------------------------------------------
 
-/** For POST /licenses with orderFormId: the executed form, locked, without a license yet, for this customer. */
-export async function lockOrderFormForLicense(ctx: ServiceCtx, id: string, customerId: string | undefined): Promise<{ businessRequestId: string | null }> {
+/** What a license issued from an Order Form says (the issue body). */
+export interface LicenseFromForm {
+  customerId?: string | undefined;
+  plan: Plan;
+  nodes: number;
+  features: readonly Feature[] | null;
+  expiresOn: ExpiresOn;
+}
+
+/**
+ * The first claim of a license that the executed form does not cover, as
+ * the body field and one sentence, or null: the customer is the form's, the
+ * plan the edition's, the nodes at most its production plus nonproduction
+ * nodes, the features those of its modules (all of them: every feature;
+ * named: a subset of them; none: an explicit list the admin chose, never
+ * every feature) and the expiry no later than the subscription end.
+ */
+export function licenseOutsideForm(terms: OrderFormTerms, customerId: string, l: LicenseFromForm): { field: string; message: string } | null {
+  if (l.customerId !== customerId) return { field: 'customerId', message: 'A license from an Order Form goes to the Order Form\u2019s customer.' };
+  const plan = BUSINESS_EDITIONS[terms.edition].plan;
+  if (l.plan !== plan) return { field: 'plan', message: `The Order Form is for ${BUSINESS_EDITIONS[terms.edition].label}: issue the license with plan ${plan}.` };
+  const maxNodes = terms.nodes + terms.nonproductionNodes;
+  if (l.nodes > maxNodes) return { field: 'nodes', message: `The Order Form covers at most ${maxNodes} ${maxNodes === 1 ? 'node' : 'nodes'}.` };
+  const covered = keyFeaturesFor(terms);
+  if (covered === null && l.features !== null) return { field: 'features', message: 'The Order Form includes every module: the key carries every feature.' };
+  if (covered !== null && l.features === null) return { field: 'features', message: 'The Order Form does not include every module: choose the features it covers.' };
+  if (covered !== null && covered.length > 0 && l.features?.some((f) => !covered.includes(f))) {
+    return { field: 'features', message: 'The key may carry only the modules the Order Form names.' };
+  }
+  if (l.expiresOn > terms.subscriptionEnd) return { field: 'expiresOn', message: `The Order Form's subscription ends on ${terms.subscriptionEnd}: the key expires on that day at the latest.` };
+  return null;
+}
+
+/** For POST /licenses with orderFormId: the executed form, locked, without a license yet, whose terms cover the license. */
+export async function lockOrderFormForLicense(ctx: ServiceCtx, id: string, license: LicenseFromForm): Promise<{ businessRequestId: string | null }> {
   const row = await lockRow(ctx, id);
   if (row.status !== 'executed') fail('conflict', `This Order Form is ${STATUS_WORDS[row.status]}: a license is issued only from an executed Order Form.`);
   if (row.license_id) fail('conflict', `A license was already issued from this Order Form (${row.license_id}).`);
-  if (customerId !== row.customer_id) throw new HttpError(400, 'invalid', 'A license from an Order Form goes to the Order Form’s customer.', { fields: ['customerId'] });
+  const outside = licenseOutsideForm(row.terms, row.customer_id, license);
+  if (outside) throw new HttpError(400, 'invalid', outside.message, { fields: [outside.field] });
   if (!row.business_request_id) return { businessRequestId: null };
   const open = maybeOne(await ctx.tx<{ id: string }[]>`select id from business_requests where id = ${row.business_request_id} and status = 'open' for update`);
   return { businessRequestId: open ? open.id : null };

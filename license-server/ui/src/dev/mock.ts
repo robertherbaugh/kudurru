@@ -10,7 +10,7 @@
 // send, revise, countersign, void, and the customer's accept and decline
 // change them (no gap or hash is computed: sending sets the fixture hash).
 import type { AcceptOrderFormBody, CreateOrderFormBody, CustomerDetail, DeclineOrderFormBody, LicenseDetail, MyOrderForm, OrderForm, OrderFormTerms } from '@shared/api';
-import { orderFormGaps } from '@shared/orderForms';
+import { orderFormDocument, orderFormGaps } from '@shared/orderForms';
 import { apiError, createFetchMock, reply } from './api';
 import * as f from './fixtures';
 
@@ -47,6 +47,7 @@ export function startDevMock(): void {
     customer: { id: o.customer.id, name: o.customer.name },
     terms: o.terms,
     documentSha256: o.documentSha256 ?? f.DOCUMENT_SHA256,
+    documentText: o.documentText ?? '',
     sentAt: o.sentAt ?? o.createdAt,
     customerAcceptance: o.customerAcceptance,
     licensorAcceptance: o.licensorAcceptance,
@@ -139,9 +140,9 @@ export function startDevMock(): void {
     orderFormSend: ({ params }) => {
       const o = order(params.id);
       if (o && o.gaps.length) return apiError(400, 'invalid', 'The Order Form is not complete yet', { fields: o.gaps });
-      return act(params.id, ['draft'], () => ({ status: 'sent', documentSha256: f.DOCUMENT_SHA256, sentAt: now(), sentBy: admin }));
+      return act(params.id, ['draft'], (o) => ({ status: 'sent', documentSha256: f.DOCUMENT_SHA256, documentText: orderFormDocument({ number: o.number, version: o.version, terms: o.terms }), sentAt: now(), sentBy: admin }));
     },
-    orderFormRevise: ({ params }) => act(params.id, ['sent', 'declined'], (o) => ({ status: 'draft', version: o.version + 1, documentSha256: null, declined: null })),
+    orderFormRevise: ({ params }) => act(params.id, ['sent', 'declined'], (o) => ({ status: 'draft', version: o.version + 1, documentSha256: null, documentText: null, declined: null })),
     orderFormCountersign: ({ params, body }) =>
       act(params.id, ['accepted'], () => ({ status: 'executed', licensorAcceptance: { ...(body as { name: string; title: string; documentSha256: string }), email: me.user.email, at: now(), by: admin } })),
     orderFormVoid: ({ params, body }) => act(params.id, ['draft', 'sent', 'accepted', 'declined'], () => ({ status: 'void', voided: { at: now(), by: admin, reason: (body as { reason: string }).reason } })),

@@ -26,7 +26,7 @@ import type {
   UserDetail,
 } from '@shared/api';
 import { ATTESTATION_STATEMENT, FEATURES, PLANS, POLICY } from '@shared/catalog';
-import { defaultOrderFormTerms } from '@shared/orderForms';
+import { defaultOrderFormTerms, orderFormDocument } from '@shared/orderForms';
 import { permissionsFor, type Role } from '@shared/permissions';
 
 /** The day the fixtures live on (UTC). */
@@ -325,6 +325,7 @@ export const draftOrderForm: OrderForm = {
   ...orderFormSummary,
   terms: { ...orderFormTerms, governingLaw: '', customerAddress: '' },
   documentSha256: null,
+  documentText: null,
   businessRequestId: null,
   sentBy: null,
   customerAcceptance: null,
@@ -342,6 +343,7 @@ export const sentOrderForm: OrderForm = {
   status: 'sent',
   terms: orderFormTerms,
   documentSha256: DOCUMENT_SHA256,
+  documentText: orderFormDocument({ number: 'OF-2026-0002', version: 1, terms: orderFormTerms }),
   sentAt: '2026-10-12T10:00:00.000Z',
   sentBy: actor,
   gaps: [],
@@ -375,6 +377,7 @@ export const myOrderForm: MyOrderForm = {
   customer: { id: 'cus_acme', name: 'Acme GmbH' },
   terms: orderFormTerms,
   documentSha256: DOCUMENT_SHA256,
+  documentText: sentOrderForm.documentText ?? '',
   sentAt: '2026-10-12T10:00:00.000Z',
   customerAcceptance: null,
   licensorAcceptance: null,
