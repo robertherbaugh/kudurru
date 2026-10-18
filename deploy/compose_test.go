@@ -18,7 +18,9 @@ import (
 // reference resolves (volumes, secrets, network_mode, depends_on, bind
 // sources), no published ports on services sharing a network namespace,
 // every KUDURRU_* variable is real, and every mounted kudurru.yaml loads
-// through config.Load with the service's environment.
+// through config.Load with the service's environment. hack/compose-e2e.sh
+// (make compose-e2e, .github/workflows/compose.yml) starts single and
+// single-edge on Docker.
 
 var composeDirs = []string{
 	"deploy/compose/single",

@@ -1,0 +1,60 @@
+# Docker Compose end-to-end test (hack/compose-e2e.sh), the Docker
+# counterpart of kind.yml: the single and single-edge deployments of
+# deploy/compose/, as users copy them, with the kudurru and kudurru-dnsdist
+# images built from this commit. single: healthy through its own
+# healthcheck with a read-only root and no capabilities, DNS over UDP and
+# TCP, the API, a settings change on the data volume, the query and audit
+# logs, a clean stop, and everything kept across `down` and `up`.
+# single-edge: dnsdist in front, DNS over UDP, TCP, DoT and DoH, and the
+# client's address carried to the query log by PROXYv2.
+#
+# Runs on every pull request and push to main that touches more than
+# docs/, dev-docs/, docs-site/, website/, branding/ and license-server/
+# (hack/ci-changes.sh code), so it can be a required check: those changes
+# skip the job rather than the workflow, because a skipped job satisfies a
+# required status check and a workflow that never runs does not (the same
+# gate as ci.yml).
+name: compose
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: compose-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  changes:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        # bash -o pipefail: a failing filter fails the job instead of skipping
+        # every gated job.
+        shell: bash
+        run: hack/ci-changes.sh code | tee -a "$GITHUB_OUTPUT"
+  compose:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    # Two image builds, the Go compile of the kudurru image first.
+    runs-on: ubicloud-standard-4-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install dig and jq
+        run: |
+          for tool in dig jq; do
+            command -v "$tool" || { sudo apt-get update && sudo apt-get install -y dnsutils jq; break; }
+          done
+          docker compose version; dig -v; jq --version
+      - name: single and single-edge, DNS (UDP, TCP, DoT, DoH), API and persistence
+        run: hack/compose-e2e.sh

@@ -20,7 +20,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: test-postgres all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest dashboard-install dashboard-build dashboard-test dashboard-lint dashboard-dev dashboard-e2e
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e check-generated-code
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e compose-e2e check-generated-code
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork docker-dhcp hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
@@ -449,6 +449,14 @@ edge-check: edge-images
 ## helm, kubectl, jq, dig).
 kind-e2e:
 	hack/kind-e2e.sh
+
+## compose-e2e: the single and single-edge deployments of deploy/compose/ on
+## Docker with images built from this checkout: DNS over UDP, TCP, DoT and
+## DoH, the API, the query and audit logs, a clean stop and persistence
+## across `down` and `up` (hack/compose-e2e.sh; needs docker with compose,
+## jq, curl, openssl, dig).
+compose-e2e:
+	hack/compose-e2e.sh
 
 docker:
 	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .

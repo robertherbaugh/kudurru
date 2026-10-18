@@ -198,6 +198,20 @@ Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
       required check once it has a record of green runs (it skips docs-only
       changes the way `ci` does, so a required check is satisfied). Still
       manual: the edge Deployment with EndpointSlice membership.
+- [ ] **compose** (`compose` workflow, `make compose-e2e`): the
+      `deploy/compose/single` and `single-edge` files as shipped, with the
+      images built from the commit. single: healthy through its own
+      healthcheck as uid 65532 with a read-only root and no capabilities;
+      `dig` of an objects.d zone and a forwarded name over UDP and TCP; a
+      zone and a settings change through the API (the change lands in
+      `KUDURRU_SETTINGS_FILE`); the query and audit logs; `docker compose
+      stop` exits 0 within `stop_grace_period`; the zone, setting, audit
+      event and query log kept across `down` and `up`. single-edge: both
+      containers healthy, `dig` over UDP, TCP, DoT and DoH through dnsdist,
+      and the query log names the client rather than dnsdist's loopback
+      (PROXYv2). It skips docs-only changes the way `ci` does; make it a
+      required check once it has a record of green runs. Not covered: the
+      three-host `ha/` files (host networking and a VIP).
 
 On the owner's hardware:
 
