@@ -630,6 +630,9 @@ TRIVY                      ?= $(TRIVY_DIR)/trivy
 SCAN_TAG                   ?= scan
 PUBLISHED_REPO             ?= ghcr.io/robertherbaugh
 PUBLISHED_TAG              ?=
+# Recipes read it from the environment, not make's expansion
+# (trivy-published), so it stays data until checked.
+export PUBLISHED_TAG
 
 .PHONY: sast vulncheck trivy trivy-fs trivy-images trivy-license-server trivy-published
 
@@ -674,10 +677,11 @@ trivy-license-server: $(TRIVY) license-server-image
 # the same package versions and Go modules. The supervisor image tags are
 # derived the way publish.yml's supervisor-manifests derives them.
 trivy-published: $(TRIVY)
-	@if ! echo '$(PUBLISHED_TAG)' | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?'; then \
+	@case "$$PUBLISHED_TAG" in *[!v0-9.rc-]*) PUBLISHED_TAG= ;; esac; \
+	if ! printf '%s\n' "$$PUBLISHED_TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?'; then \
 	  echo "usage: make trivy-published PUBLISHED_TAG=v<VERSION>[-rc.<N>]"; exit 1; \
 	fi; \
-	version='$(PUBLISHED_TAG)'; version=$${version#v}; \
+	version="$${PUBLISHED_TAG#v}"; \
 	dnsdist=$$(sed -n 's/^FROM powerdns\/dnsdist-[0-9]*:\([^@]*\)@.*$$/\1/p' images/dnsdist/Dockerfile); \
 	keepalived=$$(sed -n 's/^ARG KEEPALIVED_VERSION=\(.*\)$$/\1/p' images/keepalived/Dockerfile); \
 	if [ -z "$$dnsdist" ] || [ -z "$$keepalived" ]; then echo "error: no dnsdist or keepalived version in images/*/Dockerfile"; exit 1; fi; \
