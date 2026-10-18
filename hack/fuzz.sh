@@ -2,7 +2,7 @@
 # Run kudurru's Go fuzz targets (dev-docs/milestones/m5/e2e.md, "Fuzzing").
 #
 #   hack/fuzz.sh                 every target for FUZZTIME (default 60s)
-#   hack/fuzz.sh --list          print "package target" pairs (CI matrix)
+#   hack/fuzz.sh --list          print the "package target" pairs
 #   hack/fuzz.sh FuzzDoHRequest  only entries ("<package> <target>") matching the regex
 #   hack/fuzz.sh --one ./internal/zone FuzzImportBIND   exactly one target
 #   hack/fuzz.sh --shard 2/4     the second of four contiguous slices (CI): a
