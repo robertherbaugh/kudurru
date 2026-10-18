@@ -240,6 +240,7 @@ func (d *DB) connect(ctx context.Context) error {
 	if num < MinServerVersion {
 		return fmt.Errorf("PostgreSQL %d.%d is too old; kudurru needs 16 or newer", num/10000, num%10000)
 	}
+	// nosemgrep: invalid-usage-of-modified-variable -- Migrate returns a MigrateResult value, filled on ErrIncompatible
 	res, err := Migrate(cctx, d.pool)
 	if err != nil {
 		d.metrics.errors.WithLabelValues("migrate").Inc()

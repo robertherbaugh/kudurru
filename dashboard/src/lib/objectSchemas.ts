@@ -79,6 +79,7 @@ export function listEntryError(v: string): string | null {
   if (!t || t.startsWith('#') || t.startsWith('!')) return null;
   if (t.startsWith('/') && t.endsWith('/') && t.length > 2) {
     try {
+      // nosemgrep: detect-non-literal-regexp -- compiled to validate the input, never run
       new RegExp(t.slice(1, -1));
       return null;
     } catch (e) {

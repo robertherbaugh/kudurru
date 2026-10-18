@@ -6,12 +6,18 @@
 # holds the signing key, so its npm dependencies (exact versions in
 # package.json, bun.lock) are kept current too: minor and patch updates in
 # one grouped pull request a week, each major update on its own.
+#
+# Both wait 7 days after a release before proposing it (cooldown), so a
+# compromised or broken release has time to be found and pulled first.
+# Security updates are not delayed.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
@@ -21,6 +27,8 @@ updates:
     directory: /license-server
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       license-server:
         patterns: ["*"]

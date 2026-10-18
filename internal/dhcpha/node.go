@@ -507,6 +507,7 @@ func (n *Node) awaitProposal(ctx context.Context, work func() applyResult) apply
 		defer func() { <-n.proposals }()
 		if err := ctx.Err(); err != nil {
 			ch <- applyResult{Err: errors.Join(ErrNoQuorum, err)}
+			// nosemgrep: missing-unlock-before-return -- this goroutine never holds proposalMu
 			return
 		}
 		ch <- work()

@@ -80,5 +80,8 @@ EXPOSE 8085/tcp
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD ["/usr/local/bin/kudurru", "health", "--ops-address", "127.0.0.1:8085", "--ready"]
 STOPSIGNAL SIGTERM
+# Root by design (see the top of this file): keepalived needs it for VRRP.
+# nosemgrep: missing-user-entrypoint
 ENTRYPOINT ["/sbin/tini", "--"]
+# nosemgrep: missing-user
 CMD ["/usr/local/bin/kudurru", "vip", "run"]

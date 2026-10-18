@@ -1,0 +1,124 @@
+# Security scans (Makefile, "Security scans"):
+#   sast                  Semgrep CE static analysis of the Go, TypeScript,
+#                         Dockerfiles, manifests and workflows
+#   vulncheck             govulncheck: known vulnerabilities the Go code reaches
+#   trivy-fs              Trivy on the checkout: go.mod and bun.lock
+#                         dependencies, secrets, misconfigurations
+#   trivy-images          the kudurru, -debug, kudurru-keepalived and
+#                         kudurru-dnsdist images built from this commit
+#   trivy-license-server  the license portal image
+# On every pull request and on main, and daily: new CVEs and new Semgrep
+# rules arrive without a code change, and GitHub mails a failed scheduled
+# run to whoever last changed its cron. The repository is private without
+# GitHub Advanced Security, so there is no code scanning to upload SARIF
+# to: a finding fails the job and the log lists it. The changes job gates
+# the slower jobs as ci.yml and license-server.yml do (a skipped job
+# satisfies a required status check); schedule and workflow_dispatch run
+# everything.
+name: security
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  changes:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      portal: ${{ steps.filter.outputs.portal }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # code: anything outside docs/, dev-docs/, docs-site/, website/,
+          # branding/ and license-server/ (ci.yml). portal: what can change
+          # the license portal image (license-server.yml). Both also run on
+          # changes to the scan policy. A new branch, an unreachable
+          # force-pushed base or a scheduled run runs everything.
+          code=true
+          portal=true
+          policy='^(Makefile|trivy\.yaml|\.trivyignore\.yaml|\.github/workflows/security\.yml)$'
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|dev-docs|docs-site|website|license-server|branding)/' <<<"$files"; then
+              code=false
+            fi
+            if [[ -n "$files" ]] && ! grep -Eq "^(license-server/|branding/|internal/license/|hack/licensegen/)|${policy}" <<<"$files"; then
+              portal=false
+            fi
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+          echo "portal=$portal" | tee -a "$GITHUB_OUTPUT"
+  # Every change: the website, the docs site and the license portal are
+  # code too, and the scan takes about a minute.
+  sast:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep
+        run: make sast
+  vulncheck:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: make vulncheck
+  # Every change: it covers every lockfile, including license-server/ and
+  # docs-site/, and takes seconds after the database download.
+  trivy-fs:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Trivy on the checkout
+        run: make trivy-fs
+  # linux/amd64 only: the arm64 images carry the same package versions and
+  # Go modules.
+  trivy-images:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-4-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the images and scan them
+        run: make trivy-images
+  trivy-license-server:
+    needs: changes
+    if: needs.changes.outputs.portal == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the license portal image and scan it
+        run: make trivy-license-server

@@ -281,6 +281,7 @@ func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch ma
 	if len(patch) == 0 {
 		return nil, errInvalid("body: an object with the keys to change is required")
 	}
+	// nosemgrep: iterate-over-empty-map -- patchPaths fills changes
 	changes := map[string]any{}
 	if err := patchPaths("", patch, changes); err != nil {
 		return nil, err

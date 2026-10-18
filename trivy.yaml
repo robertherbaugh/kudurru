@@ -1,0 +1,18 @@
+# Trivy settings for `make trivy-fs`, `make trivy-images` and
+# .github/workflows/security.yml; Trivy reads ./trivy.yaml on its own. A
+# finding fails the scan when it is HIGH or CRITICAL and, for a package, a
+# fixed version exists: an unfixed CVE leaves nothing to do but wait, and
+# the daily scheduled run fails once the fix ships. Accepted findings are
+# in .trivyignore.yaml, each with its reason. Development dependencies
+# count: wrangler, vite and the test tools run in CI, some next to the
+# deployment secrets, and website/ and docs-site/ have no others.
+exit-code: 1
+severity: [HIGH, CRITICAL]
+ignorefile: .trivyignore.yaml
+pkg:
+  include-dev-deps: true
+vulnerability:
+  ignore-unfixed: true
+scan:
+  disable-telemetry: true
+  skip-version-check: true

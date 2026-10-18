@@ -90,6 +90,7 @@ export function valueError(type: DomainEntryType, raw: string): string | null {
     if (!re) return 'Empty expression';
     if (NOT_RE2.test(re)) return 'RE2 has no lookahead, lookbehind or backreferences';
     try {
+      // nosemgrep: detect-non-literal-regexp -- compiled to validate the input, never run
       new RegExp(re);
       return null;
     } catch (e) {

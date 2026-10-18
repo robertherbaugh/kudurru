@@ -140,6 +140,7 @@ export function parseEntries(text: string): string[] {
 export function entryError(format: ListFormat | undefined, e: string): string | null {
   if (format !== 'regex') return listEntryError(e);
   try {
+    // nosemgrep: detect-non-literal-regexp -- compiled to validate the input, never run
     new RegExp(e.replace(/^\/(.*)\/$/, '$1'));
     return null;
   } catch (err) {

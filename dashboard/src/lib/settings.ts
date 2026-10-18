@@ -15,6 +15,7 @@ export function getPath(obj: unknown, path: string): unknown {
   let cur: unknown = obj;
   for (const seg of path.split('.')) {
     if (cur === null || typeof cur !== 'object') return undefined;
+    // nosemgrep: prototype-pollution-loop -- reads only; nothing is assigned through the path
     cur = (cur as Record<string, unknown>)[seg];
   }
   return cur;
