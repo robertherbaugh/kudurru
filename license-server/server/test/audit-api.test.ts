@@ -4,6 +4,7 @@
 // refuses UPDATE, DELETE and TRUNCATE; and after real actions no detail
 // holds a key token.
 import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { AUDIT_TARGET_TYPES } from '../../shared/api';
 import { addDays, todayUtc } from '../../shared/dates';
 import { auditHandlers } from '../api/audit';
 import { customerHandlers } from '../api/customers';
@@ -68,6 +69,17 @@ describeDb('audit API', () => {
     expect((await callJson(app, 'auditList', { as: admin, query: { before: 'x' } })).status).toBe(400);
     expect((await callJson(app, 'auditList', { as: admin, query: { limit: 500 } })).status).toBe(400);
     expect((await callJson(app, 'auditList', { as: admin, query: { targetType: 'nope' } })).status).toBe(400);
+  });
+
+  test('every target type the portal audits can be filtered by (business requests and Order Forms included)', async () => {
+    for (const targetType of AUDIT_TARGET_TYPES) {
+      const res = await callJson(app, 'auditList', { as: admin, query: { targetType, targetId: 'none-such' } });
+      expect(`${targetType} ${res.status}`).toBe(`${targetType} 200`);
+      expect(res.body.items).toEqual([]);
+    }
+    await t.db`insert into audit_events (actor_label, action, target_type, target_id, details) values ('test', 'order_form.created', 'order_form', 'ord_audit_filter', '{}')`;
+    const res = await callJson(app, 'auditList', { as: admin, query: { targetType: 'order_form', targetId: 'ord_audit_filter' } });
+    expect(res.body.items.map((e) => [e.action, e.targetType, e.targetId])).toEqual([['order_form.created', 'order_form', 'ord_audit_filter']]);
   });
 
   test('only for audit.read', async () => {

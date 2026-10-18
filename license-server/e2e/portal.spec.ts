@@ -354,6 +354,13 @@ test('an Order Form: drafted from a business request, accepted by its contact, c
   await expect(heading).toHaveText(/OF-\d{4}-\d{4,}/);
   const number = /OF-\d{4}-\d{4,}/.exec((await heading.textContent()) ?? '')![0];
   await shot(admin, '15-order-form-draft');
+  // Its recent activity, and the audit page filtered to it.
+  await expect(admin.getByRole('cell', { name: 'order_form.created' }).first()).toBeVisible();
+  await admin.getByRole('link', { name: 'All events' }).click();
+  await admin.waitForURL(/\/audit\?targetType=order_form/);
+  await expect(admin.getByRole('cell', { name: 'order_form.created' }).first()).toBeVisible();
+  await admin.goBack();
+  await expect(admin.getByRole('heading', { level: 1 })).toHaveText(new RegExp(number));
 
   // Send: the contact becomes a member and gets the form with an invite link.
   await admin.getByRole('button', { name: 'Send', exact: true }).click();

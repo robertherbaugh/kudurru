@@ -3,7 +3,7 @@
 // and user pages can link to their events), with "Load older events"
 // following the keyset cursor.
 import { HStack } from '@astryxdesign/core/Stack';
-import type { AuditAction, AuditQuery, AuditTargetType } from '@shared/api';
+import { AUDIT_TARGET_TYPES, type AuditAction, type AuditQuery, type AuditTargetType } from '@shared/api';
 import { AuditTable } from '../components/AuditTable';
 import { AUDIT_ACTIONS, TARGET_LABEL } from '../lib/words';
 import { Page, PageHeader, Panel } from '../ui/components/layout/Page';
@@ -11,7 +11,7 @@ import { SelectField } from '../ui/fields/SelectField';
 import { TextField } from '../ui/fields/TextField';
 import { useSearchParams } from '../ui/lib/router';
 
-const TARGETS = Object.keys(TARGET_LABEL) as AuditTargetType[];
+const TARGETS: readonly AuditTargetType[] = AUDIT_TARGET_TYPES;
 
 export default function AuditPage() {
   const [sp, setParams] = useSearchParams();
