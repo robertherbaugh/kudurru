@@ -485,11 +485,11 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 	if path != "" {
 		b, err := os.ReadFile(path) //nolint:gosec // operator-selected node configuration file
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
 		raw, err := yaml.Parser().Unmarshal(b)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
 		for section := range raw {
 			declared[section] = true

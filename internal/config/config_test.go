@@ -150,6 +150,22 @@ func TestLoadRejectsBadInput(t *testing.T) {
 	}
 }
 
+func TestLoadSourceErrorsIncludeContext(t *testing.T) {
+	dir := t.TempDir()
+	invalid := filepath.Join(dir, "invalid.yaml")
+	if err := os.WriteFile(invalid, []byte("node: {name: [unclosed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{invalid, filepath.Join(dir, "missing.yaml")} {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			_, err := Load(path, nil)
+			if err == nil || !strings.Contains(err.Error(), "config: read "+path) {
+				t.Fatalf("source error lacks configuration context: %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadTLSListenersAndProxySecret(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "kudurru.yaml")
