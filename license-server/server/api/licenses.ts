@@ -105,8 +105,8 @@ export const licenseHandlers: PartialHandlerMap = {
     const detail = await inTransaction(ctx, actorFromCtx(ctx), async (s) => {
       // From a business request: it must still be open, and becomes issued with the license.
       if (body.businessRequestId) await lockOpenBusinessRequest(s, body.businessRequestId);
-      // From an Order Form: executed, for this customer, without a license yet; it records the license.
-      const fromForm = body.orderFormId ? await lockOrderFormForLicense(s, body.orderFormId, body.customerId) : null;
+      // From an Order Form: executed, without a license yet, covering this customer, plan, nodes, features and expiry; it records the license.
+      const fromForm = body.orderFormId ? await lockOrderFormForLicense(s, body.orderFormId, body) : null;
       const id = await issueLicense(s, body);
       if (body.businessRequestId) await markBusinessRequestIssued(s, body.businessRequestId, id);
       if (body.orderFormId && fromForm) await markOrderFormLicensed(s, body.orderFormId, id, fromForm.businessRequestId);
