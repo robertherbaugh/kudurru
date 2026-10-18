@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -448,6 +449,54 @@ func TestMigrationVIPCutoverScansRecordsOncePerRequest(t *testing.T) {
 	}
 	if counter.scans != 1 || counter.pages != 2 {
 		t.Fatalf("apply scans=%d pages=%d; want 1 paginated scan", counter.scans, counter.pages)
+	}
+}
+
+type countingMigrationWrites struct {
+	store.Store
+	writes int
+}
+
+func (s *countingMigrationWrites) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
+	s.writes++
+	return s.Store.Apply(ctx, obj, opts)
+}
+
+func TestMigrationCutoverRejectsFullJournalBeforeWrites(t *testing.T) {
+	for _, addresses := range []bool{false, true} {
+		t.Run(fmt.Sprintf("addresses=%t", addresses), func(t *testing.T) {
+			h := newHarness(t)
+			run := importRun(t, h, migrationPlan("one"))
+			stored, err := h.srv.getMigrationRun(context.Background(), run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Simulate accumulated retry history close to the object size cap.
+			stored.Spec.Cutovers = []internal.MigrationCutover{{StartedAt: stored.Spec.StartedAt, Status: "partial", Items: []internal.MigrationItem{{Kind: "DNSZone", Name: "one", Result: ResultError}}}}
+			b, err := json.Marshal(stored)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stored.Spec.Cutovers[0].Items[0].Error = strings.Repeat("x", store.MaxObjectBytes-len(b)-2048)
+			if err := h.srv.saveMigrationRun(context.Background(), stored); err != nil {
+				t.Fatal(err)
+			}
+			body := map[string]any{"nameservers": []string{"dns.kudurru.test"}}
+			if addresses {
+				body = map[string]any{"nameservers": []string{}, "addresses": []string{"192.0.2.53"}}
+			}
+			var p MigrationCutoverPlan
+			h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission/preview", "admin", body).want(http.StatusOK).json(&p)
+			counter := &countingMigrationWrites{Store: h.st}
+			h.srv.opts.Store = counter
+			response := h.do(http.MethodPost, "/api/v1/imports/runs/"+run.ID+"/decommission", "admin", p).want(http.StatusConflict)
+			if !strings.Contains(response.Body.String(), "insufficient space") || counter.writes != 0 {
+				t.Fatalf("expected capacity error before any write: %s; writes=%d", response.Body, counter.writes)
+			}
+			if getMigrationZone(t, h, "one").Spec.SOA.MName != "old.dns.test." {
+				t.Fatal("capacity rejection changed zone authority")
+			}
+		})
 	}
 }
 

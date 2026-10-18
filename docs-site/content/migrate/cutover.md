@@ -219,6 +219,8 @@ address and creates matching A/AAAA records. For example, `192.0.2.53` becomes
 `ns-c0000235.home.arpa.` in `home.arpa`, with an A record pointing to the VIP.
 IPv6 addresses generate AAAA records. The first address supplies the SOA
 primary name. Review the generated names and addresses before applying.
+Loopback and link-local addresses are refused; choose addresses reachable by
+the clients that will query these zones.
 Conflicting existing records are refused. Later cutovers create address
 records before changing authority; failed writes remain in migration history.
 Zones with custom record-set selectors require explicit DNS names.
@@ -240,6 +242,8 @@ nameservers**, review the suggested hostname or choose serving IPs/VIPs, then
 review the changes and apply them when ready. Failed writes remain visible, and successful writes remain in place;
 preview again before retrying. Zones reimported by a newer run, recreated,
 or whose authority was edited are refused by older runs.
+Cutover checks journal capacity before writing DNS changes. If a run has no
+room for another complete attempt, start a new run with fewer zones.
 
 For imports made before migration history was available, choose **Track
 previous imports**, select the recognized API imports, and review them before

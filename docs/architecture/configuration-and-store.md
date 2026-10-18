@@ -76,7 +76,10 @@ Progress is saved after each destination write; a journal failure stops further
 writes and returns the run ID plus a journal error. Settings follow all object
 writes; final journal updates use a bounded context independent of a disconnected
 caller. The journal has the store's object size cap; a run accepts at most 100
-cutover attempts. Full backups include internal journals; safe exports omit them.
+cutover attempts. Before claiming an attempt, apply checks that the journal has
+room for every zone and address-record outcome, bounded errors, and authority
+updates. An attempt that cannot fit is refused before any destination writes.
+Full backups include internal journals; safe exports omit them.
 
 An optional `nameservers` list replaces apex NS and SOA MNAME during conversion.
 Alternatively, `nameserverAddresses` generates stable `ns-<hex-address>` names
@@ -97,7 +100,10 @@ retryable operations; after ten minutes an interrupted attempt can be recovered,
 including a write committed just before its journal update. Work is bounded to
 two minutes; all write races still use optimistic versions. A retry records the
 abandoned attempt as partial. Address cutovers use per-zone generated record
-sets scoped to the run and addresses: preview includes endpoints and versions,
+sets scoped to the run and addresses: each preview or apply request loads all
+record sets once, groups them by zone, and reuses that snapshot for conflict
+checks. Generated record sets are still reread and written under their reviewed
+versions. Preview includes endpoints and versions,
 refuses existing name conflicts, requires `records.write`, and refuses zones
 with custom record-set selectors. Apply creates/verifies address records before
 changing NS/SOA and journals each result. Existing records are never implicitly
@@ -129,6 +135,7 @@ sequenceDiagram
     A->>S: Read run and live zones
     A-->>U: Current/target authority, generated addresses, versions and warnings
     U->>A: Apply reviewed versions
+    A->>A: Check journal capacity for all outcomes
     A->>S: Claim run revision and record attempt
     loop Each tracked zone
         opt Serving IPs/VIPs selected

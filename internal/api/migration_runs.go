@@ -387,6 +387,9 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 	}
 	attempt := internal.MigrationCutover{StartedAt: metav1.NewTime(s.opts.Now()), Actor: s.actor(ctx), Status: "running", Nameservers: fresh.Nameservers, Addresses: fresh.Addresses, Items: []internal.MigrationItem{}}
 	r.Spec.Cutovers = append(r.Spec.Cutovers, attempt)
+	if err := migrationCutoverCapacity(r, fresh); err != nil {
+		return nil, err
+	}
 	if err := s.saveMigrationRun(ctx, r); err != nil {
 		return nil, storeError(err)
 	}
@@ -466,6 +469,39 @@ func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *Migrat
 	}
 	s.persistMigrationProgress(finishCtx, r, result)
 	return result, nil
+}
+
+// Reserve enough room for every outcome before claiming an attempt or writing
+// DNS data. Errors can expand sixfold when JSON escapes control characters.
+func migrationCutoverCapacity(r *internal.MigrationRun, p *MigrationCutoverPlan) error {
+	projected := r.DeepCopy()
+	last := &projected.Spec.Cutovers[len(projected.Spec.Cutovers)-1]
+	worstError := strings.Repeat("\x00", 1024) + "…"
+	for i, change := range p.Zones {
+		last.Items = append(last.Items, internal.MigrationItem{Kind: "DNSZone", Namespace: change.Namespace, Name: change.Name, Result: ResultUnchanged, Error: worstError})
+		if change.AddressRecordSet != nil {
+			rs := change.AddressRecordSet
+			last.Items = append(last.Items, internal.MigrationItem{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name, Result: ResultUnchanged, Error: worstError})
+		}
+		// Include both old and target authority to bound every partial outcome.
+		tracked := &projected.Spec.Zones[i]
+		tracked.Nameservers = append(tracked.Nameservers, change.TargetNameservers...)
+		if len(change.TargetNameservers) > 0 {
+			tracked.Primary += change.TargetNameservers[0]
+		}
+		if tracked.UID == "" {
+			tracked.UID = strings.Repeat("x", 64)
+		}
+	}
+	b, err := json.Marshal(projected)
+	if err != nil {
+		return err
+	}
+	// Allow for finish timestamps and store-assigned metadata growth as well.
+	if len(b)+4096 > store.MaxObjectBytes {
+		return errConflict("Migration journal has insufficient space for another complete cutover attempt", "Start a new migration run with fewer zones before retrying; no DNS changes were made")
+	}
+	return nil
 }
 
 func zonePrimary(z *v1alpha1.DNSZone) string {
