@@ -84,16 +84,16 @@ cascade:
   - {weight: 10, target: {path: /guide/dashboard/policy-details}}
   - {weight: 11, target: {path: /guide/dashboard/requests}}
   - {weight: 12, target: {path: /guide/dashboard/upstreams}}
-  - {weight: 12, target: {path: /guide/dashboard/zones}}
-  - {weight: 13, target: {path: /guide/dashboard/nodes}}
-  - {weight: 14, target: {path: /guide/dashboard/settings}}
-  - {weight: 15, target: {path: /guide/dashboard/tools}}
-  - {weight: 16, target: {path: /guide/dashboard/import}}
-  - {weight: 17, target: {path: /guide/dashboard/diagnosis}}
-  - {weight: 18, target: {path: /guide/dashboard/license}}
-  - {weight: 19, target: {path: /guide/dashboard/access}}
-  - {weight: 20, target: {path: /guide/dashboard/identity}}
-  - {weight: 21, target: {path: /guide/dashboard/audit}}
+  - {weight: 13, target: {path: /guide/dashboard/zones}}
+  - {weight: 14, target: {path: /guide/dashboard/nodes}}
+  - {weight: 15, target: {path: /guide/dashboard/settings}}
+  - {weight: 16, target: {path: /guide/dashboard/tools}}
+  - {weight: 17, target: {path: /guide/dashboard/import}}
+  - {weight: 18, target: {path: /guide/dashboard/diagnosis}}
+  - {weight: 19, target: {path: /guide/dashboard/license}}
+  - {weight: 20, target: {path: /guide/dashboard/access}}
+  - {weight: 21, target: {path: /guide/dashboard/identity}}
+  - {weight: 22, target: {path: /guide/dashboard/audit}}
   - {weight: 20, description: "Add a block list or restore a site that a list blocks.", target: {path: /guide/filtering}}
   - {weight: 30, description: "Choose Kubernetes relays or a Linux host, create a scope and check a client lease.", walkthrough: true, target: {path: /guide/dhcp}}
   - {weight: 80, description: "Configure the LoadBalancer, router relay and required trusted relays, then test a lease.", walkthrough: true, target: {path: /guide/dhcp/kubernetes}}
