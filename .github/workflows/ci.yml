@@ -343,11 +343,11 @@ jobs:
             .context/dhcp-acceptance.*/
             !.context/dhcp-acceptance.*/fixture
           retention-days: 14
-  # Fuzzing: every target of hack/fuzz.sh for 60 s, in four shards of
-  # consecutive targets fuzzed one after another, so a package's
-  # instrumented test binary is built once per shard rather than once per
-  # target (a job per target spent more on setup and compiling than on
-  # fuzzing).
+  # Fuzzing: every target of hack/fuzz.sh for 60 s, in seven shards of two
+  # or three consecutive targets fuzzed one after another (about 5 min a
+  # shard, no longer than the go shards), so a package's instrumented test
+  # binary is built once per shard rather than once per target (a job per
+  # target spent more on setup and compiling than on fuzzing).
   fuzz:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -356,8 +356,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
-    name: fuzz ${{ matrix.shard }}/4
+        shard: [1, 2, 3, 4, 5, 6, 7]
+    name: fuzz ${{ matrix.shard }}/7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -368,7 +368,7 @@ jobs:
           FUZZTIME: 60s
           FUZZ_PARALLEL: 2
           SHARD: ${{ matrix.shard }}
-        run: hack/fuzz.sh --shard "$SHARD/4"
+        run: hack/fuzz.sh --shard "$SHARD/7"
       - name: Upload the crasher
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -378,6 +378,19 @@ jobs:
             **/testdata/fuzz/
             bin/fuzz/
           retention-days: 14
+  # go vet's own analyzers, beside the tests (about 4 min on 2 vCPU, which
+  # would make lint the slowest job if it ran there).
+  vet:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: make vet
   lint:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -387,9 +400,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # go vet's own analyzers, off the go job's critical path.
-      - name: Vet
-        run: make vet
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
@@ -447,7 +457,7 @@ jobs:
   # satisfies a required status check; the same goes for a canceled run.
   # Add new jobs to needs.
   ci-ok:
-    needs: [changes, go, build, postgres, dashboard, dashboard-e2e, e2e, dhcp-acceptance, fuzz, lint, helm, licenses]
+    needs: [changes, go, build, postgres, dashboard, dashboard-e2e, e2e, dhcp-acceptance, fuzz, vet, lint, helm, licenses]
     if: always()
     runs-on: ubicloud-standard-2-ubuntu-2404
     timeout-minutes: 5
