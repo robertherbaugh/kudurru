@@ -1,0 +1,3 @@
+NAMESPACE   NAME   ZONE               NAMES   READY     AGE   ENDPOINTS   MANAGED-BY
+apps        api    home-example-com   1       Unknown   5m    1           integration:external-dns
+default     web    home-example-com   2       True      24h   2           -

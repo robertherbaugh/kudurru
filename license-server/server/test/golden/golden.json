@@ -1,0 +1,113 @@
+{
+  "kid": "server-test-1",
+  "publicKey": "3M2ooVUquWRsKteU3aWtQJkw2PnBXM4FAp08cGXtCsA=",
+  "seed": "Fv2JvFTWrk2WKKAiRkt8w0F0neL/AlBeuwgS0qTQgLM=",
+  "vectors": [
+    {
+      "name": "personal, all features",
+      "claims": {
+        "jti": "lic_AAAAAAAAAAAA",
+        "iss": "kudurru",
+        "sub": "Homelab Hank",
+        "plan": "personal",
+        "nodes": 3,
+        "iat": 1791849600,
+        "exp": 1823385600
+      },
+      "key": "eyJhbGciOiJFZERTQSIsImtpZCI6InNlcnZlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiJsaWNfQUFBQUFBQUFBQUFBIiwiaXNzIjoia3VkdXJydSIsInN1YiI6IkhvbWVsYWIgSGFuayIsInBsYW4iOiJwZXJzb25hbCIsIm5vZGVzIjozLCJpYXQiOjE3OTE4NDk2MDAsImV4cCI6MTgyMzM4NTYwMH0.CcMmA2k1t21drpwSbzxTar0r3zLNqhaOXWUVrsdwLLV3zHYVczGzPuuI35TrXbKjy-iBGVQqbkVeXaQNCUmVAA"
+    },
+    {
+      "name": "business, feature subset",
+      "claims": {
+        "jti": "lic_b-_9xYz0123",
+        "iss": "kudurru",
+        "sub": "Example GmbH",
+        "plan": "business",
+        "nodes": 25,
+        "features": [
+          "oidc",
+          "edge",
+          "audit"
+        ],
+        "iat": 1791849600,
+        "exp": 1823385600
+      },
+      "key": "eyJhbGciOiJFZERTQSIsImtpZCI6InNlcnZlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiJsaWNfYi1fOXhZejAxMjMiLCJpc3MiOiJrdWR1cnJ1Iiwic3ViIjoiRXhhbXBsZSBHbWJIIiwicGxhbiI6ImJ1c2luZXNzIiwibm9kZXMiOjI1LCJmZWF0dXJlcyI6WyJvaWRjIiwiZWRnZSIsImF1ZGl0Il0sImlhdCI6MTc5MTg0OTYwMCwiZXhwIjoxODIzMzg1NjAwfQ.lojYo9nQcvfI6SnlfltCiMZdPNCGt7Gxav8TklXa4Cj1DJAzWKwOQlXXKDvZ7kx3XvswDuatk4EGgOdSxLjYCA"
+    },
+    {
+      "name": "HTML-safe escaping",
+      "claims": {
+        "jti": "lic_AAAAAAAAAAAA",
+        "iss": "kudurru",
+        "sub": "AT&T <Labs> \u2028line\u2029para \"quoted\" back\\slash",
+        "plan": "personal",
+        "nodes": 3,
+        "iat": 1791849600,
+        "exp": 1823385600
+      },
+      "key": "eyJhbGciOiJFZERTQSIsImtpZCI6InNlcnZlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiJsaWNfQUFBQUFBQUFBQUFBIiwiaXNzIjoia3VkdXJydSIsInN1YiI6IkFUXHUwMDI2VCBcdTAwM2NMYWJzXHUwMDNlIFx1MjAyOGxpbmVcdTIwMjlwYXJhIFwicXVvdGVkXCIgYmFja1xcc2xhc2giLCJwbGFuIjoicGVyc29uYWwiLCJub2RlcyI6MywiaWF0IjoxNzkxODQ5NjAwLCJleHAiOjE4MjMzODU2MDB9.qkVH476lGt-esJQOc3yCsu3DXyZnHi5ZbGXrTJf7NmSnN1BBKBB7iUqPSlbes5IPExFSu-lljMxxglLZryPLAA"
+    },
+    {
+      "name": "non-ASCII and emoji",
+      "claims": {
+        "jti": "lic_AAAAAAAAAAAA",
+        "iss": "kudurru",
+        "sub": "Zoë Ångström 東京 🦉",
+        "plan": "personal",
+        "nodes": 3,
+        "iat": 1791849600,
+        "exp": 1823385600
+      },
+      "key": "eyJhbGciOiJFZERTQSIsImtpZCI6InNlcnZlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiJsaWNfQUFBQUFBQUFBQUFBIiwiaXNzIjoia3VkdXJydSIsInN1YiI6Ilpvw6sgw4VuZ3N0csO2bSDmnbHkuqwg8J-miSIsInBsYW4iOiJwZXJzb25hbCIsIm5vZGVzIjozLCJpYXQiOjE3OTE4NDk2MDAsImV4cCI6MTgyMzM4NTYwMH0.XzvxvmYzfGngMYiRzYp3gryKeomT07-F05nm8231oTdnl6hkzQNfLPwi0cog45mrBnzXMFPK1UV0GXP5nADJBA"
+    },
+    {
+      "name": "control characters",
+      "claims": {
+        "jti": "lic_AAAAAAAAAAAA",
+        "iss": "kudurru",
+        "sub": "tab\there\nnewline \b\f\u0001\u001f end",
+        "plan": "personal",
+        "nodes": 3,
+        "iat": 1791849600,
+        "exp": 1823385600
+      },
+      "key": "eyJhbGciOiJFZERTQSIsImtpZCI6InNlcnZlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiJsaWNfQUFBQUFBQUFBQUFBIiwiaXNzIjoia3VkdXJydSIsInN1YiI6InRhYlx0aGVyZVxubmV3bGluZSBcYlxmXHUwMDAxXHUwMDFmIGVuZCIsInBsYW4iOiJwZXJzb25hbCIsIm5vZGVzIjozLCJpYXQiOjE3OTE4NDk2MDAsImV4cCI6MTgyMzM4NTYwMH0.-rXl-CblI-D40nND9Hm7DLZzcq2yaft0FsqblhkCJ0tcDmApHhHvzeizl4M8yo2B51iawfbsW8h3bwpaCMJ5Bw"
+    },
+    {
+      "name": "with nbf",
+      "claims": {
+        "jti": "lic_AAAAAAAAAAAA",
+        "iss": "kudurru",
+        "sub": "Homelab Hank",
+        "plan": "trial",
+        "nodes": 3,
+        "iat": 1791849600,
+        "nbf": 1791849600,
+        "exp": 1823385600
+      },
+      "key": "eyJhbGciOiJFZERTQSIsImtpZCI6InNlcnZlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiJsaWNfQUFBQUFBQUFBQUFBIiwiaXNzIjoia3VkdXJydSIsInN1YiI6IkhvbWVsYWIgSGFuayIsInBsYW4iOiJ0cmlhbCIsIm5vZGVzIjozLCJpYXQiOjE3OTE4NDk2MDAsIm5iZiI6MTc5MTg0OTYwMCwiZXhwIjoxODIzMzg1NjAwfQ.Qtb6qg4ocEiMNF5gBrDqhIAMQstqaFAPusYXz2YZgYxypH2Wx_pWINZc9uqOdRp7OD2NqUn0tjJp7LeJo7ezAQ"
+    },
+    {
+      "name": "enterprise, every feature listed",
+      "claims": {
+        "jti": "lic_AAAAAAAAAAAA",
+        "iss": "kudurru",
+        "sub": "Homelab Hank",
+        "plan": "enterprise",
+        "nodes": 100000,
+        "features": [
+          "oidc",
+          "edge",
+          "integrations",
+          "rbac",
+          "audit",
+          "longterm",
+          "requests"
+        ],
+        "iat": 1791849600,
+        "exp": 1823385600
+      },
+      "key": "eyJhbGciOiJFZERTQSIsImtpZCI6InNlcnZlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiJsaWNfQUFBQUFBQUFBQUFBIiwiaXNzIjoia3VkdXJydSIsInN1YiI6IkhvbWVsYWIgSGFuayIsInBsYW4iOiJlbnRlcnByaXNlIiwibm9kZXMiOjEwMDAwMCwiZmVhdHVyZXMiOlsib2lkYyIsImVkZ2UiLCJpbnRlZ3JhdGlvbnMiLCJyYmFjIiwiYXVkaXQiLCJsb25ndGVybSIsInJlcXVlc3RzIl0sImlhdCI6MTc5MTg0OTYwMCwiZXhwIjoxODIzMzg1NjAwfQ.EkrEOhHoq5Jukj6tOk15FmNr2MG2WY4YzzVTJsTkXA7N7fCiC8oHdrit1wo3xkqIMcCqVZ01bBRwmQEc5RzGBw"
+    }
+  ]
+}

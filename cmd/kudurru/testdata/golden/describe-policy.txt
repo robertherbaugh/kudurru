@@ -1,0 +1,21 @@
+Name:         kids
+Namespace:    default
+Kind:         Policy
+API Version:  kudurru.io/v1alpha1
+Labels:       <none>
+Annotations:  <none>
+Managed By:   -
+Created:      2026-10-04T12:00:00Z (7d ago)
+Spec:
+  blockListRefs:
+  - ads
+  clientGroupRefs:
+  - kids
+  priority: 10
+  upstreamGroup: family
+Conditions:
+  TYPE    STATUS   REASON   AGE         MESSAGE
+  Ready   True              <unknown>   
+Diagnoses:
+  SEVERITY   REASON        MESSAGE                         HINT
+  warning    PriorityTie   same priority as policy other   -

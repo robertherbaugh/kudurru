@@ -1,0 +1,22 @@
+// The Worker (src/): the Workers runtime types and Env that `wrangler types`
+// generates into worker-configuration.d.ts from wrangler.jsonc (gitignored;
+// `bun run typecheck` regenerates it). No Bun or DOM types.
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2024"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["worker-configuration.d.ts", "src"]
+}

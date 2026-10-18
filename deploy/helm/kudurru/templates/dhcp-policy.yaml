@@ -1,0 +1,61 @@
+{{- if and .Values.dhcp.enabled .Values.rbac.create }}
+{{- $sa := printf "system:serviceaccount:%s:%s" .Release.Namespace (include "kudurru.serviceAccountName" .) }}
+{{- $label := "kudurru.io/dhcp-active" }}
+# The serving DHCP replica labels its pod kudurru.io/dhcp-active and clears
+# the label from the others (D180), so the Role grants patch on pods. RBAC
+# cannot narrow that to this release's pods, whose names a Deployment
+# randomizes. This policy can: an update of a pod by this ServiceAccount may
+# only set or remove that one label, on this release's kudurru pods.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ include "kudurru.fullname" . }}-{{ .Release.Namespace }}-dhcp-label
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: kudurru-service-account
+      expression: request.userInfo.username == {{ $sa | quote }}
+  validations:
+    - expression: >-
+        has(oldObject.metadata.labels)
+        {{- range $k, $v := (include "kudurru.selectorLabels" . | fromYaml) }}
+        && {{ $k | squote }} in oldObject.metadata.labels && oldObject.metadata.labels[{{ $k | squote }}] == {{ $v | squote }}
+        {{- end }}
+      message: this ServiceAccount may only label the pods of its own release
+    - expression: >-
+        has(object.metadata.labels)
+        && object.metadata.labels.all(k, k == {{ $label | squote }} ? object.metadata.labels[k] == 'true' : k in oldObject.metadata.labels && oldObject.metadata.labels[k] == object.metadata.labels[k])
+        && oldObject.metadata.labels.all(k, k == {{ $label | squote }} || k in object.metadata.labels)
+      message: this ServiceAccount may only set or remove the {{ $label }} label
+    - expression: >-
+        object.spec == oldObject.spec
+        && has(object.metadata.annotations) == has(oldObject.metadata.annotations)
+        && (!has(object.metadata.annotations) || object.metadata.annotations == oldObject.metadata.annotations)
+        && has(object.metadata.ownerReferences) == has(oldObject.metadata.ownerReferences)
+        && (!has(object.metadata.ownerReferences) || object.metadata.ownerReferences == oldObject.metadata.ownerReferences)
+        && has(object.metadata.finalizers) == has(oldObject.metadata.finalizers)
+        && (!has(object.metadata.finalizers) || object.metadata.finalizers == oldObject.metadata.finalizers)
+      message: this ServiceAccount may not change anything on a pod but the {{ $label }} label
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ include "kudurru.fullname" . }}-{{ .Release.Namespace }}-dhcp-label
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+spec:
+  policyName: {{ include "kudurru.fullname" . }}-{{ .Release.Namespace }}-dhcp-label
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: {{ .Release.Namespace }}
+{{- end }}

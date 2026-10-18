@@ -1,0 +1,35 @@
+Names: IDNA entries, case, trailing dots and length limits (63-byte labels,
+253-byte names). {x*N} expands to N copies of x, so
+{a*63}.{b*63}.{c*63}.{d*61} is exactly 253 bytes.
+
+-- list n block domains --
+bücher.example
+MÜNCHEN.example
+UPPER.EXAMPLE
+trailing.example.
+{l*63}.example
+{a*63}.{b*63}.{c*63}.{d*61}
+{a*63}.{b*63}.{c*63}.{d*62}
+{l*64}.example
+a..b.example
+-- list s block adblock --
+||{c*63}.{d*61}^
+-- counts n --
+rules=6 invalid=3 entries=6
+-- counts s --
+rules=1 entries=1
+-- expect --
+xn--bcher-kva.example                    block n xn--bcher-kva.example
+xn--mnchen-3ya.example                   block n xn--mnchen-3ya.example
+upper.example                            block n upper.example
+UPPER.example.                           block n upper.example
+trailing.example                         block n trailing.example
+trailing.example.                        block n trailing.example
+{l*63}.example                           block n {l*63}.example
+{a*63}.{b*63}.{c*63}.{d*61}              block n {a*63}.{b*63}.{c*63}.{d*61}
+{a*63}.{b*63}.{c*63}.{d*61}.             block n {a*63}.{b*63}.{c*63}.{d*61}
+x.{a*63}.{b*63}.{c*63}.{d*61}            block s ||{c*63}.{d*61}^   # over-long query names still walk the suffix set
+{a*63}.{b*63}.{c*63}.{d*62}              pass    # the invalid 254-byte entry was not compiled
+{l*64}.example                           pass
+a..b.example                             pass
+{x*300}                                  pass

@@ -1,0 +1,494 @@
+# Configuration and the store
+
+kudurru separates three kinds of state, and keeps them apart on purpose:
+
+| Kind | Examples | Where it lives | Replicated? |
+|---|---|---|---|
+| **Objects** | zones, record sets, lists, groups, policies, users, tokens | the store (one driver) | yes, by the store |
+| **Settings** | upstreams, cache, blocking defaults, listeners | `kudurru.yaml`, a settings file or ConfigMap, environment | node settings no; cluster settings by your file distribution or the ConfigMap |
+| **Runtime data** | query log, response cache, list bodies, the last-good snapshot | files on each node | never |
+
+This page covers the first two: how an object gets from a writer to every
+node's query path, and how settings reload.
+
+With the SQLite store, the v0.1.0 [DHCPv4 server](dhcp.md) adds a separate node-local
+setup registry, `dhcp-settings.json`, and per-scope `dhcp.db`/`dhcp-<name>.db`
+databases. Fresh setup can be entered entirely in the dashboard. Existing host
+`dhcp.*` configuration stays file-owned until explicit adoption; generic
+host-only settings restrictions remain. Any DHCP environment override blocks
+UI setup ownership. Setup saves stage complete scopes for restart and never
+change live listeners or lease state. API-managed scopes keep live options and
+reservations in their lease database. The setup view overlays current values
+only for scopes without pending edits; setup and database revisions prevent
+concurrent changes from being lost. Lease schema v4 retains each scope's setup
+token and adds persistent DNS claims and replica progress. Standalone startup
+applies tokens once, preserving later live edits. Optional three-voter Raft
+replicates DHCP leases and live management independently of object-store
+replication; local setup tokens cannot override established replica settings.
+Keep its Raft directory and hidden DNS claim registry with lease databases.
+Ordinary object backup does not include this state. Committed lease
+snapshots supply DNS and policy names without query-time storage reads.
+With the Kubernetes store, scopes are `DHCPScope` objects in the store
+instead, and leases are `DHCPLease` objects of the separate runtime group
+`dhcp.kudurru.io`, which the store does not serve or back up
+([Kubernetes store](dhcp.md#kubernetes-store), D180).
+
+![Writers go through one validator into the store; every node's zonecache watches the store and builds the snapshot the pipeline reads; the leader's controller writes status back](diagrams/config-flow.excalidraw.svg)
+
+Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
+(interface, drivers, validator, conformance suite), `internal/zonecache`,
+`internal/objects` (the file loader), `internal/bootstrap`,
+`internal/controller`, `internal/config`, `cmd/kudurru/reload.go`.
+
+## API migrations
+
+`internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
+objects, a settings merge patch and conversion warnings. The dashboard's
+Tools wizard uses `POST /imports/preview` and submits the reviewed result to
+`POST /imports/start`. This returns HTTP 202, a run ID and a Location header
+before object writes finish. The CLI's `import pihole|technitium` uses the same
+converter locally; `--apply` starts the same background job and `--wait` polls
+its report. `POST /imports/apply` remains available for synchronous callers.
+A preview never writes destination state. These REST routes require `settings.write`,
+because administrators intentionally connect to private source networks.
+This permission grants SSRF-equivalent network access: even a role with
+only `settings.write` can send credentialed requests to caller-selected
+HTTP(S) targets, including loopback, link-local metadata addresses and
+internal services. Source HTTP failure status codes are visible; error
+response bodies are not. Grant the permission only to trusted administrators
+and use network egress controls to restrict which destinations the server
+can reach.
+
+Source credentials exist only during the request: Technitium uses a bearer
+token, Pi-hole an application password and a temporary session that is closed
+after reading. Source redirects are refused, response sizes and request time
+are bounded, and upstream errors never echo credentials or response bodies.
+Import writes use the existing object authorization, schema, ownership and
+license checks. They are not transactional and return a result per object;
+the selected settings patch is applied only when every selected object succeeds. Unsupported
+source semantics are reported in the preview. See the
+[migration guides](../../docs-site/content/migrate/_index.md) for supported data.
+
+Each import starts an internal `MigrationRun` journal before destination writes
+(D182, D184), using the existing store: SQLite JSON rows or labeled Kubernetes
+Secrets. It retains source type and URL origin, actor, times, planned objects,
+per-object outcomes, zone UIDs, original/current authority and cutover attempts.
+Credentials, source URL paths/query parameters and source records are excluded.
+An optional selection lists object identities (`Kind/[namespace/]name`) and
+top-level settings sections; omitting it selects the full plan for compatibility.
+Unknown or duplicate selections and explicitly empty selections are refused before
+writes. Dependencies are not automatically selected: choose them too or ensure they
+already exist. Unselected objects and settings are journaled as `skipped`; only
+selected primary zones are tracked for later cutover.
+
+Selected items progress from `pending` to `running`, then `created`, `updated`,
+`unchanged` or `error`, with the error key, explanation, hint and saved version.
+Settings have separate rows and are applied in one merge patch after all selected
+objects succeed, or become `not_applied` if an object fails. Progress is saved
+before the first object write, then each completed result and the next object's
+running marker share one journal update. Settings have a separate running marker.
+A journal failure stops further writes and records a journal error. Capacity for
+bounded error details is checked before any writes.
+The dashboard opens `/tools/migrations/{id}`, polls progress and shows counts and
+per-item results, including retained successes when other items fail. The report
+remains reachable through Tools' migration history after navigation or reload.
+
+Background workers retain the caller's identity and authorization, copy mutable
+request state and run independently of browser disconnects. At most two imports
+run per API server process; overload is refused before journal creation. Replicas
+sharing a store each admit their own two workers. There is no cross-run lock on
+zones: overlapping imports still use normal ownership and optimistic version
+checks, so avoid starting simultaneous imports for the same destination objects.
+Each job is bounded to ten minutes. Server shutdown cancels and joins workers
+before the store closes; final journal updates get a separate ten-second context. Reviewed plans
+live only in worker memory: jobs are not replayed or resumed after restart. Once
+a running job's recorded deadline plus fifteen seconds passes, reads show it as
+`interrupted` and unresolved items as `unconfirmed`. Check the destination before
+retrying, since a write may have committed just before its journal update.
+Journals use a 1 MiB cap on both drivers to fit Kubernetes Secret data; a run
+accepts at most 100 cutover attempts. Before claiming an attempt, apply checks that the journal has
+room for every zone and address-record outcome, bounded errors, and authority
+updates. An attempt that cannot fit is refused before any destination writes.
+Full backups include internal journals; safe exports omit them.
+
+An optional `nameservers` list replaces apex NS and SOA MNAME during conversion.
+Alternatively, `nameserverAddresses` generates stable `ns-<hex-address>` names
+within each imported zone and matching A/AAAA endpoints. Both options are
+mutually exclusive; empty options preserve source authority. The dashboard
+suggests its navigated hostname (an IP URL selects serving addresses instead),
+with editable targets and opt-in VIP discovery from `/edge` (`edge.read`). The
+CLI uses its destination context for `--update-nameservers` or a decommission
+preview without explicit targets, and offers `--use-vips` discovery.
+`/imports/runs` lists durable history;
+`/imports/runs/{id}/decommission/preview` reads tracked live zones and shows
+current authority and target names. Apply recomputes those changes from stored
+run data, claims the run using its revision, and writes through normal zone
+validation, ownership and authorization with each reviewed resourceVersion.
+The run annotation, UID and expected authority fence old runs from newer
+imports, recreated zones and manual authority changes. Cutovers are partial,
+retryable operations; after ten minutes an interrupted attempt can be recovered,
+including a write committed just before its journal update. Work is bounded to
+two minutes; all write races still use optimistic versions. A retry records the
+abandoned attempt as partial. Address cutovers use per-zone generated record
+sets scoped to the run and addresses: each preview or apply request loads all
+record sets once, groups them by zone, and reuses that snapshot for conflict
+checks. Generated record sets are still reread and written under their reviewed
+versions. Preview includes endpoints and versions,
+refuses existing name conflicts, requires `records.write`, and refuses zones
+with custom record-set selectors. Apply creates/verifies address records before
+changing NS/SOA and journals each result. Existing records are never implicitly
+adopted or overwritten. Record write failures leave authority intact; retries
+reuse identical generated records. Parent delegation/glue and existing hostname
+address changes remain external to this flow.
+
+`GET /imports/existing` finds API-managed primary zones matching the converter's
+stable IDs without a run annotation. Explicit `POST /imports/adopt` tracks a
+reviewed selection under resourceVersion checks without reimporting records.
+History and adoption use `settings.write`; each destination zone still requires
+its own `zones.write` grant. CLI `import runs`, `import decommission` and
+`import track-existing` use these same routes, with saved JSON previews required
+for the latter two writes.
+
+```mermaid
+sequenceDiagram
+    participant U as Dashboard or CLI
+    participant A as Migration API
+    participant S as Store (SQLite or Kubernetes)
+    participant W as Background worker
+    U->>A: Start reviewed import and selection
+    A->>S: Create MigrationRun with pending/skipped items
+    A-->>U: 202 Accepted, run ID and Location
+    A->>W: Selected plan and caller identity
+    loop Each selected object
+        W->>S: Journal running and normal authorized object write
+        W->>S: Record outcome and zone identity
+        U->>A: GET run progress (may leave or reload)
+        A->>S: Read durable journal
+        A-->>U: Counts and item results
+    end
+    W->>S: Apply selected settings if all objects succeeded
+    W->>S: Record completed/partial run
+    U->>A: Preview decommission with DNS names or serving IPs/VIPs
+    A->>S: Read run and live zones
+    A-->>U: Current/target authority, generated addresses, versions and warnings
+    U->>A: Apply reviewed versions
+    A->>A: Check journal capacity for all outcomes
+    A->>S: Claim run revision and record attempt
+    loop Each tracked zone
+        opt Serving IPs/VIPs selected
+            A->>S: Check conflicts, write address records and journal result
+        end
+        A->>S: Check identity/authority and write NS + SOA under version
+        A->>S: Record outcome
+    end
+    A->>S: Finish cutover attempt
+```
+
+Technitium catalog member primary zones become independent primary zones.
+The converter reads `overrideCatalogQueryAccess`: an override keeps the
+member's local query policy; otherwise it reads the catalog's policy and
+copies its query mode and ordered ACL. Catalog reads, including failed
+reads, are cached for the preview. Unknown inheritance, unreadable catalogs
+and unsupported query modes skip affected zones instead of falling back
+to permissive member defaults. Catalog membership and replication are not
+imported. Comment and blank lines in subscription URLs are ignored.
+
+## The objects
+
+All kinds share `kudurru.io/v1alpha1`. Public kinds are CRDs in Kubernetes;
+internal kinds hold identity data and migration journals and are never CRDs (Secrets in Kubernetes,
+rows in `state.db` in Docker).
+
+```mermaid
+erDiagram
+    DNSZone ||--o{ DNSRecordSet : "zoneRef"
+    Policy }o--o{ ClientGroup : "clientGroupRefs"
+    Policy }o--o{ BlockList : "blockListRefs / allowListRefs"
+    UnblockRequest }o--o| BlockList : "status.allow.list"
+    UnblockRequest }o--o| ClientGroup : "status.allow.group"
+    APIToken }o--o| LocalUser : "owner (User)"
+    APIToken }o--o| ServiceAccount : "owner (ServiceAccount)"
+    RoleBinding }o--o{ ServiceAccount : "subjects"
+    RoleBinding }o--o| DNSZone : "scope zone:<name>"
+```
+
+| Kind | Scope | Public or internal | Purpose |
+|---|---|---|---|
+| `DNSZone` | cluster | public (CRD) | authority over a name: primary or forward |
+| `DNSRecordSet` | namespaced | public | records (external-dns `Endpoint` shape) added to a zone |
+| `BlockList` | namespaced | public | block or allow rules from sources |
+| `ClientGroup` | namespaced | public | who a client is |
+| `Policy` | namespaced | public | what a group gets: lists, schedule, upstream group, safe search |
+| `UnblockRequest` | namespaced | public | a block-page request and its decision |
+| `DHCPScope` | cluster | public | a DHCPv4 pool, its options, relays and reservations (served with the Kubernetes store, D180) |
+| `LocalUser` | cluster | internal | local account with an Argon2id hash |
+| `APIToken` | cluster | internal | SHA-256 of a `kdr_` token, owned by a user or service account |
+| `ServiceAccount` | namespaced | internal | a non-human principal |
+| `RoleBinding` | namespaced | internal | role at a scope for users, groups, service accounts |
+| `IdentityProvider` | cluster | internal | an OIDC provider |
+
+The bootstrap seeds four objects on the first start, with owner `bootstrap`:
+the root forward zone `.` → `default`, `ClientGroup default` (all
+addresses), `BlockList starter` and `Policy default`.
+Namespaced defaults use the release namespace in Kubernetes and `default`
+in SQLite. An existing `default/default` policy keeps a Kubernetes install
+on `default` until a default policy exists in the release namespace; no
+objects are moved automatically ([upgrade behavior](../deploy/helm.md#default-object-namespace-and-upgrades)).
+
+### One writer per object
+
+Every write carries a **manager**, recorded as the object's owner in the
+`kudurru.io/managed-by` annotation: `api`, `file:<path>`,
+`integration:<name>`, `bootstrap` or `system`.
+
+```mermaid
+flowchart LR
+    W(["Apply with manager M"]) --> O{"recorded owner"}
+    O -- "empty (first write)" --> OK["write, owner = M"]
+    O -- "equal to M" --> OK
+    O -- "someone else" --> F{"Force?<br/>(admin, audited)"}
+    F -- "yes" --> OK2["write, owner = M"]
+    F -- "no" --> E["409 managed_by<br/>hint names the owner"]
+```
+
+This is why a zone from `objects.d/zones.yaml` cannot be edited in the
+dashboard ("managed by file objects.d/zones.yaml"), and why two sources of
+truth for one object cannot exist. The API may take over objects owned by
+`bootstrap`. Objects written with `kubectl` carry no annotation, so anyone
+may write them.
+
+## The store
+
+```go
+// internal/store/store.go (abridged)
+type Store interface {
+    Get, List, Apply, Delete, UpdateStatus  // CRUD; Apply is whole-object, optimistic (resourceVersion)
+    Watch(ctx, kind, opts) (Watcher, error) // list + watch: ADDED, MODIFIED, DELETED, BOOKMARK
+    Elector(name string) Elector             // leader election primitive
+    Snapshot, Restore                        // backup = `kind: List` YAML that `kudurru apply -f` accepts
+    Info() Info; Close() error
+}
+```
+
+Two drivers exist. They pass the same conformance suite
+(`internal/store/conformance`), so the rest of the code cannot tell them
+apart.
+
+| | `kube` | `sqlite` |
+|---|---|---|
+| Used by | Kubernetes, any replica count | Docker, systemd, the chart's `standalone` mode, each compose HA twin |
+| Backing | the apiserver: CRDs for public kinds, Secrets (`kudurru.io/kind=<Kind>`) for internal kinds; server-side apply with the manager as field owner | `state.db`: an `objects` table (JSON), a change feed, an audit table (hash-chained, same transaction), a `flock` |
+| Watch | informers; they keep serving from memory when the apiserver is away | the current objects, a bookmark, then an in-process broadcaster fed by the change feed |
+| Validation | the apiserver (CRD schema + CEL) | the embedded validator, inside `Apply` |
+| Leader | Lease `kudurru-controller` (15 s / 10 s / 2 s), identity = pod name | always this node |
+| Last-good copy | `local.db` on each node | not needed: `state.db` is local |
+
+The **validator** (`internal/store/validator`) runs the apiserver's own
+structural schema, defaulting and CEL programs from the embedded CRDs, so
+Docker rejects exactly what Kubernetes rejects. The API, the file loader,
+the bootstrap and the sqlite driver all call it. Cross-object problems (a
+record outside its zone, a duplicate) are not validation errors: the
+controller reports them as conditions.
+
+Each database carries a schema version. A file newer than the binary stops
+the process with an explanation; an older one is migrated in one
+transaction.
+
+## From a write to the query path
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as dashboard / CLI
+    participant API as API :8080
+    participant V as validator
+    participant S as store
+    participant ZC as zonecache (every node)
+    participant P as pipeline
+    U->>API: POST /api/v1/apply (YAML)
+    API->>V: strict decode, default, schema + CEL
+    API->>S: Apply(manager "api", expected resourceVersion)
+    S-->>ZC: watch event
+    ZC->>ZC: mark the kind changed, rebuild after 50 ms
+    ZC->>ZC: builders: zones view, policy view (+ the compiled lists)
+    ZC->>ZC: snapshot.Store(new) (atomic pointer)
+    P->>ZC: next query loads the new snapshot
+    Note over ZC: a builder that fails keeps its previous view<br/>and raises Degraded{BuildFailed}
+```
+
+The file loader takes the same path with manager `file:<path>`: it reads
+`objects:` in `kudurru.yaml` and every `objects.d/*.yaml`, applies them,
+deletes the objects that its files no longer declare, and re-applies on a
+file change (fsnotify, 500 ms debounce) and every 60 s to repair drift.
+Errors in a file become diagnoses; they never stop the server.
+
+### The snapshot's life
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unsynced: process start
+    Unsynced --> Live: every watch has synced
+    Unsynced --> FromSnapshot: kube only: no sync within 15 s,<br/>local.db loaded (same cluster ID)
+    FromSnapshot --> Live: informers sync
+    Live --> Live: store events → rebuild → swap
+    note right of Unsynced
+        primary zones: SERVFAIL
+        (never NXDOMAIN)
+    end note
+    note right of FromSnapshot
+        Degraded ServingFromSnapshot.
+        Ready if the copy is ≤ 24 h old;
+        older: primary zones SERVFAIL,
+        forwarding continues
+    end note
+```
+
+In Kubernetes mode each node writes the complete object set to `local.db`
+after its first sync and then at most every 30 s when something changed. A
+pod that restarts while the apiserver is down therefore still answers:
+forwarded names, cached names, and primary zones from the copy.
+
+Startup reads for the policy namespace, default-object seeding and identity
+caches have bounded deadlines. An apiserver availability failure defers
+initialization and lets the DNS listeners and snapshot cache start;
+bootstrap and identity initialization retry after recovery. Authorization,
+certificate, schema and local-data errors retain their normal failure
+behavior. Identity secrets are not taken from `local.db`, so an empty IAM
+cache cannot authenticate local users or tokens during an offline start.
+See the [cold-start runbook](../deploy/runbooks.md#cold-start-without-the-apiserver).
+
+## The leader
+
+One election covers all leader-only work. The runner starts the leader-only
+loops under a "term" context when the node wins, and cancels them when it
+loses. **Losing the lease never stops the process**: the DNS listeners, the
+API and the snapshot keep running, which is exactly what you want during an
+apiserver outage.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Follower
+    Follower --> Leader: wins the Lease (kube)<br/>or at once (sqlite)
+    Leader --> Follower: lease not renewed within 10 s
+    state Leader {
+        [*] --> running
+        running: controller, notifier, list fetcher,<br/>unblock janitor, allow/deny sync, audit retention,<br/>central database janitor
+        running --> running: a loop that fails restarts<br/>with backoff 1 s .. 30 s
+    }
+    Leader --> [*]: SIGTERM: lameduck, then release the lease
+```
+
+Leader loops are idempotent and level-triggered: they read the store, compare
+with the status, and write only the difference. A new leader picks up where
+the old one stopped without special hand-over.
+
+### The controller
+
+One reconciler per kind (DNSZone, DNSRecordSet, BlockList, ClientGroup,
+Policy), each with its own watch and a rate-limited work queue, writing
+status only when it differs; a full re-list every 10 minutes.
+
+| Kind | Status it writes |
+|---|---|
+| DNSZone | `serial`, `contentHash`, `recordCount`, `Ready` (Serving, Invalid, Unsupported), `Degraded` (worst record-set problem) |
+| DNSRecordSet | `Ready`, `Degraded` (OutsideZone, Duplicated, Occluded, Invalid, NotSelected, ZoneNotFound) |
+| BlockList | `Degraded` (ListFetchFailed); the fetcher writes `sources[].digest` and counts |
+| ClientGroup | `members` |
+| Policy | `Degraded` (MissingReference, UnknownService, UnknownCategory) |
+
+Events (`SerialBumped`, `Duplicated`, `OutsideZone`, …) go to the log only;
+the Kubernetes Events sink exists but is not wired yet.
+
+## Settings
+
+Settings are not store objects. Each key in the metadata table
+(`internal/config/schema.go`) has a **scope** and flags:
+
+| Scope | Examples | Changed how |
+|---|---|---|
+| node, `hostOnly`, restart | `node.*`, `listeners.*`, `store.*`, `tsigKeys`, `auth.adminSocket.*` | file or environment, then restart; never through the API |
+| node, dedicated DHCP setup | enabled state and complete DHCP scope topology | DHCP setup API/dashboard, explicit file adoption, then restart; generic Settings remains host-only |
+| cluster, hot | `upstreams.*`, `cache.*`, `blocking.enabled/defaultResponse/blockTTL`, `ratelimit.*`, `querylog.privacy/retention` | API, dashboard, settings file; applied without a restart |
+| cluster, restart | `querylog.enabled`, `blocking.initStrategy`, `auth.session.*` | as above, applied at the next start |
+| cluster, `hostOnly` | `auth.identityProviders`, `rbac.bindings` | file or environment only |
+
+```mermaid
+flowchart LR
+    D["defaults"] --> N["kudurru.yaml<br/>(node file)"] --> SF["settings file<br/>(cluster keys only)"] --> ENV["KUDURRU_SECTION__KEY<br/>and *_FILE"] --> VAL["validate"] --> RUN(["effective config"])
+```
+
+An environment variable wins and locks the key in the dashboard. In
+Kubernetes, sections default to `gitops`: edit Helm values or the settings
+ConfigMap. Only `upstreams` can currently switch to `ui` ownership, through
+an explicit, revision-checked adoption. Adoption copies the entire effective
+section (groups, servers, bootstrap, conditional rules, ECS and recursion)
+without changing routing. Host-only restrictions remain in place.
+
+UI-owned upstreams live with their ownership record in a separate ConfigMap,
+`<release>-ui-settings` by default (`KUDURRU_SETTINGS_RESOURCE`). Helm never
+renders that resource. Each replica reads it at startup and on the settings
+watcher's ten-second poll. Its values replace the entire file section; file
+keys are never merged into a UI-owned section. The environment still wins
+and locks individual keys; any upstream environment override blocks ownership
+transitions. File declarations under a UI-owned section produce a warning,
+the `conflicts` field in `GET /settings` and a dashboard banner while UI values remain
+authoritative. Other sections continue following the settings ConfigMap.
+
+Ownership and values share a Kubernetes `resourceVersion`; concurrent
+adoptions, releases and edits use compare-and-swap. The API exposes section
+owners and reviewed revisions in the `sections` field of `GET /settings`, accepts
+`If-Match` on upstream settings patches, and authorizes transitions with
+`settings.write`. The header is optional for backward compatibility, but
+safe concurrent upstream edits require a reviewed revision; omitting it can
+overwrite newer client edits. Other sections do not use the upstream revision.
+For CLI edits, review `kudurru settings ownership`, then pass the token to
+`kudurru settings set upstreams.bootstrap=9.9.9.9:53 --revision TOKEN`.
+Writes and transitions are audited. Every replica uses the
+same reload subscriptions, including upstream set swaps and cache flushes.
+Invalid or unavailable sources leave the running configuration intact.
+A node-local `ui-settings-<identity>.json` cache retains the last confirmed
+shared ownership and values for offline startup; writes always require the
+apiserver. Preserve the node data directory alongside `local.db`.
+
+In Docker, the API keeps writing the existing writable settings file. A
+`settingsOwnership` map in that file records explicit adoption/release, in the
+same atomic rename as complete section values. Existing Docker settings remain
+UI-editable; a deployment without a writable settings file retains its existing
+in-memory behavior and cannot change ownership.
+
+Generate current or proposed Helm values with
+`POST /settings/sections/upstreams/yaml` (no write). To return ownership to
+GitOps, commit and apply the current exported values, wait for the settings
+volume to update on every replica, refresh the preview, then call
+`POST /settings/sections/upstreams/ownership/release` with its
+revision. Release refuses mismatched file values on the serving replica;
+it does not collect acknowledgments from other replicas. Kubernetes volume
+projection is asynchronous, so the operator must verify that all replicas
+have received the applied values before releasing. Adoption uses the same
+path ending in `/adopt`. Only ownership is transferred; no new CRD is required.
+Include the API-owned ConfigMap in your
+Kubernetes backups; ordinary object-store exports do not include it.
+
+![Explicit GitOps or UI section ownership feeds every replica's settings reload](diagrams/settings-ownership.svg)
+
+```mermaid
+sequenceDiagram
+    participant SRC as file / Helm ConfigMap / API-owned settings
+    participant M as ownership manager (every node)
+    participant W as settings watcher (every node)
+    participant R as reload subscribers
+    SRC->>W: change (fsnotify + 10 s poll)
+    W->>M: read both sources and ownership revision
+    M->>M: replace UI-owned sections; report file conflicts
+    M->>W: validated effective cluster settings
+    W->>R: log level, upstream groups (swap + cache flush),<br/>cache, blocking, block page, rate limiter,<br/>query log privacy, edge cache flush
+```
+
+## Not built yet
+
+The `follower` (v0.2) and `raft` (v1.0) drivers, the `cluster.role: static`
+read-only mode for compose twins, the health of other nodes (the node
+list, the stats and the query log are already gathered), and a
+`roles:` setting. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
+for the plan.

@@ -1,0 +1,280 @@
+{{- if include "kudurru.edge.separate" . }}
+{{- $mode := include "kudurru.edge.mode" . -}}
+{{- $e := .Values.edge -}}
+{{- $keepalived := eq .Values.vip.provider "keepalived" -}}
+# dnsdist edge tier (§3.6, §5.4): PID 1 is `kudurru edge run`, which renders
+# dnsdist.yml from the headless EndpointSlice and supervises dnsdist. With
+# vip.provider=keepalived the pod also runs `kudurru vip run` (keepalived)
+# and both share /run/kudurru (the dnsdist API key for the VRRP track script).
+apiVersion: apps/v1
+kind: {{ ternary "DaemonSet" "Deployment" (eq $mode "daemonset") }}
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+spec:
+  {{- if eq $mode "deployment" }}
+  replicas: {{ $e.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  {{- else }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "kudurru.edge.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kudurru.edge.labels" . | nindent 8 }}
+      annotations:
+        kubectl.kubernetes.io/default-container: dnsdist
+        {{- with $e.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "kudurru.fullname" . }}-edge
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      {{- if eq $mode "daemonset" }}
+      # The VIP owner must listen on :53 of the node itself (§5.4).
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- else }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: {{ not (or $keepalived (include "kudurru.edge.rootStart" (dict "root" . "sidecar" false))) }}
+        fsGroup: 953
+        seccompProfile:
+          type: RuntimeDefault
+        {{- if ne $mode "daemonset" }}
+        # dnsdist (uid 953) binds :53 without file capabilities.
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "0"
+        {{- end }}
+      containers:
+        {{- include "kudurru.edge.container" (dict "root" . "sidecar" false) | nindent 8 }}
+        {{- if $keepalived }}
+        {{- $k := .Values.vip.keepalived }}
+        - name: keepalived
+          image: {{ include "kudurru.keepalived.image" . }}
+          imagePullPolicy: {{ $k.image.pullPolicy }}
+          command: ["/usr/local/bin/kudurru", "vip", "run"]
+          args:
+            # name=addr/len@iface#vrid; the VRID is host-only and never changes on re-render.
+            {{- range (include "kudurru.keepalived.vips" . | fromYamlArray) }}
+            - {{ printf "--vip=%s=%s@%s#%v" .name .address .interface .vrid | quote }}
+            {{- if .preemptDelay }}
+            - {{ printf "--preempt-delay=%s=%v" .name .preemptDelay | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if $k.vrrpInterface }}
+            - {{ printf "--vrrp-interface=%s" $k.vrrpInterface | quote }}
+            {{- end }}
+            - --node-name=$(NODE_NAME)
+            - --peers-from=nodes:{{ include "kudurru.labelSelector" $k.nodeSelector }}
+            - --hmac-key-file=/etc/kudurru/secrets/vrrp/vrrp-hmac
+            - --track-dnsdist-api=http://127.0.0.1:8083
+            - --dnsdist-api-key-file=/run/kudurru/dnsdist-api.key
+            - --require-backends=1
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            {{- include "kudurru.licenseEnv" . | nindent 12 }}
+          ports:
+            # Supervisor /healthz/*, /status, /metrics (kudurru_vip_*).
+            - name: vip-health
+              containerPort: 8085
+              protocol: TCP
+          # keepalived manages addresses and sends VRRP: NET_ADMIN, NET_RAW,
+          # NET_BROADCAST as root. Not Restricted PSS: the namespace needs the
+          # privileged level (docs/deploy/helm.md).
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [NET_ADMIN, NET_RAW, NET_BROADCAST]
+          resources:
+            {{- toYaml $k.resources | nindent 12 }}
+          volumeMounts:
+            - name: run
+              mountPath: /run/kudurru
+            - name: keepalived-config
+              mountPath: /etc/keepalived
+            - name: vrrp
+              mountPath: /etc/kudurru/secrets/vrrp
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+        {{- end }}
+      volumes:
+        - name: dnsdist-config
+          emptyDir: {}
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: proxy-protocol
+          secret:
+            secretName: {{ include "kudurru.proxySecret" . }}
+            defaultMode: 0440
+        - name: encryption-key
+          secret:
+            secretName: {{ include "kudurru.encryptionKeySecret" . }}
+            defaultMode: 0440
+        {{- if .Values.auth.encryptionKeyPreviousSecret }}
+        - name: encryption-key-previous
+          secret:
+            secretName: {{ .Values.auth.encryptionKeyPreviousSecret }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if $e.tlsSecretName }}
+        - name: edge-tls
+          secret:
+            secretName: {{ $e.tlsSecretName }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if $keepalived }}
+        - name: keepalived-config
+          emptyDir: {}
+        - name: vrrp
+          secret:
+            secretName: {{ include "kudurru.vrrpSecret" . }}
+            defaultMode: 0400
+        {{- end }}
+      {{- $nodeSelector := $e.nodeSelector -}}
+      {{- if $keepalived }}{{ $nodeSelector = merge (deepCopy ($e.nodeSelector | default dict)) .Values.vip.keepalived.nodeSelector }}{{ end }}
+      {{- with $nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- $tolerations := concat ($e.tolerations | default list) (ternary .Values.vip.keepalived.tolerations list $keepalived) -}}
+      {{- with $tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $e.affinity }}
+      affinity:
+        {{- toYaml $e.affinity | nindent 8 }}
+      {{- else if eq $mode "deployment" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "kudurru.edge.selectorLabels" . | nindent 20 }}
+      {{- end }}
+{{- if and (eq $mode "deployment") $e.podDisruptionBudget.enabled (gt (int $e.replicas) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ $e.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "kudurru.edge.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+automountServiceAccountToken: true
+{{- if .Values.rbac.create }}
+---
+# The supervisor watches the headless Service's EndpointSlices (backends).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kudurru.fullname" . }}-edge
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kudurru.fullname" . }}-edge
+    namespace: {{ .Release.Namespace }}
+{{- if $keepalived }}
+---
+# `kudurru vip run` renders unicast_peer from the selected Nodes and
+# re-renders on Node changes (§5.4).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge-nodes
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge-nodes
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kudurru.fullname" . }}-edge-nodes
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kudurru.fullname" . }}-edge
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}
+{{- end }}

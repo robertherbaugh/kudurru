@@ -1,0 +1,43 @@
+# build output
+/bin/
+/dist/
+/kudurru
+*.test
+*.out
+coverage.*
+
+# generated at build time (committed generated files live under api/ and deploy/kustomize/crd/bases)
+# dashboard/dist/index.html is a committed placeholder so Go builds without Bun;
+# `make dashboard-build` overwrites it, writes the hashed bundle into assets/ and
+# copies dashboard/public/ (icons, manifest) next to it.
+/dashboard/dist/*
+!/dashboard/dist/index.html
+/dashboard/node_modules/
+/dashboard/coverage/
+/dashboard/e2e/.auth/
+/dashboard/playwright-report/
+/dashboard/test-results/
+
+# local state
+/.context/
+/.env
+*.db
+*.db-wal
+*.db-shm
+/hack/.cache/
+
+# editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# agent worktrees live inside the repo; project skills are tracked
+/.claude/*
+!/.claude/skills/
+
+# docs site (docs-site/): build output, Hugo's cache and the generated assets
+/docs-site/public/
+/docs-site/resources/
+/docs-site/.generated/
+/docs-site/.hugo_build.lock

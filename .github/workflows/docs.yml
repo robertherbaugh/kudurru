@@ -1,0 +1,49 @@
+name: docs
+# Builds the docs site (docs-site/, Hugo) on every change: the generated
+# references must be current, the Hugo build fails on any unresolved link in
+# the markdown (--panicOnWarning), htmltest checks the HTML, and
+# `wrangler deploy --dry-run` checks the Workers config. Cloudflare Workers
+# Builds publishes docs.kudurru.io from GitHub (docs-site/README.md, "Publishing");
+# this workflow holds no Cloudflare credentials.
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: docs-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  docs-site:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The pinned Hugo release (HUGO_VERSION and its SHA-256 in the Makefile).
+      - name: Cache Hugo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: bin/hugo-*
+          key: hugo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+      - name: Generated references are current
+        run: |
+          make docs-gen
+          git diff --exit-code -- docs-site/content/reference
+          test -z "$(git status --porcelain -- docs-site/content/reference)" || { git status --porcelain -- docs-site/content/reference; echo "run make docs-gen and commit the result"; exit 1; }
+      - name: Build (fails on broken links)
+        run: make docs-site
+      - name: Check the HTML (links, assets, fragments)
+        run: make docs-check-links
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - name: Check the Workers config (wrangler deploy --dry-run)
+        run: make docs-check-workers
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-site
+          path: docs-site/public
+          retention-days: 7

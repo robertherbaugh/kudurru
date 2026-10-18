@@ -1,0 +1,9 @@
+// The root config files (Vite, Playwright) and the Playwright suite in e2e/: Node/Bun types plus the DOM for page.evaluate callbacks.
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["bun"]
+  },
+  "include": ["vite.config.ts", "playwright.config.ts", "e2e"]
+}

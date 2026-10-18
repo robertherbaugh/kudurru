@@ -1,0 +1,31 @@
+# Response headers for docs.kudurru.io. Cloudflare applies this file to every
+# static asset response of the Worker (wrangler.jsonc); the site has no Worker
+# script, so nothing else sets headers. Hugo copies it to the root of the
+# built site. A header that two matching rules both set is joined with a
+# comma, so each header appears in one rule only.
+# https://developers.cloudflare.com/workers/static-assets/headers/
+#
+# The pages load only their own files: no CDN, no web font, no analytics.
+# The CSS and JS are fingerprinted files; the API explorer (/reference/api/
+# explorer/) runs the bundled Scalar script and needs inline styles, as do
+# the SVGs the bundled Mermaid script draws on the architecture pages; the
+# hand-drawn diagrams embed their fonts as data: URLs.
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=63072000
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+
+# Files whose names carry a content hash.
+/css/*
+  Cache-Control: public, max-age=31536000, immutable
+/js/*
+  Cache-Control: public, max-age=31536000, immutable
+/scalar/*
+  Cache-Control: public, max-age=31536000, immutable
+/mermaid/*
+  Cache-Control: public, max-age=31536000, immutable

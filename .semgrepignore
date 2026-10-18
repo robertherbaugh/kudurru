@@ -1,0 +1,31 @@
+# Paths `make sast` (Semgrep) skips. This file replaces Semgrep's built-in
+# defaults, so the first block repeats them.
+:include .gitignore
+node_modules/
+build/
+dist/
+vendor/
+*.min.js
+test/
+tests/
+*_test.go
+
+# Templates Semgrep cannot parse. The chart is scanned as rendered, in
+# deploy/kustomize/.
+deploy/helm/kudurru/templates/
+docs-site/layouts/
+
+# Test code, fixtures and development-only configuration: the test license
+# in testdata/ is only trusted by -tags licensetest builds, and the Dex users
+# of license-server/dev/ are local throwaway accounts.
+testdata/
+*.test.ts
+*.test.tsx
+dashboard/e2e/
+dashboard/src/mocks/
+license-server/e2e/
+license-server/ui/src/dev/
+license-server/dev/
+internal/testutil/
+internal/central/centraltest/
+hack/kind/

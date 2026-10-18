@@ -1,0 +1,252 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Release pipeline (dev-docs/design-record.md §12, §6.1, §5.7; docs/deploy/README.md).
+# .github/workflows/publish.yml runs `goreleaser release --clean` for the tag
+# that release-candidate.yml (v<VERSION>-rc.<N>) or release.yml (v<VERSION>)
+# just pushed, then pushes the Helm charts to oci://ghcr.io/robertherbaugh/charts
+# (dev-docs/release-checklist.md, "Release pipeline").
+# Local dry run (needs Bun for the dashboard bundle):
+#   goreleaser release --snapshot --clean --skip=publish,sign
+version: 2
+project_name: kudurru
+
+before:
+  hooks:
+    - go mod download
+    # The dashboard bundle into dashboard/dist, which every binary embeds. A hook
+    # rather than a workflow step: goreleaser refuses a dirty tree before the
+    # hooks run, and the build overwrites the tracked placeholder index.html.
+    - make dashboard-build
+    # crds.yaml and install.yaml for the GitHub release (make release-manifests).
+    - make release-manifests
+
+builds:
+  - id: kudurru
+    main: ./cmd/kudurru
+    binary: kudurru
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/robertherbaugh/kudurru/internal/version.Version={{ .Version }}
+      - -X github.com/robertherbaugh/kudurru/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/robertherbaugh/kudurru/internal/version.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: kudurru
+    ids: [kudurru]
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - LICENSING.md
+      - COMMERCIAL_LICENSE_AGREEMENT.md
+      - NOTICE
+      - ee/LICENSE.md
+      - README.md
+      - deploy/systemd/kudurru.service
+      - deploy/systemd/kudurru.yaml
+      - deploy/systemd/kudurru.env
+  # Compose bundles: single, single-edge and the three HA nodes.
+  - id: compose
+    meta: true
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_compose"
+    files:
+      - src: deploy/compose/**/*
+        dst: compose
+        strip_parent: false
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - id: archives
+    artifacts: archive
+  - id: packages
+    artifacts: package
+
+# Container images with ko (D68: linux/amd64 and linux/arm64 only). The
+# base is ghcr.io/robertherbaugh/kudurru-base (images/base/Dockerfile:
+# distroless plus /var/lib/kudurru and /run/kudurru owned by 65532, which ko
+# cannot create), built and pinned by digest in publish.yml. Without the
+# variables (a local --snapshot) the plain distroless bases are used, pinned
+# as tag@digest (multi-arch index digests; images/base/Dockerfile and the
+# Dockerfile carry the same digests, bump them together).
+kos:
+  - id: kudurru
+    build: kudurru
+    main: ./cmd/kudurru
+    working_dir: .
+    base_image: '{{ envOrDefault "KUDURRU_BASE_IMAGE" "gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3" }}'
+    repositories: [ghcr.io/robertherbaugh/kudurru]
+    platforms: [linux/amd64, linux/arm64]
+    # v<VERSION>-rc.<N> publishes <VERSION>-rc.<N> only; v<VERSION> publishes
+    # <VERSION> and moves latest.
+    tags:
+      - "{{ .Version }}"
+      - '{{ if not .Prerelease }}latest{{ end }}'
+    bare: true
+    preserve_import_paths: false
+    sbom: spdx
+    creation_time: "{{ .CommitTimestamp }}"
+    ko_data_creation_time: "{{ .CommitTimestamp }}"
+    env:
+      - CGO_ENABLED=0
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/robertherbaugh/kudurru/internal/version.Version={{ .Version }}
+      - -X github.com/robertherbaugh/kudurru/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/robertherbaugh/kudurru/internal/version.Date={{ .CommitDate }}
+    labels:
+      org.opencontainers.image.source: https://github.com/robertherbaugh/kudurru
+      org.opencontainers.image.licenses: LicenseRef-Kudurru-Community
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.title: kudurru
+      org.opencontainers.image.description: Kubernetes-native DNS server that also runs as one container
+  # -debug: the same binary on distroless's busybox image (shell, nslookup).
+  - id: kudurru-debug
+    build: kudurru
+    main: ./cmd/kudurru
+    working_dir: .
+    base_image: '{{ envOrDefault "KUDURRU_DEBUG_BASE_IMAGE" "gcr.io/distroless/static:debug-nonroot@sha256:2a581fcbda6320d4d17fd6ff4774bb96e4825d2be9c2bca59f0777b429997f51" }}'
+    repositories: [ghcr.io/robertherbaugh/kudurru]
+    platforms: [linux/amd64, linux/arm64]
+    tags:
+      - "{{ .Version }}-debug"
+      - '{{ if not .Prerelease }}latest-debug{{ end }}'
+    bare: true
+    preserve_import_paths: false
+    sbom: spdx
+    creation_time: "{{ .CommitTimestamp }}"
+    ko_data_creation_time: "{{ .CommitTimestamp }}"
+    env:
+      - CGO_ENABLED=0
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/robertherbaugh/kudurru/internal/version.Version={{ .Version }}
+      - -X github.com/robertherbaugh/kudurru/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/robertherbaugh/kudurru/internal/version.Date={{ .CommitDate }}
+    labels:
+      org.opencontainers.image.source: https://github.com/robertherbaugh/kudurru
+      org.opencontainers.image.licenses: LicenseRef-Kudurru-Community
+      org.opencontainers.image.version: "{{ .Version }}-debug"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+
+# deb, rpm and apk with the systemd unit (deploy/systemd/).
+nfpms:
+  - id: packages
+    package_name: kudurru
+    ids: [kudurru]
+    formats: [deb, rpm, apk]
+    vendor: kudurru
+    homepage: https://github.com/robertherbaugh/kudurru
+    maintainer: Robert Herbaugh <robertherbaugh@users.noreply.github.com>
+    description: Kubernetes-native DNS server (authoritative, forwarding, blocking) that also runs standalone.
+    license: LicenseRef-Kudurru-Community
+    section: net
+    priority: optional
+    bindir: /usr/bin
+    file_name_template: "{{ .ConventionalFileName }}"
+    contents:
+      - src: deploy/systemd/kudurru.service
+        dst: /usr/lib/systemd/system/kudurru.service
+        file_info:
+          mode: 0644
+      - src: deploy/systemd/kudurru.yaml
+        dst: /etc/kudurru/kudurru.yaml
+        type: config|noreplace
+        file_info:
+          mode: 0640
+      - src: deploy/systemd/kudurru.env
+        dst: /etc/kudurru/kudurru.env
+        type: config|noreplace
+        file_info:
+          mode: 0640
+      - dst: /etc/kudurru/objects.d
+        type: dir
+        file_info:
+          mode: 0750
+      - src: LICENSE
+        dst: /usr/share/doc/kudurru/LICENSE
+      - src: LICENSING.md
+        dst: /usr/share/doc/kudurru/LICENSING.md
+      - src: COMMERCIAL_LICENSE_AGREEMENT.md
+        dst: /usr/share/doc/kudurru/COMMERCIAL_LICENSE_AGREEMENT.md
+      - src: NOTICE
+        dst: /usr/share/doc/kudurru/NOTICE
+      - src: ee/LICENSE.md
+        dst: /usr/share/doc/kudurru/ee-LICENSE.md
+    scripts:
+      preinstall: deploy/systemd/preinstall.sh
+      postinstall: deploy/systemd/postinstall.sh
+      preremove: deploy/systemd/preremove.sh
+    overrides:
+      deb:
+        dependencies: [adduser]
+      rpm:
+        dependencies: [shadow-utils]
+
+# cosign keyless (GitHub OIDC): the checksum file covers every archive and
+# package; images are signed by digest.
+#
+# docker_signs with `artifacts: manifests` covers the ko images: the ko pipe
+# registers each pushed image (one per `kos` entry, the multi-arch index) as
+# a DockerManifest artifact with its digest, and the docker sign pipe runs
+# after ko in the publish phase and selects DockerManifest artifacts
+# (goreleaser v2.18 internal/pipe/ko/ko.go makeArtifact,
+# internal/pipe/sign/sign_docker.go; the ko docs' "Signing KO manifests").
+# The signature is on the index digest, which is what `cosign verify
+# <image>:<tag>` resolves; publish.yml verifies both images after publishing.
+signs:
+  - id: checksums
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - ${artifact}
+      - --yes
+docker_signs:
+  - id: images
+    cmd: cosign
+    artifacts: manifests
+    args:
+      - sign
+      - ${artifact}@${digest}
+      - --yes
+
+release:
+  github:
+    owner: robertherbaugh
+    name: kudurru
+  prerelease: auto
+  draft: false
+  extra_files:
+    - glob: ./bin/release/crds.yaml
+    - glob: ./bin/release/install.yaml
+  footer: |
+    Container images: `ghcr.io/robertherbaugh/kudurru:{{ .Version }}` (and `-debug`, and `-hostnetwork` for host networking).
+    Helm: `helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version {{ .Version }}`, then
+    `helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version {{ .Version }}`.
+    Verify: `cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt`.
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^wip'
+      - '^merge'
+      - '^docs:'
+      - '^test'

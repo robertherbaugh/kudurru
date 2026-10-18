@@ -1,0 +1,69 @@
+# kind + MetalLB + Helm end-to-end test (hack/kind-e2e.sh, dev-docs/milestones/m5/e2e.md):
+# the image built from the Dockerfile on a kind cluster of a control-plane
+# node and three workers, with both charts, three replicas and MetalLB.
+# Part 1 checks the cluster without a database: DNS over UDP and TCP through
+# the LoadBalancer, every replica's API (nodes, objects, the query log of
+# all nodes, the audit log across a replaced replica) and a rolling restart
+# under load. Part 2 does the same with the central PostgreSQL database
+# and stops the database for a while.
+#
+# Runs on every pull request and push to main that touches more than
+# docs/, dev-docs/, docs-site/, website/, branding/ and license-server/
+# (hack/ci-changes.sh code), so it can be a required check: those changes
+# skip the job rather than the workflow, because a skipped job satisfies a
+# required status check and a workflow that never runs does not (the same
+# gate as ci.yml). The runner has to hold the four kind nodes, PostgreSQL
+# and three replicas: standard-2 has 8 GB.
+name: kind
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: kind-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  changes:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        # bash -o pipefail: a failing filter fails the job instead of skipping
+        # every gated job.
+        shell: bash
+        run: hack/ci-changes.sh code | tee -a "$GITHUB_OUTPUT"
+  kind-metallb:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 45
+    env:
+      KIND_VERSION: v0.33.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - name: Install kind, dig and jq
+        run: |
+          curl -fsSLo kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          curl -fsSLo kind.sha256 "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64.sha256sum"
+          echo "$(cut -d' ' -f1 kind.sha256)  kind" | sha256sum -c -
+          sudo install -m 0755 kind /usr/local/bin/kind
+          rm kind kind.sha256
+          for tool in dig jq; do
+            command -v "$tool" || { sudo apt-get update && sudo apt-get install -y dnsutils jq; break; }
+          done
+          kind version; helm version --short; kubectl version --client; jq --version
+      # The script builds the image with -tags licensetest and installs the test
+      # license key, so the three replicas can write through the API.
+      - name: kind + MetalLB + helm install, DNS, API and PostgreSQL checks
+        run: hack/kind-e2e.sh

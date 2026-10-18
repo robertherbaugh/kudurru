@@ -1,0 +1,3 @@
+NAMESPACE   NAME         MODE    RULE
+default     ads          block   ||ads.example.net^
+home        kids-extra   block   ads.example.net

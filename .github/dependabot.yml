@@ -1,0 +1,60 @@
+# Dependabot keeps the SHA-pinned GitHub Actions current (the workflows pin
+# every third-party action by commit with the version as a comment, which
+# Dependabot updates together). One grouped pull request a week.
+#
+# The license portal (license-server/) is an internet-facing service that
+# holds the signing key, so its npm dependencies (exact versions in
+# package.json, bun.lock) are kept current too: minor and patch updates in
+# one grouped pull request a week, each major update on its own.
+#
+# The base images on literal FROM lines of the Dockerfiles: a new tag or
+# digest of powerdns/dnsdist-21, oven/bun and alpine, one grouped pull
+# request a week. Not golang (the build stage's 1.27 follows go.mod) and not
+# gcr.io/distroless/static, whose digest is also in .goreleaser.yaml,
+# images/base and publish.yml (TestDockerfile; dev-docs/release-checklist.md
+# has the bump). keepalived is built from a release tarball and Alpine
+# 3.24 through ARGs, which Dependabot does not read. Between bumps the daily
+# Trivy scan (security.yml) fails when an image needs one.
+#
+# All of them wait 7 days after a release before proposing it (cooldown), so
+# a compromised or broken release has time to be found and pulled first.
+# Security updates are not delayed.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+  - package-ecosystem: bun
+    directory: /license-server
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      license-server:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: license-server
+  - package-ecosystem: docker
+    directories: ["/", "/images/*", "/license-server"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: golang
+      - dependency-name: "*distroless/static"
+    groups:
+      images:
+        patterns: ["*"]
+    commit-message:
+      prefix: build

@@ -1,0 +1,13 @@
+<footer class="site-footer">
+  <div class="site-footer__inner">
+    <img src="{{ "brand/kudurru-mark-clay.png" | relURL }}" width="28" height="28" alt="">
+    <p><strong>kudurru</strong>: {{ site.Params.tagline }}
+      The core uses the <a href="{{ "project/license/" | relURL }}">Kudurru Community License</a>; business and government production use needs an agreement. Anyone may read these docs; their source has a <a href="{{ "project/documentation-license/" | relURL }}">separate notice</a>. dnsdist and keepalived are GPL-2.0 and ship only as separate programs in their own images.</p>
+    <p><a href="{{ site.Params.repo }}" rel="noopener">Source</a> ·
+      <a href="{{ "project/security/" | relURL }}">Security</a> ·
+      <a href="{{ "project/changelog/" | relURL }}">Changelog</a> ·
+      <a href="{{ site.Params.licensePortal }}" rel="noopener">License portal</a> ·
+      <a href="{{ site.Params.authPortal }}" rel="noopener">Auth portal</a> ·
+      built from <code>{{ site.Params.repoRef }}</code></p>
+  </div>
+</footer>

@@ -1,0 +1,130 @@
+{
+  "sourceTemplates": [
+    "mixed/kudurru-mark-clay.png",
+    "mixed/kudurru-logo-mixed.png",
+    "ink/kudurru-logo-ink-tagline.png"
+  ],
+  "processing": "Alpha values 0..32 removed; 32..224 remapped to 0..255; median 3x3 filter; exact palette recoloring; aspect-preserving resizing and composition. All source PNG bytes remain unchanged.",
+  "pillowVersion": "11.3.0",
+  "files": [
+    {
+      "file": "favicon.ico",
+      "width": 48,
+      "height": 48,
+      "mode": "RGBA",
+      "sha256": "b14ba23e494457f4d8b5c67436c042f9f4eb2d18b81d03b61f43fab07a182576",
+      "sizes": [
+        [
+          16,
+          16
+        ],
+        [
+          32,
+          32
+        ],
+        [
+          48,
+          48
+        ]
+      ]
+    },
+    {
+      "file": "kudurru-brand-sheet.png",
+      "width": 1440,
+      "height": 1240,
+      "mode": "RGB",
+      "sha256": "32994998830143b8484c9c05f73d27ed8a88d8957b2abf3823e6d1310e3b9e4d"
+    },
+    {
+      "file": "kudurru-icon-192.png",
+      "width": 192,
+      "height": 192,
+      "mode": "RGB",
+      "sha256": "5521064827e8787e6bf6d5c44d891ea3e0f5d8c0ae2572fc71ca73df38633058"
+    },
+    {
+      "file": "kudurru-icon-512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGB",
+      "sha256": "15981b80db3038a2e54ee36a4c179b456109307737abf0736facb1052becfc26"
+    },
+    {
+      "file": "kudurru-logo-clay.png",
+      "width": 1536,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "811784ebb6f77bc8333981042c0b2ac3ce2563257e08f95a62e0afd9bac9857d"
+    },
+    {
+      "file": "kudurru-logo-ink.png",
+      "width": 1536,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "9fc11a61010f253631c655a3ac4f27aff5f33173708e3826ce4e37b18a630211"
+    },
+    {
+      "file": "kudurru-logo-mixed-paper-tagline.png",
+      "width": 1536,
+      "height": 640,
+      "mode": "RGBA",
+      "sha256": "59beda079561afbdf818ae1a2eb2334a15e96f2f79a7f17fcfd04a4fb62c32bd"
+    },
+    {
+      "file": "kudurru-logo-mixed-paper.png",
+      "width": 1536,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "a1af200f4be23dadb0e8fd10ac40443ffaac10c9476bac621526479b50e054f7"
+    },
+    {
+      "file": "kudurru-logo-mixed-tagline.png",
+      "width": 1536,
+      "height": 640,
+      "mode": "RGBA",
+      "sha256": "4af3c66bd903f70fc8a8b144b717adf2666b39af81745bccbf11adfbdaada150"
+    },
+    {
+      "file": "kudurru-logo-mixed.png",
+      "width": 1536,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "a08215172bc6a38b6f8a00d888ad4b3cdb972d70246a981d8cf2db9f9dba7790"
+    },
+    {
+      "file": "kudurru-logo-paper.png",
+      "width": 1536,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "91784e7b273c4ea3c9fb2a98844b7155d1b387cffaff04636a6435fcbae464c7"
+    },
+    {
+      "file": "kudurru-mark-clay.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "b8c1b8437248c81a5545d8c3af6128d00a11049fbb739b1fe83c6f1c30911cc5"
+    },
+    {
+      "file": "kudurru-mark-ink.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "2e7cb9142b8225d5eade671af177fb7edc7ee602c65cacbed66bbf953ff91d87"
+    },
+    {
+      "file": "kudurru-mark-paper.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "aad44b58b8cc369360a53ac4dff1ac217519e8530ef1c67399ff2d0512c27dc0"
+    },
+    {
+      "file": "kudurru-social.png",
+      "width": 1200,
+      "height": 630,
+      "mode": "RGB",
+      "sha256": "540936fbfbb4646e88b80f68975a16d695e7ebd3c2012949245b088cd6006af8"
+    }
+  ]
+}

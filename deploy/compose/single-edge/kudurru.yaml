@@ -1,0 +1,27 @@
+# /etc/kudurru/kudurru.yaml behind dnsdist on the same host. kudurru listens
+# on loopback :5353 and accepts PROXYv2 only from 127.0.0.1, so the query log
+# and client groups see the real client address (§3.3).
+node:
+  dataDir: /var/lib/kudurru
+store:
+  driver: sqlite
+listeners:
+  dns:
+    - address: "127.0.0.1:5353"
+      protocols: [udp, tcp]
+  proxyProtocolFrom: ["127.0.0.1/32"]
+  api: { address: "0.0.0.0:8080" }
+  ops: { address: "0.0.0.0:8081" }
+  metrics: { address: "0.0.0.0:9153" }
+upstreams:
+  groups:
+    default:
+      servers: ["tls://1.1.1.1", "tls://9.9.9.9"]
+      strategy: parallel_best
+      timeout: 2s
+  bootstrap: ["1.1.1.1:53", "9.9.9.9:53"]
+blocking:
+  enabled: true
+log:
+  level: info
+  format: json

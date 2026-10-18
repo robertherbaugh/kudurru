@@ -1,0 +1,9 @@
+// The bun tests and the runtime-independent modules they import, with
+// Bun's types instead of the Workers runtime's (`tsc -p test`).
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
+  "include": [".", "../scripts", "../src/env.ts", "../src/http.ts", "../src/log.ts"]
+}

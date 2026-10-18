@@ -1,0 +1,159 @@
+# Block lists
+
+A BlockList is a named set of rules from one or more sources. Its body is
+downloaded **once, by the leader**, shared with every other node by digest,
+and **compiled on every node**. Only bodies travel; compiled matchers never
+leave the process that built them.
+
+Code: `internal/listfetcher` (the leader's fetcher, the disk cache, every
+node's resolver), `internal/blocking` (parsing, the compiled list, the
+snapshot) and `internal/blocking/matcher`.
+
+## The object
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: BlockList
+metadata: { name: ads, namespace: dns }
+spec:
+  mode: block                 # block | allow
+  refreshInterval: 24h
+  response: zeroIP            # optional; beats the policy's blockMode
+  sources:                    # 1..256, each exactly one of:
+  - url: https://big.oisd.nl/ #   url | inline[] | configMapRef | entries[]
+    format: auto              #   auto | hosts | domains | adblock | regex
+  - inline: ["||tracker.example^", "@@||cdn.tracker.example^"]
+```
+
+A source's body is identified by a cache key: its URL, or
+`configmap://<ns>/<name>`. Inline and `entries` sources travel inside the
+object itself and are never fetched. Two lists that share a URL share one
+download.
+
+## From URL to answer
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as list URL
+    participant F as list fetcher (leader)
+    participant DC as disk cache lists/<sha256(key)>
+    participant S as store
+    participant R as list resolver (every node)
+    participant LD as leader :8082
+    participant Z as zonecache snapshot
+    F->>W: GET with If-None-Match / If-Modified-Since
+    alt 304 Not Modified
+        W-->>F: 304
+        F->>DC: touch (fetched time only)
+    else 200
+        W-->>F: body (≤ 64 MiB)
+        F->>DC: tee to a temp file while hashing, validate,<br/>atomic rename + .meta (etag, digest, rule counts)
+    end
+    F->>S: UpdateStatus: sources[].digest, entries, errors
+    S-->>R: watch: BlockList status changed
+    alt local cache has that digest
+        R->>R: use it
+    else
+        R->>LD: GET /internal/lists/{digest} (TLS + node token)
+        LD-->>R: body
+        R->>R: verify sha256 = digest, store in its own disk cache
+    end
+    R->>R: compile changed lists (skip if the fingerprint is unchanged)
+    R->>Z: SetLists(new compiled snapshot)
+    Z->>Z: rebuild the policy index, swap the snapshot
+    Note over Z: queries see the new lists, the local dnsdist packet cache is flushed
+```
+
+The leader schedules each source at `lastFetched + refreshInterval` (minus
+up to 5 % jitter, never under 1 minute) or at once on
+`POST /api/v1/blocklists/{ns}/{name}/refresh`. Downloads run four at a time
+with up to three attempts; a failing source cools down from 1 minute up to
+1 hour and keeps its last good body. Only `http` and `https` URLs are
+fetched, and loopback, link-local and metadata addresses are refused unless
+`blocking.allowLocalListURLs` is set.
+
+### When the leader is out of reach
+
+```mermaid
+flowchart TD
+    W(["status says: source X has digest D"]) --> HAVE{"local cache has D?"}
+    HAVE -- "yes" --> USE["compile from the cache"]
+    HAVE -- "no" --> SELF{"am I the leader?"}
+    SELF -- "yes" --> WAIT["wait: my fetcher fills the cache"]
+    SELF -- "no" --> PULL{"pull D from the leader"}
+    PULL -- "ok, hash verified" --> USE
+    PULL -- "failed" --> OLD{"an older body cached?"}
+    OLD -- "yes" --> OLDU["keep serving the older body"]
+    OLD -- "no" --> SKIP["compile the list without X<br/>(source counted as waiting)"]
+    OLDU --> TEN{"leader unreachable or X pending<br/>for ≥ 10 minutes?"}
+    SKIP --> TEN
+    TEN -- "yes" --> DL["download X directly from its URL"]
+```
+
+The first resolver pass after a restart reads only the disk cache, so a node
+comes back with its lists before it can reach anybody. Readiness follows
+`blocking.initStrategy`: `fast` is ready at once, `blocking` waits until no
+source is waiting (unless `blocking.allowDegraded`), and `failOnError` exits
+the process when the first load fails.
+
+## Inside a compiled list
+
+```mermaid
+flowchart LR
+    N(["name, lower-cased,<br/>no trailing dot"]) --> E{"exact set<br/>sorted buckets by length,<br/>bit filter, binary search"}
+    E -- "miss" --> S{"suffix set<br/>||x^, *.x, hosts with subdomains;<br/>walk labels broadest first"}
+    S -- "miss" --> RX{"regex set<br/>RE2, indexed by a 4-byte<br/>piece of each literal"}
+    RX -- "miss" --> M["no match"]
+    E -- "hit" --> HIT["match + rule text"]
+    S -- "hit" --> HIT
+    RX -- "hit" --> HIT
+```
+
+Each list has two chains of these matchers: the **primary** chain (deny rules
+in a block list, allow rules in an allow list) and the **exception** chain
+(`@@` rules of a block list). A fourth set holds bare IP entries, used only
+when the answer is checked. Each entry keeps a one-byte syntax tag, so the
+query log can show the rule as written without storing the lines.
+
+Lookups allocate nothing. The spike measured p99 1.18 µs for a hit and
+0.71 µs for a miss over a 1 M-entry suffix set, and about 90 MB steady RSS
+for 3 M entries ([spike](../../dev-docs/spikes/blocking.md)); `make bench` guards it.
+
+| Syntax | Compiles to |
+|---|---|
+| `example.com`, hosts line `0.0.0.0 example.com` | exact (suffix when `subdomains: true`) |
+| `\|\|example.com^`, `\|\|example.com`, `*.example.com` | suffix (`*.x` also matches `x`) |
+| `@@\|\|example.com^` | exception chain (per list) |
+| `/regex/` | regex (at most 1000 per list) |
+| `$important`, `$badfilter`, other modifiers, mid-pattern wildcards | counted as unsupported, ignored |
+
+## Compile and swap
+
+```mermaid
+flowchart TD
+    P(["resolver pass"]) --> FP{"fingerprint of every list name,<br/>mode, source digest, exclude and<br/>the catalogue unchanged?"}
+    FP -- "yes" --> NOOP["nothing to do"]
+    FP -- "no" --> LOOP["for each list"]
+    LOOP --> LFP{"this list's fingerprint<br/>(CRC-32 of the normalised<br/>rule lines) unchanged?"}
+    LFP -- "yes" --> REUSE["reuse the compiled list"]
+    LFP -- "no" --> COMP["compile"]
+    COMP --> OK{"compiled?"}
+    OK -- "no" --> KEEP["keep the old compiled list"]
+    OK -- "yes" --> NEW["use the new one"]
+    REUSE --> SNAP
+    KEEP --> SNAP
+    NEW --> SNAP["new immutable snapshot<br/>(generation + 1)"]
+    SNAP --> SET["zonecache SetLists → rebuild → atomic swap"]
+```
+
+A comment-only change to a list does not recompile it. Lists of 1 MiB or more
+trigger a garbage collection between compiles, so a refresh of several big
+lists does not hold them all in memory at once.
+
+## The starter list
+
+On the first start the bootstrap seeds `BlockList starter` (one inline
+source made from the StevenBlack hosts file, embedded in the binary) and
+`Policy default` that uses it. Blocking therefore works offline from the
+first query, and its hits show as `blocked_exact`.

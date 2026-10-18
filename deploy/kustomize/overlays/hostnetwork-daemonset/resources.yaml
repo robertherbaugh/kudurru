@@ -1,0 +1,362 @@
+# Generated from deploy/helm/kudurru by `go test ./deploy -run TestKustomizeBases -update`
+# (make kustomize). Do not edit; change the chart and regenerate.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-rc.1
+  name: kudurru
+  namespace: kudurru-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: dns
+      app.kubernetes.io/instance: kudurru
+      app.kubernetes.io/name: kudurru
+---
+apiVersion: v1
+data:
+  kudurru.yaml: |
+    listeners:
+      api:
+        address: 0.0.0.0:8080
+      dns:
+      - address: 0.0.0.0:53
+        protocols:
+        - udp
+        - tcp
+      internal:
+        address: 0.0.0.0:8082
+      metrics:
+        address: 0.0.0.0:9153
+      ops:
+        address: 0.0.0.0:8081
+    log:
+      format: json
+      level: info
+    node:
+      dataDir: /var/lib/kudurru
+    objectsDir: ""
+    store:
+      driver: kube
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-rc.1
+  name: kudurru-node
+  namespace: kudurru-system
+---
+apiVersion: v1
+data:
+  settings.yaml: |
+    upstreams:
+      groups:
+        default:
+          servers:
+          - 1.1.1.1:53
+          - 9.9.9.9:53
+          strategy: parallel_best
+          timeout: 2s
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-rc.1
+  name: kudurru-settings
+  namespace: kudurru-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-rc.1
+    kudurru.io/service: dns
+  name: kudurru-dns
+  namespace: kudurru-system
+spec:
+  externalTrafficPolicy: Local
+  ipFamilyPolicy: PreferDualStack
+  ports:
+    - name: dns-udp
+      port: 53
+      protocol: UDP
+      targetPort: dns-udp
+    - name: dns-tcp
+      port: 53
+      protocol: TCP
+      targetPort: dns-tcp
+  selector:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/name: kudurru
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-rc.1
+    kudurru.io/service: api
+  name: kudurru-api
+  namespace: kudurru-system
+spec:
+  ports:
+    - name: api
+      port: 8080
+      protocol: TCP
+      targetPort: api
+    - name: metrics
+      port: 9153
+      protocol: TCP
+      targetPort: metrics
+  selector:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/name: kudurru
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-rc.1
+    kudurru.io/service: headless
+  name: kudurru-headless
+  namespace: kudurru-system
+spec:
+  clusterIP: None
+  ports:
+    - name: dns-udp
+      port: 53
+      protocol: UDP
+    - name: dns-tcp
+      port: 53
+      protocol: TCP
+    - name: internal
+      port: 8082
+      protocol: TCP
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/name: kudurru
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-rc.1
+  name: kudurru
+  namespace: kudurru-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: dns
+      app.kubernetes.io/instance: kudurru
+      app.kubernetes.io/name: kudurru
+  template:
+    metadata:
+      annotations:
+        checksum/node-config: f4ace4efe4c4e35ccf0543f68a3c7509f3be3b2d072936c1ae9b9b7d5fc01899
+        kubectl.kubernetes.io/default-container: kudurru
+      labels:
+        app.kubernetes.io/component: dns
+        app.kubernetes.io/instance: kudurru
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/name: kudurru
+        app.kubernetes.io/part-of: kudurru
+        app.kubernetes.io/version: 0.1.0-rc.1
+    spec:
+      automountServiceAccountToken: true
+      containers:
+        - args:
+            - serve
+            - --config=/etc/kudurru/node/kudurru.yaml
+          env:
+            - name: KUDURRU_NODE__NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KUDURRU_HEADLESS_SERVICE
+              value: kudurru-headless.kudurru-system.svc.cluster.local
+            - name: KUDURRU_SETTINGS_RESOURCE
+              value: kudurru-ui-settings
+            - name: KUDURRU_SETTINGS_FILE
+              value: /etc/kudurru/settings/settings.yaml
+            - name: KUDURRU_ENCRYPTION_KEY_FILE
+              value: /etc/kudurru/secrets/encryption/key
+            - name: KUDURRU_ADMIN_PASSWORD_FILE
+              value: /etc/kudurru/secrets/admin/password
+            - name: KUDURRU_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: license.key
+                  name: kudurru-license
+                  optional: true
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  divisor: "1"
+                  resource: limits.memory
+          image: ghcr.io/robertherbaugh/kudurru:0.1.0-rc.1-hostnetwork
+          imagePullPolicy: IfNotPresent
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - kudurru
+                  - lameduck
+                  - 5s
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz/live
+              port: ops
+            periodSeconds: 10
+          name: kudurru
+          ports:
+            - containerPort: 53
+              name: dns-udp
+              protocol: UDP
+            - containerPort: 53
+              name: dns-tcp
+              protocol: TCP
+            - containerPort: 8080
+              name: api
+              protocol: TCP
+            - containerPort: 8081
+              name: ops
+              protocol: TCP
+            - containerPort: 8082
+              name: internal
+              protocol: TCP
+            - containerPort: 9153
+              name: metrics
+              protocol: TCP
+          readinessProbe:
+            failureThreshold: 2
+            httpGet:
+              path: /healthz/ready
+              port: ops
+            periodSeconds: 5
+          resources:
+            limits:
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 65532
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:
+            failureThreshold: 60
+            httpGet:
+              path: /healthz/startup
+              port: ops
+            periodSeconds: 5
+          volumeMounts:
+            - mountPath: /etc/kudurru/node
+              name: node-config
+              readOnly: true
+            - mountPath: /etc/kudurru/settings
+              name: settings
+              readOnly: true
+            - mountPath: /etc/kudurru/secrets/encryption
+              name: encryption-key
+              readOnly: true
+            - mountPath: /etc/kudurru/secrets/admin
+              name: admin
+              readOnly: true
+            - mountPath: /var/lib/kudurru
+              name: data
+            - mountPath: /run/kudurru
+              name: run
+            - mountPath: /tmp
+              name: tmp
+      dnsPolicy: ClusterFirstWithHostNet
+      enableServiceLinks: false
+      hostNetwork: true
+      securityContext:
+        fsGroup: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: kudurru
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - configMap:
+            name: kudurru-node
+          name: node-config
+        - configMap:
+            name: kudurru-settings
+          name: settings
+        - name: encryption-key
+          secret:
+            defaultMode: 288
+            secretName: kudurru-encryption-key
+        - name: admin
+          secret:
+            defaultMode: 288
+            secretName: kudurru-admin
+        - emptyDir: {}
+          name: data
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+          name: run
+        - emptyDir:
+            sizeLimit: 256Mi
+          name: tmp
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate

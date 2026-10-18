@@ -1,0 +1,13 @@
+Scope:             node (node-a)
+Window:            2026-10-10 12:00:00 to 2026-10-11 12:00:00
+Total queries:     120000
+Blocked:           18000 (15.0%)
+Cached:            50000
+Forwarded:         48000
+Authoritative:     4000
+Dropped:           0
+Unique domains:    3456
+Domains on lists:  81234
+Clients:           14 active / 20 total
+QPS:               2.5 (1m), 1.4 (avg)
+Latency:           avg 4.2 ms, p50 0.3, p95 21.0, p99 80.0

@@ -1,0 +1,60 @@
+{{- if .Values.ingress.enabled }}
+{{- $traefik := eq .Values.ingress.kind "IngressRoute" -}}
+{{- $ann := deepCopy (.Values.ingress.annotations | default dict) -}}
+{{- if and $traefik .Values.ingress.className -}}
+{{- $_ := set $ann "kubernetes.io/ingress.class" .Values.ingress.className -}}
+{{- end }}
+{{- if $traefik }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+{{- else }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+{{- end }}
+metadata:
+  name: {{ include "kudurru.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+  {{- with $ann }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $traefik }}
+  entryPoints:
+    {{- toYaml .Values.ingress.traefik.entryPoints | nindent 4 }}
+  routes:
+    - kind: Rule
+      match: {{ printf "Host(`%s`)" .Values.ingress.host | quote }}
+      services:
+        - name: {{ include "kudurru.fullname" . }}-api
+          port: {{ .Values.service.api.port }}
+          nativeLB: false
+          {{- if .Values.ingress.traefik.sticky.enabled }}
+          sticky:
+            cookie:
+              {{- toYaml .Values.ingress.traefik.sticky.cookie | nindent 14 }}
+          {{- end }}
+  tls: {{ toJson (.Values.ingress.traefik.tls | default dict) }}
+  {{- else }}
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ required "ingress.host is required when ingress.enabled" .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kudurru.fullname" . }}-api
+                port:
+                  name: api
+  {{- end }}
+{{- end }}

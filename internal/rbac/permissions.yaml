@@ -1,0 +1,118 @@
+# Single source for roles, aggregated ClusterRoles, the docs table and the
+# route-permission lint (dev-docs/design-record.md §8.5, decision D31).
+#
+# resources: name -> verbs it supports
+# roles:     name -> permissions as "<resource>.<verb>"; "*" wildcards allowed
+# scoped:    roles that only make sense with a non-cluster scope
+
+resources:
+  zones: [read, write, delete, transfer, sign, share]
+  records: [read, write, delete]
+  blocklists: [read, write, delete, refresh]
+  policies: [read, write, delete]
+  clientgroups: [read, write, delete]
+  clients: [read, write]
+  querylog: [read, export, purge]
+  stats: [read]
+  cache: [read, flush]
+  blocking: [read, toggle]
+  settings: [read, write]
+  node: [config]
+  dhcp: [read, write, delete]
+  dhcpleases: [read, import, export]
+  users: [read, write, delete]
+  groups: [read, write, delete]
+  serviceaccounts: [read, write, delete]
+  tokens: [read, write, delete, own]
+  identityproviders: [read, write, delete]
+  rolebindings: [read, write, delete]
+  integrations: [read, write, delete, sync, check, secrets, act]
+  cluster: [read, join, promote, drain]
+  edge: [read, write]
+  audit: [read, export]
+  unblockrequests: [read, decide, delete]
+
+roles:
+  viewer:
+    - zones.read
+    - records.read
+    - stats.read
+    - cache.read
+    - blocklists.read
+    - policies.read
+    - clientgroups.read
+    - clients.read
+    - blocking.read
+    - settings.read
+    - dhcp.read
+    - tokens.own
+  auditor:
+    - zones.read
+    - records.read
+    - stats.read
+    - cache.read
+    - blocklists.read
+    - policies.read
+    - clientgroups.read
+    - clients.read
+    - blocking.read
+    - settings.read
+    - dhcp.read
+    - dhcpleases.read
+    - dhcpleases.export
+    - querylog.read
+    - querylog.export
+    - audit.read
+    - unblockrequests.read
+    - tokens.own
+  operator:
+    - zones.read
+    - records.read
+    - records.write
+    - records.delete
+    - stats.read
+    - cache.read
+    - cache.flush
+    - blocklists.*
+    - policies.*
+    - clientgroups.*
+    - clients.*
+    - blocking.*
+    - settings.read
+    - dhcp.read
+    - dhcpleases.read
+    - dhcpleases.export
+    - querylog.read
+    - unblockrequests.*
+    - tokens.own
+  zone-admin:
+    - zones.read
+    - zones.write
+    - zones.delete
+    - zones.transfer
+    - zones.sign
+    - zones.share
+    - records.*
+    - stats.read
+    - cache.read
+    - tokens.own
+  admin:
+    - "*.*"
+
+scoped:
+  - zone-admin
+
+# Kubernetes ClusterRoles (§5.3, §8.5): `make rbac-manifests` generates
+# deploy/helm/kudurru/templates/rbac-aggregated.yaml from the roles above.
+# clusterRole is the name suffix (<release>-<clusterRole>); aggregateTo
+# names the built-in ClusterRole it aggregates into. The auditor role
+# reads query logs and the audit trail, so it aggregates nowhere: holders
+# of the built-in view role must not gain client query history (bind
+# kudurru-auditor explicitly). Scoped roles (zone-admin) have no
+# ClusterRole: a namespaced RoleBinding with resourceNames on dnszones
+# expresses them.
+kubernetes:
+  viewer: {clusterRole: viewer, aggregateTo: view}
+  auditor: {clusterRole: auditor}
+  operator: {clusterRole: editor, aggregateTo: edit}
+  admin: {clusterRole: admin, aggregateTo: admin}

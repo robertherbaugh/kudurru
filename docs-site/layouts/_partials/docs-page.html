@@ -1,0 +1,36 @@
+{{- /*
+  The documentation layout: section tree, the page, its table of contents.
+  Pages mounted from docs/ carry their own level-1 heading; pages of
+  docs-site/content get one from their title.
+*/ -}}
+{{- $toc := .TableOfContents -}}
+<div class="docs">
+  <nav class="sidebar" aria-label="Section">
+    <details class="sidebar__tree" open>
+      <summary>Browse this section</summary>
+      {{ partial "sidebar.html" . }}
+    </details>
+  </nav>
+  <main id="main" class="docs__main">
+    {{ partial "breadcrumbs.html" . }}
+    {{ partial "walkthrough.html" (dict "page" . "position" "top") }}
+    <article class="prose">
+      {{- with .Params.title }}
+        <h1>{{ . }}</h1>
+        {{- with $.Description }}<p class="lead">{{ . | markdownify }}</p>{{ end }}
+      {{- end }}
+      {{ .Content }}
+      {{- if and .IsSection .Params.title (not .Params.hideChildren) }}
+        {{ partial "children.html" . }}
+      {{- end }}
+    </article>
+    {{ partial "walkthrough.html" (dict "page" . "position" "bottom") }}
+    {{ partial "page-meta.html" . }}
+  </main>
+  {{- if and (findRE "<li>" $toc 1) (ne .Params.toc false) }}
+  <aside class="toc" aria-label="On this page">
+    <p class="toc__title">On this page</p>
+    {{ $toc }}
+  </aside>
+  {{- end }}
+</div>

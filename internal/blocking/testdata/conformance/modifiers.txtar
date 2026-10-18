@@ -1,0 +1,34 @@
+Every DNS modifier is tokenised and counted as unsupported; unknown
+(browser) modifiers, cosmetic rules and URL rules are invalid; none of them
+blocks anything in v0.1.
+
+-- list m block adblock --
+||important.example^$important
+||badfilter.example^$badfilter
+||dnstype.example^$dnstype=AAAA
+||rewrite.example^$dnsrewrite=NOERROR;A;1.2.3.4
+||client.example^$client='Frank\'s laptop'
+||ctag.example^$ctag=device_pc|device_phone
+*$denyallow=com|net
+||geo.example^$respgeo=US
+@@||exception.example^$important
+||thirdparty.example^$third-party
+||script.example^$script,domain=example.com
+example.org##.banner
+example.org#@#.banner
+||example.org/ads/*
+example.org$$script[data-ad]
+||plain.example^
+-- counts m --
+rules=1 exceptions=0 unsupported=9 invalid=6 entries=1
+-- expect --
+important.example     pass
+badfilter.example     pass
+dnstype.example       pass
+rewrite.example       pass
+client.example        pass
+anything.com          pass    # *$denyallow is not applied
+thirdparty.example    pass    # unknown modifier: the whole rule is ignored (spec)
+script.example        pass
+example.org           pass    # cosmetic and URL rules are not DNS rules
+plain.example         block m ||plain.example^

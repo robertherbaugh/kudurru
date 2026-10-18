@@ -1,0 +1,21 @@
+{{- /*
+  One level of the sidebar. A subsection opens when the current page is
+  inside it.
+*/ -}}
+{{- $current := .current -}}
+{{- with .section.Pages }}
+<ul>
+  {{- range . }}
+    {{- if not .Params.hideInNav }}
+    {{- $here := eq . $current }}
+    {{- $open := or $here ($current.IsDescendant .) }}
+    <li{{ if .IsSection }} class="has-children{{ if $open }} is-open{{ end }}"{{ end }}>
+      <a href="{{ .RelPermalink }}"{{ if $here }} aria-current="page"{{ end }}>{{ partialCached "title.html" . .RelPermalink }}</a>
+      {{- if and .IsSection $open }}
+        {{- partial "nav-tree.html" (dict "section" . "current" $current) }}
+      {{- end }}
+    </li>
+    {{- end }}
+  {{- end }}
+</ul>
+{{- end }}

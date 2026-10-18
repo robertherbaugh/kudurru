@@ -1,0 +1,2581 @@
+{
+  "items": [
+    {
+      "path": "auth.adminSocket.group",
+      "type": "int",
+      "scope": "node",
+      "default": -1,
+      "help": "Group id (gid) whose members may also use the admin socket, e.g. 1000; -1 (default) allows only root and the server's own user.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Admin socket group (gid)",
+      "group": "Security",
+      "min": -1
+    },
+    {
+      "path": "auth.adminSocket.path",
+      "type": "string",
+      "scope": "node",
+      "default": "/run/kudurru/kudurru.sock",
+      "help": "Path of the local socket of the `kudurru admin` command (reset-password, create-token, list-users), e.g. /run/kudurru/kudurru.sock: the way back in when every admin password is lost. Only uid 0, the server's own user and auth.adminSocket.group may use it. Empty turns it off.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Admin socket path",
+      "group": "Security"
+    },
+    {
+      "path": "auth.bootstrap.adminPasswordFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of a file holding the password of the first admin account, created on the first start, e.g. /run/secrets/kudurru-admin-password. The KUDURRU_ADMIN_PASSWORD and KUDURRU_ADMIN_PASSWORD_FILE environment variables take precedence; with none of them, a password is generated and printed once.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "First-boot admin password file",
+      "group": "Security"
+    },
+    {
+      "path": "auth.identityProviders",
+      "type": "list",
+      "scope": "cluster",
+      "default": [],
+      "help": "Sign-in to the dashboard through an OpenID Connect provider such as Google, Microsoft Entra ID, Keycloak, Authentik or Dex; the provider's ID tokens also work as bearer tokens for the API. Each entry needs an id, issuer, clientID, clientSecretFile and redirectURL; scopes, claimValidationRules, claimMappings and provisioning are optional.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Identity providers",
+      "group": "Security",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "id",
+            "label": "ID",
+            "help": "Short name of the provider, a lowercase DNS label such as corp. It appears in the login URLs and, as corp:, in front of every username and group from this provider.",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "displayName",
+            "label": "Display name",
+            "help": "Name on the login button, e.g. Company SSO; empty shows the id.",
+            "type": "string"
+          },
+          {
+            "name": "issuer",
+            "label": "Issuer",
+            "help": "Issuer URL of the OpenID Provider exactly as it publishes it, e.g. https://accounts.google.com or https://sso.home.example/realms/home; https is required except on loopback.",
+            "type": "string",
+            "format": "url"
+          },
+          {
+            "name": "clientID",
+            "label": "Client ID",
+            "help": "Client ID of the web application registered for kudurru at the provider.",
+            "type": "string"
+          },
+          {
+            "name": "clientSecretFile",
+            "label": "Client secret file",
+            "help": "Path of a file holding the client secret of clientID, e.g. /etc/kudurru/oidc-secret; required, because kudurru signs in as a confidential client.",
+            "type": "string"
+          },
+          {
+            "name": "cliClientID",
+            "label": "CLI client ID",
+            "help": "Public client ID for signing in from the command line (kudurru login, v0.2); ID tokens issued to it are accepted as bearer tokens. Empty for none.",
+            "type": "string"
+          },
+          {
+            "name": "redirectURL",
+            "label": "Redirect URL",
+            "help": "Callback URL registered at the provider: the dashboard URL followed by /api/v1/auth/oidc/<id>/callback, e.g. https://dns.home.example/api/v1/auth/oidc/corp/callback.",
+            "type": "string",
+            "format": "url"
+          },
+          {
+            "name": "scopes",
+            "label": "Scopes",
+            "help": "Scopes requested at sign-in; empty requests openid, profile, email and groups. openid is always added.",
+            "type": "string[]",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "audiences",
+            "label": "Audiences",
+            "help": "Extra audience (aud) values accepted on bearer ID tokens from this provider; empty for none.",
+            "type": "string[]",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "claimValidationRules",
+            "label": "Claim validation rules",
+            "help": "Claims every sign-in must carry, as {claim, requiredValue} pairs, e.g. claim email_verified with requiredValue \"true\"; a sign-in that fails one is refused.",
+            "type": "list",
+            "items": {
+              "type": "object"
+            }
+          },
+          {
+            "name": "claimMappings",
+            "label": "Claim mappings",
+            "help": "Which claims give the username, groups, display name and email: {username: {claim, prefix}, groups: {claim, prefix}, displayName: {claim}, email: {claim}}. Empty uses preferred_username (then upn, a verified email, sub), groups and roles, name and email; prefixes default to <id>:.",
+            "type": "object"
+          },
+          {
+            "name": "provisioning",
+            "label": "Provisioning",
+            "help": "Who may sign in the first time, as {autoProvision, defaultRole}: mapped-only (default) admits only sign-ins a role binding matches; always admits everyone the provider vouches for; never admits only identities kudurru already knows. defaultRole (not admin) is granted to an admitted sign-in without a binding.",
+            "type": "object"
+          },
+          {
+            "name": "allowedDomains",
+            "label": "Allowed email domains",
+            "help": "Reserved: email domains sign-ins will be restricted to, e.g. home.example. Accepted but not enforced yet.",
+            "type": "string[]",
+            "items": {
+              "type": "string",
+              "format": "domain"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "auth.kubernetes.mode",
+      "type": "string",
+      "scope": "cluster",
+      "default": "sar",
+      "help": "How Kubernetes service-account tokens are authorized: sar asks the apiserver with a SubjectAccessReview on kudurru.io resources. impersonate is planned for v0.2.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Kubernetes authorization",
+      "group": "Security",
+      "enum": [
+        {
+          "value": "sar",
+          "label": "SubjectAccessReview",
+          "help": "Ask the apiserver with a SubjectAccessReview whether the service account may act on the kudurru.io resource."
+        }
+      ]
+    },
+    {
+      "path": "auth.localLogin",
+      "type": "string",
+      "scope": "cluster",
+      "default": "enabled",
+      "help": "Whether people can sign in to the dashboard with a username and password: enabled for everyone, admins-only for builtin admins, or disabled (identity providers only). `kudurru admin` on the server's admin socket always works, so you cannot lock yourself out. Gates POST /api/v1/auth/login.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Local password login",
+      "group": "Security",
+      "enum": [
+        {
+          "value": "enabled",
+          "label": "Enabled",
+          "help": "Every local user may sign in with a password."
+        },
+        {
+          "value": "admins-only",
+          "label": "Admins only",
+          "help": "Only builtin admins may sign in with a password; everyone else uses an identity provider."
+        },
+        {
+          "value": "disabled",
+          "label": "Disabled",
+          "help": "No password sign-in; use an identity provider. kudurru admin over the admin socket still works."
+        }
+      ]
+    },
+    {
+      "path": "auth.session.idleTimeout",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "30m",
+      "help": "Sign a dashboard user out after this long without activity, e.g. 30m; at least 1m. Every request starts the time again.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Session idle timeout",
+      "group": "Security",
+      "presets": [
+        "15m",
+        "30m",
+        "1h",
+        "8h"
+      ]
+    },
+    {
+      "path": "auth.session.lifetime",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "12h",
+      "help": "Longest a dashboard sign-in lasts however active it is, e.g. 12h; then the user signs in again and their roles are looked up afresh. At least auth.session.idleTimeout.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Session lifetime",
+      "group": "Security",
+      "presets": [
+        "8h",
+        "12h",
+        "24h",
+        "168h"
+      ]
+    },
+    {
+      "path": "auth.session.secure",
+      "type": "string",
+      "scope": "cluster",
+      "default": "auto",
+      "help": "Whether browsers send the session cookie only over HTTPS (the cookie's Secure attribute). auto (default) decides per request and suits most setups; always is for a proxy that terminates TLS without telling kudurru; never is only for plain HTTP on a network you trust.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Secure session cookie",
+      "group": "Security",
+      "enum": [
+        {
+          "value": "auto",
+          "label": "Auto",
+          "help": "Secure when TLS terminates at kudurru or a trusted proxy reports https."
+        },
+        {
+          "value": "always",
+          "label": "Always",
+          "help": "Always Secure; for a proxy that terminates TLS without sending X-Forwarded-Proto."
+        },
+        {
+          "value": "never",
+          "label": "Never",
+          "help": "Never Secure: for plain HTTP only, and the cookie can be read on the network."
+        }
+      ]
+    },
+    {
+      "path": "auth.tokens.maxLifetime",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "0s",
+      "help": "Longest lifetime of a new API token, e.g. 2160h (90 days); a token created without an expiry gets this one. 0 (default) allows tokens that never expire.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Maximum token lifetime",
+      "group": "Security",
+      "presets": [
+        "0s",
+        "720h",
+        "2160h",
+        "8760h"
+      ]
+    },
+    {
+      "path": "blockPage.contact",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "How people reach you, shown as \"Ask your administrator\": an email address, e.g. admin@home.example, or a link, e.g. https://wiki.home.example/dns. Empty leaves the line out.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Administrator contact",
+      "group": "Block page"
+    },
+    {
+      "path": "blockPage.dashboardURL",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "Address of the dashboard the block page links administrators to, e.g. https://192.168.1.10:8080; the link opens /queries?domain=... there. Empty builds it from the block page address and listeners.api; set it when the dashboard is reached under another name or through a reverse proxy.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Dashboard URL",
+      "group": "Block page",
+      "format": "url"
+    },
+    {
+      "path": "blockPage.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": false,
+      "help": "Show browsers a page that explains why a site was blocked, instead of a connection error. Turning it on starts the block page listener (listeners.blockPage) and allows the blockPage block response; choose that response in blocking.defaultResponse or a Policy. Blocked A and AAAA queries then point at blockPage.ipv4 and blockPage.ipv6; other types get NODATA.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Block page enabled",
+      "group": "Block page"
+    },
+    {
+      "path": "blockPage.ipv4",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "Address browsers are sent to for the block page, e.g. 192.168.1.10: this server's LAN address, or a VIP or load balancer in front of the block page. Blocked A queries are answered with it under the blockPage response. Empty picks the first specific address of listeners.blockPage, else of listeners.dns; when every listener binds all addresses (0.0.0.0, ::) there is none, and blockPage.enabled is refused.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Block page IPv4 address",
+      "group": "Block page",
+      "format": "ipv4"
+    },
+    {
+      "path": "blockPage.ipv6",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "IPv6 address browsers are sent to for the block page, e.g. fd00::10; blocked AAAA queries are answered with it under the blockPage response. When blockPage.ipv4 is empty too, one is picked from the listeners as for IPv4; without an IPv6 address, AAAA queries get NODATA and browsers use IPv4.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Block page IPv6 address",
+      "group": "Block page",
+      "format": "ipv6"
+    },
+    {
+      "path": "blockPage.message",
+      "type": "string",
+      "scope": "cluster",
+      "default": "The administrator of this network has blocked access to this domain.",
+      "help": "Text under the heading that tells people why the site is blocked and what they can do (plain text, at most 2000 characters; HTML is shown as text).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Page message",
+      "group": "Block page"
+    },
+    {
+      "path": "blockPage.rateLimit",
+      "type": "int",
+      "scope": "cluster",
+      "default": 120,
+      "help": "Most block page requests one client address may make per minute, e.g. 120, with bursts up to the same number; beyond it the page answers 429 Too Many Requests. 0 removes the limit.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Requests per minute per client",
+      "group": "Block page",
+      "min": 0,
+      "max": 100000
+    },
+    {
+      "path": "blockPage.showDetails",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Show what blocked the name (the list, rule, blocked service, safe search or policy), looked up in the recent query log. Off shows only the domain, the client, the node and the time, which keeps your list choices private.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Show block details",
+      "group": "Block page"
+    },
+    {
+      "path": "blockPage.title",
+      "type": "string",
+      "scope": "cluster",
+      "default": "This site is blocked",
+      "help": "Heading of the block page, e.g. This site is blocked (plain text, at most 200 characters).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Page title",
+      "group": "Block page"
+    },
+    {
+      "path": "blocking.allowDegraded",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Answer queries and report ready while blocklists are still loading, e.g. right after a restart; queries are filtered by the lists already loaded. Off, the node reports not ready until every referenced list is loaded, so load balancers keep traffic away.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Serve while lists load",
+      "group": "Blocking"
+    },
+    {
+      "path": "blocking.allowLocalListURLs",
+      "type": "bool",
+      "scope": "node",
+      "default": false,
+      "help": "Allow blocklist URLs that point at this machine or at special addresses: loopback, link-local (169.254.0.0/16, fe80::/10, where cloud metadata services live), unspecified and multicast. Off by default so whoever can add a BlockList cannot make the node fetch internal services (SSRF). Lists on private LAN addresses such as 192.168.1.5 are always allowed.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Allow local list URLs",
+      "group": "Blocking"
+    },
+    {
+      "path": "blocking.blockTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "10m",
+      "help": "How long devices may remember a block answer, e.g. 10m, unless the Policy sets blockTTL. Keep it short: after you allow a name, devices keep the cached block until it expires.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Block response TTL",
+      "group": "Blocking",
+      "presets": [
+        "10s",
+        "1m",
+        "10m",
+        "1h"
+      ]
+    },
+    {
+      "path": "blocking.catalogue.adguardServicesURL",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "Off when empty. Opt-in: a URL of AdGuard's HostlistsRegistry blocked-services file, e.g. https://raw.githubusercontent.com/AdguardTeam/HostlistsRegistry/main/assets/services.json, adds its services (about 140) to the catalogue next to kudurru's own; kudurru's entries win when both have an ID. That data is GPL-3.0 licensed: kudurru does not ship it, your instance downloads it (the leader, on the catalogue refresh interval; the other nodes copy the leader's), and the dashboard marks those services as from AdGuard (GPL-3.0). Check that the licence suits how you use and share the data. docs/deploy/blocked-services.md.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "AdGuard services URL (GPL-3.0, opt-in)",
+      "group": "Blocking",
+      "format": "url"
+    },
+    {
+      "path": "blocking.catalogue.refreshInterval",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "24h",
+      "help": "How often the catalogue at blocking.catalogue.url and the AdGuard services at blocking.catalogue.adguardServicesURL are checked for a new version, e.g. 24h; at least 1m. A conditional GET, so an unchanged document is not downloaded again.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Catalogue refresh interval",
+      "group": "Blocking",
+      "presets": [
+        "6h",
+        "24h",
+        "168h"
+      ]
+    },
+    {
+      "path": "blocking.catalogue.url",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "Leave empty to use the blocked-services and safe-search catalogue built into kudurru. A URL, e.g. https://example.com/kudurru-catalogue.json, replaces it with your own document (schema version 2, or 1, docs/deploy/blocked-services.md). The leader downloads it and the other nodes copy the leader's; a document that fails validation leaves the current catalogue in service.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Catalogue URL",
+      "group": "Blocking",
+      "format": "url"
+    },
+    {
+      "path": "blocking.customIP.v4",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "IPv4 address blocked A queries are answered with when the block response is customIP, e.g. 192.168.1.10 for a server of yours that shows a notice. Empty answers NODATA.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Custom block IPv4",
+      "group": "Blocking",
+      "format": "ipv4"
+    },
+    {
+      "path": "blocking.customIP.v6",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "IPv6 address blocked AAAA queries are answered with when the block response is customIP, e.g. fd00::10. Empty answers NODATA.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Custom block IPv6",
+      "group": "Blocking",
+      "format": "ipv6"
+    },
+    {
+      "path": "blocking.defaultResponse",
+      "type": "string",
+      "scope": "cluster",
+      "default": "zeroIP",
+      "help": "What a blocked query is answered with, unless the client's Policy (blockMode) or the BlockList (response) chooses otherwise. zeroIP (default) makes the connection fail at once and suits most networks; blockPage shows browsers a page that explains the block; refused is discouraged, because devices then ask another DNS server.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Default block response",
+      "group": "Blocking",
+      "enum": [
+        {
+          "value": "zeroIP",
+          "label": "Zero IP",
+          "help": "Answer 0.0.0.0 (A) or :: (AAAA), so the connection fails at once; other record types get an empty answer (NODATA). Suits most networks."
+        },
+        {
+          "value": "nxdomain",
+          "label": "NXDOMAIN",
+          "help": "Answer that the name does not exist (NXDOMAIN), for every record type."
+        },
+        {
+          "value": "customIP",
+          "label": "Custom IP",
+          "help": "Answer the addresses in blocking.customIP.v4 and v6, e.g. a server of yours; a family without an address gets NODATA."
+        },
+        {
+          "value": "refused",
+          "label": "REFUSED",
+          "help": "Refuse the query. Discouraged: most devices then ask their next DNS server, which bypasses blocking."
+        },
+        {
+          "value": "blockPage",
+          "label": "Block page",
+          "help": "Send browsers to the block page, which explains why the name was blocked (needs blockPage.enabled); other record types get NODATA."
+        }
+      ]
+    },
+    {
+      "path": "blocking.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Block ads, trackers and other listed names for the whole network; off answers every query unfiltered. To pause blocking for a while, use the temporary disable on the dashboard instead (a runtime toggle, not this key). Applies to forwarded queries, not to your own zones.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Blocking enabled",
+      "group": "Blocking"
+    },
+    {
+      "path": "blocking.initStrategy",
+      "type": "string",
+      "scope": "cluster",
+      "default": "fast",
+      "help": "What happens at start while blocklists load: fast (default) serves at once using the copies saved on disk; blocking waits until every list is loaded; failOnError also exits when a list cannot be loaded.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "List loading at start",
+      "group": "Blocking",
+      "enum": [
+        {
+          "value": "fast",
+          "label": "Fast",
+          "help": "Serve at once using the lists saved on disk, and load fresh copies in the background."
+        },
+        {
+          "value": "blocking",
+          "label": "Wait for lists",
+          "help": "Report not ready until every list is loaded."
+        },
+        {
+          "value": "failOnError",
+          "label": "Fail on error",
+          "help": "Wait for every list, and exit with an error when one fails to load."
+        }
+      ]
+    },
+    {
+      "path": "blocking.listsDir",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Directory where downloaded blocklists are saved so the next start can use them at once. Empty uses <node.dataDir>/lists. Files are named by the sha256 of the list URL.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "List cache directory",
+      "group": "Blocking"
+    },
+    {
+      "path": "blocking.refreshInterval",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "24h",
+      "help": "How often blocklists are downloaded again when a list sets no refreshInterval of its own, e.g. 24h; at least 1m. In a cluster the leader downloads and the other nodes copy its result by digest.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "List refresh interval",
+      "group": "Blocking",
+      "presets": [
+        "1h",
+        "6h",
+        "12h",
+        "24h",
+        "168h"
+      ]
+    },
+    {
+      "path": "cache.maxEntries",
+      "type": "int",
+      "scope": "cluster",
+      "default": 200000,
+      "help": "How many answers the cache holds, e.g. 200000; when it is full the least recently used answer is dropped. More entries mean more cache hits and more memory; 0 turns the cache off.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Maximum cache entries",
+      "group": "Cache",
+      "min": 0
+    },
+    {
+      "path": "cache.maxTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "24h",
+      "help": "Longest time an answer stays cached, even when its record asks for more, e.g. 24h; lower it so changed addresses show up sooner. 0 sets no upper limit.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Maximum TTL",
+      "group": "Cache",
+      "presets": [
+        "1h",
+        "6h",
+        "24h",
+        "168h"
+      ]
+    },
+    {
+      "path": "cache.minTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "5s",
+      "help": "Shortest time an answer stays cached, even when its record asks for less, e.g. 5s. Raising it saves upstream queries but keeps changed addresses longer; 0 honors every record's TTL.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Minimum TTL",
+      "group": "Cache",
+      "presets": [
+        "0s",
+        "5s",
+        "30s",
+        "1m",
+        "5m"
+      ]
+    },
+    {
+      "path": "cache.negativeTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "5m",
+      "help": "Longest time a \"does not exist\" answer (NXDOMAIN or NODATA) stays cached, e.g. 5m; shorter lets a newly created name resolve sooner. Below it the zone's SOA minimum applies (RFC 2308).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Maximum negative TTL",
+      "group": "Cache",
+      "presets": [
+        "30s",
+        "1m",
+        "5m",
+        "1h"
+      ]
+    },
+    {
+      "path": "cache.prefetch.threshold",
+      "type": "int",
+      "scope": "cluster",
+      "default": 5,
+      "help": "Refresh popular answers shortly before they expire, so nobody waits for the upstream: an answer asked for this many times within cache.prefetch.window counts as popular, e.g. 5. 0 turns prefetching off.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Prefetch threshold (hits)",
+      "group": "Cache",
+      "min": 0
+    },
+    {
+      "path": "cache.prefetch.window",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "2h",
+      "help": "Time over which the hits for cache.prefetch.threshold are counted, e.g. 2h.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Prefetch window",
+      "group": "Cache",
+      "presets": [
+        "30m",
+        "1h",
+        "2h",
+        "6h"
+      ]
+    },
+    {
+      "path": "cache.serveStale.answerTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "30s",
+      "help": "TTL given to an expired answer served this way, e.g. 30s, so clients ask again soon; after a failed refresh, queries for the entry also stop waiting for the upstream for this long. 0 means 30s (RFC 8767).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Stale answer TTL",
+      "group": "Cache",
+      "presets": [
+        "5s",
+        "30s",
+        "1m"
+      ]
+    },
+    {
+      "path": "cache.serveStale.maxWait",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "1800ms",
+      "help": "How long a query for an expired entry waits for a fresh upstream answer before the expired one is sent, e.g. 1800ms; 0 means 1800ms (RFC 8767 client response timer).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Stale answer wait",
+      "group": "Cache",
+      "presets": [
+        "500ms",
+        "1s",
+        "1800ms",
+        "3s"
+      ]
+    },
+    {
+      "path": "cache.serveStale.ttl",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "72h",
+      "help": "When every upstream server fails, keep answering from expired cache entries for up to this long after they expired, e.g. 72h, so names you already use keep working through an outage. 0 turns it off (RFC 8767 serve-stale).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Serve stale for",
+      "group": "Cache",
+      "presets": [
+        "0s",
+        "1h",
+        "24h",
+        "72h"
+      ]
+    },
+    {
+      "path": "externalDNS.webhook.enabled",
+      "type": "bool",
+      "scope": "node",
+      "default": false,
+      "help": "Let external-dns, the Kubernetes tool, publish DNS records into kudurru through its webhook provider protocol (GET /, GET and POST /records, POST /adjustendpoints), served on externalDNS.webhook.listen.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "external-dns webhook enabled",
+      "group": "Integrations"
+    },
+    {
+      "path": "externalDNS.webhook.listen",
+      "type": "string",
+      "scope": "node",
+      "default": "127.0.0.1:8888",
+      "help": "Address and port of the external-dns webhook, e.g. 127.0.0.1:8888. It has no authentication, so the default answers only on this machine (external-dns as a sidecar or on the same host); a wider address lets every client that reaches it write records. The Helm chart renders :<port> behind its NetworkPolicy.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "external-dns webhook address",
+      "group": "Integrations",
+      "presets": [
+        "127.0.0.1:8888",
+        ":8888"
+      ],
+      "format": "hostport"
+    },
+    {
+      "path": "externalDNS.webhook.namespace",
+      "type": "string",
+      "scope": "node",
+      "default": "external-dns",
+      "help": "Namespace the record sets from external-dns are stored in, e.g. external-dns: one DNSRecordSet per DNS name, managed by integration:external-dns.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "external-dns record namespace",
+      "group": "Integrations"
+    },
+    {
+      "path": "externalDNS.webhook.zoneSelector",
+      "type": "map",
+      "scope": "node",
+      "default": {},
+      "help": "Labels a primary zone must carry for external-dns to write into it, e.g. external-dns: enabled (a label selector, key: value); empty allows every primary zone.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "external-dns zone selector",
+      "group": "Integrations",
+      "keys": {
+        "type": "string"
+      },
+      "values": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "listeners.api.address",
+      "type": "string",
+      "scope": "node",
+      "default": "0.0.0.0:8080",
+      "help": "Address and port of the dashboard and the HTTP API, e.g. 0.0.0.0:8080 for every address or 127.0.0.1:8080 for this machine only; browse to https://<server address>:8080.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "API and UI address",
+      "group": "Listeners",
+      "presets": [
+        "0.0.0.0:8080",
+        "127.0.0.1:8080",
+        ":443"
+      ],
+      "format": "hostport"
+    },
+    {
+      "path": "listeners.api.pathPrefix",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "URL path the dashboard and API are served under when a reverse proxy mounts kudurru below the root of a site, e.g. /kudurru for https://home.example/kudurru/. Empty serves them at /.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "API path prefix",
+      "group": "Listeners"
+    },
+    {
+      "path": "listeners.api.tls.auto",
+      "type": "string",
+      "scope": "node",
+      "default": "selfsigned",
+      "help": "Whether the dashboard uses HTTPS with a certificate kudurru makes itself when no certificate file is set. selfsigned (default) encrypts the connection, though browsers warn because no public authority signed the certificate; off serves plain HTTP, for use behind a reverse proxy that handles TLS. The certificate is generated once into <node.dataDir>/keys/.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "API automatic TLS",
+      "group": "Listeners",
+      "enum": [
+        {
+          "value": "selfsigned",
+          "label": "Self-signed",
+          "help": "HTTPS with a certificate generated once into <node.dataDir>/keys/; browsers warn until you trust it."
+        },
+        {
+          "value": "off",
+          "label": "Off (plain HTTP)",
+          "help": "Plain HTTP, only behind a reverse proxy that terminates TLS: otherwise passwords cross the network unencrypted."
+        }
+      ]
+    },
+    {
+      "path": "listeners.api.tls.certFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of your own certificate for the dashboard (PEM, full chain), e.g. /etc/kudurru/tls/tls.crt; set it with the key file to replace the self-signed certificate. Takes precedence over listeners.api.tls.auto.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "API certificate file",
+      "group": "Listeners"
+    },
+    {
+      "path": "listeners.api.tls.keyFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of the private key (PEM) of listeners.api.tls.certFile, e.g. /etc/kudurru/tls/tls.key.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "API key file",
+      "group": "Listeners"
+    },
+    {
+      "path": "listeners.api.trustedProxies",
+      "type": "string[]",
+      "scope": "node",
+      "default": [],
+      "help": "Reverse proxies in front of the dashboard, as addresses or CIDRs, e.g. 192.168.1.5 or 10.0.0.0/8. Only requests from them may report the real client address and scheme in X-Forwarded-For and X-Forwarded-Proto; empty trusts no proxy.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Trusted reverse proxies",
+      "group": "Listeners",
+      "items": {
+        "type": "string",
+        "format": "cidr"
+      }
+    },
+    {
+      "path": "listeners.blockPage.http",
+      "type": "string",
+      "scope": "node",
+      "default": ":80",
+      "help": "Address and port where the block page answers browsers over plain HTTP, e.g. :80; empty turns it off. Under the blockPage block response, blocked names point at this server, so a browser that opens one lands here. Needs blockPage.enabled.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Block page HTTP address",
+      "group": "Block page",
+      "presets": [
+        ":80",
+        "0.0.0.0:80",
+        "[::]:80"
+      ],
+      "format": "hostport"
+    },
+    {
+      "path": "listeners.blockPage.https",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Optional address and port of the block page over HTTPS, e.g. :443; empty (the default) leaves it off. No certificate can be valid for the blocked names, so browsers show a certificate warning before the page, and sites that use HSTS show no page at all (docs/deploy/blocking-page.md).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Block page HTTPS address",
+      "group": "Block page",
+      "presets": [
+        ":443"
+      ],
+      "format": "hostport"
+    },
+    {
+      "path": "listeners.blockPage.tls.certFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of the certificate (PEM) of the HTTPS block page. Empty generates a self-signed one into <node.dataDir>/keys/blockpage.crt; a certificate of your own cannot match the blocked names either.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Block page certificate file",
+      "group": "Block page"
+    },
+    {
+      "path": "listeners.blockPage.tls.keyFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of the private key (PEM) of listeners.blockPage.tls.certFile.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Block page key file",
+      "group": "Block page"
+    },
+    {
+      "path": "listeners.dns",
+      "type": "list",
+      "scope": "node",
+      "default": [
+        {
+          "address": "0.0.0.0:53",
+          "protocols": [
+            "udp",
+            "tcp"
+          ]
+        }
+      ],
+      "help": "Addresses where devices send plain DNS queries. Port 53 is what devices expect; the default 0.0.0.0:53 answers on every address over UDP and TCP. Bind one address, e.g. 192.168.1.10:53, when another service on the machine already uses port 53.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "DNS listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "Address and port to listen on: 0.0.0.0:53, [::]:53 or :53 for every address, or one address such as 192.168.1.10:53.",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "protocols",
+            "label": "Protocols",
+            "help": "Transports served on this address: udp, tcp or both. Empty serves both, which is what devices expect.",
+            "type": "string[]",
+            "default": [
+              "udp",
+              "tcp"
+            ],
+            "items": {
+              "type": "string",
+              "enum": [
+                {
+                  "value": "udp",
+                  "label": "UDP",
+                  "help": "Plain DNS over UDP; what most devices use."
+                },
+                {
+                  "value": "tcp",
+                  "label": "TCP",
+                  "help": "Plain DNS over TCP; used for large answers and by clients that retry over TCP."
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "listeners.doh",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Encrypted DNS-over-HTTPS (DoH), usually on port 443, for browsers and devices that support it. Each entry needs an address, e.g. 0.0.0.0:443, a certificate and key, and optionally a path (default /dns-query). Empty serves none. RFC 8484, HTTP/2 and HTTP/1.1.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "DNS-over-HTTPS listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "Address and port to listen on: 0.0.0.0:443, [::]:443 or :443 for every address, or one address such as 192.168.1.10:443.",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "path",
+            "label": "Path",
+            "help": "URL path of the endpoint, starting with /; empty means /dns-query, what most clients expect.",
+            "type": "string",
+            "default": "/dns-query"
+          },
+          {
+            "name": "tls",
+            "label": "TLS",
+            "help": "Certificate and private key files of this listener.",
+            "required": true,
+            "type": "object",
+            "fields": [
+              {
+                "name": "certFile",
+                "label": "Certificate file",
+                "help": "Path of the certificate (PEM, full chain), e.g. /etc/kudurru/tls/tls.crt; it must be valid for the name clients use. Reloaded when the file changes.",
+                "required": true,
+                "type": "string"
+              },
+              {
+                "name": "keyFile",
+                "label": "Key file",
+                "help": "Path of the private key (PEM) of certFile, e.g. /etc/kudurru/tls/tls.key.",
+                "required": true,
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "listeners.doh3",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Encrypted DNS-over-HTTPS over HTTP/3 (QUIC), usually on UDP port 443, for browsers that support it. Each entry needs an address, e.g. 0.0.0.0:443, a certificate and key, and optionally a path (default /dns-query). Empty serves none. ALPN h3.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "DNS-over-HTTP/3 listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "Address and port to listen on: 0.0.0.0:443, [::]:443 or :443 for every address, or one address such as 192.168.1.10:443.",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "path",
+            "label": "Path",
+            "help": "URL path of the endpoint, starting with /; empty means /dns-query, what most clients expect.",
+            "type": "string",
+            "default": "/dns-query"
+          },
+          {
+            "name": "tls",
+            "label": "TLS",
+            "help": "Certificate and private key files of this listener.",
+            "required": true,
+            "type": "object",
+            "fields": [
+              {
+                "name": "certFile",
+                "label": "Certificate file",
+                "help": "Path of the certificate (PEM, full chain), e.g. /etc/kudurru/tls/tls.crt; it must be valid for the name clients use. Reloaded when the file changes.",
+                "required": true,
+                "type": "string"
+              },
+              {
+                "name": "keyFile",
+                "label": "Key file",
+                "help": "Path of the private key (PEM) of certFile, e.g. /etc/kudurru/tls/tls.key.",
+                "required": true,
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "listeners.doq",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Encrypted DNS-over-QUIC (DoQ), usually on UDP port 853, for clients that support it. Each entry needs an address, e.g. 0.0.0.0:853, and a certificate and key. Empty serves none. RFC 9250, ALPN doq.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "DNS-over-QUIC listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "Address and port to listen on: 0.0.0.0:853, [::]:853 or :853 for every address, or one address such as 192.168.1.10:853.",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "tls",
+            "label": "TLS",
+            "help": "Certificate and private key files of this listener.",
+            "required": true,
+            "type": "object",
+            "fields": [
+              {
+                "name": "certFile",
+                "label": "Certificate file",
+                "help": "Path of the certificate (PEM, full chain), e.g. /etc/kudurru/tls/tls.crt; it must be valid for the name clients use. Reloaded when the file changes.",
+                "required": true,
+                "type": "string"
+              },
+              {
+                "name": "keyFile",
+                "label": "Key file",
+                "help": "Path of the private key (PEM) of certFile, e.g. /etc/kudurru/tls/tls.key.",
+                "required": true,
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "listeners.dot",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Encrypted DNS-over-TLS (DoT), usually on port 853, for devices that support it such as Android's Private DNS. Each entry needs an address, e.g. 0.0.0.0:853, and a certificate and key valid for the name devices use. Empty serves none. RFC 7858, ALPN dot.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "DNS-over-TLS listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "Address and port to listen on: 0.0.0.0:853, [::]:853 or :853 for every address, or one address such as 192.168.1.10:853.",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "tls",
+            "label": "TLS",
+            "help": "Certificate and private key files of this listener.",
+            "required": true,
+            "type": "object",
+            "fields": [
+              {
+                "name": "certFile",
+                "label": "Certificate file",
+                "help": "Path of the certificate (PEM, full chain), e.g. /etc/kudurru/tls/tls.crt; it must be valid for the name clients use. Reloaded when the file changes.",
+                "required": true,
+                "type": "string"
+              },
+              {
+                "name": "keyFile",
+                "label": "Key file",
+                "help": "Path of the private key (PEM) of certFile, e.g. /etc/kudurru/tls/tls.key.",
+                "required": true,
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "listeners.internal.address",
+      "type": "string",
+      "scope": "node",
+      "default": "0.0.0.0:8082",
+      "help": "Address and port the other nodes of a cluster use to reach this one, e.g. 0.0.0.0:8082; a single server does not need it reachable. Always TLS with a bearer token; it serves list bodies by digest and /internal/status.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Node-to-node listener address",
+      "group": "Listeners",
+      "presets": [
+        "0.0.0.0:8082"
+      ],
+      "format": "hostport"
+    },
+    {
+      "path": "listeners.internal.tls.caFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of the CA bundle (PEM) trusted when this node connects to other nodes; set it together with your own certificates. Empty trusts the CA derived from the encryption key.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Internal CA bundle",
+      "group": "Listeners"
+    },
+    {
+      "path": "listeners.internal.tls.certFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of the certificate (PEM) of the node-to-node listener, for your own PKI. Empty (the usual choice) issues one from a CA derived from the encryption key, which every node with the same key trusts.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Internal certificate file",
+      "group": "Listeners"
+    },
+    {
+      "path": "listeners.internal.tls.keyFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of the private key (PEM) of listeners.internal.tls.certFile.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Internal key file",
+      "group": "Listeners"
+    },
+    {
+      "path": "listeners.internal.tls.serverName",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Name checked in other nodes' certificates, e.g. kudurru-internal.home.example; it must be a SAN of listeners.internal.tls.certFile. Empty uses the fixed name of the derived certificates.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Internal TLS server name",
+      "group": "Listeners",
+      "format": "domain"
+    },
+    {
+      "path": "listeners.internal.tokenFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of a file holding the token nodes present to each other. Empty (the usual choice) derives it from the encryption key, so every node with the same KUDURRU_ENCRYPTION_KEY agrees on it (HKDF).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Internal token file",
+      "group": "Listeners"
+    },
+    {
+      "path": "listeners.metrics.address",
+      "type": "string",
+      "scope": "node",
+      "default": "0.0.0.0:9153",
+      "help": "Address and port Prometheus scrapes metrics from (/metrics), e.g. 0.0.0.0:9153, or 127.0.0.1:9153 to keep them on this machine.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Metrics listener address",
+      "group": "Listeners",
+      "presets": [
+        "0.0.0.0:9153",
+        "127.0.0.1:9153"
+      ],
+      "format": "hostport"
+    },
+    {
+      "path": "listeners.ops.address",
+      "type": "string",
+      "scope": "node",
+      "default": "0.0.0.0:8081",
+      "help": "Address and port of the health checks Docker, Kubernetes and load balancers poll, e.g. 0.0.0.0:8081 (/healthz/live, /healthz/ready). They need no login.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Health listener address",
+      "group": "Listeners",
+      "presets": [
+        "0.0.0.0:8081",
+        "127.0.0.1:8081"
+      ],
+      "format": "hostport"
+    },
+    {
+      "path": "listeners.proxyProtocolFrom",
+      "type": "string[]",
+      "scope": "node",
+      "default": [],
+      "help": "Only with a dnsdist front end: the exact addresses allowed to tell kudurru the real client address in a PROXY protocol v2 header, as CIDRs, normally one /32 per front end, e.g. 192.168.1.2/32. Leave empty when devices query kudurru directly. Use loopback only when dnsdist shares kudurru's network namespace.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PROXYv2 peers",
+      "group": "Listeners",
+      "items": {
+        "type": "string",
+        "format": "cidr"
+      }
+    },
+    {
+      "path": "listeners.proxyProtocolSecretFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of a file holding the secret shared with the dnsdist front end, at least 32 bytes, e.g. made with openssl rand -hex 32. Required when proxyProtocolFrom names a peer that is not loopback, so another host cannot forge client addresses. Carried in PROXYv2 TLV 0xE0.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PROXYv2 secret file",
+      "group": "Listeners"
+    },
+    {
+      "path": "listeners.sockets",
+      "type": "int",
+      "scope": "node",
+      "default": 0,
+      "help": "How many sockets each UDP and TCP DNS listener opens, so several CPU cores read queries in parallel. 0 (default) opens one per CPU (GOMAXPROCS), 1 a single socket. Uses SO_REUSEPORT on Linux, each socket with its own read loop; other systems always use one.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Sockets per DNS listener",
+      "group": "Listeners",
+      "min": 0
+    },
+    {
+      "path": "log.format",
+      "type": "string",
+      "scope": "node",
+      "default": "json",
+      "help": "Format of the log lines: json (default) for log collectors, text for reading in a terminal.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Log format",
+      "group": "Logging",
+      "enum": [
+        {
+          "value": "json",
+          "label": "JSON",
+          "help": "One JSON object per line; for log collectors."
+        },
+        {
+          "value": "text",
+          "label": "Text",
+          "help": "key=value lines; easier to read in a terminal."
+        }
+      ]
+    },
+    {
+      "path": "log.level",
+      "type": "string",
+      "scope": "node",
+      "default": "info",
+      "help": "How much the server logs: info (default) for normal operation, debug for troubleshooting, warn or error for less. Per-component levels follow a comma, e.g. info,dns=debug.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Log level",
+      "group": "Logging",
+      "enum": [
+        {
+          "value": "debug",
+          "label": "Debug",
+          "help": "Everything, including detail for troubleshooting; noisy."
+        },
+        {
+          "value": "info",
+          "label": "Info",
+          "help": "Start-up, changes and notable events; the default."
+        },
+        {
+          "value": "warn",
+          "label": "Warning",
+          "help": "Only problems that need attention, and errors."
+        },
+        {
+          "value": "error",
+          "label": "Error",
+          "help": "Only errors."
+        }
+      ]
+    },
+    {
+      "path": "node.dataDir",
+      "type": "string",
+      "scope": "node",
+      "default": "/var/lib/kudurru",
+      "help": "Directory where kudurru keeps its data, e.g. /var/lib/kudurru; it must be writable and should survive restarts and be backed up. It holds the object store (state.db), the query log (querylog.db), the zone snapshot (local.db), downloaded lists and keys.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Data directory",
+      "group": "Node"
+    },
+    {
+      "path": "node.lameduck",
+      "type": "duration",
+      "scope": "node",
+      "default": "2s",
+      "help": "How long the server keeps answering after it is told to stop, so devices and load balancers move to another server first, e.g. 2s; 0 stops at once. During this window readiness (/healthz/ready) answers 503 and the health name SERVFAIL, then the listeners close. The Helm chart also runs kudurru lameduck in preStop.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Lameduck drain window",
+      "group": "Node",
+      "presets": [
+        "0s",
+        "2s",
+        "5s",
+        "10s"
+      ]
+    },
+    {
+      "path": "node.name",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Name of this server in the dashboard, the query log and the block page, e.g. dns1. Empty uses the hostname. Every node of a cluster needs its own name; it identifies the node to the others.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Node name",
+      "group": "Node"
+    },
+    {
+      "path": "notify.source",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Local IP address that NOTIFY messages to secondary servers are sent from, e.g. 192.168.1.10; empty lets the system choose. Secondaries accept NOTIFY only from an address they list as a primary.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "NOTIFY source address",
+      "group": "Zone transfers",
+      "format": "ip"
+    },
+    {
+      "path": "objects",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Zones, lists, groups and policies declared in this file, in the form of Kubernetes manifests (apiVersion, kind, metadata, spec). They are re-applied on every start; edit them here, since they are managed by file:kudurru.yaml and the dashboard cannot change them.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Inline objects",
+      "group": "Node",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "apiVersion",
+            "label": "API version",
+            "help": "API version of the object, e.g. kudurru.io/v1alpha1.",
+            "type": "string"
+          },
+          {
+            "name": "kind",
+            "label": "Kind",
+            "help": "Kind of the object, e.g. DNSZone, DNSRecordSet, BlockList, ClientGroup or Policy.",
+            "type": "string"
+          },
+          {
+            "name": "metadata",
+            "label": "Metadata",
+            "help": "Object metadata: the name, and optionally labels, as in a Kubernetes manifest.",
+            "type": "object"
+          },
+          {
+            "name": "spec",
+            "label": "Spec",
+            "help": "The object's settings, as described for its kind in the CRD reference.",
+            "type": "object"
+          }
+        ]
+      }
+    },
+    {
+      "path": "objectsDir",
+      "type": "string",
+      "scope": "node",
+      "default": "/etc/kudurru/objects.d",
+      "help": "Directory of *.yaml files with zones, lists, groups and policies, e.g. /etc/kudurru/objects.d. It is watched: adding or editing a file applies it, and deleting a document deletes the object. The objects are managed by file:<dir>/<name>, so the dashboard cannot change them.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Objects directory",
+      "group": "Node"
+    },
+    {
+      "path": "querylog.anonymize",
+      "type": "string",
+      "scope": "cluster",
+      "default": "prefix",
+      "help": "How client addresses are hidden under the anonymize_client privacy mode: prefix keeps only the network (IPv4 /24, IPv6 /48), so devices in one network look alike; pseudonym replaces each address with a code that is stable for a day and cannot be reversed.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Client anonymization",
+      "group": "Query log",
+      "enum": [
+        {
+          "value": "prefix",
+          "label": "Prefix",
+          "help": "Keep only the network of each address: IPv4 /24, IPv6 /48."
+        },
+        {
+          "value": "pseudonym",
+          "label": "Pseudonym",
+          "help": "Replace each address with a code that stays the same for a day and cannot be reversed (HMAC with a random in-memory key rotated daily, so codes also change on restart)."
+        }
+      ]
+    },
+    {
+      "path": "querylog.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Record the queries each node answers, for the dashboard's query log, statistics and charts; off records nothing and those pages stay empty. Each node keeps its own log (querylog.db with rollups, the stats API).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Query log enabled",
+      "group": "Query log"
+    },
+    {
+      "path": "querylog.exclude.clients",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Clients whose queries are never logged, e.g. 192.168.1.20, 10.0.0.0/8 or a client name such as nas: IP addresses, CIDR prefixes or client names.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Clients never logged",
+      "group": "Query log",
+      "items": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "querylog.exclude.domains",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Names that are never logged, e.g. *.home.arpa or connectivitycheck.gstatic.com: exact names, *.suffix for a domain and everything below it, or /regex/.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Domains never logged",
+      "group": "Query log",
+      "items": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "querylog.exclude.sudn",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Leave out names that never leave the local network, which keeps local discovery noise out of the log: localhost, .local, .home.arpa and private and link-local reverse zones (special-use names, RFC 6761).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Skip special-use names",
+      "group": "Query log"
+    },
+    {
+      "path": "querylog.privacy",
+      "type": "string",
+      "scope": "cluster",
+      "default": "full",
+      "help": "How much of each query is kept: full keeps everything; the other modes hide client addresses, query names or both, and nothing keeps only per-minute totals. Applied once when the query is recorded, so it cannot be undone for queries already logged. Only full stores the answer summary.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Query log privacy",
+      "group": "Query log",
+      "enum": [
+        {
+          "value": "full",
+          "label": "Full",
+          "help": "Keep the client, the name and the answer summary of every query."
+        },
+        {
+          "value": "anonymize_client",
+          "label": "Anonymize clients",
+          "help": "Keep the names but hide client addresses, as set by querylog.anonymize."
+        },
+        {
+          "value": "hide_domains",
+          "label": "Hide domains",
+          "help": "Keep the clients but not the names they asked for."
+        },
+        {
+          "value": "hide_domains_clients",
+          "label": "Hide domains and clients",
+          "help": "Keep neither names nor clients."
+        },
+        {
+          "value": "nothing",
+          "label": "Totals only",
+          "help": "Keep no rows, only per-minute totals for the charts."
+        }
+      ]
+    },
+    {
+      "path": "querylog.retention.maxDBBytes",
+      "type": "bytes",
+      "scope": "cluster",
+      "default": "10GiB",
+      "help": "Largest size of the query log database on each node, e.g. 10GiB; when it is exceeded the oldest queries are deleted first. 0 removes the cap.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Maximum query log size",
+      "group": "Query log",
+      "presets": [
+        "0",
+        "1GiB",
+        "5GiB",
+        "10GiB",
+        "50GiB"
+      ]
+    },
+    {
+      "path": "querylog.retention.raw",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "720h",
+      "help": "How long individual queries are kept, e.g. 720h (30 days); 0 keeps them until querylog.retention.maxDBBytes is reached. The totals behind the charts are kept longer: per minute for 35 days, per hour for 400 days, per day forever.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Keep query rows for",
+      "group": "Query log",
+      "presets": [
+        "0s",
+        "24h",
+        "168h",
+        "720h",
+        "2160h"
+      ]
+    },
+    {
+      "path": "querylog.sink",
+      "type": "string",
+      "scope": "cluster",
+      "default": "sqlite",
+      "help": "Where queries are recorded: sqlite (default) keeps them in a database the dashboard reads; slog writes one JSON log line per query and stores nothing, for an external log system.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Query log sink",
+      "group": "Query log",
+      "enum": [
+        {
+          "value": "sqlite",
+          "label": "SQLite",
+          "help": "A database on each node (querylog.db, with rollups); needed for the dashboard's query log and statistics."
+        },
+        {
+          "value": "slog",
+          "label": "Log lines",
+          "help": "One JSON log line per query and nothing stored; the dashboard shows no query history."
+        }
+      ]
+    },
+    {
+      "path": "ratelimit.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Limit how many queries per minute one address or network may send over UDP, which blunts floods and reflection attacks. TCP, DoT, DoH, DoQ and DoH3 are never limited, nor loopback clients and the health name.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Rate limiting enabled",
+      "group": "Rate limiting"
+    },
+    {
+      "path": "ratelimit.exempt",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Addresses or networks that are never rate limited, e.g. 192.168.1.0/24 for your LAN or the address of a busy resolver that forwards to kudurru. Loopback always is.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Exempt clients",
+      "group": "Rate limiting",
+      "items": {
+        "type": "string",
+        "format": "cidr"
+      }
+    },
+    {
+      "path": "ratelimit.ipv4",
+      "type": "map",
+      "scope": "cluster",
+      "default": {
+        "24": 6000,
+        "32": 600
+      },
+      "help": "Queries per minute allowed per IPv4 address or network, by prefix length: 32 is one address (default 600), 24 a /24 network (default 6000). Entries merge with the defaults key by key, and 0 turns a level off. Each prefix has a token bucket holding one minute's allowance.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "IPv4 limits (queries per minute)",
+      "group": "Rate limiting",
+      "keys": {
+        "type": "int",
+        "min": 0,
+        "max": 32
+      },
+      "values": {
+        "type": "int",
+        "min": 0
+      }
+    },
+    {
+      "path": "ratelimit.ipv6",
+      "type": "map",
+      "scope": "cluster",
+      "default": {
+        "128": 600,
+        "56": 12000,
+        "64": 6000
+      },
+      "help": "Queries per minute allowed per IPv6 address or network, by prefix length: 128 is one address (default 600), 64 a /64 network (6000), 56 a /56 (12000). Entries merge with the defaults key by key, and 0 turns a level off.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "IPv6 limits (queries per minute)",
+      "group": "Rate limiting",
+      "keys": {
+        "type": "int",
+        "min": 0,
+        "max": 128
+      },
+      "values": {
+        "type": "int",
+        "min": 0
+      }
+    },
+    {
+      "path": "ratelimit.maxBuckets",
+      "type": "int",
+      "scope": "cluster",
+      "default": 65536,
+      "help": "Most addresses and networks tracked at once, e.g. 65536 (0 means 65536); the least recently seen is forgotten first and starts again with a full allowance.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Tracked prefixes",
+      "group": "Rate limiting",
+      "min": 0
+    },
+    {
+      "path": "ratelimit.slip",
+      "type": "int",
+      "scope": "cluster",
+      "default": 50,
+      "help": "Share of over-limit queries, in percent from 0 to 100, answered with an empty truncated reply (TC=1) instead of being dropped, e.g. 50; real clients then retry over TCP, which is not limited. 0 drops them all, 100 answers them all.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Slip (percent answered TC=1)",
+      "group": "Rate limiting",
+      "min": 0,
+      "max": 100
+    },
+    {
+      "path": "rbac.bindings",
+      "type": "list",
+      "scope": "cluster",
+      "default": [],
+      "help": "Who may do what: each binding grants a role (viewer, auditor, operator, zone-admin or admin) to users, groups or service accounts, for the whole cluster or one zone. RoleBinding objects add to these.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Role bindings",
+      "group": "Security",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "role",
+            "label": "Role",
+            "help": "Role granted to the subjects.",
+            "required": true,
+            "type": "string",
+            "enum": [
+              {
+                "value": "viewer",
+                "label": "Viewer",
+                "help": "Read zones, records, lists, policies, clients, stats and settings; change nothing."
+              },
+              {
+                "value": "auditor",
+                "label": "Auditor",
+                "help": "Viewer plus reading the query log, the audit log and unblock requests."
+              },
+              {
+                "value": "operator",
+                "label": "Operator",
+                "help": "Day-to-day blocking work: manage records, lists, policies, client groups, clients and unblock requests, toggle blocking and flush the cache. No zones, users or settings."
+              },
+              {
+                "value": "zone-admin",
+                "label": "Zone admin",
+                "help": "Manage zones and their records, transfers and signing; bind it to a zone scope."
+              },
+              {
+                "value": "admin",
+                "label": "Admin",
+                "help": "Everything, including users, role bindings and settings."
+              }
+            ]
+          },
+          {
+            "name": "scope",
+            "label": "Scope",
+            "help": "Where the role applies; empty means the whole cluster.",
+            "type": "object",
+            "fields": [
+              {
+                "name": "kind",
+                "label": "Kind",
+                "help": "What the role is limited to: the whole cluster, one zone, a zone group or a client group.",
+                "type": "string",
+                "default": "cluster",
+                "enum": [
+                  {
+                    "value": "cluster",
+                    "label": "Cluster",
+                    "help": "The role applies everywhere."
+                  },
+                  {
+                    "value": "zone",
+                    "label": "Zone",
+                    "help": "The role applies to the zone named in scope.name."
+                  },
+                  {
+                    "value": "zonegroup",
+                    "label": "Zone group",
+                    "help": "The role applies to the zone group named in scope.name (reserved: zone groups arrive in v0.2)."
+                  },
+                  {
+                    "value": "clientgroup",
+                    "label": "Client group",
+                    "help": "The role applies to the client group named in scope.name (reserved for v1.0)."
+                  }
+                ]
+              },
+              {
+                "name": "name",
+                "label": "Name",
+                "help": "Zone, zone group or client group name, e.g. home.example; empty for cluster scope.",
+                "type": "string"
+              }
+            ]
+          },
+          {
+            "name": "subjects",
+            "label": "Subjects",
+            "help": "Who gets the role: users, groups or service accounts; at least one.",
+            "required": true,
+            "type": "list",
+            "items": {
+              "type": "object",
+              "fields": [
+                {
+                  "name": "kind",
+                  "label": "Kind",
+                  "help": "Whether name is a user, a group or a service account.",
+                  "required": true,
+                  "type": "string",
+                  "enum": [
+                    {
+                      "value": "User",
+                      "label": "User",
+                      "help": "One account by username: a local user (e.g. alice) or an identity-provider login (e.g. corp:alice)."
+                    },
+                    {
+                      "value": "Group",
+                      "label": "Group",
+                      "help": "Every member of a group, e.g. a local group or an identity-provider group such as corp:/dns-admins."
+                    },
+                    {
+                      "value": "ServiceAccount",
+                      "label": "Service account",
+                      "help": "A kudurru or Kubernetes service account, by name and namespace."
+                    }
+                  ]
+                },
+                {
+                  "name": "name",
+                  "label": "Name",
+                  "help": "Username, group or service-account name, e.g. alice, corp:alice or corp:/dns-admins; names from an identity provider carry its id as a prefix.",
+                  "required": true,
+                  "type": "string"
+                },
+                {
+                  "name": "namespace",
+                  "label": "Namespace",
+                  "help": "Namespace of the service account, e.g. kudurru; required for a ServiceAccount, empty for users and groups.",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "settingsFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Path of a file for the cluster-wide settings, e.g. /etc/kudurru/settings.yaml, read on top of this file and watched, so edits apply without a restart. In Docker, changes made on the Settings page are saved into it; without one they are lost on restart. KUDURRU_SETTINGS_FILE takes precedence, and the Helm chart mounts /etc/kudurru/settings/settings.yaml. Empty turns the layer off (D25).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Settings file",
+      "group": "Node"
+    },
+    {
+      "path": "store.driver",
+      "type": "string",
+      "scope": "node",
+      "default": "sqlite",
+      "help": "Where kudurru keeps its objects (zones, lists, policies, users): sqlite, a database file under node.dataDir, for Docker and single servers; kube, Kubernetes custom resources, which the Helm chart sets.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Store driver",
+      "group": "Node",
+      "enum": [
+        {
+          "value": "sqlite",
+          "label": "SQLite",
+          "help": "A database file (state.db) under node.dataDir; for Docker and single servers."
+        },
+        {
+          "value": "kube",
+          "label": "Kubernetes",
+          "help": "Kubernetes custom resources (CRDs) through the apiserver; what the Helm chart uses."
+        }
+      ]
+    },
+    {
+      "path": "store.kube.snapshot.maxAge",
+      "type": "duration",
+      "scope": "node",
+      "default": "24h",
+      "help": "Kubernetes only: the oldest saved copy (local.db) the node may answer its own zones from while the apiserver is unreachable, e.g. 24h. An older copy is not trusted: the node reports not ready and its primary zones answer SERVFAIL.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Snapshot maximum age",
+      "group": "Node",
+      "presets": [
+        "1h",
+        "24h",
+        "168h"
+      ]
+    },
+    {
+      "path": "store.kube.startupTimeout",
+      "type": "duration",
+      "scope": "node",
+      "default": "15s",
+      "help": "Kubernetes only: how long to wait at start for the apiserver to deliver the objects, e.g. 15s. After that the node answers from its last saved copy (local.db) until the apiserver catches up.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Kubernetes sync timeout",
+      "group": "Node",
+      "presets": [
+        "5s",
+        "15s",
+        "30s",
+        "1m"
+      ]
+    },
+    {
+      "path": "tsigKeys",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Shared keys that authenticate zone transfers and NOTIFY between kudurru and other DNS servers; only needed when you transfer zones. Each key has a name, an algorithm and a file holding the secret, and a zone lists the keys it accepts in spec.policy.transferTSIGKeyRefs (TSIG, RFC 8945).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": true,
+      "label": "TSIG keys",
+      "group": "Zone transfers",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "name",
+            "label": "Name",
+            "help": "Name of the key, a domain name such as xfr.home.example; the other server must use the same name, and zones list it in spec.policy.transferTSIGKeyRefs.",
+            "required": true,
+            "type": "string",
+            "format": "domain"
+          },
+          {
+            "name": "algorithm",
+            "label": "Algorithm",
+            "help": "HMAC algorithm of the key; it must match the other server.",
+            "required": true,
+            "type": "string",
+            "enum": [
+              {
+                "value": "hmac-sha256",
+                "label": "HMAC-SHA256",
+                "help": "The common choice; every current DNS server supports it."
+              },
+              {
+                "value": "hmac-sha512",
+                "label": "HMAC-SHA512",
+                "help": "A longer digest; use it when the other server requires it."
+              }
+            ]
+          },
+          {
+            "name": "secretFile",
+            "label": "Secret file",
+            "help": "Path of a file holding only the base64 secret, e.g. /etc/kudurru/xfr.key: the quoted value of the secret line tsig-keygen prints, or the output of openssl rand -base64 32.",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "path": "unblockRequests.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Let people ask for a blocked site to be unblocked: the block page shows a Request access form, and requests appear on the dashboard's Requests page for an administrator to approve or deny. Needs blockPage.enabled.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Unblock requests",
+      "group": "Block page"
+    },
+    {
+      "path": "unblockRequests.maxPending",
+      "type": "int",
+      "scope": "cluster",
+      "default": 1000,
+      "help": "Most undecided unblock requests kept across the cluster, e.g. 1000. When reached, the block page says requests are paused until an administrator decides some.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Most pending unblock requests",
+      "group": "Block page",
+      "min": 1,
+      "max": 10000
+    },
+    {
+      "path": "unblockRequests.pendingExpiry",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "336h",
+      "help": "Undecided unblock requests expire after this long, e.g. 336h (14 days); at least 1h.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Pending requests expire after",
+      "group": "Block page",
+      "presets": [
+        "24h",
+        "168h",
+        "336h",
+        "720h"
+      ]
+    },
+    {
+      "path": "unblockRequests.rateLimit",
+      "type": "int",
+      "scope": "cluster",
+      "default": 5,
+      "help": "Most unblock requests one client may send per hour, e.g. 5; IPv6 clients are counted per /64. Asking again for the same name updates the pending request instead of adding one.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Unblock requests per hour per client",
+      "group": "Block page",
+      "min": 1,
+      "max": 100
+    },
+    {
+      "path": "unblockRequests.retention",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "720h",
+      "help": "How long decided and expired unblock requests stay on the Requests page, counted from the decision, e.g. 720h (30 days); at least 1h. A time-limited approval is kept until it ends.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Keep decided requests for",
+      "group": "Block page",
+      "presets": [
+        "168h",
+        "720h",
+        "2160h"
+      ]
+    },
+    {
+      "path": "upstreams.bootstrap",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [
+        "1.1.1.1:53"
+      ],
+      "help": "Plain DNS servers used only to look up the host names of upstream servers, such as dns.quad9.net in tls://dns.quad9.net, e.g. 1.1.1.1:53 or 9.9.9.9. Never asked for client queries.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Bootstrap resolvers",
+      "group": "Upstreams",
+      "items": {
+        "type": "string",
+        "format": "upstream"
+      }
+    },
+    {
+      "path": "upstreams.conditional",
+      "type": "map",
+      "scope": "cluster",
+      "default": {},
+      "help": "Send queries for some domains to a chosen upstream group, e.g. home.lan to a group holding your router, so local device names resolve. Each entry maps a domain suffix to a group name; the longest matching suffix wins, and a key may list several suffixes in dnsmasq form, \"[/corp.example/10.in-addr.arpa/]\". These answers are never cached.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Conditional forwarding",
+      "group": "Upstreams",
+      "keys": {
+        "type": "string"
+      },
+      "values": {
+        "type": "string",
+        "ref": "upstreamGroup"
+      }
+    },
+    {
+      "path": "upstreams.ecs.ipv4Prefix",
+      "type": "int",
+      "scope": "cluster",
+      "default": 24,
+      "help": "How much of an IPv4 client address EDNS Client Subnet may reveal, as a prefix length from 0 to 32: with 24 (default) only the network, e.g. 203.0.113.0/24, is sent. Used only when upstreams.ecs.mode is forward or add.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "ECS IPv4 prefix length",
+      "group": "Upstreams",
+      "min": 0,
+      "max": 32
+    },
+    {
+      "path": "upstreams.ecs.ipv6Prefix",
+      "type": "int",
+      "scope": "cluster",
+      "default": 56,
+      "help": "How much of an IPv6 client address EDNS Client Subnet may reveal, as a prefix length from 0 to 128: with 56 (default) only the /56 network is sent. Used only when upstreams.ecs.mode is forward or add.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "ECS IPv6 prefix length",
+      "group": "Upstreams",
+      "min": 0,
+      "max": 128
+    },
+    {
+      "path": "upstreams.ecs.mode",
+      "type": "string",
+      "scope": "cluster",
+      "default": "strip",
+      "help": "Whether upstream servers learn which network a query came from (EDNS Client Subnet). strip (default) never tells them, the private choice; forward and add can get answers from servers nearer the client, at the cost of revealing part of its address.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "EDNS Client Subnet",
+      "group": "Upstreams",
+      "enum": [
+        {
+          "value": "strip",
+          "label": "Strip",
+          "help": "Never send a client subnet upstream; the private choice and the default."
+        },
+        {
+          "value": "forward",
+          "label": "Forward",
+          "help": "Pass on a subnet the client sent itself, shortened to the prefix lengths below."
+        },
+        {
+          "value": "add",
+          "label": "Add",
+          "help": "Like Forward, and add a subnet for clients with a public address that sent none."
+        }
+      ]
+    },
+    {
+      "path": "upstreams.groups",
+      "type": "map",
+      "scope": "cluster",
+      "default": {
+        "default": {
+          "servers": [
+            "1.1.1.1:53",
+            "9.9.9.9:53"
+          ],
+          "strategy": "parallel_best",
+          "timeout": "2s"
+        }
+      },
+      "help": "The DNS servers kudurru asks for names it does not answer itself, in named groups; the group named default gets every query nothing else routes. Each group lists servers (e.g. 1.1.1.1, tls://dns.quad9.net), a strategy that picks among them and a timeout per server. Conditional forwarding, forward zones and policies send queries to other groups by name.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Upstream groups",
+      "group": "Upstreams",
+      "keys": {
+        "type": "string"
+      },
+      "values": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "mode",
+            "label": "Mode",
+            "help": "forward (default) sends queries to the servers below; recursive resolves names itself from the root servers, so no single provider sees every name, and validates DNSSEC (see upstreams.recursion).",
+            "type": "string",
+            "default": "forward",
+            "enum": [
+              {
+                "value": "forward",
+                "label": "Forward",
+                "help": "Send queries to the servers you list, such as your ISP, Cloudflare or Quad9."
+              },
+              {
+                "value": "recursive",
+                "label": "Recursive",
+                "help": "Resolve names from the root servers with kudurru's own resolver and validate DNSSEC; no single provider sees every name."
+              }
+            ]
+          },
+          {
+            "name": "servers",
+            "label": "Servers",
+            "help": "DNS servers this group forwards to, e.g. 1.1.1.1, tls://dns.quad9.net or https://dns.google/dns-query. A bare address uses plain DNS on port 53; tls://, https://, quic://, h3:// and sdns:// stamps encrypt the queries. Prefix a display name with name=, e.g. cloudflare=tls://1.1.1.1. Required in forward mode; a recursive group has none.",
+            "type": "string[]",
+            "items": {
+              "type": "string",
+              "format": "upstream"
+            }
+          },
+          {
+            "name": "strategy",
+            "label": "Strategy",
+            "help": "How the servers are picked for each query; parallel_best suits most setups. Forward mode only.",
+            "type": "string",
+            "default": "parallel_best",
+            "enum": [
+              {
+                "value": "parallel_best",
+                "label": "Parallel best",
+                "help": "Ask two healthy servers picked at random at once and use the first good answer; if both fail, ask the rest. Fast and resilient; suits most setups."
+              },
+              {
+                "value": "strict",
+                "label": "Strict order",
+                "help": "Ask the servers one at a time in the listed order, moving to the next only when one fails. Use it when the first server should answer whenever it can."
+              },
+              {
+                "value": "random",
+                "label": "Random",
+                "help": "Ask one healthy server picked at random, and another random one if it fails. Spreads the load evenly."
+              },
+              {
+                "value": "rtt_weighted",
+                "label": "Fastest (RTT weighted)",
+                "help": "Prefer the servers that answer fastest: the first is picked at random weighted by its inverse round-trip time, then the rest are tried in RTT order."
+              }
+            ]
+          },
+          {
+            "name": "timeout",
+            "label": "Timeout",
+            "help": "How long to wait for one server's answer before trying another, e.g. 2s; raise it for slow or distant servers. In recursive mode it bounds the whole lookup of a name (default 4s).",
+            "type": "duration",
+            "default": "2s",
+            "presets": [
+              "500ms",
+              "1s",
+              "2s",
+              "4s",
+              "5s"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "upstreams.recursion.dnssec",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Check DNSSEC signatures on answers from recursive groups, from the root trust anchors down. Forged or broken answers in signed zones become SERVFAIL (status dnssec_bogus) instead of reaching devices; unsigned zones still resolve. Clients that set the CD bit get the data anyway.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "DNSSEC validation",
+      "group": "Upstreams"
+    },
+    {
+      "path": "upstreams.recursion.ipv6",
+      "type": "string",
+      "scope": "cluster",
+      "default": "auto",
+      "help": "Whether recursive groups ask name servers over IPv6. auto (default) does when this host has an IPv6 route to the root servers.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "IPv6 to name servers",
+      "group": "Upstreams",
+      "enum": [
+        {
+          "value": "auto",
+          "label": "Auto",
+          "help": "Use IPv6 when the host has an IPv6 route to the root servers."
+        },
+        {
+          "value": "on",
+          "label": "On",
+          "help": "Always ask IPv6 name servers too."
+        },
+        {
+          "value": "off",
+          "label": "Off",
+          "help": "Ask name servers over IPv4 only."
+        }
+      ]
+    },
+    {
+      "path": "upstreams.recursion.qnameMinimization",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Send each name server only as much of the name as it needs (QNAME minimization, RFC 9156): the root servers learn com, not www.example.com. Recursive groups only.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "QNAME minimization",
+      "group": "Upstreams"
+    },
+    {
+      "path": "upstreams.recursion.rootHints",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Addresses of the root servers recursive groups start from, e.g. 198.41.0.4; empty (the default) uses the built-in IANA list. Only for a private root or a lab: with custom hints, name servers on private and link-local addresses are asked too, which the public tree never allows.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Root hints",
+      "group": "Upstreams",
+      "items": {
+        "type": "string",
+        "format": "ip"
+      }
+    },
+    {
+      "path": "upstreams.recursion.trustAnchors",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Root DS records DNSSEC validation trusts, e.g. 20326 8 2 E06D44B8...; empty (the default) uses the built-in KSK-2017 and KSK-2024 anchors from IANA. Only for a root key rollover the built-in list does not know yet, or for a private root.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "label": "Root trust anchors",
+      "group": "Upstreams",
+      "items": {
+        "type": "string"
+      }
+    }
+  ]
+}

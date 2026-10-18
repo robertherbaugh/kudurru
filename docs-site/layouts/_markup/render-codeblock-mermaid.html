@@ -1,0 +1,10 @@
+{{- /*
+  A ```mermaid block (the architecture tour, docs/architecture): the source
+  is written as text, which GitHub also renders, and the vendored Mermaid
+  bundle (docs-site/vendor/mermaid) draws it in the browser. The page notes that
+  it needs the bundle, and baseof.html loads it only on such pages. Without
+  JavaScript the reader sees the diagram's source.
+*/ -}}
+{{- .Page.Store.Set "mermaid" true -}}
+<pre class="mermaid">{{ .Inner }}</pre>
+{{- /* chomp trailing newline */ -}}

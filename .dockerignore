@@ -1,0 +1,19 @@
+# Build context of the root Dockerfile (make docker, dev-image.yml, edge and
+# kind checks): the Go module plus the built dashboard/dist. Tool downloads,
+# dependencies and build output stay out of it.
+.git
+.context
+bin
+dist
+dashboard/node_modules
+dashboard/coverage
+dashboard/playwright-report
+dashboard/test-results
+docs-site/public
+docs-site/resources
+.claude
+# The license portal is not part of this image; its own image builds with
+# license-server/Dockerfile, whose Dockerfile.dockerignore replaces this file.
+license-server
+# The website is separately licensed and is not part of the DNS image.
+website

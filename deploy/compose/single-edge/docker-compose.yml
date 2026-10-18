@@ -1,0 +1,92 @@
+# kudurru behind dnsdist on one host (dev-docs/design-record.md §6.4, edge
+# profile). dnsdist owns :53/:853/:443 and terminates DoT/DoH/DoQ with the
+# certificate in ./certs; kudurru shares dnsdist's network namespace and
+# listens on 127.0.0.1:5353 for PROXYv2 from loopback (no TLV secret needed).
+# The kudurru-dnsdist image (`kudurru edge run`) is a milestone M4 deliverable.
+# Before the first start:
+#   mkdir -p secrets certs && openssl rand -base64 32 > secrets/encryption_key
+#   openssl rand -base64 18 > secrets/admin_password
+#   cp fullchain.pem certs/tls.crt && cp privkey.pem certs/tls.key
+name: kudurru-edge
+services:
+  dnsdist:
+    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0
+    restart: unless-stopped
+    environment:
+      KUDURRU_LICENSE_KEY: ${KUDURRU_LICENSE_KEY:-}   # optional: free personal key or business key (LICENSING.md)
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+    secrets: [encryption_key]
+    command:
+      - kudurru
+      - edge
+      - run
+      - --backends=127.0.0.1:5353
+      - --pool-resolver=chashed
+      - --pool-authoritative=leastOutstanding
+      - --tls-dir=/certs
+      - --api=127.0.0.1:8083
+      - --console=127.0.0.1:5199
+      - --api-key-out=/run/kudurru/dnsdist-api.key
+    # Published here because kudurru joins this network namespace.
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "853:853/tcp"         # DoT
+      - "853:853/udp"         # DoQ
+      - "443:443/tcp"         # DoH
+      - "443:443/udp"         # DoH3
+      - "8080:8080"           # kudurru API and UI
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    volumes:
+      - ./certs:/certs:ro
+      - kudurru-run:/run/kudurru
+    healthcheck:
+      test: ["CMD", "kudurru", "health", "--ops-address", "127.0.0.1:8084", "--ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  kudurru:
+    image: ghcr.io/robertherbaugh/kudurru:0.1.0
+    restart: unless-stopped
+    network_mode: "service:dnsdist"
+    environment:
+      KUDURRU_LICENSE_KEY: ${KUDURRU_LICENSE_KEY:-}   # optional: free personal key or business key (LICENSING.md)
+      KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      # Cluster settings edited in the UI or with `kudurru settings set` are
+      # written here (on the data volume; kudurru.yaml stays read-only).
+      KUDURRU_SETTINGS_FILE: /var/lib/kudurru/settings.yaml
+      KUDURRU_EDGE_STATUS_URL: http://127.0.0.1:8084
+      TZ: UTC
+    volumes:
+      - ./kudurru.yaml:/etc/kudurru/kudurru.yaml:ro
+      - ./objects.d:/etc/kudurru/objects.d:ro
+      - kudurru-data:/var/lib/kudurru
+      - kudurru-run:/run/kudurru
+    secrets: [admin_password, encryption_key]
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "kudurru", "health", "--ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 60s
+    stop_grace_period: 30s
+    depends_on: [dnsdist]
+
+volumes:
+  kudurru-data: {}
+  kudurru-run: {}
+
+secrets:
+  admin_password:
+    file: ./secrets/admin_password
+  encryption_key:
+    file: ./secrets/encryption_key

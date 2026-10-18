@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="{{ site.Language.Locale }}">
+<head>
+{{ partial "head.html" . }}
+</head>
+<body class="kind-{{ .Kind }}">
+<a class="skip-link" href="#main">Skip to content</a>
+{{ partial "header.html" . }}
+{{ block "main" . }}{{ end }}
+{{ partial "footer.html" . }}
+{{ $js := resources.Get "js/site.js" | minify | fingerprint -}}
+<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" defer></script>
+{{- /* Mermaid only where a ```mermaid block set the flag (render-codeblock-mermaid.html). */}}
+{{- if .Store.Get "mermaid" }}
+{{- with resources.Get "mermaid/mermaid.min.js" }}
+{{- $lib := . | fingerprint "sha384" }}
+<script src="{{ $lib.RelPermalink }}" integrity="{{ $lib.Data.Integrity }}" defer></script>
+{{- $run := resources.Get "js/mermaid.js" | minify | fingerprint }}
+<script src="{{ $run.RelPermalink }}" integrity="{{ $run.Data.Integrity }}" defer></script>
+{{- else }}
+{{- warnf "the Mermaid bundle is missing: run `make docs-assets` (or `make docs-site`)" }}
+{{- end }}
+{{- end }}
+</body>
+</html>

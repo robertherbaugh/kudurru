@@ -1,0 +1,11 @@
+;; ->>HEADER<<- status: NOERROR
+;; kudurru status: blocked_list, list: ads, rule: ||ads.example.net^, client: 192.168.1.23
+
+;; QUESTION SECTION:
+;ads.example.net.	IN	A
+
+;; ANSWER SECTION:
+ads.example.net.	600	IN	A	0.0.0.0
+
+;; Query time: 0.2 msec
+;; SERVER: SERVER (node node-a)

@@ -1,0 +1,55 @@
+# Guards the promotion pull requests (dev-docs/release-checklist.md, "Release
+# pipeline"): release-candidate takes merges from main only, release from
+# release-candidate only, and hack/release-tag.sh dry-runs the tag the merge
+# would publish, so a VERSION that is already released, or a release whose
+# candidate has not been published yet, fails here instead of after the
+# merge. Make `promotion` a required check on both branches.
+name: promotion
+on:
+  pull_request:
+    branches: [release-candidate, release]
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+  actions: read          # hack/candidate-published.sh reads the candidate's run
+jobs:
+  promotion:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    steps:
+      - name: Source branch
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          case "${BASE}" in
+            release-candidate) want=main ;;
+            release)           want=release-candidate ;;
+          esac
+          if [ "${HEAD_REPO}" != "${REPO}" ] || [ "${HEAD}" != "${want}" ]; then
+            echo "::error::${BASE} takes pull requests from ${want} only, not ${HEAD_REPO}:${HEAD}"
+            exit 1
+          fi
+      # The default ref is the merge of the PR into the base branch: what
+      # the push after merging will tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Dry-run the tag
+        id: tag
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          case "${BASE}" in
+            release-candidate) hack/release-tag.sh rc ;;
+            release)           hack/release-tag.sh release ;;
+          esac
+      # A release ships its last candidate: refuse one whose publish did not
+      # finish (no GitHub pre-release, or still a draft).
+      - name: The candidate was published
+        if: github.base_ref == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RC: ${{ steps.tag.outputs.rc }}
+        run: hack/candidate-published.sh "${RC}"

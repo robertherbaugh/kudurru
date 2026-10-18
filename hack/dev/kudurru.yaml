@@ -1,0 +1,21 @@
+# Local development config: unprivileged ports, text logs.
+node:
+  name: dev
+  dataDir: ./hack/.cache/kudurru
+objectsDir: ./hack/dev/objects.d
+listeners:
+  dns:
+    - address: "127.0.0.1:5353"
+      protocols: [udp, tcp]
+  api: { address: "127.0.0.1:8080" }
+  ops: { address: "127.0.0.1:8081" }
+  metrics: { address: "127.0.0.1:9153" }
+upstreams:
+  groups:
+    default:
+      servers: ["1.1.1.1:53", "9.9.9.9:53"]
+      strategy: parallel_best
+      timeout: 2s
+log:
+  level: debug
+  format: text
