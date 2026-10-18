@@ -173,7 +173,11 @@ func (c *Cache[T]) watchOnce(ctx context.Context) error {
 			case store.Bookmark:
 				if initial {
 					initial = false
-					c.prune(seen)
+					listRV := ""
+					if ev.Object != nil {
+						listRV = ev.Object.GetResourceVersion()
+					}
+					c.prune(seen, listRV)
 					c.markSynced()
 				}
 			case store.Added, store.Modified:
@@ -196,13 +200,17 @@ func (c *Cache[T]) watchOnce(ctx context.Context) error {
 	}
 }
 
-// prune drops every object whose key is not in keep.
-func (c *Cache[T]) prune(keep map[store.Key]bool) {
+// prune drops every object whose key is not in keep, except those newer
+// than listRV, the resourceVersion the initial list was read at (empty
+// when the driver does not report it): a local write (Upsert) between the
+// list and its Bookmark is not in the list but still exists, and dropping
+// it would leave a tombstone that ignores its own Added event.
+func (c *Cache[T]) prune(keep map[store.Key]bool, listRV string) {
 	c.mu.Lock()
 	changed := false
 	for k, old := range c.items {
-		if !keep[k] {
-			if rv := old.GetResourceVersion(); rv != "" {
+		if rv := old.GetResourceVersion(); !keep[k] && (listRV == "" || rv == "" || !newer(rv, listRV)) {
+			if rv != "" {
 				c.gone[k] = tombstone{rv: rv, at: time.Now()}
 			}
 			delete(c.items, k)
