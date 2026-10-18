@@ -95,6 +95,7 @@ export function endpoints(c: ApiClient) {
     imports: {
       preview: (request: MigrationRequest) => c.post<MigrationPlan>('/imports/preview', request),
       apply: (plan: MigrationPlan) => c.post<MigrationResult>('/imports/apply', plan),
+      start: (plan: MigrationPlan) => c.post<MigrationRun>('/imports/start', plan),
       runs: (cursor?: string) => c.get<ListEnvelope<MigrationRun>>('/imports/runs', { limit: 25, continue: cursor }),
       run: (id: string) => c.get<MigrationRun>(`/imports/runs/${enc(id)}`),
       cutoverPreview: (id: string, nameservers: string[], addresses: string[] = []) => c.post<MigrationCutoverPlan>(`/imports/runs/${enc(id)}/decommission/preview`, { nameservers, ...(addresses.length ? { addresses } : {}) }),

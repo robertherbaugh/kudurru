@@ -26,7 +26,7 @@ func migrationSource(t *testing.T) *httptest.Server {
 		case "/api/zones/list":
 			_, _ = fmt.Fprint(w, `{"status":"ok","response":{"zones":[]}}`)
 		case "/api/settings/get":
-			_, _ = fmt.Fprint(w, `{"status":"ok","response":{"enableBlocking":true,"blockingType":"NxDomain","blockingAnswerTtl":30}}`)
+			_, _ = fmt.Fprint(w, `{"status":"ok","response":{"enableBlocking":true,"blockingType":"NxDomain","blockingAnswerTtl":30,"forwarders":["1.1.1.1"],"forwarderProtocol":"Udp"}}`)
 		case "/api/blocked/export":
 			_, _ = fmt.Fprintln(w, "tracker.example")
 		case "/api/allowed/export":
@@ -77,42 +77,90 @@ func TestMigrationCLIPreviewWithoutDestination(t *testing.T) {
 	}
 }
 
-func TestMigrationCLIApplyReportsPartialFailure(t *testing.T) {
+func TestMigrationCLIStartsBackgroundAndWaitsForFinalReport(t *testing.T) {
 	source := migrationSource(t)
-	for _, result := range []string{
-		`{"items":[{"kind":"Policy","name":"default","result":"updated"}]}`,
-		`{"items":[{"kind":"Policy","name":"default","result":"error","error":"read-only"}]}`,
-		`{"items":[],"settingsError":"cannot persist settings"}`,
-	} {
-		t.Run(result, func(t *testing.T) {
-			calls := 0
+	for _, tc := range []struct {
+		wait   bool
+		status string
+	}{{false, "running"}, {true, "completed"}, {true, "partial"}, {true, "interrupted"}} {
+		t.Run(fmt.Sprintf("wait=%t/%s", tc.wait, tc.status), func(t *testing.T) {
+			posts, polls := 0, 0
 			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				calls++
-				if r.Method != http.MethodPost || r.URL.Path != "/api/v1/imports/apply" || r.Header.Get("Authorization") != "Bearer target-secret" {
-					t.Error("unexpected destination request")
-				}
-				b, _ := io.ReadAll(r.Body)
-				if strings.Contains(string(b), "source-secret") {
-					t.Error("source credential sent to destination apply")
-				}
-				var p importers.Plan
-				if json.Unmarshal(b, &p) != nil || len(p.Objects) != 2 {
-					t.Error("converted plan missing from apply")
+				if r.Header.Get("Authorization") != "Bearer target-secret" {
+					t.Error("destination authentication missing")
 				}
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = fmt.Fprint(w, result)
+				switch r.URL.Path {
+				case "/api/v1/imports/start":
+					posts++
+					if r.Method != http.MethodPost {
+						t.Error("start method")
+					}
+					b, _ := io.ReadAll(r.Body)
+					if strings.Contains(string(b), "source-secret") {
+						t.Error("source credential sent to destination")
+					}
+					var p importers.Plan
+					if json.Unmarshal(b, &p) != nil || len(p.Objects) != 2 {
+						t.Error("converted plan missing")
+					}
+					w.WriteHeader(http.StatusAccepted)
+					_, _ = fmt.Fprint(w, `{"id":"run-test","data":{"status":"running","items":[]}}`)
+				case "/api/v1/imports/runs/run-test":
+					polls++
+					_, _ = fmt.Fprintf(w, `{"id":"run-test","data":{"status":%q,"items":[]}}`, tc.status)
+				default:
+					t.Errorf("unexpected path %s", r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+				}
 			}))
 			defer target.Close()
 			h := newHarness(t)
 			h.env["TECHNITIUM_API_TOKEN"] = "source-secret"
 			h.env[cli.EnvServer] = target.URL
 			h.env[cli.EnvToken] = "target-secret"
-			out, _, err := h.run("import", "technitium", "--source-url", source.URL, "--apply", "-o", "json")
-			wantError := strings.Contains(result, "error") || strings.Contains(result, "settingsError")
-			if (err != nil) != wantError || !strings.Contains(out, `"items"`) || calls != 1 {
-				t.Fatalf("apply error=%v, calls=%d, output=%s", err, calls, out)
+			args := []string{"import", "technitium", "--source-url", source.URL, "--apply", "-o", "json"}
+			if tc.wait {
+				args = append(args, "--wait")
+			}
+			out, stderr, err := h.run(args...)
+			wantError := tc.wait && tc.status != "completed"
+			if (err != nil) != wantError || posts != 1 || (polls == 1) != tc.wait || !strings.Contains(out, tc.status) || !strings.Contains(stderr, "import runs run-test") {
+				t.Fatalf("err=%v posts=%d polls=%d out=%s stderr=%s", err, posts, polls, out, stderr)
 			}
 		})
+	}
+}
+func TestMigrationCLISelection(t *testing.T) {
+	source := migrationSource(t)
+	for _, tc := range []struct {
+		flags             []string
+		objects, settings int
+	}{
+		{[]string{"--skip-settings"}, 2, 0},
+		{[]string{"--select-object", "Policy/default/default"}, 1, 0},
+		{[]string{"--select-setting", "upstreams"}, 0, 1},
+		{[]string{"--select-object", "Policy/default/default", "--select-setting", "upstreams"}, 1, 1},
+	} {
+		h := newHarness(t)
+		h.env["TECHNITIUM_API_TOKEN"] = "source-secret"
+		args := append([]string{"import", "technitium", "--source-url", source.URL, "-n", "default", "-o", "json"}, tc.flags...)
+		out, _, err := h.run(args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var p importers.Plan
+		if json.Unmarshal([]byte(out), &p) != nil || p.Selection == nil || len(p.Selection.Objects) != tc.objects || len(p.Selection.Settings) != tc.settings {
+			t.Fatalf("selection: %s", out)
+		}
+	}
+	h := newHarness(t)
+	h.env["TECHNITIUM_API_TOKEN"] = "source-secret"
+	if _, _, err := h.run("import", "technitium", "--source-url", source.URL, "--select-object", "DNSZone/missing"); err == nil {
+		t.Fatal("invalid selection accepted")
+	}
+	if _, _, err := h.run("import", "technitium", "--source-url", source.URL, "--wait"); err == nil {
+		t.Fatal("wait without apply accepted")
 	}
 }
 

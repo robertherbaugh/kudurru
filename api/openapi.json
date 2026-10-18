@@ -4437,6 +4437,12 @@
           "error": {
             "type": "string"
           },
+          "errorKey": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          },
           "kind": {
             "type": "string"
           },
@@ -4444,6 +4450,9 @@
             "type": "string"
           },
           "namespace": {
+            "type": "string"
+          },
+          "resourceVersion": {
             "type": "string"
           },
           "result": {
@@ -4585,6 +4594,13 @@
             },
             "type": "array"
           },
+          "deadline": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failure": {
+            "type": "string"
+          },
           "finishedAt": {
             "format": "date-time",
             "type": "string"
@@ -4595,8 +4611,14 @@
             },
             "type": "array"
           },
+          "journalError": {
+            "type": "string"
+          },
           "settingsError": {
             "type": "string"
+          },
+          "settingsPersisted": {
+            "type": "boolean"
           },
           "source": {
             "type": "string"
@@ -5029,6 +5051,9 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/Selection"
           },
           "settings": {
             "additionalProperties": {},
@@ -6362,6 +6387,28 @@
           "list",
           "domains",
           "source"
+        ],
+        "type": "object"
+      },
+      "Selection": {
+        "additionalProperties": false,
+        "properties": {
+          "objects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "objects",
+          "settings"
         ],
         "type": "object"
       },
@@ -17337,6 +17384,129 @@
           }
         },
         "summary": "Preview replacing an imported zone's NS and SOA primary",
+        "tags": [
+          "imports"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/imports/start": {
+      "post": {
+        "operationId": "startMigration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Plan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationRun"
+                }
+              }
+            },
+            "description": "Accepted",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Start a reviewed migration in the background",
         "tags": [
           "imports"
         ],

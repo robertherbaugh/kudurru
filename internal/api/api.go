@@ -322,6 +322,7 @@ type Server struct {
 	// domainSvc is the Allowlist and Denylist over the store.
 	domainOnce sync.Once
 	domainSvc  *domainlist.Service
+	imports    migrationWorkers
 }
 
 // New builds the server and registers every route.
@@ -484,6 +485,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 // Serve serves on ln (Run without the listen step; tests).
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	defer s.Close()
 	cfg := s.config()
 	tlsCfg, err := s.tlsConfig(cfg)
 	if err != nil {

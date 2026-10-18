@@ -77,6 +77,7 @@ const DHCPScope = lazy(() => import('./pages/DHCPScopePage'));
 const DHCPLeases = lazy(() => import('./pages/DHCPLeasesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const Tools = lazy(() => import('./pages/ToolsPage'));
+const MigrationRun = lazy(() => import('./pages/MigrationRunPage'));
 const Messages = lazy(() => import('./pages/MessagesPage'));
 const Access = lazy(() => import('./pages/AccessPage'));
 const Audit = lazy(() => import('./pages/AuditPage'));
@@ -114,6 +115,7 @@ export const ROUTES: RouteDef[] = [
   { path: '/nodes', navKey: 'nodes', label: 'Nodes', section: 'System', icon: Server, page: Nodes },
   { path: '/settings', navKey: 'settings', label: 'Settings', section: 'System', icon: Settings, page: SettingsPage },
   { path: '/tools', navKey: 'tools', label: 'Tools', section: 'System', icon: Wrench, page: Tools },
+  { path: '/tools/migrations/:id', navKey: 'tools', label: 'Migration run', section: 'System', icon: Wrench, page: MigrationRun, hidden: true },
   { path: '/messages', navKey: 'messages', label: 'Diagnosis', section: 'System', icon: Siren, page: Messages },
   { path: '/license', navKey: 'license', label: 'License', section: 'System', icon: KeyRound, page: License },
   { path: '/access', navKey: 'access', label: 'Access', section: 'System', icon: BookLock, page: Access },

@@ -1077,6 +1077,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/imports/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a reviewed migration in the background */
+        post: operations["startMigration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/info/messages": {
         parameters: {
             query?: never;
@@ -3282,9 +3299,12 @@ export interface components {
         };
         MigrationItem: {
             error?: string;
+            errorKey?: string;
+            hint?: string;
             kind: string;
             name: string;
             namespace?: string;
+            resourceVersion?: string;
             result: string;
         };
         MigrationRequest: {
@@ -3320,9 +3340,14 @@ export interface components {
             actor: string;
             cutovers: components["schemas"]["MigrationCutover"][];
             /** Format: date-time */
+            deadline?: string;
+            failure?: string;
+            /** Format: date-time */
             finishedAt?: string;
             items: components["schemas"]["MigrationItem"][];
+            journalError?: string;
             settingsError?: string;
+            settingsPersisted?: boolean;
             source: string;
             sourceURL?: string;
             /** Format: date-time */
@@ -3456,6 +3481,7 @@ export interface components {
             objects: {
                 [key: string]: unknown;
             }[];
+            selection?: components["schemas"]["Selection"];
             settings: {
                 [key: string]: unknown;
             };
@@ -3893,6 +3919,10 @@ export interface components {
             source: string;
             /** @description CNAME target in strict mode. */
             target?: string;
+        };
+        Selection: {
+            objects: string[];
+            settings: string[];
         };
         ServiceAccountInfo: {
             builtinAdmin: boolean;
@@ -11229,6 +11259,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MigrationCutoverPlan"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    startMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Plan"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationRun"];
                 };
             };
             /** @description Bad Request */

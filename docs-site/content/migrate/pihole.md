@@ -24,6 +24,17 @@ enter its URL and an **application password** generated in Pi-hole's
 reach that URL. Review the preview and conversion warnings, then choose
 **Import configuration**. No configuration files need to be copied or edited.
 
+The review step lets you select individual objects and settings sections, with
+**Select all** and **Clear selection** controls. Select referenced dependencies
+too, or make sure they already exist. Starting the import opens a migration run
+page with live progress. You can leave or close the browser: the server continues
+in the background. Return through **Tools → Migration history → Review run**.
+The report shows a green check for successful items, a red X for errors and full
+error details. Unselected items are recorded as skipped. A failed item does not
+roll back successful changes; selected settings wait until every selected object
+succeeds. Imports interrupted by a server restart are not resumed automatically;
+check any unconfirmed outcomes before retrying.
+
 Select **Update nameservers during import** to replace apex NS and SOA primary
 with kudurru's DNS hostnames, or keep source authority during validation and
 use **Migration history → Review run → Decommission source nameservers** later.
@@ -54,13 +65,16 @@ kudurru import pihole --source-url http://pi.hole \
   --source-key-file ./pihole-app-password --local-zone home.arpa --apply
 ```
 
-The first command previews; the second writes to the kudurru server selected
-by your CLI context or `--server`. Use `-n` for your default policy's
+The first command previews; the second starts a background import on the kudurru
+server selected by your CLI context or `--server`, returning its run ID. Add
+`--wait` to wait for the final report, or use `kudurru import runs RUN_ID` later. Use `-n` for your default policy's
 namespace. Import replaces matching object names, including `Policy/default`,
 and the default upstream group. Additional policies require an appropriate
 license key. Inspect all results: object writes are not transactional, and
-settings are applied only after all objects succeed. A settings result with
-`persisted: false` needs a [settings file](/reference/configuration/) to
+settings are applied only after all selected objects succeed. Use repeatable
+`--select-object Kind/[namespace/]name` and `--select-setting SECTION` to import
+only those items, or `--skip-settings` to leave settings unchanged. A run with
+`settingsPersisted: false` needs a [settings file](/reference/configuration/) to
 survive a restart. Complete the validation and cutover checklist afterward.
 
 ## Compare the features you use

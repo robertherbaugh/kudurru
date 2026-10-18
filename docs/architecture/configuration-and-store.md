@@ -45,9 +45,11 @@ Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 `internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
 objects, a settings merge patch and conversion warnings. The dashboard's
 Tools wizard uses `POST /imports/preview` and submits the reviewed result to
-`POST /imports/apply`. The CLI's `import pihole|technitium` uses the same
-converter locally; `--apply` sends its preview to the same writer. A preview
-never writes destination state. Both REST routes require `settings.write`,
+`POST /imports/start`. This returns HTTP 202, a run ID and a Location header
+before object writes finish. The CLI's `import pihole|technitium` uses the same
+converter locally; `--apply` starts the same background job and `--wait` polls
+its report. `POST /imports/apply` remains available for synchronous callers.
+A preview never writes destination state. These REST routes require `settings.write`,
 because administrators intentionally connect to private source networks.
 This permission grants SSRF-equivalent network access: even a role with
 only `settings.write` can send credentialed requests to caller-selected
@@ -63,20 +65,43 @@ after reading. Source redirects are refused, response sizes and request time
 are bounded, and upstream errors never echo credentials or response bodies.
 Import writes use the existing object authorization, schema, ownership and
 license checks. They are not transactional and return a result per object;
-the settings patch is applied only when every object succeeds. Unsupported
+the selected settings patch is applied only when every selected object succeeds. Unsupported
 source semantics are reported in the preview. See the
 [migration guides](../../docs-site/content/migrate/_index.md) for supported data.
 
-Each apply starts an internal `MigrationRun` journal before destination writes
-(D182), using the existing store: SQLite JSON rows or labeled Kubernetes
+Each import starts an internal `MigrationRun` journal before destination writes
+(D182, D184), using the existing store: SQLite JSON rows or labeled Kubernetes
 Secrets. It retains source type and URL origin, actor, times, planned objects,
 per-object outcomes, zone UIDs, original/current authority and cutover attempts.
 Credentials, source URL paths/query parameters and source records are excluded.
-Progress is saved after each destination write; a journal failure stops further
-writes and returns the run ID plus a journal error. Settings follow all object
-writes; final journal updates use a bounded context independent of a disconnected
-caller. The journal has the store's object size cap; a run accepts at most 100
-cutover attempts. Before claiming an attempt, apply checks that the journal has
+An optional selection lists object identities (`Kind/[namespace/]name`) and
+top-level settings sections; omitting it selects the full plan for compatibility.
+Unknown or duplicate selections and explicitly empty selections are refused before
+writes. Dependencies are not automatically selected: choose them too or ensure they
+already exist. Unselected objects and settings are journaled as `skipped`; only
+selected primary zones are tracked for later cutover.
+
+Selected items progress from `pending` to `running`, then `created`, `updated`,
+`unchanged` or `error`, with the error key, explanation, hint and saved version.
+Settings have separate rows and are applied in one merge patch after all selected
+objects succeed, or become `not_applied` if an object fails. Progress is saved
+before and after object writes; a journal failure stops further writes and records
+a journal error. Capacity for bounded error details is checked before any writes.
+The dashboard opens `/tools/migrations/{id}`, polls progress and shows counts and
+per-item results, including retained successes when other items fail. The report
+remains reachable through Tools' migration history after navigation or reload.
+
+Background workers retain the caller's identity and authorization, copy mutable
+request state and run independently of browser disconnects. At most two imports
+run on one API server; overload is refused before journal creation. Each job is
+bounded to ten minutes. Server shutdown cancels and joins workers before the store
+closes; final journal updates get a separate ten-second context. Reviewed plans
+live only in worker memory: jobs are not replayed or resumed after restart. Once
+a running job's recorded deadline plus fifteen seconds passes, reads show it as
+`interrupted` and unresolved items as `unconfirmed`. Check the destination before
+retrying, since a write may have committed just before its journal update.
+Journals use a 1 MiB cap on both drivers to fit Kubernetes Secret data; a run
+accepts at most 100 cutover attempts. Before claiming an attempt, apply checks that the journal has
 room for every zone and address-record outcome, bounded errors, and authority
 updates. An attempt that cannot fit is refused before any destination writes.
 Full backups include internal journals; safe exports omit them.
@@ -124,13 +149,20 @@ sequenceDiagram
     participant U as Dashboard or CLI
     participant A as Migration API
     participant S as Store (SQLite or Kubernetes)
-    U->>A: Apply reviewed import
-    A->>S: Create MigrationRun
-    loop Each object
-        A->>S: Normal authorized object write
-        A->>S: Record outcome and zone identity
+    participant W as Background worker
+    U->>A: Start reviewed import and selection
+    A->>S: Create MigrationRun with pending/skipped items
+    A-->>U: 202 Accepted, run ID and Location
+    A->>W: Selected plan and caller identity
+    loop Each selected object
+        W->>S: Journal running and normal authorized object write
+        W->>S: Record outcome and zone identity
+        U->>A: GET run progress (may leave or reload)
+        A->>S: Read durable journal
+        A-->>U: Counts and item results
     end
-    A->>S: Record finished/partial run
+    W->>S: Apply selected settings if all objects succeeded
+    W->>S: Record completed/partial run
     U->>A: Preview decommission with DNS names or serving IPs/VIPs
     A->>S: Read run and live zones
     A-->>U: Current/target authority, generated addresses, versions and warnings

@@ -1,13 +1,14 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { CodeBlock } from '@astryxdesign/core/CodeBlock';
-import { VStack } from '@astryxdesign/core/Stack';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApi, useCan } from '../../api/context';
-import type { AnyObject, MigrationPlan, MigrationRequest, MigrationResult, DNSZone } from '../../api/types';
+import type { AnyObject, MigrationPlan, MigrationRequest, MigrationRun, DNSZone } from '../../api/types';
+import { useNavigate } from '../../lib/router';
 import { ErrorBanner, errorText } from '../Feedback';
 import { SelectField } from '../fields/SelectField';
 import { cleanList, StringListField } from '../fields/StringListField';
@@ -42,7 +43,7 @@ function objectRow(o: AnyObject): ObjectRow {
   return { id: `${o.kind}/${name}`, kind: o.kind, name };
 }
 
-function MigrationWizard({ onImported }: { onImported: (result: MigrationResult) => void }) {
+function MigrationWizard({ onImported }: { onImported: (run: MigrationRun) => void }) {
   const api = useApi();
   const qc = useQueryClient();
   const [source, setSource] = useState<MigrationRequest['source']>('technitium');
@@ -58,8 +59,12 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
   const [showObjects, setShowObjects] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>();
-  const [result, setResult] = useState<MigrationResult>();
-  const change = (f: () => void) => { f(); setPlan(undefined); setReviewed(false); setResult(undefined); setError(undefined); };
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedSettings, setSelectedSettings] = useState<Set<string>>(new Set());
+  const change = (f: () => void) => { f(); setPlan(undefined); setReviewed(false); setError(undefined); };
+  const selectionChanged = () => setReviewed(false);
+  const chosen = plan ? { ...plan, objects: plan.objects.filter((o) => selected.has(objectRow(o).id)) } : undefined;
+  const objectColumns: TableColumn<ObjectRow>[] = [{ key: 'select', header: 'Import', renderCell: (r) => <CheckboxField label={`Import ${r.id}`} value={selected.has(r.id)} onChange={(checked) => { setSelected((old) => { const next = new Set(old); if (checked) next.add(r.id); else next.delete(r.id); return next; }); selectionChanged(); }} /> }, ...columns];
   const steps: WizardStep[] = [
     {
       id: 'connect', label: 'Connect', description: 'Read configuration from the server you are moving from.',
@@ -84,6 +89,8 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
         try {
           const preview = await api.imports.preview({ source, url: url.trim(), credential, namespace: namespace.trim(), insecureSkipVerify: insecure, localZones: cleanList(localZones), ...(replaceNameservers ? nameserverRequest(nameservers) : { nameservers: [] }) });
           setPlan(preview);
+          setSelected(new Set(preview.objects.map((o) => objectRow(o).id)));
+          setSelectedSettings(new Set(Object.keys(preview.settings)));
           setReviewed(false);
           return null;
         } catch (err) { return errorText(err); }
@@ -93,31 +100,36 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
       id: 'review', label: 'Review', description: 'Review the converted configuration and any features that need attention before importing.',
       content: plan ? (
         <VStack gap={4}>
-          <Text>{plan.objects.length} objects are ready to import.</Text>
+          <Text>{selected.size} of {plan.objects.length} objects and {selectedSettings.size} settings {selectedSettings.size === 1 ? 'section' : 'sections'} selected.</Text>
+          <Text type="supporting">Choose what to import. Unselected items are recorded as skipped. Selected objects may reference other objects; make sure those dependencies are also selected or already exist in kudurru.</Text>
+          <HStack gap={2} wrap="wrap">
+            <Button label="Select all" variant="secondary" onClick={() => { setSelected(new Set(plan.objects.map((o) => objectRow(o).id))); setSelectedSettings(new Set(Object.keys(plan.settings))); selectionChanged(); }} />
+            <Button label="Clear selection" variant="secondary" onClick={() => { setSelected(new Set()); setSelectedSettings(new Set()); selectionChanged(); }} />
+          </HStack>
           <Text>{replaceNameservers ? nameservers.mode === 'addresses' ? `Generated nameservers will use these serving addresses: ${cleanList(nameservers.addresses).join(', ')}.` : `NS records will use ${cleanList(nameservers.names).join(', ')}; SOA primary will use ${cleanList(nameservers.names)[0]}.` : 'Source nameservers will be preserved. Use migration history to decommission them later.'}</Text>
-          {replaceNameservers ? <Table<AuthorityRow> aria-label="Nameserver and address changes" density="compact" idKey="name" data={authorityRows(plan)} columns={authorityColumns} /> : null}
-          <Table<ObjectRow> aria-label="Migration objects" density="compact" idKey="id" data={plan.objects.map(objectRow)} columns={columns} />
+          {replaceNameservers ? <Table<AuthorityRow> aria-label="Nameserver and address changes" density="compact" idKey="name" data={authorityRows(chosen ?? plan)} columns={authorityColumns} /> : null}
+          <Table<ObjectRow> aria-label="Migration objects" density="compact" idKey="id" data={plan.objects.map(objectRow)} columns={objectColumns} />
           <Button label={showObjects ? 'Hide converted objects' : 'Show converted objects'} variant="secondary" onClick={() => setShowObjects((v) => !v)} />
           {showObjects ? <CodeBlock code={JSON.stringify(plan.objects, null, 2)} aria-label="Converted objects" width="100%" /> : null}
-          {Object.keys(plan.settings).length ? <CodeBlock code={JSON.stringify(plan.settings, null, 2)} aria-label="Settings to import" width="100%" /> : null}
-          <Banner status="warning" title="Review before switching DNS" collapsible={false}>
+          {Object.keys(plan.settings).map((key) => <CheckboxField key={key} label={`Import settings: ${key}`} value={selectedSettings.has(key)} onChange={(checked) => { setSelectedSettings((old) => { const next = new Set(old); if (checked) next.add(key); else next.delete(key); return next; }); selectionChanged(); }} help={`Update the ${key} settings section. Settings are applied only after all selected objects succeed.`} />)}
+          {showObjects && selectedSettings.size ? <CodeBlock code={JSON.stringify(Object.fromEntries(Object.entries(plan.settings).filter(([key]) => selectedSettings.has(key))), null, 2)} aria-label="Settings to import" width="100%" /> : null}
+          <Banner status="warning" title={`Review before switching DNS: ${plan.warnings.length} warnings`}>
             <VStack gap={2}>{plan.warnings.map((w, i) => <Text as="p" key={i}>{w}</Text>)}</VStack>
           </Banner>
           <CheckboxField label="I reviewed the configuration and migration warnings" value={reviewed} onChange={setReviewed} />
-          {result ? <Banner status="error" title="Some changes could not be imported" description={[...result.items.filter((r) => r.result === 'error').map((r) => `${r.kind}/${r.name}: ${r.error}`), result.settingsError, result.journalError].filter(Boolean).join('\n')} /> : null}
         </VStack>
       ) : <Text>Go back to connect to the source server again.</Text>,
-      validate: () => !plan ? 'Connect to the source server again.' : !reviewed ? 'Review the configuration and acknowledge the migration warnings.' : null,
+      validate: () => !plan ? 'Connect to the source server again.' : !selected.size && !selectedSettings.size ? 'Select at least one object or settings section.' : !reviewed ? 'Review the configuration and acknowledge the migration warnings.' : null,
     },
   ];
   return <Wizard label="Import from DNS server" steps={steps} finishLabel="Import configuration" isFinishing={pending} error={error ? <ErrorBanner error={error} /> : undefined} onFinish={async () => {
     if (!plan) return;
     setPending(true); setError(undefined);
     try {
-      const imported = await api.imports.apply(plan);
-      setResult(imported);
-      await qc.invalidateQueries();
-      if (!imported.settingsError && !imported.journalError && imported.items.every((r) => r.result !== 'error')) { setCredential(''); onImported(imported); }
+      const imported = await api.imports.start({ ...plan, selection: { objects: [...selected], settings: [...selectedSettings] } });
+      qc.setQueryData(['migration-runs', imported.id], imported);
+      void qc.invalidateQueries({ queryKey: ['migration-runs'] });
+      setCredential(''); onImported(imported);
     } catch (err) { setError(err); } finally { setPending(false); }
   }} />;
 }
@@ -125,14 +137,13 @@ function MigrationWizard({ onImported }: { onImported: (result: MigrationResult)
 export function MigrationImport() {
   const can = useCan();
   const [open, setOpen] = useState(false);
-  const [result, setResult] = useState<MigrationResult>();
+  const navigate = useNavigate();
   return (
     <>
       <Panel title="Move from another DNS server" headingId="migration-title" description="Connect to Pi-hole v6 or Technitium, preview your configuration, then import lists, groups, supported zones and upstreams directly.">
         <Button label="Import from DNS server" variant="primary" isDisabled={!can('settings', 'write')} onClick={() => setOpen(true)} />
-        {result ? <Banner status="success" title="Configuration imported" description={`${result.items.length} objects processed. Validate DNS answers before switching clients.${result.settings?.persisted === false ? ' Settings are currently in memory only; configure a settings file to keep them after restart.' : ''}`} /> : null}
         <WizardDialog isOpen={open} onClose={() => setOpen(false)} title="Import from DNS server" what="migration">
-          <MigrationWizard onImported={(r) => { setResult(r); setOpen(false); }} />
+          <MigrationWizard onImported={(r) => { setOpen(false); navigate(`/tools/migrations/${encodeURIComponent(r.id)}`); }} />
         </WizardDialog>
       </Panel>
       <MigrationHistory />
