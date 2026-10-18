@@ -517,7 +517,8 @@ function topFrom(dim: TopDim, blocked: boolean, n: number, scale: number): TopIt
         group = r.client.group;
         break;
       case 'upstreams':
-        key = r.upstream;
+        // Answers from a local zone count as "zone:<name>", as on a node.
+        key = r.upstream ?? (r.zone ? `zone:${r.zone.replace(/\.$/, '')}` : undefined);
         break;
       case 'lists':
         key = r.list;

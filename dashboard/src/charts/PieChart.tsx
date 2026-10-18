@@ -1,8 +1,8 @@
 // A donut chart on ECharts (query types, upstreams) with an HTML legend
 // that doubles as the keyboard-accessible drill-down (§10 principle 3).
-// ECharts is loaded on first use (charts/echarts.ts) and recoloured from
+// ECharts is loaded on first use (charts/echarts.ts) and recolored from
 // the CSS palette when the theme changes.
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { categorical, resolveCSSColor } from '../lib/colors';
 import { formatExact, formatPercent } from '../lib/format';
 import { Link } from '@astryxdesign/core/Link';
@@ -16,6 +16,8 @@ export interface PieItem {
   value: number;
   /** Drill-down route for the slice and its legend row. */
   href?: string;
+  /** A CSS color for the slice; the next palette color when unset. */
+  color?: string;
 }
 
 export interface PieChartProps {
@@ -23,6 +25,27 @@ export interface PieChartProps {
   items: PieItem[];
   onSliceClick?: (item: PieItem) => void;
   height?: number;
+  /** Most slices (and legend rows) shown; the smallest beyond it fold into one "Other" slice. */
+  maxItems?: number;
+}
+
+/** As many slices as the categorical palette has colors, so no two share one. */
+export const MAX_PIE_ITEMS = 10;
+
+/**
+ * Keeps the largest maxItems - 1 items and folds the rest into one
+ * "Other (n)" item, so a long tail neither fills the panel nor repeats
+ * the palette's colors.
+ */
+export function foldPieItems(items: PieItem[], maxItems = MAX_PIE_ITEMS): PieItem[] {
+  if (items.length <= maxItems) return items;
+  const sorted = [...items].sort((a, b) => b.value - a.value);
+  const keep = Math.max(maxItems - 1, 1);
+  const rest = sorted.slice(keep);
+  return [
+    ...sorted.slice(0, keep),
+    { name: `Other (${rest.length})`, value: rest.reduce((a, b) => a + b.value, 0), color: 'var(--q-other)' },
+  ];
 }
 
 /** Whether this environment can paint on canvas (false under jsdom). */
@@ -34,7 +57,8 @@ export function canvasAvailable(): boolean {
   }
 }
 
-export function PieChart({ label, items, onSliceClick, height = 220 }: PieChartProps) {
+export function PieChart({ label, items: all, onSliceClick, height = 220, maxItems = MAX_PIE_ITEMS }: PieChartProps) {
+  const items = useMemo(() => foldPieItems(all, maxItems), [all, maxItems]);
   const host = useRef<HTMLElement>(null);
   const themeKey = useChartTheme();
   const click = useRef(onSliceClick);
@@ -64,7 +88,11 @@ export function PieChart({ label, items, onSliceClick, height = 220 }: PieChartP
             avoidLabelOverlap: true,
             itemStyle: { borderColor: surface, borderWidth: 2 },
             label: { show: false, color: text },
-            data: items.map((i) => ({ name: i.name, value: i.value })),
+            data: items.map((i) => ({
+              name: i.name,
+              value: i.value,
+              ...(i.color ? { itemStyle: { color: resolveCSSColor(i.color, el) || undefined } } : {}),
+            })),
           },
         ],
       });
@@ -92,7 +120,7 @@ export function PieChart({ label, items, onSliceClick, height = 220 }: PieChartP
         <VStack as="ul" gap={1.5} aria-label={`${label} legend`} style={LIST_RESET}>
           {items.map((i, idx) => (
             <HStack as="li" key={i.name} gap={2} vAlign="center">
-              <Square size={10} fill={palette[idx % palette.length]} stroke="none" aria-hidden="true" style={FIXED} />
+              <Square size={10} fill={(i.color && resolveCSSColor(i.color)) || palette[idx % palette.length]} stroke="none" aria-hidden="true" style={FIXED} />
               <StackItem size="fill">
                 <Text maxLines={2} wordBreak="break-all">
                   {i.href ? (
