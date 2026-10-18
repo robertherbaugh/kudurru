@@ -129,6 +129,7 @@ dev-docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Item | Source | Target |
 |---|---|---|
 | Bench job on a fixed runner class (also for `BenchmarkUDPSockets` and `BenchmarkPersist200k`) | blocking, store-kube spikes; hardening report | v0.2 (moved from M2: needs a fixed runner class, the owner's call) |
+| kudurru-dnsdist fails its Trivy scan on the Debian packages of the pinned `powerdns/dnsdist-21:2.1.2` (47 fixable HIGH/CRITICAL on 2026-10-18; 2.1.3 leaves 5, all libexpat), so `make trivy-images` reports it without failing. Bump the pin (images/dnsdist/Dockerfile, `EDGE_DNSDIST_IMAGE`, the compose, chart and kustomize tags) and decide whether the image runs `apt-get upgrade` to stay clean between upstream releases; then drop `--exit-code 0` | security.yml | before the next release |
 
 ## Deployment (binary behaviour the chart and compose files need)
 

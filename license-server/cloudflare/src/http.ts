@@ -152,6 +152,7 @@ export function unavailable(request: Request, settings: Settings): Response {
     headers.set('Access-Control-Expose-Headers', 'Retry-After');
     const origin = request.headers.get('origin');
     if (origin !== null && formOrigins(settings.formOrigins).includes(origin)) {
+      // nosemgrep: cors-misconfiguration -- only an origin listed in PUBLIC_FORM_ORIGINS is reflected
       headers.set('Access-Control-Allow-Origin', origin);
       if (request.method === 'OPTIONS') {
         headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');

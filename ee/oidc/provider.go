@@ -232,6 +232,7 @@ func (p *Provider) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	p.preauthCookie.Set(w, r, p.preauth.Seal(pt), PreAuthLifetime)
 	w.Header().Set("Cache-Control", "no-store")
+	// nosemgrep: open-redirect -- the IdP authorization endpoint, from discovery of the configured issuer
 	http.Redirect(w, r, md.oauth2.AuthCodeURL(pa.State, gooidc.Nonce(pa.Nonce), oauth2.S256ChallengeOption(pa.Verifier)), http.StatusFound)
 }
 

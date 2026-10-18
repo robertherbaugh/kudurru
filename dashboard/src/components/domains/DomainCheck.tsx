@@ -23,6 +23,7 @@ export function exceptionMatches(e: Pick<DomainEntry, 'value' | 'type'>, name: s
   const v = e.value.toLowerCase();
   if (e.type === 'regex' || (v.startsWith('/') && v.endsWith('/') && v.length > 2)) {
     try {
+      // nosemgrep: detect-non-literal-regexp -- the operator's own regex entry, run in their browser
       return new RegExp(v.replace(/^\/(.*)\/$/, '$1')).test(name);
     } catch {
       return false;

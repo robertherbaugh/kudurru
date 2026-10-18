@@ -566,3 +566,101 @@ license-server-e2e: license-server-install license-server-image license-server-k
 	[ $$status -eq 0 ] || $(LICENSE_SERVER_COMPOSE) --profile e2e logs --no-color --tail 300; \
 	$(LICENSE_SERVER_COMPOSE) --profile e2e down -v; \
 	exit $$status
+
+## Security scans (.github/workflows/security.yml runs them on every pull
+## request, on main and daily). Each fails on a finding; the policy and the
+## accepted findings, each with its reason, are in .semgrepignore and the
+## `nosemgrep` comments, trivy.yaml and .trivyignore.yaml.
+##   sast:                 Semgrep CE (LGPL-2.1) in its pinned image with the
+##                         community rule packs (needs Docker; no account,
+##                         no metrics)
+##   vulncheck:            govulncheck: known vulnerabilities the Go code
+##                         can reach
+##   trivy-fs:             Trivy (Apache-2.0) on the checkout: the go.mod and
+##                         bun.lock dependencies, secrets, and
+##                         misconfigurations in the Dockerfiles, the chart
+##                         and the manifests
+##   trivy-images:         build the kudurru, -debug, kudurru-dnsdist and
+##                         kudurru-keepalived images and scan them (needs
+##                         Docker; -hostnetwork and kudurru-base add only
+##                         distroless and the same binary)
+##   trivy-license-server: the license portal image (license-server-image)
+## The Semgrep rules come from the registry at run time, so a new rule can
+## fail a run without a code change, like a new CVE. Excluded rules: Go
+## checks gosec already enforces in `make lint` (G404, G705, G204, G110,
+## G124, G115), so a false positive needs one suppression, not two; and
+## hostnetwork-pod, since the host-network overlay is an opt-in mode by
+## design. Trivy is downloaded into bin/ at TRIVY_VERSION and checked
+## against the pinned SHA-256 of the release tarball, rather than run
+## through aquasecurity/trivy-action or setup-trivy, whose tags were moved
+## to malicious commits in March 2026; on other platforms install Trivy
+## $(TRIVY_VERSION) and pass TRIVY=/path/to/trivy.
+SEMGREP_IMAGE ?= semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a44787fd93c91397419762a04abe2bafaae396304b
+SEMGREP_CONFIGS := p/default p/golang p/typescript p/github-actions p/dockerfile
+SEMGREP_EXCLUDE := \
+	go.lang.security.audit.crypto.math_random.math-random-used \
+	go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter \
+	go.lang.security.audit.xss.no-fprintf-to-responsewriter.no-fprintf-to-responsewriter \
+	go.lang.security.audit.xss.no-io-writestring-to-responsewriter.no-io-writestring-to-responsewriter \
+	go.lang.security.audit.dangerous-exec-command.dangerous-exec-command \
+	go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb \
+	go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure \
+	trailofbits.go.string-to-int-signedness-cast.string-to-int-signedness-cast \
+	yaml.kubernetes.security.hostnetwork-pod.hostnetwork-pod
+GOVULNCHECK ?= go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
+TRIVY_VERSION              ?= 0.76.0
+TRIVY_ASSET_linux_amd64    := Linux-64bit
+TRIVY_ASSET_linux_arm64    := Linux-ARM64
+TRIVY_ASSET_darwin_amd64   := macOS-64bit
+TRIVY_ASSET_darwin_arm64   := macOS-ARM64
+TRIVY_SHA256_linux_amd64   := e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
+TRIVY_SHA256_linux_arm64   := aab21e677a7b7071fc79f1711480840754c18a1b9d9cefa7ccd06af63a0e8f4c
+TRIVY_SHA256_darwin_amd64  := 89563d4d495cf4ef06a0d1950f8710b124e9f7bd2615ec6c47b03673f4ad45a2
+TRIVY_SHA256_darwin_arm64  := e7ec0d21fe842553f59af99aba2efbcc822369fbaed27019c575408b6d135fce
+TRIVY_DIR                  := $(CURDIR)/bin/trivy-$(TRIVY_VERSION)
+TRIVY                      ?= $(TRIVY_DIR)/trivy
+SCAN_TAG                   ?= scan
+
+.PHONY: sast vulncheck trivy trivy-fs trivy-images trivy-license-server
+
+sast:
+	docker run --rm -u "$$(id -u):$$(id -g)" -e HOME=/tmp -v "$(CURDIR):/src" -w /src \
+	  -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src \
+	  $(SEMGREP_IMAGE) semgrep scan --error --metrics off --disable-version-check \
+	  $(addprefix --config ,$(SEMGREP_CONFIGS)) $(addprefix --exclude-rule ,$(SEMGREP_EXCLUDE))
+
+vulncheck:
+	$(GOVULNCHECK) ./...
+
+trivy: $(TRIVY)
+
+$(TRIVY_DIR)/trivy:
+	@platform='$(HUGO_OS)_$(HUGO_ARCH)'; asset='$(TRIVY_ASSET_$(HUGO_OS)_$(HUGO_ARCH))'; sha='$(TRIVY_SHA256_$(HUGO_OS)_$(HUGO_ARCH))'; \
+	if [ -z "$$sha" ]; then echo "error: no pinned Trivy checksum for $$platform; install Trivy $(TRIVY_VERSION) and pass TRIVY=/path/to/trivy"; exit 1; fi; \
+	rm -rf $(TRIVY_DIR).dl && mkdir -p $(TRIVY_DIR).dl && \
+	curl -fsSL --retry 3 --retry-all-errors -o $(TRIVY_DIR).dl/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v$(TRIVY_VERSION)/trivy_$(TRIVY_VERSION)_$$asset.tar.gz && \
+	echo "$$sha  $(TRIVY_DIR).dl/trivy.tar.gz" | sha256sum -c - && \
+	mkdir -p $(TRIVY_DIR) && tar -xzf $(TRIVY_DIR).dl/trivy.tar.gz -C $(TRIVY_DIR) trivy && \
+	rm -rf $(TRIVY_DIR).dl
+
+trivy-fs: $(TRIVY)
+	$(TRIVY) fs --scanners vuln,secret,misconfig .
+
+## kudurru-dnsdist is scanned but does not fail the target (--exit-code 0):
+## its findings are in the Debian packages of the upstream
+## powerdns/dnsdist-21 image, fixed by bumping that pin
+## (dev-docs/followups.md).
+trivy-images: $(TRIVY)
+	docker build -t kudurru:$(SCAN_TAG) .
+	docker build --target debug -t kudurru:$(SCAN_TAG)-debug .
+	docker build -t kudurru-dnsdist:$(SCAN_TAG) --build-arg KUDURRU_IMAGE=kudurru:$(SCAN_TAG) images/dnsdist
+	docker build -t kudurru-keepalived:$(SCAN_TAG) --build-arg KUDURRU_IMAGE=kudurru:$(SCAN_TAG) images/keepalived
+	@status=0; \
+	for image in kudurru:$(SCAN_TAG) kudurru:$(SCAN_TAG)-debug kudurru-keepalived:$(SCAN_TAG); do \
+	  echo "== $$image"; $(TRIVY) image $$image || status=1; \
+	done; \
+	echo "== kudurru-dnsdist:$(SCAN_TAG) (report only)"; $(TRIVY) image --exit-code 0 kudurru-dnsdist:$(SCAN_TAG); \
+	exit $$status
+
+trivy-license-server: $(TRIVY) license-server-image
+	$(TRIVY) image $(LICENSE_SERVER_IMAGE)

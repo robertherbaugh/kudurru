@@ -299,6 +299,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			ctx, cancel = context.WithTimeout(ctx, kubeStartupTimeout(cfg))
 			defer cancel()
 		}
+		// nosemgrep: invalid-usage-of-modified-variable -- Seed returns a Result value, filled on error too
 		seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Namespace: namespace, Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList, ContinueFirstBoot: continueSeed})
 		if err != nil {
 			continueSeed = continueSeed || seed.FirstBoot

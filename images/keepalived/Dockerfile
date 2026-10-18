@@ -57,7 +57,11 @@ RUN curl -fsSLo keepalived.tar.gz "https://www.keepalived.org/software/keepalive
  && mkdir -p /out/usr/share/keepalived && cp COPYING /out/usr/share/keepalived/COPYING
 
 FROM alpine:${ALPINE_VERSION}
-RUN apk add --no-cache libcrypto3 libmagic iproute2 tini \
+# apk upgrade first: apk add leaves a package the base image already has
+# (libcrypto3) at that image's version, so a stale alpine:3.23 on the
+# builder would ship an OpenSSL without its latest fixes (make trivy-images).
+RUN apk upgrade --no-cache \
+ && apk add --no-cache libcrypto3 libmagic iproute2 tini \
  && addgroup -S -g 953 keepalived_script \
  && adduser -S -D -H -u 953 -G keepalived_script keepalived_script \
  && mkdir -p /etc/keepalived /run/kudurru /run/secrets \
@@ -80,5 +84,8 @@ EXPOSE 8085/tcp
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD ["/usr/local/bin/kudurru", "health", "--ops-address", "127.0.0.1:8085", "--ready"]
 STOPSIGNAL SIGTERM
+# Root by design (see the top of this file): keepalived needs it for VRRP.
+# nosemgrep: missing-user-entrypoint
 ENTRYPOINT ["/sbin/tini", "--"]
+# nosemgrep: missing-user
 CMD ["/usr/local/bin/kudurru", "vip", "run"]
