@@ -165,9 +165,10 @@ func TestFallbackResolverGroupsAndCache(t *testing.T) {
 		m.SetReply(r)
 		m.Authoritative = true
 		q := r.Question[0]
-		if q.Qtype == dns.TypeA {
+		switch q.Qtype {
+		case dns.TypeA:
 			m.Answer = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.ParseIP(upstreamA)}}
-		} else if q.Qtype == dns.TypeAAAA {
+		case dns.TypeAAAA:
 			soa, _ := dns.NewRR(soaOrg)
 			m.Ns = []dns.RR{soa}
 		}
@@ -230,6 +231,10 @@ func TestFallbackResolverGroupsAndCache(t *testing.T) {
 				}
 				if r := ask("www.example.org.", dns.TypeAAAA); r.Status != pipeline.StatusAuthoritative || len(r.Msg.Answer) != 0 || len(r.Msg.Ns) != 1 {
 					t.Fatalf("public cache shadowed local NODATA: %+v", r)
+				}
+				h.Store(h.Load().With(3, build(t, fallbackZone(group))))
+				if r := ask("www.example.org.", dns.TypeA); r.Status == pipeline.StatusAuthoritative || r.Msg.Answer[0].(*dns.A).A.String() != upstreamA || r.Msg.Authoritative {
+					t.Fatalf("removing the override did not restore public resolution: %+v", r)
 				}
 			})
 		}
