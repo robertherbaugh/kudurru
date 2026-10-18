@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { qk, useApi, useScopeParams } from '../api/context';
 import { useSummary } from '../api/hooks';
-import type { ClientTimeseries, Timeseries } from '../api/types';
+import type { ClientTimeseries, Timeseries, UpstreamItem } from '../api/types';
 import { PieChart, type PieItem } from '../charts/PieChart';
 import { StackedBars, type StackSeries } from '../charts/StackedBars';
 import { ErrorBanner, Loading } from '../components/Feedback';
@@ -63,6 +63,31 @@ export function clientSeriesFor(ct: ClientTimeseries | undefined): { x: number[]
   return { x: pts.map((p) => Math.floor(new Date(p.ts).getTime() / 1000)), series };
 }
 
+/** The prefix GET /stats/upstreams gives answers from a local zone ("zone:<name>"). */
+const ZONE_UPSTREAM = 'zone:';
+
+/**
+ * The upstream donut's slices, largest first. Answers from local zones are
+ * one "Local zones (n)" slice that opens the log of authoritative answers:
+ * every zone is its own row in the API, so a server with many zones would
+ * otherwise list each of them.
+ */
+export function upstreamItemsFor(rows: UpstreamItem[] | null | undefined): PieItem[] {
+  const item = (u: UpstreamItem): PieItem => ({ name: u.addr, value: u.total, href: `/queries?upstream=${encodeURIComponent(u.addr)}` });
+  const zones = (rows ?? []).filter((u) => u.addr.startsWith(ZONE_UPSTREAM));
+  const items = (rows ?? []).filter((u) => !u.addr.startsWith(ZONE_UPSTREAM)).map(item);
+  if (zones.length > 1) {
+    items.push({
+      name: `Local zones (${zones.length})`,
+      value: zones.reduce((a, b) => a + b.total, 0),
+      href: '/queries?status=authoritative,local_record',
+    });
+  } else {
+    items.push(...zones.map(item));
+  }
+  return items.sort((a, b) => b.value - a.value);
+}
+
 export default function DashboardPage() {
   const api = useApi();
   const scope = useScopeParams();
@@ -88,10 +113,7 @@ export default function DashboardPage() {
         .map(([name, value]) => ({ name, value, href: `/queries?qtype=${encodeURIComponent(name)}` })),
     [summary.data],
   );
-  const ups = useMemo<PieItem[]>(
-    () => (upstreams.data?.upstreams ?? []).map((u) => ({ name: u.addr, value: u.total, href: `/queries?upstream=${encodeURIComponent(u.addr)}` })),
-    [upstreams.data],
-  );
+  const ups = useMemo(() => upstreamItemsFor(upstreams.data?.upstreams), [upstreams.data]);
 
   return (
     <Page>
