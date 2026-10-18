@@ -707,6 +707,24 @@ func (e RoleBindingInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for SectionOwner.
+const (
+	SectionOwnerGitops SectionOwner = "gitops"
+	SectionOwnerUi     SectionOwner = "ui"
+)
+
+// Valid indicates whether the value is a known member of the SectionOwner enum.
+func (e SectionOwner) Valid() bool {
+	switch e {
+	case SectionOwnerGitops:
+		return true
+	case SectionOwnerUi:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SettingFieldFormat.
 const (
 	SettingFieldFormatCidr     SettingFieldFormat = "cidr"
@@ -845,6 +863,24 @@ func (e SettingKeyFormat) Valid() bool {
 	case SettingKeyFormatUpstream:
 		return true
 	case SettingKeyFormatUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingKeyManagedBy.
+const (
+	SettingKeyManagedByGitops SettingKeyManagedBy = "gitops"
+	SettingKeyManagedByUi     SettingKeyManagedBy = "ui"
+)
+
+// Valid indicates whether the value is a known member of the SettingKeyManagedBy enum.
+func (e SettingKeyManagedBy) Valid() bool {
+	switch e {
+	case SettingKeyManagedByGitops:
+		return true
+	case SettingKeyManagedByUi:
 		return true
 	default:
 		return false
@@ -3539,6 +3575,11 @@ type OwnerReference struct {
 	Uid                string `json:"uid"`
 }
 
+// OwnershipInputBody defines model for OwnershipInputBody.
+type OwnershipInputBody struct {
+	Revision string `json:"revision"`
+}
+
 // PasswordChangeRequest defines model for PasswordChangeRequest.
 type PasswordChangeRequest struct {
 	// CurrentPassword The current password.
@@ -4029,6 +4070,17 @@ type SafeSearchEngine struct {
 	Target *string `json:"target,omitempty"`
 }
 
+// Section defines model for Section.
+type Section struct {
+	EnvLocked  bool         `json:"envLocked"`
+	Owner      SectionOwner `json:"owner"`
+	Revision   *string      `json:"revision,omitempty"`
+	Switchable bool         `json:"switchable"`
+}
+
+// SectionOwner defines model for Section.Owner.
+type SectionOwner string
+
 // Selection defines model for Selection.
 type Selection struct {
 	Objects  []string `json:"objects"`
@@ -4124,32 +4176,36 @@ type SettingFieldType string
 
 // SettingKey defines model for SettingKey.
 type SettingKey struct {
-	Default         interface{}       `json:"default"`
-	Enum            *[]SettingOption  `json:"enum,omitempty"`
-	EnvLocked       bool              `json:"envLocked"`
-	Fields          *[]SettingField   `json:"fields,omitempty"`
-	Format          *SettingKeyFormat `json:"format,omitempty"`
-	Group           *string           `json:"group,omitempty"`
-	Help            string            `json:"help"`
-	HostOnly        bool              `json:"hostOnly"`
-	Items           *SettingShape     `json:"items,omitempty"`
-	Keys            *SettingShape     `json:"keys,omitempty"`
-	Label           *string           `json:"label,omitempty"`
-	Max             *int64            `json:"max,omitempty"`
-	Min             *int64            `json:"min,omitempty"`
-	Path            string            `json:"path"`
-	Presets         *[]string         `json:"presets,omitempty"`
-	Ref             *SettingKeyRef    `json:"ref,omitempty"`
-	RestartRequired bool              `json:"restartRequired"`
-	Scope           SettingKeyScope   `json:"scope"`
-	Type            string            `json:"type"`
-	Value           interface{}       `json:"value"`
-	Values          *SettingShape     `json:"values,omitempty"`
-	WriteOnly       bool              `json:"writeOnly"`
+	Default         interface{}          `json:"default"`
+	Enum            *[]SettingOption     `json:"enum,omitempty"`
+	EnvLocked       bool                 `json:"envLocked"`
+	Fields          *[]SettingField      `json:"fields,omitempty"`
+	Format          *SettingKeyFormat    `json:"format,omitempty"`
+	Group           *string              `json:"group,omitempty"`
+	Help            string               `json:"help"`
+	HostOnly        bool                 `json:"hostOnly"`
+	Items           *SettingShape        `json:"items,omitempty"`
+	Keys            *SettingShape        `json:"keys,omitempty"`
+	Label           *string              `json:"label,omitempty"`
+	ManagedBy       *SettingKeyManagedBy `json:"managedBy,omitempty"`
+	Max             *int64               `json:"max,omitempty"`
+	Min             *int64               `json:"min,omitempty"`
+	Path            string               `json:"path"`
+	Presets         *[]string            `json:"presets,omitempty"`
+	Ref             *SettingKeyRef       `json:"ref,omitempty"`
+	RestartRequired bool                 `json:"restartRequired"`
+	Scope           SettingKeyScope      `json:"scope"`
+	Type            string               `json:"type"`
+	Value           interface{}          `json:"value"`
+	Values          *SettingShape        `json:"values,omitempty"`
+	WriteOnly       bool                 `json:"writeOnly"`
 }
 
 // SettingKeyFormat defines model for SettingKey.Format.
 type SettingKeyFormat string
+
+// SettingKeyManagedBy defines model for SettingKey.ManagedBy.
+type SettingKeyManagedBy string
 
 // SettingKeyRef defines model for SettingKey.Ref.
 type SettingKeyRef string
@@ -4192,10 +4248,12 @@ type SettingShapeType string
 // SettingsBody defines model for SettingsBody.
 type SettingsBody struct {
 	Changed         *[]string              `json:"changed,omitempty"`
+	Conflicts       *[]string              `json:"conflicts,omitempty"`
 	Node            string                 `json:"node"`
 	Persisted       *bool                  `json:"persisted,omitempty"`
 	RestartRequired *[]string              `json:"restartRequired,omitempty"`
 	Scope           SettingsBodyScope      `json:"scope"`
+	Sections        *map[string]Section    `json:"sections,omitempty"`
 	Settings        map[string]interface{} `json:"settings"`
 
 	// TookMs Server-side duration of the request in milliseconds.
@@ -4204,6 +4262,17 @@ type SettingsBody struct {
 
 // SettingsBodyScope defines model for SettingsBody.Scope.
 type SettingsBodyScope string
+
+// SettingsYAMLBody defines model for SettingsYAMLBody.
+type SettingsYAMLBody struct {
+	Revision string `json:"revision"`
+	Yaml     string `json:"yaml"`
+}
+
+// SettingsYAMLInputBody defines model for SettingsYAMLInputBody.
+type SettingsYAMLInputBody struct {
+	Proposed *map[string]interface{} `json:"proposed,omitempty"`
+}
 
 // SourceEntries defines model for SourceEntries.
 type SourceEntries struct {
@@ -5249,6 +5318,12 @@ type PurgeQuerylogParams struct {
 // PatchSettingsJSONBody defines parameters for PatchSettings.
 type PatchSettingsJSONBody map[string]interface{}
 
+// PatchSettingsParams defines parameters for PatchSettings.
+type PatchSettingsParams struct {
+	// IfMatch Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams.
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
 // StatsClientTimeseriesParams defines parameters for StatsClientTimeseries.
 type StatsClientTimeseriesParams struct {
 	// Window Window ending now, as a Go duration (24h, 7d is 168h); default 24h.
@@ -5545,6 +5620,12 @@ type QueryActionJSONRequestBody = QueryActionInputBody
 
 // PatchSettingsJSONRequestBody defines body for PatchSettings for application/json ContentType.
 type PatchSettingsJSONRequestBody PatchSettingsJSONBody
+
+// ChangeSettingsOwnershipJSONRequestBody defines body for ChangeSettingsOwnership for application/json ContentType.
+type ChangeSettingsOwnershipJSONRequestBody = OwnershipInputBody
+
+// ExportSettingsSectionYAMLJSONRequestBody defines body for ExportSettingsSectionYAML for application/json ContentType.
+type ExportSettingsSectionYAMLJSONRequestBody = SettingsYAMLInputBody
 
 // ApproveUnblockRequestJSONRequestBody defines body for ApproveUnblockRequest for application/json ContentType.
 type ApproveUnblockRequestJSONRequestBody = UnblockApproval
@@ -6658,19 +6739,47 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /settings (the `PatchSettings` operationId).
-	PatchSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PatchSettingsWithBody(ctx context.Context, params *PatchSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchSettings Change cluster-scope settings (JSON merge patch)
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with PATCH /settings (the `PatchSettings` operationId).
-	PatchSettings(ctx context.Context, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PatchSettings(ctx context.Context, params *PatchSettingsParams, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SettingsSchema The settings metadata table
 	//
 	// Corresponds with GET /settings/_schema (the `SettingsSchema` operationId).
 	SettingsSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ChangeSettingsOwnershipWithBody Adopt or release a settings section using its reviewed revision
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
+	ChangeSettingsOwnershipWithBody(ctx context.Context, section string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ChangeSettingsOwnership Adopt or release a settings section using its reviewed revision
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
+	ChangeSettingsOwnership(ctx context.Context, section string, action string, body ChangeSettingsOwnershipJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportSettingsSectionYAMLWithBody Generate Helm values for the current or proposed complete section without writing
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
+	ExportSettingsSectionYAMLWithBody(ctx context.Context, section string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportSettingsSectionYAML Generate Helm values for the current or proposed complete section without writing
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
+	ExportSettingsSectionYAML(ctx context.Context, section string, body ExportSettingsSectionYAMLJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StatsClientTimeseries Per-client query volume over time
 	//
@@ -9426,8 +9535,8 @@ func (c *Client) GetSettings(ctx context.Context, reqEditors ...RequestEditorFn)
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PATCH /settings (the `PatchSettings` operationId).
-func (c *Client) PatchSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchSettingsRequestWithBody(c.Server, contentType, body)
+func (c *Client) PatchSettingsWithBody(ctx context.Context, params *PatchSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchSettingsRequestWithBody(c.Server, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9443,8 +9552,8 @@ func (c *Client) PatchSettingsWithBody(ctx context.Context, contentType string, 
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with PATCH /settings (the `PatchSettings` operationId).
-func (c *Client) PatchSettings(ctx context.Context, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchSettingsRequest(c.Server, body)
+func (c *Client) PatchSettings(ctx context.Context, params *PatchSettingsParams, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchSettingsRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9460,6 +9569,74 @@ func (c *Client) PatchSettings(ctx context.Context, body PatchSettingsJSONReques
 // Corresponds with GET /settings/_schema (the `SettingsSchema` operationId).
 func (c *Client) SettingsSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSettingsSchemaRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ChangeSettingsOwnershipWithBody Adopt or release a settings section using its reviewed revision
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
+func (c *Client) ChangeSettingsOwnershipWithBody(ctx context.Context, section string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangeSettingsOwnershipRequestWithBody(c.Server, section, action, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ChangeSettingsOwnership Adopt or release a settings section using its reviewed revision
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
+func (c *Client) ChangeSettingsOwnership(ctx context.Context, section string, action string, body ChangeSettingsOwnershipJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangeSettingsOwnershipRequest(c.Server, section, action, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportSettingsSectionYAMLWithBody Generate Helm values for the current or proposed complete section without writing
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
+func (c *Client) ExportSettingsSectionYAMLWithBody(ctx context.Context, section string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportSettingsSectionYAMLRequestWithBody(c.Server, section, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportSettingsSectionYAML Generate Helm values for the current or proposed complete section without writing
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
+func (c *Client) ExportSettingsSectionYAML(ctx context.Context, section string, body ExportSettingsSectionYAMLJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportSettingsSectionYAMLRequest(c.Server, section, body)
 	if err != nil {
 		return nil, err
 	}
@@ -16026,18 +16203,18 @@ func NewGetSettingsRequest(server string) (*http.Request, error) {
 }
 
 // NewPatchSettingsRequest calls the generic PatchSettings builder with application/json body
-func NewPatchSettingsRequest(server string, body PatchSettingsJSONRequestBody) (*http.Request, error) {
+func NewPatchSettingsRequest(server string, params *PatchSettingsParams, body PatchSettingsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewPatchSettingsRequestWithBody(server, "application/json", bodyReader)
+	return NewPatchSettingsRequestWithBody(server, params, "application/json", bodyReader)
 }
 
 // NewPatchSettingsRequestWithBody constructs an http.Request for the PatchSettings method, with any body, and a specified content type
-func NewPatchSettingsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+func NewPatchSettingsRequestWithBody(server string, params *PatchSettingsParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -16061,6 +16238,21 @@ func NewPatchSettingsRequestWithBody(server string, contentType string, body io.
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -16088,6 +16280,107 @@ func NewSettingsSchemaRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewChangeSettingsOwnershipRequest calls the generic ChangeSettingsOwnership builder with application/json body
+func NewChangeSettingsOwnershipRequest(server string, section string, action string, body ChangeSettingsOwnershipJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewChangeSettingsOwnershipRequestWithBody(server, section, action, "application/json", bodyReader)
+}
+
+// NewChangeSettingsOwnershipRequestWithBody constructs an http.Request for the ChangeSettingsOwnership method, with any body, and a specified content type
+func NewChangeSettingsOwnershipRequestWithBody(server string, section string, action string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "section", section, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "action", action, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/settings/sections/%s/ownership/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExportSettingsSectionYAMLRequest calls the generic ExportSettingsSectionYAML builder with application/json body
+func NewExportSettingsSectionYAMLRequest(server string, section string, body ExportSettingsSectionYAMLJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExportSettingsSectionYAMLRequestWithBody(server, section, "application/json", bodyReader)
+}
+
+// NewExportSettingsSectionYAMLRequestWithBody constructs an http.Request for the ExportSettingsSectionYAML method, with any body, and a specified content type
+func NewExportSettingsSectionYAMLRequestWithBody(server string, section string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "section", section, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/settings/sections/%s/yaml", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -18751,14 +19044,14 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /settings (the `PatchSettings` operationId).
-	PatchSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error)
+	PatchSettingsWithBodyWithResponse(ctx context.Context, params *PatchSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error)
 
 	// PatchSettingsWithResponse Change cluster-scope settings (JSON merge patch)
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /settings (the `PatchSettings` operationId).
-	PatchSettingsWithResponse(ctx context.Context, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error)
+	PatchSettingsWithResponse(ctx context.Context, params *PatchSettingsParams, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error)
 
 	// SettingsSchemaWithResponse The settings metadata table
 	//
@@ -18766,6 +19059,34 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /settings/_schema (the `SettingsSchema` operationId).
 	SettingsSchemaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SettingsSchemaResponse, error)
+
+	// ChangeSettingsOwnershipWithBodyWithResponse Adopt or release a settings section using its reviewed revision
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
+	ChangeSettingsOwnershipWithBodyWithResponse(ctx context.Context, section string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangeSettingsOwnershipResponse, error)
+
+	// ChangeSettingsOwnershipWithResponse Adopt or release a settings section using its reviewed revision
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
+	ChangeSettingsOwnershipWithResponse(ctx context.Context, section string, action string, body ChangeSettingsOwnershipJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeSettingsOwnershipResponse, error)
+
+	// ExportSettingsSectionYAMLWithBodyWithResponse Generate Helm values for the current or proposed complete section without writing
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
+	ExportSettingsSectionYAMLWithBodyWithResponse(ctx context.Context, section string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExportSettingsSectionYAMLResponse, error)
+
+	// ExportSettingsSectionYAMLWithResponse Generate Helm values for the current or proposed complete section without writing
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
+	ExportSettingsSectionYAMLWithResponse(ctx context.Context, section string, body ExportSettingsSectionYAMLJSONRequestBody, reqEditors ...RequestEditorFn) (*ExportSettingsSectionYAMLResponse, error)
 
 	// StatsClientTimeseriesWithResponse Per-client query volume over time
 	//
@@ -29963,6 +30284,200 @@ func (r SettingsSchemaResponse) ContentType() string {
 	return ""
 }
 
+type ChangeSettingsOwnershipResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SettingsBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON200() *SettingsBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ChangeSettingsOwnershipResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ChangeSettingsOwnershipResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ChangeSettingsOwnershipResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ChangeSettingsOwnershipResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ChangeSettingsOwnershipResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ExportSettingsSectionYAMLResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SettingsYAMLBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON200() *SettingsYAMLBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ExportSettingsSectionYAMLResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportSettingsSectionYAMLResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportSettingsSectionYAMLResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportSettingsSectionYAMLResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportSettingsSectionYAMLResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type StatsClientTimeseriesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -34028,8 +34543,8 @@ func (c *ClientWithResponses) GetSettingsWithResponse(ctx context.Context, reqEd
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /settings (the `PatchSettings` operationId).
-func (c *ClientWithResponses) PatchSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error) {
-	rsp, err := c.PatchSettingsWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) PatchSettingsWithBodyWithResponse(ctx context.Context, params *PatchSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error) {
+	rsp, err := c.PatchSettingsWithBody(ctx, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -34041,8 +34556,8 @@ func (c *ClientWithResponses) PatchSettingsWithBodyWithResponse(ctx context.Cont
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /settings (the `PatchSettings` operationId).
-func (c *ClientWithResponses) PatchSettingsWithResponse(ctx context.Context, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error) {
-	rsp, err := c.PatchSettings(ctx, body, reqEditors...)
+func (c *ClientWithResponses) PatchSettingsWithResponse(ctx context.Context, params *PatchSettingsParams, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error) {
+	rsp, err := c.PatchSettings(ctx, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -34060,6 +34575,58 @@ func (c *ClientWithResponses) SettingsSchemaWithResponse(ctx context.Context, re
 		return nil, err
 	}
 	return ParseSettingsSchemaResponse(rsp)
+}
+
+// ChangeSettingsOwnershipWithBodyWithResponse Adopt or release a settings section using its reviewed revision
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
+func (c *ClientWithResponses) ChangeSettingsOwnershipWithBodyWithResponse(ctx context.Context, section string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangeSettingsOwnershipResponse, error) {
+	rsp, err := c.ChangeSettingsOwnershipWithBody(ctx, section, action, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangeSettingsOwnershipResponse(rsp)
+}
+
+// ChangeSettingsOwnershipWithResponse Adopt or release a settings section using its reviewed revision
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
+func (c *ClientWithResponses) ChangeSettingsOwnershipWithResponse(ctx context.Context, section string, action string, body ChangeSettingsOwnershipJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeSettingsOwnershipResponse, error) {
+	rsp, err := c.ChangeSettingsOwnership(ctx, section, action, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangeSettingsOwnershipResponse(rsp)
+}
+
+// ExportSettingsSectionYAMLWithBodyWithResponse Generate Helm values for the current or proposed complete section without writing
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
+func (c *ClientWithResponses) ExportSettingsSectionYAMLWithBodyWithResponse(ctx context.Context, section string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExportSettingsSectionYAMLResponse, error) {
+	rsp, err := c.ExportSettingsSectionYAMLWithBody(ctx, section, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportSettingsSectionYAMLResponse(rsp)
+}
+
+// ExportSettingsSectionYAMLWithResponse Generate Helm values for the current or proposed complete section without writing
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
+func (c *ClientWithResponses) ExportSettingsSectionYAMLWithResponse(ctx context.Context, section string, body ExportSettingsSectionYAMLJSONRequestBody, reqEditors ...RequestEditorFn) (*ExportSettingsSectionYAMLResponse, error) {
+	rsp, err := c.ExportSettingsSectionYAML(ctx, section, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportSettingsSectionYAMLResponse(rsp)
 }
 
 // StatsClientTimeseriesWithResponse Per-client query volume over time
@@ -43974,6 +44541,170 @@ func ParseSettingsSchemaResponse(rsp *http.Response) (*SettingsSchemaResponse, e
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseChangeSettingsOwnershipResponse parses an HTTP response from a ChangeSettingsOwnershipWithResponse call
+func ParseChangeSettingsOwnershipResponse(rsp *http.Response) (*ChangeSettingsOwnershipResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ChangeSettingsOwnershipResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SettingsBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExportSettingsSectionYAMLResponse parses an HTTP response from a ExportSettingsSectionYAMLWithResponse call
+func ParseExportSettingsSectionYAMLResponse(rsp *http.Response) (*ExportSettingsSectionYAMLResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportSettingsSectionYAMLResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SettingsYAMLBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

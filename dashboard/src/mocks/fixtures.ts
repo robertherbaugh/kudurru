@@ -54,6 +54,9 @@ export interface MockDB {
   settingsPersisted: boolean;
   /** Set to an owner to answer PATCH /settings with 409 managed_by (Kubernetes). */
   settingsManagedBy?: string;
+  settingsOwner?: 'gitops' | 'ui';
+  settingsRevision?: number;
+  settingsConflict?: boolean;
   schema: SettingKey[];
   blocking: { blocking: boolean; until?: number };
   /** blocking.enabled; false makes GET /dns/blocking answer configured:false. */

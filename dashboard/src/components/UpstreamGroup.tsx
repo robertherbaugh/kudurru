@@ -242,7 +242,7 @@ export function useUpstreams() {
   const can = useCan();
   const qc = useQueryClient();
   const notify = useNotify();
-  const settings = useQuery({ queryKey: qk.settings, queryFn: () => api.settings.get() });
+  const settings = useQuery({ queryKey: qk.settings, queryFn: () => api.settings.get(), refetchInterval: 10_000 });
   const cluster = useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info(), enabled: can('cluster', 'read') });
   const stats = useQuery({
     queryKey: qk.stats('upstreams', CLUSTER_SCOPE, '24h'),
@@ -254,20 +254,22 @@ export function useUpstreams() {
   const [notPersisted, setNotPersisted] = useState(false);
   const cfg = useMemo(() => upstreamsOf(settings.data), [settings.data]);
   const kube = cluster.data?.driver === 'kube';
+  const owner = settings.data?.sections?.upstreams?.owner;
   const readOnlyReason =
-    managed ??
-    (kube
+    (owner ? null : managed) ??
+    (owner === 'gitops' || (!owner && kube)
       ? 'In Kubernetes the kudurru-settings ConfigMap owns the cluster settings: set config.settings.upstreams in the Helm values (or edit the ConfigMap); every pod reloads it without a restart.'
       : null);
-  const canWrite = can('settings', 'write') && !readOnlyReason;
+  const canWrite = !!settings.data && can('settings', 'write') && !readOnlyReason && !settings.data.sections?.upstreams?.envLocked;
 
   /** PATCH {upstreams: patch}; a 409 managed_by makes the pages read-only. */
   const save = async (patch: Record<string, unknown>, what: string) => {
     let body: SettingsBody;
     try {
-      body = await api.settings.patch({ upstreams: patch });
+      body = await api.settings.patch({ upstreams: patch }, settings.data?.sections?.upstreams?.revision);
     } catch (err) {
       if (err instanceof ApiError && err.key === 'managed_by') setManaged(err.describe());
+      void qc.invalidateQueries({ queryKey: qk.settings });
       throw err;
     }
     qc.setQueryData(qk.settings, body);

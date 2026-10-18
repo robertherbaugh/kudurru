@@ -223,6 +223,8 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/settings` | Cluster-scope settings (redacted) | `settings.read` (cluster) |
 | PATCH | `/api/v1/settings` | Change cluster-scope settings (JSON merge patch) | `settings.write` (cluster) |
 | GET | `/api/v1/settings/_schema` | The settings metadata table | `settings.read` (cluster) |
+| POST | `/api/v1/settings/sections/{section}/ownership/{action}` | Adopt or release a settings section using its reviewed revision | `settings.write` (cluster) |
+| POST | `/api/v1/settings/sections/{section}/yaml` | Generate Helm values for the current or proposed complete section without writing | `settings.read` (cluster) |
 
 ## stats
 

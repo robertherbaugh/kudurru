@@ -238,7 +238,9 @@ export function endpoints(c: ApiClient) {
 
     settings: {
       get: () => c.get<SettingsBody>('/settings'),
-      patch: (patch: Record<string, unknown>) => c.patch<SettingsBody>('/settings', patch),
+      patch: (patch: Record<string, unknown>, revision?: string) => c.request<SettingsBody>('PATCH', '/settings', { body: patch, contentType: 'application/merge-patch+json', headers: revision ? { 'If-Match': revision } : {} }),
+      ownership: (section: string, action: 'adopt' | 'release', revision: string) => c.post<SettingsBody>(`/settings/sections/${enc(section)}/ownership/${action}`, { revision }),
+      yaml: (section: string, proposed?: Record<string, unknown>) => c.post<{ yaml: string; revision: string }>(`/settings/sections/${enc(section)}/yaml`, { proposed }),
       nodeConfig: () => c.get<SettingsBody>('/node/config'),
       patchNodeConfig: (patch: Record<string, unknown>) => c.patch<SettingsBody>('/node/config', patch),
       schema: () => c.get<ListEnvelope<SettingKey>>('/settings/_schema'),

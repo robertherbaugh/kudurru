@@ -1124,6 +1124,20 @@ Flags:
 
 Read and change runtime settings (cluster keys and this node's keys).
 
+### kudurru settings adopt
+
+adopt upstream settings ownership. Read the revision with `kudurru settings ownership`. Before release, export with `kudurru settings yaml upstreams`, commit and apply those Helm values, then read the updated revision. Release refuses a handoff if the file settings differ.
+
+```text
+kudurru settings adopt upstreams [flags]
+```
+
+Flags:
+
+```text
+      --revision string   reviewed revision from settings ownership
+```
+
 ### kudurru settings get
 
 Show settings (redacted) with their scope.
@@ -1138,12 +1152,36 @@ Flags:
       --scope string   only cluster or node keys
 ```
 
+### kudurru settings ownership
+
+Show section ownership and revisions.
+
+```text
+kudurru settings ownership
+```
+
+### kudurru settings release
+
+release upstream settings ownership. Read the revision with `kudurru settings ownership`. Before release, export with `kudurru settings yaml upstreams`, commit and apply those Helm values, then read the updated revision. Release refuses a handoff if the file settings differ.
+
+```text
+kudurru settings release upstreams [flags]
+```
+
+Flags:
+
+```text
+      --revision string   reviewed revision from settings ownership
+```
+
 ### kudurru settings set
 
 Change settings with a JSON merge patch. Cluster-scope keys go to PATCH /api/v1/settings and apply to every node; node-scope keys go to PATCH /api/v1/node/config on the node that serves the request. hostOnly keys (listener addresses, dataDir, ...) can never be set through the API: put them in kudurru.yaml or the KUDURRU\_&lt;SECTION&gt;\_\_&lt;KEY&gt; environment variable on the host. "key-" removes the override so the default applies again.
 
+For safe concurrent upstream edits, run kudurru settings ownership to review the revision and pass it with --revision. Omitting --revision preserves legacy behavior: your upstream edit can overwrite values changed since you reviewed them.
+
 ```text
-kudurru settings set key=value... [key-]
+kudurru settings set key=value... [key-] [flags]
 ```
 
 Examples:
@@ -1153,6 +1191,26 @@ kudurru settings set cache.maxEntries=200000
 kudurru settings set blocking.refreshInterval=12h log.level=debug
 kudurru settings set upstreams.bootstrap=9.9.9.9,1.1.1.1
 kudurru settings set log.level-
+```
+
+Flags:
+
+```text
+      --revision string   reviewed upstreams revision from settings ownership (If-Match)
+```
+
+### kudurru settings yaml
+
+Generate Helm values without saving (optionally from a proposed JSON section).
+
+```text
+kudurru settings yaml upstreams [flags]
+```
+
+Flags:
+
+```text
+      --proposed-file string   complete proposed upstreams section as JSON
 ```
 
 ## kudurru stats

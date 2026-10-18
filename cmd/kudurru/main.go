@@ -87,14 +87,18 @@ func newRootWith(o *cliOpts) *cobra.Command {
 // file does not exist, built-in defaults are used so `docker run` with no
 // mounted file still starts.
 func loadConfig(cmd *cobra.Command, path string) (*config.Config, error) {
+	return loadConfigWithSections(cmd, path, nil)
+}
+
+func loadConfigWithSections(cmd *cobra.Command, path string, owned config.SectionLoader) (*config.Config, error) {
 	explicit := cmd.Flags().Changed("config") || os.Getenv("KUDURRU_CONFIG") != ""
 	if _, err := os.Stat(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) && !explicit {
-			return config.Load("", os.Environ())
+			return config.LoadWithSections("", os.Environ(), owned)
 		}
 		return nil, fmt.Errorf("config %s: %w", path, err)
 	}
-	return config.Load(path, os.Environ())
+	return config.LoadWithSections(path, os.Environ(), owned)
 }
 
 func newVersionCmd() *cobra.Command {

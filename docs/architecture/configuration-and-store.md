@@ -419,17 +419,69 @@ flowchart LR
 ```
 
 An environment variable wins and locks the key in the dashboard. In
-Kubernetes the cluster settings are the `kudurru-settings` ConfigMap (the API
-refuses to write them; edit the ConfigMap or the Helm values); in Docker the
-API writes the settings file.
+Kubernetes, sections default to `gitops`: edit Helm values or the settings
+ConfigMap. Only `upstreams` can currently switch to `ui` ownership, through
+an explicit, revision-checked adoption. Adoption copies the entire effective
+section (groups, servers, bootstrap, conditional rules, ECS and recursion)
+without changing routing. Host-only restrictions remain in place.
+
+UI-owned upstreams live with their ownership record in a separate ConfigMap,
+`<release>-ui-settings` by default (`KUDURRU_SETTINGS_RESOURCE`). Helm never
+renders that resource. Each replica reads it at startup and on the settings
+watcher's ten-second poll. Its values replace the entire file section; file
+keys are never merged into a UI-owned section. The environment still wins
+and locks individual keys; any upstream environment override blocks ownership
+transitions. File declarations under a UI-owned section produce a warning,
+the `conflicts` field in `GET /settings` and a dashboard banner while UI values remain
+authoritative. Other sections continue following the settings ConfigMap.
+
+Ownership and values share a Kubernetes `resourceVersion`; concurrent
+adoptions, releases and edits use compare-and-swap. The API exposes section
+owners and reviewed revisions in the `sections` field of `GET /settings`, accepts
+`If-Match` on upstream settings patches, and authorizes transitions with
+`settings.write`. The header is optional for backward compatibility, but
+safe concurrent upstream edits require a reviewed revision; omitting it can
+overwrite newer client edits. Other sections do not use the upstream revision.
+For CLI edits, review `kudurru settings ownership`, then pass the token to
+`kudurru settings set upstreams.bootstrap=9.9.9.9:53 --revision TOKEN`.
+Writes and transitions are audited. Every replica uses the
+same reload subscriptions, including upstream set swaps and cache flushes.
+Invalid or unavailable sources leave the running configuration intact.
+A node-local `ui-settings-<identity>.json` cache retains the last confirmed
+shared ownership and values for offline startup; writes always require the
+apiserver. Preserve the node data directory alongside `local.db`.
+
+In Docker, the API keeps writing the existing writable settings file. A
+`settingsOwnership` map in that file records explicit adoption/release, in the
+same atomic rename as complete section values. Existing Docker settings remain
+UI-editable; a deployment without a writable settings file retains its existing
+in-memory behavior and cannot change ownership.
+
+Generate current or proposed Helm values with
+`POST /settings/sections/upstreams/yaml` (no write). To return ownership to
+GitOps, commit and apply the current exported values, wait for the settings
+volume to update on every replica, refresh the preview, then call
+`POST /settings/sections/upstreams/ownership/release` with its
+revision. Release refuses mismatched file values on the serving replica;
+it does not collect acknowledgments from other replicas. Kubernetes volume
+projection is asynchronous, so the operator must verify that all replicas
+have received the applied values before releasing. Adoption uses the same
+path ending in `/adopt`. Only ownership is transferred; no new CRD is required.
+Include the API-owned ConfigMap in your
+Kubernetes backups; ordinary object-store exports do not include it.
+
+![Explicit GitOps or UI section ownership feeds every replica's settings reload](diagrams/settings-ownership.svg)
 
 ```mermaid
 sequenceDiagram
-    participant SRC as settings file / ConfigMap / PATCH /api/v1/settings
+    participant SRC as file / Helm ConfigMap / API-owned settings
+    participant M as ownership manager (every node)
     participant W as settings watcher (every node)
     participant R as reload subscribers
     SRC->>W: change (fsnotify + 10 s poll)
-    W->>W: merge cluster-scope keys only
+    W->>M: read both sources and ownership revision
+    M->>M: replace UI-owned sections; report file conflicts
+    M->>W: validated effective cluster settings
     W->>R: log level, upstream groups (swap + cache flush),<br/>cache, blocking, block page, rate limiter,<br/>query log privacy, edge cache flush
 ```
 
