@@ -22,7 +22,7 @@ The optional DHCPv4 server included in v0.1.0: [dhcp.md](dhcp.md).
 Built-in DHCPv4 is disabled by default and runs on Linux with either store:
 SQLite standalone or three-node quorum failover, or the Kubernetes store with
 `DHCPScope`/`DHCPLease` objects and one elected replica behind a relay
-([dhcp.md#kubernetes](dhcp.md#kubernetes)). It has complete dashboard setup, persistent
+([Kubernetes DHCP](dhcp-kubernetes.md)). It has complete dashboard setup, persistent
 leases/reservations, multiple subnets, trusted relays, conflict checks,
 network/boot options, import/export and local DNS ownership. DHCPv6 is excluded.
 Keep IPv6 router and DNS advertisements on your router.
