@@ -1388,7 +1388,7 @@ Build & CI (GitHub Actions):
 
 ### 13.1 v0.1.0 — "stone"
 
-The first release is dated 16 October 2026. See the
+The first release is dated 18 October 2026. See the
 [changelog](../CHANGELOG.md) for the release scope and the
 [architecture tour](../docs/architecture/README.md) for implemented behavior.
 The table below retains the original milestone schedule; the reports
