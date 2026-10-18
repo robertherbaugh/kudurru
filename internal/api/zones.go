@@ -896,6 +896,11 @@ func (s *Server) notifyZone(ctx context.Context, in *zonePathInput) (*notifyOutp
 	if err != nil {
 		return nil, err
 	}
+	if z.Spec.Fallback != nil {
+		return nil, newError(http.StatusUnprocessableEntity, KeyUnprocessable,
+			"NOTIFY is unavailable for zones with missing-name fallback",
+			"ordinary secondaries cannot reproduce this zone's fallback behavior")
+	}
 	if s.opts.Notifier == nil {
 		return nil, errNotImplemented("NOTIFY")
 	}

@@ -113,6 +113,19 @@ spec:
                   loadBalancerServices:
                     type: boolean
                 type: object
+              fallback:
+                description: |-
+                  Fallback enables public resolution for names not defined locally. Omit
+                  it to remain authoritative for the entire zone. Generated apex SOA/NS
+                  records do not suppress fallback for other types at an unconfigured apex.
+                  Zones with fallback do not support zone transfers or NOTIFY.
+                properties:
+                  upstreamGroup:
+                    description: |-
+                      UpstreamGroup selects a forwarding or recursive group. Empty uses normal
+                      resolver routing (client policy, conditional forwarding, then default).
+                    type: string
+                type: object
               forward:
                 description: ForwardSpec configures a forward zone.
                 properties:
@@ -438,6 +451,9 @@ spec:
             - type
             - zoneName
             type: object
+            x-kubernetes-validations:
+            - message: fallback is only supported for primary zones
+              rule: '!has(self.fallback) || self.type == ''primary'''
           status:
             description: DNSZoneStatus is the observed state of a zone.
             properties:

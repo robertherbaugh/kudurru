@@ -1,7 +1,8 @@
 # Zones and transfers
 
-A `DNSZone` is a grant of authority: kudurru answers for every name at or
-below its apex. Records do not live in the zone object; they live in
+A primary `DNSZone` normally grants authority for every name at or below
+its apex. An opt-in `spec.fallback` makes it a local overlay: absent names
+continue through resolver routing. Records do not live in the zone object; they live in
 `DNSRecordSet` objects that point at the zone, so an application team can
 own its own records without owning the zone. The zone is the stone; the
 record sets and the copies held by secondaries are the clay copies.
@@ -19,6 +20,7 @@ erDiagram
         string zoneName "FQDN, immutable"
         string type "primary | forward"
         object soa "mname, rname, refresh, retry, expire, minimum"
+        object fallback "optional: resolve missing names, upstreamGroup"
         object policy "queryAccess, zoneTransfer, notify, ACLs, TSIG refs"
         object recordSetSelector "namespaces, labelSelector"
         uint32 status_serial "stamped by the leader"
@@ -73,9 +75,12 @@ flowchart TD
     LK --> ANS{"result"}
     ANS -- "found" --> A1["answer, AA"]
     ANS -- "name exists, no data" --> A2["NODATA + SOA"]
-    ANS -- "no such name" --> A3["NXDOMAIN + SOA"]
+    ANS -- "no such name" --> FB{"fallback enabled?"}
+    FB -- "no" --> A3["NXDOMAIN + SOA"]
+    FB -- "yes, RD and recursion available" --> FW
+    FB -- "yes, recursion unavailable" --> REF
     ANS -- "delegation" --> A4["referral (no AA)"]
-    ANS -- "CNAME out of the zone" --> A5["chase (query path page)"]
+    ANS -- "CNAME leaves local data" --> A5["chase (query path page)"]
     ANS -- "CNAME loop > 20" --> A6["SERVFAIL"]
 ```
 
@@ -89,6 +94,38 @@ left out when the zone is built, and the zone is rebuilt at the next expiry.
 `allowOnlyPrivate`, `allowOnlyZoneNameServers`, `useNetworkACL` (the ordered
 `!`-able CIDR list, first match wins, default deny) and
 `zoneNameServersAndACL`.
+
+## Local overrides with fallback
+
+`spec.fallback: {}` on a primary zone enables resolution of missing names
+using ordinary client-policy, conditional and default-group routing.
+`spec.fallback.upstreamGroup` selects a group instead, with the same
+precedence as a forward zone's group. Either group mode (`forward` or
+`recursive`) works. Continuation starts after the authoritative stage,
+so native recursion consults the public DNS tree without reentering the
+overlay. Fallback queries still pass through blocking and the response cache.
+
+Only absent names fall back. An existing name, an empty non-terminal or a
+wildcard match without the requested type answers NODATA locally. Generated
+apex SOA/NS (and management ANY queries) stay local, but other apex types
+fall back until a record set explicitly defines the apex. Disabled, expired
+and view-withheld records are absent and do not suppress fallback. More
+specific zones still win. ACL refusals and stale/unsynced snapshots never
+trigger public fallback; a missing name queried without RD is REFUSED.
+
+Local CNAME/DNAME chains can continue to a missing target through its
+zone's fallback group. Mixed local/public answers clear AA and AD and do
+not claim DNSSEC validation for the whole chain. Public-only answers retain
+their normal DNSSEC state, including validation failures and extended errors.
+
+Every lookup checks local data before the response cache, so adding a local
+override immediately masks cached public answers for that name and its
+missing types. A specific non-default group bypasses that cache as for
+forward zones. Fallback settings participate in the content hash and serial
+so edge packet caches are flushed when routing changes. Transfers and
+NOTIFY are disabled for overlay zones: an ordinary secondary cannot reproduce
+the missing-name behavior from an AXFR. BIND exports contain only local data
+and do not encode fallback settings.
 
 ## Which records are served
 

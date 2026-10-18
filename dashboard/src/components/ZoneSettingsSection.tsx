@@ -64,6 +64,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
       view={
         value.type === 'primary' ? (
           <MetadataList columns="multi">
+            <MetadataListItem label="Missing names">{value.fallback ? `Resolve through ${value.fallbackGroup || 'normal resolver routing'}` : 'Answer locally (NXDOMAIN)'}</MetadataListItem>
             <MetadataListItem label="Name servers">{value.nameservers.length ? value.nameservers.join(', ') : <Text color="secondary">this server</Text>}</MetadataListItem>
             <MetadataListItem label="Default TTL">{secs(value.defaultTTL, 'defaultTTL')}</MetadataListItem>
             <MetadataListItem label="Refresh">{secs(value.refresh, 'refresh')}</MetadataListItem>

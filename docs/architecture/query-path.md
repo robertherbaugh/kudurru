@@ -93,7 +93,10 @@ flowchart TD
     ACL -- "no" --> REF["REFUSED"]
     ACL -- "yes" --> SYNC{"snapshot synced<br/>(and fresh)?"}
     SYNC -- "no" --> SF["SERVFAIL, never NXDOMAIN<br/>servfail_unsynced"]
-    SYNC -- "yes" --> AUTH["answer from the zone<br/>authoritative"]
+    SYNC -- "yes" --> HASLOCAL{"name served locally<br/>or fallback disabled?"}
+    HASLOCAL -- "yes" --> AUTH["answer from the zone<br/>authoritative"]
+    HASLOCAL -- "no, RD and recursion available" --> HINT
+    HASLOCAL -- "no, recursion unavailable" --> REF
     ZONE -- "forward zone<br/>(the root '.' is one)" --> HINT["set the upstream group hint"]
     HINT --> BLK{"blocked for<br/>this client?"}
     BLK -- "yes" --> BA["block answer<br/>blocked_*"]
@@ -110,7 +113,9 @@ flowchart TD
 
 The bootstrap creates a root forward zone `.` pointing at the `default`
 upstream group, so in practice every name matches some zone: names in
-primary zones are answered locally, everything else takes the forward branch.
+primary zones are answered locally unless their optional
+[fallback](zones.md#local-overrides-with-fallback) applies; everything else
+takes the resolver branch. Fallback can use forwarding or native recursion.
 
 ## Three journeys
 

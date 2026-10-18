@@ -171,6 +171,19 @@ func TestZoneNotify(t *testing.T) {
 
 type notifyFunc func(zone string) ([]string, error)
 
+func TestZoneFallbackCannotNotify(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.Notifier = notifyFunc(func(string) ([]string, error) {
+			t.Fatal("a zone with fallback must not trigger NOTIFY")
+			return nil, nil
+		})
+	})
+	z := zoneObj("example", "example.com.")
+	z.Spec.Fallback = &v1alpha1.ZoneFallbackSpec{}
+	h.seed("api", z)
+	h.do(http.MethodPost, "/api/v1/zones/example/notify", "zoneadmin", nil).want(http.StatusUnprocessableEntity)
+}
+
 func (f notifyFunc) NotifyZone(_ context.Context, zone string) ([]string, error) { return f(zone) }
 
 func TestZoneAdminScopedWrites(t *testing.T) {

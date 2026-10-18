@@ -86,6 +86,49 @@ The **Query ACL** is a list of addresses or ranges. The first match wins.
 An exclamation mark in front of an entry denies it, for example
 `!192.168.1.66`.
 
+### Override local names and resolve the rest publicly
+
+For a domain you already host publicly, keep your internal records in one
+primary zone and enable **Resolve missing names publicly** on **Records and
+access**. For an existing zone, use **Zone settings** > **Edit**. Select a
+**Fallback upstream group**, or leave **Normal resolver routing** selected
+to follow client policies, conditional forwarding and the default group.
+The group can forward to a public resolver or use native recursive DNS.
+
+For example, create `herbaugh.network` with this option enabled and add
+`auth` as an A record pointing to your internal IP. Queries for
+`auth.herbaugh.network` use the local record. Names you have not defined,
+such as `www.herbaugh.network`, resolve publicly. You do not need to change
+your public Cloudflare records or delegate the zone to kudurru.
+
+Fallback applies to missing names, not missing record types. If `auth` has
+only an A record, its AAAA and TXT queries return no data locally instead
+of using public records. Wildcard matches follow the same rule. A more
+specific zone still takes precedence. Disabling or expiring a local record
+removes the override and can expose the public answer again.
+
+The domain apex also resolves publicly for ordinary types until you add a
+record named `@`. SOA, NS and ANY queries at the apex remain local. Zone
+transfers and NOTIFY are unavailable for zones using fallback. BIND files
+carry local records only; use object backups to preserve fallback settings.
+
+For YAML configuration, an empty `fallback` object enables normal routing:
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata:
+  name: herbaugh-network
+spec:
+  zoneName: herbaugh.network.
+  type: primary
+  fallback: {}
+```
+
+To select a group, use `fallback: { upstreamGroup: public }`, with `public`
+replaced by an existing forwarding or recursive group. Omit `fallback` to
+keep normal primary-zone behavior: missing names answer NXDOMAIN.
+
 ### Create a forward zone
 
 1. Open **DNS** > **Zones**. Click **New zone**.

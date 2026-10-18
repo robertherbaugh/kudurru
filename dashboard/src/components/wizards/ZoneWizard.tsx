@@ -7,6 +7,7 @@
 // CRD defaults and are left out of the object.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { Grid } from '@astryxdesign/core/Grid';
 import { Heading } from '@astryxdesign/core/Heading';
@@ -49,6 +50,8 @@ export interface Draft {
   queryACL: string[];
   upstreamGroup: string;
   dnssec: '' | 'on' | 'off';
+  fallback: boolean;
+  fallbackGroup: string;
 }
 
 export const EMPTY: Draft = {
@@ -66,6 +69,8 @@ export const EMPTY: Draft = {
   queryACL: [],
   upstreamGroup: '',
   dnssec: '',
+  fallback: false,
+  fallbackGroup: '',
 };
 
 const DNSSEC = [
@@ -80,6 +85,7 @@ export function zoneFromDraft(d: Draft): DNSZone {
   const num = (v: string) => (v.trim() ? Number(v) : undefined);
   const spec: DNSZoneSpec = { zoneName: `${name}.`, type: d.type };
   if (d.type === 'primary') {
+    if (d.fallback) spec.fallback = d.fallbackGroup ? { upstreamGroup: d.fallbackGroup } : {};
     const ns = cleanList(d.nameservers);
     if (ns.length) spec.nameservers = ns;
     if (num(d.defaultTTL) !== undefined) spec.defaultTTL = num(d.defaultTTL);
@@ -140,6 +146,24 @@ export function PrimaryFields({ d, set }: { d: Draft; set: SetDraft }) {
 
   return (
     <>
+      <CheckboxInput
+        label="Resolve missing names publicly"
+        description="Use local records first, then resolve names absent from this zone. Missing record types at a local name stay local."
+        value={d.fallback}
+        onChange={(v) => set('fallback', v)}
+      />
+      {d.fallback ? (
+        <>
+          <UpstreamGroupSelect
+            label="Fallback upstream group"
+            value={d.fallbackGroup}
+            onChange={(v) => set('fallbackGroup', v)}
+            emptyLabel="Normal resolver routing"
+            help="Choose a forwarding or recursive group, or follow client policy and conditional forwarding."
+          />
+          <Text type="supporting">An apex without a local record also resolves publicly for ordinary queries. SOA and NS stay local. Zone transfers and NOTIFY are unavailable with fallback.</Text>
+        </>
+      ) : null}
       <StringListField
         label="Name servers"
         description="The zone's NS records; none uses this server's name"
@@ -221,6 +245,8 @@ export function draftFromZone(spec: DNSZoneSpec): Draft {
     queryACL: spec.policy?.queryACL ?? [],
     upstreamGroup: spec.forward?.upstreamGroup ?? '',
     dnssec: spec.forward?.dnssecValidation === undefined ? '' : spec.forward.dnssecValidation ? 'on' : 'off',
+    fallback: spec.fallback !== undefined,
+    fallbackGroup: spec.fallback?.upstreamGroup ?? '',
   };
 }
 
@@ -233,6 +259,8 @@ export function applyDraft(spec: DNSZoneSpec, d: Draft): DNSZoneSpec {
   const built = zoneFromDraft({ ...d, apex: spec.zoneName ?? d.apex }).spec;
   const next: DNSZoneSpec = { ...spec };
   if (d.type === 'primary') {
+    delete next.fallback;
+    if (built.fallback) next.fallback = built.fallback;
     delete next.nameservers;
     delete next.defaultTTL;
     delete next.soa;
@@ -399,6 +427,7 @@ function Review({ d }: { d: Draft }) {
       <MetadataListItem label="Type">{s.type === 'primary' ? 'Primary (records served here)' : 'Forward (to an upstream group)'}</MetadataListItem>
       {s.type === 'primary' ? (
         <>
+          <MetadataListItem label="Missing names">{s.fallback ? `Resolve through ${s.fallback.upstreamGroup || 'normal resolver routing'}` : 'Answer locally (NXDOMAIN)'}</MetadataListItem>
           <MetadataListItem label="Name servers">{s.nameservers?.join(', ') ?? 'this server'}</MetadataListItem>
           <MetadataListItem label="Default TTL">{dflt(s.defaultTTL, SOA_DEFAULTS.defaultTTL)}</MetadataListItem>
           <MetadataListItem label="SOA">

@@ -12,12 +12,14 @@ export interface UpstreamGroupSelectProps {
   onChange: (v: string) => void;
   /** Offer "not set" (the policy or zone then uses the default group). */
   allowEmpty?: boolean;
+  /** Label for normal routing when no group is selected. */
+  emptyLabel?: string;
   isDisabled?: boolean;
   help?: string;
   error?: string;
 }
 
-export function UpstreamGroupSelect({ label = 'Upstream group', value, onChange, allowEmpty = true, isDisabled, help, error }: UpstreamGroupSelectProps) {
+export function UpstreamGroupSelect({ label = 'Upstream group', value, onChange, allowEmpty = true, emptyLabel, isDisabled, help, error }: UpstreamGroupSelectProps) {
   const groups = useUpstreamGroups();
   if (!groups.available) {
     return <TextField label={label} help={help} placeholder={DEFAULT_GROUP} value={value} onChange={onChange} isDisabled={isDisabled} error={error} />;
@@ -30,7 +32,7 @@ export function UpstreamGroupSelect({ label = 'Upstream group', value, onChange,
       value={value}
       onChange={onChange}
       isDisabled={isDisabled}
-      emptyLabel={allowEmpty ? `Not set (${DEFAULT_GROUP})` : undefined}
+      emptyLabel={allowEmpty ? (emptyLabel ?? `Not set (${DEFAULT_GROUP})`) : undefined}
       options={names.map((n) => ({ value: n, label: groups.names.includes(n) ? n : `${n} (not configured)` }))}
       error={error}
       help={
