@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"sort"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/settings"
 )
 
 // Redacted replaces writeOnly values in settings responses.
@@ -36,7 +38,8 @@ type SettingKey struct {
 	Group string `json:"group,omitempty"`
 	SettingConstraints
 	// Value is the effective value (Redacted for writeOnly keys).
-	Value any `json:"value"`
+	Value     any    `json:"value"`
+	ManagedBy string `json:"managedBy,omitempty" enum:"gitops,ui"`
 }
 
 // SettingConstraints is the typed-control metadata of a key or a nested
@@ -112,9 +115,11 @@ type schemaOutput struct{ Body *List[SettingKey] }
 // SettingsBody is GET|PATCH /settings and /node/config: the keys of one
 // scope as a nested document (writeOnly values redacted).
 type SettingsBody struct {
-	Scope    string         `json:"scope" enum:"node,cluster"`
-	Node     string         `json:"node"`
-	Settings map[string]any `json:"settings"`
+	Scope     string                      `json:"scope" enum:"node,cluster"`
+	Node      string                      `json:"node"`
+	Settings  map[string]any              `json:"settings"`
+	Sections  map[string]settings.Section `json:"sections,omitempty"`
+	Conflicts []string                    `json:"conflicts,omitempty"`
 	// Changed lists the dotted keys a PATCH changed; RestartRequired the
 	// ones that only apply after a restart.
 	Changed         []string `json:"changed,omitempty"`
@@ -128,24 +133,33 @@ type SettingsBody struct {
 type settingsOutput struct{ Body *SettingsBody }
 
 type patchSettingsInput struct {
-	Body map[string]any
+	IfMatch string `header:"If-Match" doc:"Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams."`
+	Body    map[string]any
 }
 
+type patchNodeConfigInput struct{ Body map[string]any }
+
 func (s *Server) registerSettings() {
+	s.registerSettingsOwnership()
 	register(s, operation(http.MethodGet, "/settings", "getSettings", "Cluster-scope settings (redacted)", "settings"),
-		perm{resource: "settings", verb: "read"}, func(context.Context, *struct{}) (*settingsOutput, error) {
+		perm{resource: "settings", verb: "read"}, func(ctx context.Context, _ *struct{}) (*settingsOutput, error) {
+			if s.opts.SettingsOwnership != nil {
+				if _, err := s.opts.SettingsOwnership.Refresh(ctx); err != nil {
+					return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "settings sources are unavailable", "retry when the settings source is reachable")
+				}
+			}
 			return s.settingsBody(config.ScopeCluster, nil, nil), nil
 		})
 	register(s, operation(http.MethodPatch, "/settings", "patchSettings", "Change cluster-scope settings (JSON merge patch)", "settings"),
 		perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *patchSettingsInput) (*settingsOutput, error) {
-			return s.patchSettings(ctx, config.ScopeCluster, in.Body)
+			return s.patchSettingsExpected(ctx, config.ScopeCluster, in.Body, in.IfMatch)
 		})
 	register(s, operation(http.MethodGet, "/node/config", "getNodeConfig", "This node's host-local settings (redacted)", "settings"),
 		perm{resource: "settings", verb: "read"}, func(context.Context, *struct{}) (*settingsOutput, error) {
 			return s.settingsBody(config.ScopeNode, nil, nil), nil
 		})
 	register(s, operation(http.MethodPatch, "/node/config", "patchNodeConfig", "Change this node's settings (hostOnly keys refused)", "settings"),
-		perm{resource: "node", verb: "config"}, func(ctx context.Context, in *patchSettingsInput) (*settingsOutput, error) {
+		perm{resource: "node", verb: "config"}, func(ctx context.Context, in *patchNodeConfigInput) (*settingsOutput, error) {
 			return s.patchSettings(ctx, config.ScopeNode, in.Body)
 		})
 	register(s, operation(http.MethodGet, "/settings/_schema", "settingsSchema", "The settings metadata table", "settings"),
@@ -206,6 +220,10 @@ func setPath(tree map[string]any, p string, v any) {
 // settingsBody renders the keys of one scope.
 func (s *Server) settingsBody(scope config.Scope, changed, restart []string) *settingsOutput {
 	cfg := s.config()
+	var ownership settings.Status
+	if s.opts.SettingsOwnership != nil {
+		cfg, ownership = s.opts.SettingsOwnership.Snapshot()
+	}
 	flat := flatSettings(cfg)
 	tree := map[string]any{}
 	for _, k := range config.Schema {
@@ -218,7 +236,11 @@ func (s *Server) settingsBody(scope config.Scope, changed, restart []string) *se
 		}
 		setPath(tree, k.Path, v)
 	}
-	return &settingsOutput{Body: &SettingsBody{Scope: string(scope), Node: s.opts.NodeName, Settings: tree, Changed: changed, RestartRequired: restart}}
+	body := &SettingsBody{Scope: string(scope), Node: s.opts.NodeName, Settings: tree, Changed: changed, RestartRequired: restart}
+	if scope == config.ScopeCluster && s.opts.SettingsOwnership != nil {
+		body.Sections, body.Conflicts = ownership.Sections, ownership.Conflicts
+	}
+	return &settingsOutput{Body: body}
 }
 
 func (s *Server) settingsSchema(context.Context, *struct{}) (*schemaOutput, error) {
@@ -235,6 +257,15 @@ func (s *Server) settingsSchema(context.Context, *struct{}) (*schemaOutput, erro
 			HostOnly: k.HostOnly, EnvLocked: slices.Contains(cfg.EnvLocked, k.Path), RestartRequired: k.RestartRequired,
 			WriteOnly: k.WriteOnly, Label: k.Label, Group: k.Group, SettingConstraints: settingConstraints(k.Shape()), Value: v,
 		})
+	}
+	if s.opts.SettingsOwnership != nil {
+		status := s.opts.SettingsOwnership.Status()
+		for i := range items {
+			if items[i].Scope == string(config.ScopeCluster) {
+				section, _, _ := strings.Cut(items[i].Path, ".")
+				items[i].ManagedBy = status.Sections[section].Owner
+			}
+		}
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })
 	return &schemaOutput{Body: newList(items, "")}, nil
@@ -278,6 +309,10 @@ func hasSchemaPrefix(prefix string) bool {
 // validated like the file (400 invalid with the key), then persisted by
 // the SettingsWriter and served from memory.
 func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch map[string]any) (*settingsOutput, error) {
+	return s.patchSettingsExpected(ctx, scope, patch, "")
+}
+
+func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, patch map[string]any, ifMatch string) (*settingsOutput, error) {
 	if len(patch) == 0 {
 		return nil, errInvalid("body: an object with the keys to change is required")
 	}
@@ -287,11 +322,20 @@ func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch ma
 		return nil, err
 	}
 	cur := s.config()
+	expected := ""
+	if s.opts.SettingsOwnership != nil {
+		var status settings.Status
+		cur, status = s.opts.SettingsOwnership.Snapshot()
+		expected = status.Sections["upstreams"].Revision
+	}
 	var paths []string
 	for p := range changes {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
+	if ifMatch != "" && slices.ContainsFunc(paths, func(path string) bool { return strings.HasPrefix(path, "upstreams.") }) && strings.Trim(ifMatch, "\"") != expected {
+		return nil, ownershipError(settings.ErrConflict)
+	}
 	var restart []string
 	for _, p := range paths {
 		k, _ := config.Lookup(p)
@@ -340,18 +384,30 @@ func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch ma
 		}
 	}
 	persisted := false
-	if s.opts.Settings != nil && scope == config.ScopeCluster {
+	managed := s.opts.SettingsOwnership != nil && scope == config.ScopeCluster
+	if managed {
+		err := s.opts.SettingsOwnership.Write(ctx, expected, next, paths)
+		s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, err, before, after)
+		if err != nil {
+			return nil, ownershipError(err)
+		}
+		persisted = true
+	} else if s.opts.Settings != nil && scope == config.ScopeCluster {
 		if err := s.opts.Settings.WriteSettings(ctx, next, paths); err != nil {
 			s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, err, before, after)
 			return nil, storeError(err)
 		}
 		persisted = true
 	}
-	if s.opts.Reload != nil {
+	if !managed && s.opts.SettingsOwnership != nil {
+		if err := s.opts.SettingsOwnership.SetNode(next, paths); err != nil {
+			return nil, ownershipError(err)
+		}
+	} else if !managed && s.opts.Reload != nil {
 		next.SettingsFile = cur.SettingsFile
 		next.Node.Name = cur.Node.Name
 		s.opts.Reload.Set(next)
-	} else {
+	} else if !managed {
 		s.cfgMu.Lock()
 		s.cfg = next
 		s.cfgMu.Unlock()
@@ -360,7 +416,9 @@ func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch ma
 	if scope == config.ScopeNode {
 		action = "node.config"
 	}
-	s.recordAction(ctx, action, audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
+	if !managed {
+		s.recordAction(ctx, action, audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
+	}
 	out := s.settingsBody(scope, paths, restart)
 	out.Body.Persisted = &persisted
 	return out, nil
@@ -445,4 +503,21 @@ func toJSON(v any) string {
 		return ""
 	}
 	return string(b)
+}
+
+func ownershipError(err error) error {
+	switch {
+	case errors.Is(err, settings.ErrManaged):
+		return newError(http.StatusConflict, KeyManagedBy, err.Error(), "change config.settings or adopt the upstreams section")
+	case errors.Is(err, settings.ErrConflict):
+		return newError(http.StatusPreconditionFailed, KeyPrecondition, err.Error(), "reload settings and review the new revision")
+	case errors.Is(err, settings.ErrEnvironment):
+		return newError(http.StatusConflict, KeyEnvLocked, err.Error(), "remove upstream environment overrides on every node")
+	case errors.Is(err, settings.ErrHandoff):
+		return newError(http.StatusConflict, KeyManagedBy, err.Error(), "commit and apply the exported Helm values before releasing ownership")
+	case errors.Is(err, settings.ErrUnsupported), errors.Is(err, settings.ErrInvalid):
+		return errInvalid("settings ownership: %v", err)
+	default:
+		return storeError(err)
+	}
 }

@@ -498,6 +498,8 @@ spec:
               value: endpointslice:kudurru-system/kudurru-edge-status
             - name: KUDURRU_VIP_SUPERVISED
               value: "false"
+            - name: KUDURRU_SETTINGS_RESOURCE
+              value: kudurru-ui-settings
             - name: KUDURRU_SETTINGS_FILE
               value: /etc/kudurru/settings/settings.yaml
             - name: KUDURRU_ENCRYPTION_KEY_FILE

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 370" role="img" aria-labelledby="title desc">
+  <title id="title">Explicit settings ownership</title>
+  <desc id="desc">GitOps sections follow Helm's settings ConfigMap. Adopted upstreams follow a separate API-owned ConfigMap. Each replica selects the section owner, validates settings, reports conflicts, and reloads the upstream set and cache. Releasing ownership requires matching GitOps configuration and a reviewed revision.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#31554b"/></marker></defs>
+  <rect width="1040" height="370" rx="16" fill="#f8faf9"/>
+  <g font-family="system-ui,sans-serif" font-size="17" fill="#182522" text-anchor="middle">
+    <g fill="#e7f0ec" stroke="#31554b" stroke-width="2">
+      <rect x="25" y="45" width="270" height="90" rx="10"/>
+      <rect x="25" y="215" width="270" height="90" rx="10"/>
+      <rect x="380" y="110" width="285" height="135" rx="10"/>
+      <rect x="755" y="110" width="260" height="135" rx="10"/>
+    </g>
+    <text x="160" y="77" font-weight="600">Helm settings ConfigMap</text>
+    <text x="160" y="105">GitOps-owned sections</text>
+    <text x="160" y="247" font-weight="600">API-owned ConfigMap</text>
+    <text x="160" y="275">owner + complete upstreams</text>
+    <text x="522" y="145" font-weight="600">Every replica</text>
+    <text x="522" y="174">select section owner</text>
+    <text x="522" y="201">validate; report conflicts</text>
+    <text x="522" y="227" font-size="14">fsnotify + shared-state poll (10 s)</text>
+    <text x="885" y="146" font-weight="600">Existing hot reload</text>
+    <text x="885" y="178">swap upstream set</text>
+    <text x="885" y="208">flush response cache</text>
+    <text x="520" y="337" font-size="15">Adopt with a revision check. Release after matching GitOps values are applied.</text>
+  </g>
+  <g stroke="#31554b" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M295 90 L335 90 L335 151 L377 151"/>
+    <path d="M295 260 L335 260 L335 210 L377 210"/>
+    <path d="M666 177 L752 177"/>
+  </g>
+</svg>

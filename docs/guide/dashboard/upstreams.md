@@ -5,6 +5,33 @@
 - You need the `admin` role to change upstream groups.
 - You need reachable resolvers and working bootstrap DNS for resolver hostnames.
 
+## Choose how upstreams are managed
+
+Kubernetes installations begin with **Managed by GitOps**. The controls are
+read-only until you either update `config.settings.upstreams` in Helm or use
+**Adopt into UI management**. Adoption requires `settings.write` and copies
+all current groups, servers and routing rules without changing DNS routing.
+The UI then saves shared settings that survive pod restarts and Helm upgrades.
+
+A warning means Helm still declares upstreams while the UI owns them. Remove
+that declaration from your Helm values (set `config.settings.upstreams: null`
+to remove the chart's defaults). UI values remain authoritative. Environment
+locks still apply; remove upstream overrides on every node before adoption.
+
+**Generate YAML** previews Helm values without saving. The optional
+**Edit proposed upstreams as JSON** control generates YAML for a proposed
+complete section while leaving the live configuration unchanged.
+
+To switch back, choose **Return to GitOps**, generate the current values,
+commit and apply them, and wait for the settings volume to update on every
+replica. Then **Refresh YAML preview**, confirm that the values were applied,
+and choose **Release to GitOps**. A stale revision or mismatched file
+configuration on the serving replica is refused; refresh and review before
+retrying. The API does not verify other replicas' mounted volumes.
+
+Docker keeps its existing editable settings-file behavior. Ownership actions
+require persistent, writable settings storage.
+
 ## Create a group
 
 1. Open **DNS** > **Upstreams**.

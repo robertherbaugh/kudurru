@@ -10,6 +10,18 @@ import { ZoneWizardDialog } from '../components/wizards/ZoneWizard';
 
 const FILE = '$ORIGIN lab.example.\n@ 3600 IN SOA ns1 hostmaster 42 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10\nmail 300 IN A 192.0.2.25\n';
 
+describe('ZonesPage', () => {
+  it('identifies zones with public fallback in the list', async () => {
+    const zones = mockDB().zones;
+    const overlay = zones.find((z) => z.spec.type === 'primary')!;
+    overlay.spec.fallback = {};
+    renderWithApp(<ZonesPage />, { route: '/zones' });
+    const label = await screen.findByText('Public fallback');
+    expect(label.closest('tr')).toHaveTextContent(overlay.spec.zoneName);
+    expect(screen.getAllByText('Public fallback')).toHaveLength(1);
+  });
+});
+
 describe('zone import', () => {
   it('summarises the real import result', () => {
     expect(importSummary({ zone: 'z', zoneName: 'z.', created: false, recordSets: ['default/import-z-1'], endpoints: 3, serial: 1, warnings: [], took_ms: 1 })).toBe(
@@ -69,6 +81,19 @@ describe('zone import', () => {
 });
 
 describe('ZoneWizardDialog', () => {
+  it('creates a primary zone with fallback through normal resolver routing', async () => {
+    renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Zone name/ }), { target: { value: 'herbaugh.network' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Resolve missing names publicly' }));
+    expect(await findSelector('Fallback upstream group')).toHaveTextContent('Normal resolver routing');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByTestId('zone-review')).toHaveTextContent('Resolve through normal resolver routing');
+    fireEvent.click(screen.getByRole('button', { name: 'Create zone' }));
+    await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'herbaugh.network')?.spec).toEqual({ zoneName: 'herbaugh.network.', type: 'primary', fallback: {} }));
+  });
+
   it('creates a forward zone with an upstream group picked from the configured ones', async () => {
     renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
     fireEvent.click(await screen.findByRole('radio', { name: /^Forward/ }));

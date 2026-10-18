@@ -62,7 +62,8 @@ subjects:
 # Release namespace only: Leases (Elector(name) → Lease kudurru-<name>,
 # D78), Secrets for internal kinds (tokens, users, TSIG, DNSSEC keys;
 # revoking a token and deleting a user or RoleBinding delete their
-# Secrets), ConfigMaps for runtime state (blocking toggle replication), the
+# Secrets), ConfigMaps for runtime state (blocking toggle replication) and
+# API-owned settings (explicit section adoption), the
 # AuditLog batches of the audit log (D157) and, with dhcp.enabled, the
 # DHCPLease objects and the DHCP endpoint label (D180).
 apiVersion: rbac.authorization.k8s.io/v1

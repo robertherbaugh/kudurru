@@ -126,6 +126,7 @@ export interface DNSZoneSpec {
     update?: AccessMode;
   };
   forward?: { upstreamGroup?: string; dnssecValidation?: boolean };
+  fallback?: { upstreamGroup?: string };
   secondary?: { primaries: string[]; tsigKeyRef?: string; transferProtocol?: 'tcp' | 'tls' };
   stub?: { nameservers: string[] };
   recordSetSelector?: { namespaces?: string[] };

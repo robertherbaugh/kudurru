@@ -59,11 +59,14 @@ const baseColumns: TableColumn<Row>[] = [
     header: 'Zone',
     width: proportional(2, { minWidth: 160 }),
     renderCell: (z) => (
-      <Link href={`/zones/${encodeURIComponent(z.name)}`} color="inherit" hasUnderline>
-        <Text type="code" size="sm">
-          {z.zoneName}
-        </Text>
-      </Link>
+      <VStack gap={0.5}>
+        <Link href={`/zones/${encodeURIComponent(z.name)}`} color="inherit" hasUnderline>
+          <Text type="code" size="sm">
+            {z.zoneName}
+          </Text>
+        </Link>
+        {z.fallback ? <Text type="supporting">Public fallback</Text> : null}
+      </VStack>
     ),
   },
   { key: 'type', header: 'Type', width: pixel(110), renderCell: (z) => <Badge variant="neutral" label={z.type} /> },
