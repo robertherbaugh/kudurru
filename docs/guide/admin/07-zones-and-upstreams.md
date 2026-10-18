@@ -99,8 +99,8 @@ An exclamation mark in front of an entry denies it, for example
 The upstream group must exist. [Create an upstream
 group](#create-an-upstream-group) first if it does not.
 
-NOTE: The DNSSEC setting is reserved for a later version. kudurru v0.1.0
-does not validate DNSSEC answers.
+NOTE: The per-zone DNSSEC setting is reserved for a later version.
+Recursive upstream groups validate DNSSEC with their recursion settings.
 
 ### Add a record
 

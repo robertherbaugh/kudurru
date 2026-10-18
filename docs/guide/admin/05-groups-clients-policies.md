@@ -185,7 +185,7 @@ Figure 8 shows this step.
 
 1. Select the **Block lists** that apply.
 2. Select the **Allow lists** that apply.
-3. To block only the names on allow lists, turn on **Allow only**.
+3. To block every name except names on allow lists, turn on **Allow only**.
 4. Scroll down to select blocked services, categories and content
    categories (see [Block services](#block-services)).
 5. Click **Next**.
@@ -250,7 +250,7 @@ the policy.
 ## Block services
 
 A service is a group of names that belong to one product, for example
-YouTube or TikTok. kudurru has a catalogue of services in categories such
+YouTube or TikTok. kudurru has a catalog of services in categories such
 as **AI**, **Social media**, **Messaging**, **Video and streaming** and
 **Gaming**.
 
@@ -266,7 +266,7 @@ as **AI**, **Social media**, **Messaging**, **Video and streaming** and
 
 *Figure 12. The section Blocked services.*
 
-A blocked category also blocks the services that a catalogue update adds
+A blocked category also blocks the services that a catalog update adds
 to it later. If you click a tile in a blocked category, kudurru makes an
 exception for this service.
 

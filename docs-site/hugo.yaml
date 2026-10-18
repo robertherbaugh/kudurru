@@ -64,7 +64,7 @@ outputs:
 menus:
   main:
     - {name: Get started, pageRef: /start, weight: 10}
-    - {name: Guide, pageRef: /guide, weight: 15}
+    - {name: Learn, pageRef: /guide, weight: 15}
     - {name: Deploy, pageRef: /deploy, weight: 20}
     - {name: Migrate, pageRef: /migrate, weight: 30}
     - {name: Reference, pageRef: /reference, weight: 40}
@@ -74,9 +74,58 @@ menus:
 
 # Order of the mounted pages that carry no front matter of their own.
 cascade:
-  - {weight: 1, target: {path: /guide/user-guide}}
-  - {weight: 2, target: {path: /guide/admin}}
-  - {weight: 3, target: {path: /guide/style}}
+  - {weight: 10, description: "Start a node, sign in, connect a client and read its first queries.", walkthrough: true, target: {path: /guide/first-steps}}
+  - {weight: 15, description: "Find short instructions for every dashboard page, from activity and policies to access and audit.", target: {path: /guide/dashboard}}
+  - {weight: 1, target: {path: /guide/dashboard/activity}}
+  - {weight: 2, target: {path: /guide/dashboard/query-log}}
+  - {weight: 3, target: {path: /guide/dashboard/history}}
+  - {weight: 4, target: {path: /guide/dashboard/lists}}
+  - {weight: 5, target: {path: /guide/dashboard/domains}}
+  - {weight: 6, target: {path: /guide/dashboard/denylist}}
+  - {weight: 7, target: {path: /guide/dashboard/groups}}
+  - {weight: 8, target: {path: /guide/dashboard/clients}}
+  - {weight: 9, target: {path: /guide/dashboard/policies}}
+  - {weight: 10, target: {path: /guide/dashboard/policy-details}}
+  - {weight: 11, target: {path: /guide/dashboard/requests}}
+  - {weight: 12, target: {path: /guide/dashboard/upstreams}}
+  - {weight: 13, target: {path: /guide/dashboard/zones}}
+  - {weight: 14, target: {path: /guide/dashboard/nodes}}
+  - {weight: 15, target: {path: /guide/dashboard/settings}}
+  - {weight: 16, target: {path: /guide/dashboard/tools}}
+  - {weight: 17, target: {path: /guide/dashboard/import}}
+  - {weight: 18, target: {path: /guide/dashboard/diagnosis}}
+  - {weight: 19, target: {path: /guide/dashboard/license}}
+  - {weight: 20, target: {path: /guide/dashboard/access}}
+  - {weight: 21, target: {path: /guide/dashboard/identity}}
+  - {weight: 22, target: {path: /guide/dashboard/audit}}
+  - {weight: 20, description: "Add a block list or restore a site that a list blocks.", target: {path: /guide/filtering}}
+  - {weight: 30, description: "Choose Kubernetes relays or a Linux host, create a scope and check a client lease.", walkthrough: true, target: {path: /guide/dhcp}}
+  - {weight: 80, description: "Configure the LoadBalancer, router relay and required trusted relays, then test a lease.", walkthrough: true, target: {path: /guide/dhcp/kubernetes}}
+  - {weight: 1, stepLabel: "Plan addresses", target: {path: /guide/dhcp/kubernetes/plan}}
+  - {weight: 2, stepLabel: "Enable DHCP", target: {path: /guide/dhcp/kubernetes/enable}}
+  - {weight: 3, stepLabel: "Router relay", target: {path: /guide/dhcp/kubernetes/relay}}
+  - {weight: 4, stepLabel: "Trusted relay", target: {path: /guide/dhcp/kubernetes/create-scope}}
+  - {weight: 5, stepLabel: "Addresses", target: {path: /guide/dhcp/kubernetes/address-pool}}
+  - {weight: 6, stepLabel: "DNS", target: {path: /guide/dhcp/kubernetes/lease-dns}}
+  - {weight: 7, stepLabel: "Review", target: {path: /guide/dhcp/kubernetes/review}}
+  - {weight: 8, stepLabel: "Switch and test", target: {path: /guide/dhcp/kubernetes/check}}
+  - {weight: 40, description: "Create a zone and give a device a name on your network.", target: {path: /guide/local-dns}}
+  - {weight: 1, stepLabel: "Start a node", target: {path: /guide/first-steps/install}}
+  - {weight: 2, stepLabel: "Sign in", target: {path: /guide/first-steps/sign-in}}
+  - {weight: 3, stepLabel: "Connect a client", target: {path: /guide/first-steps/connect}}
+  - {weight: 4, stepLabel: "Read queries", target: {path: /guide/first-steps/queries}}
+  - {weight: 1, target: {path: /guide/filtering/add-list}}
+  - {weight: 2, target: {path: /guide/filtering/allow-site}}
+  - {weight: 1, stepLabel: "Prepare the host", target: {path: /guide/dhcp/prepare}}
+  - {weight: 2, stepLabel: "Subnet", target: {path: /guide/dhcp/create-scope}}
+  - {weight: 3, stepLabel: "Addresses", target: {path: /guide/dhcp/address-pool}}
+  - {weight: 4, stepLabel: "DNS", target: {path: /guide/dhcp/lease-dns}}
+  - {weight: 5, stepLabel: "Review", target: {path: /guide/dhcp/review-scope}}
+  - {weight: 6, stepLabel: "Activate", target: {path: /guide/dhcp/activate}}
+  - {weight: 7, stepLabel: "Reserve an address", target: {path: /guide/dhcp/reservations}}
+  - {hideInNav: true, target: {path: /guide/style}}
+  - {weight: 50, target: {path: /guide/user-guide}}
+  - {weight: 60, target: {path: /guide/admin}}
   - {weight: 1, target: {path: /guide/admin/01-overview}}
   - {weight: 2, target: {path: /guide/admin/02-install-and-sign-in}}
   - {weight: 3, target: {path: /guide/admin/03-watch-the-network}}
@@ -89,6 +138,7 @@ cascade:
   - {weight: 10, target: {path: /guide/admin/10-command-line}}
   - {weight: 11, target: {path: /guide/admin/11-maintenance}}
   - {weight: 12, target: {path: /guide/admin/12-troubleshooting}}
+  - {weight: 13, target: {path: /guide/admin/13-license}}
   - {weight: 1, target: {path: /deploy/docker}}
   - {weight: 2, target: {path: /deploy/compose-ha}}
   - {weight: 3, target: {path: /deploy/helm}}
@@ -127,10 +177,16 @@ module:
     # the site itself (render-image.html), not from raw.githubusercontent.com:
     # the repository can be private, and a public site must not depend on it.
     - {source: ../docs/guide/README.md, target: content/guide/_index.md}
+    - {source: ../docs/guide/dashboard/README.md, target: content/guide/dashboard/_index.md}
     - {source: ../docs/guide/admin/README.md, target: content/guide/admin/_index.md}
+    - {source: ../docs/guide/first-steps/README.md, target: content/guide/first-steps/_index.md}
+    - {source: ../docs/guide/filtering/README.md, target: content/guide/filtering/_index.md}
+    - {source: ../docs/guide/dhcp/README.md, target: content/guide/dhcp/_index.md}
+    - {source: ../docs/guide/dhcp/kubernetes/README.md, target: content/guide/dhcp/kubernetes/_index.md}
+    - {source: ../docs/guide/local-dns/README.md, target: content/guide/local-dns/_index.md}
     - source: ../docs/guide
       target: content/guide
-      files: ['! README.md', '! admin/README.md', '! images/**']
+      files: ['! README.md', '! dashboard/README.md', '! admin/README.md', '! first-steps/README.md', '! filtering/README.md', '! dhcp/README.md', '! dhcp/kubernetes/README.md', '! local-dns/README.md', '! images/**']
 
     - {source: ../docs/guide/images, target: static/guide/images}
 
