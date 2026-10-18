@@ -16,3 +16,6 @@ vulnerability:
 scan:
   disable-telemetry: true
   skip-version-check: true
+  # Ignored build output and installed packages, which Trivy does not know
+  # are ignored: `make edge-check` leaves a throwaway TLS key in bin/.
+  skip-dirs: [bin, "**/node_modules", "**/dist"]
