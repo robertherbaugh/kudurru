@@ -5,7 +5,8 @@
 ## Dashboard and API ownership
 
 Open **DHCP → Scopes** to see saved scopes and whether they are running or have
-pending changes, then open a scope for setup, live options and lease inventory.
+pending changes, then open a scope for setup, live options and reservations.
+Use **DHCP → Leases** for the lease inventory.
 With the SQLite store, these pages and `/api/v1/node/dhcp/v4` are local to
 the connected node; no peer forwarding or cluster aggregation occurs. With the
 Kubernetes store the same routes read and write `DHCPScope` and `DHCPLease`
