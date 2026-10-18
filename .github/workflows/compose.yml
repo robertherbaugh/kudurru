@@ -23,7 +23,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: compose-${{ github.event.pull_request.number || github.ref }}
+  group: compose-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   changes:
