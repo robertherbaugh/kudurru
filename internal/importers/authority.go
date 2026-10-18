@@ -24,8 +24,8 @@ func NameserverAddresses(in []string) ([]string, error) {
 			a, err = prefix.Addr(), nil
 		}
 		a = a.Unmap()
-		if err != nil || a.Zone() != "" || a.IsUnspecified() || a.IsMulticast() {
-			return nil, fmt.Errorf("nameserverAddresses: enter unicast IPv4 or IPv6 addresses")
+		if err != nil || a.Zone() != "" || a.IsUnspecified() || a.IsMulticast() || a.IsLoopback() || a.IsLinkLocalUnicast() {
+			return nil, fmt.Errorf("nameserverAddresses: enter unicast IPv4 or IPv6 addresses reachable by DNS clients; loopback and link-local addresses are not allowed")
 		}
 		value = a.String()
 		if !slices.Contains(out, value) {

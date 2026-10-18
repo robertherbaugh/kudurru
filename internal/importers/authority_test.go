@@ -70,10 +70,13 @@ func TestAddressAuthority(t *testing.T) {
 	if !reflect.DeepEqual(names, want) || len(records) != 2 || records[0].RecordType != "A" || records[0].Targets[0] != "192.0.2.53" || records[1].RecordType != "AAAA" {
 		t.Fatalf("authority: %v %+v", names, records)
 	}
-	for _, bad := range []string{"0.0.0.0", "::", "::ffff:0.0.0.0", "::ffff:224.0.0.1", "224.0.0.1", "ff02::1", "fe80::1%eth0", "dns.test", "192.0.2.1:53"} {
+	for _, bad := range []string{"0.0.0.0", "::", "::ffff:0.0.0.0", "::ffff:224.0.0.1", "224.0.0.1", "ff02::1", "fe80::1%eth0", "dns.test", "192.0.2.1:53", "127.0.0.1", "127.255.255.254/8", "::1", "::ffff:127.0.0.1", "169.254.1.53", "::ffff:169.254.1.53", "fe80::53", "febf::53/64"} {
 		if _, err := NameserverAddresses([]string{bad}); err == nil {
 			t.Errorf("accepted %s", bad)
 		}
+	}
+	if _, err := NameserverAddresses([]string{"10.30.50.53", "192.168.1.53", "fd00::53"}); err != nil {
+		t.Fatalf("rejected private serving addresses: %v", err)
 	}
 	if _, _, err := Authority("home.test.", []string{"dns.test"}, []string{"192.0.2.53"}); err == nil {
 		t.Fatal("accepted both target modes")
