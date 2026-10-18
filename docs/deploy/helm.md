@@ -357,8 +357,9 @@ LoadBalancer address the router's DHCP relay sends to) serves the
 Lease, and keeps leases as `DHCPLease` objects. Upgrade the `kudurru-crds`
 chart of the release first; it adds both CRDs. The chart also installs a
 cluster-scoped ValidatingAdmissionPolicy that limits the pod-label patches of
-kudurru's ServiceAccount. Steps, relay setup and
-scopes from Git: [DHCPv4 on Kubernetes](dhcp.md#kubernetes). In
+kudurru's ServiceAccount. Follow the [Kubernetes DHCP walkthrough](../guide/dhcp/kubernetes/README.md)
+for router relay setup, required trusted relays and client verification.
+For scopes from Git, use the [Kubernetes DHCP reference](dhcp-kubernetes.md). In
 `mode: standalone`, configure DHCP with `config.node.dhcp` as on any SQLite
 node.
 

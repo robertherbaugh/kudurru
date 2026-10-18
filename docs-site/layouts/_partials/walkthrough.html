@@ -1,0 +1,39 @@
+{{- /* Navigation follows the explicit page weights in a walkthrough section. */ -}}
+{{- $position := .position -}}
+{{- with .page -}}
+{{- if and (not .IsSection) .Parent.Params.walkthrough -}}
+  {{- $current := . -}}
+  {{- $pages := .Parent.RegularPages.ByWeight -}}
+  {{- $index := 0 -}}
+  {{- range $i, $page := $pages -}}
+    {{- if eq $page $current }}{{ $index = $i }}{{ end -}}
+  {{- end -}}
+  {{- if eq $position "top" -}}
+  <nav class="walkthrough" aria-label="Walkthrough steps">
+    <p class="walkthrough__label"><a href="{{ .Parent.RelPermalink }}">{{ partial "title.html" .Parent }}</a> · Step {{ add $index 1 }} of {{ len $pages }}</p>
+    <ol>
+      {{- range $i, $page := $pages }}
+      <li><a href="{{ .RelPermalink }}"{{ if eq . $current }} aria-current="step"{{ end }}><span>{{ add $i 1 }}</span>{{ .Params.stepLabel | default (partial "title.html" .) }}</a></li>
+      {{- end }}
+    </ol>
+  </nav>
+  {{- else -}}
+  <nav class="lesson-nav" aria-label="Continue the walkthrough">
+    {{- if gt $index 0 -}}
+      {{- with index $pages (sub $index 1) }}
+      <a href="{{ .RelPermalink }}"><small>← Back</small>{{ partial "title.html" . }}</a>
+      {{- end -}}
+    {{- else -}}
+      <a href="{{ .Parent.RelPermalink }}"><small>← Overview</small>{{ partial "title.html" .Parent }}</a>
+    {{- end -}}
+    {{- if lt (add $index 1) (len $pages) -}}
+      {{- with index $pages (add $index 1) }}
+      <a href="{{ .RelPermalink }}"><small>Next →</small>{{ partial "title.html" . }}</a>
+      {{- end -}}
+    {{- else -}}
+      <a href="{{ (site.GetPage "/guide").RelPermalink }}"><small>Walkthrough complete →</small>Choose your next task</a>
+    {{- end }}
+  </nav>
+  {{- end -}}
+{{- end -}}
+{{- end -}}

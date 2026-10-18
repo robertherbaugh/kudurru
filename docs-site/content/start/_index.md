@@ -4,23 +4,21 @@ description: Pick the page for the way you run DNS. Each one names the guides an
 weight: 10
 ---
 
-kudurru is one binary with several roles: the DNS server (`kudurru serve`),
-the client (`kudurru get`, `apply`, `zones`, `query`, ...), and the
-supervisors that run dnsdist (`kudurru edge run`) and keepalived
-(`kudurru vip run`) in their own containers. Which of them you need depends on
-the deployment shape:
+For a guided tour of the app, begin with [First steps](/guide/first-steps/).
+If kudurru already runs, go to [Sign in](/guide/first-steps/sign-in/).
 
-kudurru's core uses the Kudurru Community License: personal, homelab,
-qualifying nonprofit and isolated development uses are permitted. Business
-and government production use needs an accepted agreement and Order Form.
-A license key unlocks more than one node, more than one policy and some
-features (the dnsdist and keepalived edge among them). See
-[Licensing](/project/licensing/) for what is free, what a key unlocks and what
-a missing key changes. DNS answering never depends on a key.
+## Choose a deployment
 
 | Shape | Source of truth | Guide |
 |---|---|---|
-| One container (Docker, Podman) or a Linux package | `state.db` on a volume | [One container](/deploy/docker/) |
-| Three hosts with a virtual IP (dnsdist + keepalived) | identical file-managed configuration on every host | [Compose HA](/deploy/compose-ha/) |
+| One container or a Linux package | SQLite on a persistent volume | [Docker and packages](/deploy/docker/) |
+| Three hosts with a virtual IP | Identical file-managed configuration on each host | [Compose HA](/deploy/compose-ha/) |
 | Kubernetes, several replicas | CRDs in the apiserver | [Helm](/deploy/helm/), [kustomize](/deploy/kustomize/) |
-| Kubernetes, one node ("Pi-hole on k3s") | `state.db` on a PersistentVolumeClaim | [Helm, `mode=standalone`](/deploy/helm/#modestandalone) |
+| Kubernetes, one standalone node | SQLite on a PersistentVolumeClaim | [Helm standalone mode](/deploy/helm/#modestandalone) |
+
+After installation, follow [Connect a client](/guide/first-steps/connect/) to
+verify DNS before changing your network. For address assignment, follow
+[Set up DHCP](/guide/dhcp/).
+
+Some features and multi-node deployments need a [license key](/project/licensing/).
+DNS answering never depends on a key.
