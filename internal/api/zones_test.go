@@ -84,6 +84,34 @@ func TestZoneRecords(t *testing.T) {
 	h.do(http.MethodPost, "/api/v1/zones/example/records", "viewer", ep("x", "A", "192.0.2.3")).want(http.StatusForbidden)
 }
 
+func TestZoneFallbackSummary(t *testing.T) {
+	for _, group := range []string{"disabled", "", "public"} {
+		t.Run(group, func(t *testing.T) {
+			h := newHarness(t)
+			z := zoneObj("example", "example.com.")
+			if group != "disabled" {
+				z.Spec.Fallback = &v1alpha1.ZoneFallbackSpec{UpstreamGroup: group}
+			}
+			h.seed("api", z)
+			var list struct {
+				Items []ZoneSummary `json:"items"`
+			}
+			h.do(http.MethodGet, "/api/v1/zones", "viewer", nil).want(http.StatusOK).json(&list)
+			var detail ZoneDetail
+			h.do(http.MethodGet, "/api/v1/zones/example", "viewer", nil).want(http.StatusOK).json(&detail)
+			for _, got := range []ZoneSummary{list.Items[0], detail.ZoneSummary} {
+				if group == "disabled" {
+					if got.Fallback != nil {
+						t.Fatalf("strict zone advertises fallback: %+v", got.Fallback)
+					}
+				} else if got.Fallback == nil || got.Fallback.UpstreamGroup != group {
+					t.Fatalf("lost fallback configuration: %+v", got.Fallback)
+				}
+			}
+		})
+	}
+}
+
 const exampleZoneFile = `$ORIGIN example.net.
 $TTL 3600
 @	IN SOA ns1.example.net. hostmaster.example.net. 2024010101 7200 3600 1209600 300

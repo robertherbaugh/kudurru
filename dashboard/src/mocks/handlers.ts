@@ -388,6 +388,7 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     managedBy: z.metadata.annotations?.[MANAGED] ?? '',
     ...(z.metadata.resourceVersion ? { resourceVersion: z.metadata.resourceVersion } : {}),
     ...(z.spec.forward?.upstreamGroup ? { upstreamGroup: z.spec.forward.upstreamGroup } : {}),
+    ...(z.spec.fallback ? { fallback: z.spec.fallback } : {}),
     ...(zoneDeleteRefusal(z) ? { deleteRefusal: zoneDeleteRefusal(z) } : {}),
   };
 }

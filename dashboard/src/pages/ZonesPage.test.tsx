@@ -10,6 +10,18 @@ import { ZoneWizardDialog } from '../components/wizards/ZoneWizard';
 
 const FILE = '$ORIGIN lab.example.\n@ 3600 IN SOA ns1 hostmaster 42 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10\nmail 300 IN A 192.0.2.25\n';
 
+describe('ZonesPage', () => {
+  it('identifies zones with public fallback in the list', async () => {
+    const zones = mockDB().zones;
+    const overlay = zones.find((z) => z.spec.type === 'primary')!;
+    overlay.spec.fallback = {};
+    renderWithApp(<ZonesPage />, { route: '/zones' });
+    const label = await screen.findByText('Public fallback');
+    expect(label.closest('tr')).toHaveTextContent(overlay.spec.zoneName);
+    expect(screen.getAllByText('Public fallback')).toHaveLength(1);
+  });
+});
+
 describe('zone import', () => {
   it('summarises the real import result', () => {
     expect(importSummary({ zone: 'z', zoneName: 'z.', created: false, recordSets: ['default/import-z-1'], endpoints: 3, serial: 1, warnings: [], took_ms: 1 })).toBe(

@@ -4565,6 +4565,7 @@ export interface components {
         ZoneDetail: {
             /** @enum {string} */
             deleteRefusal?: "default_zone" | "managed_by";
+            fallback?: components["schemas"]["ZoneFallbackSpec"];
             managedBy?: string;
             message?: string;
             name: string;
@@ -4589,6 +4590,9 @@ export interface components {
             upstreamGroup?: string;
             zoneName: string;
         };
+        ZoneFallbackSpec: {
+            upstreamGroup?: string;
+        };
         ZoneRecord: {
             dnsName: string;
             kudurru?: components["schemas"]["EndpointExt"];
@@ -4606,6 +4610,7 @@ export interface components {
         ZoneSummary: {
             /** @enum {string} */
             deleteRefusal?: "default_zone" | "managed_by";
+            fallback?: components["schemas"]["ZoneFallbackSpec"];
             managedBy?: string;
             message?: string;
             name: string;
