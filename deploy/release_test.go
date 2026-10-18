@@ -264,6 +264,44 @@ func TestDockerfile(t *testing.T) {
 	}
 }
 
+// TestSupervisorVersions keeps the chart's default supervisor image tags
+// (<program version>-k<appVersion>) on the versions the release builds:
+// publish.yml tags kudurru-dnsdist with the version of the FROM line in
+// images/dnsdist/Dockerfile, which Dependabot bumps, and kudurru-keepalived
+// with KEEPALIVED_VERSION.
+func TestSupervisorVersions(t *testing.T) {
+	var values struct {
+		Edge struct {
+			DnsdistVersion string `yaml:"dnsdistVersion"`
+		} `yaml:"edge"`
+		VIP struct {
+			Keepalived struct {
+				KeepalivedVersion string `yaml:"keepalivedVersion"`
+			} `yaml:"keepalived"`
+		} `yaml:"vip"`
+	}
+	if err := yamlv3.Unmarshal(readRepoFile(t, "deploy/helm/kudurru/values.yaml"), &values); err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^FROM (powerdns/dnsdist-\d+:([^@\s]+)@sha256:[0-9a-f]{64})$`).FindStringSubmatch(string(readRepoFile(t, "images/dnsdist/Dockerfile")))
+	if m == nil || !digestRefRE.MatchString(m[1]) {
+		t.Fatalf("images/dnsdist/Dockerfile needs a literal FROM powerdns/dnsdist-<series>:<version>@sha256:<digest> (Dependabot, publish.yml)")
+	}
+	if got := values.Edge.DnsdistVersion; got != m[2] {
+		t.Errorf("values.yaml edge.dnsdistVersion is %q, images/dnsdist/Dockerfile builds dnsdist %s", got, m[2])
+	}
+	k := regexp.MustCompile(`(?m)^ARG KEEPALIVED_VERSION=(\S+)$`).FindStringSubmatch(string(readRepoFile(t, "images/keepalived/Dockerfile")))
+	if k == nil {
+		t.Fatal("images/keepalived/Dockerfile has no ARG KEEPALIVED_VERSION")
+	}
+	if got := values.VIP.Keepalived.KeepalivedVersion; got != k[1] {
+		t.Errorf("values.yaml vip.keepalived.keepalivedVersion is %q, images/keepalived/Dockerfile builds keepalived %s", got, k[1])
+	}
+	if !strings.Contains(string(readRepoFile(t, "Makefile")), "EDGE_DNSDIST_IMAGE    ?= $(shell sed -n 's/^FROM \\(powerdns") {
+		t.Errorf("the Makefile's EDGE_DNSDIST_IMAGE must come from the FROM line of images/dnsdist/Dockerfile")
+	}
+}
+
 // TestVersionFile checks VERSION, the source of the release candidate and
 // release tags (hack/release-tag.sh) and of RELEASE_VERSION in the Makefile.
 func TestVersionFile(t *testing.T) {

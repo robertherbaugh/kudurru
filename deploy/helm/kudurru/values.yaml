@@ -141,7 +141,7 @@ edge:
     tag: ""
     digest: ""
     pullPolicy: IfNotPresent
-  dnsdistVersion: 2.1.2
+  dnsdistVersion: 2.1.3
   # -- Port kudurru listens on behind the edge (PROXYv2 only).
   backendPort: 5353
   # -- Short max_ttl packet cache for the authoritative pool, flushed on serial change.

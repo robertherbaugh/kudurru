@@ -385,7 +385,7 @@ release-manifests: $(DEPLOY_BIN)/kustomize
 ## images/dnsdist/Dockerfile) and `keepalived -t` in the kudurru-keepalived
 ## image built from source. Needs Docker and network; CI runs it in the
 ## optional edge workflow. The unit tests only check the files structurally.
-EDGE_DNSDIST_IMAGE    ?= powerdns/dnsdist-21:2.1.2@sha256:efabf173811e27438bebee5f1f40e047f263ea39093a8f7d6097df494cf1ed67
+EDGE_DNSDIST_IMAGE    ?= $(shell sed -n 's/^FROM \(powerdns\/dnsdist-[0-9]*:[^@ ]*@sha256:[0-9a-f]*\)$$/\1/p' images/dnsdist/Dockerfile)
 EDGE_KEEPALIVED_IMAGE ?= kudurru-keepalived:edge-check
 EDGE_SUPERVISOR_IMAGE ?= kudurru-dnsdist:edge-check
 EDGE_KUDURRU_IMAGE    ?= kudurru:edge-check
@@ -646,20 +646,15 @@ $(TRIVY_DIR)/trivy:
 trivy-fs: $(TRIVY)
 	$(TRIVY) fs --scanners vuln,secret,misconfig .
 
-## kudurru-dnsdist is scanned but does not fail the target (--exit-code 0):
-## its findings are in the Debian packages of the upstream
-## powerdns/dnsdist-21 image, fixed by bumping that pin
-## (dev-docs/followups.md).
 trivy-images: $(TRIVY)
 	docker build -t kudurru:$(SCAN_TAG) .
 	docker build --target debug -t kudurru:$(SCAN_TAG)-debug .
 	docker build -t kudurru-dnsdist:$(SCAN_TAG) --build-arg KUDURRU_IMAGE=kudurru:$(SCAN_TAG) images/dnsdist
 	docker build -t kudurru-keepalived:$(SCAN_TAG) --build-arg KUDURRU_IMAGE=kudurru:$(SCAN_TAG) images/keepalived
 	@status=0; \
-	for image in kudurru:$(SCAN_TAG) kudurru:$(SCAN_TAG)-debug kudurru-keepalived:$(SCAN_TAG); do \
+	for image in kudurru:$(SCAN_TAG) kudurru:$(SCAN_TAG)-debug kudurru-dnsdist:$(SCAN_TAG) kudurru-keepalived:$(SCAN_TAG); do \
 	  echo "== $$image"; $(TRIVY) image $$image || status=1; \
 	done; \
-	echo "== kudurru-dnsdist:$(SCAN_TAG) (report only)"; $(TRIVY) image --exit-code 0 kudurru-dnsdist:$(SCAN_TAG); \
 	exit $$status
 
 trivy-license-server: $(TRIVY) license-server-image
