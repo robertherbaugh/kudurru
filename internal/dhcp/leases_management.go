@@ -187,7 +187,7 @@ func validateLeaseCandidate(cfg Config, leases []storedLease) error {
 	candidate := &LeaseStore{}
 	candidate.setLeaseConfig(normalizeLeaseConfig(cfg))
 	for _, l := range leases {
-		if err := candidate.compatible(l); err != nil {
+		if err := candidate.compatibleOrMoving(l); err != nil {
 			return fmt.Errorf("%w: configuration conflicts with live lease %s", ErrUnavailable, l.Address)
 		}
 	}

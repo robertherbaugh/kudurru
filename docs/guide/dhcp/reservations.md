@@ -10,6 +10,10 @@ The reserved address can be outside the dynamic pool, but it must be inside the 
 
 ## 1. Add the reservation
 
+To reserve a device that already has a lease, open **DHCP** > **Leases**,
+click **Reserve** on its row, and keep or change the **Reserved address**.
+The MAC address and hostname come from the lease. Otherwise:
+
 1. Open **DHCP** > **Scopes**.
 2. Open the running scope.
 3. Find **Reservations**.
@@ -26,6 +30,8 @@ The reserved address can be outside the dynamic pool, but it must be inside the 
 A device with a private or randomized MAC can appear as a different client.
 Use the stable MAC for this network.
 An address that another client still leases cannot become this device's reservation.
+A device that leases a different address keeps it until it next renews or
+reconnects, then moves to the reserved address.
 
 ## 2. Renew and verify
 
@@ -35,7 +41,8 @@ An address that another client still leases cannot become this device's reservat
 4. Query `printer.lan.home.arpa` if lease DNS registration is on.
 
 A reservation on a running API-managed scope applies immediately. The client
-receives it when it next acquires or renews a lease.
+receives it when it next acquires or renews a lease. Behind a relay, a moved
+device can wait until its lease is nearly over; reconnecting it is faster.
 On SQLite, add reservations under **Setup for next restart** if the scope is not running.
 On Kubernetes, scope changes apply live. Edit a managed scope at its configuration source.
 

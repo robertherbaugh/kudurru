@@ -168,9 +168,16 @@ func TestKubeDHCPRespectsLeasesAndGitOwnership(t *testing.T) {
 	cfg := dhcpAPIConfigScope(t, h, "lan")
 	h.do(http.MethodPut, BasePath+dhcpBase+"/scopes/lan/reservations/02:00:00:00:00:99", "admin",
 		map[string]string{"ip": lease.Address.String()}, "If-Match", cfg.ETag).want(http.StatusConflict)
-	// Its own reservation is fine.
+	// Its own reservation is fine, at its address or at another one: the
+	// client moves there at its next DISCOVER.
+	var reserved DHCPConfig
 	h.do(http.MethodPut, BasePath+dhcpBase+"/scopes/lan/reservations/02:00:00:00:00:01", "admin",
-		map[string]string{"ip": lease.Address.String(), "hostname": "laptop"}, "If-Match", cfg.ETag).want(http.StatusOK)
+		map[string]string{"ip": lease.Address.String(), "hostname": "laptop"}, "If-Match", cfg.ETag).want(http.StatusOK).json(&reserved)
+	h.do(http.MethodPut, BasePath+dhcpBase+"/scopes/lan/reservations/02:00:00:00:00:01", "admin",
+		map[string]string{"ip": "192.0.2.50", "hostname": "laptop"}, "If-Match", reserved.ETag).want(http.StatusOK).json(&reserved)
+	if len(reserved.Reservations) != 1 || reserved.Reservations[0].IP != "192.0.2.50" {
+		t.Fatalf("reservations = %+v", reserved.Reservations)
+	}
 	var page DHCPLeases
 	h.do(http.MethodGet, BasePath+dhcpBase+"/scopes/lan/leases", "admin", nil).want(http.StatusOK).json(&page)
 	if len(page.Items) != 1 || page.Items[0].Address != lease.Address.String() {

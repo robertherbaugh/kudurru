@@ -79,7 +79,9 @@ Changes apply live; no restart is needed. A change to a scope's subnet,
 relays or conflict detection rebuilds the DHCP listener for a moment. The
 dashboard refuses an edit that a live lease contradicts. The same change from
 Git applies anyway: the affected leases are not renewed and end at expiry,
-and the scope's `status.conflictingLeases` counts them. Every scope is
+and the scope's `status.conflictingLeases` counts them. Reserving a client at
+another address than it leases is not a conflict: it moves to the
+reservation when it next renews or reconnects. Every scope is
 relay-only; ICMP conflict detection (the default) uses an unprivileged ICMP
 socket in the pod, and `conflictDetection: disabled` turns it off.
 `dhcp.scopes`, the flat `dhcp.*` scope keys and quorum failover are rejected

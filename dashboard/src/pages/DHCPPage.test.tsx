@@ -89,6 +89,22 @@ describe('DHCP dashboard', () => {
     expect(dialog.getByText(/1 imported, 0 unchanged/)).toBeInTheDocument();
   });
 
+  it('reserves a lease’s client, at its address or another one', async () => {
+    renderWithApp(<DHCPLeasesPage />, { route: '/leases?scope=default' });
+    const table = within(await screen.findByRole('table', { name: 'DHCP leases' }));
+    // The printer is already reserved at the address it holds.
+    expect(await table.findByRole('button', { name: 'Edit 02:00:00:00:00:10' })).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(table.getByRole('button', { name: 'Reserve 192.0.2.100' }));
+    const dialog = within(screen.getByRole('dialog', { name: 'Add reservation' }));
+    expect(dialog.getByRole('textbox', { name: 'MAC address' })).toHaveValue('02:00:00:00:00:20');
+    expect(dialog.getByRole('textbox', { name: 'MAC address' })).toBeDisabled();
+    expect(dialog.getByRole('textbox', { name: 'Hostname' })).toHaveValue('laptop');
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Reserved address' }), { target: { value: '192.0.2.40' } });
+    fireEvent.click(dialog.getByRole('button', { name: 'Save reservation' }));
+    await waitFor(() => expect(mockDHCP().config.reservations).toContainEqual({ mac: '02:00:00:00:00:20', ip: '192.0.2.40', hostname: 'laptop' }));
+    expect(await table.findByRole('button', { name: 'Edit 02:00:00:00:00:20' })).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('keeps file-owned and environment-owned options read-only', async () => {
     mockDHCP().config.management = 'file';
     mockDHCP().config.envLocked = ['dnsServers'];

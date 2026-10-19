@@ -1,6 +1,6 @@
 // The DHCP client list: the lease inventory of one running scope, with
-// search, a state filter, export and import. Filtering > Clients lists DNS
-// clients instead; a lease's address links there.
+// search, a state filter, export, import and reserving a row's client.
+// Filtering > Clients lists DNS clients instead; a lease's address links there.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
@@ -11,7 +11,9 @@ import { Text } from '@astryxdesign/core/Text';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDeferredValue, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
-import type { DHCPLease } from '../api/types';
+import type { DHCPConfig, DHCPLease } from '../api/types';
+import { ReservationDialog } from '../components/DHCPReservationDialog';
+import { managedText } from '../components/DHCPSetupFields';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { SelectField } from '../components/fields/SelectField';
@@ -48,14 +50,42 @@ const columns: TableColumn<Row>[] = [
   { key: 'expiresAt', header: 'Expires', width: proportional(2), renderCell: (l) => <Text>{formatRelative(l.expiresAt)}</Text> },
 ];
 
+// Why a lease cannot be reserved from this list, if it cannot.
+function reserveBlocked(config: DHCPConfig | undefined, lease: DHCPLease, allowed: boolean) {
+  if (!config) return 'Loading the scope';
+  if (config.managedBy) return managedText(config.managedBy);
+  if (config.management !== 'api' || config.envLocked.includes('reservations')) return 'Managed outside the dashboard';
+  if (!allowed) return 'Requires dhcp.write';
+  if (lease.state === 'declined') return 'A quarantined address cannot be reserved';
+  const current = config.reservations.find((r) => r.mac === lease.mac);
+  if (current?.ip === lease.address) return 'Already reserved for this client';
+  return undefined;
+}
+
 function Leases({ scope, scopes, onScope }: { scope: string; scopes: string[]; onScope: (scope: string) => void }) {
   const api = useApi();
   const can = useCan();
   const notify = useNotify();
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const q = useDeferredValue(search);
   const [state, setState] = useState('');
   const [importing, setImporting] = useState(false);
+  const [reserving, setReserving] = useState<DHCPLease | null>(null);
+  const config = useQuery({ queryKey: qk.dhcp(scope, 'config'), queryFn: () => api.dhcp.config(scope), enabled: can('dhcp', 'read') && can('dhcpleases', 'read'), refetchInterval: 15_000 });
+  const saved = (next: DHCPConfig) => {
+    qc.setQueryData(qk.dhcp(scope, 'config'), next);
+    void qc.invalidateQueries({ queryKey: qk.dhcp(scope, 'leases') });
+    void qc.invalidateQueries({ queryKey: qk.dhcp('status') });
+    void qc.invalidateQueries({ queryKey: qk.dhcp('setup') });
+  };
+  const rowColumns: TableColumn<Row>[] = [...columns, { key: 'actions', header: 'Actions', width: proportional(2), renderCell: (l) => {
+    const blocked = reserveBlocked(config.data, l, can('dhcp', 'write'));
+    const current = config.data?.reservations.find((r) => r.mac === l.mac);
+    return <Button label={current ? `Edit ${l.mac}` : `Reserve ${l.address}`} variant="ghost" size="sm" isDisabled={!!blocked} tooltip={blocked}
+      onClick={() => setReserving(l)} />;
+  } }];
+  const reservingCurrent = reserving ? config.data?.reservations.find((r) => r.mac === reserving.mac) : undefined;
   const leases = useInfiniteQuery({
     queryKey: qk.dhcp(scope, 'leases', q, state),
     queryFn: ({ pageParam, signal }) => api.dhcp.leases(scope, { q, state, limit: 100, ...(pageParam ? { continue: pageParam } : {}) }, signal),
@@ -85,10 +115,12 @@ function Leases({ scope, scopes, onScope }: { scope: string; scopes: string[]; o
     {!can('dhcpleases', 'read') ? <EmptyState title="Lease inventory is restricted" description="Viewing lease inventory requires dhcpleases.read permission." /> : <>
       {leases.error ? <ErrorBanner error={leases.error} /> : null}
       {leases.isPending ? <Loading label="Loading leases" /> : null}
-      {leases.data ? <Table<Row> aria-label="DHCP leases" density="compact" idKey="address" data={leases.data.pages.flatMap((p) => p.items)} columns={columns} /> : null}
+      {leases.data ? <Table<Row> aria-label="DHCP leases" density="compact" idKey="address" data={leases.data.pages.flatMap((p) => p.items)} columns={can('dhcp', 'read') ? rowColumns : columns} /> : null}
       {leases.hasNextPage ? <Button label="Load more leases" isLoading={leases.isFetchingNextPage} onClick={() => void leases.fetchNextPage()} /> : null}
     </>}
     {importing ? <ImportDialog scope={scope} close={() => setImporting(false)} /> : null}
+    {reserving && config.data ? <ReservationDialog config={config.data} close={() => setReserving(null)} saved={saved}
+      {...(reservingCurrent ? { reservation: reservingCurrent } : { initial: { mac: reserving.mac, ip: reserving.address, hostname: reserving.hostname } })} /> : null}
   </>;
 }
 
