@@ -198,7 +198,10 @@ func TestTransferTLSHandshakeCancellation(t *testing.T) {
 				t.Fatal("TLS handshake ignored cancellation")
 			}
 			select {
-			case <-done:
+			case err := <-done:
+				if err == nil {
+					t.Fatal("canceled TLS connection did not return a read error")
+				}
 			case <-time.After(time.Second):
 				t.Fatal("TLS handshake cancellation did not close the connection")
 			}

@@ -1,5 +1,5 @@
-// Global setup of the Playwright suite: one `kudurru serve` with the
-// embedded dashboard for every test, a stub upstream, a signed-in admin
+// Setup for one Playwright worker: one `kudurru serve` with the
+// embedded dashboard, a stub upstream, a signed-in admin
 // session (storage state) and real DNS traffic over UDP so the stats,
 // query log and clients pages have data. The returned function is the
 // global teardown. A stub list publisher serves hosts lists for url
@@ -14,16 +14,26 @@ import { ADMIN_USER, BLOCKLIST, locateBinary, sleep, startServer, WEB_DIR, ZONE 
 export const STORAGE_STATE = path.join(WEB_DIR, 'e2e', '.auth', 'admin.json');
 
 export default async function globalSetup(_config: FullConfig): Promise<() => Promise<void>> {
+  return setupServer(STORAGE_STATE, 'e2e');
+}
+
+/** Isolate canonical state and credentials between parallel workers. */
+export async function setupServer(storageState: string, node: string): Promise<() => Promise<void>> {
   const bin = locateBinary();
   const upstream = await startUpstream();
   // The block-list publisher url sources fetch from (allowlist.spec.ts).
   const lists = await startListServer();
   const adminPassword = `e2e-${Math.random().toString(36).slice(2)}-password`;
-  const server = await startServer(bin, { upstream: upstream.address, adminPassword });
+  const server = await startServer(bin, { upstream: upstream.address, adminPassword, node }).catch(async (error: unknown) => {
+    await upstream.close();
+    await lists.close();
+    throw error;
+  });
   const teardown = async () => {
     await server.stop();
     await upstream.close();
     await lists.close();
+    fs.rmSync(storageState, { force: true });
   };
   try {
     // The tests must run against the real bundle, not the placeholder.
@@ -56,8 +66,9 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
       }
       await sleep(Math.min(1000, loginDeadline - Date.now()));
     }
-    fs.mkdirSync(path.dirname(STORAGE_STATE), { recursive: true });
-    await api.storageState({ path: STORAGE_STATE });
+    fs.mkdirSync(path.dirname(storageState), { recursive: true });
+    await api.storageState({ path: storageState });
+    fs.chmodSync(storageState, 0o600);
 
     // Real traffic from 127.0.0.1: local zone, blocked and recursive names.
     // HTTP readiness does not acknowledge a desired primary's head. Wait for
@@ -103,7 +114,6 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     process.env.KUDURRU_E2E_BIN_PATH = bin;
     console.log(`e2e: kudurru ${server.node} at ${server.url} (dns ${server.dns}, data ${server.dir})`);
   } catch (err) {
-    console.error(server.log());
     await teardown();
     throw err;
   }

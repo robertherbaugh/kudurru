@@ -382,3 +382,83 @@ func TestHTTPDeadlineAndHandlerPanicReleaseLeases(t *testing.T) {
 		t.Fatal("panic retained request proof")
 	}
 }
+
+func TestInitialCaptureWaitUsesPublishedAuthorityAndDispatchesOnce(t *testing.T) {
+	for _, revoke := range []bool{false, true} {
+		t.Run(map[bool]string{false: "publication", true: "revocation"}[revoke], func(t *testing.T) {
+			f := newFixture(t)
+			f.adapter.options.CaptureWait = time.Second
+			f.pause.Store(true)
+			f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				if !revoke {
+					_, err := tx.Apply(ctx, &publicv1.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "new", Namespace: "default"}, Spec: publicv1.BlockListSpec{Mode: "block", Sources: []publicv1.ListSource{{Inline: []string{"blocked.example"}}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+					return err
+				}
+				s, err := security.Load(ctx, tx)
+				if err != nil {
+					return err
+				}
+				if err := s.Revoke(f.row.ID); err != nil {
+					return err
+				}
+				return s.Commit(ctx)
+			})
+			var calls atomic.Int32
+			h := f.adapter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				identity, err := Identity(r.Context())
+				if err != nil || identity.Base.Revision != f.store.Authority().Installed.Revision {
+					t.Error("handler did not receive the published generation", err)
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			response := httptest.NewRecorder()
+			done := make(chan struct{})
+			go func() { defer close(done); h.ServeHTTP(response, f.request(http.MethodGet)) }()
+			select {
+			case <-done:
+				t.Fatal("pending publication was not awaited")
+			case <-time.After(20 * time.Millisecond):
+			}
+			if calls.Load() != 0 {
+				t.Fatal("pending publication reached handler")
+			}
+			f.pause.Store(false)
+			f.publisher.Wake()
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("request did not finish")
+			}
+			want, count := http.StatusNoContent, int32(1)
+			if revoke {
+				want, count = http.StatusUnauthorized, 0
+			}
+			if response.Code != want || calls.Load() != count {
+				t.Fatalf("status=%d calls=%d, want %d/%d", response.Code, calls.Load(), want, count)
+			}
+		})
+	}
+}
+
+func TestInitialCaptureWaitIsBoundedAndCancelable(t *testing.T) {
+	f := newFixture(t)
+	f.pause.Store(true)
+	f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		_, err := tx.Apply(ctx, &publicv1.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "new", Namespace: "default"}, Spec: publicv1.BlockListSpec{Mode: "block", Sources: []publicv1.ListSource{{Inline: []string{"blocked.example"}}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	})
+	for _, canceled := range []bool{false, true} {
+		f.adapter.options.CaptureWait = 20 * time.Millisecond
+		ctx, cancel := context.WithCancel(t.Context())
+		if canceled {
+			cancel()
+		}
+		response := httptest.NewRecorder()
+		f.adapter.Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("unavailable request reached handler") })).ServeHTTP(response, f.request(http.MethodGet).WithContext(ctx))
+		cancel()
+		if response.Code != http.StatusServiceUnavailable || response.Header().Get("Retry-After") != "1" {
+			t.Fatal("unavailable request lost bounded refusal", response.Code)
+		}
+	}
+}

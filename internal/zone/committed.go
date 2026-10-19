@@ -66,8 +66,8 @@ func BuildCommittedPrimary(config *v1alpha1.DNSZone, records []dns.RR, serial ui
 		}
 		set.add(rr)
 	}
-	if z.soa == nil || z.apex.get(dns.TypeNS) == nil {
-		return nil, fmt.Errorf("committed primary requires apex SOA and NS")
+	if z.soa == nil || (len(config.Spec.Nameservers) != 0 && z.apex.get(dns.TypeNS) == nil) {
+		return nil, fmt.Errorf("committed primary requires apex SOA and configured NS")
 	}
 	var structural error
 	z.index = make(map[string]*node, z.tree.count)

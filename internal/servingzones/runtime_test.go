@@ -137,6 +137,12 @@ func TestActualManagersComposePinnedRuntimeRotationAndExpiry(t *testing.T) {
 	}
 	unavailable(t, p, "stub.", f.now.Add(20*time.Second))
 	unavailable(t, p, "secondary.", f.now.Add(30*time.Second))
+	for _, config := range []*public.DNSZone{secondaryConfig, stubConfig} {
+		model := p.TransferredMetadata(config)
+		if model == nil || model.Serial() != 1 || model.NextExpiry().IsZero() {
+			t.Fatal("expired original metadata was discarded")
+		}
+	}
 	if !selection.Evaluate(rpz.Context{Name: "bad.test."}, f.now.Add(30*time.Second)).Unavailable {
 		t.Fatal("exact RPZ expiry renewed")
 	}
@@ -144,6 +150,9 @@ func TestActualManagersComposePinnedRuntimeRotationAndExpiry(t *testing.T) {
 	rotated.Keys = bindingKeys(t, "copy-test-key-two")
 	newCut := mustPrepare(t, rotated)
 	unavailable(t, newCut, "secondary.", f.now)
+	if newCut.TransferredMetadata(secondaryConfig) != nil {
+		t.Fatal("new credentials borrowed old transfer metadata")
+	}
 	rotatedSelection, err := newCut.SelectRPZ([]string{"apps/ads"})
 	if err != nil || !rotatedSelection.Evaluate(rpz.Context{Name: "bad.test."}, f.now).Unavailable {
 		t.Fatal("rotation relabeled RPZ", err)
@@ -169,4 +178,9 @@ func TestActualManagersComposePinnedRuntimeRotationAndExpiry(t *testing.T) {
 	changed := mustPrepare(t, o)
 	unavailable(t, changed, "secondary.", f.now)
 	unavailable(t, changed, "stub.", f.now)
+	for _, desired := range o.Objects.Zones() {
+		if changed.TransferredMetadata(desired) != nil {
+			t.Fatal("replacement configuration borrowed historical metadata")
+		}
+	}
 }

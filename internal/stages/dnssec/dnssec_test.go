@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"sync"
@@ -129,7 +130,11 @@ func (f *fixture) rr(text string) dns.RR {
 }
 func (f *fixture) sign(rrs ...dns.RR) []dns.RR {
 	f.t.Helper()
-	sig := &dns.RRSIG{Hdr: dns.RR_Header{Name: rrs[0].Header().Name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: rrs[0].Header().Ttl}, Algorithm: f.key.Algorithm, KeyTag: f.key.KeyTag(), SignerName: f.key.Hdr.Name, Inception: uint32(f.now().Add(-time.Hour).Unix()), Expiration: uint32(f.now().Add(2 * time.Hour).Unix())}
+	inception, expiration := f.now().Add(-time.Hour).Unix(), f.now().Add(2*time.Hour).Unix()
+	if inception < 0 || inception > math.MaxUint32 || expiration < 0 || expiration > math.MaxUint32 {
+		f.t.Fatal("fixture clock is outside the DNSSEC timestamp range")
+	}
+	sig := &dns.RRSIG{Hdr: dns.RR_Header{Name: rrs[0].Header().Name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: rrs[0].Header().Ttl}, Algorithm: f.key.Algorithm, KeyTag: f.key.KeyTag(), SignerName: f.key.Hdr.Name, Inception: uint32(inception), Expiration: uint32(expiration)} // #nosec G115 -- both Unix timestamps are explicitly bounded above.
 	if e := sig.Sign(f.signer, rrs); e != nil {
 		f.t.Fatal(e)
 	}
@@ -380,6 +385,9 @@ func TestBogusRefreshCannotFallbackToSecureStale(t *testing.T) {
 func TestNTAExpiryAndCachePersistenceRetainTrustScope(t *testing.T) {
 	f := newFixture(t, true, true)
 	r := f.serve(f.request("www.example.", dns.TypeA))
+	if !r.Msg.AuthenticatedData {
+		t.Fatal("initial answer must validate before persisting its trust scope")
+	}
 	var dump bytes.Buffer
 	if e := f.cs.Cache().Dump(&dump); e != nil {
 		t.Fatal(e)
@@ -450,7 +458,11 @@ func TestDetachedFetchFencedByFlushAndABAReplacement(t *testing.T) {
 				if e != nil {
 					t.Fatal(e)
 				}
-				defer middle.Close()
+				defer func() {
+					if err := middle.Close(); err != nil {
+						t.Error(err)
+					}
+				}()
 				if _, e = f.fwd.Replace(middle, v, true); e != nil {
 					t.Fatal(e)
 				}

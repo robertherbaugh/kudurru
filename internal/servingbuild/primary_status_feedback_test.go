@@ -164,6 +164,10 @@ func (h *primaryFeedbackFixture) observe(name string, wantAvailable bool) (pr.Pr
 
 func (h *primaryFeedbackFixture) project(name string) primaryFeedbackResult {
 	h.t.Helper()
+	// Each explicit observation needs an event, including after a clock change
+	// or a zero-retry result. Publication acknowledgments no longer generate
+	// unsolicited wakeups for an otherwise quiescent controller.
+	h.f.pub.Wake()
 	for {
 		var call primaryFeedbackCall
 		select {

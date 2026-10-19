@@ -504,7 +504,10 @@ func TestActualCompletePublisherExcludesReplacementAtPointerSwap(t *testing.T) {
 	cancel()
 	publisher.Close()
 	select {
-	case <-runDone:
+	case err := <-runDone:
+		if err != nil {
+			t.Fatal(err)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("publisher did not join")
 	}

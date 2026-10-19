@@ -100,7 +100,7 @@ func (c *Coordinator) reconcile(ctx context.Context) (time.Time, error) {
 
 // Run owns acquisition/reconcile on every node. It has NO durable writer work,
 // never samples WriterToken, and joins its bounded resource worker on every exit.
-func (c *Coordinator) Run(ctx context.Context) error {
+func (c *Coordinator) Run(ctx context.Context) (runErr error) {
 	ctx, stop, err := c.context(ctx)
 	if err != nil {
 		return err
@@ -126,7 +126,9 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	defer func() {
 		cancel()
 		if !workerJoined {
-			<-worker
+			if err := <-worker; err != nil && !errors.Is(err, context.Canceled) {
+				runErr = errors.Join(runErr, err)
+			}
 		}
 		c.closed.Store(true)
 		c.cancel()

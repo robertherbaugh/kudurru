@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
@@ -82,7 +83,9 @@ func (h *servingHTTP) password(w http.ResponseWriter, r *http.Request) error {
 		// preserving ownership. File/controller accounts need their own policy;
 		// a password proof never grants manager adoption or Force.
 		manager := store.ManagedBy(&user)
-		if manager != store.ManagerSystem && manager != store.ManagerAPI {
+		bootstrap, bootstrapOwner := strings.CutPrefix(manager, store.ManagerBootstrap+":")
+		bootstrapAdmin := user.Spec.BuiltinAdmin && bootstrapOwner && bootstrap != ""
+		if manager != store.ManagerSystem && manager != store.ManagerAPI && !bootstrapAdmin {
 			return &auth.Error{Status: http.StatusConflict, Key: "managed_by", Message: "this account's password is managed outside self-service"}
 		}
 		if proof.Kind == servingauth.Cookie {

@@ -218,6 +218,10 @@ type Selection struct{ zones []*Zone }
 // sentinels; disabled sources should be omitted by the configuration adapter.
 func NewSelection(zones ...*Zone) *Selection { return &Selection{zones: slices.Clone(zones)} }
 
+// Empty reports whether no RPZ sources are required. Unavailable sources,
+// including nil sentinels, still count as required coverage.
+func (s *Selection) Empty() bool { return s == nil || len(s.zones) == 0 }
+
 // Evaluate checks source availability before selecting the first matching
 // feed. Within a feed client-IP precedes QNAME, then answer-IP. Caller guards
 // recursive-only/opcode/authority and performs final transport rendering.

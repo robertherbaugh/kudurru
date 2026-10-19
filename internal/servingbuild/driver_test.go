@@ -2,6 +2,7 @@ package servingbuild
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -47,7 +48,10 @@ func TestDriverPublishesRealWholeBundleAcrossReplacementAndLateParent(t *testing
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				t.Error(err)
+			}
 		case <-time.After(5 * time.Second):
 			t.Error("driver failed to join")
 		}

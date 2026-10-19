@@ -338,6 +338,12 @@ func TestDiagnosticsActualNativeUpdateOriginalHTTPAndInternalCuts(t *testing.T) 
 	if held != initial || strings.Contains(held, "dynamic0") {
 		t.Fatal("original HTTP lease changed across UPDATE", held)
 	}
+	if _, err := diagnostics.ReadTransferredMetadata(heldCtx, desired.Name); err == nil {
+		t.Fatal("metadata recaptured after original lease release")
+	}
+	if _, err := diagnostics.ReadTransferredMetadata(ctx, desired.Name); err == nil {
+		t.Fatal("metadata accepted missing original lease")
+	}
 	if _, err := diagnostics.ReadZone(heldCtx, desired.Name); err == nil {
 		t.Fatal("released HTTP request recaptured a model")
 	}

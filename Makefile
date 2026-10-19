@@ -63,9 +63,13 @@ run: build
 ## when `make envtest` has installed the control-plane binaries and skip
 ## otherwise. TEST_PKGS narrows the run (ci.yml passes one shard of
 ## hack/go-test-shard.sh).
+# The mounted-server and current-command integration tests now exceed Go’s
+# default ten-minute per-package limit under race instrumentation. Individual
+# fixtures retain their own bounded waits; this is the complete package budget.
 TEST_PKGS ?= ./...
+TEST_TIMEOUT ?= 30m
 test:
-	CGO_ENABLED=1 go test -race -count=1 $(TEST_PKGS)
+	CGO_ENABLED=1 go test -race -count=1 -timeout=$(TEST_TIMEOUT) $(TEST_PKGS)
 
 ## test-short: no race detector, no cgo; what `go test` gives on a plain checkout
 test-short:

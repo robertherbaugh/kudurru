@@ -271,3 +271,99 @@ func TestPrimaryPublicationExpiryAndAuthorityLossCannotAcknowledge(t *testing.T)
 		t.Fatal("fenced waiter blocked behind owner preparation")
 	}
 }
+
+func TestPrimaryPublicationCurrentAcknowledgmentDoesNotRestartPreparation(t *testing.T) {
+	f := newFixture(t)
+	r, p, ctx := primaryFixture(t, f)
+	z, lifecycle := beginPrimary(ctx, t, f, r)
+	if _, err := r.Reconcile(ctx, lifecycle.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	// Drain startup preparation before observing acknowledgments of this exact
+	// already-published member. No store or dependency changes occur below.
+	deadline := time.Now().Add(5 * time.Second)
+	for f.pub.Status().Preparing {
+		if time.Now().After(deadline) {
+			t.Fatal("initial publication did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	member, _ := r.Capture(f.now).Member(z.Spec.ZoneName)
+	writer, _ := pr.PublicationFenceFrom(ctx)
+	changed := f.pub.Subscribe()
+	for range 10 {
+		if err := p.Wait(ctx, writer, member); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case <-changed:
+		t.Fatal("acknowledging the current member restarted complete preparation")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestPrimaryPublicationPendingWaitDoesNotCancelPreparation(t *testing.T) {
+	f := newFixture(t)
+	r, _, ctx := primaryFixture(t, f)
+	z, lifecycle := beginPrimary(ctx, t, f, r)
+	if _, err := r.Reconcile(ctx, lifecycle.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	member, _ := r.Capture(f.now).Member(z.Spec.ZoneName)
+	writer, _ := pr.PublicationFenceFrom(ctx)
+	entered := make(chan context.Context, 1)
+	release := make(chan struct{})
+	var calls atomic.Int32
+	pub, err := serving.New(serving.Options{Source: f.store, Required: serving.CompleteManifest(), Prepare: func(ctx context.Context, candidate serving.Candidate) (serving.Prepared, error) {
+		if calls.Add(1) == 1 {
+			entered <- ctx
+		}
+		select {
+		case <-release:
+			return f.builder.Prepare(ctx, candidate)
+		case <-ctx.Done():
+			return serving.Prepared{}, ctx.Err()
+		}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- pub.Run(runctx) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			t.Error(err)
+		}
+	}()
+	var preparing context.Context
+	select {
+	case preparing = <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("complete preparation did not start")
+	}
+	p, err := NewPrimaryPublication(pub, func() time.Time { return f.now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	bounded, stop := context.WithTimeout(ctx, 100*time.Millisecond)
+	err = p.Wait(bounded, writer, member)
+	stop()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("held preparation unexpectedly acknowledged", err)
+	}
+	if preparing.Err() != nil || calls.Load() != 1 {
+		t.Fatal("a pending acknowledgment canceled complete preparation")
+	}
+	close(release)
+	bounded, stop = context.WithTimeout(ctx, 5*time.Second)
+	defer stop()
+	if err := p.Wait(bounded, writer, member); err != nil {
+		t.Fatal("original preparation did not publish", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatal("waiting restarted preparation")
+	}
+}

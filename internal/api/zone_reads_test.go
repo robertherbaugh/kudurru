@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -149,4 +152,79 @@ func TestConfiguredCrossOriginProtectionIsShared(t *testing.T) {
 	h := newHarness(t, func(o *Options) { o.CrossOrigin = cop })
 	h.do(http.MethodPost, "/api/v1/dns/blocking", "admin", map[string]any{"blocking": true}, "Sec-Fetch-Site", "cross-site", "Origin", "https://trusted.example").want(http.StatusNotImplemented)
 	h.do(http.MethodPost, "/api/v1/dns/blocking", "admin", map[string]any{"blocking": true}, "Sec-Fetch-Site", "cross-site", "Origin", "https://other.example").want(http.StatusForbidden)
+}
+
+type transferredMetadataFixture struct {
+	*zoneReadFixture
+	metadata *zone.Zone
+}
+
+func (f *transferredMetadataFixture) ReadTransferredMetadata(context.Context, string) (*zone.Zone, error) {
+	return f.metadata, nil
+}
+
+func TestCapturedTransferredSummaryRetainsExpiredMetadata(t *testing.T) {
+	for _, typ := range []public.ZoneType{public.ZoneTypeSecondary, public.ZoneTypeStub} {
+		t.Run(string(typ), func(t *testing.T) {
+			now := time.Now().UTC()
+			expiry := now.Add(time.Minute)
+			z := zoneObj("copy", "copy.test.")
+			z.Spec.Type = typ
+			z.Spec.Secondary = &public.SecondarySpec{Primaries: []string{"192.0.2.53"}}
+			z.Spec.Stub = &public.StubSpec{Nameservers: []string{"192.0.2.53"}}
+			records := []dns.RR{
+				&dns.SOA{Hdr: dns.RR_Header{Name: "copy.test.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 60}, Ns: "ns.copy.test.", Mbox: "admin.copy.test.", Serial: 42, Refresh: 10, Retry: 3, Expire: 60, Minttl: 5},
+				&dns.NS{Hdr: dns.RR_Header{Name: "copy.test.", Rrtype: dns.TypeNS, Class: dns.ClassINET, Ttl: 60}, Ns: "ns.copy.test."},
+				&dns.A{Hdr: dns.RR_Header{Name: "ns.copy.test.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: []byte{192, 0, 2, 53}},
+			}
+			var model *zone.Zone
+			var err error
+			if typ == public.ZoneTypeSecondary {
+				z.Spec.Stub = nil
+				model, err = zone.BuildSecondary(z, records, expiry)
+			} else {
+				z.Spec.Secondary = nil
+				model, err = zone.BuildStub(z, &zone.StubData{Records: records, Servers: []zone.StubServer{{Name: "ns.copy.test.", Address: netip.MustParseAddrPort("192.0.2.53:53"), Protocol: "udp"}}, ConfirmedAt: now, ExpiresAt: expiry})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap, err := zonecache.Prepare(zonecache.PrepareOptions{}, []store.Object{z}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := &transferredMetadataFixture{zoneReadFixture: &zoneReadFixture{objects: snap.Objects, model: model}, metadata: model}
+			h := newHarness(t, func(o *Options) { o.ZoneReads = f; o.Now = func() time.Time { return now } })
+			check := func(expired bool) {
+				t.Helper()
+				var detail ZoneDetail
+				h.do(http.MethodGet, "/api/v1/zones/copy", "viewer", nil).want(http.StatusOK).json(&detail)
+				var state string
+				var serial *uint32
+				var end *time.Time
+				if typ == public.ZoneTypeSecondary {
+					state, serial, end = detail.SecondaryRuntime.State, detail.SecondaryRuntime.Serial, detail.SecondaryRuntime.ExpiresAt
+				} else {
+					state, serial, end = detail.StubRuntime.State, detail.StubRuntime.Serial, detail.StubRuntime.ExpiresAt
+					if len(detail.StubRuntime.Authorities) != 1 {
+						t.Fatal("lost acquired authorities")
+					}
+				}
+				if serial == nil || *serial != 42 || end == nil || !end.Equal(expiry) || detail.Ready == expired {
+					t.Fatal("metadata/availability mismatch", detail)
+				}
+				if expired && state != "expired" {
+					t.Fatal("expiry not reported", state)
+				}
+			}
+			now = expiry.Add(-time.Nanosecond)
+			check(false)
+			now = expiry
+			f.model = nil
+			f.err = serving.ErrPending
+			check(true)
+			h.do(http.MethodGet, "/api/v1/zones/copy/records", "viewer", nil).want(http.StatusServiceUnavailable)
+			h.do(http.MethodGet, "/api/v1/zones/copy/export", "viewer", nil).want(http.StatusServiceUnavailable)
+		})
+	}
 }

@@ -101,6 +101,25 @@ func (d *Diagnostics) ReadZone(ctx context.Context, objectName string) (*zone.Zo
 	return v.zone(objectName, d.now())
 }
 
+// ReadTransferredMetadata reports the original cut's last acquired copy even
+// after expiry. It never recaptures a manager, returns another UID's data, or
+// changes ReadZone's refusal of unavailable contents.
+func (d *Diagnostics) ReadTransferredMetadata(ctx context.Context, objectName string) (*zone.Zone, error) {
+	v, err := d.request(ctx)
+	if err != nil {
+		return nil, err
+	}
+	desired, found := v.objects.Zone(objectName)
+	if !found {
+		return nil, store.ErrNotFound
+	}
+	model := v.runtime.zones.TransferredMetadata(desired)
+	if model == nil {
+		return nil, serving.ErrPending
+	}
+	return model, nil
+}
+
 func (v diagnosticView) zone(objectName string, now time.Time) (*zone.Zone, error) {
 	return v.zoneFrom(v.runtime.zones.Zones(now), objectName, now)
 }

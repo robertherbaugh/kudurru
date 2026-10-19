@@ -159,6 +159,7 @@ func Digest(i Image) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+// Decode bounds, canonicalizes and validates an encoded complete image.
 func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	l := opts.Limits.Defaults()
 	if l.MaxBytes == math.MaxInt64 {
@@ -211,6 +212,7 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	return &Validated{encoded: c}, nil
 }
 
+// Validate encodes and validates an image, returning an owned canonical copy.
 func Validate(i Image, opts Validation) (*Validated, error) {
 	b, err := json.Marshal(i)
 	if err != nil {

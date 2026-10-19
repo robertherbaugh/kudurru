@@ -74,12 +74,14 @@ func (p *PrimaryPublication) Capture(ctx context.Context, writer primaryruntime.
 
 // Wait observes one protected complete lease per attempt. Exact persisted
 // lifecycle identity is checked before routing, including retired members hidden
-// by a new desired placeholder. No lock is retained while waking or waiting.
+// by a new desired placeholder. Store/dependency changes already drive the
+// publisher. Waiting must not wake it: a wake cancels in-progress preparation,
+// so repeated bounded driver attempts could indefinitely prevent publication.
+// No lock is retained while waiting.
 func (p *PrimaryPublication) Wait(ctx context.Context, writer primaryruntime.PublicationFence, member primaryruntime.Member) error {
 	if writer.Term.Validate() != nil || writer.Incarnation == 0 || member.Zone.ClusterID != writer.Term.ClusterID || member.Incarnation == 0 || member.Sequence == 0 {
 		return primaryruntime.ErrInvalid
 	}
-	p.Wake()
 	for {
 		changed := p.publisher.Subscribe()
 		authority := p.publisher.AuthorityChanges()

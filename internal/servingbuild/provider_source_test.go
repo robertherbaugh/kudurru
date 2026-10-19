@@ -92,8 +92,11 @@ func TestProviderSourcePinsAllReplacementsThroughActualSQLiteBarrier(t *testing.
 	resourceErr, keyErr := <-resourceDone, <-keyDone
 	var premature bool
 	select {
-	case <-replacement:
+	case err := <-replacement:
 		premature = true
+		if err != nil {
+			t.Error(err)
+		}
 	default:
 	}
 	close(release)

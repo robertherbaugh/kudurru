@@ -49,6 +49,7 @@ func ApplyClusterDocument(host *Config, document map[string]any) (next *Config, 
 	if err := clusterNames("", tree); err != nil {
 		return nil, nil, err
 	}
+	// nosemgrep: trailofbits.go.iterate-over-empty-map.iterate-over-empty-map -- settingsLeaves populates layer before it is inspected
 	layer := map[string]any{}
 	if err := settingsLeaves("", tree, layer); err != nil {
 		return nil, nil, err

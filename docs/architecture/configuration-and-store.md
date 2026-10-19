@@ -751,7 +751,10 @@ old pools and other resources remain alive until the final request or stream
 releases its lease. DNS capture needs no database read and may use last-good
 data during preparation or fencing. Protected HTTP capture also checks the
 in-memory authority and dependency cursors and fails closed while publication
-is pending. Explicit fenced DNS-only publication cannot open authentication,
+is pending. The HTTP listener waits up to two seconds for its first eligible
+lease before authentication or handler dispatch; timeout still returns 503.
+It never replaces a held request lease or replays a command. Explicit fenced
+DNS-only publication cannot open authentication,
 readiness, or promotion. Promotion pins the actual serving bundle through its
 commit, then releases the pin before waiting for new-term publication.
 
@@ -761,6 +764,9 @@ bundle exists or a newer image is pending; it grants no HTTP read eligibility.
 The callback next pins current dependency replacement and retains both gates
 through the actual fenced command. It releases them before waiting for serving
 acknowledgment, so startup recovery cannot deadlock on its own publication.
+Publication acknowledgment never wakes or cancels the preparer: committed
+source and dependency changes already schedule that work. Pending waits observe
+publication or authority changes, avoiding a feedback loop between the driver and publisher.
 
 ```mermaid
 flowchart LR
@@ -828,6 +834,10 @@ publishes after a valid installation without initializing local owner roots;
 malformed installed owner inventories still fail startup. SQLite `serve.go` now
 mounts this assembly into the actual DNS and HTTP listeners. Readiness uses the
 protected complete publication; followers skip local bootstrap and file loading.
+A pending Preparing lifecycle carries the freshly observed source token into its
+Fencing CAS, so a controller status update cannot strand it on an older resource
+version. The transaction still validates exact source, membership and writer
+authority.
 The runner joins elected and always-on workers before borrowed resources close,
 even when its shutdown diagnostic timeout expires. Kubernetes retains its
 existing serving path. Peer transition exclusion and three-process partition/rejoin

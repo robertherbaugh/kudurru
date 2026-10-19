@@ -275,6 +275,7 @@ func (m *Manager) Run(ctx context.Context) error {
 		return errors.New("rpz: manager is already running")
 	}
 	defer m.running.Store(false)
+	// nosemgrep: trailofbits.go.iterate-over-empty-map.iterate-over-empty-map -- reconcile populates entries in the loop; deferred cleanup visits those entries at shutdown
 	entries := map[string]*entry{}
 	results := make(chan transferResult, m.opts.MaxConcurrent)
 	var workers sync.WaitGroup

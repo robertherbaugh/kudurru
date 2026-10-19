@@ -157,7 +157,9 @@ func TestRealWorkersBothOriginCurrentAdmissionRollbackAndReadFreeJWT(t *testing.
 		}
 	}
 	failCancel()
-	<-failDone
+	if err := <-failDone; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
 	if !before.Generation().Same(image(t, x.s).Generation()) {
 		t.Fatal("candidate callback rollback committed")
 	}
@@ -169,7 +171,9 @@ func TestRealWorkersBothOriginCurrentAdmissionRollbackAndReadFreeJWT(t *testing.
 	defer func() {
 		cancel()
 		if done != nil {
-			<-done
+			if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+				t.Error(err)
+			}
 		}
 	}()
 	readyResources(t, x, 2)
@@ -203,7 +207,9 @@ func TestRealWorkersBothOriginCurrentAdmissionRollbackAndReadFreeJWT(t *testing.
 	// Immutable prepared verification remains a pure snapshot after actual Store
 	// close; root gates new protected leases/commands separately.
 	cancel()
-	<-done
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
 	done = nil
 	x.stop()
 	_ = x.coordinator.Close(t.Context())

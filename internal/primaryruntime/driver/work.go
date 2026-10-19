@@ -266,10 +266,18 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 		}
 	}
 	if l.Spec.Phase == zk.PhasePreparing {
+		// Status writes and edits can advance the desired source after the
+		// Preparing receipt. Carry this roster's exact observation into the
+		// phase CAS; the adapter rechecks it against the actual transaction.
+		observed, err := sourceObservation(l, z)
+		if err != nil {
+			return err
+		}
 		next := l.DeepCopy()
 		next.Spec.Sequence++
 		next.Spec.Phase = zk.PhaseFencing
-		_, err := d.o.Runtime.Transition(ctx, l, next)
+		next.Spec.Source = observed
+		_, err = d.o.Runtime.Transition(ctx, l, next)
 		if err == nil {
 			d.Wake()
 		}
@@ -319,7 +327,6 @@ func (d *Driver) publish(ctx context.Context, w Writer, l *zk.ZoneLifecycle) err
 	if !ok || m.Zone != l.Spec.Zone {
 		return pr.ErrConflict
 	}
-	d.o.Publication.Wake()
 	if err := d.o.Runtime.Republish(ctx, l.Spec.Zone); err != nil {
 		return err
 	}

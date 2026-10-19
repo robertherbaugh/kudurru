@@ -12,13 +12,17 @@ import (
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
 	cachedata "github.com/robertherbaugh/kudurru/internal/cache"
+	"github.com/robertherbaugh/kudurru/internal/controller"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
@@ -145,6 +149,9 @@ func TestServingRuntimeActualElectorNativeUpdateAndJoinedShutdown(t *testing.T) 
 	if err != nil || !before.Generation().Same(after.Generation()) {
 		t.Fatal("always-on workers performed durable admission", err)
 	}
+	if ready, _ := s.ready(); ready {
+		t.Fatal("desired primary placeholder made the node ready before admission")
+	}
 	writerCtx, cancelWriter := context.WithCancel(t.Context())
 	writerDone := make(chan error, 1)
 	go func() {
@@ -170,6 +177,7 @@ func TestServingRuntimeActualElectorNativeUpdateAndJoinedShutdown(t *testing.T) 
 		owner := value.(*servingbuild.RuntimeOwner)
 		return s.primary.driver.Status().Ready && owner.Primary().Admitted("example.", time.Now())
 	})
+	awaitServingRuntime(t, s, func() bool { ready, _ := s.ready(); return ready })
 	image, err := s.opts.Store.ReadGeneration(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -384,5 +392,169 @@ func TestServingRuntimeActualFollowerRestartAndOriginalPromotion(t *testing.T) {
 	})
 	if !held.Bundle().Identity().Base.Same(installed) {
 		t.Fatal("promotion rewrote a held old bundle")
+	}
+}
+
+func TestServingRuntimeReadinessWaitsForForwardAdmission(t *testing.T) {
+	s := newServingRuntimeFixture(t)
+	if err := s.opts.Store.Command(t.Context(), s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		if err := tx.Delete(ctx, store.Key{Kind: "DNSZone", Name: "home"}, store.DeleteOptions{Manager: store.ManagerSystem}); err != nil {
+			return err
+		}
+		_, err := tx.Apply(ctx, &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "root"}, Spec: public.DNSZoneSpec{ZoneName: ".", Type: public.ZoneTypeForward, Forward: &public.ForwardSpec{UpstreamGroup: "default"}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runServingFixture(t, s)
+	awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady })
+	if ready, _ := s.ready(); ready {
+		t.Fatal("unadmitted root forward placeholder made the node ready")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- s.opts.Store.Elector("forward-ready-test").Run(ctx, func(ctx context.Context) {
+			if err := s.RunWriter(ctx); err != nil && ctx.Err() == nil {
+				t.Error(err)
+			}
+		}, nil)
+	}()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			t.Error(err)
+		}
+	}()
+	awaitServingRuntime(t, s, func() bool { ready, _ := s.ready(); return ready })
+}
+
+func TestServingRuntimePrimaryWithoutConfiguredNameservers(t *testing.T) {
+	s := newServingRuntimeFixture(t)
+	if err := s.opts.Store.Command(t.Context(), s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		var z public.DNSZone
+		if err := tx.Get(ctx, store.Key{Kind: "DNSZone", Name: "home"}, &z); err != nil {
+			return err
+		}
+		z.Spec.Nameservers = nil
+		z.Spec.Policy = public.ZonePolicy{}
+		_, err := tx.Apply(ctx, &z, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runServingFixture(t, s)
+	ctrl, err := controller.New(s.opts.Store, controller.Options{CommittedPrimaryStatus: s.status, ZoneCoalesce: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- s.opts.Store.Elector("no-ns-test").Run(ctx, func(ctx context.Context) {
+			child, stop := context.WithCancel(ctx)
+			controllerDone := make(chan error, 1)
+			go func() { controllerDone <- ctrl.Run(child) }()
+			if err := s.RunWriter(child); err != nil && ctx.Err() == nil {
+				t.Error(err)
+			}
+			stop()
+			if err := <-controllerDone; err != nil && !errors.Is(err, context.Canceled) {
+				t.Error(err)
+			}
+		}, nil)
+	}()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			t.Error(err)
+		}
+	}()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if ready, _ := s.ready(); ready {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("nameserver-free primary did not become ready", s.primary.driver.Status(), s.publisher.Status())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestServingRuntimePreparingSourceStatusChange(t *testing.T) {
+	for _, typ := range []public.ZoneType{public.ZoneTypePrimary, public.ZoneTypeForward} {
+		t.Run(string(typ), func(t *testing.T) {
+			s := newServingRuntimeFixture(t)
+			var expected zk.LifecycleSource
+			// Restore the exact durable checkpoint: Preparing was admitted,
+			// then a status-only write advanced the public source RV.
+			if err := s.opts.Store.Command(t.Context(), s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				var z public.DNSZone
+				if err := tx.Get(ctx, store.Key{Kind: "DNSZone", Name: "home"}, &z); err != nil {
+					return err
+				}
+				if typ == public.ZoneTypeForward {
+					z.Spec.Type, z.Spec.Nameservers, z.Spec.Policy = typ, nil, public.ZonePolicy{}
+					z.Spec.Forward = &public.ForwardSpec{UpstreamGroup: "default"}
+					if _, err := tx.Apply(ctx, &z, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+						return err
+					}
+					if err := tx.Get(ctx, store.KeyOf(&z), &z); err != nil {
+						return err
+					}
+				}
+				l, err := primaryruntime.NewLifecycle(tx.Authority().ClusterID, &z, nil)
+				if err != nil {
+					return err
+				}
+				if _, err := tx.Apply(ctx, l, store.ApplyOptions{Manager: "primaryruntime", CreateOnly: true}); err != nil {
+					return err
+				}
+				z.Status.ObservedGeneration = z.Generation
+				if err := tx.UpdateStatus(ctx, &z); err != nil {
+					return err
+				}
+				if err := tx.Get(ctx, store.KeyOf(&z), &z); err != nil {
+					return err
+				}
+				token, err := primaryzone.SourceToken(&z)
+				expected = zk.LifecycleSource{UID: token.UID, ResourceVersion: token.ResourceVersion, IntentDigest: token.IntentDigest}
+				if expected == l.Spec.Source {
+					t.Fatal("fixture did not advance the source RV")
+				}
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			runServingFixture(t, s)
+			awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady })
+			if ready, _ := s.ready(); ready {
+				t.Fatal("stale Preparing receipt was ready")
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan error, 1)
+			go func() {
+				done <- s.opts.Store.Elector("preparing-status-test").Run(ctx, func(ctx context.Context) {
+					if err := s.RunWriter(ctx); err != nil && ctx.Err() == nil {
+						t.Error(err)
+					}
+				}, nil)
+			}()
+			defer func() {
+				cancel()
+				if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+					t.Error(err)
+				}
+			}()
+			awaitServingRuntime(t, s, func() bool { ready, _ := s.ready(); return ready })
+			var actual zk.ZoneLifecycle
+			if err := s.opts.Store.Get(t.Context(), store.Key{Kind: zk.KindZoneLifecycle, Name: zk.LifecycleName(s.opts.Store.Info().ClusterID, "home")}, &actual); err != nil {
+				t.Fatal(err)
+			}
+			if actual.Spec.Phase != zk.PhaseActive || actual.Spec.Source != expected || actual.Spec.Incarnation != 1 {
+				t.Fatal("published lifecycle lost the exact source or incarnation")
+			}
+		})
 	}
 }

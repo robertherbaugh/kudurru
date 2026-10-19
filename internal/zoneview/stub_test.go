@@ -303,10 +303,15 @@ ns.deleg 60 IN A 192.0.2.44
 		once.Do(func() {
 			_ = cmd.Process.Signal(syscall.SIGTERM)
 			select {
-			case <-done:
+			case err := <-done:
+				if err != nil {
+					t.Errorf("named shutdown: %v", err)
+				}
 			case <-time.After(3 * time.Second):
 				_ = cmd.Process.Kill()
-				<-done
+				if err := <-done; err == nil {
+					t.Error("killed named exited successfully")
+				}
 			}
 			_ = log.Close()
 			if t.Failed() {

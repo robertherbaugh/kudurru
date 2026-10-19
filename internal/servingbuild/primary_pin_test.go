@@ -99,8 +99,8 @@ func TestCompletePrimaryPinHoldsAllOwnersThroughActualCommit(t *testing.T) {
 		t.Fatal("publisher replacement crossed complete pin", err)
 	}
 	select {
-	case <-licenseDone:
-		t.Fatal("license replacement crossed complete pin")
+	case err := <-licenseDone:
+		t.Fatal("license replacement crossed complete pin", err)
 	case <-catalogDone:
 		t.Fatal("catalog replacement crossed complete pin")
 	case <-managerChanged:

@@ -16,7 +16,7 @@ test('a secondary is created, transferred, edited and expires on this node', asy
     node: 'e2e-secondary-primary', upstream: env('KUDURRU_E2E_UPSTREAM'), adminPassword: 'secondary-e2e-password',
   });
   let primaryStopped = false;
-  const primaryApi = await playwright.request.newContext({ baseURL: primary.url, ignoreHTTPSErrors: true });
+  const primaryApi = await playwright.request.newContext({ baseURL: primary.url, ignoreHTTPSErrors: true, storageState: { cookies: [], origins: [] } });
   await page.goto('/zones');
   const api = await adminApi(page);
   const screenshotDir = path.join(REPO_DIR, '.context');
@@ -55,7 +55,9 @@ test('a secondary is created, transferred, edited and expires on this node', asy
     await expectRendered(page);
     const runtime = main(page).getByRole('region', { name: 'Secondary on this node' });
     await expect(runtime).toContainText(`on node ${env('KUDURRU_E2E_NODE')}`);
-    await expect(runtime).toContainText('Served serial');
+    // A reload can capture the controller's source-alignment gap after the
+    // independent DNS/read probes. The detail view refreshes every 30 seconds.
+    await expect(runtime).toContainText('Served serial', { timeout: 35_000 });
     await expect(runtime).toContainText('Expires at');
     for (const action of ['Add record', 'Import BIND', 'Export', 'Send NOTIFY']) await expect(main(page).getByRole('button', { name: action })).toHaveCount(0);
     await page.screenshot({ path: path.join(screenshotDir, 'secondary-ui-serving.png'), fullPage: true });

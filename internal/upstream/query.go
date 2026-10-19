@@ -27,6 +27,7 @@ type QueryPlan struct {
 	raw            bool
 }
 
+// Identity returns the immutable resolver configuration fingerprint.
 func (s *Set) Identity() [32]byte { return s.identity }
 
 // Plan captures all inputs before a cache lookup. current reports whether
@@ -40,6 +41,7 @@ func (s *Set) Plan(req *pipeline.Request, v *dnssec.Validator, enabled bool, epo
 	return p.Derive(req)
 }
 
+// Derive selects a route for another question using the same captured inputs.
 func (p *QueryPlan) Derive(req *pipeline.Request) (*QueryPlan, error) {
 	n := *p
 	n.validate = p.defaultEnabled
@@ -74,26 +76,44 @@ func (p *QueryPlan) Derive(req *pipeline.Request) (*QueryPlan, error) {
 	return &n, nil
 }
 
-func (p *QueryPlan) Scope() pipeline.CacheScope   { return p.scope }
+// Scope identifies the cache partition for this resolution and validation plan.
+func (p *QueryPlan) Scope() pipeline.CacheScope { return p.scope }
+
+// Validator returns the captured forwarded-answer validator.
 func (p *QueryPlan) Validator() *dnssec.Validator { return p.validator }
-func (p *QueryPlan) Group() string                { return p.group }
-func (p *QueryPlan) ForCache() *QueryPlan         { n := *p; n.raw = true; return &n }
-func (p *QueryPlan) RawResponse() bool            { return p.raw }
-func (p *QueryPlan) Validates() bool              { return p.validate }
-func (p *QueryPlan) Cacheable() bool              { return !p.conditional }
+
+// Group returns the selected upstream group.
+func (p *QueryPlan) Group() string { return p.group }
+
+// ForCache returns a copy that retains raw validation proofs.
+func (p *QueryPlan) ForCache() *QueryPlan { n := *p; n.raw = true; return &n }
+
+// RawResponse reports whether final client-specific proof stripping is deferred.
+func (p *QueryPlan) RawResponse() bool { return p.raw }
+
+// Validates reports whether forwarded-answer validation is enabled.
+func (p *QueryPlan) Validates() bool { return p.validate }
+
+// Cacheable excludes conditional routes from the shared response cache.
+func (p *QueryPlan) Cacheable() bool { return !p.conditional }
 
 // Recursive reports whether this route uses the native validating resolver.
 func (p *QueryPlan) Recursive() bool {
 	g := p.set.groups[p.group]
 	return g != nil && len(g.servers) == 1 && g.servers[0].proto == RecursiveServer
 }
+
+// Current checks the captured publication and validator context before cache insertion.
 func (p *QueryPlan) Current() bool {
 	return (p.current == nil || p.current()) && (p.validator == nil || p.active == p.validator.ActiveContextID())
 }
+
+// ECSSubnet derives the subnet using the captured client address.
 func (p *QueryPlan) ECSSubnet(m *dns.Msg, _ netip.Addr) netip.Prefix {
 	return p.set.ECSSubnet(m, p.client)
 }
 
+// Exchange resolves a question with the captured route and validation settings.
 func (p *QueryPlan) Exchange(ctx context.Context, m *dns.Msg) (*Result, error) {
 	q := p.set.PrepareQuery(m, p.client)
 	q.AuthenticatedData = false

@@ -69,7 +69,9 @@ func (stage *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.
 	a, err := next(&sub)
 	if err != nil {
 		r.Close()
-		a.Close()
+		if a != nil {
+			a.Close()
+		}
 		return nil, err
 	}
 	if a != nil && a.Msg != nil && a.Msg.Rcode == dns.RcodeServerFailure {

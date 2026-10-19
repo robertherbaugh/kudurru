@@ -152,7 +152,18 @@ func (s *Server) capturedZoneSummary(ctx context.Context, z *v1alpha1.DNSZone, s
 	if err != nil && !errors.Is(err, serving.ErrPending) {
 		return ZoneSummary{}, capturedZoneError(err)
 	}
-	available := err == nil && model != nil && model.RoutingAvailableAt(s.opts.Now())
+	readAvailable := err == nil
+	metadata := model
+	if z.Spec.Type == v1alpha1.ZoneTypeSecondary || z.Spec.Type == v1alpha1.ZoneTypeStub {
+		if reads, ok := s.opts.ZoneReads.(ZoneRuntimeReadSource); ok {
+			metadata, err = reads.ReadTransferredMetadata(ctx, z.Name)
+			if err != nil && !errors.Is(err, serving.ErrPending) {
+				return ZoneSummary{}, capturedZoneError(err)
+			}
+		}
+	}
+	now := s.opts.Now()
+	available := readAvailable && model != nil && model.RoutingAvailableAt(now)
 	if available {
 		out.Serial, out.RecordCount, out.Ready = model.Serial(), model.RecordCount(), true
 		out.Reason, out.Message = "", ""
@@ -160,18 +171,27 @@ func (s *Server) capturedZoneSummary(ctx context.Context, z *v1alpha1.DNSZone, s
 	switch z.Spec.Type {
 	case v1alpha1.ZoneTypeSecondary:
 		out.SecondaryRuntime = &SecondaryRuntime{Node: s.opts.NodeName, State: "unavailable", Reason: out.Reason, Message: out.Message}
-		if available {
-			serial, count, expiry := model.Serial(), model.RecordCount(), model.NextExpiry()
-			out.SecondaryRuntime = &SecondaryRuntime{Node: s.opts.NodeName, State: "serving", Serial: &serial, RecordCount: &count, ExpiresAt: &expiry}
+		if metadata != nil {
+			serial, count, expiry := metadata.Serial(), metadata.RecordCount(), metadata.NextExpiry()
+			out.SecondaryRuntime.Serial, out.SecondaryRuntime.RecordCount, out.SecondaryRuntime.ExpiresAt = &serial, &count, &expiry
+			if available {
+				out.SecondaryRuntime.State, out.SecondaryRuntime.Reason, out.SecondaryRuntime.Message = "serving", "", ""
+			} else if !expiry.IsZero() && !now.Before(expiry) {
+				out.SecondaryRuntime.State, out.SecondaryRuntime.Reason, out.SecondaryRuntime.Message = "expired", "SecondaryExpired", "The last copy has expired; this node answers SERVFAIL for this zone."
+			}
 		}
 	case v1alpha1.ZoneTypeStub:
 		out.StubRuntime = &StubRuntime{Node: s.opts.NodeName, State: "unavailable", Authorities: []StubAuthority{}, Reason: out.Reason, Message: out.Message}
-		if available {
-			out.StubRuntime.State, out.StubRuntime.Reason, out.StubRuntime.Message = "routing", "", ""
-			serial, expiry := model.Serial(), model.NextExpiry()
+		if metadata != nil {
+			serial, expiry := metadata.Serial(), metadata.NextExpiry()
 			out.StubRuntime.Serial, out.StubRuntime.ExpiresAt = &serial, &expiry
-			for _, server := range model.StubServers() {
+			for _, server := range metadata.StubServers() {
 				out.StubRuntime.Authorities = append(out.StubRuntime.Authorities, StubAuthority{Name: server.Name, Address: server.Address.String(), Protocol: server.Protocol})
+			}
+			if available {
+				out.StubRuntime.State, out.StubRuntime.Reason, out.StubRuntime.Message = "routing", "", ""
+			} else if !expiry.IsZero() && !now.Before(expiry) {
+				out.StubRuntime.State, out.StubRuntime.Reason, out.StubRuntime.Message = "expired", "StubExpired", "The discovered route has expired; this node answers SERVFAIL for this zone."
 			}
 		}
 	}

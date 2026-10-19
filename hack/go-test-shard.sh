@@ -19,28 +19,48 @@ cd "$(dirname "$0")/.."
 
 # Seconds per package (relative to the module path), October 2026.
 WEIGHTS='
-internal/store/sqlite 86
-internal/store/kube 62
-internal/querylog/sqlitelog 53
-internal/api 52
-cmd/kudurru 48
-ee/edge 30
+cmd/kudurru 1120
+internal/store/sqlite 326
+internal/servingbuild 140
+internal/auth/security 93
+internal/api 84
+internal/store/kube 82
+internal/querylog/sqlitelog 70
+internal/primaryruntime 56
+internal/servingauth 52
+internal/primaryruntime/network 46
+internal/auth/providerhost 39
+internal/iammigrate 39
+internal/zonestate 35
+ee/edge 31
+internal/controller 31
+ee/edge/dnsdist 29
 internal/dnsserver 29
-internal/controller 28
-ee/edge/dnsdist 28
-internal/dhcpha 24
-internal/central/pgquerylog 24
-internal/dhcp 20
-internal/audit/spool 19
-ee/edge/keepalived 18
-deploy 17
-internal/zonecache 14
-internal/central/pgaudit 10
-internal/dhcpkube 10
-internal/auth/stack 10
-internal/audit/auditlog 8
-internal/auth/users 8
-internal/store/validator 6
+internal/audit/spool 27
+internal/central/pgquerylog 27
+internal/auth/providercoordinator 25
+internal/dhcp 25
+internal/dhcpha 25
+internal/primaryruntime/sqliteadapter 25
+deploy 23
+ee/edge/keepalived 19
+internal/primaryruntime/driver 19
+internal/zonecache 19
+ee/integration/inbound 17
+internal/central/pgaudit 15
+internal/primaryruntime/currentguard 15
+internal/primaryzone 15
+internal/auth/stack 14
+internal/unblock 14
+ee/integration/cloudflare 13
+internal/dhcpkube 12
+internal/audit/auditlog 11
+internal/auth/users 10
+ee/integration/host 9
+internal/config 9
+internal/dhcpdns 9
+internal/listdata/catalogue 9
+internal/store/validator 9
 '
 
 mod=$(go list -m)

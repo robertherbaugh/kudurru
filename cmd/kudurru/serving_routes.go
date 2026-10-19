@@ -16,6 +16,7 @@ import (
 func servingMutationRoutes(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		unsafe := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
+		// nosemgrep: go.lang.security.filepath-clean-misuse.filepath-clean-misuse -- canonicalizes an HTTP route for admission; this path never accesses the filesystem
 		if unsafe && servingUnconvertedMutation(r.Method, path.Clean(r.URL.Path)) {
 			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "current_command_unavailable", Message: "this operation requires a current compound command"})
 			return

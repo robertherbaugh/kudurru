@@ -245,12 +245,12 @@ func Open(path string, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { // #nosec G703 -- operator-supplied database path, never request input
 		return nil, fmt.Errorf("store/sqlite: create %s: %w", filepath.Dir(path), err)
 	}
 	// Create the file 0600 before SQLite does (it would use 0644); the
 	// -wal and -shm files inherit the mode.
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) // #nosec G304 -- operator-supplied data path
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) // #nosec G304 G703 -- operator-supplied database path, never request input
 	if err != nil {
 		return nil, fmt.Errorf("store/sqlite: open %s: %w", path, err)
 	}

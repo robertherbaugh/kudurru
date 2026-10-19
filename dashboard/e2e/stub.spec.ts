@@ -15,7 +15,7 @@ test('a stub discovers authorities, routes queries, edits and expires', async ({
     node: 'e2e-stub-authority', upstream: env('KUDURRU_E2E_UPSTREAM'), adminPassword: 'stub-e2e-password',
   });
   let stopped = false;
-  const primaryApi = await playwright.request.newContext({ baseURL: primary.url, ignoreHTTPSErrors: true });
+  const primaryApi = await playwright.request.newContext({ baseURL: primary.url, ignoreHTTPSErrors: true, storageState: { cookies: [], origins: [] } });
   await page.goto('/zones');
   const api = await adminApi(page);
   const screenshots = path.join(REPO_DIR, '.context');

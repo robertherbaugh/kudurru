@@ -300,7 +300,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		if err != nil {
 			return nil, err
 		}
-		if selected != nil {
+		if !selected.Empty() {
 			return s.serveRPZ(req, d, ctx, selected, next)
 		}
 	}

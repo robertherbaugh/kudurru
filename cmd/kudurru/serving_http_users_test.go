@@ -738,3 +738,43 @@ func TestServingHTTPLocalUsersOwnPasswordExactTokenRevocation(t *testing.T) {
 	}
 	expectServingHTTPStatus(t, f.call(t, "GET", "/auth/me", "", "", changed.Result().Cookies()[0], ""), 200)
 }
+
+func TestServingHTTPOwnPasswordPreservesBootstrapAdminOwner(t *testing.T) {
+	for _, tc := range []struct {
+		name, manager string
+		builtin       bool
+		status        int
+	}{
+		{"bootstrap-admin", "bootstrap:node-a", true, 200},
+		{"ordinary-bootstrap", "bootstrap:node-a", false, 409},
+		{"file-admin", store.ManagerFile("accounts.yaml"), true, 409},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newServingHTTPFixture(t, false)
+			defer f.stop()
+			hash, err := f.h.opts.Hasher.Hash(t.Context(), "bootstrap-password")
+			if err != nil {
+				t.Fatal(err)
+			}
+			localUsersStage(t, f, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				_, err := tx.Apply(ctx, &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: tc.name}, Spec: internalv1.LocalUserSpec{PasswordHash: hash, BuiltinAdmin: tc.builtin, MustChangePassword: true}}, store.ApplyOptions{Manager: tc.manager, CreateOnly: true})
+				return err
+			})
+			cookie, info := localUsersLogin(t, f, tc.name, "bootstrap-password", "")
+			before := localUsersRead(t, f.s.opts.Store, tc.name)
+			response := f.call(t, "POST", "/auth/password", factorBody(t, api.PasswordChangeRequest{CurrentPassword: "bootstrap-password", NewPassword: "replacement-password"}), "", cookie, info.CSRF)
+			expectServingHTTPStatus(t, response, tc.status)
+			after := localUsersRead(t, f.s.opts.Store, tc.name)
+			if store.ManagedBy(&after) != tc.manager || after.UID != before.UID || after.Spec.BuiltinAdmin != tc.builtin {
+				t.Fatal("password change adopted or replaced account")
+			}
+			if tc.status == 200 {
+				if after.Spec.MustChangePassword || after.Spec.PasswordHash == before.Spec.PasswordHash || after.Status.PasswordChangedAt == nil {
+					t.Fatal("bootstrap password change did not persist")
+				}
+			} else if !reflect.DeepEqual(before, after) {
+				t.Fatal("denied owner changed account")
+			}
+		})
+	}
+}

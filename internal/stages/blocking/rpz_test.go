@@ -159,6 +159,36 @@ func TestRPZInterEnginePrecedenceAndSingleResolution(t *testing.T) {
 	}
 }
 
+func TestRPZEmptySelectionPreservesOrdinaryRulesWithoutUpstream(t *testing.T) {
+	for _, tc := range []struct {
+		name, rule string
+		status     pipeline.Status
+	}{
+		{"deny", "||bad.test^", pipeline.StatusBlockedExact},
+		{"rewrite", "||bad.test^$dnsrewrite=192.0.2.9", pipeline.StatusLocalRecord},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// This is the actual snapshot selector used for lists without RPZ feeds.
+			selected := (*rpz.Snapshot)(nil).Select([]*v1alpha1.BlockList{
+				bl("ordinary", "block", v1alpha1.ListSource{Inline: []string{tc.rule}}),
+			}, true)
+			s := rpzStage(t, selected, Options{})
+			calls := 0
+			out, err := s.Serve(rpzRequest(t, tc.rule), func(req *pipeline.Request) (*pipeline.Response, error) {
+				calls++
+				return pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusServfailUpstream), nil
+			})
+			if err != nil || out == nil {
+				t.Fatal("ordinary rule failed", err)
+			}
+			defer out.Close()
+			if calls != 0 || out.Status != tc.status {
+				t.Fatalf("empty selection required upstream: calls=%d status=%s", calls, out.Status)
+			}
+		})
+	}
+}
+
 func TestRPZExplicitAuthorizationPrecedesUnavailableFeed(t *testing.T) {
 	snap := compileLists(t, map[string][]string{"allow": {"||bad.test^$client=192.0.2.1,dnstype=A"}, "deny": {"@@||bad.test^"}}, map[string]engine.Mode{"allow": engine.ModeAllow})
 	for _, allow := range []bool{true, false} {

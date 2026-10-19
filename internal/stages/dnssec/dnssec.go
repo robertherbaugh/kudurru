@@ -11,13 +11,21 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
 
+// Source binds a request to its captured resolution and validation plan.
 type Source interface {
 	Bind(*pipeline.Request) (*upstream.QueryPlan, error)
 }
+
+// Stage validates forwarded responses before they enter the raw cache.
 type Stage struct{ source Source }
 
+// New constructs a stage using the supplied plan source.
 func New(source Source) *Stage { return &Stage{source: source} }
-func (s *Stage) Name() string  { return "dnssec" }
+
+// Name identifies the pipeline stage.
+func (s *Stage) Name() string { return "dnssec" }
+
+// Serve validates eligible forwarded answers and preserves their security provenance.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
 	if req.Msg == nil || req.Msg.Opcode != dns.OpcodeQuery || len(req.Msg.Question) != 1 || req.Msg.Question[0].Qclass != dns.ClassINET {
 		return next(req)

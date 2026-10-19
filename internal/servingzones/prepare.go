@@ -61,6 +61,23 @@ func (p *Prepared) Zones(now time.Time) zone.Set {
 	return composed{primary: p.primary.Cut(now), nonprimary: p.nonprimary, secondary: p.secondary, stub: p.stub, prepared: p.primary, coordinated: p.coordinated, coverage: p.coverage, now: now}
 }
 
+// TransferredMetadata returns only an exact configuration/UID-bound acquired
+// model, including after expiry. Secondary copies also match this prepared
+// keyring. Callers may report its metadata, but must use Zones for availability.
+func (p *Prepared) TransferredMetadata(config *public.DNSZone) *zone.Zone {
+	if p == nil || config == nil {
+		return nil
+	}
+	switch config.Spec.Type {
+	case public.ZoneTypeSecondary:
+		return p.secondary.Lookup(zone.SecondaryIdentity(config))
+	case public.ZoneTypeStub:
+		return p.stub.Lookup(zone.StubIdentity(config))
+	default:
+		return nil
+	}
+}
+
 // SelectRPZ preserves ordered names/sources using detached raw BlockLists. Only
 // reserved service:* catalogue labels are ignored; root validates those labels.
 // Other synthetic names may be filtered via HasList and root's captured catalogue.

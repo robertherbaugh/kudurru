@@ -274,3 +274,34 @@ func TestCompilerInitialSerialUsesConfirmedContent(t *testing.T) {
 		t.Fatal("changed migration data reused serial")
 	}
 }
+
+func TestCompilerPreservesPrimaryWithoutConfiguredNameservers(t *testing.T) {
+	z := desiredZone()
+	z.Spec.Nameservers = nil
+	in := &zonestate.DesiredInputs{Zone: z, Complete: true, RecordSets: []*public.DNSRecordSet{desiredSet("web", endpoint("web", "192.0.2.9"))}}
+	c := NewCompiler(CompilerOptions{})
+	v := compile(t, c, blank(z), in, fixedNow)
+	model := built(t, v)
+	if model.Lookup("example.", dns.TypeSOA).Kind != zone.Success || model.Lookup("example.", dns.TypeNS).Kind != zone.NoData || model.Lookup("web.example.", dns.TypeA).Kind != zone.Success {
+		t.Fatal("nameserver-free primary lost SOA, NODATA or ordinary records")
+	}
+	// The same committed bytes must survive durable encode/decode and restore.
+	restored := prepareView(t, v.Aggregate, v.Head)
+	if built(t, restored).Lookup("web.example.", dns.TypeA).Kind != zone.Success {
+		t.Fatal("restored nameserver-free primary unavailable")
+	}
+	// Configured nameservers still require committed NS records, never a
+	// synthetic replacement in the materializer or an unchecked incomplete cut.
+	z.Spec.Nameservers = []string{"ns.example."}
+	config, err := json.Marshal(z)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.Aggregate.Config = config
+	if _, err := zonestate.Prepare(v.Aggregate, v.Head, zonestate.Limits{}); !errors.Is(err, zonestate.ErrInvalid) {
+		t.Fatal("missing configured NS accepted by codec", err)
+	}
+	if _, err := BuildCommitted(t.Context(), v); err == nil {
+		t.Fatal("missing configured NS accepted by materializer")
+	}
+}

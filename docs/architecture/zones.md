@@ -57,6 +57,11 @@ to recover serving at that apex.
 | `secondary` | transfers an external primary's data independently on each node | `partner.example.` from `192.0.2.53:53` |
 | `stub` | discovers the zone's authorities and routes directly to them | `corp.example.` via `tcp://192.0.2.53:5353` |
 
+A local primary may omit `spec.nameservers`, as in the original zone builder.
+Its committed data still contains exactly one apex SOA; an apex NS query returns
+NODATA. The frozen configuration must match the committed zone identity to
+authorize this omission. Configured nameservers still require committed NS data.
+
 ## Answering from a zone
 
 The authoritative stage picks the zone with the **longest matching suffix**
@@ -335,7 +340,11 @@ Shared secondary status has `Ready=Unknown`, reason `PerNodeTransfer`; the
 controller clears legacy primary serial/hash/count fields. Zone API responses
 and the dashboard show `secondaryRuntime` for the responding node, including
 the last copy's serial, confirmation, expiry, next attempt and failures. An
-expired serial describes retained data, not data currently served. The messages
+expired serial describes retained data, not data currently served. In SQLite mode,
+last-copy metadata comes from the original request’s complete serving lease and
+remains bound to the exact zone UID/configuration and, for secondaries, its
+captured transfer credentials. Reporting an expired copy never authorizes record
+reads, exports or DNS routing. The messages
 API and `kudurru_secondary_*` metrics expose local failures and availability.
 An unavailable secondary does not make an otherwise healthy node unready.
 Duplicate configured apices publish unavailable coverage instead of retaining

@@ -56,7 +56,7 @@ func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
 	if o.CrossOrigin == nil {
 		o.CrossOrigin = new(http.CrossOriginProtection)
 	}
-	a, err := servinghttp.New(servinghttp.Options{Publisher: o.Runtime.publisher, Cookie: o.Cookie, CrossOriginProtection: o.CrossOrigin, MaxDuration: o.MaxDuration, Now: o.Runtime.opts.Now})
+	a, err := servinghttp.New(servinghttp.Options{Publisher: o.Runtime.publisher, Cookie: o.Cookie, CrossOriginProtection: o.CrossOrigin, MaxDuration: o.MaxDuration, CaptureWait: 2 * time.Second, Now: o.Runtime.opts.Now})
 	if err != nil {
 		return nil, err
 	}

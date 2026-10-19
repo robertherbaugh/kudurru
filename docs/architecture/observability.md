@@ -169,6 +169,13 @@ Upstream reachability is **never** a readiness condition: a node whose
 upstreams are down still answers its zones and its cache, and taking it out
 of rotation would make things worse.
 
+On SQLite, readiness requires an eligible complete publication and admitted,
+available committed routing for every desired primary and forward zone in that
+same publication, including the bootstrap root forwarder. A desired-only
+placeholder or a pending lifecycle cannot
+make the node ready. Secondary and stub acquisition failures remain local to
+their zones and do not make an otherwise healthy node unready.
+
 ## Audit
 
 | Store | Where audit records go |

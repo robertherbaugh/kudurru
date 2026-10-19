@@ -149,7 +149,9 @@ func TestLicensePinSpansActualSQLiteCommitAndNoop(t *testing.T) {
 			select {
 			case err := <-replaced:
 				close(release)
-				<-done
+				if joinErr := <-done; joinErr != nil {
+					t.Error(joinErr)
+				}
 				t.Fatal("replacement crossed final commit barrier", err)
 			case <-time.After(20 * time.Millisecond):
 			}

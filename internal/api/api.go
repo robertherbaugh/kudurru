@@ -156,6 +156,12 @@ type ZoneReadSource interface {
 	PrimaryStatus(context.Context, string) (primaryruntime.PrimaryStatusObservation, bool, error)
 }
 
+// ZoneRuntimeReadSource retains metadata of an expired transferred copy from
+// the original request cut. It grants no record-reading or routing authority.
+type ZoneRuntimeReadSource interface {
+	ReadTransferredMetadata(context.Context, string) (*zone.Zone, error)
+}
+
 // QuerylogPurger deletes query-log rows older than before (zero: all) and
 // returns how many were deleted. sqlitelog.Writer has the batched delete
 // machinery but no exported purge yet; nil answers 501.

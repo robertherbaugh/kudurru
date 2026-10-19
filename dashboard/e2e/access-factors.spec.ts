@@ -77,11 +77,16 @@ async function nextStep() { await sleep(30_000 - Date.now() % 30_000 + 1000); }
 
 test.describe('Access authenticator on an isolated node', () => {
   let server: Server;
+  let workerURL: string;
   test.beforeAll(async () => {
+    workerURL = env('KUDURRU_E2E_URL');
     server = await startServer(env('KUDURRU_E2E_BIN_PATH'), { upstream: env('KUDURRU_E2E_UPSTREAM'), node: 'e2e-authenticator', adminPassword: randomBytes(24).toString('base64url') });
     process.env.KUDURRU_E2E_URL = server.url;
   });
-  test.afterAll(async () => { await server?.stop(); });
+  test.afterAll(async () => {
+    process.env.KUDURRU_E2E_URL = workerURL;
+    await server?.stop();
+  });
 
   test('enrolls a manual key, signs in with a fresh code, and recovers the exact self UID', async ({ page }) => {
     test.setTimeout(120_000);

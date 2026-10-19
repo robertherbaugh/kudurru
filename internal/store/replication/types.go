@@ -13,12 +13,14 @@ import (
 	"time"
 )
 
+// Protocol identifiers and the canonical settings owner.
 const (
 	Format        = "kudurru.replication"
 	FormatVersion = 1
 	SettingsOwner = "kudurru.io/Kudurru/default"
 )
 
+// Protocol validation and authority transition errors.
 var (
 	ErrInvalid           = errors.New("replication: invalid image")
 	ErrTooLarge          = errors.New("replication: image exceeds bounds")
@@ -41,10 +43,12 @@ type Term struct {
 	PrimaryName string `json:"primaryName,omitempty"`
 }
 
+// Same compares authority identity, excluding the display name.
 func (t Term) Same(other Term) bool {
 	return t.ClusterID == other.ClusterID && t.Epoch == other.Epoch && t.PrimaryID == other.PrimaryID && t.PromotionID == other.PromotionID
 }
 
+// Validate checks the required authority identifiers and their bounds.
 func (t Term) Validate() error {
 	if t.ClusterID == "" || t.PrimaryID == "" || t.PromotionID == "" || t.Epoch == 0 {
 		return fmt.Errorf("%w: incomplete term", ErrInvalid)
@@ -57,16 +61,19 @@ func (t Term) Validate() error {
 	return nil
 }
 
+// Generation identifies a complete image within an authority term.
 type Generation struct {
 	Term     Term   `json:"term"`
 	Revision uint64 `json:"revision,string"`
 	Digest   string `json:"digest"`
 }
 
+// Same compares the term, revision and payload digest.
 func (g Generation) Same(other Generation) bool {
 	return g.Term.Same(other.Term) && g.Revision == other.Revision && g.Digest == other.Digest
 }
 
+// ETag returns a stable HTTP validator for this generation's identity.
 func (g Generation) ETag() string {
 	// Display names are not authority identity (see Term.Same).
 	g.Term.PrimaryName = ""
@@ -75,6 +82,7 @@ func (g Generation) ETag() string {
 	return `"` + hex.EncodeToString(sum[:]) + `"`
 }
 
+// Validate checks the authority term and canonical payload digest.
 func (g Generation) Validate() error {
 	if err := g.Term.Validate(); err != nil {
 		return err
@@ -93,8 +101,10 @@ type Reader interface {
 	GenerationChanges() <-chan struct{}
 }
 
+// Mode describes a member's durable replication role.
 type Mode string
 
+// Replication roles and authority refusal states.
 const (
 	Standalone Mode = "standalone"
 	Primary    Mode = "primary"
@@ -122,10 +132,12 @@ type Authority struct {
 	LastResolutionRequest string      `json:"lastResolutionRequest,omitempty"`
 }
 
+// Writable reports whether this member owns an uncontested writer term.
 func (a Authority) Writable() bool {
 	return (a.Mode == Standalone || a.Mode == Primary) && a.Term.PrimaryID == a.MemberID && a.Conflict == nil && a.Divergence == nil
 }
 
+// Kind declares an object kind and row count in the complete-image manifest.
 type Kind struct {
 	APIVersion string `json:"apiVersion"`
 	Kind       string `json:"kind"`
@@ -143,6 +155,8 @@ type Entry struct {
 type Settings struct {
 	Owner string `json:"owner"`
 }
+
+// Payload contains all replicated objects and owner-specific sections.
 type Payload struct {
 	Objects         []json.RawMessage `json:"objects"`
 	ClusterSettings Settings          `json:"clusterSettings"`
@@ -152,6 +166,7 @@ type Payload struct {
 	Dedup           []Entry           `json:"dedup"`
 }
 
+// Image is a complete logical snapshot with its authority and content digest.
 type Image struct {
 	Format                string      `json:"format"`
 	FormatVersion         int         `json:"formatVersion"`
@@ -168,6 +183,7 @@ type Image struct {
 	Payload               Payload     `json:"payload"`
 }
 
+// Generation returns the image's authority, revision and payload digest.
 func (i Image) Generation() Generation {
 	return Generation{Term: i.Term, Revision: i.Revision, Digest: i.PayloadSHA256}
 }
@@ -175,6 +191,7 @@ func (i Image) Generation() Generation {
 // Validated cannot be populated by callers; Image returns a defensive copy.
 type Validated struct{ encoded []byte }
 
+// Image returns a defensive copy of the accepted complete image.
 func (v *Validated) Image() Image {
 	var i Image
 	if v != nil {
@@ -183,11 +200,13 @@ func (v *Validated) Image() Image {
 	return i
 }
 
+// Limits bounds encoded images, rows and nesting during validation.
 type Limits struct {
 	MaxBytes                                         int64
 	MaxObjects, MaxObjectBytes, MaxEntries, MaxDepth int
 }
 
+// Defaults fills unset limits with the protocol's supported bounds.
 func (l Limits) Defaults() Limits {
 	if l.MaxBytes <= 0 {
 		l.MaxBytes = 256 << 20
@@ -207,6 +226,7 @@ func (l Limits) Defaults() Limits {
 	return l
 }
 
+// Validation supplies schema compatibility and owner-specific row checks.
 type Validation struct {
 	SchemaVersion  int
 	Kinds          []Kind
@@ -219,11 +239,13 @@ type Validation struct {
 	ValidateImage func(*Image) error
 }
 
+// InstallOptions fences installation against the exact current local base.
 type InstallOptions struct {
 	ExpectedTerm      Term
 	ExpectedInstalled Generation
 }
 
+// PromoteRequest names the local base and a unique promotion intent.
 type PromoteRequest struct {
 	ExpectedTerm      Term
 	ExpectedInstalled Generation
@@ -241,10 +263,11 @@ type ResolveRequest struct {
 	RequestID          string
 }
 
-// Sections is a fixed, explicit ownership registry. New sections require a
+// SectionNames returns the fixed ownership registry. New sections require a
 // format/feature negotiation; adding a kind needs only scheme registration.
 func SectionNames() []string { return []string{"runtime", "security", "membership", "dedup"} }
 
+// Section returns a registered payload section, or nil for an unknown name.
 func Section(p *Payload, name string) *[]Entry {
 	switch name {
 	case "runtime":

@@ -53,6 +53,7 @@ func (p *Provider) httpClient(c public.UniFiIntegration, origin string) (*http.C
 	transport.DisableCompression = true
 	transport.ForceAttemptHTTP2 = false
 	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- explicit certificate pin replaces CA trust; VerifyConnection still checks the exact fingerprint, hostname and validity period
 	config := &tls.Config{MinVersion: tls.VersionTLS12}
 	if transport.TLSClientConfig != nil {
 		config = transport.TLSClientConfig.Clone()

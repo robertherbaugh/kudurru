@@ -394,7 +394,9 @@ func TestInvalidCompleteReadNeverPrunesAndNilGuardCannotInitialize(t *testing.T)
 		t.Fatal("read failure pruned previous roster")
 	}
 	cancel()
-	<-done
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
 	f2 := setup(t)
 	f2.a, err = sqliteadapter.New(sqliteadapter.Options{Store: f2.s})
 	if err != nil {
@@ -575,7 +577,9 @@ func TestRunnerBoundsAndWrongCapturedIncarnation(t *testing.T) {
 	go func() { done <- d.Run(ctx, f.writer) }()
 	await(t, func() bool { return d.Status().Pending == "capacity" })
 	cancel()
-	<-done
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
 	if f.ledger("one") != nil || f.ledger("two") != nil {
 		t.Fatal("partial oversized roster initialized")
 	}

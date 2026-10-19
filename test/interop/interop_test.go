@@ -229,8 +229,9 @@ zone "denied.test" {
 		writeFile(t, filepath.Join(objDir, "records.yaml"), recordsYAML(`{ dnsName: new.interop.test, recordType: A, targets: ["192.0.2.77"] }`))
 		var after uint32
 		if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
-			after, _ = soaSerial(t, spec.Ports.DNS, "interop.test.")
-			return after != before
+			var rcode int
+			after, rcode = soaSerial(t, spec.Ports.DNS, "interop.test.")
+			return rcode == dns.RcodeSuccess && after != 0 && after != before
 		}) {
 			t.Fatalf("kudurru serial did not move after the record change (still %d)", before)
 		}

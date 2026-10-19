@@ -33,6 +33,13 @@ make dashboard-lint      # eslint (zero warnings) + built themes current + tsc -
 make dashboard-build     # production bundle into dashboard/dist + license file + size budget + precompression
 ```
 
+`make dashboard-e2e` builds the real binary and runs Playwright with four
+workers. Each worker owns a temporary SQLite node, upstream, and admin session;
+concurrent tests never change another worker’s canonical generation or policies.
+Writes and credential submissions remain single-shot. Safe read observations
+wait for publication. Worker teardown stops the node and removes its session
+file; `KUDURRU_E2E_KEEP=1` retains temporary node data for local diagnosis.
+
 Inside `dashboard/`: `bun run dev` proxies `/api` to `KUDURRU_API`
 (default `http://127.0.0.1:8080`) for work against a real server;
 `bun run dev:mock` answers `/api/v1` in the browser from `src/mocks`.

@@ -18,15 +18,20 @@ type Response struct {
 	NotModified bool
 	ETag        string
 }
+
+// Source fetches authenticated, bounded images from the current primary.
 type Source interface {
 	Fetch(context.Context, string) (Response, error)
 }
 
+// Status records the last successful contact, installed generation and latest error.
 type Status struct {
 	LastContact time.Time
 	Installed   replication.Generation
 	Error       error
 }
+
+// Puller serializes replication fetches and validates images before installation.
 type Puller struct {
 	Mirror   *sqlite.Store
 	Source   Source
@@ -38,6 +43,7 @@ type Puller struct {
 	pullMu   sync.Mutex
 }
 
+// Status returns a detached observation of the latest pull result.
 func (p *Puller) Status() Status { p.mu.Lock(); defer p.mu.Unlock(); return p.status }
 func (p *Puller) remember(g replication.Generation, err error, contact bool) {
 	p.mu.Lock()
@@ -53,6 +59,7 @@ func (p *Puller) remember(g replication.Generation, err error, contact bool) {
 	}
 }
 
+// Pull fetches and installs one image after checking authority and image identity.
 func (p *Puller) Pull(ctx context.Context) (err error) {
 	p.pullMu.Lock()
 	defer p.pullMu.Unlock()

@@ -47,7 +47,9 @@ func TestExactPublicationSurvivesActualSameHeadReconcile(t *testing.T) {
 	<-entered
 	if _, err := h.r.Reconcile(ctx, l.Spec.Zone); err != nil {
 		close(release)
-		<-done
+		if joinErr := <-done; joinErr != nil {
+			t.Error(joinErr)
+		}
 		t.Fatal(err)
 	}
 	close(release)

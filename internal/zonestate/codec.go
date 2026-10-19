@@ -214,7 +214,15 @@ func normalized(a *Aggregate, l Limits) (*Aggregate, string, uint32, error) {
 		}
 		items = append(items, item{record: r, key: key, hashKey: hashKey, ttl: rr.Header().Ttl})
 	}
-	if soaCount != 1 || nsCount == 0 {
+	// Nameservers are optional for a local primary. Only the exact frozen
+	// DNSZone may authorize that omission; opaque or mismatched configs and
+	// configured nameservers still require an apex NS RRset.
+	var frozen public.DNSZone
+	allowNoNS := json.Unmarshal(config, &frozen) == nil &&
+		frozen.Spec.Type == public.ZoneTypePrimary && frozen.Spec.ZoneName != "" &&
+		frozen.Name == a.Zone.ObjectName && string(frozen.UID) == a.Zone.UID &&
+		dns.CanonicalName(frozen.Spec.ZoneName) == a.Zone.Apex && len(frozen.Spec.Nameservers) == 0
+	if soaCount != 1 || (nsCount == 0 && !allowNoNS) {
 		return nil, "", 0, fmt.Errorf("%w: apex SOA/NS required", ErrInvalid)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].key < items[j].key })

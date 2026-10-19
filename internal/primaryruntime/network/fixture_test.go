@@ -3,6 +3,7 @@ package network_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -116,7 +117,13 @@ func newFixture(t *testing.T, policy public.ZonePolicy) *fixture {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- f.pub.Run(ctx) }()
-	t.Cleanup(func() { cancel(); <-done; f.pub.Close() })
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			t.Error(err)
+		}
+		f.pub.Close()
+	})
 	select {
 	case <-f.pub.Initialized():
 	case <-time.After(10 * time.Second):

@@ -26,7 +26,10 @@ type Options struct {
 	Cookie                session.CookieConfig
 	CrossOriginProtection *http.CrossOriginProtection
 	MaxDuration           time.Duration
-	Now                   func() time.Time
+	// CaptureWait bounds waiting for the first eligible lease, before any
+	// authentication or handler work. Zero retains immediate refusal.
+	CaptureWait time.Duration
+	Now         func() time.Time
 }
 
 // Adapter owns no independent auth cache, Store reader or background watcher.
@@ -45,6 +48,9 @@ func New(options Options) (*Adapter, error) {
 		options.MaxDuration = 5 * time.Minute
 	}
 	if options.MaxDuration < time.Millisecond || options.MaxDuration > 24*time.Hour {
+		return nil, serving.ErrComponents
+	}
+	if options.CaptureWait < 0 || options.CaptureWait > 5*time.Second {
 		return nil, serving.ErrComponents
 	}
 	if options.Now == nil {
@@ -138,7 +144,7 @@ func (a *Adapter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), a.options.MaxDuration)
 		defer cancel()
-		lease, err := a.options.Publisher.CaptureHTTP(ctx)
+		lease, err := a.capture(ctx)
 		if err != nil {
 			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "complete serving generation unavailable", RetryAfter: time.Second})
 			return
@@ -151,6 +157,36 @@ func (a *Adapter) Middleware(next http.Handler) http.Handler {
 		}
 		verify.ServeHTTP(w, r)
 	})
+}
+
+// capture waits only before the request owns a lease or authenticates. It never
+// replaces a held proof, invokes a handler twice, or wakes/cancels preparation.
+func (a *Adapter) capture(ctx context.Context) (*serving.Lease, error) {
+	if a.options.CaptureWait == 0 {
+		return a.options.Publisher.CaptureHTTP(ctx)
+	}
+	wait, cancel := context.WithTimeout(ctx, a.options.CaptureWait)
+	defer cancel()
+	for {
+		changed := a.options.Publisher.Subscribe()
+		authority := a.options.Publisher.AuthorityChanges()
+		lease, err := a.options.Publisher.CaptureHTTP(wait)
+		if !errors.Is(err, serving.ErrPending) {
+			return lease, err
+		}
+		// A follower without its first installed image has no publication to
+		// catch up to. Refuse immediately so health/status probes can observe
+		// the unavailable state without exhausting their own shorter deadlines.
+		if a.options.Publisher.Status().Authority.Installed.Revision == 0 {
+			return nil, err
+		}
+		select {
+		case <-wait.Done():
+			return nil, wait.Err()
+		case <-changed:
+		case <-authority:
+		}
+	}
 }
 
 func (a *Adapter) selectCredential(r *http.Request) (servingauth.Credential, error) {

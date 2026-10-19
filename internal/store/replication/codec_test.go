@@ -28,9 +28,9 @@ func TestCompleteImageStableDigestAndPrivateCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	copy := v.Image()
-	copy.Payload.Objects[0][0] = '!'
-	copy.KindManifest[0].Kind = "changed"
+	detached := v.Image()
+	detached.Payload.Objects[0][0] = '!'
+	detached.KindManifest[0].Kind = "changed"
 	if _, err := Validate(v.Image(), validation(i)); err != nil {
 		t.Fatalf("validated image was mutable: %v", err)
 	}
