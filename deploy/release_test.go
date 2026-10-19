@@ -95,6 +95,20 @@ func TestGoreleaserConfig(t *testing.T) {
 	if !slices.Contains(list(mapOf(cfg["before"])["hooks"]), any("make dashboard-build")) {
 		t.Errorf("before hooks must run make dashboard-build, or the binaries embed the placeholder dashboard")
 	}
+	if !slices.Contains(list(mapOf(cfg["before"])["hooks"]), any("make release-manifests RELEASE_ARTIFACT_VERSION={{ .Version }}")) {
+		t.Error("release artifacts must use the actual GA, RC or snapshot version")
+	}
+	for _, a := range list(cfg["archives"]) {
+		archive := mapOf(a)
+		if archive["id"] == "compose" {
+			files := list(archive["files"])
+			if len(files) != 1 || dig(files[0], "src") != "bin/release/compose/**/*" {
+				t.Error("Compose archive must use staged release files")
+			} else if dig(files[0], "dst") != "compose" || dig(files[0], "strip_parent") != false {
+				t.Error("Compose archive must preserve nested paths under compose/")
+			}
+		}
+	}
 	for _, n := range list(cfg["nfpms"]) {
 		nm := mapOf(n)
 		for _, f := range []string{"deb", "rpm", "apk"} {
@@ -311,6 +325,23 @@ func TestVersionFile(t *testing.T) {
 	}
 	if !strings.Contains(string(readRepoFile(t, "Makefile")), "RELEASE_VERSION := $(shell tr -d '[:space:]' < VERSION") {
 		t.Errorf("the Makefile's RELEASE_VERSION must come from VERSION")
+	}
+	for _, path := range []string{"deploy/helm/kudurru/Chart.yaml", "deploy/helm/kudurru-crds/Chart.yaml"} {
+		var chart map[string]any
+		if err := yamlv3.Unmarshal(readRepoFile(t, path), &chart); err != nil {
+			t.Fatal(err)
+		}
+		if chart["version"] != v || chart["appVersion"] != v {
+			t.Errorf("%s must match VERSION=%s; run make version-sync", path, v)
+		}
+	}
+}
+
+func TestVersionSyncScript(t *testing.T) {
+	cmd := exec.Command("python3", "hack/test_sync_version.py")
+	cmd.Dir = repoRoot(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("version synchronization: %v\n%s", err, out)
 	}
 }
 

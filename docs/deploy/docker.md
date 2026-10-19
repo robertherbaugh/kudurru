@@ -16,7 +16,7 @@ docker run -d --name kudurru --restart unless-stopped \
   -v "$PWD/secrets:/run/secrets:ro" \
   -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
   -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-  ghcr.io/robertherbaugh/kudurru:0.1.0
+  ghcr.io/robertherbaugh/kudurru:0.2.0
 dig @127.0.0.1 example.com
 ```
 
@@ -30,7 +30,7 @@ Without a mounted `kudurru.yaml` the built-in defaults apply: plain DNS on
 The image runs as uid 65532 and binds :53 because Docker starts the
 container's unprivileged port range at 0. With `--network host` the host's
 `net.ipv4.ip_unprivileged_port_start` applies instead: run the
-`-hostnetwork` image (`ghcr.io/robertherbaugh/kudurru:0.1.0-hostnetwork`,
+`-hostnetwork` image (`ghcr.io/robertherbaugh/kudurru:0.2.0-hostnetwork`,
 the same binary with the file capability `cap_net_bind_service=+ep`), set the
 sysctl to 53 on the host, or use the packages below. The `-hostnetwork`
 image needs `NET_BIND_SERVICE` among the container's capabilities (Docker's

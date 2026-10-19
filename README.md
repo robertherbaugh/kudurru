@@ -72,7 +72,7 @@ docker run -d --name kudurru --restart unless-stopped \
   -v "$PWD/secrets:/run/secrets:ro" \
   -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
   -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-  ghcr.io/robertherbaugh/kudurru:0.1.0
+  ghcr.io/robertherbaugh/kudurru:0.2.0
 dig @127.0.0.1 example.com
 ```
 
@@ -86,8 +86,8 @@ Kubernetes, starting with one replica and no license key:
 ```sh
 kubectl create namespace kudurru-system
 kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted
-helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
+helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.2.0
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.2.0 \
   --namespace kudurru-system --set replicaCount=1
 kubectl get dnszones
 ```
