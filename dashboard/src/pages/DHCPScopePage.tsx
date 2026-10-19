@@ -8,39 +8,22 @@ import { Table, proportional, type TableColumn } from '@astryxdesign/core/Table'
 import { Text } from '@astryxdesign/core/Text';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
 import type { DHCPConfig, DHCPPoolOptions, DHCPReservation } from '../api/types';
 import { DHCPSavedScope, DHCPSetupNotices, useDHCPSetup } from '../components/DHCPSetup';
 import { DHCPAdvancedFields, advancedOptionsError } from '../components/DHCPAdvancedFields';
 import { DHCPFailoverStatus } from '../components/DHCPFailover';
+import { ReservationDialog, hostnameError, ipError, useRefreshOnConflict } from '../components/DHCPReservationDialog';
 import { isKube, managedText } from '../components/DHCPSetupFields';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { DurationField, durationError } from '../components/fields/DurationField';
 import { StringListField, cleanList } from '../components/fields/StringListField';
 import { SwitchField, TextField } from '../components/fields/TextField';
-import { formatError } from '../components/fields/formats';
 import { PageHeader } from '../components/layout/Page';
 import { parseDuration } from '../lib/format';
 import type { PageProps } from '../routes';
 import { DHCPFrame, dhcpServingText } from './DHCPPage';
-
-const ipError = (v: string) => v.trim() ? formatError('ipv4', v) : 'An IPv4 address is required';
-const hostnameError = (v: string) => !v || (v.length <= 253 && v.replace(/\.$/, '').split('.').every((p) => /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(p))) ? undefined : 'Use a hostname such as printer or printer.home.arpa';
-function macError(v: string) {
-  return /^(?:[\da-f]{2}:){5}[\da-f]{2}$/i.test(v) && (parseInt(v.slice(0, 2), 16) & 1) === 0 && v !== '00:00:00:00:00:00'
-    ? undefined : 'Use a unicast Ethernet MAC, for example 02:00:00:00:00:10';
-}
-
-function useRefreshOnConflict(scope: string) {
-  const qc = useQueryClient();
-  return (error: Error) => {
-    if (error instanceof ApiError && error.status === 412) {
-      void qc.invalidateQueries({ queryKey: qk.dhcp(scope, 'config') });
-    }
-  };
-}
 
 function OptionsEditor({ config, saved }: { config: DHCPConfig; saved: (v: DHCPConfig) => void }) {
   const api = useApi();
@@ -106,25 +89,6 @@ function OptionsEditor({ config, saved }: { config: DHCPConfig; saved: (v: DHCPC
       </HStack>
     </VStack>
   </Section>;
-}
-
-function ReservationDialog({ config, reservation, close, saved }: { config: DHCPConfig; reservation?: DHCPReservation; close: () => void; saved: (c: DHCPConfig) => void }) {
-  const api = useApi();
-  const onConflict = useRefreshOnConflict(config.scope);
-  const [etag] = useState(config.etag);
-  const [draft, setDraft] = useState<DHCPReservation>(reservation ?? { mac: '', ip: '', hostname: '' });
-  const [submitted, setSubmitted] = useState(false);
-  const errors = { mac: macError(draft.mac), ip: ipError(draft.ip) ?? undefined, hostname: hostnameError(draft.hostname) };
-  const mutation = useMutation({ onError: onConflict, mutationFn: () => api.dhcp.reserve(config.scope, { ...draft, mac: draft.mac.toLowerCase() }, etag), onSuccess: (next) => { saved(next); close(); } });
-  return <FormDialog isOpen onClose={close} title={reservation ? 'Edit reservation' : 'Add reservation'}
-    onSubmit={() => { setSubmitted(true); if (!Object.values(errors).some(Boolean)) mutation.mutate(); }}
-    footer={<><Button label="Cancel" onClick={close} /><Button label="Save reservation" type="submit" variant="primary" isLoading={mutation.isPending} isDisabled={etag !== config.etag} /></>}>
-    {mutation.error ? <ErrorBanner error={mutation.error} /> : null}
-    {etag !== config.etag ? <Text>This scope changed. Close and reopen this dialog to use the saved values.</Text> : null}
-    <TextField label="MAC address" value={draft.mac} onChange={(mac) => setDraft({ ...draft, mac })} isDisabled={!!reservation} mono placeholder="02:00:00:00:00:10" error={submitted ? errors.mac : undefined} />
-    <TextField label="Reserved address" value={draft.ip} onChange={(ip) => setDraft({ ...draft, ip })} mono placeholder="192.0.2.10" error={submitted ? errors.ip : undefined} help="Must be inside this subnet and available to this client." />
-    <TextField label="Hostname" value={draft.hostname} onChange={(hostname) => setDraft({ ...draft, hostname })} placeholder="printer" error={submitted ? errors.hostname : undefined} help="Optional. Takes precedence over the client's hostname." />
-  </FormDialog>;
 }
 
 function Reservations({ config, saved }: { config: DHCPConfig; saved: (v: DHCPConfig) => void }) {

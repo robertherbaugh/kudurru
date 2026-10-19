@@ -236,14 +236,15 @@ func TestLeaseManagementRejectsAllLiveStateConflicts(t *testing.T) {
 			if err := s.PutReservation(context.Background(), before.Revision, Reservation{MAC: leaseTestClient(2).MAC, IP: l.Address}); !errors.Is(err, ErrUnavailable) {
 				t.Fatalf("reservation steals address: %v", err)
 			}
-			if err := s.PutReservation(context.Background(), before.Revision, Reservation{MAC: c.MAC, IP: l.Address.Next()}); !errors.Is(err, ErrUnavailable) {
-				t.Fatalf("reservation moves owner: %v", err)
-			}
 			if !reflect.DeepEqual(before, s.Configuration()) || s.DNS() != snapshot {
 				t.Fatal("rejected mutation published state")
 			}
+			// Reserving the owner elsewhere moves it at its next DISCOVER.
+			if err := s.PutReservation(context.Background(), before.Revision, Reservation{MAC: c.MAC, IP: l.Address.Next()}); err != nil {
+				t.Fatalf("reservation moves owner: %v", err)
+			}
 			s.now = func() time.Time { return l.ExpiresAt }
-			if err := s.UpdateOptions(context.Background(), before.Revision, opts); err != nil {
+			if err := s.UpdateOptions(context.Background(), before.Revision+1, opts); err != nil {
 				t.Fatalf("expired conflict blocks update: %v", err)
 			}
 		})
@@ -393,5 +394,55 @@ func TestLeaseProtocolOptionsPersistAndDetachSlices(t *testing.T) {
 	detached.Config.BootProfiles[0].BootFile = "bad"
 	if reflect.DeepEqual(detached, reopened.Configuration()) {
 		t.Fatal("Configuration exposes mutable option slices")
+	}
+}
+
+func TestLeaseManagementReservationMovesLiveClient(t *testing.T) {
+	ctx := context.Background()
+	s, path := leaseTestOpen(t, managedTestConfig())
+	c, other := leaseTestClient(1), leaseTestClient(2)
+	old := leaseTestBind(t, s, c)
+	held := leaseTestBind(t, s, other)
+	// Another client's address, or one its own reservation holds, stays refused.
+	if err := s.PutReservation(ctx, 1, Reservation{MAC: c.MAC, IP: held.Address}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("reserved another client's live address: %v", err)
+	}
+	reserved := netip.MustParseAddr("192.0.2.90")
+	if err := s.PutReservation(ctx, 1, Reservation{MAC: c.MAC, IP: reserved, Hostname: "printer"}); err != nil {
+		t.Fatalf("reserve a live client elsewhere: %v", err)
+	}
+	if n := s.ConflictingLeases(); n != 0 {
+		t.Fatalf("moving lease counted as %d conflicts", n)
+	}
+	if err := s.PutReservation(ctx, 2, Reservation{MAC: leaseTestClient(3).MAC, IP: old.Address}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("reserved the moving lease's address for another client: %v", err)
+	}
+	// The old binding survives a restart but is no longer renewed.
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := OpenLeases(path, managedTestConfig())
+	if err != nil {
+		t.Fatalf("reopen with a moving lease: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if _, err := s.Acknowledge(ctx, c, old.Address, Renewing); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("renewed the superseded address: %v", err)
+	}
+	// Its next DISCOVER frees the old address and offers the reservation.
+	offer := leaseTestOffer(t, s, c, old.Address)
+	if offer.Address != reserved {
+		t.Fatalf("offer = %s, want %s", offer.Address, reserved)
+	}
+	bound, err := s.Acknowledge(ctx, c, reserved, Selecting)
+	if err != nil || bound.Hostname != "printer" {
+		t.Fatalf("bind reservation: %+v, %v", bound, err)
+	}
+	leases := leaseTestList(t, s)
+	if len(leases) != 2 || leases[0].Address != held.Address || leases[1].Address != reserved {
+		t.Fatalf("leases = %+v", leases)
+	}
+	if got := leaseTestOffer(t, s, leaseTestClient(3), old.Address); got.Address != old.Address {
+		t.Fatalf("freed address offered as %s", got.Address)
 	}
 }

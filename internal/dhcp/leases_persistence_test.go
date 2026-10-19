@@ -121,7 +121,6 @@ func TestLeaseConfigChangesProtectLiveState(t *testing.T) {
 			{"server changed", func(c *Config, l Lease) { c.ServerIP = l.Address }},
 			{"router changed", func(c *Config, l Lease) { c.Router = l.Address }},
 			{"reservation stolen", func(c *Config, l Lease) { c.Reservations = []Reservation{{MAC: leaseTestClient(2).MAC, IP: l.Address}} }},
-			{"reservation moved", func(c *Config, l Lease) { c.Reservations = []Reservation{{MAC: l.MAC, IP: l.Address.Next()}} }},
 		} {
 			t.Run(state+"/"+tc.name, func(t *testing.T) {
 				cfg := leaseTestConfig()
@@ -170,9 +169,21 @@ func TestLeaseReservationRemovalAndCompatibleChanges(t *testing.T) {
 		_ = reopened.Close()
 		t.Fatal("removed live reservation outside pool was forgotten")
 	}
+	// Moving the reservation keeps the binding until the client returns.
+	changed.Reservations = []Reservation{{MAC: l.MAC, IP: netip.MustParseAddr("192.0.2.101")}}
+	s, err := OpenLeases(path, changed)
+	if err != nil {
+		t.Fatalf("moved reservation refused: %v", err)
+	}
+	if ls := leaseTestList(t, s); len(ls) != 1 || ls[0] != l {
+		t.Fatalf("moved reservation changed the binding: %+v", ls)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
 	changed = cfg
 	changed.DomainName, changed.LeaseDuration = "new.example", time.Hour
-	s, err := OpenLeases(path, changed)
+	s, err = OpenLeases(path, changed)
 	if err != nil {
 		t.Fatal(err)
 	}

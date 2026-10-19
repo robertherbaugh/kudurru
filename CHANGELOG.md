@@ -6,6 +6,13 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Changed
+
+- DHCP: a reservation can move a client that leases another address
+  instead of being refused until the lease expires; the client moves to it
+  when it next renews or reconnects. **DHCP** > **Leases** has a **Reserve**
+  action that prefills the reservation from a lease.
+
 ## [0.1.0] - 2026-10-18
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or

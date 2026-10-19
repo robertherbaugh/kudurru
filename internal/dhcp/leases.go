@@ -403,9 +403,28 @@ func (s *LeaseStore) allowed(ip netip.Addr, mac string) bool {
 	return s.cfg.inPool(ip)
 }
 
+// moving reports a live lease whose client is now reserved at another
+// address. A binding is not renewed and the client's next DISCOVER moves
+// it to the reservation (Offer); a quarantine still ends at expiry. Its
+// address must not be reserved for another client.
+func (s *LeaseStore) moving(l storedLease) bool {
+	r, ok := s.byMAC[l.MAC]
+	_, reserved := s.byIP[l.Address]
+	return ok && r.IP != l.Address && !reserved && s.cfg.usable(l.Address) && !s.cfg.infrastructure(l.Address)
+}
+
 func (s *LeaseStore) compatible(l storedLease) error {
+	return s.checkLease(l, s.allowed(l.Address, l.MAC))
+}
+
+// compatibleOrMoving also accepts a lease its client's reservation moves.
+func (s *LeaseStore) compatibleOrMoving(l storedLease) error {
+	return s.checkLease(l, s.allowed(l.Address, l.MAC) || s.moving(l))
+}
+
+func (s *LeaseStore) checkLease(l storedLease, allowed bool) error {
 	mac, err := canonicalMAC(l.MAC)
-	if err != nil || mac != l.MAC || !validHostname(l.Hostname) || !s.allowed(l.Address, l.MAC) {
+	if err != nil || mac != l.MAC || !validHostname(l.Hostname) || !allowed {
 		return ErrUnavailable
 	}
 	// ClientID is exposed as the hardware address for MAC-only clients; the
@@ -502,7 +521,14 @@ func (s *LeaseStore) Offer(ctx context.Context, c Client, requested netip.Addr) 
 	err = s.transactFast(ctx, func(tx *sql.Tx, _ []storedLease, now time.Time) error {
 		ctx = s.transactionContext(ctx)
 		state := leaseTransactionFrom(ctx)
-		if l, ok := state.client(key); ok {
+		if l, ok := state.client(key); ok && l.MAC == c.MAC && !s.allowed(l.Address, l.MAC) {
+			// A client in INIT no longer uses an address the settings now
+			// refuse it, e.g. after a reservation moved it: free that address
+			// and allocate again.
+			if err := deleteLease(ctx, tx, l.Address); err != nil {
+				return err
+			}
+		} else if ok {
 			if l.MAC != c.MAC {
 				return ErrUnavailable
 			}

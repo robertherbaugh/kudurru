@@ -87,6 +87,9 @@ Changing ownership back to file mode validates file values against all live
 offers, bindings and quarantine. Dashboard-owned scopes always use API management.
 
 Management edits use a scope revision and transactional candidate validation.
+A candidate may reserve a live client at another address than it holds
+(provided no other reservation names the old address): that lease is not
+renewed, and the client's next DISCOVER frees it and offers the reservation.
 Mutable environment overrides are rejected for enabled API-managed scopes
 to avoid masking host settings with persisted values; file mode retains
 normal environment precedence. The API requires `If-Match` bound to node,
@@ -465,8 +468,10 @@ flowchart LR
 - **Status.** The serving replica writes each scope's status: the serving
   pod, bound leases, and a `Ready` condition. A Git change that no longer
   allows some live leases still applies. Those leases are not renewed, end at
-  expiry, and are counted in `conflictingLeases`. The dashboard refuses such
-  an edit with 409, as it does with the SQLite store.
+  expiry or at the client's next DISCOVER, and are counted in
+  `conflictingLeases`. The dashboard refuses such an edit with 409, as it
+  does with the SQLite store. A lease whose client is reserved elsewhere is
+  not a conflict: it moves (see management edits above).
 - **Network path.** Clients reach the pod through a DHCP relay that sends to
   the LoadBalancer address. The Service uses `externalTrafficPolicy: Local`,
   because trusted relays are matched by their source address. Replies to a

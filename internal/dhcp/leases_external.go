@@ -391,14 +391,15 @@ func (s *LeaseStore) CheckExternalConfig(cfg Config) error {
 }
 
 // ConflictingLeases counts live leases the current settings no longer allow.
-// They are not renewed and end at expiry.
+// They are not renewed and end at expiry. A lease its client's reservation
+// moves elsewhere is not counted.
 func (s *LeaseStore) ConflictingLeases() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now().UTC().Truncate(time.Second)
 	n := 0
 	for _, l := range (&leaseTransaction{rows: s.leaseByIP, changed: map[netip.Addr]storedLease{}, now: now}).all() {
-		if s.compatible(l) != nil {
+		if s.compatibleOrMoving(l) != nil {
 			n++
 		}
 	}
