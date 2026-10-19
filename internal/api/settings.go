@@ -14,8 +14,8 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/config"
-	"github.com/robertherbaugh/kudurru/internal/settings"
 	"github.com/robertherbaugh/kudurru/internal/license"
+	"github.com/robertherbaugh/kudurru/internal/settings"
 )
 
 // Redacted replaces writeOnly values in settings responses.
@@ -241,7 +241,7 @@ func (s *Server) settingsBody(cfg *config.Config, scope config.Scope, changed, r
 		setPath(tree, k.Path, v)
 	}
 	body := &SettingsBody{Scope: string(scope), Node: s.opts.NodeName, Settings: tree, Changed: changed, RestartRequired: restart}
-	if scope == config.ScopeCluster && s.opts.SettingsOwnership != nil {
+	if scope == config.ScopeCluster && s.opts.CanonicalSettings == nil && s.opts.SettingsOwnership != nil {
 		body.Sections, body.Conflicts = ownership.Sections, ownership.Conflicts
 	}
 	return &settingsOutput{Body: body}
@@ -279,7 +279,7 @@ func (s *Server) settingsSchema(ctx context.Context, _ *struct{}) (*schemaOutput
 			WriteOnly: k.WriteOnly, Label: k.Label, Group: k.Group, SettingConstraints: settingConstraints(k.Shape()), Value: v,
 		})
 	}
-	if s.opts.SettingsOwnership != nil {
+	if s.opts.CanonicalSettings == nil && s.opts.SettingsOwnership != nil {
 		status := s.opts.SettingsOwnership.Status()
 		for i := range items {
 			if items[i].Scope == string(config.ScopeCluster) {

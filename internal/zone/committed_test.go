@@ -33,7 +33,7 @@ func TestCommittedPrimaryRawRecordsAndPolicy(t *testing.T) {
 	}
 	// TransferAllowed checks wall-clock availability; keep its policy fixture live.
 	expiry := time.Now().Add(time.Hour)
-	model, err := BuildCommittedPrimary(config, records, 99, expiry)
+	model, err := BuildCommittedPrimary(config, records, 99, expiry, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,11 +97,11 @@ func TestCommittedPrimaryRejectsMalformedCompleteData(t *testing.T) {
 		{"dn.example.org. 60 IN DNAME other.test.", "child.dn.example.org. 60 IN A 192.0.2.1"},
 		{"example.org. 60 IN SOA ns.example.org. hostmaster.example.org. 99 60 30 600 30"},
 	} {
-		if _, err := BuildCommittedPrimary(dnsZone("example.org."), committedRecords(t, extra...), 99, time.Time{}); err == nil {
+		if _, err := BuildCommittedPrimary(dnsZone("example.org."), committedRecords(t, extra...), 99, time.Time{}, false); err == nil {
 			t.Fatalf("accepted %v", extra)
 		}
 	}
-	if _, err := BuildCommittedPrimary(dnsZone("example.org."), committedRecords(t), 98, time.Time{}); err == nil {
+	if _, err := BuildCommittedPrimary(dnsZone("example.org."), committedRecords(t), 98, time.Time{}, false); err == nil {
 		t.Fatal("mismatched serial")
 	}
 }

@@ -79,6 +79,10 @@ func (s *servingRuntime) ZoneNotifyCommand(ctx context.Context, name string) (*a
 			}
 			return err
 		}
+		if z.Spec.Fallback != nil {
+			decision = &api.Error{Status: http.StatusUnprocessableEntity, Body: api.ErrorBody{Key: api.KeyUnprocessable, Message: "NOTIFY is unavailable for zones with missing-name fallback"}}
+			return nil
+		}
 		if z.Spec.Type != public.ZoneTypePrimary {
 			decision = &api.Error{Status: http.StatusConflict, Body: api.ErrorBody{Key: api.KeyConflict, Message: "manual NOTIFY is available for primary zones"}}
 			return nil

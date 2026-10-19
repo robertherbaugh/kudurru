@@ -30,6 +30,7 @@ Columns of `kubectl get dnszones`:
 DNSZoneSpec defines the desired state of a zone.
 
 Validation: fallback is only supported for primary zones (`!has(self.fallback) || self.type == 'primary'`)
+
 Validation: secondary zones require secondary configuration (`self.type != 'secondary' || has(self.secondary)`)
 
 Validation: stub zones require nameserver configuration (`self.type != 'stub' || has(self.stub)`)

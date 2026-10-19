@@ -43,9 +43,15 @@ Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 ## API migrations
 
 `internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
-objects, a settings merge patch and conversion warnings. The dashboard's
-Tools wizard uses `POST /imports/preview` and submits the reviewed result to
-`POST /imports/start`. This returns HTTP 202, a run ID and a Location header
+objects, a settings merge patch and conversion warnings.
+
+The v0.2 complete SQLite runtime currently refuses migration apply/start,
+adoption and decommission writes with 503: their journal and background-job
+writes do not yet have current compound command admission. Read-only previews
+and history remain available. The legacy/Kubernetes flow below is unchanged.
+
+The dashboard's Tools wizard uses `POST /imports/preview` and submits the
+reviewed result to `POST /imports/start`. This returns HTTP 202, a run ID and a Location header
 before object writes finish. The CLI's `import pihole|technitium` uses the same
 converter locally; `--apply` starts the same background job and `--wait` polls
 its report. `POST /imports/apply` remains available for synchronous callers.
@@ -443,6 +449,11 @@ ConfigMap. Only `upstreams` can currently switch to `ui` ownership, through
 an explicit, revision-checked adoption. Adoption copies the entire effective
 section (groups, servers, bootstrap, conditional rules, ECS and recursion)
 without changing routing. Host-only restrictions remain in place.
+
+On the v0.2 complete SQLite runtime, canonical settings commands replace this
+legacy ownership manager. Adoption/release and legacy YAML export return 503;
+canonical reads and writes never change the legacy settings file or reload
+pointer. Kubernetes retains the ownership flow described here.
 
 UI-owned upstreams live with their ownership record in a separate ConfigMap,
 `<release>-ui-settings` by default (`KUDURRU_SETTINGS_RESOURCE`). Helm never

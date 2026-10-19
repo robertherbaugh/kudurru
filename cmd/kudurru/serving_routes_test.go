@@ -12,6 +12,13 @@ func TestServingMutationRoutesDomainAliasesAndSourceCommand(t *testing.T) {
 		blocked      bool
 	}{
 		{http.MethodPost, "/api/v1/queries/42/actions", true},
+		{http.MethodPost, "/api/v1/imports/apply", true},
+		{http.MethodPost, "/api/v1/imports/start", true},
+		{http.MethodPost, "/api/v1/imports/adopt", true},
+		{http.MethodPost, "/api/v1/imports/runs/run/decommission", true},
+		{http.MethodPost, "/api/v1/imports/preview", false},
+		{http.MethodPost, "/api/v1/imports/runs/run/decommission/preview", false},
+		{http.MethodGet, "/api/v1/imports/runs/run", false},
 		{http.MethodPost, "/api/v1/domains/allow/exact", true},
 		{http.MethodPost, "/api/v1/allowlist", true},
 		{http.MethodPost, "/api/v1/denylist:batch", true},

@@ -148,6 +148,7 @@ func normalized(a *Aggregate, l Limits) (*Aggregate, string, uint32, error) {
 	seen := map[string]bool{}
 	var wireBytes int64
 	soaCount, nsCount := 0, 0
+	apexOverride := false
 	var serial uint32
 	for _, r := range a.Records {
 		if len(r.Wire) > 65535 || len(r.Wire) == 0 {
@@ -174,6 +175,9 @@ func normalized(a *Aggregate, l Limits) (*Aggregate, string, uint32, error) {
 			return nil, "", 0, fmt.Errorf("%w: owner/class/type", ErrInvalid)
 		}
 		p := r.Provenance
+		if name == a.Zone.Apex && p.SourceID != "system" {
+			apexOverride = true
+		}
 		if (p.SourceID == "") == (p.Key == "") || len(p.SourceID) > 512 || len(p.CredentialVersion) > 512 {
 			return nil, "", 0, fmt.Errorf("%w: record ownership", ErrInvalid)
 		}
@@ -226,6 +230,22 @@ func normalized(a *Aggregate, l Limits) (*Aggregate, string, uint32, error) {
 		binary.BigEndian.PutUint32(fields[4:], r.ttl)
 		_, _ = h.Write(fields[:])
 		_, _ = h.Write([]byte(r.hashKey))
+	}
+	// Routing changes also change answers and must advance the edge-visible
+	// serial. Preserve existing hashes for configurations without fallback.
+	var routing struct {
+		Spec struct {
+			Fallback *public.ZoneFallbackSpec `json:"fallback"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal(config, &routing); err != nil {
+		return nil, "", 0, fmt.Errorf("%w: fallback configuration", ErrInvalid)
+	}
+	if routing.Spec.Fallback != nil {
+		_, _ = h.Write([]byte("\x00fallback\x00" + routing.Spec.Fallback.UpstreamGroup))
+		if apexOverride {
+			_, _ = h.Write([]byte("\x00apex-override"))
+		}
 	}
 	out.Receipts = append([]Receipt(nil), a.Receipts...)
 	receipts := map[string]bool{}

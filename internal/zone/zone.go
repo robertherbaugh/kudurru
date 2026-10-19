@@ -29,16 +29,16 @@ const (
 // need no locks. Changes produce a new Zone that is swapped in through a
 // Snapshot.
 type Zone struct {
-	name          string // lowercased absolute origin
-	key           string
-	typ           v1alpha1.ZoneType
-	serial        uint32
-	upstream      string // forward zones
-	fallback      bool
-	fallbackGroup string
-	apexOverride  bool // apex has user records, beyond generated SOA/NS
-	access        accessPolicy
-	transfer      accessPolicy
+	name             string // lowercased absolute origin
+	key              string
+	typ              v1alpha1.ZoneType
+	serial           uint32
+	upstream         string // forward zones
+	fallback         bool
+	fallbackGroup    string
+	apexOverride     bool // apex has user records, beyond generated SOA/NS
+	access           accessPolicy
+	transfer         accessPolicy
 	dnssecValidation *bool // nullable forward-zone override
 	// transferKeys are the canonical names of spec.policy.transferTSIGKeyRefs.
 	transferKeys []string
@@ -98,6 +98,7 @@ func (z *Zone) HasFallback() bool { return z.fallback }
 // FallbackGroup is the chosen forwarding or recursive group; empty uses
 // normal resolver routing.
 func (z *Zone) FallbackGroup() string { return z.fallbackGroup }
+
 // DNSSECValidation returns a private nullable forward-zone validation override.
 func (z *Zone) DNSSECValidation() *bool {
 	if z.dnssecValidation == nil {

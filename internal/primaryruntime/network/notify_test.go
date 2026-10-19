@@ -307,3 +307,17 @@ func TestNotifyBoundsResolverFailureAndPartialDeliveryRetainIntent(t *testing.T)
 		})
 	}
 }
+
+func TestNotifyFallbackAcknowledgesWithoutNetwork(t *testing.T) {
+	p := peer(t, false)
+	f := newFixture(t, notifyPolicy(p.target, false))
+	z := f.zone.DeepCopy()
+	z.Spec.Fallback = &public.ZoneFallbackSpec{}
+	_, err := f.s.Apply(f.ctx(), z, store.ApplyOptions{Manager: store.ManagerSystem})
+	check(t, err)
+	f.change()
+	check(t, f.r.NotifyOnce(f.ctx()))
+	if p.calls.Load() != 0 || f.view().Head.Spec.NotifySequence != 0 {
+		t.Fatal("fallback sent a NOTIFY or failed to acknowledge disabled intent")
+	}
+}

@@ -3,8 +3,6 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/json"
-	"github.com/robertherbaugh/kudurru/internal/clientid"
-
 	"errors"
 	"fmt"
 	"net/netip"
@@ -22,6 +20,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/robertherbaugh/kudurru/internal/clientid"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 

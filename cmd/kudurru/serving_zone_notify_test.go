@@ -245,3 +245,26 @@ func TestServingZoneNotifyOriginalReleasedAndSupersededLease(t *testing.T) {
 	_, err := f.s.ZoneNotifyCommand(held, "notify")
 	notifyAPIStatus(t, err, http.StatusUnauthorized)
 }
+
+func TestServingZoneNotifyRejectsFallbackWithoutIntent(t *testing.T) {
+	f := newServingCommandFixture(t)
+	defer f.stop()
+	servingNotifySeed(t, f, public.NotifyNone, false)
+	var z public.DNSZone
+	if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "DNSZone", Name: "notify"}, &z); err != nil {
+		t.Fatal(err)
+	}
+	z.Spec.Fallback = &public.ZoneFallbackSpec{}
+	if _, err := f.s.opts.Store.Apply(t.Context(), &z, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady && f.s.primary.driver.Status().Ready })
+	f.s.primary.notifyIntent = func(context.Context, *sqlite.CommandTx, pr.PrimaryStatusObservation) (sqliteadapter.NotifyIntentResult, error) {
+		t.Error("fallback must not queue a NOTIFY intent")
+		return sqliteadapter.NotifyIntentResult{}, errors.New("unexpected intent")
+	}
+	w := servingZoneRequest(t, f, servingNotifyAPI(t, f), http.MethodPost, "/api/v1/zones/notify/notify", nil)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatal("fallback NOTIFY was not refused", w.Code)
+	}
+}

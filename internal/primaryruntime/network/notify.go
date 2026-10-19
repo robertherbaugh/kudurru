@@ -214,7 +214,11 @@ func (s *Sender) Validator(identity string, keys *dnsserver.StaticKeyring) sqlit
 		if !a.fence.Term.Same(tx.Authority()) || a.fence.Incarnation != tx.Incarnation() || l.Spec.Zone != a.member.Zone || l.Spec.Type != a.member.Type || l.Spec.Phase != a.member.Phase || l.Spec.Incarnation != a.member.Incarnation || l.Spec.Sequence != a.member.Sequence || !reflect.DeepEqual(l.Spec.Parents, a.member.Parents) {
 			return pr.ErrConflict
 		}
-		p, err := s.sourcePolicy(c.Source.Spec.Policy)
+		policy := c.Source.Spec.Policy
+		if c.Source.Spec.Fallback != nil {
+			policy.Notify = public.NotifyNone
+		}
+		p, err := s.sourcePolicy(policy)
 		if err != nil {
 			return err
 		}

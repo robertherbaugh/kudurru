@@ -331,7 +331,11 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 		blocked.call(http.MethodPost, "/allowlist", map[string]any{"values": []string{"escape.example"}}, 503, nil)
 		blocked.call(http.MethodPost, "/denylist:batch", nil, 503, nil)
 		blocked.call(http.MethodPost, "/domains/allow/exact", nil, 503, nil)
-		blocked.call(http.MethodPatch, "/blocklists/default/starter/sources/0/entries", map[string]any{}, 503, nil)
+		// Source-entry PATCH has an admitted command; its actual edits and
+		// restart behavior are covered by TestRunServeSQLiteSourceEntriesRestart.
+		for _, route := range []string{"/imports/apply", "/imports/start", "/imports/adopt", "/imports/runs/mounted/decommission"} {
+			blocked.call(http.MethodPost, route, nil, http.StatusServiceUnavailable, nil)
+		}
 		blocked.call(http.MethodPost, "/unblockrequests/default/request/approve", nil, 503, nil)
 		var created api.CreatedToken
 		client.call(http.MethodPost, "/auth/tokens", api.CreateTokenRequest{Description: "mounted", ExpiresIn: "1h", Scopes: []string{"viewer"}}, 201, &created)

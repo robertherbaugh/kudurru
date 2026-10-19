@@ -435,5 +435,11 @@ func BuildCommitted(ctx context.Context, v *zonestate.View) (*zone.Zone, error) 
 	if err != nil {
 		return nil, err
 	}
-	return zone.BuildCommittedPrimary(&config, records, v.Head.Spec.Serial, v.Aggregate.Expiry)
+	apexOverride := false
+	for i, rr := range records {
+		if dns.CanonicalName(rr.Header().Name) == apex && v.Aggregate.Records[i].Provenance.SourceID != "system" {
+			apexOverride = true
+		}
+	}
+	return zone.BuildCommittedPrimary(&config, records, v.Head.Spec.Serial, v.Aggregate.Expiry, apexOverride)
 }

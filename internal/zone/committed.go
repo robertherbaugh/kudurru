@@ -12,13 +12,16 @@ import (
 // BuildCommittedPrimary builds a primary from its complete committed data and
 // frozen configuration. It never synthesizes apex data or imports desired
 // endpoints. SOA fields, arbitrary RDATA and TTLs are copied; served RRset TTLs
-// are normalized on private copies only. Signatures are data, never proof of AD.
-func BuildCommittedPrimary(config *v1alpha1.DNSZone, records []dns.RR, serial uint32, expiry time.Time) (*Zone, error) {
+// are normalized on private copies only. apexOverride records whether frozen
+// ownership includes explicit apex data beyond generated SOA/NS. Signatures
+// are data, never proof of AD.
+func BuildCommittedPrimary(config *v1alpha1.DNSZone, records []dns.RR, serial uint32, expiry time.Time, apexOverride bool) (*Zone, error) {
 	b, err := committedBuilder(config)
 	if err != nil {
 		return nil, err
 	}
 	z := b.z
+	z.apexOverride = apexOverride
 	if len(records) == 0 || len(records) > 1_000_000 {
 		return nil, fmt.Errorf("committed record count exceeded")
 	}

@@ -405,6 +405,15 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 	out.AuthenticatedData = false
 	out.RecursionAvailable = s.RecursionAvailable || in.RecursionAvailable
 	out.Answer = append(chain, in.Answer...)
+	// Keep upstream extended errors, but never copy a hop's TSIG signature
+	// onto the mixed client response.
+	extra := out.Extra[:0]
+	for _, rr := range out.Extra {
+		if rr.Header().Rrtype != dns.TypeTSIG {
+			extra = append(extra, rr)
+		}
+	}
+	out.Extra = extra
 	s.finish(req, out)
 	security := pipeline.DNSSECUnknown
 	if resp.DNSSEC == pipeline.DNSSECBogus {
@@ -420,7 +429,7 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 		Modified:  true,
 		Security:  pipeline.Security{State: pipeline.ValidationUnknown},
 		Cacheable: false,
-		DNSSEC: security,
+		DNSSEC:    security,
 	}
 	result.AddCleanup(resp.Close)
 	return result

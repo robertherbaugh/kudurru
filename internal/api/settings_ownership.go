@@ -32,6 +32,9 @@ type settingsYAMLOutput struct{ Body *settingsYAMLBody }
 func (s *Server) registerSettingsOwnership() {
 	register(s, operation(http.MethodPost, "/settings/sections/{section}/ownership/{action}", "changeSettingsOwnership", "Adopt or release a settings section using its reviewed revision", "settings"),
 		perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *ownershipInput) (*settingsOutput, error) {
+			if s.opts.CanonicalSettings != nil {
+				return nil, errUnavailable("canonical settings do not use legacy ownership storage")
+			}
 			if s.opts.SettingsOwnership == nil {
 				return nil, errInvalid("settings ownership requires persistent settings storage")
 			}
@@ -52,6 +55,9 @@ func (s *Server) registerSettingsOwnership() {
 		})
 	register(s, operation(http.MethodPost, "/settings/sections/{section}/yaml", "exportSettingsSectionYAML", "Generate Helm values for the current or proposed complete section without writing", "settings"),
 		perm{resource: "settings", verb: "read"}, func(ctx context.Context, in *settingsYAMLInput) (*settingsYAMLOutput, error) {
+			if s.opts.CanonicalSettings != nil {
+				return nil, errUnavailable("canonical settings do not use legacy ownership storage")
+			}
 			if s.opts.SettingsOwnership == nil {
 				return nil, errInvalid("settings ownership requires persistent settings storage")
 			}
