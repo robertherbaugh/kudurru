@@ -403,10 +403,11 @@ func (s *LeaseStore) allowed(ip netip.Addr, mac string) bool {
 	return s.cfg.inPool(ip)
 }
 
-// moving reports a live lease whose client is now reserved at another
-// address. A binding is not renewed and the client's next DISCOVER moves
-// it to the reservation (Offer); a quarantine still ends at expiry. Its
-// address must not be reserved for another client.
+// moving reports a live lease, including a quarantine, whose client is now
+// reserved at another address; no other reservation may name its address.
+// An offer or binding is not renewed, and the client's next DISCOVER frees
+// it and offers the reservation (Offer). A quarantine guards its address,
+// not the client, so it stays until declineHold ends.
 func (s *LeaseStore) moving(l storedLease) bool {
 	r, ok := s.byMAC[l.MAC]
 	_, reserved := s.byIP[l.Address]

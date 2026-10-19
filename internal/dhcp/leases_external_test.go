@@ -244,3 +244,44 @@ func TestServerIdentifierRequiresRelayScope(t *testing.T) {
 		t.Fatal("the advertised server identifier must never be allocated")
 	}
 }
+
+// A lease the settings no longer allow (here a shrunken pool applied from
+// Git) is freed by its client's next DISCOVER, in the same external write
+// as the new offer, instead of being offered again.
+func TestExternalPoolShrinkFreesLeaseOnDiscover(t *testing.T) {
+	s, r := externalTestOpen(t, managedTestConfig())
+	ctx := context.Background()
+	client := leaseTestClient(1)
+	old := leaseTestBind(t, s, client)
+	r.take()
+	shrunk := managedTestConfig()
+	shrunk.RangeStart = old.Address.Next()
+	if err := s.SetExternalConfig(ctx, shrunk, 2, true); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.ConflictingLeases(); n != 1 {
+		t.Fatalf("conflicting leases = %d, want 1", n)
+	}
+	if _, err := s.Acknowledge(ctx, client, old.Address, Renewing); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("renewed an address outside the pool: %v", err)
+	}
+	offer := leaseTestOffer(t, s, client, old.Address)
+	if offer.Address != shrunk.RangeStart {
+		t.Fatalf("offer = %s, want %s", offer.Address, shrunk.RangeStart)
+	}
+	batches := r.take()
+	if len(batches) != 1 || len(batches[0]) != 2 {
+		t.Fatalf("external writes = %+v", batches)
+	}
+	for _, c := range batches[0] {
+		if c.Address == old.Address && c.Lease != nil || c.Address == offer.Address && c.Lease == nil {
+			t.Fatalf("external change = %+v", c)
+		}
+	}
+	if leases := leaseTestList(t, s); len(leases) != 1 || leases[0].Address != offer.Address {
+		t.Fatalf("leases = %+v", leases)
+	}
+	if n := s.ConflictingLeases(); n != 0 {
+		t.Fatalf("conflicting leases after the move = %d", n)
+	}
+}

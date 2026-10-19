@@ -446,3 +446,33 @@ func TestLeaseManagementReservationMovesLiveClient(t *testing.T) {
 		t.Fatalf("freed address offered as %s", got.Address)
 	}
 }
+
+// A quarantine guards its address, not its client: it does not stop the
+// client from being reserved elsewhere, is not a conflict, and stays until
+// declineHold ends while the client binds its reservation.
+func TestLeaseManagementReservationIgnoresClientQuarantine(t *testing.T) {
+	ctx := context.Background()
+	s, _ := leaseTestOpen(t, managedTestConfig())
+	c := leaseTestClient(1)
+	offer := leaseTestOffer(t, s, c, netip.Addr{})
+	if err := s.Decline(ctx, c, offer.Address); err != nil {
+		t.Fatal(err)
+	}
+	reserved := netip.MustParseAddr("192.0.2.90")
+	if err := s.PutReservation(ctx, 1, Reservation{MAC: c.MAC, IP: reserved}); err != nil {
+		t.Fatalf("quarantine blocked reserving its client elsewhere: %v", err)
+	}
+	if n := s.ConflictingLeases(); n != 0 {
+		t.Fatalf("quarantine counted as %d conflicts", n)
+	}
+	if err := s.PutReservation(ctx, 2, Reservation{MAC: leaseTestClient(2).MAC, IP: offer.Address}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("reserved a quarantined address: %v", err)
+	}
+	if got := leaseTestOffer(t, s, c, netip.Addr{}); got.Address != reserved {
+		t.Fatalf("offer = %s, want %s", got.Address, reserved)
+	}
+	leases := leaseTestList(t, s)
+	if len(leases) != 2 || leases[0].Address != offer.Address || leases[0].State != "declined" {
+		t.Fatalf("quarantine not kept: %+v", leases)
+	}
+}
