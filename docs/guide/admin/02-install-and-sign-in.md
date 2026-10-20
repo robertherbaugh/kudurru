@@ -50,7 +50,7 @@ stored secrets. You also give an initial password for the account `admin`.
      -v "$PWD/secrets:/run/secrets:ro" \
      -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
      -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-     ghcr.io/robertherbaugh/kudurru:0.1.0
+     ghcr.io/robertherbaugh/kudurru:0.1.0 serve
    ```
 
 4. Make sure that the node is ready:

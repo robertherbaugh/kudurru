@@ -718,6 +718,7 @@ Backup: `kudurru backup --out kudurru-backup.tar.zst` = `Store.Snapshot` (`kind:
 services:
   kudurru:
     image: ghcr.io/robertherbaugh/kudurru:0.1.0
+    command: [serve]                                          # the image has no default command (ko)
     restart: unless-stopped
     ports: ["53:53/udp", "53:53/tcp", "8080:8080"]            # dropped when profile edge owns :53
     environment:
@@ -752,6 +753,7 @@ One directory per node (`deploy/compose/ha/node-{a,b,c}/`), identical except `NO
 services:
   kudurru:
     image: ghcr.io/robertherbaugh/kudurru:0.1.0
+    command: [serve]                                     # the image has no default command (ko)
     network_mode: host                                   # binds :5353 for dnsdist, :8080 API, :8082 internal; the VIP is held by keepalived
     restart: unless-stopped
     environment:

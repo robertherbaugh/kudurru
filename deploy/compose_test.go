@@ -175,6 +175,11 @@ func checkComposeService(t *testing.T, dir, name string, s, services, volumes, s
 		if configFile == "" {
 			t.Fatalf("kudurru: no ./kudurru.yaml mounted at /etc/kudurru/kudurru.yaml")
 		}
+		// The release image (ko) has only an entrypoint, no CMD: without
+		// `serve` the container prints the CLI help, exits 0 and restarts.
+		if cmd := list(s["command"]); len(cmd) == 0 || str(cmd[0]) != "serve" {
+			t.Errorf("kudurru: command = %v, want [serve ...] (the image has no default command)", s["command"])
+		}
 		if test := list(dig(s, "healthcheck", "test")); !slices.Contains(test, any("--ready")) {
 			t.Errorf("kudurru: healthcheck must probe readiness (kudurru health --ready)")
 		}
