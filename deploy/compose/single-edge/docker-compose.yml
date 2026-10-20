@@ -50,6 +50,8 @@ services:
 
   kudurru:
     image: ghcr.io/robertherbaugh/kudurru:0.1.0
+    # The image has no default command (ko sets only the entrypoint).
+    command: [serve]
     restart: unless-stopped
     network_mode: "service:dnsdist"
     environment:

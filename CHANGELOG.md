@@ -13,6 +13,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   when it next renews or reconnects. **DHCP** > **Leases** has a **Reserve**
   action that prefills the reservation from a lease.
 
+### Fixed
+
+- Docker: the compose files and the `docker run` examples now pass `serve`.
+  The 0.1.0 image has no default command, so as shipped the container
+  printed the CLI help, exited and restarted in a loop.
+
 ## [0.1.0] - 2026-10-18
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or

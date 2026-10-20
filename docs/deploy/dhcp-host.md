@@ -42,12 +42,12 @@ docker run -d --name kudurru --restart unless-stopped \
   -v "$PWD/secrets:/run/secrets:ro" \
   -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
   -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-  kudurru:dhcp-development
+  kudurru:dhcp-development serve
 ```
 
 For optional host-file setup, also mount
 `$PWD/kudurru.yaml:/etc/kudurru/kudurru.yaml:ro` and append
-`serve --config /etc/kudurru/kudurru.yaml`. Mounted configuration and secrets
+`--config /etc/kudurru/kudurru.yaml`. Mounted configuration and secrets
 must be readable by uid 65532. A privileged container is not required. Review
 every listener when using host networking because configured addresses now
 refer to the host network.
