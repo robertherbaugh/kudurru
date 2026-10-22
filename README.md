@@ -72,7 +72,7 @@ docker run -d --name kudurru --restart unless-stopped \
   -v "$PWD/secrets:/run/secrets:ro" \
   -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
   -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-  ghcr.io/robertherbaugh/kudurru:0.2.0
+  ghcr.io/robertherbaugh/kudurru:0.2.0 serve
 dig @127.0.0.1 example.com
 ```
 

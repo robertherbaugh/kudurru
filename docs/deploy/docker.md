@@ -16,9 +16,13 @@ docker run -d --name kudurru --restart unless-stopped \
   -v "$PWD/secrets:/run/secrets:ro" \
   -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
   -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-  ghcr.io/robertherbaugh/kudurru:0.2.0
+  ghcr.io/robertherbaugh/kudurru:0.2.0 serve
 dig @127.0.0.1 example.com
 ```
+
+The image's entrypoint is the `kudurru` CLI and it has no default command,
+so pass `serve` (the compose files set `command: [serve]`). Without it the
+container prints the CLI help, exits 0 and restarts in a loop.
 
 kudurru runs without a license key. A key unlocks more than one node, more
 than one policy and the features listed in [LICENSING.md](../../LICENSING.md);

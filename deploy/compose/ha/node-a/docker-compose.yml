@@ -16,6 +16,8 @@ name: kudurru
 services:
   kudurru:
     image: ghcr.io/robertherbaugh/kudurru:0.2.0
+    # The image has no default command (ko sets only the entrypoint).
+    command: [serve]
     network_mode: host                       # :5353 for dnsdist, :8080 API, :8082 internal; keepalived owns the VIP
     restart: unless-stopped
     environment:
