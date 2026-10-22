@@ -223,7 +223,10 @@ func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, e
 	return &clusterOutput{Body: out}, nil
 }
 
-func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, error) {
+func (s *Server) infoMessages(ctx context.Context, _ *struct{}) (*messagesOutput, error) {
+	if s.opts.InfoMessageReads != nil || s.opts.ObjectReads != nil || s.opts.ZoneReads != nil || s.opts.CanonicalSettings != nil {
+		return s.capturedInfoMessages(ctx)
+	}
 	var out []DiagnosisMessage
 	add := func(m DiagnosisMessage) {
 		m.Node = s.opts.NodeName
@@ -269,9 +272,43 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 		if snap := s.opts.Cache.Snapshot(); snap != nil && snap.State == zonecache.FromSnapshot {
 			msg := "serving from the local.db snapshot while the store is unreachable"
 			if snap.Stale {
-				msg = "serving a stale local.db snapshot; names in primary zones answer SERVFAIL"
+				msg = "serving a stale local.db snapshot; names in primary and secondary zones answer SERVFAIL"
 			}
 			add(DiagnosisMessage{Severity: "warning", Source: "zonecache", Reason: "ServingFromSnapshot", Message: msg})
+		}
+	}
+	if s.opts.Secondaries != nil {
+		for _, st := range s.opts.Secondaries.Statuses() {
+			runtime := secondaryRuntime(s.opts.NodeName, st, true)
+			if runtime.Message == "" {
+				continue
+			}
+			severity := "warning"
+			if !st.Available {
+				severity = "error"
+			}
+			if runtime.State == "pending" {
+				severity = "info"
+			}
+			add(DiagnosisMessage{Severity: severity, Source: "secondary", Reason: runtime.Reason, Object: "DNSZone/" + st.Zone,
+				Message: runtime.Message, Hint: "This node's served serial and expiry are available in the zone's secondary status."})
+		}
+	}
+	if s.opts.Stubs != nil {
+		for _, st := range s.opts.Stubs.Statuses() {
+			runtime := stubRuntime(s.opts.NodeName, st, true)
+			if runtime.Message == "" {
+				continue
+			}
+			severity := "warning"
+			if !st.Available {
+				severity = "error"
+			}
+			if runtime.State == "pending" {
+				severity = "info"
+			}
+			add(DiagnosisMessage{Severity: severity, Source: "stub", Reason: runtime.Reason, Object: "DNSZone/" + st.Zone,
+				Message: runtime.Message, Hint: "This node's discovered authorities and expiry are available in the zone's stub status."})
 		}
 	}
 	if s.opts.Objects != nil && s.opts.Objects.APIReadOnly() {
@@ -289,6 +326,50 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 		}
 	}
 	return &messagesOutput{Body: newList(out, "")}, nil
+}
+
+// infoOperationalMessages samples process observations. These do not attest to
+// the policy, lists, or routes installed in the original request's serving cut.
+func (s *Server) infoOperationalMessages(now time.Time, add func(DiagnosisMessage) error) error {
+	if s.opts.Objects != nil {
+		for _, d := range s.opts.Objects.Diagnoses() {
+			const prefix = "Current object loader: "
+			if len(d.Source) > maxInfoMessageText-len(prefix)-2 || len(d.Message) > maxInfoMessageText-len(prefix)-2-len(d.Source) || len(d.Object) > 512 || len(d.Hint) > 8<<10 {
+				return errUnavailable("object loader diagnosis exceeds bounds")
+			}
+			message := prefix + d.Source + ": " + d.Message
+			if err := add(DiagnosisMessage{Severity: string(d.Severity), Source: "objects", Reason: string(d.Reason), Object: d.Object, Message: message, Hint: d.Hint}); err != nil {
+				return err
+			}
+		}
+		if s.opts.Objects.APIReadOnly() {
+			if err := add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)", Hint: "edit objects.d on every node"}); err != nil {
+				return err
+			}
+		}
+	}
+	if s.opts.Central != nil {
+		st := s.opts.Central.State()
+		if len(st.LastError) > maxInfoMessageText-len("the central database is unreachable: ") {
+			return errUnavailable("central diagnosis exceeds bounds")
+		}
+		if m, ok := centralMessage(st, now); ok {
+			if err := add(m); err != nil {
+				return err
+			}
+		}
+	}
+	if ok, unready := s.ready(); !ok {
+		for _, u := range unready {
+			if len(u) > maxInfoMessageText-len("Current node readiness: ") {
+				return errUnavailable("node health diagnosis exceeds bounds")
+			}
+			if err := add(DiagnosisMessage{Severity: "error", Source: "health", Reason: "NotReady", Message: "Current node readiness: " + u}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // centralUnreachableAfter is how long the central database may be away

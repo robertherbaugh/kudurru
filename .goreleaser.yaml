@@ -16,8 +16,8 @@ before:
     # rather than a workflow step: goreleaser refuses a dirty tree before the
     # hooks run, and the build overwrites the tracked placeholder index.html.
     - make dashboard-build
-    # crds.yaml and install.yaml for the GitHub release (make release-manifests).
-    - make release-manifests
+    # Stage manifests and Compose with the exact GA, RC or snapshot version.
+    - make release-manifests RELEASE_ARTIFACT_VERSION={{ .Version }}
 
 builds:
   - id: kudurru
@@ -56,7 +56,7 @@ archives:
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_compose"
     files:
-      - src: deploy/compose/**/*
+      - src: bin/release/compose/**/*
         dst: compose
         strip_parent: false
 

@@ -90,6 +90,9 @@ type ListOpener interface {
 
 // ServerOptions configures a Server.
 type ServerOptions struct {
+	// Event queues an authenticated peer hint without rebroadcasting it.
+	// False reports an inapplicable generation or a full queue.
+	Event func(Event) bool
 	// Querylog serves local-only query-log and stats reads behind the peer guard.
 	Querylog func(context.Context, QuerylogRequest) (*QuerylogResponse, error)
 	// QueryTail returns the privacy-transformed live tail.
@@ -185,6 +188,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		}
 	}
 	mux := http.NewServeMux()
+	if opts.Event != nil {
+		mux.HandleFunc("POST "+PathEvents, s.handleEvent)
+	}
 	if opts.Querylog != nil {
 		mux.HandleFunc("GET "+PathQuerylog, s.handleQuerylog)
 	}
@@ -257,8 +263,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}
 }
 
-// guard applies, in order: the per-address rate limit, the no-body rule
-// and the bearer token.
+// guard applies the per-address rate limit, route-specific body rule and
+// bearer token. Only the bounded peer-event POST accepts a request body.
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := routeOf(r.URL.Path)
@@ -269,7 +275,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(rw, "rate limited", http.StatusTooManyRequests)
 			return
 		}
-		if r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
+		bodyAllowed := s.opts.Event != nil && r.Method == http.MethodPost && r.URL.Path == PathEvents
+		if !bodyAllowed && (r.ContentLength != 0 || len(r.TransferEncoding) > 0) {
 			http.Error(rw, "request bodies are not accepted", http.StatusBadRequest)
 			return
 		}
@@ -285,6 +292,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 func routeOf(p string) string {
 	switch {
+	case p == PathEvents:
+		return "events"
 	case p == PathQuerylog, p == PathQuerylogStream:
 		return "querylog"
 	case p == PathStatus:

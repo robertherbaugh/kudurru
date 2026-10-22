@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"path/filepath"
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/robertherbaugh/kudurru/ee/branding"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -62,7 +64,7 @@ const (
 // it has none, from the client's current policy. ql is the query log's
 // collector (nil when it is off); it names the client's pseudonym.
 func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.IndexSource, tail *querylog.Tail, reader *sqlitelog.Reader,
-	ql *querylog.Async, book *unblock.Service, lic *license.Manager, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
+	ql *querylog.Async, book *unblock.Service, lic *license.Manager, reg prometheus.Registerer, logger *slog.Logger, brandSource ...func(context.Context) (*blockpage.Branding, error)) (*blockpage.Server, error) {
 	pf := blockpage.PolicyFinder{Source: src}
 	qf := &blockpage.QuerylogFinder{
 		Tail: tail, Reader: reader, Disabled: !cfg.Querylog.Enabled,
@@ -74,6 +76,21 @@ func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.I
 	o := blockpage.Options{
 		Node: cfg.Node.Name, Finder: blockpage.Chain{qf, pf}, Policy: pf.Policy, Membership: pf.Membership,
 		Settings: blockpage.SettingsFrom(cfg), Registerer: reg, Logger: logger,
+	}
+	var brandCache branding.PageCache
+	o.Branding = func(ctx context.Context) (*blockpage.Branding, error) {
+		cut := lic.Capture()
+		if !cut.Status().Allows(license.FeatureBranding) || !cut.Current() {
+			return nil, nil
+		}
+		prepared, err := brandCache.Prepare(ctx, reload.Current().Branding)
+		if err != nil || !cut.Current() {
+			return nil, err
+		}
+		return prepared, nil
+	}
+	if len(brandSource) != 0 {
+		o.Branding = brandSource[0]
 	}
 	if book != nil {
 		o.Requests = book

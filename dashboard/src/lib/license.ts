@@ -32,6 +32,7 @@ export const FEATURES: FeatureInfo[] = [
   { key: 'longterm', label: 'Long-term statistics', unlocks: 'Statistics for periods older than 24 hours. They are collected either way.' },
   { key: 'requests', label: 'Unblock requests', unlocks: 'The request form on the block page and the Requests page. The block page itself is free.' },
   { key: 'edge', label: 'High-availability edge', unlocks: 'The dnsdist and keepalived supervisors and the floating address.' },
+  { key: 'branding', label: 'Custom branding', unlocks: 'Enterprise only: organization name, PNG logos, tab icon, and accent color on the dashboard, sign-in page, and block page.' },
   { key: 'integrations', label: 'Integrations', unlocks: 'The external-dns webhook and other integrations.' },
 ];
 

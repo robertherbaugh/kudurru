@@ -30,6 +30,22 @@ keepalived runs alongside it, `KUDURRU_VIP_STATUS_URL` to the health
 listeners (for example, `http://127.0.0.1:8084` and port 8085). The Compose
 examples set these automatically.
 
+## Serving diagnostics
+
+SQLite `GET /info/messages` reads policy diagnoses, enabled-list readiness and
+secondary/stub coverage from the original authenticated HTTP installation.
+It observes absolute expiry once for the whole response, including required RPZ
+data. An unavailable copy produces a serving-unavailable message; the captured
+owners do not invent transfer-attempt history. Missing or inconsistent owners
+return 503 rather than consulting live policy, cache or transfer managers.
+The diagnoses entry in `/doctor` uses that same request context.
+
+Loader failures, node health, read-only process mode and central-database
+reachability are separately labeled current operational observations. They do
+not identify which configuration is serving. The combined response has bounded
+fields, count and aggregate size; overflow fails instead of silently omitting
+messages. Legacy Kubernetes diagnostics keep their existing sources.
+
 ## The query log pipeline
 
 ```mermaid
@@ -152,6 +168,13 @@ stateDiagram-v2
 Upstream reachability is **never** a readiness condition: a node whose
 upstreams are down still answers its zones and its cache, and taking it out
 of rotation would make things worse.
+
+On SQLite, readiness requires an eligible complete publication and admitted,
+available committed routing for every desired primary and forward zone in that
+same publication, including the bootstrap root forwarder. A desired-only
+placeholder or a pending lifecycle cannot
+make the node ready. Secondary and stub acquisition failures remain local to
+their zones and do not make an otherwise healthy node unready.
 
 ## Audit
 

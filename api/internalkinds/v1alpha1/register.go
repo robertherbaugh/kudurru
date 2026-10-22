@@ -7,7 +7,7 @@ See the LICENSE file in the repository root.
 
 // Package v1alpha1 holds the internal kudurru.io/v1alpha1 kinds of the
 // identity layer (dev-docs/design-record.md §4.1, §8, decision D26): LocalUser,
-// APIToken, ServiceAccount, RoleBinding and IdentityProvider.
+// APIToken and PrincipalState. Public IAM configuration lives in api/v1alpha1.
 //
 // They share the kudurru.io/v1alpha1 group version with the public kinds so
 // that object files and `kudurru apply` read them with the same apiVersion,
@@ -31,9 +31,10 @@ import (
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 )
 
-// Kind names of the internal kinds, as store.Kind strings.
+// Kind names of private identity objects and compatibility public IAM names.
 const (
 	KindLocalUser        = "LocalUser"
+	KindPrincipalState   = "PrincipalState"
 	KindAPIToken         = "APIToken"
 	KindServiceAccount   = "ServiceAccount"
 	KindRoleBinding      = "RoleBinding"
@@ -45,10 +46,10 @@ const (
 // Options.InternalKinds: sqlite skips the CRD validator for them (they call
 // Validate instead) and omits them from safe snapshots; kube maps them to
 // Secrets.
-var Kinds = []string{KindAPIToken, KindIdentityProvider, KindLocalUser, KindMigrationRun, KindRoleBinding, KindServiceAccount}
+var Kinds = []string{KindAPIToken, KindLocalUser, KindMigrationRun, KindPrincipalState}
 
-// Namespaced reports whether an internal kind is namespaced.
-// ServiceAccount and RoleBinding are; the others are cluster-scoped.
+// Namespaced retains the identity model scope lookup. ServiceAccount and
+// RoleBinding are public namespaced kinds; all private kinds are cluster-scoped.
 func Namespaced(kind string) bool {
 	return kind == KindServiceAccount || kind == KindRoleBinding
 }
@@ -77,9 +78,7 @@ func addKnownTypes(s *runtime.Scheme) error {
 	s.AddKnownTypes(public.GroupVersion,
 		&LocalUser{}, &LocalUserList{},
 		&APIToken{}, &APITokenList{},
-		&ServiceAccount{}, &ServiceAccountList{},
-		&RoleBinding{}, &RoleBindingList{},
-		&IdentityProvider{}, &IdentityProviderList{},
+		&PrincipalState{}, &PrincipalStateList{},
 		&MigrationRun{}, &MigrationRunList{},
 	)
 	metav1.AddToGroupVersion(s, public.GroupVersion)

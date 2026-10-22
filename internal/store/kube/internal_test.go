@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -216,12 +217,10 @@ func TestEnvtestInternalKinds(t *testing.T) {
 		bad := &internalkinds.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "x", Namespace: "dns"}, Spec: internalkinds.RoleBindingSpec{Role: "admin"}}
 		_, err := s.Apply(ctx, bad, store.ApplyOptions{Manager: store.ManagerAPI})
 		var verr *validator.Error
-		if !errors.As(err, &verr) || len(verr.Causes) == 0 || verr.Causes[0].Field != "spec.subjects" {
+		if !apierrors.IsInvalid(err) || !strings.Contains(err.Error(), "spec.subjects") {
 			t.Fatalf("invalid binding: %v", err)
 		}
-		long := &internalkinds.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: strings.Repeat("a", 250), Namespace: "dns"}, Spec: internalkinds.RoleBindingSpec{
-			Role: "admin", Subjects: []internalkinds.BindingSubject{{Kind: "User", Name: "x"}},
-		}}
+		long := &internalkinds.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: strings.Repeat("a", 250)}}
 		if _, err := s.Apply(ctx, long, store.ApplyOptions{Manager: store.ManagerAPI}); !errors.As(err, &verr) {
 			t.Fatalf("over-long name: %v", err)
 		}

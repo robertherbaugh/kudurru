@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"context"
 	"errors"
 	"fmt"
@@ -99,14 +101,25 @@ type Spec struct {
 	Path string
 	// CertFile and KeyFile are required for TLS protocols. Listeners that
 	// name the same pair share one tlsreload.Reloader.
-	CertFile string
-	KeyFile  string
+	CertFile       string
+	KeyFile        string
+	ClientIDDomain string
+	ClientIDs      bool
 }
 
 // Name identifies the listener in readiness output, e.g. "doq:0.0.0.0:853".
 func (s Spec) Name() string { return string(s.Protocol) + ":" + s.Address }
 
 func (s Spec) validate() error {
+	if s.ClientIDDomain != "" && ((s.Protocol != ProtoDoT && s.Protocol != ProtoDoQ) || !clientid.Domain(s.ClientIDDomain)) {
+		return fmt.Errorf("dnsserver: clientIDDomain requires a valid DoT/DoQ DNS suffix")
+	}
+	if s.ClientIDs && s.Protocol != ProtoDoH && s.Protocol != ProtoDoH3 {
+		return fmt.Errorf("dnsserver: clientIDs requires a DoH/DoH3 listener")
+	}
+	if s.ClientIDs && strings.HasSuffix(s.Path, "/") {
+		return fmt.Errorf("dnsserver: client ID base path must not end with /")
+	}
 	if _, ok := factories[s.Protocol]; !ok {
 		return fmt.Errorf("dnsserver: unknown protocol %q (want one of %v)", s.Protocol, Protocols())
 	}

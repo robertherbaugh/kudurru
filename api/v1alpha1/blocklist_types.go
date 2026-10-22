@@ -5,7 +5,7 @@ import (
 )
 
 // ListFormat is the syntax of a blocklist source.
-// +kubebuilder:validation:Enum=auto;hosts;domains;adblock;regex
+// +kubebuilder:validation:Enum=auto;hosts;domains;adblock;regex;rpz
 type ListFormat string
 
 // ListMode says whether entries block or allow.
@@ -104,9 +104,36 @@ func EntryRule(t EntryType, value string) string {
 	return value
 }
 
+// RPZSource acquires an external response policy zone independently on each
+// node. It is policy data, not a locally served authoritative DNSZone.
+type RPZSource struct {
+	// ZoneName is the non-root absolute policy-zone origin.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.?$`
+	ZoneName string `json:"zoneName"`
+	// Primaries are ordered transfer endpoints (host or host:port). IPv6
+	// endpoints with a port use brackets. TLS verifies the endpoint hostname.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=300
+	Primaries []string `json:"primaries"`
+	// +kubebuilder:default=tcp
+	// +kubebuilder:validation:Enum=tcp;tls
+	// +optional
+	TransferProtocol string `json:"transferProtocol,omitempty"`
+	// TSIGKeyRef names an operator-managed key, never secret material.
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	TSIGKeyRef string `json:"tsigKeyRef,omitempty"`
+}
+
 // ListSource is one place a BlockList reads entries from. Exactly one of
-// URL, Inline, ConfigMapRef or Entries is set.
-// +kubebuilder:validation:XValidation:rule="[has(self.url), has(self.inline), has(self.configMapRef), has(self.entries)].filter(x, x).size() == 1",message="exactly one of url, inline, configMapRef or entries must be set"
+// URL, Inline, ConfigMapRef, Entries or RPZ is set.
+// +kubebuilder:validation:XValidation:rule="[has(self.url), has(self.inline), has(self.configMapRef), has(self.entries), has(self.rpz)].filter(x, x).size() == 1",message="exactly one of url, inline, configMapRef, entries or rpz must be set"
+// +kubebuilder:validation:XValidation:rule="has(self.rpz) == (has(self.format) && self.format == 'rpz')",message="RPZ transfer configuration requires format rpz, and format rpz requires RPZ configuration"
+// +kubebuilder:validation:XValidation:rule="!has(self.rpz) || !has(self.subdomains) || !self.subdomains",message="RPZ wildcard semantics cannot be overridden with subdomains"
 type ListSource struct {
 	// +optional
 	URL string `json:"url,omitempty"`
@@ -114,6 +141,10 @@ type ListSource struct {
 	Inline []string `json:"inline,omitempty"`
 	// +optional
 	ConfigMapRef *ObjectRef `json:"configMapRef,omitempty"`
+	// RPZ transfers a complete policy zone using AXFR/IXFR. Missing or expired
+	// enabled data fails closed for policies selecting this required source.
+	// +optional
+	RPZ *RPZSource `json:"rpz,omitempty"`
 	// Entries are structured entries (value, type, switch, comment,
 	// provenance), as the dashboard's Allowlist and Denylist write them.
 	// They compile as adblock rules; format and subdomains do not apply.
@@ -165,6 +196,7 @@ type CustomIP struct {
 
 // BlockListSpec defines a set of sources compiled into one matcher chain.
 // +kubebuilder:validation:XValidation:rule="!has(self.response) || self.response != 'customIP' || has(self.customIP)",message="response customIP requires the customIP block"
+// +kubebuilder:validation:XValidation:rule="!has(self.mode) || self.mode != 'allow' || self.sources.all(s, !has(s.rpz))",message="RPZ sources require block mode"
 type BlockListSpec struct {
 	// +kubebuilder:default=block
 	// +optional
@@ -227,8 +259,8 @@ type BlockListStatus struct {
 	// +optional
 	Invalid int `json:"invalid,omitempty"`
 	// Unsupported counts valid rules this version parses but does not
-	// apply: modifiers such as $important and $badfilter, mid-pattern
-	// wildcards, hosts rewrites.
+	// apply, including hosts rewrites and RPZ triggers requiring resolver NS
+	// provenance. Supported modifiers are not counted as unsupported.
 	// +optional
 	Unsupported int `json:"unsupported,omitempty"`
 	// +optional

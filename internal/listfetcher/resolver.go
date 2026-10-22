@@ -343,7 +343,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 	for _, bl := range r.opts.Objects.BlockLists() {
 		res.Lists++
 		pl := plan(bl, r.opts.RefreshInterval, r.opts.MinRefreshInterval)
-		spec := blocking.Spec{Name: pl.name, Mode: pl.mode}
+		spec := blocking.Spec{Name: pl.name, Mode: pl.mode, ExternalPolicy: pl.externalPolicy()}
 		ls := internalapi.ListStatus{Name: pl.name}
 		fp.add("list", pl.name, string(pl.mode))
 		for i := range pl.sources {
@@ -356,6 +356,10 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 					delete(r.pendingSince, ps.key)
 				}
 				fp.add(ps.name, "disabled")
+				continue
+			}
+			if ps.external {
+				fp.add(ps.name, "rpz")
 				continue
 			}
 			if ps.key == "" {
@@ -411,7 +415,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 			// held back as "not compiled yet".
 			spec.Sources = []blocking.Source{emptySource()}
 		}
-		if len(spec.Sources) > 0 {
+		if len(spec.Sources) > 0 || spec.ExternalPolicy {
 			specs = append(specs, spec)
 			statuses = append(statuses, ls)
 		}

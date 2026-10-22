@@ -16,6 +16,7 @@ import (
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
+	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
@@ -29,14 +30,15 @@ const upstreamRetireGrace = 30 * time.Second
 // restartRequired must be handled here; config.TestRestartRequired pins
 // the list.
 type reloadTargets struct {
-	logger    *slog.Logger
-	level     *slog.LevelVar
-	upstreams *upstreamstage.Stage
-	upOpts    upstream.Options
-	cache     *cache.Cache
-	cacheStg  *cachestage.Stage
-	blocking  *blockingstage.Stage
-	blockPage *blockpage.Server
+	logger      *slog.Logger
+	level       *slog.LevelVar
+	upstreams   *upstreamstage.Stage
+	upOpts      upstream.Options
+	cache       *cache.Cache
+	cacheStg    *cachestage.Stage
+	blocking    *blockingstage.Stage
+	blockPage   *blockpage.Server
+	postprocess *postprocess.Stage
 	// edgeFlush empties the local edge's resolver cache when the block
 	// answers change; nil skips it.
 	edgeFlush *dnsdist.CacheFlusher
@@ -48,88 +50,115 @@ type reloadTargets struct {
 // subscribeReload applies settings changes from r (the settings file
 // watcher and PATCH /api/v1/settings) to the running components.
 func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets) {
-	log := t.logger.With("component", "settings")
 	r.Subscribe(func(_, next *config.Config, changed []string) {
-		var applied, restart []string
-		for _, p := range changed {
-			if k, ok := config.Lookup(p); ok && k.RestartRequired {
-				restart = append(restart, p)
-			} else {
-				applied = append(applied, p)
+		applyReload(ctx, t, next, changed)
+	})
+}
+
+// applyReload applies an already accepted configuration to operational consumers.
+// Complete serving uses only consumers that do not replace captured DNS owners.
+func applyReload(ctx context.Context, t reloadTargets, next *config.Config, changed []string) {
+	log := t.logger.With("component", "settings")
+	var applied, restart []string
+	for _, p := range changed {
+		if k, ok := config.Lookup(p); ok && k.RestartRequired {
+			restart = append(restart, p)
+		} else {
+			applied = append(applied, p)
+		}
+	}
+	if config.ChangedUnder(changed, "log.level") && t.level != nil {
+		t.level.Set(parseLevel(next.Log.Level))
+	}
+	if config.ChangedUnder(changed, "upstreams", "dnssec") && t.upstreams != nil {
+		validation, err := next.DNSSEC.Validator(nil)
+		var set *upstream.Set
+		if err == nil {
+			set, err = buildUpstreams(next, changed, t.upOpts)
+		}
+		var prev *upstream.Set
+		if err == nil {
+			prev, err = t.upstreams.Replace(set, validation, next.DNSSEC.Enabled)
+		}
+		if err != nil {
+			if set != nil {
+				_ = set.Close()
 			}
-		}
-		if config.ChangedUnder(changed, "log.level") && t.level != nil {
-			t.level.Set(parseLevel(next.Log.Level))
-		}
-		if config.ChangedUnder(changed, "upstreams") && t.upstreams != nil {
-			set, err := buildUpstreams(next, changed, t.upOpts)
-			if err != nil {
-				log.Error("upstream settings not applied", "err", err)
-			} else {
-				prev := t.upstreams.Swap(set)
-				go func() {
-					select {
-					case <-time.After(upstreamRetireGrace):
-					case <-ctx.Done():
-					}
-					_ = prev.CloseReplacedBy(set)
-				}()
-				// Answers cached from the old upstreams (and conditional
-				// routes) must not outlive them.
-				if t.cache != nil {
-					t.cache.Flush()
+			log.Error("resolution settings not applied", "err", err)
+		} else {
+			go func() {
+				select {
+				case <-time.After(upstreamRetireGrace):
+				case <-ctx.Done():
 				}
-				log.Info("upstreams reloaded", "groups", set.Groups())
-			}
-		}
-		if config.ChangedUnder(changed, "cache") && t.cache != nil && t.cacheStg != nil {
-			t.cache.Reconfigure(cache.OptionsFrom(next.Cache, nil))
-			t.cacheStg.SetSettings(cachestage.SettingsFrom(next.Cache))
-			off := next.Cache.MaxEntries == 0
-			if off && !t.cacheStg.Disabled() {
+				_ = prev.CloseReplacedBy(set)
+			}()
+			// Answers cached from the old upstreams (and conditional
+			// routes) must not outlive them.
+			if t.cache != nil {
 				t.cache.Flush()
 			}
-			t.cacheStg.SetDisabled(off)
+			log.Info("resolution settings reloaded", "groups", set.Groups(), "dnssec", next.DNSSEC.Enabled)
 		}
-		if config.ChangedUnder(changed, "blocking", "blockPage") && t.blocking != nil {
-			t.blocking.Reconfigure(blockingstage.OptionsFromConfig(next))
-			if t.edgeFlush != nil && config.ChangedUnder(changed, "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP", "blockPage.ipv4", "blockPage.ipv6") {
+	}
+	if config.ChangedUnder(changed, "cache") && t.cache != nil && t.cacheStg != nil {
+		t.cache.Reconfigure(cache.OptionsFrom(next.Cache, nil))
+		t.cacheStg.SetSettings(cachestage.SettingsFrom(next.Cache))
+		off := next.Cache.MaxEntries == 0
+		if off && !t.cacheStg.Disabled() {
+			t.cache.Flush()
+		}
+		t.cacheStg.SetDisabled(off)
+	}
+	if config.ChangedUnder(changed, "response") && t.postprocess != nil {
+		settings, err := next.Response.Compile()
+		if err != nil {
+			log.Error("response settings not applied", "err", err)
+		} else {
+			t.postprocess.SetSettings(settings)
+			if t.edgeFlush != nil {
 				t.edgeFlush.BlockResponsesChanged()
 			}
 		}
-		if config.ChangedUnder(changed, "blockPage", "listeners.api", "unblockRequests", "blocking.blockTTL") && t.blockPage != nil {
-			t.blockPage.Reconfigure(blockpage.SettingsFrom(next))
+	}
+	if config.ChangedUnder(changed, "blocking", "blockPage") && t.blocking != nil {
+		t.blocking.Reconfigure(blockingstage.OptionsFromConfig(next))
+		if t.edgeFlush != nil && config.ChangedUnder(changed, "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP", "blockPage.ipv4", "blockPage.ipv6") {
+			t.edgeFlush.BlockResponsesChanged()
 		}
-		if config.ChangedUnder(changed, "ratelimit") && t.limiter != nil {
-			rlc, err := ingress.RateLimitFromConfig(next.RateLimit)
-			if err == nil {
-				err = t.limiter.Reconfigure(rlc)
+	}
+	if config.ChangedUnder(changed, "blockPage", "listeners.api", "unblockRequests", "blocking.blockTTL") && t.blockPage != nil {
+		t.blockPage.Reconfigure(blockpage.SettingsFrom(next))
+	}
+	if config.ChangedUnder(changed, "ratelimit") && t.limiter != nil {
+		rlc, err := ingress.RateLimitFromConfig(next.RateLimit)
+		if err == nil {
+			err = t.limiter.Reconfigure(rlc)
+		}
+		if err != nil {
+			log.Error("ratelimit settings not applied", "err", err)
+		}
+	}
+	if config.ChangedUnder(changed, "querylog.privacy", "querylog.anonymize", "querylog.exclude") && t.qlAsync != nil {
+		p, err := querylog.PrivacyFrom(next.Querylog)
+		if err != nil {
+			log.Error("querylog privacy not applied", "err", err)
+		} else {
+			t.qlAsync.SetPrivacy(p)
+			if t.qlWriter != nil {
+				t.qlWriter.SetPrivacy(p.Mode())
 			}
-			if err != nil {
-				log.Error("ratelimit settings not applied", "err", err)
-			}
 		}
-		if config.ChangedUnder(changed, "querylog.privacy", "querylog.anonymize", "querylog.exclude") && t.qlAsync != nil {
-			p, err := querylog.PrivacyFrom(next.Querylog)
-			if err != nil {
-				log.Error("querylog privacy not applied", "err", err)
-			} else {
-				t.qlAsync.SetPrivacy(p)
-				if t.qlWriter != nil {
-					t.qlWriter.SetPrivacy(p.Mode())
-				}
-			}
-		}
-		if config.ChangedUnder(changed, "querylog.retention") && t.qlWriter != nil {
-			t.qlWriter.SetRetention(next.Querylog.Retention.Raw.Std(), int64(next.Querylog.Retention.MaxDBBytes))
-		}
-		if len(applied) > 0 {
-			log.Info("settings applied", "keys", applied)
-		}
-		if len(restart) > 0 {
-			log.Warn("settings changed that take effect after a restart", "keys", restart)
-		}
-	})
+	}
+	if config.ChangedUnder(changed, "querylog.retention") && t.qlWriter != nil {
+		t.qlWriter.SetRetention(next.Querylog.Retention.Raw.Std(), int64(next.Querylog.Retention.MaxDBBytes))
+	}
+	if len(applied) > 0 {
+		log.Info("settings applied", "keys", applied)
+	}
+	if len(restart) > 0 {
+		log.Warn("settings changed that take effect after a restart", "keys", restart)
+	}
 }
 
 // parseLevel maps log.level (its first element: "info,dns=debug") onto a

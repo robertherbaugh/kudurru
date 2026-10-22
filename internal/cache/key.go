@@ -3,6 +3,8 @@ package cache
 import (
 	"encoding/binary"
 	"net/netip"
+
+	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
 // Key identifies a cached response: query name (case-folded), type, class,
@@ -12,10 +14,11 @@ type Key string
 
 // Key flag bits.
 const (
-	flagDO   = 1 << 0
-	flagCD   = 1 << 1
-	flagECS4 = 1 << 2
-	flagECS6 = 1 << 3
+	flagDO     = 1 << 0
+	flagCD     = 1 << 1
+	flagECS4   = 1 << 2
+	flagECS6   = 1 << 3
+	flagScoped = 1 << 4
 )
 
 // MakeKey builds the key. name is folded to lower case (ASCII, as DNS
@@ -62,6 +65,19 @@ type KeyParts struct {
 	Type, Class uint16
 	DO, CD      bool
 	ECS         netip.Prefix
+	Scope       pipeline.CacheScope
+}
+
+// MakeScopedKey binds a DNS cache key to the captured resolution incarnation.
+func MakeScopedKey(scope pipeline.CacheScope, name string, qtype, qclass uint16, do, cd bool, ecs netip.Prefix) Key {
+	base := MakeKey(name, qtype, qclass, do, cd, ecs)
+	b := make([]byte, 45, len(base)+40)
+	copy(b, base[:5])
+	b[4] |= flagScoped
+	copy(b[5:37], scope.ID[:])
+	binary.BigEndian.PutUint64(b[37:45], scope.Epoch)
+	b = append(b, base[5:]...)
+	return Key(b)
 }
 
 // Parts decodes the key; ok is false for a malformed key.
@@ -74,6 +90,14 @@ func (k Key) Parts() (p KeyParts, ok bool) {
 	flags := k[4]
 	p.DO, p.CD = flags&flagDO != 0, flags&flagCD != 0
 	rest := k[5:]
+	if flags&flagScoped != 0 {
+		if len(rest) < 40 {
+			return p, false
+		}
+		copy(p.Scope.ID[:], rest[:32])
+		p.Scope.Epoch = binary.BigEndian.Uint64([]byte(rest[32:40]))
+		rest = rest[40:]
+	}
 	if flags&(flagECS4|flagECS6) != 0 {
 		size := 4
 		if flags&flagECS6 != 0 {

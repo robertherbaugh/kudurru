@@ -137,8 +137,8 @@ func (r *scopedQuerylog) gather(ctx context.Context, q internalapi.QuerylogReque
 			var err error
 			if p.Self {
 				out, err = internalapi.ReadLocalQuerylog(peerCtx, r.s.opts.Querylog, req)
-				if err == nil && req.Kind == "upstreams" && r.s.opts.Upstreams != nil {
-					out.Servers = r.s.opts.Upstreams.Status()
+				if err == nil && req.Kind == "upstreams" {
+					out.Servers, err = r.s.upstreamStates(peerCtx)
 				}
 			} else if r.s.opts.InternalClient == nil || p.Address == "" {
 				err = fmt.Errorf("peer transport is unavailable")
@@ -390,7 +390,11 @@ func (r *scopedQuerylog) upstreams(ctx context.Context, q sqlitelog.TopQuery) (*
 		// The central database holds traffic, not live server health:
 		// that is this node's.
 		out, err := d.TopUpstreams(ctx, q)
-		return out, r.s.upstreamServers(), err
+		if err != nil {
+			return nil, nil, err
+		}
+		servers, err := r.s.upstreamServers(ctx)
+		return out, servers, err
 	}
 	n := limitN(q.N)
 	candidates := n

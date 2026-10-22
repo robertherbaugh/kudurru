@@ -74,11 +74,28 @@ func (s *Snapshot) Bytes() int {
 // returns nil when nothing matches and allocates only on a match. The query
 // path uses Selection.Evaluate instead.
 func (s *Snapshot) Contains(name string, lists ...string) map[string]string {
-	n := NormalizeName(name)
+	return s.ContainsContext(Context{Name: name, Type: 1, Class: 1}, lists...)
+}
+
+// ContainsContext reports effective denies in each individual list using the
+// supplied question/client selectors. Typed rewrites are not deny matches.
+func (s *Snapshot) ContainsContext(ctx Context, lists ...string) map[string]string {
+	n := NormalizeName(ctx.Name)
+	ctx.Name = n
 	h := matcher.Hash(n)
 	var out map[string]string
 	for _, l := range s.pick(lists) {
 		if l.mode != ModeBlock {
+			continue
+		}
+		if len(l.slow) > 0 {
+			c := (&Selection{}).basic(l, ctx)
+			if c.rank >= 0 && c.decision.Action == ActionBlock {
+				if out == nil {
+					out = make(map[string]string)
+				}
+				out[l.name] = c.decision.Rule()
+			}
 			continue
 		}
 		m, ok := l.primary.match(n, h)
@@ -101,10 +118,26 @@ func (s *Snapshot) Contains(name string, lists ...string) map[string]string {
 // (rendered with the @@ prefix). Arguments and allocation behave as for
 // Contains.
 func (s *Snapshot) ContainsAllow(name string, lists ...string) map[string]string {
-	n := NormalizeName(name)
+	return s.ContainsAllowContext(Context{Name: name, Type: 1, Class: 1}, lists...)
+}
+
+// ContainsAllowContext reports effective per-list allows with query selectors.
+func (s *Snapshot) ContainsAllowContext(ctx Context, lists ...string) map[string]string {
+	n := NormalizeName(ctx.Name)
+	ctx.Name = n
 	h := matcher.Hash(n)
 	var out map[string]string
 	for _, l := range s.pick(lists) {
+		if len(l.slow) > 0 {
+			c := (&Selection{}).basic(l, ctx)
+			if c.rank >= 0 && c.decision.Action == ActionAllow {
+				if out == nil {
+					out = make(map[string]string)
+				}
+				out[l.name] = c.decision.Rule()
+			}
+			continue
+		}
 		c := &l.except
 		if l.mode == ModeAllow {
 			c = &l.primary
@@ -150,6 +183,19 @@ func (s *Snapshot) Select(lists []string, opts SelectOptions) (*Selection, error
 		}
 		seen[name] = true
 		l := s.byName[name]
+		if l != nil {
+			if len(l.slow) > 0 || len(l.badfilters) > 0 {
+				sel.contextual = true
+			}
+			if opts.ExceptionScope == ScopeSelection && l.mode == ModeBlock {
+				for target := range l.badfilters {
+					if sel.badfilters == nil {
+						sel.badfilters = map[string]bool{}
+					}
+					sel.badfilters[target] = true
+				}
+			}
+		}
 		switch {
 		case l == nil:
 			missing = append(missing, name)

@@ -74,7 +74,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		}
 	}
 	m := req.Msg
-	if m.Opcode != dns.OpcodeQuery {
+	if m.Opcode != dns.OpcodeQuery && m.Opcode != dns.OpcodeNotify && m.Opcode != dns.OpcodeUpdate {
 		return pipeline.Reply(req, dns.RcodeNotImplemented, pipeline.StatusDropped), nil
 	}
 	if len(m.Question) != 1 {
@@ -87,6 +87,11 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return r, nil
 	}
 	q := m.Question[0]
+	// Protocol operations must reach authoritative's dedicated handlers.
+	// Their SOA zone section is not a CHAOS/health/ANY query.
+	if m.Opcode != dns.OpcodeQuery {
+		return next(req)
+	}
 	if q.Qtype == dns.TypeANY {
 		return pipeline.Reply(req, dns.RcodeRefused, pipeline.StatusRefusedACL), nil
 	}

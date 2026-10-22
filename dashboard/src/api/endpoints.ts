@@ -3,12 +3,18 @@
 import type { ApiClient, Query } from './client';
 import { dhcpEndpoints } from './dhcp';
 import type {
+  BrandingInfo,
   ApiToken,
   ApplyResult,
   AuditPage,
   AuditQuery,
   AuditVerification,
   AuthStatus,
+  TOTPStatus,
+  TOTPProofRequest,
+  TOTPSetupResponse,
+  TOTPConfirmRequest,
+  TOTPRecoverRequest,
   BlockingState,
   ClientsResult,
   ClientTimeseries,
@@ -24,6 +30,7 @@ import type {
   ListEnvelope,
   IamList,
   Me,
+  SessionRecordInfo,
   NodeHealth,
   NodeInfo,
   ObjectKind,
@@ -78,10 +85,10 @@ function scopeQuery(s: ScopeParams | undefined): Query {
 
 const enc = encodeURIComponent;
 
-/** A copy of an object without its server-owned status. */
+/** A copy of an object without its server-owned status or response timing. */
 export function withoutStatus<T extends AnyObject>(obj: T): Omit<T, 'status'> {
-  const { status: _status, ...rest } = obj;
-  return rest;
+  const { status: _status, took_ms: _took, ...rest } = obj as T & { took_ms?: number };
+  return rest as Omit<T, 'status'>;
 }
 
 /** /objects path of one object; cluster-scoped kinds omit the namespace. */
@@ -103,14 +110,21 @@ export function endpoints(c: ApiClient) {
       existing: () => c.get<ListEnvelope<MigrationAuthorityChange>>('/imports/existing'),
       adopt: (zones: MigrationAuthorityChange[]) => c.post<MigrationResult>('/imports/adopt', { zones }),
     },
+    branding: { get: (signal?: AbortSignal) => c.get<BrandingInfo>('/branding', undefined, signal) },
     /** Download URL of a whole object collection (JSON list envelope). */
     objectsURL: (kind: ObjectKind) => c.url(`/objects/${kind}`),
 
     auth: {
       status: () => c.get<AuthStatus>('/auth/status'),
+      totp: (signal?: AbortSignal) => c.request<TOTPStatus>('GET', '/auth/totp', { signal }),
+      beginTOTP: (req: TOTPProofRequest, signal?: AbortSignal) => c.request<TOTPSetupResponse>('POST', '/auth/totp/setup', { body: req, signal }),
+      confirmTOTP: (req: TOTPConfirmRequest, signal?: AbortSignal) => c.request<void>('POST', '/auth/totp/confirm', { body: req, signal }),
+      disableTOTP: (req: TOTPProofRequest, signal?: AbortSignal) => c.request<void>('POST', '/auth/totp/disable', { body: req, signal }),
       me: () => c.get<Me>('/auth/me'),
-      login: (username: string, password: string) => c.post<Me>('/auth/login', { username, password }),
+      login: (username: string, password: string, totpCode?: string) => c.post<Me>('/auth/login', { username, password, ...(totpCode ? { totpCode } : {}) }),
       logout: () => c.post<void>('/auth/logout'),
+      sessions: (signal?: AbortSignal) => c.request<ListEnvelope<SessionRecordInfo>>('GET', '/auth/sessions', { signal }),
+      revokeSession: (id: string, signal?: AbortSignal) => c.request<void>('DELETE', `/auth/sessions/${enc(id)}`, { signal }),
       oidcStartURL: (idp: string, next: string) => c.url(`/auth/oidc/${enc(idp)}/start`, { next }),
       tokens: () => c.get<ListEnvelope<ApiToken>>('/auth/tokens'),
       createToken: (req: CreateTokenRequest) => c.post<CreatedToken>('/auth/tokens', req),
@@ -261,6 +275,7 @@ export function endpoints(c: ApiClient) {
     },
 
     iam: {
+      recoverTOTP: (name: string, req: TOTPRecoverRequest, signal?: AbortSignal) => c.request<void>('POST', `/iam/users/${enc(name)}/totp/recover`, { body: req, signal }),
       users: () => c.get<IamList<IamUser>>('/iam/users'),
       serviceAccounts: () => c.get<IamList<IamServiceAccount>>('/iam/serviceaccounts'),
       roleBindings: () => c.get<IamList<IamRoleBinding>>('/iam/rolebindings'),

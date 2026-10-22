@@ -18,7 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
-var kudurruResources = []string{"dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests", "dhcpscopes"}
+var kudurruResources = []string{"dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests", "dhcpscopes", "identityproviders", "integrations", "kudurrus", "rolebindings", "serviceaccounts"}
 
 // TestKudurruResourcesCoverEveryKind keeps the least-privilege rules in step
 // with the kinds the driver informs: a kind missing here has informers that

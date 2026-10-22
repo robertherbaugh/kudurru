@@ -22,6 +22,7 @@ import type {
   Policy,
   QueryRow,
   SourceStatus,
+  SessionRecordInfo,
   StatusClass,
   TopDim,
   TopItem,
@@ -46,6 +47,7 @@ import {
   unattachedOf,
   WriteError,
 } from './domains';
+import { brandingAccentValid, brandingNameValid, brandingPNGValid } from '../lib/brandingAssets';
 import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
@@ -54,12 +56,39 @@ import { dhcpHandlers, resetDHCP } from './dhcp';
 import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
-let db: MockDB = createDB();
+const BRAND_FIELDS = ['name', 'logoLight', 'logoDark', 'favicon', 'accentColor'] as const;
+function addBrandingFixture(value: MockDB) {
+  value.settings.branding = Object.fromEntries(BRAND_FIELDS.map((f) => [f, '']));
+  for (const field of BRAND_FIELDS) value.schema.push({ path: `branding.${field}`, scope: 'cluster', type: 'string', default: '', help: 'Enterprise custom branding', hostOnly: false, envLocked: false, restartRequired: false, writeOnly: false });
+  return value;
+}
+let db: MockDB = addBrandingFixture(createDB());
+// UI fixtures only: fixed codes deliberately do not model cryptographic authority.
+const mockFactors = new Set<string>();
+const mockSetups = new Map<string, { challenge: string; expiresAt: string }>();
+// Safe UI fixtures only. Production ownership is the server's immutable UID check.
+const mockSessions = new Map<string, SessionRecordInfo[]>();
+
+function ownSessions(username: string): SessionRecordInfo[] {
+  let rows = mockSessions.get(username);
+  if (!rows) {
+    const issued = db.now - 60_000;
+    rows = [
+      { id: `mock-session-${username}-other`, issuedAt: new Date(issued + 30_000).toISOString(), expiresAt: new Date(issued + 43_200_000).toISOString(), idleExpiresAt: new Date(issued + 1_800_000).toISOString(), current: false, revoked: false },
+      { id: `mock-session-${username}-current`, issuedAt: new Date(issued).toISOString(), expiresAt: new Date(issued + 43_200_000).toISOString(), idleExpiresAt: new Date(issued + 1_800_000).toISOString(), current: true, revoked: false },
+    ];
+    mockSessions.set(username, rows);
+  }
+  return rows;
+}
 
 /** Resets the database to the fixtures (tests call it in beforeEach). */
 export function resetDB(now?: number): MockDB {
-  db = createDB(now);
+  db = addBrandingFixture(createDB(now));
   resetDHCP();
+  mockFactors.clear();
+  mockSetups.clear();
+  mockSessions.clear();
   return db;
 }
 
@@ -380,6 +409,8 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     name: z.metadata.name,
     zoneName: z.spec.zoneName,
     type: z.spec.type,
+    ...(z.spec.type === 'secondary' && db.secondaryRuntime[z.metadata.name] ? { secondaryRuntime: db.secondaryRuntime[z.metadata.name] } : {}),
+    ...(z.spec.type === 'stub' && db.stubRuntime[z.metadata.name] ? { stubRuntime: db.stubRuntime[z.metadata.name] } : {}),
     serial: z.status?.serial ?? 0,
     recordCount: z.status?.recordCount ?? 0,
     recordSets: db.recordSets.filter((rs) => rs.spec.zoneRef.name === z.metadata.name).length,
@@ -731,10 +762,11 @@ export const handlers = [
     }),
   ),
   http.post(`${B}/auth/login`, async ({ request }) => {
-    const body = (await request.json()) as { username?: string; password?: string };
+    const body = (await request.json()) as { username?: string; password?: string; totpCode?: string };
     if (!body.username || !body.password) return fail(400, 'invalid', 'username and password are required');
     const user = db.users.find((u) => u.username === body.username && u.password === body.password);
     if (!user) return fail(401, 'unauthenticated', 'invalid username or password');
+    if (mockFactors.has(user.username) && body.totpCode !== '123456') return fail(401, 'unauthenticated', 'Authenticator code required');
     db.session = { user };
     return ok({ ...me() });
   }),
@@ -743,20 +775,69 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${B}/auth/me`, () => (db.session ? ok({ ...me() }) : fail(401, 'unauthenticated', 'No session'))),
+  http.get(`${B}/auth/sessions`, () => db.session ? ok({ items: structuredClone(ownSessions(db.session.user.username)) }) : fail(401, 'unauthenticated', 'No session')),
+  http.delete(`${B}/auth/sessions/:id`, ({ request, params }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'No session');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'CSRF required');
+    const row = ownSessions(db.session.user.username).find((s) => s.id === params.id);
+    if (!row) return fail(404, 'not_found', 'Session not found');
+    row.revoked = true;
+    if (row.current) db.session = null;
+    return new HttpResponse(null, { status: 204 });
+  }),
   http.post(`${B}/auth/password`, async ({ request }) => {
     if (!db.session) return fail(401, 'unauthenticated', 'Sign in to continue');
     if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'Missing or wrong X-Kudurru-CSRF header');
     const body = (await request.json()) as Record<string, unknown>;
-    const unknown = Object.keys(body).find((k) => k !== 'currentPassword' && k !== 'newPassword');
+    const unknown = Object.keys(body).find((k) => !['currentPassword', 'newPassword', 'revokeTokens', 'totpCode'].includes(k));
     if (unknown) return fail(400, 'invalid', `body: json: unknown field "${unknown}"`);
     const next = typeof body.newPassword === 'string' ? body.newPassword : '';
     if ([...next].length < 8) return fail(400, 'invalid', 'newPassword: users: password is shorter than 8 characters');
     if (next === body.currentPassword) return fail(400, 'invalid', 'newPassword: must differ from the current password');
     const u = db.session.user;
     if (body.currentPassword !== u.password) return fail(403, 'forbidden', 'the current password is wrong');
+    if (mockFactors.has(u.username) && body.totpCode !== '123456') return fail(401, 'unauthenticated', 'Authenticator code required');
     u.password = next;
     u.mustChangePassword = false;
     return ok({ ...me() });
+  }),
+  http.get(`${B}/auth/totp`, () => db.session ? ok({ enabled: mockFactors.has(db.session.user.username) }) : fail(401, 'unauthenticated', 'No session')),
+  http.post(`${B}/auth/totp/:action`, async ({ request, params }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'No session');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'CSRF required');
+    const user = db.session.user;
+    if (user.mustChangePassword) return fail(403, 'forbidden', 'Password change required');
+    const action = String(params.action);
+    if (!['setup', 'confirm', 'disable'].includes(action)) return fail(404, 'not_found', 'Unknown factor action');
+    const body = await request.json() as Record<string, unknown>;
+    const keys = action === 'confirm' ? ['currentPassword', 'totpCode', 'challenge', 'code'] : ['currentPassword', 'totpCode'];
+    if (Object.keys(body).some((key) => !keys.includes(key))) return fail(400, 'invalid', 'Unexpected field');
+    if (body.currentPassword !== user.password || (mockFactors.has(user.username) && body.totpCode !== '123456')) return fail(401, 'unauthenticated', 'Proof not accepted');
+    if (action === 'setup') {
+      const candidate = { challenge: `mock-challenge-${crypto.randomUUID()}`, expiresAt: new Date(Date.now() + 300_000).toISOString() };
+      mockSetups.set(user.username, candidate);
+      return ok({ ...candidate, secret: 'JBSWY3DPEHPK3PXP', otpauthURI: 'otpauth://totp/kudurru:mock?secret=JBSWY3DPEHPK3PXP&issuer=kudurru' });
+    }
+    if (action === 'confirm') {
+      const candidate = mockSetups.get(user.username);
+      if (!candidate || candidate.challenge !== body.challenge || Date.parse(candidate.expiresAt) <= Date.now()) return fail(409, 'conflict', 'Setup changed');
+      if (body.code !== '123456') return fail(401, 'unauthenticated', 'New code not accepted');
+      mockFactors.add(user.username);
+    } else mockFactors.delete(user.username);
+    mockSetups.delete(user.username);
+    db.session = null;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.post(`${B}/iam/users/:name/totp/recover`, async ({ request, params }) => {
+    const denied = guard(request, 'users', 'write');
+    if (denied) return denied;
+    const name = String(params.name);
+    const body = await request.json() as Record<string, unknown>;
+    if (Object.keys(body).length !== 1 || typeof body.uid !== 'string') return fail(400, 'invalid', 'UID required');
+    if (!db.users.some((u) => u.username === name) || body.uid !== `mock-user-${name}`) return fail(409, 'conflict', 'Account changed');
+    mockFactors.delete(name); mockSetups.delete(name);
+    if (db.session?.user.username === name) db.session = null;
+    return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${B}/auth/oidc/:idp/start`, ({ params }) => fail(501, 'not_implemented', `The mock cannot redirect to ${String(params.idp)}`)),
   http.get(`${B}/auth/tokens`, ({ request }) => guard(request, 'tokens', 'own') ?? ok({ items: db.tokens, continue: '' })),
@@ -1444,6 +1525,12 @@ export const handlers = [
     });
   }),
 
+  // Public presentation must work before authentication.
+  http.get(`${B}/branding`, () => {
+    const enabled = db.license.plan === 'enterprise' && (db.license.state === 'active' || db.license.state === 'grace');
+    const brand = db.settings.branding as Record<string, string>;
+    return ok(enabled ? { enabled, ...brand, name: brand.name || 'kudurru', validUntil: new Date(Date.now() + 30_000).toISOString() } : { enabled: false, name: 'kudurru', logoLight: '', logoDark: '', favicon: '', accentColor: '' });
+  }),
   // settings ----------------------------------------------------------------
   http.post(`${B}/settings/sections/:section/ownership/:action`, async ({ request, params }) => {
     const g = guard(request, 'settings', 'write'); if (g) return g;
@@ -1481,7 +1568,12 @@ export const handlers = [
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
     const unknown = changed.find((p) => !db.schema.some((k) => k.path === p));
     if (unknown) return fail(400, 'invalid', `unknown settings key ${unknown}`);
+    if (changed.some((p) => p.startsWith('branding.')) && !(db.license.plan === 'enterprise' && (db.license.state === 'active' || db.license.state === 'grace'))) return fail(402, 'license_required', 'Custom branding requires Enterprise.');
     const next = withDefaults(mergePatch(db.settings, patch), patch, changed);
+    if (changed.some((p) => p.startsWith('branding.'))) {
+      const b = next.branding as Record<string, unknown>;
+      if (!b || BRAND_FIELDS.some((f) => typeof b[f] !== 'string') || !brandingNameValid(b.name as string) || !brandingAccentValid(b.accentColor as string) || !brandingPNGValid(b.logoLight as string) || !brandingPNGValid(b.logoDark as string) || !brandingPNGValid(b.favicon as string, 256)) return fail(400, 'invalid', 'Invalid branding.');
+    }
     const bad1 = validateSchema(next, changed);
     if (bad1) return fail(400, 'invalid', bad1.message, bad1.hint, undefined, [bad1.field]);
     const invalid = validateUpstreams(next) ?? validateBlockPage(next);
@@ -1541,7 +1633,7 @@ export const handlers = [
     guard(request, 'edge', 'read') ??
     ok({ edge: { enabled: true, state: 'running' }, vip: { enabled: true, state: 'MASTER' }, backends: [{ name: 'kudurru-0', address: '192.168.1.2:53', up: true }, { name: 'kudurru-1', address: '192.168.1.3:53', up: true }], node: 'kudurru-0' }),
   ),
-  http.get(`${B}/info/messages`, ({ request }) => guard(request, 'cluster', 'read') ?? ok({ items: db.messages })),
+  http.get(`${B}/info/messages`, ({ request }) => guard(request, 'settings', 'read') ?? ok({ items: db.messages })),
   http.get(`${B}/version`, () => ok({ version: 'v0.1.0-rc.1', commit: '3e52e5a', date: '2026-10-10T18:00:00Z', go: 'go1.27.2', platform: 'linux/amd64', node: 'kudurru-0', api: 'v1' })),
 
   // iam and audit -------------------------------------------------------------
@@ -1552,6 +1644,7 @@ export const handlers = [
     const items: Record<string, unknown[]> = {
       users: db.users.map((u) => ({
         name: u.username,
+        uid: `mock-user-${u.username}`,
         ...(u.name !== u.username ? { displayName: u.name } : {}),
         builtinAdmin: u.username === 'admin',
         disabled: false,

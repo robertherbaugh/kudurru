@@ -97,10 +97,11 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
-			// A snapshot is configuration, not a source of offline IAM users.
+			// A DNS snapshot cannot prove IAM migration admission. v0.2 returns
+			// unavailable after the bounded journal check, without authenticating.
 			for {
-				status := offlineHTTPStatus(cfg.Listeners.API.Address, "/api/v1/zones")
-				if status == http.StatusUnauthorized {
+				status := offlineHTTPStatusWithTimeout(cfg.Listeners.API.Address, "/api/v1/zones", 6*time.Second)
+				if status == http.StatusServiceUnavailable {
 					break
 				}
 				if status != 0 || time.Now().After(deadline) {
@@ -181,7 +182,11 @@ func offlineFreeAddress(t *testing.T, network string) string {
 }
 
 func offlineHTTPStatus(address, path string) int {
-	c := &http.Client{Timeout: time.Second}
+	return offlineHTTPStatusWithTimeout(address, path, time.Second)
+}
+
+func offlineHTTPStatusWithTimeout(address, path string, timeout time.Duration) int {
+	c := &http.Client{Timeout: timeout}
 	res, err := c.Get("http://" + address + path)
 	if err != nil {
 		return 0

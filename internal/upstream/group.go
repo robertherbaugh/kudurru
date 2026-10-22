@@ -28,7 +28,7 @@ type Result struct {
 	Group, Server, Upstream string
 	RTT                     time.Duration
 	// DNSSEC is the validation state from a recursive group; unknown for
-	// forwarded answers, which kudurru does not validate.
+	// forwarded answers, which the separate DNSSEC stage may validate.
 	DNSSEC recursor.Security
 }
 

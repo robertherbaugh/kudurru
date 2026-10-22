@@ -5,9 +5,39 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/config"
 )
+
+func TestDNSSECSettingsAPIValidatesBeforePublishing(t *testing.T) {
+	var reload *config.Reloadable
+	writes := 0
+	h := newHarness(t, func(o *Options) {
+		reload = config.NewReloadable(o.Config)
+		o.Reload = reload
+		o.Settings = SettingsFunc(func(context.Context, *config.Config, []string) error { writes++; return nil })
+	})
+	expiry := time.Now().UTC().Add(time.Hour).Truncate(time.Second).Format(time.RFC3339)
+	patch := map[string]any{"dnssec": map[string]any{"enabled": true, "negativeTrustAnchors": []map[string]any{{"domain": "broken.example.", "reason": "repair pending", "expiresAt": expiry}}}}
+	var body SettingsBody
+	h.do(http.MethodPatch, "/api/v1/settings", "viewer", patch).want(http.StatusForbidden)
+	h.do(http.MethodPatch, "/api/v1/settings", "admin", patch).want(http.StatusOK).json(&body)
+	if writes != 1 || !reload.Current().DNSSEC.Enabled || !*body.Persisted || len(body.RestartRequired) != 0 {
+		t.Fatalf("DNSSEC change must be authorized, persisted and hot: %+v", body)
+	}
+	before := reload.Current()
+	h.do(http.MethodPatch, "/api/v1/settings", "admin", map[string]any{"dnssec": map[string]any{"useBuiltinAnchors": false}}).want(http.StatusBadRequest)
+	h.do(http.MethodPatch, "/api/v1/settings", "admin", map[string]any{"dnssec": map[string]any{"negativeTrustAnchors": []map[string]any{{"domain": "example.", "reason": "", "expiresAt": expiry}}}}).want(http.StatusBadRequest)
+	if reload.Current() != before || writes != 1 {
+		t.Fatal("invalid trust changes must not publish or persist")
+	}
+	h.do(http.MethodGet, "/api/v1/settings", "viewer", nil).want(http.StatusOK).json(&body)
+	settings := body.Settings["dnssec"].(map[string]any)
+	if settings["enabled"] != true || settings["negativeTrustAnchors"].([]any)[0].(map[string]any)["expiresAt"] != expiry {
+		t.Fatal("readback lost validation setting or absolute exception expiry")
+	}
+}
 
 // TestSettingsPatchThroughReloadable: with Options.Reload the PATCH is
 // applied with Reloadable.Set, so the hot-reload subscribers see it, and

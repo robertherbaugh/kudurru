@@ -808,6 +808,89 @@
       ]
     },
     {
+      "default": false,
+      "envLocked": false,
+      "group": "DNSSEC",
+      "help": "Validate forwarded DNS answers against the configured trust anchors. Invalid or incomplete proofs return SERVFAIL with an extended DNS error; unsigned delegations still work. Off by default for compatibility. A forward zone can override this default with spec.forward.dnssecValidation.",
+      "hostOnly": false,
+      "label": "Validate DNSSEC",
+      "path": "dnssec.enabled",
+      "restartRequired": false,
+      "scope": "cluster",
+      "type": "bool",
+      "writeOnly": false
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "DNSSEC",
+      "help": "Temporary exceptions for broken signed domains (RFC 7646); at most 128. Every exception needs a reason and an absolute expiry no more than seven days away. It covers the domain and descendants, never sets AD, and stops applying at expiry even on cache hits. Reload and restart do not extend it.",
+      "hostOnly": false,
+      "items": {
+        "fields": [
+          {
+            "format": "domain",
+            "help": "Domain whose signatures temporarily cannot be checked, e.g. broken.example; includes its descendants.",
+            "label": "Domain",
+            "name": "domain",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "help": "Why validation is temporarily bypassed, in at most 256 characters; record the incident or repair being tracked.",
+            "label": "Reason",
+            "name": "reason",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "format": "date-time",
+            "help": "Absolute RFC3339 expiry, e.g. 2026-10-15T12:00:00Z; no more than seven days from now. Expired entries are harmless and can be removed.",
+            "label": "Expires at",
+            "name": "expiresAt",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "type": "object"
+      },
+      "label": "Temporary validation exceptions",
+      "path": "dnssec.negativeTrustAnchors",
+      "restartRequired": false,
+      "scope": "cluster",
+      "type": "list",
+      "writeOnly": false
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "DNSSEC",
+      "help": "Additional trusted DS or DNSKEY records in DNS presentation format, e.g. a complete DS record for a private signed zone. At most 64. With useBuiltinAnchors off these replace the shipped root anchors, and at least one is required. Changes invalidate the old validation cache context immediately.",
+      "hostOnly": false,
+      "items": {
+        "type": "string"
+      },
+      "label": "Additional trust anchors",
+      "path": "dnssec.trustAnchors",
+      "restartRequired": false,
+      "scope": "cluster",
+      "type": "string[]",
+      "writeOnly": false
+    },
+    {
+      "default": true,
+      "envLocked": false,
+      "group": "DNSSEC",
+      "help": "Trust the IANA root DS records shipped with this version. Software upgrades or an operator change maintain these anchors; no keys are trusted automatically from upstream responses. Turn off only when dnssec.trustAnchors supplies all trust roots you need.",
+      "hostOnly": false,
+      "label": "Use built-in root trust anchors",
+      "path": "dnssec.useBuiltinAnchors",
+      "restartRequired": false,
+      "scope": "cluster",
+      "type": "bool",
+      "writeOnly": false
+    },
+    {
       "path": "externalDNS.webhook.enabled",
       "type": "bool",
       "scope": "node",

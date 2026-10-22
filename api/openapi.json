@@ -256,6 +256,40 @@
         ],
         "type": "object"
       },
+      "AuthListSessionRecordInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "type": "string"
+          },
+          "diagnoses": {
+            "description": "Why entries were ignored (role bindings, identity providers).",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionRecordInfo"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "continue",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "AuthListTokenInfo": {
         "additionalProperties": false,
         "properties": {
@@ -503,6 +537,42 @@
           "scope",
           "node",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "BrandingInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "accentColor": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "favicon": {
+            "type": "string"
+          },
+          "logoDark": {
+            "type": "string"
+          },
+          "logoLight": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "validUntil": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "name",
+          "logoLight",
+          "logoDark",
+          "favicon",
+          "accentColor"
         ],
         "type": "object"
       },
@@ -1075,6 +1145,34 @@
           "lastTransitionTime",
           "reason",
           "message"
+        ],
+        "type": "object"
+      },
+      "CreateLocalUserRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "description": "Display name; bounded to 256 UTF-8 bytes without control characters.",
+            "maxLength": 256,
+            "type": "string"
+          },
+          "name": {
+            "description": "Canonical local username, already normalized as a DNS subdomain.",
+            "maxLength": 253,
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "description": "Initial password, at least 8 characters and at most 1024 bytes; never returned or logged.",
+            "maxLength": 1024,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "name",
+          "password"
         ],
         "type": "object"
       },
@@ -3565,10 +3663,19 @@
           "passwordChangedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "resourceVersion": {
+            "description": "Opaque version required for administrator password-reset compare-and-swap.",
+            "type": "string"
+          },
+          "uid": {
+            "description": "Immutable account identity required for administrator recovery and password reset.",
+            "type": "string"
           }
         },
         "required": [
           "name",
+          "uid",
           "builtinAdmin",
           "disabled",
           "mustChangePassword"
@@ -4129,6 +4236,10 @@
         "additionalProperties": false,
         "properties": {
           "password": {
+            "type": "string"
+          },
+          "totpCode": {
+            "description": "The enrolled authenticator code, when required.",
             "type": "string"
           },
           "username": {
@@ -5046,6 +5157,10 @@
           "revokeTokens": {
             "description": "Also revoke every API token of the user; a password change alone revokes sessions, not tokens.",
             "type": "boolean"
+          },
+          "totpCode": {
+            "description": "The enrolled authenticator code, when required.",
+            "type": "string"
           }
         },
         "required": [
@@ -6251,6 +6366,36 @@
         },
         "type": "object"
       },
+      "ResetLocalUserPasswordRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "newPassword": {
+            "description": "Replacement password, at least 8 characters and at most 1024 bytes; never returned or logged. This does not recover a lost authenticator.",
+            "maxLength": 1024,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          },
+          "resourceVersion": {
+            "description": "Exact observed opaque resourceVersion; a conflict requires a fresh read and deliberate request.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uid": {
+            "description": "Exact immutable UID from the authorized user inventory.",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "resourceVersion",
+          "newPassword"
+        ],
+        "type": "object"
+      },
       "Resource": {
         "additionalProperties": false,
         "properties": {
@@ -6399,6 +6544,59 @@
           "list",
           "domains",
           "source"
+        ],
+        "type": "object"
+      },
+      "SecondaryRuntime": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastConfirmedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recordCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "serial": {
+            "format": "int64",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "serving",
+              "expired",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "state"
         ],
         "type": "object"
       },
@@ -6590,6 +6788,41 @@
         ],
         "type": "object"
       },
+      "SessionRecordInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "idleExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "issuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "issuedAt",
+          "expiresAt",
+          "idleExpiresAt",
+          "current",
+          "revoked"
+        ],
+        "type": "object"
+      },
       "SetBlockingInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -6643,7 +6876,8 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
             "type": "string"
           },
@@ -6751,7 +6985,8 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
             "type": "string"
           },
@@ -6896,7 +7131,8 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
             "type": "string"
           },
@@ -7302,6 +7538,83 @@
         ],
         "type": "object"
       },
+      "StubAuthority": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "enum": [
+              "udp",
+              "tcp"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "protocol"
+        ],
+        "type": "object"
+      },
+      "StubRuntime": {
+        "additionalProperties": false,
+        "properties": {
+          "authorities": {
+            "items": {
+              "$ref": "#/components/schemas/StubAuthority"
+            },
+            "type": "array"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastConfirmedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "serial": {
+            "format": "int64",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "routing",
+              "expired",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "state",
+          "authorities"
+        ],
+        "type": "object"
+      },
       "SuggestionsBody": {
         "additionalProperties": false,
         "properties": {
@@ -7522,6 +7835,106 @@
         ],
         "type": "object"
       },
+      "TOTPConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge": {
+            "maxLength": 8192,
+            "type": "string"
+          },
+          "code": {
+            "description": "The new candidate factor's code.",
+            "pattern": "^[0-9]{6}$",
+            "type": "string"
+          },
+          "currentPassword": {
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "totpCode": {
+            "description": "The previously enrolled factor's code, when rotating.",
+            "pattern": "^[0-9]{6}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "challenge",
+          "code"
+        ],
+        "type": "object"
+      },
+      "TOTPProofRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "currentPassword": {
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "totpCode": {
+            "description": "The current factor's code, when already enabled.",
+            "pattern": "^[0-9]{6}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword"
+        ],
+        "type": "object"
+      },
+      "TOTPRecoverRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "uid": {
+            "description": "The current immutable UID from the authorized user inventory.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
+      "TOTPSetupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "otpauthURI": {
+            "description": "Local authenticator provisioning URI; never send it to an external QR service.",
+            "type": "string"
+          },
+          "secret": {
+            "description": "Base32 provisioning secret, shown only during setup.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge",
+          "secret",
+          "otpauthURI",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "TOTPStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
       "TimeseriesBody": {
         "additionalProperties": false,
         "properties": {
@@ -7658,6 +8071,10 @@
           },
           "provider": {
             "description": "local, or the identity provider id.",
+            "type": "string"
+          },
+          "uid": {
+            "description": "Immutable account identity for local users and service accounts.",
             "type": "string"
           }
         },
@@ -8487,10 +8904,16 @@
           "resourceVersion": {
             "type": "string"
           },
+          "secondaryRuntime": {
+            "$ref": "#/components/schemas/SecondaryRuntime"
+          },
           "serial": {
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "stubRuntime": {
+            "$ref": "#/components/schemas/StubRuntime"
           },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
@@ -8617,10 +9040,16 @@
           "resourceVersion": {
             "type": "string"
           },
+          "secondaryRuntime": {
+            "$ref": "#/components/schemas/SecondaryRuntime"
+          },
           "serial": {
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "stubRuntime": {
+            "$ref": "#/components/schemas/StubRuntime"
           },
           "type": {
             "type": "string"
@@ -10552,6 +10981,193 @@
         "x-kudurru-permission": "authenticated"
       }
     },
+    "/auth/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthListSessionRecordInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List own enrolled sessions",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/sessions/{id}": {
+      "delete": {
+        "operationId": "revokeSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Revoke an enrolled session of the current account",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
     "/auth/status": {
       "get": {
         "operationId": "authStatus",
@@ -11005,6 +11621,443 @@
           }
         },
         "summary": "Get one API token (someone else's needs tokens.read)",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/totp": {
+      "get": {
+        "operationId": "totpStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TOTPStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Own local authenticator status",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/totp/confirm": {
+      "post": {
+        "description": "Brute-force limited per client address and user: 429 with Retry-After.",
+        "operationId": "confirmTOTP",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Activate the authenticator and revoke existing sessions",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/totp/disable": {
+      "post": {
+        "description": "Brute-force limited per client address and user: 429 with Retry-After.",
+        "operationId": "disableTOTP",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPProofRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Disable own authenticator and revoke existing sessions",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/totp/setup": {
+      "post": {
+        "description": "Brute-force limited per client address and user: 429 with Retry-After.",
+        "operationId": "beginTOTP",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPProofRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TOTPSetupResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Prepare an authenticator (provisioning secret returned once)",
         "tags": [
           "auth"
         ],
@@ -12546,6 +13599,75 @@
           "scope": "cluster",
           "verb": "read"
         }
+      }
+    },
+    "/branding": {
+      "get": {
+        "operationId": "getBranding",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingInfo"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Public Enterprise branding, or the built-in presentation",
+        "tags": [
+          "meta"
+        ],
+        "x-kudurru-permission": "public"
       }
     },
     "/cache/flush": {
@@ -16316,7 +17438,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List identityproviders (read-only; the write API is v0.2)",
+        "summary": "List identityproviders",
         "tags": [
           "iam"
         ],
@@ -16402,7 +17524,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List rolebindings (read-only; the write API is v0.2)",
+        "summary": "List rolebindings",
         "tags": [
           "iam"
         ],
@@ -16488,7 +17610,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List serviceaccounts (read-only; the write API is v0.2)",
+        "summary": "List serviceaccounts",
         "tags": [
           "iam"
         ],
@@ -16574,7 +17696,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List users (read-only; the write API is v0.2)",
+        "summary": "List users",
         "tags": [
           "iam"
         ],
@@ -16582,6 +17704,360 @@
           "resource": "users",
           "scope": "cluster",
           "verb": "read"
+        }
+      },
+      "post": {
+        "description": "Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.",
+        "operationId": "createLocalUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLocalUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IAMUser"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create an API-managed local user requiring a password change",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/users/{name}/password": {
+      "post": {
+        "description": "Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.",
+        "operationId": "resetLocalUserPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetLocalUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Reset an exact API-managed local account's password",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/users/{name}/totp/recover": {
+      "post": {
+        "operationId": "recoverTOTP",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPRecoverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Disable a lost authenticator for an exact account UID",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
         }
       }
     },

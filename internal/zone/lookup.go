@@ -104,27 +104,30 @@ func (z *Zone) Lookup(qname string, qtype uint16) Result { return z.LookupFrom(q
 // LookupFrom is Lookup for the continuation of a chain that already took
 // hops hops in other zones; the MaxChain budget is shared.
 func (z *Zone) LookupFrom(qname string, qtype uint16, hops int) Result {
-	return z.lookupFrom(qname, qtype, hops, false)
+	return z.LookupWithin(qname, qtype, hops, nil)
 }
 
-// LookupStep stops at the first alias target. Overlay queries use it so the
-// authoritative stage can select a more-specific zone before following an
-// alias, even if the parent overlay also contains records for that target.
+// LookupStep stops at the first alias target so the caller can select a
+// more-specific zone before continuing the chain.
 func (z *Zone) LookupStep(qname string, qtype uint16, hops int) Result {
-	return z.lookupFrom(qname, qtype, hops, true)
+	return z.LookupWithin(qname, qtype, hops, func(string) bool { return false })
 }
 
-func (z *Zone) lookupFrom(qname string, qtype uint16, hops int, stopAtAlias bool) Result {
+// LookupWithin stops a CNAME/DNAME chain before a target belongs to another
+// configured zone. owns is evaluated for alias targets, not ordinary lookups;
+// nil keeps the standalone LookupFrom behavior. The caller then checks the
+// target zone's access policy and availability before continuing the chain.
+func (z *Zone) LookupWithin(qname string, qtype uint16, hops int, owns func(string) bool) Result {
 	r := Result{Hops: hops}
 	if z.apex == nil {
 		r.Kind, r.Target = CNAME, qname
 		return r
 	}
-	z.resolve(&r, qname, qtype, stopAtAlias)
+	z.resolve(&r, qname, qtype, owns)
 	return r
 }
 
-func (z *Zone) resolve(r *Result, qname string, qtype uint16, stopAtAlias bool) {
+func (z *Zone) resolve(r *Result, qname string, qtype uint16, owns func(string) bool) {
 	var kb [256]byte
 	start := r.Hops
 	for {
@@ -161,7 +164,7 @@ func (z *Zone) resolve(r *Result, qname string, qtype uint16, stopAtAlias bool) 
 			r.Kind, r.Ns, r.Extra = Loop, nil, nil
 			return
 		}
-		if stopAtAlias {
+		if owns != nil && !owns(next) {
 			r.Kind, r.Target = CNAME, next
 			return
 		}

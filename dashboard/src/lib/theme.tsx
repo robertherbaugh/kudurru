@@ -2,12 +2,13 @@
 // and a high-contrast setting. The default, Kudurru, is Astryx Neutral
 // with the branding palette (src/themes/kudurru); Neutral, Stone and the
 // fun Y2K are the Astryx themes with kudurru's query status colours. All
-// four are built themes wired through the generated src/astryx-themes.ts
-// (`bun run astryx -- theme add <slug> --import`), so no theme injects
-// <style> at runtime and the strict CSP holds.
+// four built themes remain the base; Enterprise branding extends only accents
+// through Astryx's supported runtime theme API.
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { Theme } from '@astryxdesign/core/theme';
-import { defaultThemeSlug, themes, type ThemeSlug } from '../astryx-themes';
+import { useBranding } from './branding';
+import { brandingTheme } from './brandingTheme';
+import { defaultThemeSlug, type ThemeSlug } from '../astryx-themes';
 
 export type Mode = 'system' | 'light' | 'dark';
 export type ThemeName = ThemeSlug;
@@ -55,6 +56,7 @@ function load(): { mode: Mode; theme: ThemeName; contrast: Contrast } {
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const initial = useMemo(load, []);
+  const brand = useBranding();
   const [mode, setMode] = useState<Mode>(initial.mode);
   const [theme, setThemeName] = useState<ThemeName>(initial.theme);
   const [contrast, setContrast] = useState<Contrast>(initial.contrast);
@@ -79,9 +81,10 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     () => ({ mode, theme, contrast, setMode, setTheme, setContrast }),
     [mode, theme, contrast, setTheme],
   );
+  const activeTheme = useMemo(() => brandingTheme(theme, brand.accentColor), [theme, brand.accentColor]);
   return (
     <AppearanceContext.Provider value={value}>
-      <Theme theme={themes[theme]} mode={mode}>
+      <Theme theme={activeTheme} mode={mode}>
         {children}
       </Theme>
     </AppearanceContext.Provider>

@@ -18,7 +18,7 @@ import (
 
 func TestDuplicateApexIsolationAndRecovery(t *testing.T) {
 	for _, coldStart := range []bool{false, true} {
-		name := "last good"
+		name := "live conflict"
 		if coldStart {
 			name = "cold start"
 		}
@@ -42,7 +42,7 @@ func TestDuplicateApexIsolationAndRecovery(t *testing.T) {
 			apply(records("home", "original", "nas.home.example.", "192.0.2.1"))
 			apply(primary("healthy", "healthy.example."))
 			apply(records("healthy", "healthy", "nas.healthy.example.", "192.0.2.10"))
-			// Sorts before original; a live conflict must not replace last good.
+			// Sorts before original; neither competing object may supply data.
 			conflict := primary("aaa-conflict", "home.example.")
 			conflictingRecords := records("conflict", "aaa-conflict", "nas.home.example.", "192.0.2.99")
 			if coldStart {
@@ -84,11 +84,9 @@ func TestDuplicateApexIsolationAndRecovery(t *testing.T) {
 					time.Sleep(10 * time.Millisecond)
 				}
 			}
-			wantHome := "192.0.2.1"
-			if coldStart {
-				wantHome = "192.0.2.99"
+			if !coldStart {
+				waitIP("nas.home.example.", "192.0.2.1")
 			}
-			waitIP("nas.home.example.", wantHome)
 			waitIP("nas.healthy.example.", "192.0.2.10")
 			if !coldStart {
 				apply(conflict)
@@ -101,9 +99,9 @@ func TestDuplicateApexIsolationAndRecovery(t *testing.T) {
 			apply(records("home", "original", "nas.home.example.", "192.0.2.2"))
 			waitIP("nas.new.example.", "192.0.2.20")
 			waitIP("nas.healthy.example.", "192.0.2.11")
-			if got := answerIP("nas.home.example."); got != wantHome {
-				t.Fatalf("conflict replaced last-good answer: %s, want %s", got, wantHome)
-			}
+			// v0.2 closes only the conflicting apex. This also prevents a
+			// previously acquired secondary from bypassing ambiguous authority.
+			assertConflictQueries(t, Source{Cache: zc}, "home.example.")
 			if err := st.Delete(ctx, store.Key{Kind: "DNSZone", Name: "aaa-conflict"}, store.DeleteOptions{Manager: store.ManagerAPI}); err != nil {
 				t.Fatal(err)
 			}

@@ -103,7 +103,7 @@ spec:
                 - enabled
                 type: object
               external:
-                description: ExternalSpec synthesises records from Kubernetes objects
+                description: ExternalSpec synthesizes records from Kubernetes objects
                   (v0.2).
                 properties:
                   gateway:
@@ -130,6 +130,9 @@ spec:
                 description: ForwardSpec configures a forward zone.
                 properties:
                   dnssecValidation:
+                    description: |-
+                      DNSSECValidation overrides the global dnssec.enabled default for
+                      this route. Omit it to inherit the default.
                     type: boolean
                   upstreamGroup:
                     default: default
@@ -377,24 +380,35 @@ spec:
                 description: SecondarySpec configures a secondary zone (v0.2).
                 properties:
                   primaries:
+                    description: |-
+                      Primaries are ordered hostnames or IP addresses with optional ports
+                      (default 53). Use brackets around IPv6 addresses when specifying a port.
                     items:
+                      minLength: 1
                       type: string
+                    minItems: 1
                     type: array
                   transferProtocol:
                     default: tcp
+                    description: |-
+                      TransferProtocol selects TCP or TLS with certificate and endpoint-name
+                      verification against the node's trust store. There is no plaintext fallback.
+                      Both protocols default to port 53; specify :853 for a standard TLS endpoint.
                     enum:
                     - tcp
                     - tls
                     type: string
                   tsigKeyRef:
+                    description: TSIGKeyRef names a key configured in every replica's
+                      local keyring.
                     type: string
                 required:
                 - primaries
                 type: object
               soa:
                 description: |-
-                  SOASpec holds the SOA fields the operator controls. The serial is computed
-                  by the leader and lives in status (decision D12).
+                  SOASpec holds primary-zone SOA fields. The leader computes primary serials
+                  in status (D12); secondaries retain the external primary's complete SOA.
                 properties:
                   expire:
                     default: 1209600
@@ -418,11 +432,22 @@ spec:
                     type: string
                 type: object
               stub:
-                description: StubSpec configures a stub zone (v0.2).
+                description: |-
+                  StubSpec configures node-local authoritative-server discovery. It does
+                  not transfer the full zone or enable general iterative resolution.
                 properties:
                   nameservers:
+                    description: |-
+                      Nameservers bootstrap SOA/NS/glue discovery outside the query path.
+                      Entries are hostnames or IP addresses with optional ports (default 53),
+                      optionally prefixed with udp:// or tcp://. UDP retries TCP on truncation;
+                      explicit TCP stays TCP. TLS is not supported for stub discovery.
+                      Discovered nameservers inherit the bootstrap transport and port.
                     items:
+                      minLength: 1
                       type: string
+                    maxItems: 16
+                    minItems: 1
                     type: array
                 required:
                 - nameservers
@@ -454,6 +479,10 @@ spec:
             x-kubernetes-validations:
             - message: fallback is only supported for primary zones
               rule: '!has(self.fallback) || self.type == ''primary'''
+            - message: secondary zones require secondary configuration
+              rule: self.type != 'secondary' || has(self.secondary)
+            - message: stub zones require nameserver configuration
+              rule: self.type != 'stub' || has(self.stub)
           status:
             description: DNSZoneStatus is the observed state of a zone.
             properties:
@@ -517,7 +546,9 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               contentHash:
-                description: ContentHash is the sha256 of the canonical RRsets.
+                description: |-
+                  ContentHash is the sha256 of the canonical served RRsets. With committed
+                  primary status, it includes dynamic records from the exact durable head.
                 type: string
               nameserverAddresses:
                 items:
@@ -550,8 +581,10 @@ spec:
                 type: integer
               serial:
                 description: |-
-                  Serial is stamped by the leader as max(prev+1, unix_now) whenever
-                  ContentHash changes. Replicas serve this value.
+                  Serial describes committed primary data when the committed-status adapter
+                  is installed. Legacy controllers stamp max(prev+1, unix_now) when content
+                  changes. Secondary serials and counts belong to each replica's transferred
+                  data, not this shared status.
                 format: int32
                 type: integer
             type: object

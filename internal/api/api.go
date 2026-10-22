@@ -50,16 +50,21 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/settings"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/unblock"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
+	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
@@ -116,6 +121,47 @@ type ZoneNotifier interface {
 	NotifyZone(ctx context.Context, zone string) ([]string, error)
 }
 
+// ObjectReadSource returns immutable public desired objects and their exact
+// generation from the original HTTP request lease, valid only in that handler.
+// Missing, released, or canceled capture must fail instead of recapturing.
+type ObjectReadSource interface {
+	ObjectSnapshot(context.Context) (zonecache.ObjectSet, replication.Generation, error)
+}
+
+// PolicyListReadSource reports actual compiled list counts and availability
+// from the original complete request cut at the caller's observation time.
+type PolicyListReadSource interface {
+	PolicyListState(context.Context, string, string, time.Time) (entries int, ready bool, err error)
+}
+
+// BlockingReadSource projects the original complete request's blocking settings
+// and absolute deadline at one caller-supplied observation time.
+type BlockingReadSource interface {
+	BlockingState(context.Context, time.Time) (configured, enabled bool, disabledUntil time.Time, err error)
+}
+
+// UpstreamReadSource samples local operational health on the original complete
+// request's retained routes. Counter values are not frozen serving metadata.
+type UpstreamReadSource interface {
+	UpstreamStates(context.Context) ([]upstream.ServerStatus, error)
+}
+
+// ZoneReadSource reads actual serving data from the original complete HTTP
+// request lease. Objects/models are immutable and valid only within the handler.
+// ReadZone distinguishes a missing desired key (store.ErrNotFound) from present
+// but unavailable contents. PrimaryStatus is durable evidence, not readiness.
+type ZoneReadSource interface {
+	ZoneObjects(context.Context) (zonecache.ObjectSet, error)
+	ReadZone(context.Context, string) (*zone.Zone, error)
+	PrimaryStatus(context.Context, string) (primaryruntime.PrimaryStatusObservation, bool, error)
+}
+
+// ZoneRuntimeReadSource retains metadata of an expired transferred copy from
+// the original request cut. It grants no record-reading or routing authority.
+type ZoneRuntimeReadSource interface {
+	ReadTransferredMetadata(context.Context, string) (*zone.Zone, error)
+}
+
 // QuerylogPurger deletes query-log rows older than before (zero: all) and
 // returns how many were deleted. sqlitelog.Writer has the batched delete
 // machinery but no exported purge yet; nil answers 501.
@@ -129,6 +175,15 @@ type QuerylogPurger interface {
 // keeps changes in memory, which GET /settings then reports.
 type SettingsWriter interface {
 	WriteSettings(ctx context.Context, next *config.Config, changed []string) error
+}
+
+// CanonicalSettings reads the original request's complete settings image and
+// persists changes through current command admission. Implementations return a
+// detached effective config and reject stale requests. A successful write is a
+// durable acknowledgment; serving changes only after complete publication.
+type CanonicalSettings interface {
+	Settings(context.Context) (*config.Config, error)
+	SettingsWriter
 }
 
 // UpstreamStatus reports the upstream servers (*upstream.Set).
@@ -169,6 +224,10 @@ type Options struct {
 	// Cache is the zonecache; list and zone reads come from its snapshot
 	// when it has synced.
 	Cache *zonecache.Cache
+	// Secondaries reports transferred data and expiry on the serving node.
+	Secondaries *secondary.Manager
+	// Stubs reports discovered authority routes and expiry on this node.
+	Stubs *stub.Manager
 	// Policy is the policy index source (policy.Source{Cache}).
 	Policy PolicySource
 	// Blocking is the blocking stage; its Toggle backs /dns/blocking.
@@ -190,6 +249,10 @@ type Options struct {
 	ResponseCache *cache.Cache
 	// Chain runs POST /dns/query in-process.
 	Chain *pipeline.Chain
+	// DNSQueryCapture clones the original HTTP request's complete cut for a
+	// synthetic query. Ownership transfers even when a lease accompanies an
+	// error. Complete mounts require it; nil preserves legacy query capture.
+	DNSQueryCapture pipeline.Capture
 	// Config is the effective configuration (settings routes, listener);
 	// Settings persists PATCH /settings (cluster scope; PATCH /node/config
 	// changes stay in memory). Reload, when set, is the live configuration:
@@ -199,6 +262,16 @@ type Options struct {
 	Settings          SettingsWriter
 	SettingsOwnership *settings.Manager
 	Reload            *config.Reloadable
+	// CanonicalSettings replaces cluster settings reads/writes only. It never
+	// updates Reload or the legacy settings file after a canonical commit.
+	CanonicalSettings CanonicalSettings
+	// BrandingReads projects public branding from the original serving cut.
+	BrandingReads BrandingReadSource
+	// NodeConfigCommand admits local node PATCHes separately from cluster
+	// settings. It must own the SAME Reload document used for local GETs.
+	NodeConfigCommand NodeConfigCommand
+	// CacheFlushCommand admits invalidation of the SAME cache used by DNS.
+	CacheFlushCommand CacheFlushCommand
 	// Objects is the file-managed objects loader (CheckAPIWrite for the
 	// ha-static shape, diagnoses for /info/messages).
 	Objects *objects.Loader
@@ -220,6 +293,38 @@ type Options struct {
 	// source for the entries browser; nil answers 503 for those sources.
 	ListBodies ListBodies
 	Notifier   ZoneNotifier
+	// ZoneReads replaces DNS diagnostics/contents with the original complete
+	// request cut. Nil retains the legacy store/compiler/Kubernetes behavior.
+	ZoneReads ZoneReadSource
+	// ObjectReads replaces generic object GETs with original complete-cut reads.
+	// Nil preserves the legacy store-backed paths, including Kubernetes.
+	ObjectReads ObjectReadSource
+	// InfoMessageReads projects serving diagnoses from the original request cut.
+	InfoMessageReads InfoMessageReadSource
+	// SourceBodyReads opens exact captured source receipts for entries GETs.
+	// Complete mode requires ObjectReads too; neither path uses live fallback.
+	SourceBodyReads SourceBodyReadSource
+	// PolicyListReads supplies original text/RPZ state for complete policy GETs.
+	// Complete mode also requires CanonicalSettings and Catalogue.Read.
+	PolicyListReads PolicyListReadSource
+	// BlockingReads replaces blocking GETs with original complete-cut reads.
+	// Nil preserves the legacy node-local toggle projection.
+	BlockingReads BlockingReadSource
+	// BlockingCommand replaces legacy toggle mutation with a current command.
+	BlockingCommand BlockingCommand
+	// UpstreamReads replaces local upstream health reads with original routes.
+	// Nil preserves legacy live-stage status sampling.
+	UpstreamReads UpstreamReadSource
+	// ObjectCommand admits canonical object writes in the supplied current
+	// transaction. Nil retains the legacy object-management implementation.
+	ObjectCommand ObjectCommand
+	// ZoneCommand admits one complete current zone convenience operation.
+	ZoneCommand ZoneCommand
+	// ZoneNotifyCommand admits durable manual NOTIFY under current authority.
+	ZoneNotifyCommand ZoneNotifyCommand
+	// CrossOrigin shares the host's existing same-origin policy. Nil creates
+	// the default protection with no trusted-origin exceptions.
+	CrossOrigin *http.CrossOriginProtection
 	// Central is the optional central database (internal/central); its
 	// state is reported by /info/messages. nil: none configured.
 	Central CentralState
@@ -398,7 +503,10 @@ func New(opts Options) (*Server, error) {
 	s.mux.Handle(BasePath+"/", http.HandlerFunc(s.apiNotFound))
 	s.mux.Handle("/", s.ui)
 
-	cop := http.NewCrossOriginProtection()
+	cop := opts.CrossOrigin
+	if cop == nil {
+		cop = http.NewCrossOriginProtection()
+	}
 	inner := chain(s.mux,
 		onPrefix(BasePath+"/auth/login", opts.RateLimit),
 		onPrefix(BasePath+"/", opts.Authenticate),

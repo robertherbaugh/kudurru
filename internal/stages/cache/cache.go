@@ -28,6 +28,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
 
@@ -82,11 +83,14 @@ type Subnetter interface {
 
 // Stage implements pipeline.Stage.
 type Stage struct {
+	// Capture supplies immutable cache settings from Request.Serving.
+	Capture  func(*pipeline.Request) (*View, error)
 	c        *cache.Cache
 	set      atomic.Pointer[Settings]
 	disabled atomic.Bool
 	ecs      Subnetter
 	bg       sync.WaitGroup
+	rebound  sync.Map
 }
 
 // New returns the stage over c. ecs may be nil when ECS is never sent.
@@ -118,16 +122,44 @@ func (s *Stage) Name() string { return "cache" }
 // Cache returns the underlying cache (Dump/Load, Run, Flush).
 func (s *Stage) Cache() *cache.Cache { return s.c }
 
-// Wait blocks until background prefetches have finished.
+// Wait blocks until detached fetches and background prefetches have finished.
+// Stop accepting requests before calling Wait.
 func (s *Stage) Wait() { s.bg.Wait() }
 
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
+	view, err := s.pin(req)
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := s.ecs.(interface {
+		Bind(*pipeline.Request) (*upstream.QueryPlan, error)
+	}); ok {
+		p, err := b.Bind(req)
+		if err != nil {
+			if req.Serving != nil {
+				return nil, err
+			}
+			return next(req)
+		}
+		if !p.Cacheable() {
+			return next(req)
+		}
+		scope := view.scope(p.Scope())
+		if _, loaded := s.rebound.LoadOrStore(scope, true); !loaded {
+			s.c.RebindRestored(scope)
+		}
+	}
+	if req.Serving != nil {
+		if _, ok := req.Resolution.(*upstream.QueryPlan); !ok {
+			return nil, pipeline.ErrServingCapture
+		}
+	}
 	// A forward-zone hint to a group of its own routes around the cache:
 	// those answers are never cached, and an entry stored for the name
 	// before the zone existed must not shadow it. A hint to the default
 	// group (the bootstrap root zone) is ordinary forwarding.
-	if s.disabled.Load() || (req.UpstreamGroup != "" && req.UpstreamGroup != upstream.DefaultGroup) || !cacheable(req.Msg) {
+	if view.disabled || (req.UpstreamGroup != "" && req.UpstreamGroup != upstream.DefaultGroup) || !cacheable(req.Msg) {
 		return next(req)
 	}
 	k, ecsBits := s.key(req)
@@ -177,11 +209,21 @@ func (s *Stage) key(req *pipeline.Request) (cache.Key, int) {
 	var ecs netip.Prefix
 	bits := -1
 	if s.ecs != nil {
-		if ecs = s.ecs.ECSSubnet(m, req.Client.Addr.Addr()); ecs.IsValid() {
+		provider := s.ecs
+		if p, ok := req.Resolution.(*upstream.QueryPlan); ok {
+			provider = p
+		}
+		if ecs = provider.ECSSubnet(m, req.Client.Addr.Addr()); ecs.IsValid() {
 			bits = ecs.Bits()
 		}
 	}
-	return cache.MakeKey(q.Name, q.Qtype, q.Qclass, do, m.CheckingDisabled, ecs), bits
+	if p, ok := req.Resolution.(*upstream.QueryPlan); ok {
+		return cache.MakeScopedKey(s.view(req).scope(p.Scope()), q.Name, q.Qtype, q.Qclass, do, m.CheckingDisabled, ecs), bits
+	}
+	if s.view(req).epoch == 0 {
+		return cache.MakeKey(q.Name, q.Qtype, q.Qclass, do, m.CheckingDisabled, ecs), bits
+	}
+	return cache.MakeScopedKey(s.view(req).scope(pipeline.CacheScope{}), q.Name, q.Qtype, q.Qclass, do, m.CheckingDisabled, ecs), bits
 }
 
 // fetch starts (or joins) the coalesced upstream fetch for k. The request
@@ -189,23 +231,85 @@ func (s *Stage) key(req *pipeline.Request) (cache.Key, int) {
 func (s *Stage) fetch(k cache.Key, req *pipeline.Request, next pipeline.Next) <-chan singleflight.Result {
 	fr := *req
 	fr.Msg = req.Msg.Copy()
+	view := s.view(req)
+	var retained pipeline.ServingLease
+	if req.Serving != nil {
+		var err error
+		retained, err = req.Serving.Clone()
+		if err != nil || retained == nil {
+			if retained != nil {
+				retained.Release()
+			}
+			if err == nil {
+				err = pipeline.ErrServingCapture
+			}
+			ch := make(chan singleflight.Result, 1)
+			ch <- singleflight.Result{Err: err}
+			return ch
+		}
+		fr.Serving = retained
+	}
+	if p, ok := req.Resolution.(*upstream.QueryPlan); ok {
+		fr.Resolution = p.ForCache()
+	}
+	generation := s.c.Generation()
 	parent := req.Ctx
 	if parent == nil {
 		parent = context.Background()
 	}
-	return s.c.Coalesce(k, func() (any, error) {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), s.settings().FetchTimeout)
+	ch := s.c.Coalesce(k, func() (any, error) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), view.settings.FetchTimeout)
 		defer cancel()
 		fr.Ctx = ctx
 		fr.Deadline, _ = ctx.Deadline()
 		resp, err := next(&fr)
-		if refreshed(resp, err) {
-			s.store(k, resp)
-		} else {
-			s.c.MarkRefreshFailed(k, s.settings().StaleAnswerTTL)
+		if resp != nil {
+			defer resp.Close()
+			if resp.Transfer != nil {
+				return nil, pipeline.ErrServingCapture
+			}
+		}
+		current := view.current()
+		if p, ok := fr.Resolution.(*upstream.QueryPlan); ok {
+			current = current && p.Current()
+		}
+		if current {
+			if refreshed(resp, err) {
+				// Verify the original resolver scope before binding cache settings.
+				if p, ok := fr.Resolution.(*upstream.QueryPlan); !ok || resp.CacheScope == p.Scope() {
+					out := *resp
+					out.CacheScope = view.scope(resp.CacheScope)
+					s.storeWithSettings(k, &out, generation, &view.settings)
+				}
+			} else if securityFailure(resp) {
+				s.c.Delete(k)
+			} else {
+				s.c.MarkRefreshFailed(k, view.settings.StaleAnswerTTL)
+			}
+		}
+		// Shared results must not refer to resources released at fetch completion.
+		if resp != nil {
+			out := *resp
+			if resp.Msg != nil {
+				out.Msg = resp.Msg.Copy()
+			}
+			return &out, err
 		}
 		return resp, err
 	})
+	// Every DoChan caller has its own buffered result. Retain before scheduling
+	// the callback, then release even for joined/cancelled/stale/prefetch callers.
+	out := make(chan singleflight.Result, 1)
+	s.bg.Add(1)
+	go func() {
+		defer s.bg.Done()
+		result := <-ch
+		if retained != nil {
+			retained.Release()
+		}
+		out <- result
+	}()
+	return out
 }
 
 // refreshed reports whether a fetch produced an answer (as opposed to every
@@ -215,11 +319,11 @@ func refreshed(resp *pipeline.Response, err error) bool {
 	if err != nil || resp == nil || resp.Msg == nil {
 		return false
 	}
-	switch resp.Status {
-	case pipeline.StatusServfailUpstream, pipeline.StatusTimeoutUpstream, pipeline.StatusDNSSECBogus:
-		return false
-	}
-	return true
+	return resp.Status != pipeline.StatusServfailUpstream && resp.Status != pipeline.StatusTimeoutUpstream && resp.Status != pipeline.StatusDNSSECBogus && resp.Security.State != pipeline.ValidationBogus && resp.Security.State != pipeline.ValidationIndeterminate
+}
+
+func securityFailure(resp *pipeline.Response) bool {
+	return resp != nil && (resp.Security.State == pipeline.ValidationBogus || (resp.Security.State == pipeline.ValidationIndeterminate && resp.Security.Reason != "lookup_failure" && resp.Security.Reason != "deadline"))
 }
 
 // wait delivers a fetch result to req, or gives up when the client does.
@@ -249,6 +353,18 @@ func personalise(req *pipeline.Request, r singleflight.Result) (*pipeline.Respon
 	out := *resp
 	out.Msg = resp.Msg.Copy()
 	upstream.FinishReply(req.Msg, out.Msg, -1)
+	now := time.Now()
+	if p, ok := req.Resolution.(*upstream.QueryPlan); ok && p.Validator() != nil {
+		now = p.Validator().Now()
+	}
+	if !out.Security.AvailableAt(now) {
+		out.Security.State, out.Security.Reason = pipeline.ValidationBogus, "validation_expired"
+		out.Msg.Rcode = dns.RcodeServerFailure
+		out.Msg.Answer, out.Msg.Ns = nil, nil
+		out.Status, out.Origin = pipeline.StatusDNSSECBogus, pipeline.OriginFailure
+		upstream.AddEDE(out.Msg, dns.ExtendedErrorCodeSignatureExpired, out.Security.Reason)
+	}
+	upstreamstage.Finalize(req.Msg, out.Msg, out.Security, out.Modified, now)
 	// The cache stage already stored what was cacheable.
 	out.Cacheable = false
 	return &out, nil
@@ -258,7 +374,7 @@ func personalise(req *pipeline.Request, r singleflight.Result) (*pipeline.Respon
 func (s *Stage) serveStale(k cache.Key, req *pipeline.Request, next pipeline.Next, l cache.Lookup, ecsBits int) (*pipeline.Response, error) {
 	if !l.Hold {
 		ch := s.fetch(k, req, next)
-		timer := time.NewTimer(s.settings().StaleMaxWait)
+		timer := time.NewTimer(s.view(req).settings.StaleMaxWait)
 		defer timer.Stop()
 		var done <-chan struct{}
 		if req.Ctx != nil {
@@ -266,6 +382,9 @@ func (s *Stage) serveStale(k cache.Key, req *pipeline.Request, next pipeline.Nex
 		}
 		select {
 		case r := <-ch:
+			if resp, _ := r.Val.(*pipeline.Response); securityFailure(resp) {
+				return personalise(req, r)
+			}
 			if resp, _ := r.Val.(*pipeline.Response); refreshed(resp, r.Err) {
 				return personalise(req, r)
 			}
@@ -298,13 +417,25 @@ func (s *Stage) prefetch(k cache.Key, req *pipeline.Request, next pipeline.Next)
 // answer builds the reply from a cache entry, or nil (after dropping the
 // entry) when it does not decode.
 func (s *Stage) answer(req *pipeline.Request, k cache.Key, l cache.Lookup, ecsBits int, stale bool) *pipeline.Response {
+	if !l.Metadata.Security.AvailableAt(s.c.Now()) {
+		s.c.Delete(k)
+		return nil
+	}
+	if stale {
+		if _, ok := s.c.Peek(k); !ok {
+			return nil
+		}
+	}
 	m := new(dns.Msg)
 	if err := m.Unpack(l.Wire); err != nil {
 		s.c.Delete(k)
 		return nil
 	}
 	age := uint32(l.Age / time.Second) //nolint:gosec // non-negative, bounded by the stale window
-	staleTTL := seconds(s.settings().StaleAnswerTTL)
+	staleTTL := seconds(s.view(req).settings.StaleAnswerTTL)
+	if !l.Metadata.Security.ValidUntil.IsZero() {
+		staleTTL = min(staleTTL, seconds(l.Metadata.Security.ValidUntil.Sub(s.c.Now())))
+	}
 	for _, sec := range [][]dns.RR{m.Answer, m.Ns, m.Extra} {
 		for _, rr := range sec {
 			h := rr.Header()
@@ -323,12 +454,13 @@ func (s *Stage) answer(req *pipeline.Request, k cache.Key, l cache.Lookup, ecsBi
 	m.RecursionAvailable = true
 	sec := storedDNSSEC(m)
 	upstream.FinishReply(req.Msg, m, ecsBits)
+	upstreamstage.Finalize(req.Msg, m, l.Metadata.Security, false, s.c.Now())
 	status := pipeline.StatusCached
 	if stale {
 		status = pipeline.StatusCachedStale
 		upstream.AddEDE(m, dns.ExtendedErrorCodeStaleAnswer, "")
 	}
-	return &pipeline.Response{Msg: m, Status: status, DNSSEC: sec}
+	return &pipeline.Response{Msg: m, Status: status, DNSSEC: sec, Origin: pipeline.OriginForwarded, Security: l.Metadata.Security, CacheScope: l.Metadata.Scope, Upstream: l.Metadata.Upstream}
 }
 
 // dnssecOption is the private-use EDNS option code (RFC 6891 §9) under
@@ -349,9 +481,9 @@ func storedDNSSEC(m *dns.Msg) pipeline.DNSSEC {
 	return pipeline.DNSSECUnknown
 }
 
-// store packs a cacheable response without its OPT record, TTLs clamped.
-func (s *Stage) store(k cache.Key, resp *pipeline.Response) {
-	if !resp.Cacheable || resp.Msg == nil || resp.Msg.Truncated {
+// storeWithSettings packs a cacheable response using the pinned settings.
+func (s *Stage) storeWithSettings(k cache.Key, resp *pipeline.Response, generation uint64, settings *Settings) {
+	if !resp.Cacheable || resp.Msg == nil || resp.Msg.Truncated || resp.Modified || resp.Security.State == pipeline.ValidationBogus || resp.Security.State == pipeline.ValidationIndeterminate || resp.Origin != pipeline.OriginForwarded {
 		return
 	}
 	m := resp.Msg
@@ -372,9 +504,16 @@ func (s *Stage) store(k cache.Key, resp *pipeline.Response) {
 	out.Extra = copyRRs(m.Extra) // OPT dropped
 	var ttl time.Duration
 	if kind == cache.Positive {
-		ttl = s.clampPositive(out)
+		if resp.Security.State == pipeline.ValidationSecure || resp.Security.State == pipeline.ValidationInsecure {
+			ttl = clampAuthenticated(out, settings)
+		} else {
+			ttl = clampPositive(out, settings)
+		}
 	} else {
-		ttl = s.clampNegative(out)
+		ttl = clampNegative(out, settings)
+	}
+	if !resp.Security.ValidUntil.IsZero() {
+		ttl = min(ttl, resp.Security.ValidUntil.Sub(s.c.Now()))
 	}
 	if ttl <= 0 {
 		return
@@ -390,7 +529,31 @@ func (s *Stage) store(k cache.Key, resp *pipeline.Response) {
 	if err != nil {
 		return
 	}
-	s.c.Set(k, wire, kind, ttl)
+	parts, ok := k.Parts()
+	if !ok || parts.Scope != resp.CacheScope {
+		return
+	}
+	s.c.SetIfGeneration(k, wire, kind, ttl, cache.Metadata{Scope: resp.CacheScope, Security: resp.Security, Upstream: resp.Upstream}, generation)
+}
+
+// Authenticated data may be shortened, never raised to MinTTL.
+func clampAuthenticated(m *dns.Msg, settings *Settings) time.Duration {
+	hi := seconds(settings.MaxTTL)
+	var least uint32
+	first := true
+	for _, part := range [][]dns.RR{m.Answer, m.Ns, m.Extra} {
+		for _, rr := range part {
+			t := rr.Header().Ttl
+			if hi > 0 {
+				t = min(t, hi)
+			}
+			rr.Header().Ttl = t
+			if first || t < least {
+				least, first = t, false
+			}
+		}
+	}
+	return time.Duration(least) * time.Second
 }
 
 // seconds converts d to whole seconds for a TTL field, saturating at the
@@ -422,9 +585,9 @@ func copyRRs(in []dns.RR) []dns.RR {
 
 // clampPositive clamps every TTL into [MinTTL, MaxTTL] and returns the
 // entry lifetime: the smallest clamped TTL.
-func (s *Stage) clampPositive(m *dns.Msg) time.Duration {
-	lo := seconds(s.settings().MinTTL)
-	hi := seconds(s.settings().MaxTTL)
+func clampPositive(m *dns.Msg, settings *Settings) time.Duration {
+	lo := seconds(settings.MinTTL)
+	hi := seconds(settings.MaxTTL)
 	least := uint32(0)
 	first := true
 	for _, sec := range [][]dns.RR{m.Answer, m.Ns, m.Extra} {
@@ -446,8 +609,8 @@ func (s *Stage) clampPositive(m *dns.Msg) time.Duration {
 // clampNegative applies RFC 2308: the lifetime is min(SOA TTL, SOA
 // minimum) capped by NegativeTTL; without a SOA, min(MinTTL, NegativeTTL).
 // No record outlives the entry.
-func (s *Stage) clampNegative(m *dns.Msg) time.Duration {
-	limit := seconds(s.settings().NegativeTTL)
+func clampNegative(m *dns.Msg, settings *Settings) time.Duration {
+	limit := seconds(settings.NegativeTTL)
 	var ttl uint32
 	found := false
 	for _, rr := range m.Ns {
@@ -457,7 +620,7 @@ func (s *Stage) clampNegative(m *dns.Msg) time.Duration {
 		}
 	}
 	if !found {
-		ttl = seconds(s.settings().MinTTL)
+		ttl = seconds(settings.MinTTL)
 	}
 	if limit > 0 {
 		ttl = min(ttl, limit)

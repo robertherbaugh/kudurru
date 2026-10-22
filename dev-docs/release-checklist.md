@@ -105,23 +105,25 @@ Repository settings the pipeline relies on (once):
       explicitly moved to the next one.
 - [ ] The [final v0.1 feature review](milestones/m5/features-v0.1.md) has no remaining
       product blocker, and its deployment acceptance checks have passed.
-- [ ] Version strings agree:
-  - `VERSION` holds the version being released (the Makefile's
-    `RELEASE_VERSION`, what a build without a reachable tag reports, reads
-    it);
-  - `version` and `appVersion` in `deploy/helm/kudurru/Chart.yaml` and
-    `deploy/helm/kudurru-crds/Chart.yaml` (the release workflow re-stamps both
-    from the tag when packaging, the committed values are what `helm
-    install ./deploy/helm/kudurru` from a checkout uses);
-  - after changing the charts: `make deploy-assets` (the kustomize bases
-    carry `app.kubernetes.io/version`) and `make rbac-manifests` if
-    `internal/rbac/permissions.yaml` changed;
-  - the image tags in `deploy/compose/**/docker-compose.yml`
-    (`kudurru:<version>`, `kudurru-dnsdist:<dnsdist>-k<version>`,
-    `kudurru-keepalived:<keepalived>-k<version>`); for a release candidate
-    keep the GA tags and say so in the release notes.
-- [ ] CHANGELOG.md: the section for the version, with the date on the GA
-      release.
+- [ ] Set `VERSION` to `MAJOR.MINOR.PATCH` and run `make version-sync`, or
+      use `python3 hack/sync-version.py --version <version>` for both steps.
+      This needs Python 3.9+, Git, Go and Helm. Review its chart versions,
+      generated Kustomize manifests, Compose images, supervisor defaults and
+      install examples, then run `make version-check` (read-only; also in CI).
+      The Makefile uses a reachable tag for this version, falling back to
+      `VERSION` when none exists. Run `make rbac-manifests` separately if
+      `internal/rbac/permissions.yaml` changed.
+- [ ] Review CHANGELOG.md's section for the version and add the date on the
+      GA release. Synchronization adds a missing unreleased heading; release
+      notes and feature/roadmap prose remain editorial, and historical links,
+      API/CRD versions, dependencies, digest pins and development tags remain
+      unchanged.
+- [ ] Inspect exact-tag artifacts with `make release-manifests
+      RELEASE_ARTIFACT_VERSION=<version>-rc.<N>`. GoReleaser passes its actual
+      version to this target: both GA and RC manifests and Compose images
+      match the published tag. Staging uses only tracked deployment files,
+      writes `bin/release` and leaves source files unchanged. kustomize is
+      installed at the Makefile's pinned version if needed.
 - [ ] The distroless bases are pinned by digest (`tag@sha256:<index digest>`)
       in `.goreleaser.yaml` (the `base_image` fallbacks), images/base/Dockerfile,
       the Dockerfile and images/hostnetwork/Dockerfile, the same digests
@@ -138,8 +140,10 @@ goreleaser v2 (a downloaded release binary, checksum verified, or
 - [ ] `goreleaser check` validates `.goreleaser.yaml`.
 - [ ] `goreleaser build --snapshot --single-target --clean`, then
       `./dist/kudurru_linux_amd64_v1/kudurru version`. Without a tag the
-      snapshot is `0.0.0-SNAPSHOT-<commit>`; the before hook also runs
-      `make release-manifests` (kustomize into `bin/release/`).
+      snapshot is `0.0.0-SNAPSHOT-<commit>`; with a reachable tag, its version
+      prefixes `-SNAPSHOT-<commit>`. The before hook also runs
+      `make release-manifests RELEASE_ARTIFACT_VERSION=<snapshot version>`
+      (manifests and Compose into `bin/release/`).
 - [ ] With Docker available: `goreleaser release --snapshot --clean
       --skip=publish,sign` (archives, deb/rpm/apk, SBOMs, ko images into the
       local daemon).
@@ -341,7 +345,8 @@ publish.yml does not change its result), or, for a scan finding, fix it on
 - [ ] Announce with the CHANGELOG section and the known gaps.
 - [ ] For a release candidate: collect issues, fix on `main`, merge `main`
       into `release-candidate` again for the next `-rc.<N>`, or promote the
-      candidate to `release`. For the release: bump `VERSION` on `main` to
-      the next version (for example `0.2.0`) and the chart versions with it;
+      candidate to `release`. For the release: run
+      `python3 hack/sync-version.py --version <next-version>` on `main` and
+      review the synchronized files and new changelog heading;
       the next promotion into `release-candidate` fails until `VERSION` is
       bumped.

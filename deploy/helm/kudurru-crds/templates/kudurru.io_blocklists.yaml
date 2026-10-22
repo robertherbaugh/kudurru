@@ -91,7 +91,7 @@ spec:
                 items:
                   description: |-
                     ListSource is one place a BlockList reads entries from. Exactly one of
-                    URL, Inline, ConfigMapRef or Entries is set.
+                    URL, Inline, ConfigMapRef, Entries or RPZ is set.
                   properties:
                     configMapRef:
                       description: |-
@@ -207,6 +207,7 @@ spec:
                       - domains
                       - adblock
                       - regex
+                      - rpz
                       type: string
                     inline:
                       items:
@@ -214,6 +215,44 @@ spec:
                       type: array
                     name:
                       type: string
+                    rpz:
+                      description: |-
+                        RPZ transfers a complete policy zone using AXFR/IXFR. Missing or expired
+                        enabled data fails closed for policies selecting this required source.
+                      properties:
+                        primaries:
+                          description: |-
+                            Primaries are ordered transfer endpoints (host or host:port). IPv6
+                            endpoints with a port use brackets. TLS verifies the endpoint hostname.
+                          items:
+                            maxLength: 300
+                            minLength: 1
+                            type: string
+                          maxItems: 32
+                          minItems: 1
+                          type: array
+                        transferProtocol:
+                          default: tcp
+                          enum:
+                          - tcp
+                          - tls
+                          type: string
+                        tsigKeyRef:
+                          description: TSIGKeyRef names an operator-managed key, never
+                            secret material.
+                          maxLength: 253
+                          type: string
+                        zoneName:
+                          description: ZoneName is the non-root absolute policy-zone
+                            origin.
+                          maxLength: 253
+                          minLength: 1
+                          pattern: ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.?$
+                          type: string
+                      required:
+                      - primaries
+                      - zoneName
+                      type: object
                     subdomains:
                       description: |-
                         Subdomains makes the hosts and plain-domain entries of this source
@@ -224,10 +263,15 @@ spec:
                       type: string
                   type: object
                   x-kubernetes-validations:
-                  - message: exactly one of url, inline, configMapRef or entries must
-                      be set
+                  - message: exactly one of url, inline, configMapRef, entries or
+                      rpz must be set
                     rule: '[has(self.url), has(self.inline), has(self.configMapRef),
-                      has(self.entries)].filter(x, x).size() == 1'
+                      has(self.entries), has(self.rpz)].filter(x, x).size() == 1'
+                  - message: RPZ transfer configuration requires format rpz, and format
+                      rpz requires RPZ configuration
+                    rule: has(self.rpz) == (has(self.format) && self.format == 'rpz')
+                  - message: RPZ wildcard semantics cannot be overridden with subdomains
+                    rule: '!has(self.rpz) || !has(self.subdomains) || !self.subdomains'
                 maxItems: 256
                 minItems: 1
                 type: array
@@ -237,6 +281,9 @@ spec:
             x-kubernetes-validations:
             - message: response customIP requires the customIP block
               rule: '!has(self.response) || self.response != ''customIP'' || has(self.customIP)'
+            - message: RPZ sources require block mode
+              rule: '!has(self.mode) || self.mode != ''allow'' || self.sources.all(s,
+                !has(s.rpz))'
           status:
             description: BlockListStatus is the observed state of a block list.
             properties:
@@ -361,8 +408,8 @@ spec:
               unsupported:
                 description: |-
                   Unsupported counts valid rules this version parses but does not
-                  apply: modifiers such as $important and $badfilter, mid-pattern
-                  wildcards, hosts rewrites.
+                  apply, including hosts rewrites and RPZ triggers requiring resolver NS
+                  provenance. Supported modifiers are not counted as unsupported.
                 type: integer
             type: object
         required:

@@ -116,9 +116,11 @@ func (s *Suffix) Bytes() int {
 // SuffixBuilder accumulates base names for a Suffix set. The zero value is
 // ready to use.
 type SuffixBuilder struct {
-	tldIndex map[string]int32
-	tlds     []tldArenas
-	added    int
+	// MergeTags ORs tags of duplicate entries instead of keeping the first.
+	MergeTags bool
+	tldIndex  map[string]int32
+	tlds      []tldArenas
+	added     int
 }
 
 type tldArenas struct {
@@ -153,6 +155,8 @@ func (b *SuffixBuilder) Add(base string, tag uint8) bool {
 	if dot < 0 {
 		if !t.whole {
 			t.whole, t.wholeTag = true, tag
+		} else if b.MergeTags {
+			t.wholeTag |= tag
 		}
 		return true
 	}
@@ -186,7 +190,7 @@ func (b *SuffixBuilder) Build() *Suffix {
 		}
 		t.byLen = make([]bucket, len(ta.byLen))
 		for w := range ta.byLen {
-			bk, n := ta.byLen[w].build(w)
+			bk, n := ta.byLen[w].build(w, b.MergeTags)
 			t.byLen[w] = bk
 			s.n += n
 		}
@@ -208,4 +212,40 @@ func (b *SuffixBuilder) Build() *Suffix {
 	}
 	*b = SuffixBuilder{}
 	return s
+}
+
+// Visit yields every matching base broadest first. Returning false stops.
+// It is used only when cancellation needs to inspect alternative matches.
+func (s *Suffix) Visit(name string, visit func(string, uint8) bool) {
+	if s == nil {
+		return
+	}
+	dot := strings.LastIndexByte(name, '.')
+	tld := name[dot+1:]
+	ti, ok := s.tldIndex[tld]
+	if !ok {
+		return
+	}
+	t := &s.tlds[ti]
+	if t.whole && !visit(tld, t.wholeTag) {
+		return
+	}
+	if dot <= 0 {
+		return
+	}
+	for end := dot; ; {
+		j := strings.LastIndexByte(name[:end], '.')
+		start := j + 1
+		rest := name[start:dot]
+		if len(rest) > 0 && len(rest) < len(t.byLen) {
+			b := &t.byLen[len(rest)]
+			if i, ok := b.find(rest); ok && !visit(name[start:], b.tagAt(i)) {
+				return
+			}
+		}
+		if j < 0 {
+			return
+		}
+		end = j
+	}
 }

@@ -108,6 +108,7 @@ func (s *Stage) transfer(req *pipeline.Request, gate zone.Gate, z *zone.Zone) *p
 			s.countTransfer(z, TransferFormErr)
 			r := pipeline.Reply(req, dns.RcodeFormatError, pipeline.StatusAuthoritative)
 			r.Upstream = upstreamName(z)
+			r.Origin = pipeline.OriginFailure
 			s.finish(req, r.Msg)
 			return r
 		}
@@ -132,6 +133,7 @@ func (s *Stage) transfer(req *pipeline.Request, gate zone.Gate, z *zone.Zone) *p
 func (s *Stage) refused(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
 	r := pipeline.Reply(req, dns.RcodeRefused, pipeline.StatusRefusedACL)
 	r.Upstream = upstreamName(z)
+	r.Origin = pipeline.OriginFailure
 	s.finish(req, r.Msg)
 	return r
 }
@@ -140,7 +142,7 @@ func (s *Stage) refused(req *pipeline.Request, z *zone.Zone) *pipeline.Response 
 // to date, or must retry over TCP (RFC 1995 §2, §4).
 func (s *Stage) soaOnly(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
 	m := s.xfrMsg(req, []dns.RR{z.SOA()})
-	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z)}
+	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z), Origin: pipeline.OriginAuthoritative, Security: pipeline.Security{State: pipeline.ValidationUnknown}}
 }
 
 // axfr streams the whole zone. Msg is the first message; Transfer yields
@@ -153,7 +155,7 @@ func (s *Stage) axfr(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
 		first = s.xfrMsg(req, c)
 		break
 	}
-	resp := &pipeline.Response{Msg: first, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z)}
+	resp := &pipeline.Response{Msg: first, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z), Origin: pipeline.OriginAuthoritative, Security: pipeline.Security{State: pipeline.ValidationUnknown}}
 	resp.Transfer = func(yield func(*dns.Msg) bool) {
 		i := 0
 		for c := range chunks {
@@ -204,7 +206,25 @@ func ixfrSerial(m *dns.Msg, z *zone.Zone) (uint32, bool) {
 // calling into the same code. The channel is buffered with every chunk and
 // closed, so a consumer that stops early leaks nothing.
 func (s *Stage) Transfer(name string, serial uint32) (<-chan []dns.RR, error) {
-	set := s.zones()
+	// Once captured serving is wired, request-free capability calls cannot
+	// select a coherent cut. Call TransferCaptured with the retained request.
+	if s.Capture != nil {
+		return nil, pipeline.ErrServingCapture
+	}
+	return s.transferChunks(s.zones(), name, serial)
+}
+
+// TransferCaptured reads only the typed zone.Set supplied by Stage.Capture.
+// Chunk resources are borrowed from req.Serving; callers retain/clone that
+// lease through consumption. IXFR SOA and AXFR fallback use this same set.
+func (s *Stage) TransferCaptured(req *pipeline.Request, name string, serial uint32) (<-chan []dns.RR, error) {
+	if req == nil || req.Serving == nil || s.Capture == nil {
+		return nil, pipeline.ErrServingCapture
+	}
+	return s.transferChunks(s.Capture(req), name, serial)
+}
+
+func (s *Stage) transferChunks(set zone.Set, name string, serial uint32) (<-chan []dns.RR, error) {
 	if set == nil || set.Gate() != zone.GateOpen {
 		return nil, ErrUnsynced
 	}
@@ -212,8 +232,11 @@ func (s *Stage) Transfer(name string, serial uint32) (<-chan []dns.RR, error) {
 	if z == nil || z.Name() != dns.CanonicalName(name) {
 		return nil, ErrZoneNotFound
 	}
-	if z.Type() != v1alpha1.ZoneTypePrimary || z.HasFallback() {
+	if (z.Type() != v1alpha1.ZoneTypePrimary && z.Type() != v1alpha1.ZoneTypeSecondary) || z.HasFallback() {
 		return nil, ErrNotTransferable
+	}
+	if !z.AvailableAt(s.now()) {
+		return nil, ErrUnsynced
 	}
 	var chunks [][]dns.RR
 	if serial != 0 && z.UpToDate(serial) {

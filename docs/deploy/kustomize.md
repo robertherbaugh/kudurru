@@ -47,9 +47,9 @@ replicas and no key, changes through the API and the dashboard answer
 `402 license_required` ([LICENSING.md](../../LICENSING.md)).
 
 Or straight from a release: `kubectl apply --server-side -f
-https://github.com/robertherbaugh/kudurru/releases/download/v0.1.0/install.yaml`.
+https://github.com/robertherbaugh/kudurru/releases/download/v0.2.0/install.yaml`.
 
-## Customising
+## Customizing
 
 Write your own overlay on top of `deploy/kustomize/default` (or any overlay) and patch
 what you need, for example the upstreams in the node ConfigMap or the
@@ -59,7 +59,7 @@ replica count:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - github.com/robertherbaugh/kudurru/config/overlays/metallb?ref=v0.1.0
+  - github.com/robertherbaugh/kudurru/deploy/kustomize/overlays/metallb?ref=v0.2.0
 patches:
   - target: { kind: Deployment, name: kudurru }
     patch: |-

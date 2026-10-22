@@ -72,7 +72,7 @@ func forwarded(ip string, ttl uint32) func(req *pipeline.Request) (*pipeline.Res
 		}
 		m.SetEdns0(1232, false)
 		upstream.FinishReply(req.Msg, m, -1)
-		return &pipeline.Response{Msg: m, Status: pipeline.StatusForwarded, Upstream: "default/test", Cacheable: true}, nil
+		return &pipeline.Response{Msg: m, Status: pipeline.StatusForwarded, Origin: pipeline.OriginForwarded, Upstream: "default/test", Cacheable: true}, nil
 	}
 }
 
@@ -160,8 +160,8 @@ func TestMissThenHitWithCountdown(t *testing.T) {
 	if opt := r2.Msg.IsEdns0(); opt == nil || opt.UDPSize() != upstream.EDNSBufferSize {
 		t.Fatal("EDNS client must get an OPT")
 	}
-	if r2.Cacheable || r2.Upstream != "" {
-		t.Fatal("cache answers are not re-stored and name no upstream")
+	if r2.Cacheable || r2.Upstream != r1.Upstream {
+		t.Fatal("cache answers are not re-stored and retain source provenance")
 	}
 	if _, err := r2.Msg.Pack(); err != nil {
 		t.Fatal(err)
@@ -218,6 +218,16 @@ func TestWhatIsNotCached(t *testing.T) {
 		name    string
 		respond func(*pipeline.Request) (*pipeline.Response, error)
 	}{
+		{"unknown origin", func(req *pipeline.Request) (*pipeline.Response, error) {
+			r, _ := forwarded("192.0.2.1", 300)(req)
+			r.Origin = pipeline.OriginUnknown
+			return r, nil
+		}},
+		{"modified", func(req *pipeline.Request) (*pipeline.Response, error) {
+			r, _ := forwarded("192.0.2.1", 300)(req)
+			r.Modified = true
+			return r, nil
+		}},
 		{"conditional", func(req *pipeline.Request) (*pipeline.Response, error) {
 			r, _ := forwarded("10.0.0.1", 300)(req)
 			r.Cacheable = false
@@ -330,7 +340,7 @@ func TestTTLClamps(t *testing.T) {
 				if tc.ns != nil {
 					m.Ns = []dns.RR{dns.Copy(tc.ns)}
 				}
-				return &pipeline.Response{Msg: m, Status: pipeline.StatusForwarded, Cacheable: true}, nil
+				return &pipeline.Response{Msg: m, Status: pipeline.StatusForwarded, Origin: pipeline.OriginForwarded, Cacheable: true}, nil
 			})
 			h.serve(request("t.example", dns.TypeA, 1))
 			l, ok := h.stage.Cache().Peek(cache.MakeKey("t.example.", dns.TypeA, dns.ClassINET, false, false, netip.Prefix{}))

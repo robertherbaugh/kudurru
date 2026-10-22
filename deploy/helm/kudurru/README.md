@@ -5,12 +5,12 @@ as CRDs, forwarding with a cache, blocklists, per-client policies, a query
 log and a UI. Install the `kudurru-crds` chart first.
 
 ```sh
-helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
+helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.2.0
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.2.0 \
   -n kudurru-system --create-namespace --set replicaCount=1
 ```
 
-These commands install v0.1.0 with one replica and no license key. For
+These commands install the version shown above with one replica and no license key. For
 multiple replicas, add a key as described in the
 [license-key guide](../../../docs/deploy/helm.md#license-key).
 

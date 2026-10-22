@@ -19,6 +19,31 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   The 0.1.0 image has no default command, so as shipped the container
   printed the CLI help, exited and restarted in a loop.
 
+## [0.2.0] - unreleased
+
+### Added
+
+- Independent secondary-zone AXFR/IXFR ingestion over TCP or verified TLS, with optional TSIG,
+  SOA refresh/retry/expiry, RFC 1982 serial handling and durable node-local
+  last-good copies. Invalid, unauthenticated and oversized transfers retain
+  previous data; expired or unavailable secondaries answer SERVFAIL.
+- Secondary configuration in the zone wizard/settings and node-specific
+  serial, availability, expiry and failure reporting in the API, dashboard
+  and metrics. Transferred records remain read-only.
+
+### Fixed
+
+- CNAME/DNAME chasing rechecks the most specific local zone before following
+  a target, so parent wildcard data cannot bypass a child zone's data or expiry.
+- Current SQLite commands recheck verified credential expiry at final admission,
+  including no-op and dedup results. Captured primary routing now enforces the
+  earliest ancestor expiry without changing durable head evidence.
+
+Stub zones and signed secondary serving are implemented on the development
+branch. Inbound NOTIFY verifies the primary source
+and configured TSIG, schedules bounded local refreshes, and fans authenticated
+hints to peers so every replica transfers independently.
+
 ## [0.1.0] - 2026-10-18
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or

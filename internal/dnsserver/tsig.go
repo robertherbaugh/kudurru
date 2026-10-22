@@ -81,7 +81,9 @@ type TSIGKey struct {
 
 // StaticKeyring is an immutable TSIGKeyring over a fixed set of keys.
 type StaticKeyring struct {
-	keys map[string]TSIGKey
+	keys     map[string]TSIGKey
+	versions map[string]string
+	version  string
 }
 
 var _ TSIGKeyring = (*StaticKeyring)(nil)
@@ -89,7 +91,7 @@ var _ TSIGKeyring = (*StaticKeyring)(nil)
 // NewStaticKeyring validates keys and returns a keyring. Names must be
 // unique (case-insensitively), algorithms supported and secrets non-empty.
 func NewStaticKeyring(keys ...TSIGKey) (*StaticKeyring, error) {
-	k := &StaticKeyring{keys: make(map[string]TSIGKey, len(keys))}
+	k := &StaticKeyring{keys: make(map[string]TSIGKey, len(keys)), versions: make(map[string]string, len(keys))}
 	var errs []error
 	for i, key := range keys {
 		name := TSIGKeyName(key.Name)
@@ -115,16 +117,18 @@ func NewStaticKeyring(keys ...TSIGKey) (*StaticKeyring, error) {
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
+	k.sealVersions()
 	return k, nil
 }
 
-// Lookup implements TSIGKeyring. The returned secret must not be modified.
+// Lookup implements TSIGKeyring. The returned secret is a detached copy;
+// callers cannot mutate the provider generation used to verify requests.
 func (k *StaticKeyring) Lookup(name string) ([]byte, string, bool) {
 	if k == nil {
 		return nil, "", false
 	}
 	key, ok := k.keys[TSIGKeyName(name)]
-	return key.Secret, key.Algorithm, ok
+	return append([]byte(nil), key.Secret...), key.Algorithm, ok
 }
 
 // Names returns the key names, sorted.
@@ -177,7 +181,17 @@ func (p keyringProvider) mac(t *dns.TSIG) (hash.Hash, error) {
 	if p.k == nil {
 		return nil, dns.ErrSecret
 	}
-	secret, alg, ok := p.k.Lookup(t.Hdr.Name)
+	var secret []byte
+	var alg string
+	var ok bool
+	if static, immutable := p.k.(*StaticKeyring); immutable && static != nil {
+		// The private path avoids a per-message secret copy. Only this package
+		// can reach the immutable backing bytes, and hash constructors copy them.
+		key, found := static.keys[TSIGKeyName(t.Hdr.Name)]
+		secret, alg, ok = key.Secret, key.Algorithm, found
+	} else {
+		secret, alg, ok = p.k.Lookup(t.Hdr.Name)
+	}
 	if !ok {
 		return nil, dns.ErrSecret
 	}
@@ -235,6 +249,7 @@ const tsigReserve = 2*255 + 16 + 64 + 6
 // The zero value (unsigned request) does nothing.
 type signer struct {
 	key, alg string
+	proof    *VerifiedTSIG
 }
 
 func (s signer) signed() bool { return s.key != "" }
@@ -259,7 +274,7 @@ func verifyTSIG(h *Handler, e *env, w dns.ResponseWriter, r *dns.Msg, client *pi
 	err := w.TsigStatus()
 	if err == nil {
 		client.TSIGKey = TSIGKeyName(t.Hdr.Name)
-		return signer{key: t.Hdr.Name, alg: t.Algorithm}, true
+		return signer{key: t.Hdr.Name, alg: t.Algorithm, proof: captureVerifiedTSIG(e, r, *client, time.Now())}, true
 	}
 	reason, code := TSIGBadSig, uint16(dns.RcodeBadSig)
 	switch {

@@ -43,6 +43,12 @@ variable on Cloudflare) and stays in memory. Postgres holds the record:
 who holds which license, every key signed, the attestations and the
 append-only audit trail.
 
+An omitted feature list grants all features available to the key's plan.
+Custom branding requires Enterprise: shared terms validation and the final
+signer reject explicit `branding` on Personal, Business or Trial. Nodes also
+enforce the plan restriction when they verify imported or manually signed keys.
+This adds no node-to-portal request and changes no signed wire format.
+
 ## Sign-in
 
 ```mermaid
@@ -119,7 +125,7 @@ flowchart TD
     PR["the portal's renewal of a personal key<br/>(a fresh certification)"] -->|"in the renewal window"| AA
     AA -->|"false (the default)"| Q["open request: auto_approve_off<br/>(Approval required)"]
     AA -->|"true, a renewal"| RN["renew: +365 days, mail it"]
-    AA -->|"true, a new key,<br/>under the daily cap"| IS["issue: personal, 3 nodes,<br/>every feature, 365 days; mail it"]
+    AA -->|"true, a new key,<br/>under the daily cap"| IS["issue: personal, 3 nodes,<br/>Personal features, 365 days; mail it"]
     AA -->|"true, a new key,<br/>daily cap reached"| QC["open request: daily_cap"]
     Q --> L["mail each admin: the details, a one-click<br/>approve link, the Requests page"]
     QC --> L
@@ -313,7 +319,7 @@ erDiagram
         text licensee
         text plan
         int nodes
-        text_array features "null: every feature"
+        text_array features "null: all features available to plan"
         timestamptz expires_at
         text status "active or withdrawn"
         jsonb attestation

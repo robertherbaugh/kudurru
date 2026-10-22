@@ -14,6 +14,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/settings"
 )
 
@@ -53,7 +54,7 @@ type SettingConstraints struct {
 	// Presets are suggested values (durations, byte sizes).
 	Presets []string `json:"presets,omitempty"`
 	// Format is the syntax of a string value; empty values are not checked.
-	Format string `json:"format,omitempty" enum:"ip,ipv4,ipv6,cidr,hostport,url,domain,upstream,email"`
+	Format string `json:"format,omitempty" enum:"ip,ipv4,ipv6,cidr,hostport,url,domain,upstream,email,date-time"`
 	// Ref is the kind of object the value names.
 	Ref string `json:"ref,omitempty" enum:"upstreamGroup,clientGroup,blockList,policy,zone"`
 	// Items is the element shape of a list or string[]; Keys and Values
@@ -143,12 +144,16 @@ func (s *Server) registerSettings() {
 	s.registerSettingsOwnership()
 	register(s, operation(http.MethodGet, "/settings", "getSettings", "Cluster-scope settings (redacted)", "settings"),
 		perm{resource: "settings", verb: "read"}, func(ctx context.Context, _ *struct{}) (*settingsOutput, error) {
-			if s.opts.SettingsOwnership != nil {
+			if s.opts.CanonicalSettings == nil && s.opts.SettingsOwnership != nil {
 				if _, err := s.opts.SettingsOwnership.Refresh(ctx); err != nil {
 					return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "settings sources are unavailable", "retry when the settings source is reachable")
 				}
 			}
-			return s.settingsBody(config.ScopeCluster, nil, nil), nil
+			cfg, err := s.clusterSettings(ctx)
+			if err != nil {
+				return nil, storeError(err)
+			}
+			return s.settingsBody(cfg, config.ScopeCluster, nil, nil), nil
 		})
 	register(s, operation(http.MethodPatch, "/settings", "patchSettings", "Change cluster-scope settings (JSON merge patch)", "settings"),
 		perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *patchSettingsInput) (*settingsOutput, error) {
@@ -156,7 +161,7 @@ func (s *Server) registerSettings() {
 		})
 	register(s, operation(http.MethodGet, "/node/config", "getNodeConfig", "This node's host-local settings (redacted)", "settings"),
 		perm{resource: "settings", verb: "read"}, func(context.Context, *struct{}) (*settingsOutput, error) {
-			return s.settingsBody(config.ScopeNode, nil, nil), nil
+			return s.settingsBody(s.config(), config.ScopeNode, nil, nil), nil
 		})
 	register(s, operation(http.MethodPatch, "/node/config", "patchNodeConfig", "Change this node's settings (hostOnly keys refused)", "settings"),
 		perm{resource: "node", verb: "config"}, func(ctx context.Context, in *patchNodeConfigInput) (*settingsOutput, error) {
@@ -218,10 +223,9 @@ func setPath(tree map[string]any, p string, v any) {
 }
 
 // settingsBody renders the keys of one scope.
-func (s *Server) settingsBody(scope config.Scope, changed, restart []string) *settingsOutput {
-	cfg := s.config()
+func (s *Server) settingsBody(cfg *config.Config, scope config.Scope, changed, restart []string) *settingsOutput {
 	var ownership settings.Status
-	if s.opts.SettingsOwnership != nil {
+	if s.opts.CanonicalSettings == nil && scope == config.ScopeCluster && s.opts.SettingsOwnership != nil {
 		cfg, ownership = s.opts.SettingsOwnership.Snapshot()
 	}
 	flat := flatSettings(cfg)
@@ -237,14 +241,31 @@ func (s *Server) settingsBody(scope config.Scope, changed, restart []string) *se
 		setPath(tree, k.Path, v)
 	}
 	body := &SettingsBody{Scope: string(scope), Node: s.opts.NodeName, Settings: tree, Changed: changed, RestartRequired: restart}
-	if scope == config.ScopeCluster && s.opts.SettingsOwnership != nil {
+	if scope == config.ScopeCluster && s.opts.CanonicalSettings == nil && s.opts.SettingsOwnership != nil {
 		body.Sections, body.Conflicts = ownership.Sections, ownership.Conflicts
 	}
 	return &settingsOutput{Body: body}
 }
 
-func (s *Server) settingsSchema(context.Context, *struct{}) (*schemaOutput, error) {
-	cfg := s.config()
+func (s *Server) clusterSettings(ctx context.Context) (*config.Config, error) {
+	if s.opts.CanonicalSettings != nil {
+		cfg, err := s.opts.CanonicalSettings.Settings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if cfg == nil {
+			return nil, errUnavailable("complete settings image unavailable")
+		}
+		return cfg, nil
+	}
+	return s.config(), nil
+}
+
+func (s *Server) settingsSchema(ctx context.Context, _ *struct{}) (*schemaOutput, error) {
+	cfg, err := s.clusterSettings(ctx)
+	if err != nil {
+		return nil, storeError(err)
+	}
 	flat := flatSettings(cfg)
 	items := make([]SettingKey, 0, len(config.Schema))
 	for _, k := range config.Schema {
@@ -258,7 +279,7 @@ func (s *Server) settingsSchema(context.Context, *struct{}) (*schemaOutput, erro
 			WriteOnly: k.WriteOnly, Label: k.Label, Group: k.Group, SettingConstraints: settingConstraints(k.Shape()), Value: v,
 		})
 	}
-	if s.opts.SettingsOwnership != nil {
+	if s.opts.CanonicalSettings == nil && s.opts.SettingsOwnership != nil {
 		status := s.opts.SettingsOwnership.Status()
 		for i := range items {
 			if items[i].Scope == string(config.ScopeCluster) {
@@ -313,6 +334,9 @@ func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch ma
 }
 
 func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, patch map[string]any, ifMatch string) (*settingsOutput, error) {
+	if scope == config.ScopeNode && (s.opts.NodeConfigCommand != nil || s.opts.CanonicalSettings != nil || s.opts.ObjectReads != nil) && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil) {
+		return nil, errUnavailable("current local node command unavailable")
+	}
 	if len(patch) == 0 {
 		return nil, errInvalid("body: an object with the keys to change is required")
 	}
@@ -323,7 +347,14 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	}
 	cur := s.config()
 	expected := ""
-	if s.opts.SettingsOwnership != nil {
+	canonical := scope == config.ScopeCluster && s.opts.CanonicalSettings != nil
+	if canonical {
+		var err error
+		cur, err = s.clusterSettings(ctx)
+		if err != nil {
+			return nil, storeError(err)
+		}
+	} else if s.opts.SettingsOwnership != nil {
 		var status settings.Status
 		cur, status = s.opts.SettingsOwnership.Snapshot()
 		expected = status.Sections["upstreams"].Revision
@@ -339,6 +370,9 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	var restart []string
 	for _, p := range paths {
 		k, _ := config.Lookup(p)
+		if strings.HasPrefix(p, "branding.") && !canonical && (s.opts.License == nil || !s.opts.License.Status().Allows(license.FeatureBranding)) {
+			return nil, brandingLicenseRequired()
+		}
 		switch {
 		case k.HostOnly:
 			return nil, newError(http.StatusBadRequest, KeyHostOnly, p+" is hostOnly and can only be set in the config file or environment on the host",
@@ -373,6 +407,29 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		return nil, err
 	}
 	next.EnvLocked, next.Source = cur.EnvLocked, cur.Source
+	if scope == config.ScopeNode && s.opts.NodeConfigCommand != nil {
+		receipt, err := s.opts.NodeConfigCommand(ctx, next, paths)
+		if err != nil {
+			s.recordAction(ctx, "node.config", audit.Resource{Kind: "settings", Name: string(scope)}, err, nil, nil)
+			return nil, storeError(err)
+		}
+		if receipt.Before == nil || receipt.After == nil {
+			return nil, errUnavailable("local node command receipt unavailable")
+		}
+		before, after := map[string]any{}, map[string]any{}
+		old, actual := flatSettings(receipt.Before), flatSettings(receipt.After)
+		for _, p := range paths {
+			before[p], after[p] = old[p], actual[p]
+			if k, _ := config.Lookup(p); k.WriteOnly {
+				before[p], after[p] = Redacted, Redacted
+			}
+		}
+		s.recordAction(ctx, "node.config", audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
+		out := s.settingsBody(receipt.After, scope, paths, restart)
+		persisted := false
+		out.Body.Persisted = &persisted
+		return out, nil
+	}
 	before := map[string]any{}
 	after := map[string]any{}
 	old := flatSettings(cur)
@@ -384,7 +441,11 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		}
 	}
 	persisted := false
-	managed := s.opts.SettingsOwnership != nil && scope == config.ScopeCluster
+	writer := s.opts.Settings
+	if canonical {
+		writer = s.opts.CanonicalSettings
+	}
+	managed := !canonical && s.opts.SettingsOwnership != nil && scope == config.ScopeCluster
 	if managed {
 		err := s.opts.SettingsOwnership.Write(ctx, expected, next, paths)
 		s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, err, before, after)
@@ -392,22 +453,22 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 			return nil, ownershipError(err)
 		}
 		persisted = true
-	} else if s.opts.Settings != nil && scope == config.ScopeCluster {
-		if err := s.opts.Settings.WriteSettings(ctx, next, paths); err != nil {
+	} else if writer != nil && scope == config.ScopeCluster {
+		if err := writer.WriteSettings(ctx, next, paths); err != nil {
 			s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, err, before, after)
 			return nil, storeError(err)
 		}
 		persisted = true
 	}
-	if !managed && s.opts.SettingsOwnership != nil {
+	if !canonical && !managed && s.opts.SettingsOwnership != nil {
 		if err := s.opts.SettingsOwnership.SetNode(next, paths); err != nil {
 			return nil, ownershipError(err)
 		}
-	} else if !managed && s.opts.Reload != nil {
+	} else if !canonical && !managed && s.opts.Reload != nil {
 		next.SettingsFile = cur.SettingsFile
 		next.Node.Name = cur.Node.Name
 		s.opts.Reload.Set(next)
-	} else if !managed {
+	} else if !canonical && !managed {
 		s.cfgMu.Lock()
 		s.cfg = next
 		s.cfgMu.Unlock()
@@ -419,7 +480,7 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	if !managed {
 		s.recordAction(ctx, action, audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
 	}
-	out := s.settingsBody(scope, paths, restart)
+	out := s.settingsBody(next, scope, paths, restart)
 	out.Body.Persisted = &persisted
 	return out, nil
 }

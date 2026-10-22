@@ -97,6 +97,33 @@ comes back with its lists before it can reach anybody. Readiness follows
 source is waiting (unless `blocking.allowDegraded`), and `failOnError` exits
 the process when the first load fails.
 
+## Complete serving candidates
+
+`listfetcher.PrepareComplete` supplies strict list preparation for the complete
+serving publisher. It receives all BlockList objects from one captured image
+and the exact pinned service catalog. Every enabled external text source must
+have an explicit published digest, matching cache metadata and matching SHA-256
+body bytes. The file descriptor remains open through verification and parsing.
+Preparation performs no network requests or store reads, and bounds the number
+of lists, sources and bytes it consumes.
+
+A missing body, digest mismatch or compilation failure rejects the whole
+candidate. The publisher retains its previous complete bundle. Disabled and
+empty lists remain explicit; RPZ lists retain their identity while their feed
+data comes from a separately captured runtime owner. This preparer does not
+use the older-body and individual-list fallback behavior of the existing
+resolver described above. Production publisher composition is still pending.
+
+```mermaid
+flowchart LR
+    Image["One captured BlockList object cut"] --> Verify["Verify each exact published body digest"]
+    Cache["Pinned local cache files"] --> Verify
+    Verify --> Compile["Compile all lists with pinned catalog"]
+    Compile --> Candidate["One complete candidate"]
+    Verify -->|failure| Retain["Retain previous whole serving bundle"]
+    Compile -->|failure| Retain
+```
+
 ## Inside a compiled list
 
 ```mermaid
@@ -126,7 +153,7 @@ for 3 M entries ([spike](../../dev-docs/spikes/blocking.md)); `make bench` guard
 | `\|\|example.com^`, `\|\|example.com`, `*.example.com` | suffix (`*.x` also matches `x`) |
 | `@@\|\|example.com^` | exception chain (per list) |
 | `/regex/` | regex (at most 1000 per list) |
-| `$important`, `$badfilter`, other modifiers, mid-pattern wildcards | counted as unsupported, ignored |
+| `$dnstype`, `$dnsrewrite`, `$client`, `$ctag`, `$important`, `$badfilter`, `$denyallow`, mid-pattern wildcards | complete contextual rule stream; unknown modifiers remain counted and ignored |
 
 ## Compile and swap
 
@@ -157,3 +184,72 @@ On the first start the bootstrap seeds `BlockList starter` (one inline
 source made from the StevenBlack hosts file, embedded in the binary) and
 `Policy default` that uses it. Blocking therefore works offline from the
 first query, and its hits show as `blocked_exact`.
+
+## Transferred RPZ foundation
+
+`BlockList` sources can describe an RPZ origin and TCP/TLS transfer primaries,
+with an optional TSIG key reference. The `internal/rpz` receiver reuses the
+secondary transfer transport, but never installs the feed as an authoritative
+zone. Each node maintains its own SOA refresh/retry/expire timers and durable
+last-good copy. Unsupported NSDNAME/NSIP triggers and unknown policy actions
+are counted; the compiler supports QNAME, CLIENT-IP and RESPONSE-IP with
+NXDOMAIN, NODATA, PASSTHRU, DROP, TCP-only and local-data actions.
+
+Within a feed, client-IP precedes QNAME and answer-IP; feed declaration order
+takes precedence across feeds. A selected required feed that is missing,
+expired or bound to an old source identity returns an unavailable decision.
+The query evaluator reads immutable memory and checks exact expiry. RPZ names
+use DNS closest-encloser wildcard semantics, distinct from adblock suffix rules.
+
+```mermaid
+flowchart LR
+    Source["Selected BlockList RPZ source"] --> XFR["Per-node SOA / AXFR / IXFR"]
+    XFR --> Validate["Bounded complete RR validation and compile"]
+    Validate --> Durable["Candidate slot then accepted marker"]
+    Durable --> Snapshot["Immutable feed snapshot + exact expiry"]
+    Snapshot --> Decision["Ordered selected-policy decision"]
+```
+
+Durable data binds cluster, source UID/configuration and credential fingerprint.
+Restart cannot renew expiry. Candidate and acceptance writes use two bounded
+slots and a checksum/nonce-bound marker; failed acceptance preserves the prior
+copy. A configuration race invalidates the candidate. If both marker deletion
+and fallback overwrite fail, an exact configuration/credential restoration after
+a crash can still recover that candidate; production publication must coordinate
+the source/credential cut with this separate local storage boundary.
+
+The ordinary list fetcher never downloads or parses RPZ sources, including an
+invalid RPZ source. RPZ-only lists retain their policy identity with zero text
+rules; mixed lists compile their ordinary sources separately. Shared source
+counts and digests describe only ordinary rules. RPZ transfer state belongs to
+each node, so shared BlockList status cannot establish feed availability.
+
+The blocking-stage adapter evaluates only the feeds in the selected policy's
+list order. Explicit allow lists and allow-only run first. It resolves the
+original query once, preserves resolver failures, then evaluates QNAME, CNAME
+targets and answer addresses together. Thus an earlier feed's answer-IP rule
+beats a later feed's QNAME rule. PASSTHRU stops RPZ evaluation and continues
+ordinary blocking. Local data, CNAME, NXDOMAIN/NODATA, DROP and TCP-only have
+distinct responses; synthesis removes AD/proofs and remains outside the raw
+resolver cache. CNAME dependencies retain the captured policy and cleanup
+ownership, and feed expiry is checked again after target resolution.
+
+```mermaid
+flowchart TD
+    Query["Selected recursive IN query"] --> Allow["Explicit allow / allow-only"]
+    Allow --> Required["Required feed availability"]
+    Required --> Raw["Resolve original once"]
+    Raw --> Failure{"Resolver failure?"}
+    Failure -- yes --> Preserve["Return original failure"]
+    Failure -- no --> Evaluate["Ordered RPZ evaluation over names and addresses"]
+    Evaluate --> Action["Private policy response, DROP or TCP-only"]
+    Evaluate --> Ordinary["Unmatched / PASSTHRU: ordinary rules over raw response"]
+```
+
+Compiler/runtime/schema acceptance includes native BIND transfers and policy
+comparisons, TSIG/TLS rejection, IXFR, outage/restart, expiry, identity changes
+and persistence faults. Adapter tests cover policy order, all actions, raw-cache
+isolation, bounded CNAME resolution, expiry and response cleanup. Production
+capture/publication, node diagnostics, transport observation, edge isolation
+and dashboard integration remain in progress. The adapter is not yet wired
+into the server.

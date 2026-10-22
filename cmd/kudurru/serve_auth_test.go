@@ -19,6 +19,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
+	"github.com/robertherbaugh/kudurru/internal/auth/iamgate"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
@@ -30,6 +31,11 @@ import (
 // does, over a memory store, with the bootstrap admin's password
 // admin-password-1. mod adjusts the configuration first.
 func authAPI(t *testing.T, mod func(*config.Config)) (*httptest.Server, store.Store) {
+	t.Helper()
+	return authAPIWithGate(t, mod, nil)
+}
+
+func authAPIWithGate(t *testing.T, mod func(*config.Config), gate *iamgate.Gate) (*httptest.Server, store.Store) {
 	t.Helper()
 	cfg, err := config.Load("", nil)
 	if err != nil {
@@ -64,9 +70,11 @@ func authAPI(t *testing.T, mod func(*config.Config)) (*httptest.Server, store.St
 	t.Cleanup(func() { cancel(); <-done })
 	authMux := http.NewServeMux()
 	ids.Register(authMux)
+	registerUnavailableTOTP(authMux)
+	registerUnavailableLocalUsers(authMux)
 	srv, err := api.New(api.Options{
 		Store: st, Validator: authtest.Validator(t), Config: cfg,
-		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: auth.CSRF, AuthHandler: authMux, Roles: ids.Roles,
+		Authenticate: identityAuthentication(ids, gate), Authorizer: ids.Authorizer(), CSRF: auth.CSRF, AuthHandler: authMux, Roles: ids.Roles,
 		Logger: logger, NodeName: "node-a",
 	})
 	if err != nil {

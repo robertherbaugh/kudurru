@@ -219,6 +219,9 @@ func (ex excludeSet) stale() []string {
 }
 
 func (s *Server) listSourceEntries(ctx context.Context, in *sourceEntriesInput) (*sourceEntriesOutput, error) {
+	if s.opts.ObjectReads != nil || s.opts.SourceBodyReads != nil {
+		return s.listCapturedSourceEntries(ctx, in)
+	}
 	bl, err := s.getBlockList(ctx, in.Namespace, in.Name)
 	if err != nil {
 		return nil, err
@@ -415,6 +418,9 @@ func (s *Server) patchSourceEntries(ctx context.Context, in *patchSourceEntriesI
 	b := &in.Body
 	if len(b.Add) == 0 && len(b.Remove) == 0 && len(b.Enable) == 0 && len(b.Disable) == 0 {
 		return nil, errInvalid("body: add, remove, enable or disable at least one entry")
+	}
+	if s.opts.ObjectCommand != nil {
+		return s.commandPatchSourceEntries(ctx, in)
 	}
 	k, _ := kindByPlural("blocklists")
 	for attempt := 1; ; attempt++ {

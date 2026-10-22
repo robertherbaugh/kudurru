@@ -20,6 +20,10 @@ var (
 	ErrHTML          = errors.New("parser: source is an HTML or XML page, not a list")
 	ErrBinary        = errors.New("parser: source is binary, not a text list")
 	ErrUnknownFormat = errors.New("parser: unknown format")
+	// ErrUnsupportedSlow leaves a streamed candidate in diagnostic counters.
+	ErrUnsupportedSlow = errors.New("parser: unsupported slow rule")
+	// ErrInvalidSlow ignores the entire candidate and counts it as invalid.
+	ErrInvalidSlow = errors.New("parser: invalid slow rule")
 )
 
 const (
@@ -39,6 +43,12 @@ var (
 
 // Options control parsing of one source.
 type Options struct {
+	// EmitSlow receives EVERY non-fast candidate synchronously, independent
+	// of diagnostic sample limits. Values alias the read buffer until return.
+	// Nil preserves unsupported counting. A nil callback error accepts the
+	// rule; ErrUnsupportedSlow keeps it unsupported, ErrInvalidSlow marks it
+	// invalid, and any other error stops parsing.
+	EmitSlow func(UnsupportedRule) error
 	// Format of the source; empty means FormatAuto.
 	Format Format
 	// HostsSubdomains makes hosts and plain-domain entries match their
@@ -290,8 +300,7 @@ func (p *state) ruleLine(n int, line string) error {
 			p.invalid(n, line, c.invalid, c.detail)
 			return nil
 		}
-		p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: pat, Modifiers: ms})
-		return nil
+		return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: pat, Modifiers: ms})
 	}
 	switch {
 	case c.invalid != "":
@@ -299,7 +308,7 @@ func (p *state) ruleLine(n int, line string) error {
 	case c.ignored:
 		p.res.Ignored++
 	case c.unsupported != "":
-		p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: c.unsupported, Exception: exception, Pattern: pat})
+		return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: c.unsupported, Exception: exception, Pattern: pat})
 	default:
 		return p.rule(Rule{Kind: c.kind, Syntax: c.syntax, Pattern: c.pattern, Addr: c.addr, Exception: exception, Line: n})
 	}
@@ -427,7 +436,9 @@ func (p *state) hostsLine(n int, line string, addr netip.Addr, rest string) erro
 		case hostsBoilerplate[d]:
 			p.res.Ignored++
 		case !sink:
-			p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonHostsRewrite, Pattern: d, Addr: addr})
+			if err := p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonHostsRewrite, Pattern: d, Addr: addr}); err != nil {
+				return err
+			}
 		default:
 			if err := p.rule(Rule{Kind: kind, Syntax: SyntaxHosts, Pattern: d, Line: n}); err != nil {
 				return err
@@ -468,8 +479,7 @@ func (p *state) regexRule(n int, line, s string, exception bool) error {
 		return nil
 	}
 	if mods != nil {
-		p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: s[:last+1], Modifiers: mods})
-		return nil
+		return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: s[:last+1], Modifiers: mods})
 	}
 	return p.rule(Rule{Kind: KindRegex, Syntax: SyntaxRegex, Pattern: re, Exception: exception, Line: n})
 }
@@ -492,8 +502,7 @@ func (p *state) regexLine(n int, line string) error {
 	}
 	for _, ext := range regexExtensions {
 		if strings.Contains(s, ext) {
-			p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonRegexExtension, Pattern: s})
-			return nil
+			return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonRegexExtension, Pattern: s})
 		}
 	}
 	if _, err := syntax.Parse(s, syntax.Perl); err != nil {
@@ -516,7 +525,23 @@ func (p *state) rule(r Rule) error {
 
 // unsupported counts u and retains a copy that no longer aliases the read
 // buffer.
-func (p *state) unsupported(u UnsupportedRule) {
+func (p *state) unsupported(u UnsupportedRule) error {
+	if p.opts.EmitSlow != nil {
+		err := p.opts.EmitSlow(u)
+		switch {
+		case err == nil:
+			p.res.Rules++
+			if u.Exception {
+				p.res.Exceptions++
+			}
+			return nil
+		case errors.Is(err, ErrInvalidSlow):
+			p.invalid(u.Line, u.Text, "invalid-modifier", err.Error())
+			return nil
+		case !errors.Is(err, ErrUnsupportedSlow):
+			return err
+		}
+	}
 	p.res.Unsupported++
 	p.res.UnsupportedReasons[u.Reason]++
 	if len(p.res.UnsupportedRules) < p.opts.KeepUnsupported {
@@ -527,6 +552,7 @@ func (p *state) unsupported(u UnsupportedRule) {
 		}
 		p.res.UnsupportedRules = append(p.res.UnsupportedRules, u)
 	}
+	return nil
 }
 
 func (p *state) invalid(n int, text, reason, detail string) {

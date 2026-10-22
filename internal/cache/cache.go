@@ -3,11 +3,13 @@ package cache
 import (
 	"context"
 	"hash/maphash"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -66,6 +68,7 @@ const (
 
 // Lookup is a hit returned by Get.
 type Lookup struct {
+	Metadata Metadata
 	// Wire is the stored message; it is shared and must not be modified.
 	Wire []byte
 	Kind Kind
@@ -85,18 +88,22 @@ type Lookup struct {
 // accounting and in-flight coalescing. It stores packed messages as bytes
 // and knows nothing about DNS beyond the key.
 type Cache struct {
-	shards    []shard
-	mask      uint64
-	seed      maphash.Seed
-	staleTTL  atomic.Int64
-	threshold atomic.Uint32
-	window    atomic.Int64
-	now       func() time.Time
-	m         *Metrics
-	flight    singleflight.Group
+	publication sync.RWMutex
+	generation  atomic.Uint64
+	shards      []shard
+	mask        uint64
+	seed        maphash.Seed
+	staleTTL    atomic.Int64
+	threshold   atomic.Uint32
+	window      atomic.Int64
+	now         func() time.Time
+	m           *Metrics
+	flight      singleflight.Group
 }
 
 type entry struct {
+	metadata    Metadata
+	restored    bool
 	key         Key
 	wire        []byte
 	stored      int64 // unix nanoseconds
@@ -109,6 +116,19 @@ type entry struct {
 	prefetching bool
 	prev, next  *entry
 }
+
+// Metadata accompanies raw wire data through hits and restart.
+type Metadata struct {
+	Scope    pipeline.CacheScope
+	Security pipeline.Security
+	Upstream string
+}
+
+// Now returns this cache's configured clock.
+func (c *Cache) Now() time.Time { return c.now() }
+
+// Generation identifies the current cache invalidation epoch.
+func (c *Cache) Generation() uint64 { return c.generation.Load() }
 
 type shard struct {
 	mu         sync.Mutex
@@ -161,11 +181,18 @@ func (c *Cache) setLimits(opts Options) {
 // disabled cache instead). Now and Metrics are ignored.
 func (c *Cache) Reconfigure(opts Options) {
 	c.setLimits(opts)
-	if opts.MaxEntries <= 0 {
+	c.Resize(opts.MaxEntries)
+}
+
+// Resize changes only storage capacity. Captured serving uses it without
+// replacing the stale/prefetch policy of independently held requests.
+// A nonpositive bound preserves capacity; the captured stage controls bypass.
+func (c *Cache) Resize(maxEntries int) {
+	if maxEntries <= 0 {
 		return
 	}
 	n := len(c.shards)
-	per := max((opts.MaxEntries+n-1)/n, 1)
+	per := max((maxEntries+n-1)/n, 1)
 	for i := range c.shards {
 		sh := &c.shards[i]
 		var evicted [2]int
@@ -204,7 +231,7 @@ func (c *Cache) Get(k Key) (Lookup, bool) {
 		sh.mu.Unlock()
 		return Lookup{}, false
 	}
-	if now >= e.staleUntil {
+	if now >= e.staleUntil || now < e.stored || !e.metadata.Security.AvailableAt(time.Unix(0, now)) {
 		kind := e.kind
 		sh.remove(e)
 		sh.mu.Unlock()
@@ -212,7 +239,7 @@ func (c *Cache) Get(k Key) (Lookup, bool) {
 		return Lookup{}, false
 	}
 	sh.moveFront(e)
-	l := Lookup{Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored)}
+	l := Lookup{Metadata: e.metadata, Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored)}
 	if now < e.expires {
 		l.State = Fresh
 		if threshold := c.threshold.Load(); threshold > 0 {
@@ -252,10 +279,10 @@ func (c *Cache) Peek(k Key) (Lookup, bool) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	e := sh.m[k]
-	if e == nil || now >= e.staleUntil {
+	if e == nil || now >= e.staleUntil || now < e.stored || !e.metadata.Security.AvailableAt(time.Unix(0, now)) {
 		return Lookup{}, false
 	}
-	l := Lookup{Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored), State: Fresh}
+	l := Lookup{Metadata: e.metadata, Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored), State: Fresh}
 	if now >= e.expires {
 		l.State = Stale
 		l.Hold = now < e.holdUntil
@@ -266,12 +293,33 @@ func (c *Cache) Peek(k Key) (Lookup, bool) {
 // Set stores wire under k for ttl and takes ownership of wire. An existing
 // entry is replaced (and its prefetch claim released).
 func (c *Cache) Set(k Key, wire []byte, kind Kind, ttl time.Duration) {
+	c.SetWithMetadata(k, wire, kind, ttl, Metadata{})
+}
+
+// SetWithMetadata stores raw wire data and its provenance in the current epoch.
+func (c *Cache) SetWithMetadata(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata) {
+	c.SetIfGeneration(k, wire, kind, ttl, metadata, c.Generation())
+}
+
+// SetIfGeneration fences Flush/delete against detached writes.
+func (c *Cache) SetIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata, generation uint64) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
+	if generation != c.Generation() || !metadata.Security.AvailableAt(c.now()) {
+		return
+	}
 	if ttl <= 0 {
 		return
 	}
 	now := c.nanos()
 	exp := now + int64(ttl)
-	c.insert(&entry{key: k, wire: wire, kind: kind, stored: now, expires: exp, staleUntil: exp + c.staleTTL.Load(), windowStart: now})
+	stale := exp + c.staleTTL.Load()
+	if !metadata.Security.ValidUntil.IsZero() {
+		deadline := metadata.Security.ValidUntil.UnixNano()
+		exp = min(exp, deadline)
+		stale = min(stale, deadline)
+	}
+	c.insert(&entry{metadata: metadata, key: k, wire: wire, kind: kind, stored: now, expires: exp, staleUntil: stale, windowStart: now})
 }
 
 // insert adds or replaces e and evicts beyond capacity.
@@ -338,6 +386,9 @@ func (c *Cache) MarkRefreshFailed(k Key, d time.Duration) {
 
 // Delete removes k.
 func (c *Cache) Delete(k Key) {
+	c.publication.Lock()
+	defer c.publication.Unlock()
+	c.generation.Add(1)
 	sh := c.shard(k)
 	sh.mu.Lock()
 	e := sh.m[k]
@@ -352,6 +403,16 @@ func (c *Cache) Delete(k Key) {
 
 // Flush removes every entry.
 func (c *Cache) Flush() {
+	c.FlushCount()
+}
+
+// FlushCount removes every entry and returns the number actually removed.
+// It fences earlier detached fills even when the cache is already empty.
+func (c *Cache) FlushCount() int {
+	c.publication.Lock()
+	defer c.publication.Unlock()
+	c.generation.Add(1)
+	total := 0
 	for i := range c.shards {
 		sh := &c.shards[i]
 		sh.mu.Lock()
@@ -364,8 +425,52 @@ func (c *Cache) Flush() {
 		sh.mu.Unlock()
 		for kind, n := range counts {
 			c.m.evictedN(ReasonFlush, Kind(kind), n) //nolint:gosec // 0 or 1
+			total += n
 		}
 	}
+	return total
+}
+
+// FlushName removes the exact name across all scopes, types, classes, flags and
+// ECS subnets, including stale entries. Case and a final dot are normalized;
+// root means only root, and an empty name does nothing. Valid no-op names still
+// fence earlier detached fills. Like FlushZone, this rare action scans the cache.
+func (c *Cache) FlushName(name string) int {
+	if name == "" {
+		return 0
+	}
+	// Match MakeKey's ASCII-only folding; other DNS label bytes are opaque.
+	normalized := []byte(name)
+	for i, b := range normalized {
+		if b >= 'A' && b <= 'Z' {
+			normalized[i] = b + ('a' - 'A')
+		}
+	}
+	if normalized[len(normalized)-1] != '.' {
+		normalized = append(normalized, '.')
+	}
+	name = string(normalized)
+	c.publication.Lock()
+	defer c.publication.Unlock()
+	c.generation.Add(1)
+	total := 0
+	for i := range c.shards {
+		sh := &c.shards[i]
+		var counts [2]int
+		sh.mu.Lock()
+		for key, e := range sh.m {
+			if parts, ok := key.Parts(); ok && parts.Name == name {
+				counts[e.kind]++
+				sh.remove(e)
+			}
+		}
+		sh.mu.Unlock()
+		for kind, n := range counts {
+			c.m.evictedN(ReasonFlush, Kind(kind), n) //nolint:gosec // 0 or 1
+			total += n
+		}
+	}
+	return total
 }
 
 // FlushZone removes every entry whose name is apex or below it (any type,
@@ -373,6 +478,9 @@ func (c *Cache) Flush() {
 // name, folded to lower case; "." matches every entry. It walks the whole
 // cache, so it is for rare operator actions such as deleting a zone.
 func (c *Cache) FlushZone(apex string) int {
+	c.publication.Lock()
+	defer c.publication.Unlock()
+	c.generation.Add(1)
 	apex = strings.ToLower(apex)
 	if !strings.HasSuffix(apex, ".") {
 		apex += "."
@@ -458,7 +566,7 @@ func (c *Cache) Run(ctx context.Context, interval time.Duration) error {
 // should be bounded by its own deadline: callers may stop waiting early,
 // but fn runs to completion.
 func (c *Cache) Coalesce(k Key, fn func() (any, error)) <-chan singleflight.Result {
-	return c.flight.DoChan(string(k), fn)
+	return c.flight.DoChan(strconv.FormatUint(c.Generation(), 10)+":"+string(k), fn)
 }
 
 // List operations; the shard lock is held.

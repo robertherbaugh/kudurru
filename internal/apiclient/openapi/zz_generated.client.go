@@ -707,6 +707,30 @@ func (e RoleBindingInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for SecondaryRuntimeState.
+const (
+	SecondaryRuntimeStateExpired     SecondaryRuntimeState = "expired"
+	SecondaryRuntimeStatePending     SecondaryRuntimeState = "pending"
+	SecondaryRuntimeStateServing     SecondaryRuntimeState = "serving"
+	SecondaryRuntimeStateUnavailable SecondaryRuntimeState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the SecondaryRuntimeState enum.
+func (e SecondaryRuntimeState) Valid() bool {
+	switch e {
+	case SecondaryRuntimeStateExpired:
+		return true
+	case SecondaryRuntimeStatePending:
+		return true
+	case SecondaryRuntimeStateServing:
+		return true
+	case SecondaryRuntimeStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SectionOwner.
 const (
 	SectionOwnerGitops SectionOwner = "gitops"
@@ -728,6 +752,7 @@ func (e SectionOwner) Valid() bool {
 // Defines values for SettingFieldFormat.
 const (
 	SettingFieldFormatCidr     SettingFieldFormat = "cidr"
+	SettingFieldFormatDateTime SettingFieldFormat = "date-time"
 	SettingFieldFormatDomain   SettingFieldFormat = "domain"
 	SettingFieldFormatEmail    SettingFieldFormat = "email"
 	SettingFieldFormatHostport SettingFieldFormat = "hostport"
@@ -742,6 +767,8 @@ const (
 func (e SettingFieldFormat) Valid() bool {
 	switch e {
 	case SettingFieldFormatCidr:
+		return true
+	case SettingFieldFormatDateTime:
 		return true
 	case SettingFieldFormatDomain:
 		return true
@@ -833,6 +860,7 @@ func (e SettingFieldType) Valid() bool {
 // Defines values for SettingKeyFormat.
 const (
 	SettingKeyFormatCidr     SettingKeyFormat = "cidr"
+	SettingKeyFormatDateTime SettingKeyFormat = "date-time"
 	SettingKeyFormatDomain   SettingKeyFormat = "domain"
 	SettingKeyFormatEmail    SettingKeyFormat = "email"
 	SettingKeyFormatHostport SettingKeyFormat = "hostport"
@@ -847,6 +875,8 @@ const (
 func (e SettingKeyFormat) Valid() bool {
 	switch e {
 	case SettingKeyFormatCidr:
+		return true
+	case SettingKeyFormatDateTime:
 		return true
 	case SettingKeyFormatDomain:
 		return true
@@ -935,6 +965,7 @@ func (e SettingKeyScope) Valid() bool {
 // Defines values for SettingShapeFormat.
 const (
 	SettingShapeFormatCidr     SettingShapeFormat = "cidr"
+	SettingShapeFormatDateTime SettingShapeFormat = "date-time"
 	SettingShapeFormatDomain   SettingShapeFormat = "domain"
 	SettingShapeFormatEmail    SettingShapeFormat = "email"
 	SettingShapeFormatHostport SettingShapeFormat = "hostport"
@@ -949,6 +980,8 @@ const (
 func (e SettingShapeFormat) Valid() bool {
 	switch e {
 	case SettingShapeFormatCidr:
+		return true
+	case SettingShapeFormatDateTime:
 		return true
 	case SettingShapeFormatDomain:
 		return true
@@ -1091,6 +1124,48 @@ func (e SourceInfoType) Valid() bool {
 	case SourceInfoTypePihole:
 		return true
 	case SourceInfoTypeTechnitium:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StubAuthorityProtocol.
+const (
+	StubAuthorityProtocolTcp StubAuthorityProtocol = "tcp"
+	StubAuthorityProtocolUdp StubAuthorityProtocol = "udp"
+)
+
+// Valid indicates whether the value is a known member of the StubAuthorityProtocol enum.
+func (e StubAuthorityProtocol) Valid() bool {
+	switch e {
+	case StubAuthorityProtocolTcp:
+		return true
+	case StubAuthorityProtocolUdp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StubRuntimeState.
+const (
+	StubRuntimeStateExpired     StubRuntimeState = "expired"
+	StubRuntimeStatePending     StubRuntimeState = "pending"
+	StubRuntimeStateRouting     StubRuntimeState = "routing"
+	StubRuntimeStateUnavailable StubRuntimeState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the StubRuntimeState enum.
+func (e StubRuntimeState) Valid() bool {
+	switch e {
+	case StubRuntimeStateExpired:
+		return true
+	case StubRuntimeStatePending:
+		return true
+	case StubRuntimeStateRouting:
+		return true
+	case StubRuntimeStateUnavailable:
 		return true
 	default:
 		return false
@@ -1953,6 +2028,16 @@ type AuthListServiceAccountInfo struct {
 	TookMs    int64                `json:"took_ms"`
 }
 
+// AuthListSessionRecordInfo defines model for AuthListSessionRecordInfo.
+type AuthListSessionRecordInfo struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string           `json:"diagnoses,omitempty"`
+	Items     []SessionRecordInfo `json:"items"`
+	TookMs    int64               `json:"took_ms"`
+}
+
 // AuthListTokenInfo defines model for AuthListTokenInfo.
 type AuthListTokenInfo struct {
 	Continue string `json:"continue"`
@@ -2047,6 +2132,17 @@ type BlockingState struct {
 
 // BlockingStateScope defines model for BlockingState.Scope.
 type BlockingStateScope string
+
+// BrandingInfo defines model for BrandingInfo.
+type BrandingInfo struct {
+	AccentColor string     `json:"accentColor"`
+	Enabled     bool       `json:"enabled"`
+	Favicon     string     `json:"favicon"`
+	LogoDark    string     `json:"logoDark"`
+	LogoLight   string     `json:"logoLight"`
+	Name        string     `json:"name"`
+	ValidUntil  *time.Time `json:"validUntil,omitempty"`
+}
 
 // CatalogueCategory defines model for CatalogueCategory.
 type CatalogueCategory struct {
@@ -2270,6 +2366,18 @@ type Condition struct {
 	Reason             string    `json:"reason"`
 	Status             string    `json:"status"`
 	Type               string    `json:"type"`
+}
+
+// CreateLocalUserRequest defines model for CreateLocalUserRequest.
+type CreateLocalUserRequest struct {
+	// DisplayName Display name; bounded to 256 UTF-8 bytes without control characters.
+	DisplayName *string `json:"displayName,omitempty"`
+
+	// Name Canonical local username, already normalized as a DNS subdomain.
+	Name string `json:"name"`
+
+	// Password Initial password, at least 8 characters and at most 1024 bytes; never returned or logged.
+	Password *string `json:"password,omitempty"`
 }
 
 // CreateTokenRequest defines model for CreateTokenRequest.
@@ -3096,6 +3204,12 @@ type IAMUser struct {
 	MustChangePassword bool       `json:"mustChangePassword"`
 	Name               string     `json:"name"`
 	PasswordChangedAt  *time.Time `json:"passwordChangedAt,omitempty"`
+
+	// ResourceVersion Opaque version required for administrator password-reset compare-and-swap.
+	ResourceVersion *string `json:"resourceVersion,omitempty"`
+
+	// Uid Immutable account identity required for administrator recovery and password reset.
+	Uid string `json:"uid"`
 }
 
 // IdentityProviderInfo defines model for IdentityProviderInfo.
@@ -3300,7 +3414,10 @@ type ListZoneSummary struct {
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Password string `json:"password"`
-	Username string `json:"username"`
+
+	// TotpCode The enrolled authenticator code, when required.
+	TotpCode *string `json:"totpCode,omitempty"`
+	Username string  `json:"username"`
 }
 
 // ManagedFieldsEntry defines model for ManagedFieldsEntry.
@@ -3590,6 +3707,9 @@ type PasswordChangeRequest struct {
 
 	// RevokeTokens Also revoke every API token of the user; a password change alone revokes sessions, not tokens.
 	RevokeTokens *bool `json:"revokeTokens,omitempty"`
+
+	// TotpCode The enrolled authenticator code, when required.
+	TotpCode *string `json:"totpCode,omitempty"`
 }
 
 // Plan defines model for Plan.
@@ -4009,6 +4129,18 @@ type Request struct {
 	Ua     *string `json:"ua,omitempty"`
 }
 
+// ResetLocalUserPasswordRequest defines model for ResetLocalUserPasswordRequest.
+type ResetLocalUserPasswordRequest struct {
+	// NewPassword Replacement password, at least 8 characters and at most 1024 bytes; never returned or logged. This does not recover a lost authenticator.
+	NewPassword *string `json:"newPassword,omitempty"`
+
+	// ResourceVersion Exact observed opaque resourceVersion; a conflict requires a fresh read and deliberate request.
+	ResourceVersion string `json:"resourceVersion"`
+
+	// Uid Exact immutable UID from the authorized user inventory.
+	Uid string `json:"uid"`
+}
+
 // Resource defines model for Resource.
 type Resource struct {
 	Kind      string  `json:"kind"`
@@ -4069,6 +4201,23 @@ type SafeSearchEngine struct {
 	// Target CNAME target in strict mode.
 	Target *string `json:"target,omitempty"`
 }
+
+// SecondaryRuntime defines model for SecondaryRuntime.
+type SecondaryRuntime struct {
+	ExpiresAt       *time.Time            `json:"expiresAt,omitempty"`
+	LastConfirmedAt *time.Time            `json:"lastConfirmedAt,omitempty"`
+	Message         *string               `json:"message,omitempty"`
+	NextAttemptAt   *time.Time            `json:"nextAttemptAt,omitempty"`
+	Node            string                `json:"node"`
+	Primary         *string               `json:"primary,omitempty"`
+	Reason          *string               `json:"reason,omitempty"`
+	RecordCount     *int64                `json:"recordCount,omitempty"`
+	Serial          *int64                `json:"serial,omitempty"`
+	State           SecondaryRuntimeState `json:"state"`
+}
+
+// SecondaryRuntimeState defines model for SecondaryRuntime.State.
+type SecondaryRuntimeState string
 
 // Section defines model for Section.
 type Section struct {
@@ -4136,6 +4285,16 @@ type SessionPrincipal struct {
 	// Provider local, or the identity provider id.
 	Provider *string `json:"provider,omitempty"`
 	TokenID  *string `json:"tokenID,omitempty"`
+}
+
+// SessionRecordInfo defines model for SessionRecordInfo.
+type SessionRecordInfo struct {
+	Current       bool      `json:"current"`
+	ExpiresAt     time.Time `json:"expiresAt"`
+	Id            string    `json:"id"`
+	IdleExpiresAt time.Time `json:"idleExpiresAt"`
+	IssuedAt      time.Time `json:"issuedAt"`
+	Revoked       bool      `json:"revoked"`
 }
 
 // SetBlockingInputBody defines model for SetBlockingInputBody.
@@ -4370,6 +4529,32 @@ type Stats struct {
 	Rows          int64 `json:"rows"`
 }
 
+// StubAuthority defines model for StubAuthority.
+type StubAuthority struct {
+	Address  string                `json:"address"`
+	Name     string                `json:"name"`
+	Protocol StubAuthorityProtocol `json:"protocol"`
+}
+
+// StubAuthorityProtocol defines model for StubAuthority.Protocol.
+type StubAuthorityProtocol string
+
+// StubRuntime defines model for StubRuntime.
+type StubRuntime struct {
+	Authorities     []StubAuthority  `json:"authorities"`
+	ExpiresAt       *time.Time       `json:"expiresAt,omitempty"`
+	LastConfirmedAt *time.Time       `json:"lastConfirmedAt,omitempty"`
+	Message         *string          `json:"message,omitempty"`
+	NextAttemptAt   *time.Time       `json:"nextAttemptAt,omitempty"`
+	Node            string           `json:"node"`
+	Reason          *string          `json:"reason,omitempty"`
+	Serial          *int64           `json:"serial,omitempty"`
+	State           StubRuntimeState `json:"state"`
+}
+
+// StubRuntimeState defines model for StubRuntime.State.
+type StubRuntimeState string
+
 // SuggestionsBody defines model for SuggestionsBody.
 type SuggestionsBody struct {
 	Field   string        `json:"field"`
@@ -4425,6 +4610,49 @@ type SummaryQueries struct {
 	UniqueDomains  int64   `json:"unique_domains"`
 }
 
+// TOTPConfirmRequest defines model for TOTPConfirmRequest.
+type TOTPConfirmRequest struct {
+	Challenge string `json:"challenge"`
+
+	// Code The new candidate factor's code.
+	Code            string `json:"code"`
+	CurrentPassword string `json:"currentPassword"`
+
+	// TotpCode The previously enrolled factor's code, when rotating.
+	TotpCode *string `json:"totpCode,omitempty"`
+}
+
+// TOTPProofRequest defines model for TOTPProofRequest.
+type TOTPProofRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+
+	// TotpCode The current factor's code, when already enabled.
+	TotpCode *string `json:"totpCode,omitempty"`
+}
+
+// TOTPRecoverRequest defines model for TOTPRecoverRequest.
+type TOTPRecoverRequest struct {
+	// Uid The current immutable UID from the authorized user inventory.
+	Uid string `json:"uid"`
+}
+
+// TOTPSetupResponse defines model for TOTPSetupResponse.
+type TOTPSetupResponse struct {
+	Challenge string    `json:"challenge"`
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// OtpauthURI Local authenticator provisioning URI; never send it to an external QR service.
+	OtpauthURI string `json:"otpauthURI"`
+
+	// Secret Base32 provisioning secret, shown only during setup.
+	Secret string `json:"secret"`
+}
+
+// TOTPStatus defines model for TOTPStatus.
+type TOTPStatus struct {
+	Enabled bool `json:"enabled"`
+}
+
 // TimeseriesBody defines model for TimeseriesBody.
 type TimeseriesBody struct {
 	Approximate bool          `json:"approximate"`
@@ -4467,6 +4695,9 @@ type TokenOwner struct {
 
 	// Provider local, or the identity provider id.
 	Provider *string `json:"provider,omitempty"`
+
+	// Uid Immutable account identity for local users and service accounts.
+	Uid *string `json:"uid,omitempty"`
 }
 
 // TokenOwnerKind defines model for TokenOwner.Kind.
@@ -4755,18 +4986,20 @@ type ZoneDeleteResult struct {
 
 // ZoneDetail defines model for ZoneDetail.
 type ZoneDetail struct {
-	DeleteRefusal   *ZoneDetailDeleteRefusal `json:"deleteRefusal,omitempty"`
-	Fallback        *ZoneFallbackSpec        `json:"fallback,omitempty"`
-	ManagedBy       *string                  `json:"managedBy,omitempty"`
-	Message         *string                  `json:"message,omitempty"`
-	Name            string                   `json:"name"`
-	Object          map[string]interface{}   `json:"object"`
-	Ready           bool                     `json:"ready"`
-	Reason          *string                  `json:"reason,omitempty"`
-	RecordCount     int64                    `json:"recordCount"`
-	RecordSets      int64                    `json:"recordSets"`
-	ResourceVersion *string                  `json:"resourceVersion,omitempty"`
-	Serial          int32                    `json:"serial"`
+	DeleteRefusal    *ZoneDetailDeleteRefusal `json:"deleteRefusal,omitempty"`
+	Fallback         *ZoneFallbackSpec        `json:"fallback,omitempty"`
+	ManagedBy        *string                  `json:"managedBy,omitempty"`
+	Message          *string                  `json:"message,omitempty"`
+	Name             string                   `json:"name"`
+	Object           map[string]interface{}   `json:"object"`
+	Ready            bool                     `json:"ready"`
+	Reason           *string                  `json:"reason,omitempty"`
+	RecordCount      int64                    `json:"recordCount"`
+	RecordSets       int64                    `json:"recordSets"`
+	ResourceVersion  *string                  `json:"resourceVersion,omitempty"`
+	SecondaryRuntime *SecondaryRuntime        `json:"secondaryRuntime,omitempty"`
+	Serial           int32                    `json:"serial"`
+	StubRuntime      *StubRuntime             `json:"stubRuntime,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs        float64 `json:"took_ms"`
@@ -4798,20 +5031,22 @@ type ZoneRecord struct {
 
 // ZoneSummary defines model for ZoneSummary.
 type ZoneSummary struct {
-	DeleteRefusal   *ZoneSummaryDeleteRefusal `json:"deleteRefusal,omitempty"`
-	Fallback        *ZoneFallbackSpec         `json:"fallback,omitempty"`
-	ManagedBy       *string                   `json:"managedBy,omitempty"`
-	Message         *string                   `json:"message,omitempty"`
-	Name            string                    `json:"name"`
-	Ready           bool                      `json:"ready"`
-	Reason          *string                   `json:"reason,omitempty"`
-	RecordCount     int64                     `json:"recordCount"`
-	RecordSets      int64                     `json:"recordSets"`
-	ResourceVersion *string                   `json:"resourceVersion,omitempty"`
-	Serial          int32                     `json:"serial"`
-	Type            string                    `json:"type"`
-	UpstreamGroup   *string                   `json:"upstreamGroup,omitempty"`
-	ZoneName        string                    `json:"zoneName"`
+	DeleteRefusal    *ZoneSummaryDeleteRefusal `json:"deleteRefusal,omitempty"`
+	Fallback         *ZoneFallbackSpec         `json:"fallback,omitempty"`
+	ManagedBy        *string                   `json:"managedBy,omitempty"`
+	Message          *string                   `json:"message,omitempty"`
+	Name             string                    `json:"name"`
+	Ready            bool                      `json:"ready"`
+	Reason           *string                   `json:"reason,omitempty"`
+	RecordCount      int64                     `json:"recordCount"`
+	RecordSets       int64                     `json:"recordSets"`
+	ResourceVersion  *string                   `json:"resourceVersion,omitempty"`
+	SecondaryRuntime *SecondaryRuntime         `json:"secondaryRuntime,omitempty"`
+	Serial           int32                     `json:"serial"`
+	StubRuntime      *StubRuntime              `json:"stubRuntime,omitempty"`
+	Type             string                    `json:"type"`
+	UpstreamGroup    *string                   `json:"upstreamGroup,omitempty"`
+	ZoneName         string                    `json:"zoneName"`
 }
 
 // ZoneSummaryDeleteRefusal defines model for ZoneSummary.DeleteRefusal.
@@ -5513,6 +5748,15 @@ type ChangePasswordJSONRequestBody = PasswordChangeRequest
 // CreateTokenJSONRequestBody defines body for CreateToken for application/json ContentType.
 type CreateTokenJSONRequestBody = CreateTokenRequest
 
+// ConfirmTOTPJSONRequestBody defines body for ConfirmTOTP for application/json ContentType.
+type ConfirmTOTPJSONRequestBody = TOTPConfirmRequest
+
+// DisableTOTPJSONRequestBody defines body for DisableTOTP for application/json ContentType.
+type DisableTOTPJSONRequestBody = TOTPProofRequest
+
+// BeginTOTPJSONRequestBody defines body for BeginTOTP for application/json ContentType.
+type BeginTOTPJSONRequestBody = TOTPProofRequest
+
 // CreateBlocklistsJSONRequestBody defines body for CreateBlocklists for application/json ContentType.
 type CreateBlocklistsJSONRequestBody CreateBlocklistsJSONBody
 
@@ -5563,6 +5807,15 @@ type BatchDeleteDnszonesJSONRequestBody = BatchDeleteInputBody
 
 // AddDomainsJSONRequestBody defines body for AddDomains for application/json ContentType.
 type AddDomainsJSONRequestBody = DomainsRequest
+
+// CreateLocalUserJSONRequestBody defines body for CreateLocalUser for application/json ContentType.
+type CreateLocalUserJSONRequestBody = CreateLocalUserRequest
+
+// ResetLocalUserPasswordJSONRequestBody defines body for ResetLocalUserPassword for application/json ContentType.
+type ResetLocalUserPasswordJSONRequestBody = ResetLocalUserPasswordRequest
+
+// RecoverTOTPJSONRequestBody defines body for RecoverTOTP for application/json ContentType.
+type RecoverTOTPJSONRequestBody = TOTPRecoverRequest
 
 // AdoptExistingImportsJSONRequestBody defines body for AdoptExistingImports for application/json ContentType.
 type AdoptExistingImportsJSONRequestBody = MigrationAdoptInputBody
@@ -5864,6 +6117,16 @@ type ClientInterface interface {
 	// Corresponds with POST /auth/password (the `ChangePassword` operationId).
 	ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListSessions List own enrolled sessions
+	//
+	// Corresponds with GET /auth/sessions (the `ListSessions` operationId).
+	ListSessions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeSession Revoke an enrolled session of the current account
+	//
+	// Corresponds with DELETE /auth/sessions/{id} (the `RevokeSession` operationId).
+	RevokeSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AuthStatus Login options
 	//
 	// Corresponds with GET /auth/status (the `AuthStatus` operationId).
@@ -5897,6 +6160,65 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /auth/tokens/{id} (the `GetToken` operationId).
 	GetToken(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TotpStatus Own local authenticator status
+	//
+	// Corresponds with GET /auth/totp (the `TotpStatus` operationId).
+	TotpStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConfirmTOTPWithBody Activate the authenticator and revoke existing sessions
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /auth/totp/confirm (the `ConfirmTOTP` operationId).
+	ConfirmTOTPWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConfirmTOTP Activate the authenticator and revoke existing sessions
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /auth/totp/confirm (the `ConfirmTOTP` operationId).
+	ConfirmTOTP(ctx context.Context, body ConfirmTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DisableTOTPWithBody Disable own authenticator and revoke existing sessions
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /auth/totp/disable (the `DisableTOTP` operationId).
+	DisableTOTPWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DisableTOTP Disable own authenticator and revoke existing sessions
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /auth/totp/disable (the `DisableTOTP` operationId).
+	DisableTOTP(ctx context.Context, body DisableTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BeginTOTPWithBody Prepare an authenticator (provisioning secret returned once)
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /auth/totp/setup (the `BeginTOTP` operationId).
+	BeginTOTPWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BeginTOTP Prepare an authenticator (provisioning secret returned once)
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /auth/totp/setup (the `BeginTOTP` operationId).
+	BeginTOTP(ctx context.Context, body BeginTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListBlocklists List blocklists
 	//
@@ -5996,6 +6318,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
 	PreviewBlockPage(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetBranding Public Enterprise branding, or the built-in presentation
+	//
+	// Corresponds with GET /branding (the `GetBranding` operationId).
+	GetBranding(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// FlushCacheWithBody Flush the response cache (or one name)
 	//
@@ -6289,25 +6616,75 @@ type ClientInterface interface {
 	// Corresponds with GET /edge (the `GetEdge` operationId).
 	GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListIdentityProviders List identityproviders (read-only; the write API is v0.2)
+	// ListIdentityProviders List identityproviders
 	//
 	// Corresponds with GET /iam/identityproviders (the `ListIdentityProviders` operationId).
 	ListIdentityProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListRoleBindings List rolebindings (read-only; the write API is v0.2)
+	// ListRoleBindings List rolebindings
 	//
 	// Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
 	ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListServiceAccounts List serviceaccounts (read-only; the write API is v0.2)
+	// ListServiceAccounts List serviceaccounts
 	//
 	// Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
 	ListServiceAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListUsers List users (read-only; the write API is v0.2)
+	// ListUsers List users
 	//
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateLocalUserWithBody Create an API-managed local user requiring a password change
+	//
+	// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+	CreateLocalUserWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateLocalUser Create an API-managed local user requiring a password change
+	//
+	// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+	CreateLocalUser(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetLocalUserPasswordWithBody Reset an exact API-managed local account's password
+	//
+	// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+	ResetLocalUserPasswordWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetLocalUserPassword Reset an exact API-managed local account's password
+	//
+	// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+	ResetLocalUserPassword(ctx context.Context, name string, body ResetLocalUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RecoverTOTPWithBody Disable a lost authenticator for an exact account UID
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/users/{name}/totp/recover (the `RecoverTOTP` operationId).
+	RecoverTOTPWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RecoverTOTP Disable a lost authenticator for an exact account UID
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/users/{name}/totp/recover (the `RecoverTOTP` operationId).
+	RecoverTOTP(ctx context.Context, name string, body RecoverTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AdoptExistingImportsWithBody Track reviewed previous imports without reimporting records
 	//
@@ -7300,6 +7677,36 @@ func (c *Client) ChangePassword(ctx context.Context, body ChangePasswordJSONRequ
 	return c.Client.Do(req)
 }
 
+// ListSessions List own enrolled sessions
+//
+// Corresponds with GET /auth/sessions (the `ListSessions` operationId).
+func (c *Client) ListSessions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSessionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeSession Revoke an enrolled session of the current account
+//
+// Corresponds with DELETE /auth/sessions/{id} (the `RevokeSession` operationId).
+func (c *Client) RevokeSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeSessionRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // AuthStatus Login options
 //
 // Corresponds with GET /auth/status (the `AuthStatus` operationId).
@@ -7384,6 +7791,135 @@ func (c *Client) DeleteToken(ctx context.Context, id string, reqEditors ...Reque
 // Corresponds with GET /auth/tokens/{id} (the `GetToken` operationId).
 func (c *Client) GetToken(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTokenRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TotpStatus Own local authenticator status
+//
+// Corresponds with GET /auth/totp (the `TotpStatus` operationId).
+func (c *Client) TotpStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTotpStatusRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ConfirmTOTPWithBody Activate the authenticator and revoke existing sessions
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /auth/totp/confirm (the `ConfirmTOTP` operationId).
+func (c *Client) ConfirmTOTPWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfirmTOTPRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ConfirmTOTP Activate the authenticator and revoke existing sessions
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /auth/totp/confirm (the `ConfirmTOTP` operationId).
+func (c *Client) ConfirmTOTP(ctx context.Context, body ConfirmTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfirmTOTPRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DisableTOTPWithBody Disable own authenticator and revoke existing sessions
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /auth/totp/disable (the `DisableTOTP` operationId).
+func (c *Client) DisableTOTPWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisableTOTPRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DisableTOTP Disable own authenticator and revoke existing sessions
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /auth/totp/disable (the `DisableTOTP` operationId).
+func (c *Client) DisableTOTP(ctx context.Context, body DisableTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisableTOTPRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BeginTOTPWithBody Prepare an authenticator (provisioning secret returned once)
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /auth/totp/setup (the `BeginTOTP` operationId).
+func (c *Client) BeginTOTPWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBeginTOTPRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BeginTOTP Prepare an authenticator (provisioning secret returned once)
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /auth/totp/setup (the `BeginTOTP` operationId).
+func (c *Client) BeginTOTP(ctx context.Context, body BeginTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBeginTOTPRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7633,6 +8169,21 @@ func (c *Client) BatchDeleteBlocklists(ctx context.Context, body BatchDeleteBloc
 // Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
 func (c *Client) PreviewBlockPage(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewBlockPageRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetBranding Public Enterprise branding, or the built-in presentation
+//
+// Corresponds with GET /branding (the `GetBranding` operationId).
+func (c *Client) GetBranding(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBrandingRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -8375,7 +8926,7 @@ func (c *Client) GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 	return c.Client.Do(req)
 }
 
-// ListIdentityProviders List identityproviders (read-only; the write API is v0.2)
+// ListIdentityProviders List identityproviders
 //
 // Corresponds with GET /iam/identityproviders (the `ListIdentityProviders` operationId).
 func (c *Client) ListIdentityProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8390,7 +8941,7 @@ func (c *Client) ListIdentityProviders(ctx context.Context, reqEditors ...Reques
 	return c.Client.Do(req)
 }
 
-// ListRoleBindings List rolebindings (read-only; the write API is v0.2)
+// ListRoleBindings List rolebindings
 //
 // Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
 func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8405,7 +8956,7 @@ func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEdit
 	return c.Client.Do(req)
 }
 
-// ListServiceAccounts List serviceaccounts (read-only; the write API is v0.2)
+// ListServiceAccounts List serviceaccounts
 //
 // Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
 func (c *Client) ListServiceAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8420,11 +8971,121 @@ func (c *Client) ListServiceAccounts(ctx context.Context, reqEditors ...RequestE
 	return c.Client.Do(req)
 }
 
-// ListUsers List users (read-only; the write API is v0.2)
+// ListUsers List users
 //
 // Corresponds with GET /iam/users (the `ListUsers` operationId).
 func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListUsersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateLocalUserWithBody Create an API-managed local user requiring a password change
+//
+// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+func (c *Client) CreateLocalUserWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateLocalUserRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateLocalUser Create an API-managed local user requiring a password change
+//
+// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+func (c *Client) CreateLocalUser(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateLocalUserRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetLocalUserPasswordWithBody Reset an exact API-managed local account's password
+//
+// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+func (c *Client) ResetLocalUserPasswordWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetLocalUserPasswordRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetLocalUserPassword Reset an exact API-managed local account's password
+//
+// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+func (c *Client) ResetLocalUserPassword(ctx context.Context, name string, body ResetLocalUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetLocalUserPasswordRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RecoverTOTPWithBody Disable a lost authenticator for an exact account UID
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/users/{name}/totp/recover (the `RecoverTOTP` operationId).
+func (c *Client) RecoverTOTPWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecoverTOTPRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RecoverTOTP Disable a lost authenticator for an exact account UID
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/users/{name}/totp/recover (the `RecoverTOTP` operationId).
+func (c *Client) RecoverTOTP(ctx context.Context, name string, body RecoverTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecoverTOTPRequest(c.Server, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -10951,6 +11612,67 @@ func NewChangePasswordRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewListSessionsRequest constructs an http.Request for the ListSessions method
+func NewListSessionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/sessions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeSessionRequest constructs an http.Request for the RevokeSession method
+func NewRevokeSessionRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/sessions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewAuthStatusRequest constructs an http.Request for the AuthStatus method
 func NewAuthStatusRequest(server string) (*http.Request, error) {
 	var err error
@@ -11136,6 +11858,153 @@ func NewGetTokenRequest(server string, id string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewTotpStatusRequest constructs an http.Request for the TotpStatus method
+func NewTotpStatusRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/totp")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewConfirmTOTPRequest calls the generic ConfirmTOTP builder with application/json body
+func NewConfirmTOTPRequest(server string, body ConfirmTOTPJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConfirmTOTPRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewConfirmTOTPRequestWithBody constructs an http.Request for the ConfirmTOTP method, with any body, and a specified content type
+func NewConfirmTOTPRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/totp/confirm")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDisableTOTPRequest calls the generic DisableTOTP builder with application/json body
+func NewDisableTOTPRequest(server string, body DisableTOTPJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDisableTOTPRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewDisableTOTPRequestWithBody constructs an http.Request for the DisableTOTP method, with any body, and a specified content type
+func NewDisableTOTPRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/totp/disable")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewBeginTOTPRequest calls the generic BeginTOTP builder with application/json body
+func NewBeginTOTPRequest(server string, body BeginTOTPJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBeginTOTPRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBeginTOTPRequestWithBody constructs an http.Request for the BeginTOTP method, with any body, and a specified content type
+func NewBeginTOTPRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/totp/setup")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -11798,6 +12667,33 @@ func NewPreviewBlockPageRequest(server string, params *PreviewBlockPageParams) (
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetBrandingRequest constructs an http.Request for the GetBranding method
+func NewGetBrandingRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/branding")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -13473,6 +14369,140 @@ func NewListUsersRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewCreateLocalUserRequest calls the generic CreateLocalUser builder with application/json body
+func NewCreateLocalUserRequest(server string, body CreateLocalUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateLocalUserRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateLocalUserRequestWithBody constructs an http.Request for the CreateLocalUser method, with any body, and a specified content type
+func NewCreateLocalUserRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/users")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewResetLocalUserPasswordRequest calls the generic ResetLocalUserPassword builder with application/json body
+func NewResetLocalUserPasswordRequest(server string, name string, body ResetLocalUserPasswordJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResetLocalUserPasswordRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewResetLocalUserPasswordRequestWithBody constructs an http.Request for the ResetLocalUserPassword method, with any body, and a specified content type
+func NewResetLocalUserPasswordRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/users/%s/password", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRecoverTOTPRequest calls the generic RecoverTOTP builder with application/json body
+func NewRecoverTOTPRequest(server string, name string, body RecoverTOTPJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRecoverTOTPRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewRecoverTOTPRequestWithBody constructs an http.Request for the RecoverTOTP method, with any body, and a specified content type
+func NewRecoverTOTPRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/users/%s/totp/recover", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -18041,6 +19071,20 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /auth/password (the `ChangePassword` operationId).
 	ChangePasswordWithResponse(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangePasswordResponse, error)
 
+	// ListSessionsWithResponse List own enrolled sessions
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/sessions (the `ListSessions` operationId).
+	ListSessionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSessionsResponse, error)
+
+	// RevokeSessionWithResponse Revoke an enrolled session of the current account
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /auth/sessions/{id} (the `RevokeSession` operationId).
+	RevokeSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*RevokeSessionResponse, error)
+
 	// AuthStatusWithResponse Login options
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -18082,6 +19126,67 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /auth/tokens/{id} (the `GetToken` operationId).
 	GetTokenWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetTokenResponse, error)
+
+	// TotpStatusWithResponse Own local authenticator status
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/totp (the `TotpStatus` operationId).
+	TotpStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TotpStatusResponse, error)
+
+	// ConfirmTOTPWithBodyWithResponse Activate the authenticator and revoke existing sessions
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/totp/confirm (the `ConfirmTOTP` operationId).
+	ConfirmTOTPWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfirmTOTPResponse, error)
+
+	// ConfirmTOTPWithResponse Activate the authenticator and revoke existing sessions
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/totp/confirm (the `ConfirmTOTP` operationId).
+	ConfirmTOTPWithResponse(ctx context.Context, body ConfirmTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfirmTOTPResponse, error)
+
+	// DisableTOTPWithBodyWithResponse Disable own authenticator and revoke existing sessions
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/totp/disable (the `DisableTOTP` operationId).
+	DisableTOTPWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DisableTOTPResponse, error)
+
+	// DisableTOTPWithResponse Disable own authenticator and revoke existing sessions
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/totp/disable (the `DisableTOTP` operationId).
+	DisableTOTPWithResponse(ctx context.Context, body DisableTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*DisableTOTPResponse, error)
+
+	// BeginTOTPWithBodyWithResponse Prepare an authenticator (provisioning secret returned once)
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/totp/setup (the `BeginTOTP` operationId).
+	BeginTOTPWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BeginTOTPResponse, error)
+
+	// BeginTOTPWithResponse Prepare an authenticator (provisioning secret returned once)
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/totp/setup (the `BeginTOTP` operationId).
+	BeginTOTPWithResponse(ctx context.Context, body BeginTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*BeginTOTPResponse, error)
 
 	// ListBlocklistsWithResponse List blocklists
 	//
@@ -18195,6 +19300,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
 	PreviewBlockPageWithResponse(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*PreviewBlockPageResponse, error)
+
+	// GetBrandingWithResponse Public Enterprise branding, or the built-in presentation
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /branding (the `GetBranding` operationId).
+	GetBrandingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetBrandingResponse, error)
 
 	// FlushCacheWithBodyWithResponse Flush the response cache (or one name)
 	//
@@ -18524,33 +19636,83 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /edge (the `GetEdge` operationId).
 	GetEdgeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEdgeResponse, error)
 
-	// ListIdentityProvidersWithResponse List identityproviders (read-only; the write API is v0.2)
+	// ListIdentityProvidersWithResponse List identityproviders
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /iam/identityproviders (the `ListIdentityProviders` operationId).
 	ListIdentityProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListIdentityProvidersResponse, error)
 
-	// ListRoleBindingsWithResponse List rolebindings (read-only; the write API is v0.2)
+	// ListRoleBindingsWithResponse List rolebindings
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
 	ListRoleBindingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRoleBindingsResponse, error)
 
-	// ListServiceAccountsWithResponse List serviceaccounts (read-only; the write API is v0.2)
+	// ListServiceAccountsWithResponse List serviceaccounts
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
 	ListServiceAccountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceAccountsResponse, error)
 
-	// ListUsersWithResponse List users (read-only; the write API is v0.2)
+	// ListUsersWithResponse List users
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
+
+	// CreateLocalUserWithBodyWithResponse Create an API-managed local user requiring a password change
+	//
+	// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+	CreateLocalUserWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error)
+
+	// CreateLocalUserWithResponse Create an API-managed local user requiring a password change
+	//
+	// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+	CreateLocalUserWithResponse(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error)
+
+	// ResetLocalUserPasswordWithBodyWithResponse Reset an exact API-managed local account's password
+	//
+	// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+	ResetLocalUserPasswordWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResetLocalUserPasswordResponse, error)
+
+	// ResetLocalUserPasswordWithResponse Reset an exact API-managed local account's password
+	//
+	// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+	ResetLocalUserPasswordWithResponse(ctx context.Context, name string, body ResetLocalUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ResetLocalUserPasswordResponse, error)
+
+	// RecoverTOTPWithBodyWithResponse Disable a lost authenticator for an exact account UID
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users/{name}/totp/recover (the `RecoverTOTP` operationId).
+	RecoverTOTPWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RecoverTOTPResponse, error)
+
+	// RecoverTOTPWithResponse Disable a lost authenticator for an exact account UID
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/users/{name}/totp/recover (the `RecoverTOTP` operationId).
+	RecoverTOTPWithResponse(ctx context.Context, name string, body RecoverTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*RecoverTOTPResponse, error)
 
 	// AdoptExistingImportsWithBodyWithResponse Track reviewed previous imports without reimporting records
 	//
@@ -20665,6 +21827,179 @@ func (r ChangePasswordResponse) ContentType() string {
 	return ""
 }
 
+type ListSessionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuthListSessionRecordInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSessionsResponse) GetJSON200() *AuthListSessionRecordInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListSessionsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSessionsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListSessionsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListSessionsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListSessionsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListSessionsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSessionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RevokeSessionResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeSessionResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RevokeSessionResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeSessionResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RevokeSessionResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r RevokeSessionResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RevokeSessionResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r RevokeSessionResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type AuthStatusResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -21081,6 +22416,387 @@ func (r GetTokenResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TotpStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TOTPStatus
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r TotpStatusResponse) GetJSON200() *TOTPStatus {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r TotpStatusResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r TotpStatusResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r TotpStatusResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r TotpStatusResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r TotpStatusResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r TotpStatusResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r TotpStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TotpStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TotpStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TotpStatusResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ConfirmTOTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON429() *Error {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ConfirmTOTPResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ConfirmTOTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ConfirmTOTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConfirmTOTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ConfirmTOTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DisableTOTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DisableTOTPResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DisableTOTPResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DisableTOTPResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DisableTOTPResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DisableTOTPResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DisableTOTPResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r DisableTOTPResponse) GetJSON429() *Error {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DisableTOTPResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DisableTOTPResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DisableTOTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DisableTOTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DisableTOTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DisableTOTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type BeginTOTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TOTPSetupResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BeginTOTPResponse) GetJSON200() *TOTPSetupResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r BeginTOTPResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r BeginTOTPResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r BeginTOTPResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r BeginTOTPResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r BeginTOTPResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r BeginTOTPResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r BeginTOTPResponse) GetJSON429() *Error {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r BeginTOTPResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r BeginTOTPResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r BeginTOTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BeginTOTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BeginTOTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BeginTOTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -22190,6 +23906,82 @@ func (r PreviewBlockPageResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PreviewBlockPageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetBrandingResponse200Headers the declared response headers of an HTTP 200 response for GetBranding
+type GetBrandingResponse200Headers struct {
+	CacheControl *string
+}
+
+type GetBrandingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *BrandingInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetBrandingResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetBrandingResponse) GetJSON200() *BrandingInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetBrandingResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetBrandingResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetBrandingResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetBrandingResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetBrandingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetBrandingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBrandingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBrandingResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -25383,6 +27175,283 @@ func (r ListUsersResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListUsersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateLocalUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *IAMUser
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateLocalUserResponse) GetJSON201() *IAMUser {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateLocalUserResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateLocalUserResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateLocalUserResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateLocalUserResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateLocalUserResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateLocalUserResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateLocalUserResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateLocalUserResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateLocalUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateLocalUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateLocalUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateLocalUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResetLocalUserPasswordResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ResetLocalUserPasswordResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ResetLocalUserPasswordResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResetLocalUserPasswordResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResetLocalUserPasswordResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResetLocalUserPasswordResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RecoverTOTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RecoverTOTPResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RecoverTOTPResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RecoverTOTPResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RecoverTOTPResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RecoverTOTPResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r RecoverTOTPResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RecoverTOTPResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r RecoverTOTPResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r RecoverTOTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RecoverTOTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RecoverTOTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RecoverTOTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -32724,6 +34793,32 @@ func (c *ClientWithResponses) ChangePasswordWithResponse(ctx context.Context, bo
 	return ParseChangePasswordResponse(rsp)
 }
 
+// ListSessionsWithResponse List own enrolled sessions
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/sessions (the `ListSessions` operationId).
+func (c *ClientWithResponses) ListSessionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSessionsResponse, error) {
+	rsp, err := c.ListSessions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSessionsResponse(rsp)
+}
+
+// RevokeSessionWithResponse Revoke an enrolled session of the current account
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /auth/sessions/{id} (the `RevokeSession` operationId).
+func (c *ClientWithResponses) RevokeSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*RevokeSessionResponse, error) {
+	rsp, err := c.RevokeSession(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeSessionResponse(rsp)
+}
+
 // AuthStatusWithResponse Login options
 //
 // Returns a wrapper object for the known response body format(s).
@@ -32800,6 +34895,109 @@ func (c *ClientWithResponses) GetTokenWithResponse(ctx context.Context, id strin
 		return nil, err
 	}
 	return ParseGetTokenResponse(rsp)
+}
+
+// TotpStatusWithResponse Own local authenticator status
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/totp (the `TotpStatus` operationId).
+func (c *ClientWithResponses) TotpStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TotpStatusResponse, error) {
+	rsp, err := c.TotpStatus(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTotpStatusResponse(rsp)
+}
+
+// ConfirmTOTPWithBodyWithResponse Activate the authenticator and revoke existing sessions
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/totp/confirm (the `ConfirmTOTP` operationId).
+func (c *ClientWithResponses) ConfirmTOTPWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfirmTOTPResponse, error) {
+	rsp, err := c.ConfirmTOTPWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfirmTOTPResponse(rsp)
+}
+
+// ConfirmTOTPWithResponse Activate the authenticator and revoke existing sessions
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/totp/confirm (the `ConfirmTOTP` operationId).
+func (c *ClientWithResponses) ConfirmTOTPWithResponse(ctx context.Context, body ConfirmTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfirmTOTPResponse, error) {
+	rsp, err := c.ConfirmTOTP(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfirmTOTPResponse(rsp)
+}
+
+// DisableTOTPWithBodyWithResponse Disable own authenticator and revoke existing sessions
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/totp/disable (the `DisableTOTP` operationId).
+func (c *ClientWithResponses) DisableTOTPWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DisableTOTPResponse, error) {
+	rsp, err := c.DisableTOTPWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisableTOTPResponse(rsp)
+}
+
+// DisableTOTPWithResponse Disable own authenticator and revoke existing sessions
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/totp/disable (the `DisableTOTP` operationId).
+func (c *ClientWithResponses) DisableTOTPWithResponse(ctx context.Context, body DisableTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*DisableTOTPResponse, error) {
+	rsp, err := c.DisableTOTP(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisableTOTPResponse(rsp)
+}
+
+// BeginTOTPWithBodyWithResponse Prepare an authenticator (provisioning secret returned once)
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/totp/setup (the `BeginTOTP` operationId).
+func (c *ClientWithResponses) BeginTOTPWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BeginTOTPResponse, error) {
+	rsp, err := c.BeginTOTPWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBeginTOTPResponse(rsp)
+}
+
+// BeginTOTPWithResponse Prepare an authenticator (provisioning secret returned once)
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/totp/setup (the `BeginTOTP` operationId).
+func (c *ClientWithResponses) BeginTOTPWithResponse(ctx context.Context, body BeginTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*BeginTOTPResponse, error) {
+	rsp, err := c.BeginTOTP(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBeginTOTPResponse(rsp)
 }
 
 // ListBlocklistsWithResponse List blocklists
@@ -33003,6 +35201,19 @@ func (c *ClientWithResponses) PreviewBlockPageWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParsePreviewBlockPageResponse(rsp)
+}
+
+// GetBrandingWithResponse Public Enterprise branding, or the built-in presentation
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /branding (the `GetBranding` operationId).
+func (c *ClientWithResponses) GetBrandingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetBrandingResponse, error) {
+	rsp, err := c.GetBranding(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBrandingResponse(rsp)
 }
 
 // FlushCacheWithBodyWithResponse Flush the response cache (or one name)
@@ -33597,7 +35808,7 @@ func (c *ClientWithResponses) GetEdgeWithResponse(ctx context.Context, reqEditor
 	return ParseGetEdgeResponse(rsp)
 }
 
-// ListIdentityProvidersWithResponse List identityproviders (read-only; the write API is v0.2)
+// ListIdentityProvidersWithResponse List identityproviders
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33610,7 +35821,7 @@ func (c *ClientWithResponses) ListIdentityProvidersWithResponse(ctx context.Cont
 	return ParseListIdentityProvidersResponse(rsp)
 }
 
-// ListRoleBindingsWithResponse List rolebindings (read-only; the write API is v0.2)
+// ListRoleBindingsWithResponse List rolebindings
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33623,7 +35834,7 @@ func (c *ClientWithResponses) ListRoleBindingsWithResponse(ctx context.Context, 
 	return ParseListRoleBindingsResponse(rsp)
 }
 
-// ListServiceAccountsWithResponse List serviceaccounts (read-only; the write API is v0.2)
+// ListServiceAccountsWithResponse List serviceaccounts
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33636,7 +35847,7 @@ func (c *ClientWithResponses) ListServiceAccountsWithResponse(ctx context.Contex
 	return ParseListServiceAccountsResponse(rsp)
 }
 
-// ListUsersWithResponse List users (read-only; the write API is v0.2)
+// ListUsersWithResponse List users
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33647,6 +35858,92 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseListUsersResponse(rsp)
+}
+
+// CreateLocalUserWithBodyWithResponse Create an API-managed local user requiring a password change
+//
+// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+func (c *ClientWithResponses) CreateLocalUserWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error) {
+	rsp, err := c.CreateLocalUserWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateLocalUserResponse(rsp)
+}
+
+// CreateLocalUserWithResponse Create an API-managed local user requiring a password change
+//
+// Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
+func (c *ClientWithResponses) CreateLocalUserWithResponse(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error) {
+	rsp, err := c.CreateLocalUser(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateLocalUserResponse(rsp)
+}
+
+// ResetLocalUserPasswordWithBodyWithResponse Reset an exact API-managed local account's password
+//
+// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+func (c *ClientWithResponses) ResetLocalUserPasswordWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResetLocalUserPasswordResponse, error) {
+	rsp, err := c.ResetLocalUserPasswordWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetLocalUserPasswordResponse(rsp)
+}
+
+// ResetLocalUserPasswordWithResponse Reset an exact API-managed local account's password
+//
+// Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users/{name}/password (the `ResetLocalUserPassword` operationId).
+func (c *ClientWithResponses) ResetLocalUserPasswordWithResponse(ctx context.Context, name string, body ResetLocalUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ResetLocalUserPasswordResponse, error) {
+	rsp, err := c.ResetLocalUserPassword(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetLocalUserPasswordResponse(rsp)
+}
+
+// RecoverTOTPWithBodyWithResponse Disable a lost authenticator for an exact account UID
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users/{name}/totp/recover (the `RecoverTOTP` operationId).
+func (c *ClientWithResponses) RecoverTOTPWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RecoverTOTPResponse, error) {
+	rsp, err := c.RecoverTOTPWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecoverTOTPResponse(rsp)
+}
+
+// RecoverTOTPWithResponse Disable a lost authenticator for an exact account UID
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/users/{name}/totp/recover (the `RecoverTOTP` operationId).
+func (c *ClientWithResponses) RecoverTOTPWithResponse(ctx context.Context, name string, body RecoverTOTPJSONRequestBody, reqEditors ...RequestEditorFn) (*RecoverTOTPResponse, error) {
+	rsp, err := c.RecoverTOTP(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecoverTOTPResponse(rsp)
 }
 
 // AdoptExistingImportsWithBodyWithResponse Track reviewed previous imports without reimporting records
@@ -36121,6 +38418,152 @@ func ParseChangePasswordResponse(rsp *http.Response) (*ChangePasswordResponse, e
 	return response, nil
 }
 
+// ParseListSessionsResponse parses an HTTP response from a ListSessionsWithResponse call
+func ParseListSessionsResponse(rsp *http.Response) (*ListSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthListSessionRecordInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeSessionResponse parses an HTTP response from a RevokeSessionWithResponse call
+func ParseRevokeSessionResponse(rsp *http.Response) (*RevokeSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseAuthStatusResponse parses an HTTP response from a AuthStatusWithResponse call
 func ParseAuthStatusResponse(rsp *http.Response) (*AuthStatusResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -36451,6 +38894,333 @@ func ParseGetTokenResponse(rsp *http.Response) (*GetTokenResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTotpStatusResponse parses an HTTP response from a TotpStatusWithResponse call
+func ParseTotpStatusResponse(rsp *http.Response) (*TotpStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TotpStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TOTPStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConfirmTOTPResponse parses an HTTP response from a ConfirmTOTPWithResponse call
+func ParseConfirmTOTPResponse(rsp *http.Response) (*ConfirmTOTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConfirmTOTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDisableTOTPResponse parses an HTTP response from a DisableTOTPWithResponse call
+func ParseDisableTOTPResponse(rsp *http.Response) (*DisableTOTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DisableTOTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBeginTOTPResponse parses an HTTP response from a BeginTOTPWithResponse call
+func ParseBeginTOTPResponse(rsp *http.Response) (*BeginTOTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BeginTOTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TOTPSetupResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -37492,6 +40262,73 @@ func ParsePreviewBlockPageResponse(rsp *http.Response) (*PreviewBlockPageRespons
 				return nil, err
 			}
 			headers.XFrameOptions = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetBrandingResponse parses an HTTP response from a GetBrandingWithResponse call
+func ParseGetBrandingResponse(rsp *http.Response) (*GetBrandingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBrandingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BrandingInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetBrandingResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
 		}
 		response.Headers200 = &headers
 	}
@@ -40231,6 +43068,244 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateLocalUserResponse parses an HTTP response from a CreateLocalUserWithResponse call
+func ParseCreateLocalUserResponse(rsp *http.Response) (*CreateLocalUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateLocalUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest IAMUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResetLocalUserPasswordResponse parses an HTTP response from a ResetLocalUserPasswordWithResponse call
+func ParseResetLocalUserPasswordResponse(rsp *http.Response) (*ResetLocalUserPasswordResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResetLocalUserPasswordResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRecoverTOTPResponse parses an HTTP response from a RecoverTOTPWithResponse call
+func ParseRecoverTOTPResponse(rsp *http.Response) (*RecoverTOTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RecoverTOTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

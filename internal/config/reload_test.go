@@ -231,6 +231,8 @@ func TestWatchSettingsReloads(t *testing.T) {
 func TestRestartRequired(t *testing.T) {
 	hot := map[string]bool{"log.level": true}
 	for _, p := range []string{
+		"response.dns64.prefix", "response.dns64.excludeDomains", "response.dns64.excludeIPv4", "response.filterAAAA", "response.bogusNXDOMAIN", "response.nxdomainIPv4", "response.nxdomainIPv6", "response.ttl", "response.rebinding.enabled", "response.rebinding.privateDomains", "response.rebinding.bypassNetworks",
+		"dnssec.enabled", "dnssec.useBuiltinAnchors", "dnssec.trustAnchors", "dnssec.negativeTrustAnchors",
 		"upstreams.groups", "upstreams.bootstrap", "upstreams.conditional", "upstreams.ecs.mode", "upstreams.ecs.ipv4Prefix", "upstreams.ecs.ipv6Prefix",
 		"upstreams.recursion.dnssec", "upstreams.recursion.qnameMinimization", "upstreams.recursion.ipv6", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints",
 		"cache.maxEntries", "cache.minTTL", "cache.maxTTL", "cache.negativeTTL", "cache.prefetch.threshold", "cache.prefetch.window",
@@ -238,6 +240,7 @@ func TestRestartRequired(t *testing.T) {
 		"blocking.enabled", "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP.v4", "blocking.customIP.v6",
 		"blockPage.ipv4", "blockPage.ipv6", "blockPage.title", "blockPage.message", "blockPage.contact", "blockPage.showDetails",
 		"blockPage.dashboardURL", "blockPage.rateLimit",
+		"branding.name", "branding.logoLight", "branding.logoDark", "branding.favicon", "branding.accentColor",
 		"unblockRequests.enabled", "unblockRequests.rateLimit", "unblockRequests.maxPending", "unblockRequests.pendingExpiry", "unblockRequests.retention",
 		"querylog.privacy", "querylog.anonymize", "querylog.retention.raw", "querylog.retention.maxDBBytes",
 		"querylog.exclude.domains", "querylog.exclude.clients", "querylog.exclude.sudn",

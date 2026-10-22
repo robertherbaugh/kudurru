@@ -38,6 +38,7 @@ flowchart LR
     D --> PL["policy limit:<br/>API writes"]
     D --> EDGE["edge and VIP supervisors<br/>(ee/edge)"]
     D --> INT["external-dns webhook<br/>(ee/integration)"]
+    D --> BR["custom branding<br/>Enterprise plan + branding feature"]
     D --> LIM["node limit:<br/>API writes"]
 ```
 
@@ -45,6 +46,20 @@ The manager rereads the sources every minute, so a renewed Secret or a key
 written into the data directory takes effect without a restart, and it logs
 every change of state. An invalid key never leaves the previous key in
 force: a typo is visible at once.
+
+The v0.2 command assembly can retain an immutable `license.Cut` and exclude
+`Set`/`Load` replacement through `Manager.WithCurrent`. The cut exposes detached
+policy, a process-local installation identity and a lock-free deadline check.
+Identical polling preserves the installation; removal, read failure and later
+reactivation invalidate old cuts. A final transaction check still rejects grace
+expiry while the replacement pin is held. This pin protects management commands
+and complete publication, never ordinary DNS queries.
+
+The installation identity is not durable entitlement history. Provider activation
+still requires the registry's accepted receipt and transactional revocation floor;
+restart and identical-byte loss/regain must follow that authority protocol. Root
+production composition supplies the pin around the complete command, including
+writer waits and successful no-op responses.
 
 ## The key
 
@@ -60,7 +75,7 @@ license server. The payload carries:
 | `sub` | licensee, a person or a company |
 | `plan` | `personal` (free, eligible community use), `business`, `enterprise` or `trial` |
 | `nodes` | node limit |
-| `features` | licensed features; empty means every feature this build knows |
+| `features` | licensed features; empty means every feature available to the plan; `branding` always requires `enterprise` |
 | `iat`, `nbf`, `exp` | issued, not before, expires (Unix seconds); `exp` is required |
 
 The signature does not make a key a license: the license is the agreement,
@@ -84,6 +99,45 @@ periods never extend the contractual subscription.
 | Unblock requests | the block page has no form and refuses the post; `/unblockrequests` answers 402 | on |
 | `kudurru edge run` and `kudurru vip run` (`ee/edge`) | refuse a first start with no key; a key that has expired since (past the grace period) still starts them, with a warning | start |
 | external-dns webhook (`ee/integration`) | not started, a warning is logged | started |
+| Custom branding (`ee/branding`) | built-in name, artwork and accent; saved overrides remain | Enterprise plan with `branding` only; Personal, Business and Trial keys never enable it |
+
+## Enterprise custom branding (v0.2)
+
+The `branding.*` public cluster settings select an organization name, light and
+dark PNG logos, PNG browser favicon and hexadecimal accent color. These apply
+to the dashboard, sign-in and block page. Images are embedded data URLs: each
+static PNG is at most 64 KiB, logos at most 1024 pixels per dimension and the
+favicon at most 256. SVG, animation, remote URLs and arbitrary CSS are rejected.
+Name, image and color validation also applies to file and canonical settings.
+
+`GET /api/v1/branding` is public and `no-store`. It exposes only effective
+presentation and a finite `validUntil`, never licensee, license source or saved
+inactive artwork. `enabled` means customization is licensed even if all fields
+are empty. The dashboard defaults on fetch failure, missing or expired validity,
+or a denied entitlement; it reobserves periodically and on focus. It keeps the
+selected theme, light/dark mode and contrast preference. The four shipped themes
+remain built; an Enterprise accent uses Astryx's documented runtime child-theme
+support without replacing semantic query/status colors.
+
+SQLite reads retain the original HTTP auth/settings owner and its original
+license deadline. Settings writes require current raw `settings.write` authority
+and Enterprise entitlement within the elected writer transaction, including
+successful no-ops and final commit. An old request cannot acquire a successor
+license to authorize a write. The usual 30-day technical grace applies; at its
+exact end new presentation falls back. A held read retains its original cut
+until that original deadline. License replacement is observed by fresh requests.
+Downgrade/removal hides customization without deleting it; restoration makes
+saved settings available again. This changes presentation only and never DNS.
+
+The block-page listener captures settings for branding and license together,
+prepares bounded artwork outside guards and falls back to the built-in brand
+when unavailable. Its other operational page details still use the existing
+live sources. The complete API preview uses original canonical settings and
+entitlements, and returns the CSP hash of the exact rendered stylesheet. Custom
+PNG icons are inlined; no external asset request is introduced. The browser-tab
+icon changes, while installed PWA/apple-touch metadata retains product identity.
+
+See the [custom branding guide](../deploy/custom-branding.md).
 
 Two details matter for an operator:
 

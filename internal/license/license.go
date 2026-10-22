@@ -95,11 +95,13 @@ const (
 	// form of the block page and the review of the requests. The block page
 	// itself is free.
 	FeatureRequests Feature = "requests"
+	// FeatureBranding permits custom product branding under an Enterprise key.
+	FeatureBranding Feature = "branding"
 )
 
 // Features lists every licensed feature.
 func Features() []Feature {
-	return []Feature{FeatureOIDC, FeatureEdge, FeatureIntegrations, FeatureRBAC, FeatureAudit, FeatureLongTerm, FeatureRequests}
+	return []Feature{FeatureOIDC, FeatureEdge, FeatureIntegrations, FeatureRBAC, FeatureAudit, FeatureLongTerm, FeatureRequests, FeatureBranding}
 }
 
 func (f Feature) known() bool { return slices.Contains(Features(), f) }
@@ -116,7 +118,7 @@ type Claims struct {
 	Plan Plan `json:"plan"`
 	// Nodes is the node limit.
 	Nodes int `json:"nodes"`
-	// Features are the licensed features; empty grants all of them.
+	// Features are the licensed features; empty grants all available to Plan.
 	Features []Feature `json:"features,omitempty"`
 	// IssuedAt, NotBefore and ExpiresAt are Unix seconds (iat, nbf, exp).
 	IssuedAt  int64 `json:"iat"`
@@ -145,13 +147,21 @@ func (c Claims) Validate() error {
 
 // Allows reports whether the claims grant f. Unknown feature names in a key
 // are ignored (a newer licensor may issue them), but an empty list grants
-// every feature this build knows.
+// every feature available to the plan. Branding always requires Enterprise.
 func (c Claims) Allows(f Feature) bool {
+	if f == FeatureBranding && c.Plan != PlanEnterprise {
+		return false
+	}
 	if len(c.Features) == 0 {
 		return f.known()
 	}
 	return slices.Contains(c.Features, f)
 }
+
+// Validity returns the original capture's clock lower bound and exclusive
+// absolute deadline. It performs no live lookup or replacement check. A zero
+// deadline is not a finite entitlement; callers must also inspect Status.
+func (c Cut) Validity() (from, until time.Time) { return c.at, c.until }
 
 // Expires returns the expiry time.
 func (c Claims) Expires() time.Time { return time.Unix(c.ExpiresAt, 0).UTC() }

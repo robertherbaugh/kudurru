@@ -16,6 +16,7 @@ export const FORMAT_EXAMPLES: Record<SettingFormat, string> = {
   domain: 'example.com',
   upstream: 'tls://dns.quad9.net',
   email: 'admin@example.com',
+  'date-time': '2026-10-15T12:00:00Z',
 };
 
 function cidrError(v: string): string | null {
@@ -57,5 +58,7 @@ export function formatError(format: SettingFormat | undefined, value: string): s
       return serverError(v);
     case 'email':
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'Not an e-mail address';
+    case 'date-time':
+      return /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(v) && Number.isFinite(Date.parse(v)) ? null : 'An absolute date and time with a time zone is required';
   }
 }

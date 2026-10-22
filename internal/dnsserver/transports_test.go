@@ -341,7 +341,7 @@ func TestDoHHTTPSemantics(t *testing.T) {
 		if ct := resp.Header.Get("Content-Type"); ct != dohMIME {
 			t.Fatalf("content-type %q", ct)
 		}
-		if cc := resp.Header.Get("Cache-Control"); cc != "max-age=60" {
+		if cc := resp.Header.Get("Cache-Control"); cc != "private, max-age=60" {
 			t.Fatalf("cache-control %q", cc)
 		}
 		m := new(dns.Msg)
@@ -406,7 +406,7 @@ func TestDoHHTTPSemantics(t *testing.T) {
 		}
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		if resp.StatusCode != http.StatusOK || resp.Proto != "HTTP/3.0" || resp.Header.Get("Cache-Control") != "max-age=60" {
+		if resp.StatusCode != http.StatusOK || resp.Proto != "HTTP/3.0" || resp.Header.Get("Cache-Control") != "private, max-age=60" {
 			t.Fatalf("DoH3 POST: %s %s %v", resp.Proto, resp.Status, resp.Header)
 		}
 		m := new(dns.Msg)

@@ -13,6 +13,7 @@ import { emptyDraft, isMapDraft, keyError, str, type MapDraft } from '../../lib/
 import type { UiShape } from '../../lib/settingsMeta';
 import { UpstreamGroupSelect } from '../UpstreamGroupSelect';
 import { BytesField } from './BytesField';
+import { DateTimeField } from './DateTimeField';
 import { DURATION_PRESETS, DurationField, durationPresets } from './DurationField';
 import { EnumSelect } from './EnumSelect';
 import { FieldGroup } from './FieldGroup';
@@ -139,6 +140,9 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
 
 function StringField({ label, isLabelHidden, description, shape, value, onChange, isDisabled, placeholder }: ShapeFieldProps) {
   const v = str(value);
+  if (shape.format === 'date-time') {
+    return <DateTimeField label={label} isLabelHidden={isLabelHidden} help={description} value={v} onChange={onChange} isDisabled={isDisabled} />;
+  }
   if (shape.enum?.length) {
     return <EnumSelect label={label} isLabelHidden={isLabelHidden} description={description} value={v} options={shape.enum} onChange={onChange} isDisabled={isDisabled} />;
   }

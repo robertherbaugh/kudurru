@@ -428,6 +428,8 @@ jobs:
           key: deploy-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Render matrix, kustomize overlays, kubeconform
         run: make helm-check
+      - name: Release version references are current
+        run: make version-check
       - name: Generated deployment assets are current
         run: |
           make deploy-assets

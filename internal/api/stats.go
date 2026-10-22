@@ -399,16 +399,34 @@ func (s *Server) statsTop(ctx context.Context, in *topInput) (*topOutput, error)
 	return &topOutput{Body: &TopBody{TopList: *res}}, nil
 }
 
-func (s *Server) upstreamServers() []UpstreamServer {
-	out := []UpstreamServer{}
-	if s.opts.Upstreams == nil {
-		return out
+func (s *Server) upstreamStates(ctx context.Context) ([]upstream.ServerStatus, error) {
+	if s.opts.UpstreamReads != nil {
+		if ctx == nil || ctx.Err() != nil {
+			return nil, errUnavailable("original upstream routes unavailable")
+		}
+		states, err := s.opts.UpstreamReads.UpstreamStates(ctx)
+		if err != nil || ctx.Err() != nil {
+			return nil, errUnavailable("original upstream routes unavailable")
+		}
+		return states, nil
 	}
-	for _, st := range s.opts.Upstreams.Status() {
+	if s.opts.Upstreams == nil {
+		return nil, nil
+	}
+	return s.opts.Upstreams.Status(), nil
+}
+
+func (s *Server) upstreamServers(ctx context.Context) ([]UpstreamServer, error) {
+	states, err := s.upstreamStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []UpstreamServer{}
+	for _, st := range states {
 		u := upstreamServer(s.opts.NodeName, st)
 		out = append(out, u)
 	}
-	return out
+	return out, nil
 }
 
 func upstreamServer(node string, st upstream.ServerStatus) UpstreamServer {
@@ -425,7 +443,11 @@ func (s *Server) statsUpstreams(ctx context.Context, in *WindowParams) (*upstrea
 		return nil, err
 	}
 	if in.Scope != "cluster" && (in.Node == "" || in.Node == s.opts.NodeName) && s.opts.Querylog == nil {
-		return &upstreamsOutput{Body: &UpstreamsBody{UpstreamTop: sqlitelog.UpstreamTop{Scope: sqlitelog.Scope{Scope: "node", Nodes: []sqlitelog.NodeResult{{Name: s.opts.NodeName, OK: true}}}, Window: w, Items: []sqlitelog.UpstreamItem{}}, Servers: s.upstreamServers()}}, nil
+		servers, err := s.upstreamServers(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return &upstreamsOutput{Body: &UpstreamsBody{UpstreamTop: sqlitelog.UpstreamTop{Scope: sqlitelog.Scope{Scope: "node", Nodes: []sqlitelog.NodeResult{{Name: s.opts.NodeName, OK: true}}}, Window: w, Items: []sqlitelog.UpstreamItem{}}, Servers: servers}}, nil
 	}
 	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {

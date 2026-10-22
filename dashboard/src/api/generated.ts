@@ -246,6 +246,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List own enrolled sessions */
+        get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an enrolled session of the current account */
+        delete: operations["revokeSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/status": {
         parameters: {
             query?: never;
@@ -294,6 +328,83 @@ export interface paths {
         post?: never;
         /** Revoke one API token (someone else's needs tokens.delete) */
         delete: operations["deleteToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Own local authenticator status */
+        get: operations["totpStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/totp/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate the authenticator and revoke existing sessions
+         * @description Brute-force limited per client address and user: 429 with Retry-After.
+         */
+        post: operations["confirmTOTP"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/totp/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable own authenticator and revoke existing sessions
+         * @description Brute-force limited per client address and user: 429 with Retry-After.
+         */
+        post: operations["disableTOTP"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/totp/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare an authenticator (provisioning secret returned once)
+         * @description Brute-force limited per client address and user: 429 with Retry-After.
+         */
+        post: operations["beginTOTP"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -423,6 +534,23 @@ export interface paths {
          * @description The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
          */
         get: operations["previewBlockPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Enterprise branding, or the built-in presentation */
+        get: operations["getBranding"];
         put?: never;
         post?: never;
         delete?: never;
@@ -874,7 +1002,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List identityproviders (read-only; the write API is v0.2) */
+        /** List identityproviders */
         get: operations["listIdentityProviders"];
         put?: never;
         post?: never;
@@ -891,7 +1019,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List rolebindings (read-only; the write API is v0.2) */
+        /** List rolebindings */
         get: operations["listRoleBindings"];
         put?: never;
         post?: never;
@@ -908,7 +1036,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List serviceaccounts (read-only; the write API is v0.2) */
+        /** List serviceaccounts */
         get: operations["listServiceAccounts"];
         put?: never;
         post?: never;
@@ -925,10 +1053,51 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List users (read-only; the write API is v0.2) */
+        /** List users */
         get: operations["listUsers"];
         put?: never;
-        post?: never;
+        /**
+         * Create an API-managed local user requiring a password change
+         * @description Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.
+         */
+        post: operations["createLocalUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/users/{name}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset an exact API-managed local account's password
+         * @description Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.
+         */
+        post: operations["resetLocalUserPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/users/{name}/totp/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable a lost authenticator for an exact account UID */
+        post: operations["recoverTOTP"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2038,6 +2207,14 @@ export interface components {
             /** Format: int64 */
             took_ms: number;
         };
+        AuthListSessionRecordInfo: {
+            continue: string;
+            /** @description Why entries were ignored (role bindings, identity providers). */
+            diagnoses?: string[] | null;
+            items: components["schemas"]["SessionRecordInfo"][];
+            /** Format: int64 */
+            took_ms: number;
+        };
         AuthListTokenInfo: {
             continue: string;
             /** @description Why entries were ignored (role bindings, identity providers). */
@@ -2113,6 +2290,16 @@ export interface components {
             took_ms: number;
             /** Format: date-time */
             until?: string;
+        };
+        BrandingInfo: {
+            accentColor: string;
+            enabled: boolean;
+            favicon: string;
+            logoDark: string;
+            logoLight: string;
+            name: string;
+            /** Format: date-time */
+            validUntil?: string;
         };
         CatalogueCategory: {
             description?: string;
@@ -2330,6 +2517,14 @@ export interface components {
             reason: string;
             status: string;
             type: string;
+        };
+        CreateLocalUserRequest: {
+            /** @description Display name; bounded to 256 UTF-8 bytes without control characters. */
+            displayName?: string;
+            /** @description Canonical local username, already normalized as a DNS subdomain. */
+            name: string;
+            /** @description Initial password, at least 8 characters and at most 1024 bytes; never returned or logged. */
+            password: string;
         };
         CreateTokenRequest: {
             /** @description Free text shown in the token list. */
@@ -3052,6 +3247,10 @@ export interface components {
             name: string;
             /** Format: date-time */
             passwordChangedAt?: string;
+            /** @description Opaque version required for administrator password-reset compare-and-swap. */
+            resourceVersion?: string;
+            /** @description Immutable account identity required for administrator recovery and password reset. */
+            uid: string;
         };
         IdentityProviderInfo: {
             cliClientID?: string;
@@ -3258,6 +3457,8 @@ export interface components {
         };
         LoginRequest: {
             password: string;
+            /** @description The enrolled authenticator code, when required. */
+            totpCode?: string;
             username: string;
         };
         ManagedFieldsEntry: {
@@ -3513,6 +3714,8 @@ export interface components {
             newPassword: string;
             /** @description Also revoke every API token of the user; a password change alone revokes sessions, not tokens. */
             revokeTokens?: boolean;
+            /** @description The enrolled authenticator code, when required. */
+            totpCode?: string;
         };
         Plan: {
             objects: {
@@ -3909,6 +4112,14 @@ export interface components {
             path?: string;
             ua?: string;
         };
+        ResetLocalUserPasswordRequest: {
+            /** @description Replacement password, at least 8 characters and at most 1024 bytes; never returned or logged. This does not recover a lost authenticator. */
+            newPassword: string;
+            /** @description Exact observed opaque resourceVersion; a conflict requires a fresh read and deliberate request. */
+            resourceVersion: string;
+            /** @description Exact immutable UID from the authorized user inventory. */
+            uid: string;
+        };
         Resource: {
             kind: string;
             name?: string;
@@ -3956,6 +4167,24 @@ export interface components {
             source: string;
             /** @description CNAME target in strict mode. */
             target?: string;
+        };
+        SecondaryRuntime: {
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: date-time */
+            lastConfirmedAt?: string;
+            message?: string;
+            /** Format: date-time */
+            nextAttemptAt?: string;
+            node: string;
+            primary?: string;
+            reason?: string;
+            /** Format: int64 */
+            recordCount?: number;
+            /** Format: int64 */
+            serial?: number;
+            /** @enum {string} */
+            state: "pending" | "serving" | "expired" | "unavailable";
         };
         Section: {
             envLocked: boolean;
@@ -4020,6 +4249,17 @@ export interface components {
             provider?: string;
             tokenID?: string;
         };
+        SessionRecordInfo: {
+            current: boolean;
+            /** Format: date-time */
+            expiresAt: string;
+            id: string;
+            /** Format: date-time */
+            idleExpiresAt: string;
+            /** Format: date-time */
+            issuedAt: string;
+            revoked: boolean;
+        };
         SetBlockingInputBody: {
             blocking: boolean;
             /** Format: double */
@@ -4032,7 +4272,7 @@ export interface components {
             enum?: components["schemas"]["SettingOption"][] | null;
             fields?: components["schemas"]["SettingField"][] | null;
             /** @enum {string} */
-            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email" | "date-time";
             help?: string;
             items?: components["schemas"]["SettingShape"];
             keys?: components["schemas"]["SettingShape"];
@@ -4056,7 +4296,7 @@ export interface components {
             envLocked: boolean;
             fields?: components["schemas"]["SettingField"][] | null;
             /** @enum {string} */
-            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email" | "date-time";
             group?: string;
             help: string;
             hostOnly: boolean;
@@ -4091,7 +4331,7 @@ export interface components {
             enum?: components["schemas"]["SettingOption"][] | null;
             fields?: components["schemas"]["SettingField"][] | null;
             /** @enum {string} */
-            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email" | "date-time";
             items?: components["schemas"]["SettingShape"];
             keys?: components["schemas"]["SettingShape"];
             /** Format: int64 */
@@ -4228,6 +4468,28 @@ export interface components {
             /** Format: int64 */
             rows: number;
         };
+        StubAuthority: {
+            address: string;
+            name: string;
+            /** @enum {string} */
+            protocol: "udp" | "tcp";
+        };
+        StubRuntime: {
+            authorities: components["schemas"]["StubAuthority"][];
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: date-time */
+            lastConfirmedAt?: string;
+            message?: string;
+            /** Format: date-time */
+            nextAttemptAt?: string;
+            node: string;
+            reason?: string;
+            /** Format: int64 */
+            serial?: number;
+            /** @enum {string} */
+            state: "pending" | "routing" | "expired" | "unavailable";
+        };
         SuggestionsBody: {
             field: string;
             nodes: components["schemas"]["NodeResult"][] | null;
@@ -4301,6 +4563,35 @@ export interface components {
             /** Format: int64 */
             unique_domains: number;
         };
+        TOTPConfirmRequest: {
+            challenge: string;
+            /** @description The new candidate factor's code. */
+            code: string;
+            currentPassword: string;
+            /** @description The previously enrolled factor's code, when rotating. */
+            totpCode?: string;
+        };
+        TOTPProofRequest: {
+            currentPassword: string;
+            /** @description The current factor's code, when already enabled. */
+            totpCode?: string;
+        };
+        TOTPRecoverRequest: {
+            /** @description The current immutable UID from the authorized user inventory. */
+            uid: string;
+        };
+        TOTPSetupResponse: {
+            challenge: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Local authenticator provisioning URI; never send it to an external QR service. */
+            otpauthURI: string;
+            /** @description Base32 provisioning secret, shown only during setup. */
+            secret: string;
+        };
+        TOTPStatus: {
+            enabled: boolean;
+        };
         TimeseriesBody: {
             approximate: boolean;
             /** Format: date-time */
@@ -4346,6 +4637,8 @@ export interface components {
             namespace?: string;
             /** @description local, or the identity provider id. */
             provider?: string;
+            /** @description Immutable account identity for local users and service accounts. */
+            uid?: string;
         };
         TopBody: {
             approximate: boolean;
@@ -4638,8 +4931,10 @@ export interface components {
             /** Format: int64 */
             recordSets: number;
             resourceVersion?: string;
+            secondaryRuntime?: components["schemas"]["SecondaryRuntime"];
             /** Format: int32 */
             serial: number;
+            stubRuntime?: components["schemas"]["StubRuntime"];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -4680,8 +4975,10 @@ export interface components {
             /** Format: int64 */
             recordSets: number;
             resourceVersion?: string;
+            secondaryRuntime?: components["schemas"]["SecondaryRuntime"];
             /** Format: int32 */
             serial: number;
+            stubRuntime?: components["schemas"]["StubRuntime"];
             type: string;
             upstreamGroup?: string;
             zoneName: string;
@@ -6092,6 +6389,172 @@ export interface operations {
             };
         };
     };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthListSessionRecordInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     authStatus: {
         parameters: {
             query?: never;
@@ -6462,6 +6925,391 @@ export interface operations {
             };
             /** @description Precondition Failed */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    totpStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TOTPStatus"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    confirmTOTP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TOTPConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    disableTOTP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TOTPProofRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    beginTOTP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TOTPProofRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TOTPSetupResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7552,6 +8400,63 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getBranding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandingInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10643,6 +11548,294 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createLocalUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLocalUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IAMUser"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resetLocalUserPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetLocalUserPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    recoverTOTP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TOTPRecoverRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

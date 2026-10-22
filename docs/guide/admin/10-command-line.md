@@ -53,6 +53,22 @@ The command stores the token in the keyring of your system. If there is no
 keyring, it stores the token in a file that only you can read. To skip the
 keyring, set `KUDURRU_KEYRING=file`.
 
+If your local account has an authenticator, add `--totp`:
+
+```sh
+kudurru login --server https://dns.example.net:8080 --username admin --totp
+```
+
+Enter the password and current six-digit code at the hidden prompts. For piped
+input, use `--password-stdin --totp-stdin` and provide the password line followed
+by the code line. Leading zeros matter. The code is never saved; there is no
+flag that takes its value or environment variable for it.
+
+Login and token creation do not follow redirects or retry automatically. Use
+the final server address. If a response is lost, inspect your sessions and tokens
+in the dashboard before starting a fresh attempt: the server may have completed
+the request even though the command could not confirm it.
+
 NOTE: The default certificate of kudurru is self-signed. Use `--ca-file`
 with the certificate to trust it. For a test only, use
 `--insecure-skip-tls-verify`. Do not use this option in production.

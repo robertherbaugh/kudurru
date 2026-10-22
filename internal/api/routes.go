@@ -100,6 +100,7 @@ func addErrorResponses(op *huma.Operation, codes ...int) {
 // registerRoutes registers every route group.
 func (s *Server) registerRoutes() {
 	s.registerMeta()
+	s.registerBranding()
 	s.registerAuth()
 	s.registerObjects()
 	s.registerImports()

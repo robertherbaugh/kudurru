@@ -84,6 +84,10 @@ func (s *Store) Restore(ctx context.Context, r io.Reader) (err error) {
 	if s.isClosed() {
 		return store.ErrClosed
 	}
+	ctx, err = s.writeContext(ctx)
+	if err != nil {
+		return err
+	}
 	objs, err := decodeObjects(s.opts.Scheme, r)
 	if err != nil {
 		return err

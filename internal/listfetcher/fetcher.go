@@ -427,13 +427,22 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 	var owned ownedStatus
 	fp := &fpBuilder{}
 	fp.add(string(pl.mode))
-	spec := blocking.Spec{Name: pl.name, Mode: pl.mode}
+	spec := blocking.Spec{Name: pl.name, Mode: pl.mode, ExternalPolicy: pl.externalPolicy()}
 	var opened openedSources
 	defer opened.close()
 	stale := false
 	f.mu.Lock()
 	for i := range pl.sources {
 		ps := &pl.sources[i]
+		if ps.external {
+			owned.Sources = append(owned.Sources, externalStatus(ps))
+			if ps.disabled {
+				fp.add(ps.name, "disabled")
+			} else {
+				fp.add(ps.name, "rpz")
+			}
+			continue
+		}
 		if ps.disabled {
 			owned.Sources = append(owned.Sources, disabledStatus(ps))
 			fp.add(ps.name, "disabled")
@@ -538,10 +547,19 @@ func (f *Fetcher) listStats(pl *plannedList, fp string, spec blocking.Spec, cach
 }
 
 // statsFromStatus reuses the published counts when every source digest in
-// the status equals the current one.
+// the status equals the current one. Counts with unsupported rules need one
+// fresh compile per term: status has no compiler version, and a software
+// upgrade can support previously unsupported rules without changing a digest.
 func statsFromStatus(pl *plannedList, fp string) (listStats, bool) {
+	for _, ps := range pl.sources {
+		if ps.external {
+			// Shared counts may describe an older source kind or a different
+			// node's transfers. Only ordinary compiler statistics are ours.
+			return listStats{}, false
+		}
+	}
 	st := &pl.obj.Status
-	if len(st.Sources) != len(pl.sources) || st.RuleCount == 0 {
+	if len(st.Sources) != len(pl.sources) || st.RuleCount == 0 || st.Unsupported != 0 {
 		return listStats{}, false
 	}
 	check := &fpBuilder{}

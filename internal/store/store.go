@@ -24,7 +24,7 @@ import (
 // SchemaVersion is compiled into the binary and recorded by every driver.
 // A newer on-disk version refuses to start; an older one is migrated in one
 // transaction (decision D11).
-const SchemaVersion = 1
+const SchemaVersion = 5
 
 // Kind is the object kind name, e.g. "DNSZone".
 type Kind string
@@ -114,6 +114,9 @@ type ApplyOptions struct {
 	// ExpectedResourceVersion enables optimistic concurrency; a mismatch is
 	// ErrConflict.
 	ExpectedResourceVersion string
+	// CreateOnly requires an absent object. Existing objects conflict even
+	// when identical or Force is true; the check holds at the commit boundary.
+	CreateOnly bool
 	// Force overrides managedBy (admin only, audited).
 	Force bool
 }
@@ -177,6 +180,9 @@ const (
 type Event struct {
 	Type   EventType
 	Object Object
+	// Cursor is a local watch position. HA cursors include a lineage and must
+	// not be confused with the source object's resourceVersion.
+	Cursor string
 }
 
 // WatchOptions controls Watch.
@@ -225,6 +231,12 @@ type Info struct {
 	ClusterID     string
 	Epoch         uint64
 	Leader        string
+	MemberID      string
+	PrimaryID     string
+	PromotionID   string
+	Role          string
+	Fenced        bool
+	Revision      uint64
 	// LastContact is when the driver last completed a round trip with the
 	// service behind it (the apiserver for kube). Zero means never, or a
 	// local driver that is always in contact (sqlite, memory). zonecache

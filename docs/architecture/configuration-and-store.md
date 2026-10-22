@@ -43,9 +43,15 @@ Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 ## API migrations
 
 `internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
-objects, a settings merge patch and conversion warnings. The dashboard's
-Tools wizard uses `POST /imports/preview` and submits the reviewed result to
-`POST /imports/start`. This returns HTTP 202, a run ID and a Location header
+objects, a settings merge patch and conversion warnings.
+
+The v0.2 complete SQLite runtime currently refuses migration apply/start,
+adoption and decommission writes with 503: their journal and background-job
+writes do not yet have current compound command admission. Read-only previews
+and history remain available. The legacy/Kubernetes flow below is unchanged.
+
+The dashboard's Tools wizard uses `POST /imports/preview` and submits the
+reviewed result to `POST /imports/start`. This returns HTTP 202, a run ID and a Location header
 before object writes finish. The CLI's `import pihole|technitium` uses the same
 converter locally; `--apply` starts the same background job and `--wait` polls
 its report. `POST /imports/apply` remains available for synchronous callers.
@@ -218,14 +224,25 @@ erDiagram
 | `DNSRecordSet` | namespaced | public | records (external-dns `Endpoint` shape) added to a zone |
 | `BlockList` | namespaced | public | block or allow rules from sources |
 | `ClientGroup` | namespaced | public | who a client is |
+| `Integration` | namespaced | public | provider settings and credential references; execution host in progress |
+| `Kudurru` | cluster, name `default` | public | generated cluster settings and replicated blocking status; serving integration in progress |
 | `Policy` | namespaced | public | what a group gets: lists, schedule, upstream group, safe search |
 | `UnblockRequest` | namespaced | public | a block-page request and its decision |
 | `DHCPScope` | cluster | public | a DHCPv4 pool, its options, relays and reservations (served with the Kubernetes store, D180) |
 | `LocalUser` | cluster | internal | local account with an Argon2id hash |
 | `APIToken` | cluster | internal | SHA-256 of a `kdr_` token, owned by a user or service account |
-| `ServiceAccount` | namespaced | internal | a non-human principal |
-| `RoleBinding` | namespaced | internal | role at a scope for users, groups, service accounts |
-| `IdentityProvider` | cluster | internal | an OIDC provider |
+| `PrincipalState` | cluster | internal | private bootstrap authority bound to an exact service-account UID |
+| `ServiceAccount` | namespaced | public | a non-human principal; credentials and bootstrap authority stay private |
+| `RoleBinding` | namespaced | public | role at a scope for users, groups, service accounts |
+| `IdentityProvider` | cluster | public | an OIDC provider with operator-granted credential references |
+| `IntegrationSourceHead` / `IntegrationSourceChunk` | cluster | internal | bounded original inbound source evidence and its complete version pointer |
+| `IntegrationNameAllocation` | cluster | internal | retained collision reservation bound to Integration and target zone UIDs |
+
+Inbound runtime carriers use private Secrets in Kubernetes and private objects in
+SQLite. Full backups and replication include them, with explicit zero-count kind
+manifests after deletion; safe configuration exports omit them. Carrier validation
+checks identity, chunk digests and finite bounds. Whole-source current admission
+and publication remain separate from storing these individual records.
 
 The bootstrap seeds four objects on the first start, with owner `bootstrap`:
 the root forward zone `.` → `default`, `ClientGroup default` (all
@@ -236,6 +253,12 @@ on `default` until a default policy exists in the release namespace; no
 objects are moved automatically ([upgrade behavior](../deploy/helm.md#default-object-namespace-and-upgrades)).
 
 ### One writer per object
+
+`ApplyOptions.CreateOnly` requires the object to be absent at commit time.
+An existing object conflicts even when its content is identical or `Force` is
+set. SQLite checks within its transaction; Kubernetes uses a create request
+for both CRDs and private Secrets, so a concurrent creator cannot turn a
+bootstrap or migration operation into an update.
 
 Every write carries a **manager**, recorded as the object's owner in the
 `kudurru.io/managed-by` annotation: `api`, `file:<path>`,
@@ -402,7 +425,9 @@ the Kubernetes Events sink exists but is not wired yet.
 
 ## Settings
 
-Settings are not store objects. Each key in the metadata table
+The existing production settings path uses files and a live configuration
+pointer; the v0.2 canonical object and command adapter are described below.
+Each key in the metadata table
 (`internal/config/schema.go`) has a **scope** and flags:
 
 | Scope | Examples | Changed how |
@@ -424,6 +449,11 @@ ConfigMap. Only `upstreams` can currently switch to `ui` ownership, through
 an explicit, revision-checked adoption. Adoption copies the entire effective
 section (groups, servers, bootstrap, conditional rules, ECS and recursion)
 without changing routing. Host-only restrictions remain in place.
+
+On the v0.2 complete SQLite runtime, canonical settings commands replace this
+legacy ownership manager. Adoption/release and legacy YAML export return 503;
+canonical reads and writes never change the legacy settings file or reload
+pointer. Kubernetes retains the ownership flow described here.
 
 UI-owned upstreams live with their ownership record in a separate ConfigMap,
 `<release>-ui-settings` by default (`KUDURRU_SETTINGS_RESOURCE`). Helm never
@@ -492,3 +522,351 @@ read-only mode for compose twins, the health of other nodes (the node
 list, the stats and the query log are already gathered), and a
 `roles:` setting. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
 for the plan.
+
+## SQLite replication foundation
+
+Schema 2 adds durable member/authority metadata, owned extension sections and
+private recovery images. `internal/store/replication` defines a versioned
+complete logical image; it is separate from the YAML backup/apply format.
+`internal/store/follower` supplies a local-read facade and a bounded pull loop.
+The server transport, startup selection and coherent serving/authentication
+publication are being integrated; these packages alone do not enable HA.
+
+```mermaid
+flowchart LR
+    P["Primary transaction"] --> I["Complete image<br/>term + revision + digest<br/>exact kind manifest"]
+    I --> V["Authenticate peer<br/>observe authority<br/>validate bounded image"]
+    V --> T["One SQLite replacement transaction<br/>objects + status + owned sections<br/>absence removes old objects"]
+    T --> G["Generation notification<br/>subscribers read a complete image"]
+    O["Old writer token"] --> F["Commit-time fence<br/>including no-op writes"]
+    T --> Q["Private local quarantine<br/>when replacing another term"]
+```
+
+Images preserve source object resource versions, UIDs, ownership, statuses
+and private documents. The receiver requires the complete registered-kind
+manifest and all owned sections, verifies the digest and bounded strict JSON,
+and validates copies without defaulting the source data. Node-local audit,
+secondary/stub copies, query logs and response caches remain local. Cluster
+settings have one designated future owner, `Kudurru/default`; the image carries
+an owner reference, not a second settings map.
+
+Complete-image owner validators run after the generic envelope, row and digest
+checks. They enforce cross-row inventories that individual row validators cannot
+prove. SQLite repeats them before replica installation, serving-candidate
+admission and promotion. Opening a database and reading its raw generation remain
+available to explicit startup migrations; neither operation grants serving or HA
+eligibility. Local mutation commands still enforce their own owner invariants.
+
+Every mutation checks its captured member/term/incarnation token inside the
+writer transaction. Observing an authenticated higher epoch durably fences
+the old primary; equal-epoch conflicting promotions stop writes until an
+explicit branch resolution. Failed fence persistence also blocks writes in
+memory. SQLite uses `synchronous=FULL` for all writer connections, including
+reconnections and standalone databases. Restoring a public backup remains an
+apply operation subject to the same writer fence.
+
+`sqlite.Command` runs current authorization, staged reads and writes in one
+fenced transaction. It also accepts up to 16 final checks of already pinned
+immutable dependencies and the actual clock. Those checks run after the callback
+and complete-image validation, immediately before commit or a successful no-op;
+a denial rolls back object, security, audit, receipt and revision changes together.
+Checks cannot access the ended transaction or acquire publication/provider locks.
+Callers retain dependency replacement exclusion through the entire command.
+This defines admission time; wall time may still advance while SQLite syncs.
+External enrollment registers a final proof check so a JWT that expires during
+later command work cannot create a session.
+
+An accepted replacement rotates the local watch lineage and closes old
+watches; object resource versions remain those of the source. Consumers that
+need a coherent generation must subscribe before `ReadGeneration` and publish
+one prepared bundle, rather than combine independent kind watches. Manual
+promotion requires coordinator checks in addition to the store's atomic CAS.
+This is epoch fencing after reconnection: two partitioned primaries can both
+accept writes after a manual promotion. It is not a consensus protocol.
+
+A schema-2 database cannot be opened by a schema-1 binary. Preserve a backup
+from the earlier binary before testing an upgrade; rollback uses that backup.
+Recovery images can contain credentials and are neither public backups nor
+ordinary object exports.
+
+## Cluster settings object foundation
+
+`Kudurru/default` supplies the canonical object shape for v0.2 cluster settings.
+`spec.settings` has a nested structural schema generated from `config.Schema`
+by `hack/settingscrd`; `make generate` refreshes it before copying the CRD into
+the chart and store validator. Node-scope, host-only, and secret settings are
+excluded. A public settings object cannot name listener files, replace host
+identity providers, or change audit storage. The store and real Kubernetes
+admission tests exercise the same generated fields.
+
+`config.ApplyClusterDocument` prepares a complete configuration from that
+object and local host inputs. Omitted public keys return to compiled defaults,
+so deleting a key cannot retain an older generation's value. Environment locks
+retain their local values; canonical input is validated even when a local lock
+would override it. Initial seeding does not distribute a node's environment
+values. The host and source document remain unchanged during preparation.
+
+SQLite startup now seeds a missing singleton in the same actual command that
+initializes private runtime manifests. It captures only public cluster settings
+from the primary's existing effective configuration; environment-locked keys use
+compiled defaults. A present singleton is preserved exactly on later starts,
+including after host configuration changes. Followers never seed it locally.
+
+```mermaid
+flowchart LR
+    Metadata["config.Schema"] --> Admission["Generated Kudurru admission schema"]
+    Metadata --> Defaults["Public cluster defaults"]
+    Object["Kudurru/default settings"] --> Validate["Validate complete canonical settings"]
+    Defaults --> Validate
+    Host["Local host settings and environment locks"] --> Effective["Prepare effective configuration"]
+    Validate --> Effective
+    Effective --> Bundle["Complete serving bundle"]
+```
+
+The object also carries absolute blocking-disable state in status: an optional
+`disabledUntil` requires `disabled: true`; an absent deadline means indefinite.
+Expiry never restarts with a process.
+
+The optional canonical API adapter now reads settings and their schema values
+from the original complete HTTP lease. It validates a merge patch, then writes
+only named public keys to the actual singleton through current raw authentication,
+the original writer and complete dependency exclusion. A stale request cannot
+overwrite a newer configuration; identical writes still cross final credential
+and writer checks. Map merges and null resets preserve the API's existing behavior.
+Successful PATCH replies acknowledge durable desired values. Subsequent serving
+reads wait for complete publication; the adapter never writes the legacy file or
+changes the independent reload pointer. Actual HTTP/SQLite tests cover these
+paths. SQLite `serve.go` mounts this adapter with the complete HTTP owner;
+Kubernetes retains its existing settings writer.
+
+SQLite generic public object GETs and their aliases read the original HTTP
+lease's object set. Detail responses retain that object's UID and resourceVersion;
+record permissions use its captured zone reference. Pagination binds the complete
+generation and normalized query, applies authorization before cursor keys, and
+returns 409 when a later request changes either binding. It does not keep old
+images alive across page requests. Compiled blocklist search uses the same
+captured list bodies and modes; missing compiled data returns 503 even if a live
+cache or inline source could answer. Kubernetes keeps the existing read path.
+
+Catalog GETs read the original blocking view, report actual acquired base/import
+provenance, and omit live refresher status. Services, categories and safe-search
+entries use that same catalog; missing owners return 503 without a Holder
+fallback. Policy state uses the original objects, canonical settings, catalog and
+compiled list owners together. Text/RPZ counts describe acquired data; RPZ expiry
+clears readiness without erasing diagnostic counts. The desired object's
+Conditions remain historical receipts. Schedules and expiry share one observation
+time; traffic statistics remain explicitly historical query-log reads. Public
+reads are still migrating route by route: enabling these capabilities does not
+convert the remaining runtime diagnostics.
+
+Blocking GETs use the original blocking view's canonical settings and absolute
+deadline at one observation time. A held request keeps its original state after
+a replacement; exact timer expiry reenables blocking without writing a new
+receipt. Configured-off and indefinitely disabled states omit a resume timer.
+These cluster-scoped responses never fall back to the legacy local toggle.
+
+Blocking POSTs reauthorize the original proof for cluster `blocking.toggle` and
+update only `Kudurru/default.status.blocking` in the current command. No-ops retain
+the same final credential and writer checks. A 200 response waits for a complete
+publication containing the exact committed settings UID, resourceVersion and
+status, then evaluates its blocking view at one response time. The original
+writer binding remains in force during this observation, outside transaction and
+dependency locks. If commit succeeds but publication cannot be acknowledged, 503
+includes a `committed: true` hint and the exact receipt; it does not imply rollback.
+
+Persisted deadlines have whole-second precision. Relative timers round up to the
+next UTC second, adding less than one second; fractional absolute `until` values
+are rejected. Neither publication waits nor restart renews the deadline. Enabling
+the toggle clears its temporary disable but does not override configured-off
+blocking settings.
+
+Source-entry GETs authorize the original BlockList and retain its inline values,
+structured entries, parser settings and exclusions. URL and ConfigMap bodies
+open only the digest named by that captured source's receipt. The adapter verifies
+the regular file, exact size and full SHA256 before parsing, with a 64 MiB body
+cap and the existing four concurrent scan slots. Cache replacement preserves an
+already open descriptor, but may discard a digest before it is opened; that
+request returns 503 instead of reading a newer body. These responses omit the
+uncaptured local fetch time. RPZ feeds are not line-source bodies and return 422.
+Continuation tokens bind the exact generation, object UID/RV, source, parser
+inputs and query; changed observations require restarting pagination.
+
+Source-entry PATCH uses the existing current object command for one transaction:
+it reauthorizes the original raw proof, reads the exact list and source, checks
+If-Match and ownership, then validates and stages the edit. Inline additions and
+removals, structured enable switches, and URL/ConfigMap exclusions retain their
+existing parser semantics. No-ops also check current authority, manager ownership
+and final credential/writer validity. Bootstrap lists follow the same API
+takeover rule as whole-object PUT. RPZ feeds return 422. Cache effects run only
+after commit, and no failed command retries against a successor or a live Store.
+The returned resourceVersion identifies the durable edit; serving reads observe
+it after complete publication.
+
+Upstream diagnostics retain the original request's resolver-set membership and
+sample that set's local health, failures, backoff and RTT. Those operational
+counters can advance during a held request; they are not frozen publication
+metadata. Local, central-history and self-shard stats paths use this same reader.
+A failed local sample remains an explicit failed node in partial cluster results;
+remote peer samples and traffic history retain their separate scopes.
+
+SQLite zone record upsert/removal, BIND import and cascading zone deletion now
+plan and apply within one current command. Each plan seals the original
+transaction, target and complete permission set. Imports require zone creation
+permission only when creating a zone, and record deletion permission when
+removing stale API-owned import chunks. Cascade and dry runs check every current
+reference and owner before staging any change. Even an unchanged write, dry run
+or missing-result response crosses current proof and final-time admission. Cache
+flush and aggregate audit reporting occur after the command; per-object durable
+audit remains transactional. Actual server tests cover native DNS publication
+and restart after these commands.
+
+SQLite temporarily returns 503 for unsafe convenience writes without complete
+current admission: domain/allowlist/denylist mutations, query-log allow/deny
+actions and unblock-request actions. Generic object commands remain available.
+These gates prevent legacy helpers from writing outside current authorization or
+returning an unchecked no-op; they are explicit remaining integration work.
+Generic apply/batch-delete retains its independent per-item result contract. All
+items retain the original HTTP lease, so a first commit can make later items
+stale; no successor capture or atomic-batch guarantee is implied.
+
+
+## Complete serving publication
+
+`internal/serving` prepares one whole immutable bundle from a complete SQLite
+replication image. The required component manifest includes objects, zones,
+policy, resolution, response processing, cache behavior, blocking, inventory,
+authentication and runtime data. Owner preparation must provide every component
+with the same canonical generation and verified dependency identity. An error,
+panic, missing component, changed dependency or stale generation retains the
+entire previous bundle.
+
+SQLite issues an opaque token in the same read transaction as the image. The
+publisher checks that token under the SQLite writer barrier before swapping one
+pointer. Compilation, downloads, and resource retirement happen outside that
+barrier. `zonecache.Prepare` supplies strict complete-object view preparation
+without watches or per-builder last-good substitutions.
+
+Requests hold leases. Replacement releases the publisher's reference, while
+old pools and other resources remain alive until the final request or stream
+releases its lease. DNS capture needs no database read and may use last-good
+data during preparation or fencing. Protected HTTP capture also checks the
+in-memory authority and dependency cursors and fails closed while publication
+is pending. The HTTP listener waits up to two seconds for its first eligible
+lease before authentication or handler dispatch; timeout still returns 503.
+It never replaces a held request lease or replays a command. Explicit fenced
+DNS-only publication cannot open authentication,
+readiness, or promotion. Promotion pins the actual serving bundle through its
+commit, then releases the pin before waiting for new-term publication.
+
+Background recovery uses `WithWriterGate` with an exact writable term and local
+incarnation. It holds the same publication/promotion exclusion even when no
+bundle exists or a newer image is pending; it grants no HTTP read eligibility.
+The callback next pins current dependency replacement and retains both gates
+through the actual fenced command. It releases them before waiting for serving
+acknowledgment, so startup recovery cannot deadlock on its own publication.
+Publication acknowledgment never wakes or cancels the preparer: committed
+source and dependency changes already schedule that work. Pending waits observe
+publication or authority changes, avoiding a feedback loop between the driver and publisher.
+
+```mermaid
+flowchart LR
+    Image["Installed complete SQLite image + token"] --> Prepare["Prepare every owner and exact dependency"]
+    Prepare --> CAS["Writer barrier: token + dependency check"]
+    CAS --> Bundle["One Served bundle"]
+    Bundle --> Leases["DNS / HTTP / stream leases"]
+    Bundle --> Pin["Promotion publication pin"]
+    Leases --> Retire["Retire after final release"]
+```
+
+The DNS adapters capture one lease before identification and read typed policy,
+zone, inventory, resolver, response, cache and blocking views from that lease.
+Missing owners fail closed. Alias and DNS64 subqueries inherit the capture;
+detached cache work clones its lease and fences late fills against retired
+resolver/cache incarnations, including A → B → A changes. Transfers hold the
+lease until consumption or explicit response cleanup, including streams never
+iterated. UDP, TCP, DoT, DoH, DoH3, DoQ and the API query caller release cleanup.
+The explicit transfer adapter reads the captured zone set; its legacy live-set
+entry point is rejected once capture is installed.
+
+`internal/servingbuild` now supplies all ten concrete owners. Its local schema
+includes every registered public and private kind. Primary lifecycle and auth
+consume the complete image; the public DNS object projection includes only
+`zonecache.DefaultKinds`. It applies canonical settings against captured host
+settings, compiles exact-digest complete list bodies against the matching catalog,
+and binds acquired zone runtimes to the captured immutable keyring. Inventory has
+an explicit empty owner when no claims exist. A dependency cursor changing during
+preparation rejects the entire candidate and releases its resources exactly once.
+
+```mermaid
+flowchart TD
+    Candidate["One validated complete image"] --> Primary["Committed primary lifecycle and heads"]
+    Candidate --> Auth["Public/private IAM and durable security"]
+    Candidate --> Objects["Public DNS objects and canonical settings"]
+    Local["Pinned keys, catalog, inventory and acquired runtimes"] --> Zones["Credential-bound serving zones"]
+    Primary --> Zones
+    Objects --> Owners["Policy, exact lists, resolver, response and cache"]
+    Local --> Owners
+    Auth --> All["All ten real components"]
+    Zones --> All
+    Owners --> All
+    All --> Publish["Whole-bundle publication barrier"]
+```
+
+`BindDNS` connects every stage to the outer request lease. Prepared primaries are
+never marked published by the builder. Resolver pools and auth resources remain
+alive through held leases. The current implementation allocates new resolver and
+cache incarnations for each candidate; reuse of unchanged semantic owners remains
+a scale optimization.
+
+The publisher, builder, store barrier and DNS/HTTP adapters are tested against real
+SQLite publication, concurrent owner changes, missing list bodies, rollback,
+retirement, restart, replica installation, promotion and native UDP/TCP listeners.
+The root SQLite assembly now connects providerhost, coordinator, complete
+publication, current command pins, primary driver and status projection. Its
+always-on workers perform acquisition and publication on every role; a separate
+writer entry retains the original elector token, resets provider floors, reconciles
+the startup config-provider manifest and joins old work before replacement.
+License and manager/catalog/key changes wake complete preparation. Native signed
+UPDATE, license replacement recovery, follower restart/promotion and joined
+shutdown are tested through this assembly. A newly enrolled follower remains
+running but unavailable while awaiting its first replica. The same runtime
+publishes after a valid installation without initializing local owner roots;
+malformed installed owner inventories still fail startup. SQLite `serve.go` now
+mounts this assembly into the actual DNS and HTTP listeners. Readiness uses the
+protected complete publication; followers skip local bootstrap and file loading.
+A pending Preparing lifecycle carries the freshly observed source token into its
+Fencing CAS, so a controller status update cannot strand it on an older resource
+version. The transaction still validates exact source, membership and writer
+authority.
+The runner joins elected and always-on workers before borrowed resources close,
+even when its shutdown diagnostic timeout expires. Kubernetes retains its
+existing serving path. Peer transition exclusion and three-process partition/rejoin
+acceptance remain integration work.
+
+Published canonical settings also drive operational consumers: ingress rate
+limits, query-log privacy/retention, block-page rendering and response-cache
+capacity. This watcher subscribes before capture, detaches the configuration
+while holding the complete lease, and applies it after releasing that lease.
+It does not replace captured DNS owners or update the legacy settings file/pointer.
+DNS settings continue to take effect through complete publication.
+
+`GET /node/config` remains a local configuration-document read. SQLite PATCH
+serializes local changes, remerges only requested `log.level`/`log.format` leaves,
+and reauthorizes the original raw credential for `node.config` in a current no-op
+transaction. After successful admission, it sets the actual logger level and the
+same local document before acknowledging. Cluster refreshes no longer compete
+for logger ownership. No cluster object, serving cut or file is changed.
+
+The minimal command is primary-local: an eligible follower can read its own
+document, but PATCH returns 503 without forwarding to another node. The result
+reports `Persisted=false`. `log.format` records a pending request; the startup
+handler keeps its original format, and restart discards local requests unless
+startup configuration is also changed. Current admission precedes memory
+adoption, so cancellation after admission can return an error after an effect;
+this is not a durable transaction spanning SQLite and the local logger. The
+local document is truthful readback, not part of the captured DNS installation.
+
+Installed data is never reported as Served
+merely because its database transaction completed. The disconnected-primary
+limitation remains: a former primary can acknowledge writes until it learns of
+a higher term; this publication mechanism does not provide consensus.

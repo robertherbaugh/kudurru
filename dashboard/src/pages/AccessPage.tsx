@@ -19,6 +19,8 @@ import { useEffect, useState } from 'react';
 import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
 import { useFeature } from '../api/hooks';
 import type { ApiToken, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
+import { AuthenticatorPanel, RecoverAuthenticatorButton } from '../components/access/Authenticators';
+import { SessionsPanel } from '../components/access/Sessions';
 import { ChangePasswordButton, principalName } from '../components/AccountMenu';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
@@ -396,14 +398,14 @@ function Iam() {
     <VStack gap={4}>
       <Banner
         status="info"
-        title="Read-only in this release"
-        description="Users are managed with `kudurru admin` on the host; service accounts, role bindings and identity providers are declared in kudurru.yaml or as objects (objects.d or Kubernetes). The write API arrives in v0.2."
+        title="Identity management"
+        description="Users are managed with `kudurru admin` on the host. Administrators with cluster users.write can recover a selected user’s authenticator here. Service accounts, role bindings and identity providers are declared in kudurru.yaml or as objects (objects.d or Kubernetes)."
       />
       <Panel title="Local users" headingId="iam-users">
         {users.error ? <ErrorBanner error={users.error} /> : null}
         <Diagnoses items={users.data?.diagnoses} />
         {users.data?.items.length ? (
-          <Table<UserRow> aria-label="Local users" density="compact" idKey="name" data={users.data.items as UserRow[]} columns={userColumns} />
+          <Table<UserRow> aria-label="Local users" density="compact" idKey="name" data={users.data.items} columns={[...userColumns, { key: 'actions', header: 'Actions', width: proportional(1, { minWidth: 190 }), renderCell: (u) => <RecoverAuthenticatorButton user={u} /> }]} />
         ) : (
           empty('local users', users.isLoading)
         )}
@@ -485,6 +487,8 @@ export default function AccessPage() {
       {tab === 'me' ? (
         <>
           <Me />
+          <AuthenticatorPanel />
+          <SessionsPanel />
           <Tokens />
         </>
       ) : null}

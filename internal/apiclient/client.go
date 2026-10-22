@@ -209,6 +209,10 @@ type Request struct {
 // caller closes the body. Transport errors are returned; HTTP errors are
 // not (see CheckResponse).
 func (c *Client) Raw(ctx context.Context, req Request) (*http.Response, error) {
+	return c.raw(ctx, req, false)
+}
+
+func (c *Client) raw(ctx context.Context, req Request, singleUse bool) (*http.Response, error) {
 	method := req.Method
 	if method == "" {
 		method = http.MethodGet
@@ -252,6 +256,16 @@ func (c *Client) Raw(ctx context.Context, req Request) (*http.Response, error) {
 		cp.Timeout = 0
 		hc = &cp
 	}
+	if singleUse {
+		// This copy belongs to one auth POST. Never mutate the caller's client,
+		// invoke its redirect callback, or make the body replayable.
+		cp := *hc
+		cp.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		hc = &cp
+		hr.GetBody = nil
+		hr.Header.Del("Idempotency-Key")
+		hr.Header.Del("X-Idempotency-Key")
+	}
 	return hc.Do(hr)
 }
 
@@ -268,6 +282,10 @@ func mutating(method string) bool {
 // or []byte, which are sent verbatim as application/json. Any non-2xx
 // response is returned as *Error.
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, in, out any) error {
+	return c.do(ctx, method, path, query, in, out, false)
+}
+
+func (c *Client) do(ctx context.Context, method, path string, query url.Values, in, out any, singleUse bool) error {
 	req := Request{Method: method, Path: path, Query: query}
 	if in != nil {
 		switch v := in.(type) {
@@ -283,7 +301,7 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 			req.Body = bytes.NewReader(b)
 		}
 	}
-	resp, err := c.Raw(ctx, req)
+	resp, err := c.raw(ctx, req, singleUse)
 	if err != nil {
 		return err
 	}
@@ -291,24 +309,41 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 	if err := CheckResponse(resp); err != nil {
 		return err
 	}
+	var body io.Reader = resp.Body
+	if singleUse {
+		// Bound successful auth responses too, including logout drains. The
+		// generic request path retains its existing streaming behavior.
+		data, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody+1))
+		defer clear(data)
+		if readErr != nil || len(data) > maxErrorBody {
+			return errors.New("apiclient: invalid authentication response")
+		}
+		body = bytes.NewReader(data)
+	}
 	if out == nil || resp.StatusCode == http.StatusNoContent {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, body)
 		return nil
 	}
 	if w, ok := out.(io.Writer); ok {
-		_, err := io.Copy(w, resp.Body)
+		_, err := io.Copy(w, body)
 		return err
 	}
 	if b, ok := out.(*[]byte); ok {
-		*b, err = io.ReadAll(resp.Body)
+		*b, err = io.ReadAll(body)
 		return err
 	}
-	dec := json.NewDecoder(resp.Body)
+	dec := json.NewDecoder(body)
 	if err := dec.Decode(out); err != nil {
-		if errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) && !singleUse {
 			return nil
 		}
 		return fmt.Errorf("apiclient: decode %s %s: %w", method, path, err)
+	}
+	if singleUse {
+		var trailing any
+		if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+			return errors.New("apiclient: invalid authentication response")
+		}
 	}
 	return nil
 }

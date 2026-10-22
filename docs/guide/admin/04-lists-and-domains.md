@@ -167,6 +167,11 @@ The change affects only this list. If another list has the same name, that
 list still blocks it. To let a name through everywhere, add it to the
 **Allowlist**.
 
+On SQLite, an entry edit is saved in one current authorized transaction. A
+successful response confirms the saved change; fresh reads show it after
+publication. If an edit conflicts with a newer list version, refresh the list
+and review it before submitting again. RPZ feeds must be edited at their origin.
+
 ## Allow a name
 
 The **Allowlist** and the **Denylist** hold single names that you decide.

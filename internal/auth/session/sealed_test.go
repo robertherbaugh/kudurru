@@ -88,6 +88,20 @@ func TestSealedIssueLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSealedPreservesAccountIncarnation(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t, newFakeClock(), nil)
+	p := auth.Principal{Kind: auth.KindUser, ID: "local:alice", Name: "alice", Provider: "local", AccountUID: "original-account"}
+	cookie, err := st.Issue(ctx, st.NewSession(p, nil, "local"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := st.Load(ctx, cookie)
+	if err != nil || s.Principal.AccountUID != p.AccountUID {
+		t.Fatal("sealed session lost account incarnation")
+	}
+}
+
 // normalize makes times comparable with reflect.DeepEqual.
 func normalize(s auth.Session) auth.Session {
 	s.IssuedAt = s.IssuedAt.UTC()

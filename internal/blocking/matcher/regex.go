@@ -195,6 +195,9 @@ func (b *RegexBuilder) Add(src string, tag uint8) error {
 // Len returns the number of expressions added so far.
 func (b *RegexBuilder) Len() int { return len(b.entries) }
 
+// Has reports whether src was already added, before a shared cap is checked.
+func (b *RegexBuilder) Has(src string) bool { _, ok := b.seen[src]; return ok }
+
 // Dropped returns the number of Add calls rejected by the hard cap.
 func (b *RegexBuilder) Dropped() int { return b.dropped }
 
@@ -275,4 +278,18 @@ func hasUpperASCII(s string) bool {
 		}
 	}
 	return false
+}
+
+// Visit yields all matching expressions in insertion order. The rare
+// cancellation path needs alternatives instead of the ordinary first hit.
+func (r *Regex) Visit(name string, visit func(string, uint8) bool) {
+	if r == nil {
+		return
+	}
+	for i := range r.entries {
+		e := &r.entries[i]
+		if (e.lit == "" || strings.Contains(name, e.lit)) && e.re.MatchString(name) && !visit(e.src, e.tag) {
+			return
+		}
+	}
 }

@@ -1,11 +1,11 @@
 MODULE      := github.com/robertherbaugh/kudurru
 BIN         := bin/kudurru
-# RELEASE_VERSION is what a build without a reachable tag reports (a
-# tarball, a shallow clone, a fork without tags): the VERSION file, which
+# RELEASE_VERSION is what a build without a reachable tag for this version
+# reports (a tarball, a shallow clone, a new version): the VERSION file, which
 # also names the next release candidate and release tags
 # (dev-docs/release-checklist.md, "Release pipeline").
 RELEASE_VERSION := $(shell tr -d '[:space:]' < VERSION 2>/dev/null)
-VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo $(RELEASE_VERSION))
+VERSION     ?= $(shell git describe --tags --match 'v$(RELEASE_VERSION)' --match 'v$(RELEASE_VERSION)-rc.*' --dirty 2>/dev/null || echo $(RELEASE_VERSION))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE        ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w -X $(MODULE)/internal/version.Version=$(VERSION) -X $(MODULE)/internal/version.Commit=$(COMMIT) -X $(MODULE)/internal/version.Date=$(DATE)
@@ -24,6 +24,15 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork docker-dhcp hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
+
+.PHONY: version-sync version-check
+## Synchronize charts, rendered manifests, Compose and install examples from VERSION.
+## To start another version: python3 hack/sync-version.py --version 0.3.0
+version-sync:
+	python3 hack/sync-version.py
+
+version-check:
+	python3 hack/sync-version.py --check
 
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/kudurru
@@ -54,9 +63,13 @@ run: build
 ## when `make envtest` has installed the control-plane binaries and skip
 ## otherwise. TEST_PKGS narrows the run (ci.yml passes one shard of
 ## hack/go-test-shard.sh).
+# The mounted-server and current-command integration tests now exceed Go’s
+# default ten-minute per-package limit under race instrumentation. Individual
+# fixtures retain their own bounded waits; this is the complete package budget.
 TEST_PKGS ?= ./...
+TEST_TIMEOUT ?= 30m
 test:
-	CGO_ENABLED=1 go test -race -count=1 $(TEST_PKGS)
+	CGO_ENABLED=1 go test -race -count=1 -timeout=$(TEST_TIMEOUT) $(TEST_PKGS)
 
 ## test-short: no race detector, no cgo; what `go test` gives on a plain checkout
 test-short:
@@ -114,7 +127,7 @@ tidy:
 
 ## generate: deepcopy functions, CRD manifests and the CRD chart copies.
 ## Deepcopy covers api/v1alpha1 and the internal kinds of api/internalkinds/v1alpha1
-## (LocalUser, APIToken, ServiceAccount, RoleBinding, IdentityProvider); the
+## (LocalUser, APIToken, PrincipalState); the
 ## CRD run reads api/v1alpha1 only, because the internal kinds are never CRDs
 ## (Secrets in Kubernetes, JSON rows in state.db; D26).
 generate: manifests
@@ -127,6 +140,7 @@ generate: manifests
 ## all are copied into the kudurru-crds chart.
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/bases
+	go run ./hack/settingscrd -file deploy/kustomize/crd/bases/kudurru.io_kudurrus.yaml
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/audit/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/audit
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/dhcp/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/dhcp
 	mkdir -p deploy/helm/kudurru-crds/templates
@@ -380,12 +394,11 @@ helm-check: helm-lint deploy-tools
 deploy-assets:
 	go test -count=1 ./deploy/ -update
 
-## release-manifests: crds.yaml and install.yaml (kustomize build
-## deploy/kustomize/default) for the GitHub release, written to bin/release/.
+## Release artifacts are staged at the actual tag, including RC image references.
+## No tracked files are modified. GoReleaser supplies its exact build version.
+RELEASE_ARTIFACT_VERSION ?= $(RELEASE_VERSION)
 release-manifests: $(DEPLOY_BIN)/kustomize
-	mkdir -p bin/release
-	$(DEPLOY_BIN)/kustomize build deploy/kustomize/crd > bin/release/crds.yaml
-	$(DEPLOY_BIN)/kustomize build deploy/kustomize/default > bin/release/install.yaml
+	PATH=$(DEPLOY_BIN):$$PATH python3 hack/sync-version.py --artifact-version '$(RELEASE_ARTIFACT_VERSION)'
 
 ## edge-check: validate the golden dnsdist and keepalived configurations
 ## (ee/edge/*/testdata) with the real programs inside the pinned images:

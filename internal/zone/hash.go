@@ -39,6 +39,9 @@ func contentHash(z *Zone) string {
 	// fallback routing changes answers even when the local RRsets do not.
 	if z.fallback {
 		h.Write([]byte("\x00fallback\x00" + z.fallbackGroup))
+		if z.apexOverride {
+			h.Write([]byte("\x00apex-override"))
+		}
 	}
 	return HashPrefix + hex.EncodeToString(h.Sum(nil))
 }

@@ -117,6 +117,20 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 		ev.DNSSEC = querylog.DNSSECState(resp.DNSSEC) // same values
 	}
 	if resp != nil && resp.Msg != nil {
+		// The wire AD bit is neither necessary (DO=0 clients) nor
+		// sufficient (untrusted upstreams) evidence of local validation.
+		if !resp.Modified && (resp.Origin == pipeline.OriginForwarded || resp.Origin == pipeline.OriginFailure) {
+			switch resp.Security.State {
+			case pipeline.ValidationSecure:
+				ev.DNSSEC = querylog.DNSSECSecure
+			case pipeline.ValidationInsecure:
+				ev.DNSSEC = querylog.DNSSECInsecure
+			case pipeline.ValidationBogus:
+				ev.DNSSEC = querylog.DNSSECBogus
+			case pipeline.ValidationIndeterminate:
+				ev.DNSSEC = querylog.DNSSECIndeterminate
+			}
+		}
 		ev.Flags.TC = resp.Msg.Truncated
 		ev.Flags.AD = resp.Msg.AuthenticatedData
 		ev.ReplyType = replyType(q.Qtype, resp.Msg)

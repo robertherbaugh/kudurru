@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"sync"
@@ -33,6 +34,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/oidc"
 	eerbac "github.com/robertherbaugh/kudurru/ee/rbac"
 	"github.com/robertherbaugh/kudurru/internal/auth"
@@ -44,6 +46,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/credentials"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -71,6 +74,17 @@ type Options struct {
 	Store store.Store
 	// Keys are the encryption keys (keys.Load). Current is required.
 	Keys keys.Keys
+	// TokenMigration resolves completed offline cutover provenance, captured
+	// with current identities. Nil never guesses a legacy credential binding.
+	TokenMigration tokens.MigrationResolver
+	// DisableBootstrap keeps incomplete Kubernetes migration state untouched.
+	// Admission and current write gates must be supplied by the runtime too.
+	DisableBootstrap bool
+	// DisableProviderDiscovery leaves this legacy stack's provider registry
+	// explicitly empty. The complete SQLite runtime uses it only for bootstrap
+	// and local administration; its separate captured provider owner performs
+	// bounded discovery and current authentication.
+	DisableProviderDiscovery bool
 	// Kube is the pod's apiserver configuration with the kube driver: it
 	// enables Kubernetes ServiceAccount tokens, SubjectAccessReview and
 	// IdentityProvider clientSecretRef. nil in Docker mode.
@@ -128,6 +142,10 @@ type Options struct {
 	RetryUnavailable func(error) bool
 	// InitializationTimeout bounds each attempt when RetryUnavailable is set.
 	InitializationTimeout time.Duration
+	// InitializationAdmission checks current migration/bootstrap eligibility on
+	// every unfinished initialization attempt. A retryable outage must not be
+	// converted to a permanent DisableBootstrap decision from a startup sample.
+	InitializationAdmission func(context.Context) error
 }
 
 // Stack is the assembled identity layer.
@@ -249,7 +267,8 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 		return nil, err
 	}
 	if s.tokens, err = tokens.New(tokens.Options{Store: opts.Store, MaxLifetime: cfg.Auth.Tokens.MaxLifetime.Std(), Namespace: opts.Namespace,
-		ClientIP: opts.ClientIP, Logger: log, Now: opts.Now}); err != nil {
+		ClientIP: opts.ClientIP, Logger: log, Now: opts.Now, Migration: opts.TokenMigration,
+		LocalUser: func(_ context.Context, name string) (*internalv1.LocalUser, bool) { return s.users.Get(name) }}); err != nil {
 		return nil, err
 	}
 	s.roleBindings = objcache.New[*internalv1.RoleBinding](opts.Store, internalv1.KindRoleBinding, objcache.Options{Logger: log})
@@ -446,18 +465,23 @@ func (s *Stack) initialize(ctx context.Context) error {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+	if s.opts.InitializationAdmission != nil {
+		if err := s.opts.InitializationAdmission(ctx); err != nil {
+			return err
+		}
+	}
 	for _, prime := range []func(context.Context) error{s.users.Prime, s.tokens.Prime, s.roleBindings.Prime, s.idps.Prime} {
 		if err := prime(ctx); err != nil {
 			return fmt.Errorf("stack: loading identity objects: %w", err)
 		}
 	}
-	if !s.usersBootstrapped {
+	if !s.opts.DisableBootstrap && !s.usersBootstrapped {
 		if _, err := s.users.Bootstrap(ctx, users.BootstrapOptions{Getenv: s.opts.Getenv, PasswordFile: s.cfg.Auth.Bootstrap.AdminPasswordFile, Out: s.opts.Out, Identity: s.cfg.Node.Name}); err != nil {
 			return err
 		}
 		s.usersBootstrapped = true
 	}
-	if !s.tokensBootstrapped {
+	if !s.opts.DisableBootstrap && !s.tokensBootstrapped {
 		if _, err := s.tokens.Bootstrap(ctx, s.opts.Getenv); err != nil {
 			return err
 		}
@@ -499,6 +523,14 @@ func (s *Stack) syncRoleBindings() {
 func (s *Stack) rebuildRegistry(ctx context.Context, deferUnavailable bool) error {
 	s.regMu.Lock()
 	defer s.regMu.Unlock()
+	if s.opts.DisableProviderDiscovery {
+		empty, err := oidc.NewRegistry()
+		if err != nil {
+			return err
+		}
+		s.registry.Store(empty)
+		return nil
+	}
 	first := s.registry.Load() == nil || s.registryPending
 	if s.opts.RetryUnavailable != nil {
 		timeout := s.opts.InitializationTimeout
@@ -536,7 +568,7 @@ func (s *Stack) rebuildRegistry(ctx context.Context, deferUnavailable bool) erro
 		// Config entries own their IDs even while construction is deferred.
 		// Never replace unavailable configured trust with a stored provider.
 		seen[e.idp.Name] = true
-		p, err := s.buildProvider(ctx, e.idp)
+		p, err := s.buildProvider(ctx, e.idp, e.origin == "auth.identityProviders")
 		if err != nil {
 			if first && e.origin == "auth.identityProviders" {
 				if s.opts.RetryUnavailable == nil || !s.opts.RetryUnavailable(err) {
@@ -576,8 +608,34 @@ func (s *Stack) rebuildRegistry(ctx context.Context, deferUnavailable bool) erro
 	return nil
 }
 
-func (s *Stack) buildProvider(ctx context.Context, idp *internalv1.IdentityProvider) (*oidc.Provider, error) {
-	pc, err := oidc.FromIdentityProvider(ctx, idp, s.secrets)
+func (s *Stack) buildProvider(ctx context.Context, idp *internalv1.IdentityProvider, trustedConfig bool) (*oidc.Provider, error) {
+	files := slices.Clone(s.cfg.Credentials.AllowedFiles)
+	if trustedConfig && idp.Spec.ClientSecretRef != nil && idp.Spec.ClientSecretRef.File != "" {
+		// This separate capability comes only from the host-owned config
+		// entry. Stored objects do not inherit its access to the same path.
+		path, err := filepath.Abs(idp.Spec.ClientSecretRef.File)
+		if err != nil {
+			return nil, fmt.Errorf("oidc provider %q: invalid configured credential path", idp.Name)
+		}
+		idp = idp.DeepCopy()
+		idp.Spec.ClientSecretRef.File = path
+		files = append(files, path)
+	}
+	options := credentials.Options{Files: files, Environment: s.cfg.Credentials.AllowedEnvironment, Namespace: s.opts.Namespace, FingerprintKey: s.opts.Keys.Current}
+	if s.secrets != nil {
+		options.Secret = func(ctx context.Context, _, name, key string) ([]byte, error) {
+			value, err := s.secrets(ctx, name, key)
+			return []byte(value), err
+		}
+	}
+	grants, err := credentials.New(options)
+	if err != nil {
+		return nil, err
+	}
+	pc, err := oidc.FromIdentityProvider(ctx, idp, func(ctx context.Context, ref publicv1.CredentialReference) (string, error) {
+		value, err := grants.Resolve(ctx, ref)
+		return string(value.Bytes), err
+	})
 	if err != nil {
 		return nil, err
 	}

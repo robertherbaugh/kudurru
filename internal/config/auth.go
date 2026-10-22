@@ -16,9 +16,10 @@ type Auth struct {
 	Tokens     AuthTokens    `koanf:"tokens" json:"tokens"`
 	// IdentityProviders are OpenID Providers in the IdentityProvider spec
 	// shape plus an "id" key (ee/oidc.ProviderFromMap).
-	IdentityProviders []map[string]any `koanf:"identityProviders" json:"identityProviders,omitempty"`
-	Kubernetes        AuthKubernetes   `koanf:"kubernetes" json:"kubernetes"`
-	AdminSocket       AuthAdminSocket  `koanf:"adminSocket" json:"adminSocket"`
+	IdentityProviders []map[string]any  `koanf:"identityProviders" json:"identityProviders,omitempty"`
+	ProviderResources ProviderResources `koanf:"providerResources" json:"providerResources"`
+	Kubernetes        AuthKubernetes    `koanf:"kubernetes" json:"kubernetes"`
+	AdminSocket       AuthAdminSocket   `koanf:"adminSocket" json:"adminSocket"`
 }
 
 // AuthBootstrap configures the first-boot admin.
@@ -75,7 +76,7 @@ const (
 // provider and binding entries get a shallow check from the metadata and
 // a full one when ee/oidc and internal/rbac build them.
 func (a *Auth) validate() []error {
-	var errs []error
+	errs := a.ProviderResources.validate()
 	if a.Session.IdleTimeout.Std() < time.Minute {
 		errs = append(errs, fmt.Errorf("auth.session.idleTimeout: %s is shorter than 1m", a.Session.IdleTimeout))
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/robertherbaugh/kudurru/internal/clientid"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 
@@ -31,23 +32,27 @@ const EnvPrefix = "KUDURRU_"
 // Config is the typed view of kudurru.yaml. Node-scoped sections are host
 // local; cluster-scoped sections are the Kudurru singleton.
 type Config struct {
-	Node      Node        `koanf:"node" json:"node"`
-	Listeners Listeners   `koanf:"listeners" json:"listeners"`
-	Store     StoreConfig `koanf:"store" json:"store"`
-	DHCP      DHCP        `koanf:"dhcp" json:"dhcp"`
-	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
-	Cache     Cache       `koanf:"cache" json:"cache"`
-	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
-	BlockPage BlockPage   `koanf:"blockPage" json:"blockPage"`
+	Node      Node               `koanf:"node" json:"node"`
+	Listeners Listeners          `koanf:"listeners" json:"listeners"`
+	Store     StoreConfig        `koanf:"store" json:"store"`
+	DHCP      DHCP               `koanf:"dhcp" json:"dhcp"`
+	Upstreams Upstreams          `koanf:"upstreams" json:"upstreams"`
+	DNSSEC    DNSSEC             `koanf:"dnssec" json:"dnssec"`
+	Response  ResponseProcessing `koanf:"response" json:"response"`
+	Cache     Cache              `koanf:"cache" json:"cache"`
+	Blocking  Blocking           `koanf:"blocking" json:"blocking"`
+	BlockPage BlockPage          `koanf:"blockPage" json:"blockPage"`
+	Branding  Branding           `koanf:"branding" json:"branding"`
 	// UnblockRequests configures the block page's request form.
-	UnblockRequests UnblockRequests `koanf:"unblockRequests" json:"unblockRequests"`
-	Querylog        Querylog        `koanf:"querylog" json:"querylog"`
-	Audit           Audit           `koanf:"audit" json:"audit"`
-	Database        Database        `koanf:"database" json:"database"`
-	RateLimit       RateLimit       `koanf:"ratelimit" json:"ratelimit"`
-	Log             Log             `koanf:"log" json:"log"`
-	Auth            Auth            `koanf:"auth" json:"auth"`
-	RBAC            RBAC            `koanf:"rbac" json:"rbac"`
+	UnblockRequests UnblockRequests  `koanf:"unblockRequests" json:"unblockRequests"`
+	Querylog        Querylog         `koanf:"querylog" json:"querylog"`
+	Audit           Audit            `koanf:"audit" json:"audit"`
+	Database        Database         `koanf:"database" json:"database"`
+	RateLimit       RateLimit        `koanf:"ratelimit" json:"ratelimit"`
+	Log             Log              `koanf:"log" json:"log"`
+	Auth            Auth             `koanf:"auth" json:"auth"`
+	Credentials     CredentialGrants `koanf:"credentials" json:"credentials"`
+	RBAC            RBAC             `koanf:"rbac" json:"rbac"`
 
 	// TSIGKeys are the node's TSIG keys (RFC 8945) for zone transfers and
 	// NOTIFY; secrets stay in files and never pass through the API.
@@ -145,6 +150,8 @@ type TLSFiles struct {
 type TLSListener struct {
 	Address string   `koanf:"address" json:"address"`
 	TLS     TLSFiles `koanf:"tls" json:"tls"`
+	// ClientIDDomain opts into <id>.<domain> SNI policy selectors.
+	ClientIDDomain string `koanf:"clientIDDomain" json:"clientIDDomain,omitempty"`
 }
 
 // HTTPListener is a DoH (tcp, h2 and http/1.1) or DoH3 (udp, h3) bind.
@@ -152,6 +159,8 @@ type HTTPListener struct {
 	Address string   `koanf:"address" json:"address"`
 	Path    string   `koanf:"path" json:"path"`
 	TLS     TLSFiles `koanf:"tls" json:"tls"`
+	// ClientIDs opts into /path/<id> policy selectors, never authentication.
+	ClientIDs bool `koanf:"clientIDs" json:"clientIDs,omitempty"`
 }
 
 // Listener is an HTTP bind.
@@ -615,8 +624,15 @@ func (c *Config) Validate() error {
 	}
 	errs = append(errs, c.Upstreams.validate()...)
 	errs = append(errs, c.Cache.validate()...)
+	if _, err := c.DNSSEC.Validator(nil); err != nil {
+		errs = append(errs, err)
+	}
+	if _, err := c.Response.Compile(); err != nil {
+		errs = append(errs, err)
+	}
 	errs = append(errs, c.Blocking.validate()...)
 	errs = append(errs, c.validateBlockPage()...)
+	errs = append(errs, c.Branding.Validate())
 	errs = append(errs, c.validateUnblockRequests()...)
 	errs = append(errs, c.Querylog.validate()...)
 	errs = append(errs, c.validateAudit()...)
@@ -629,6 +645,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.Listeners.API.validate()...)
 	errs = append(errs, c.ExternalDNS.validate()...)
 	errs = append(errs, c.Auth.validate()...)
+	errs = append(errs, c.Credentials.validate()...)
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))
@@ -680,6 +697,20 @@ func (c *Cache) validate() []error {
 // listener.
 func (l *Listeners) validateTLS() []error {
 	var errs []error
+	for _, listeners := range [][]TLSListener{l.DoT, l.DoQ} {
+		for _, listener := range listeners {
+			if listener.ClientIDDomain != "" && !clientid.Domain(listener.ClientIDDomain) {
+				errs = append(errs, errors.New("listeners: clientIDDomain must be a DNS suffix with room for an ID label"))
+			}
+		}
+	}
+	for _, listeners := range [][]HTTPListener{l.DoH, l.DoH3} {
+		for _, listener := range listeners {
+			if listener.ClientIDs && strings.HasSuffix(listener.Path, "/") {
+				errs = append(errs, errors.New("listeners: client ID base path must not end with /"))
+			}
+		}
+	}
 	check := func(key string, i int, path string) {
 		if path != "" && !strings.HasPrefix(path, "/") {
 			errs = append(errs, fmt.Errorf("listeners.%s[%d].path %q must start with /", key, i, path))

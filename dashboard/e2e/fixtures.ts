@@ -1,8 +1,11 @@
 // Shared fixtures of the end-to-end suite. Every test runs against the
-// server of global-setup.ts (baseURL), signed in as the admin (storage
+// worker's server from global-setup.ts (baseURL), signed in as the admin (storage
 // state), and fails on uncaught page exceptions and console errors unless
 // the test allows them (allowConsole).
 import { expect, test as base, type Locator, type Page } from '@playwright/test';
+import path from 'node:path';
+import { setupServer } from './global-setup';
+import { WEB_DIR } from './support/kudurru';
 
 /** A value global-setup.ts exported through the environment. */
 export function env(name: string): string {
@@ -21,7 +24,15 @@ interface Fixtures {
 /** The first lines of a message or stack (minified frames say little). */
 const head = (s: string) => s.split('\n').slice(0, 3).join('\n');
 
-export const test = base.extend<Fixtures>({
+export const test = base.extend<Fixtures, { workerState: string }>({
+  workerState: [async ({}, use, workerInfo) => {
+    const state = path.join(WEB_DIR, 'e2e', '.auth', `admin-worker-${workerInfo.workerIndex}.json`);
+    const stop = await setupServer(state, `e2e-worker-${workerInfo.workerIndex}`);
+    try { await use(state); } finally { await stop(); }
+  }, { scope: 'worker', auto: true, timeout: 60_000 }],
+  storageState: async ({ workerState }, use) => {
+    await use(workerState);
+  },
   baseURL: async ({}, use) => {
     await use(env('KUDURRU_E2E_URL'));
   },

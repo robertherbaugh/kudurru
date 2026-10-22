@@ -112,12 +112,17 @@ out; the admin fallback then is "Email key" from a license's page.
   what `hack/licensegen` signs (`server/test/jws.test.ts` reproduces Go's
   golden vectors byte for byte).
 - **Rules the node cannot enforce.** A key never lists `features: []` (that
-  would mean every feature) and never carries `nbf` (a renewal installed
-  early would otherwise drop the node to the free limits). A personal key
-  covers up to 3 nodes and every feature. Every key is valid for more than
-  a day from now; `exp` is 23:59:59 UTC of the chosen date, so `kudurru
+  would mean all features available to the plan) and never carries `nbf`
+  (a renewal installed early would otherwise drop the node to the free
+  limits). A personal key covers up to 3 nodes and all features available
+  to Personal. Every key is valid for more than a day from now; `exp` is 23:59:59 UTC of the chosen date, so `kudurru
   license status` prints the same date the portal shows. Nodes keep
   accepting a key for 30 days after it expires.
+- **Enterprise branding.** Custom branding requires the Enterprise plan.
+  Terms validation and the final signer reject explicit `branding` on any
+  other plan. An omitted feature list grants all features available to that
+  plan. Nodes independently enforce this restriction, including for imported
+  keys; the signed format and existing keys remain compatible.
 - **Withdraw cannot stop a key.** It hides the key from the customer, blocks
   renewal and cancels open requests. The person's later personal requests
   wait for a signed-in license admin (their mail has no one-click link).
@@ -366,7 +371,8 @@ the Requests page, and the requester gets a mail saying it waits for
 approval. A second request while one is open is the same request (and
 mails nobody again). Approving renews the person's
 active personal key (to 365 days after the later of today and its current
-expiry) or issues a new one (personal, 3 nodes, every feature, 365 days)
+expiry) or issues a new one (personal, 3 nodes, all features available to
+Personal, 365 days)
 and mails it to the requester; rejecting needs a note, which is mailed to
 the requester.
 

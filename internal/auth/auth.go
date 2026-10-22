@@ -36,6 +36,13 @@ type Principal struct {
 	// AuthMethod is how the principal authenticated: cookie, token, jwt,
 	// k8s, unix, internal.
 	AuthMethod string
+	// AccountUID binds a local, service-account or external credential to its
+	// account incarnation. Unprovisioned external bearer identities have no UID.
+	// It is persisted in sessions and never refreshed by name.
+	AccountUID string
+	// External is private captured-owner provenance, never a wire credential or
+	// authority to mutate. Current commands still require the original raw proof.
+	External *ExternalProof `json:"-"`
 
 	// The fields below are filled per request by the authenticators and
 	// LoadPrincipal (§8.8); sealed sessions persist none of them.
@@ -64,9 +71,8 @@ type Principal struct {
 	TokenID string
 	// CredentialIssuedAt is when the credential that authenticated the
 	// request was issued (a session's iat, an API token's creation time).
-	// LoadPrincipal refuses a credential older than the local account it
-	// names, so a re-created account never inherits the sessions and
-	// tokens of a deleted one with the same name. Zero skips the check.
+	// AccountUID is the authoritative incarnation check. This timestamp
+	// also rejects older credentials during legacy migration.
 	CredentialIssuedAt time.Time
 	// Implicit are grants held without a binding (a peer node's read-only
 	// grants), in wire form.

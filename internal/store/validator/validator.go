@@ -124,6 +124,14 @@ func (v *Validator) GroupVersionKind(kind store.Kind) (gvk schema.GroupVersionKi
 	return ks.gvk, ks.namespaced, true
 }
 
+// HasStatusSubresource reports whether the registered CRD serves /status.
+// Complete-image validation uses this to validate status only where the main
+// resource validator deliberately leaves it to a separate admission path.
+func (v *Validator) HasStatusSubresource(kind store.Kind) bool {
+	ks, ok := v.kinds[kind]
+	return ok && ks.hasStatus
+}
+
 // Validate checks a write of obj, the whole object a caller passes to
 // store.Store.Apply. old is the currently stored object, or nil on create;
 // with old set, transition rules (CEL oldSelf, immutability) and validation

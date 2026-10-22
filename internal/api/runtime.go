@@ -52,8 +52,8 @@ type setBlockingInput struct {
 
 type flushInput struct {
 	Body *struct {
-		// Name flushes only this name (every common type, with and without
-		// DO/CD); absent flushes the whole cache.
+		// Name flushes only this exact name; absent flushes the whole cache.
+		// Complete serving includes every scope, type, class, flag and subnet.
 		Name string `json:"name,omitempty"`
 	}
 	Name string `query:"name" doc:"Same as the body field."`
@@ -156,11 +156,33 @@ func (s *Server) blockingState() *BlockingState {
 	return out
 }
 
-func (s *Server) getBlocking(_ context.Context, _ *struct{}) (*blockingOutput, error) {
+func (s *Server) getBlocking(ctx context.Context, _ *struct{}) (*blockingOutput, error) {
+	if s.opts.BlockingReads != nil {
+		if ctx == nil || ctx.Err() != nil {
+			return nil, errUnavailable("original blocking state unavailable")
+		}
+		now := s.opts.Now()
+		if now.IsZero() {
+			return nil, errUnavailable("original blocking observation time unavailable")
+		}
+		configured, enabled, until, err := s.opts.BlockingReads.BlockingState(ctx, now)
+		if err != nil || ctx.Err() != nil || enabled && !configured {
+			return nil, errUnavailable("original blocking state unavailable")
+		}
+		out := &BlockingState{Configured: configured, Blocking: enabled, Scope: "cluster", Node: s.opts.NodeName}
+		if configured && !enabled && until.After(now) && until.Before(blockingstage.Forever) {
+			u, seconds := until.UTC(), until.Sub(now).Seconds()
+			out.Until, out.Timer = &u, &seconds
+		}
+		return &blockingOutput{Body: out}, nil
+	}
 	return &blockingOutput{Body: s.blockingState()}, nil
 }
 
 func (s *Server) setBlocking(ctx context.Context, in *setBlockingInput) (*blockingOutput, error) {
+	if s.opts.BlockingCommand != nil || s.opts.CanonicalSettings != nil || s.opts.ObjectCommand != nil || s.opts.BlockingReads != nil {
+		return s.setBlockingCommand(ctx, in)
+	}
 	if s.opts.Blocking == nil {
 		return nil, errNotImplemented("the blocking toggle")
 	}
@@ -197,6 +219,33 @@ var flushTypes = []uint16{
 }
 
 func (s *Server) flushCache(ctx context.Context, in *flushInput) (*flushOutput, error) {
+	if s.opts.CacheFlushCommand != nil {
+		name := in.Name
+		if in.Body != nil && in.Body.Name != "" {
+			name = in.Body.Name
+		}
+		if name != "" {
+			if len(name) > 1024 || strings.TrimSpace(name) == "" {
+				return nil, errInvalid("name: invalid domain name")
+			}
+			name = dns.CanonicalName(strings.TrimSpace(name))
+			if _, ok := dns.IsDomainName(name); !ok {
+				return nil, errInvalid("name: invalid domain name")
+			}
+		}
+		removed, err := s.opts.CacheFlushCommand(ctx, name)
+		if removed < 0 && err == nil {
+			err = errUnavailable("invalid cache flush receipt")
+		}
+		s.recordAction(ctx, "cache.flush", audit.Resource{Kind: "cache", Name: name}, err, nil, map[string]any{"flushed": removed})
+		if err != nil {
+			return nil, storeError(err)
+		}
+		return &flushOutput{Body: &FlushResult{Flushed: removed, Name: name, Node: s.opts.NodeName}}, nil
+	}
+	if s.opts.CanonicalSettings != nil || s.opts.DNSQueryCapture != nil || s.opts.ObjectReads != nil || s.opts.ObjectCommand != nil {
+		return nil, errUnavailable("current local cache command unavailable")
+	}
 	if s.opts.ResponseCache == nil {
 		return nil, errNotImplemented("the response cache")
 	}
@@ -225,6 +274,10 @@ var protoByName = map[string]pipeline.Proto{
 }
 
 func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutput, error) {
+	complete := s.opts.DNSQueryCapture != nil || s.opts.ObjectReads != nil || s.opts.CanonicalSettings != nil
+	if complete && (s.opts.DNSQueryCapture == nil || s.opts.Chain == nil) {
+		return nil, errUnavailable("the original DNS serving generation is unavailable")
+	}
 	if s.opts.Chain == nil {
 		return nil, errNotImplemented("the DNS pipeline")
 	}
@@ -266,7 +319,18 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 		// stage must not record this as that client's traffic.
 		Client: pipeline.Client{Addr: netip.AddrPortFrom(client, 0), Proto: proto, ClientID: "api-dig", Synthetic: true},
 	}
+	if s.opts.DNSQueryCapture != nil {
+		lease, err := s.opts.DNSQueryCapture(preq)
+		if lease != nil {
+			defer lease.Release() // response cleanup below must finish first
+		}
+		if err != nil || lease == nil {
+			return nil, errUnavailable("the original DNS serving generation is unavailable")
+		}
+		preq.Serving = lease
+	}
 	resp, err := s.opts.Chain.Serve(preq)
+	defer func() { resp.Close() }() // nil-safe, including error and unused stream responses
 	out := &DNSQueryResult{
 		Name: name, Type: dns.TypeToString[qtype], Client: client.String(), Node: s.opts.NodeName,
 		Answer: []string{}, Authority: []string{}, Additional: []string{},
@@ -280,6 +344,10 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 		if errors.Is(err, pipeline.ErrDrop) {
 			out.Status, out.Rcode = pipeline.StatusDropped.String(), "none"
 			out.StatusClass = string(pipeline.StatusDropped.Class())
+			if resp != nil {
+				out.Status, out.StatusClass = resp.Status.String(), string(resp.Status.Class())
+				out.Upstream, out.List, out.Rule = resp.Upstream, resp.List, resp.Rule
+			}
 		}
 		return &dnsQueryOutput{Body: out}, nil
 	}

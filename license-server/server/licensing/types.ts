@@ -28,7 +28,7 @@ export interface Claims {
   plan: Plan;
   /** At least 1. */
   nodes: number;
-  /** Absent: every feature, including later ones. Never empty. */
+  /** Absent: all features available to the plan, including later ones. Never empty. */
   features?: readonly Feature[];
   /** Signing time, Unix seconds. */
   iat: number;

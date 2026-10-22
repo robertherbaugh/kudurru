@@ -38,7 +38,7 @@ func TestRenderShowsTheFacts(t *testing.T) {
 		`<a href="mailto:it@example.net" rel="noreferrer">it@example.net</a>`,
 		`href="https://10.0.0.53:8080/queries?domain=ads.example"`,
 		`<img src="data:image/png;base64,`, `srcset="data:image/png;base64,`,
-		`<link rel="icon" href="/favicon.ico">`,
+		`<link rel="icon" href="data:image/x-icon;base64,`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("page lacks %q", want)

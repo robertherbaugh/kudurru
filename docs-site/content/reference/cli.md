@@ -646,6 +646,73 @@ Flags:
                                                 probe)
 ```
 
+## kudurru iam
+
+Manage identity configuration and upgrades.
+
+### kudurru iam migrate
+
+Inspect or perform the offline Kubernetes IAM upgrade. Stop every old and new kudurru process, IAM writer and previous migrator before begin or resume. Install the new CRDs and back up the release namespace first. The commands use Kubernetes credentials directly; they do not connect to the kudurru API.
+
+Original Secrets and private migration archives remain rollback artifacts. Output contains only state, object identifiers and counts, never credentials. An uncertain Create requires explicit operator recovery; resume never adopts a public object merely because its annotations or contents match.
+
+Flags:
+
+```text
+      --kube-context string        Kubernetes context (default current kubeconfig context)
+      --kubeconfig string          Kubernetes client configuration (default standard
+                                   kubeconfig or in-cluster identity)
+      --release-namespace string   required: namespace containing the original private IAM Secrets
+      --timeout duration           whole operation deadline (maximum 30m) (default 5m0s)
+```
+
+#### kudurru iam migrate begin
+
+Capture, archive and migrate while all IAM processes are stopped.
+
+```text
+kudurru iam migrate begin [flags]
+```
+
+Flags:
+
+```text
+      --offline   acknowledge that all IAM readers/writers and previous migrators are stopped
+```
+
+#### kudurru iam migrate plan
+
+Validate the complete migration without writing.
+
+```text
+kudurru iam migrate plan
+```
+
+#### kudurru iam migrate resume
+
+Resume an interrupted migration at an exact journal version.
+
+```text
+kudurru iam migrate resume [flags]
+```
+
+Flags:
+
+```text
+      --offline                   acknowledge that all IAM readers/writers and previous
+                                  migrators are stopped
+      --resource-version string   exact journal resource version returned by status (never
+                                  inferred)
+```
+
+#### kudurru iam migrate status
+
+Read the admission state and journal resource version.
+
+```text
+kudurru iam migrate status
+```
+
 ## kudurru import
 
 Import data from other DNS servers.
@@ -924,6 +991,8 @@ Log in to a kudurru API server and save the endpoint as a named context in ~/.co
 
 With --token the API token is verified (GET /auth/me) and stored. With --username the local password is exchanged for a session (POST /auth/login), which then mints an API token for the CLI (POST /auth/tokens). Tokens go to the OS keyring; when no keyring is available (headless Linux, containers) they are kept in the config file, which is written with mode 0600. Set KUDURRU\_KEYRING=file to skip the keyring.
 
+For an enrolled authenticator, add --totp for a hidden terminal prompt, or --password-stdin --totp-stdin to read password and code as two lines. Codes must contain six ASCII digits. Login is attempted once, without redirects or automatic retries.
+
 ```text
 kudurru login --server https://dns.example [--token kdr_… | --username admin] [flags]
 ```
@@ -948,6 +1017,9 @@ Flags:
       --token-name string          name of the token minted for the CLI (default
                                    kudurru-cli@<hostname>)
       --token-stdin                read the API token from stdin (keeps it out of the process list)
+      --totp                       prompt for a six-digit authenticator code without echo
+      --totp-stdin                 read the authenticator code from stdin (after the password
+                                   with --password-stdin)
   -u, --username string            local account to log in with
 ```
 

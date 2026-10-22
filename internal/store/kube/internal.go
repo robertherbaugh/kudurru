@@ -27,8 +27,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
 
-// Internal kinds (Options.InternalKinds: LocalUser, APIToken, ServiceAccount,
-// RoleBinding, IdentityProvider from api/internalkinds/v1alpha1) are not
+// Internal kinds (Options.InternalKinds: LocalUser, APIToken, PrincipalState
+// from api/internalkinds/v1alpha1) are not
 // CRDs (D26: password and token hashes stay out of `kubectl get`). The
 // driver keeps each object as one Secret in Options.Namespace:
 //
@@ -335,6 +335,9 @@ func (s *Store) applyInternal(ctx context.Context, ki *kindInfo, obj store.Objec
 			}
 			delete(next, "status") // Apply never writes status (D70)
 		} else {
+			if opts.CreateOnly {
+				return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+			}
 			if prev, err = decodeSecret(ki, sec); err != nil {
 				return nil, err
 			}
@@ -394,7 +397,7 @@ func (s *Store) applyInternal(ctx context.Context, ki *kindInfo, obj store.Objec
 				return nil, writeError("update", key, err)
 			}
 		}
-		if opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
+		if opts.CreateOnly || opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
 			return nil, fmt.Errorf("%w: %s changed during apply", store.ErrConflict, key)
 		}
 	}

@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
 
 // Buffer sizes of a watcher: in holds published changes not yet forwarded;
@@ -34,26 +36,31 @@ type change struct {
 type broadcaster struct {
 	mu     sync.Mutex
 	subs   map[*watcher]struct{}
+	all    map[*watcher]struct{} // includes temporarily unsubscribed slow watches
 	closed bool
 }
 
-func newBroadcaster() *broadcaster { return &broadcaster{subs: map[*watcher]struct{}{}} }
+func newBroadcaster() *broadcaster {
+	return &broadcaster{subs: map[*watcher]struct{}{}, all: map[*watcher]struct{}{}}
+}
 
 // subscribe adds w; it returns false once the broadcaster is closed.
 func (b *broadcaster) subscribe(w *watcher) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.closed {
+	if b.closed || w.ctx.Err() != nil {
 		return false
 	}
 	w.lagged.Store(false)
 	b.subs[w] = struct{}{}
+	b.all[w] = struct{}{}
 	return true
 }
 
 func (b *broadcaster) unsubscribe(w *watcher) {
 	b.mu.Lock()
 	delete(b.subs, w)
+	delete(b.all, w)
 	b.mu.Unlock()
 }
 
@@ -84,12 +91,24 @@ func (b *broadcaster) close() {
 	b.mu.Lock()
 	b.closed = true
 	ws := make([]*watcher, 0, len(b.subs))
-	for w := range b.subs {
+	for w := range b.all {
 		ws = append(ws, w)
 	}
 	b.mu.Unlock()
 	for _, w := range ws {
 		w.Stop()
+	}
+}
+
+// reset invalidates consumers of a previous source branch without closing
+// the broadcaster itself. New watches list the new complete image.
+func (b *broadcaster) reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for w := range b.all {
+		w.cancel()
+		delete(b.subs, w)
+		delete(b.all, w)
 	}
 }
 
@@ -109,8 +128,10 @@ type watcher struct {
 	exited chan struct{}
 	once   sync.Once
 
-	sent  uint64             // highest resourceVersion forwarded or covered
-	known map[store.Key]bool // objects the consumer has been told about
+	sent      uint64             // highest resourceVersion forwarded or covered
+	known     map[store.Key]bool // objects the consumer has been told about
+	lineage   string
+	qualified bool
 }
 
 // ResultChan implements store.Watcher.
@@ -146,6 +167,8 @@ func (w *watcher) Stop() {
 // The watch ends on Stop, when ctx is done, or on Close.
 func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOptions) (_ store.Watcher, err error) {
 	defer s.observe(opWatch, time.Now(), &err)
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
 	if s.isClosed() {
 		return nil, store.ErrClosed
 	}
@@ -154,9 +177,20 @@ func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOpti
 		return nil, err
 	}
 	var from uint64
+	a := s.Authority()
+	qualified := a.Mode != replication.Standalone
 	resume := opts.ResourceVersion != ""
 	if resume {
-		if from, err = strconv.ParseUint(opts.ResourceVersion, 10, 64); err != nil {
+		rv := opts.ResourceVersion
+		if lineage, counter, ok := strings.Cut(rv, ":"); ok {
+			if lineage != a.WatchLineage {
+				return nil, ErrWatchLineage
+			}
+			rv = counter
+		} else if qualified {
+			return nil, ErrWatchLineage
+		}
+		if from, err = strconv.ParseUint(rv, 10, 64); err != nil {
 			return nil, fmt.Errorf("store/sqlite: invalid resourceVersion %q", opts.ResourceVersion)
 		}
 		// A version this store never issued (a resume against a restored
@@ -168,13 +202,14 @@ func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOpti
 	wctx, cancel := context.WithCancel(ctx)
 	w := &watcher{
 		s: s, ki: ki, ns: opts.Namespace,
-		in:     make(chan change, watchInBuffer),
-		out:    make(chan store.Event, watchOutBuffer),
-		wake:   make(chan struct{}, 1),
-		ctx:    wctx,
-		cancel: cancel,
-		exited: make(chan struct{}),
-		known:  map[store.Key]bool{},
+		in:      make(chan change, watchInBuffer),
+		out:     make(chan store.Event, watchOutBuffer),
+		wake:    make(chan struct{}, 1),
+		ctx:     wctx,
+		cancel:  cancel,
+		exited:  make(chan struct{}),
+		known:   map[store.Key]bool{},
+		lineage: a.WatchLineage, qualified: qualified,
 	}
 	// Subscribe before reading so no commit falls between the read and
 	// the live stream; duplicates are dropped by resourceVersion.
@@ -227,6 +262,12 @@ func (w *watcher) run(resume bool, from uint64) {
 
 // send delivers ev unless the watch ends first.
 func (w *watcher) send(ev store.Event) bool {
+	if w.ctx.Err() != nil {
+		return false
+	}
+	if ev.Cursor == "" {
+		ev.Cursor = w.cursor(w.sent)
+	}
 	select {
 	case w.out <- ev:
 		return true
@@ -240,7 +281,7 @@ func (w *watcher) emit(seq uint64, typ store.EventType, key store.Key, obj store
 	if seq <= w.sent {
 		return true
 	}
-	if !w.send(store.Event{Type: typ, Object: obj}) {
+	if !w.send(store.Event{Type: typ, Object: obj, Cursor: w.cursor(seq)}) {
 		return false
 	}
 	w.sent = seq
@@ -275,8 +316,16 @@ func (w *watcher) drain() bool {
 
 func (w *watcher) bookmark() bool {
 	bm := w.ki.newObject()
-	bm.SetResourceVersion(strconv.FormatUint(w.sent, 10))
+	bm.SetResourceVersion(w.cursor(w.sent))
 	return w.send(store.Event{Type: store.Bookmark, Object: bm})
+}
+
+func (w *watcher) cursor(rv uint64) string {
+	counter := strconv.FormatUint(rv, 10)
+	if w.qualified {
+		return w.lineage + ":" + counter
+	}
+	return counter
 }
 
 // relist sends the current objects as Added (and Deleted for objects the
