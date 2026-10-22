@@ -1,5 +1,10 @@
 # Week-1 spike reports
 
+The later [AD DNS feasibility probe](ad-dns/README.md) starts D188's secure
+registration work. It has a separate Go module, a cgo-free executable and
+an opt-in MIT Kerberos/`nsupdate` interoperability test. Windows
+qualification is pending; this does not enable AD DNS replacement.
+
 Each report records what was built, the exact commands, the measurements against the gates in [design-record.md](../design-record.md) §7.3, §13.1 and §14, and what changed in the architecture as a result (decisions D70 to D78).
 
 | Spike | Report | Verdict | Headline numbers |
