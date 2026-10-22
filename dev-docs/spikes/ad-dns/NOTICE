@@ -1,0 +1,20 @@
+AD DNS feasibility probe (not included in the kudurru product binary)
+Copyright 2026 Robert Herbaugh and the kudurru contributors.
+The probe's original source uses the repository's LICENSE.
+
+This experimental module links unmodified third-party packages under their
+own licenses. The dependency versions and checksums are in go.mod and go.sum:
+
+- github.com/jcmturner/gokrb5/v8, Apache-2.0, copyright Jonathan C. M. Turner:
+  Kerberos ticket/authenticator verification, replay cache, crypto and MICs.
+  https://github.com/jcmturner/gokrb5/blob/v8.4.4/v8/LICENSE
+- github.com/jcmturner/gofork, BSD-3-Clause, copyright the Go Authors:
+  ASN.1 encoding compatible with gokrb5.
+  https://github.com/jcmturner/gofork/blob/v1.7.6/LICENSE
+- github.com/miekg/dns, BSD-3-Clause, copyright the dns package authors:
+  DNS, TKEY and TSIG wire formats and UDP/TCP transport.
+  https://github.com/miekg/dns/blob/v1.1.73/LICENSE
+
+Transitive packages keep their notices and licenses in the Go module cache.
+No source from MIT Kerberos or BIND is copied or linked; those programs run
+as independent processes in the optional interoperability test.
