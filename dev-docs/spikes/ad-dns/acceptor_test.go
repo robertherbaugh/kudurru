@@ -29,7 +29,12 @@ func testAcceptor(t *testing.T) *acceptor {
 
 func testAPReq(t *testing.T, a *acceptor, mutate func(*types.Authenticator, *messages.Ticket)) ([]byte, types.EncryptionKey) {
 	t.Helper()
-	cname, _ := types.ParseSPNString("member$")
+	return testAPReqForPrincipal(t, a, "member$", mutate)
+}
+
+func testAPReqForPrincipal(t *testing.T, a *acceptor, principal string, mutate func(*types.Authenticator, *messages.Ticket)) ([]byte, types.EncryptionKey) {
+	t.Helper()
+	cname, _ := types.ParseSPNString(principal)
 	now := time.Now().UTC().Truncate(time.Second)
 	ticket, key, err := messages.NewTicket(cname, a.realm, a.principal, a.realm, types.NewKrbFlags(),
 		a.keytab, 18, 1, now, now, now.Add(time.Hour), now.Add(time.Hour))

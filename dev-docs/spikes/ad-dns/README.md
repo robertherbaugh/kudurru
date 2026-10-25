@@ -53,7 +53,7 @@ go test -run '^$' -fuzz '^FuzzMIC$' -fuzztime=20s -parallel=2
 | Ticket identity | Exact service principal and realm; AES tickets and context keys only; ticket/authenticator checks and AP-REQ replay detection use gokrb5. |
 | Context negotiation | Mutual authentication, integrity and replay protection are required. Raw Kerberos and optimistic SPNEGO with Kerberos first are accepted; no NTLM, delegated credentials, channel binding or mechanism-list MIC negotiation. |
 | Message integrity | Tampering, wrong direction/flags, expired contexts, old and duplicate MICs are refused; a failed MIC cannot advance the receive window. Concurrent copies authenticate at most once. |
-| Resource bounds | Explicit client CIDRs; at most 128 contexts, a one-hour context lifetime, 32 KiB input tokens, bounded DNS record counts and TCP deadlines. |
+| Resource bounds | Explicit client CIDRs; at most 128 contexts globally and eight per authenticated principal, a one-hour context lifetime, 32 KiB input tokens, bounded DNS record counts and TCP deadlines. Ticket verification does not hold the context-map lock. |
 | Write safety | Unsigned and authenticated updates are refused. A verified identity is observable without logging tokens or keys. No record store is attached. |
 
 The receive window tolerates reordering within 64 messages when only replay

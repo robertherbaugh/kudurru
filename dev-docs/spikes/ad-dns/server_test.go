@@ -174,32 +174,39 @@ func TestNegotiationDoesNotBlockEstablishedContext(t *testing.T) {
 }
 
 func TestConcurrentContextAdmission(t *testing.T) {
-	for _, sameName := range []bool{false, true} {
-		t.Run(fmt.Sprintf("sameName=%v", sameName), func(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		sameName     bool
+		initial      int
+		wantAccepted int
+	}{
+		{"global limit", false, maxContexts - 1, 1},
+		{"duplicate name", true, 0, 1},
+		{"principal limit", false, 0, maxContextsPerPrincipal},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			const requests = 16
 			started, release := make(chan struct{}, requests), make(chan struct{})
 			p := &probe{
 				acceptor: acceptFunc(func([]byte) (*securityContext, []byte, error) {
 					started <- struct{}{}
 					<-release
-					return testContext(), []byte{1}, nil
+					c := testContext()
+					c.principal = "new$@EXAMPLE"
+					return c, []byte{1}, nil
 				}),
 				contexts: make(map[string]*securityContext),
 				logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 			}
-			initial := 0
-			if !sameName {
-				initial = 127
-				for i := range initial {
-					p.contexts[fmt.Sprintf("existing-%d.example.", i)] = testContext()
-				}
+			for i := range test.initial {
+				p.contexts[fmt.Sprintf("existing-%d.example.", i)] = testContext()
 			}
 			var wg sync.WaitGroup
 			replies := make(chan *dns.Msg, requests)
 			for i := range requests {
 				wg.Go(func() {
 					name := "shared.example."
-					if !sameName {
+					if !test.sameName {
 						name = fmt.Sprintf("new-%d.example.", i)
 					}
 					replies <- negotiateTestContext(p, name)
@@ -229,9 +236,44 @@ func TestConcurrentContextAdmission(t *testing.T) {
 					t.Fatalf("unexpected admission error: %d", code)
 				}
 			}
-			if accepted != 1 || len(p.contexts) != initial+1 {
-				t.Fatalf("accepted %d requests, have %d contexts; want one admission", accepted, len(p.contexts))
+			if accepted != test.wantAccepted || len(p.contexts) != test.initial+test.wantAccepted {
+				t.Fatalf("accepted %d requests, have %d contexts; want %d admissions", accepted, len(p.contexts), test.wantAccepted)
 			}
 		})
 	}
+}
+
+func TestPrincipalContextLimitAndExpiry(t *testing.T) {
+	a := testAcceptor(t)
+	p := &probe{acceptor: a, contexts: make(map[string]*securityContext),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	negotiate := func(name, principal string, want uint16) {
+		t.Helper()
+		input, _ := testAPReqForPrincipal(t, a, principal, nil)
+		r := tkeyRequest(name, input)
+		m := new(dns.Msg)
+		m.SetReply(r)
+		p.negotiate(m, r)
+		if m.Rcode != dns.RcodeSuccess || len(m.Answer) != 1 {
+			t.Fatalf("unexpected TKEY reply: %v", m)
+		}
+		if got := m.Answer[0].(*dns.TKEY).Error; got != want {
+			t.Fatalf("%s: TKEY error %d, want %d", name, got, want)
+		}
+	}
+	for i := range maxContextsPerPrincipal {
+		negotiate(fmt.Sprintf("member-%d.example.", i), "member$", 0)
+	}
+	negotiate("over-limit.example.", "member$", dns.RcodeBadName)
+	// One principal exhausting its quota must not prevent another from joining.
+	negotiate("other.example.", "other$", 0)
+	if len(p.contexts) != maxContextsPerPrincipal+1 {
+		t.Fatal("wrong number of admitted contexts")
+	}
+	p.contexts["member-0.example."].expires = time.Now().Add(-time.Second)
+	negotiate("replacement.example.", "member$", 0)
+	if _, exists := p.contexts["member-0.example."]; exists {
+		t.Fatal("expired context still consumes quota")
+	}
+	negotiate("still-over-limit.example.", "member$", dns.RcodeBadName)
 }

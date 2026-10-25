@@ -14,7 +14,11 @@ import (
 	"github.com/miekg/dns"
 )
 
-const gssAlgorithm = "gss-tsig."
+const (
+	gssAlgorithm            = "gss-tsig."
+	maxContexts             = 128
+	maxContextsPerPrincipal = 8
+)
 
 type contextAcceptor interface {
 	accept([]byte) (*securityContext, []byte, error)
@@ -202,12 +206,15 @@ func (p *probe) negotiate(m, r *dns.Msg) {
 	// Serialize admission after verification so racing names and capacity
 	// checks cannot replace an existing context or exceed the global limit.
 	p.mu.Lock()
+	principalContexts := 0
 	for key, existing := range p.contexts {
 		if !now.Before(existing.expires) {
 			delete(p.contexts, key)
+		} else if existing.principal == c.principal {
+			principalContexts++
 		}
 	}
-	if _, exists := p.contexts[name]; exists || len(p.contexts) >= 128 {
+	if _, exists := p.contexts[name]; exists || len(p.contexts) >= maxContexts || principalContexts >= maxContextsPerPrincipal {
 		p.mu.Unlock()
 		response.Error = dns.RcodeBadName
 		return
