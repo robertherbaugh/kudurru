@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,5 +112,126 @@ func TestNoUnsignedContextReplacement(t *testing.T) {
 	}
 	if len(p.contexts) != 1 || p.contexts["protected.example."].principal != "" {
 		t.Fatal("changed protected context")
+	}
+}
+
+type acceptFunc func([]byte) (*securityContext, []byte, error)
+
+func (f acceptFunc) accept(input []byte) (*securityContext, []byte, error) {
+	return f(input)
+}
+
+func negotiateTestContext(p *probe, name string) *dns.Msg {
+	r := tkeyRequest(name, []byte{1})
+	m := new(dns.Msg)
+	m.SetReply(r)
+	p.negotiate(m, r)
+	return m
+}
+
+func TestNegotiationDoesNotBlockEstablishedContext(t *testing.T) {
+	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	c := testContext()
+	p := &probe{
+		acceptor: acceptFunc(func([]byte) (*securityContext, []byte, error) {
+			close(started)
+			<-release
+			return testContext(), []byte{1}, nil
+		}),
+		contexts: map[string]*securityContext{"established.example.": c},
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	go func() {
+		defer close(done)
+		negotiateTestContext(p, "new.example.")
+	}()
+	defer func() { close(release); <-done }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("negotiation did not reach ticket verification")
+	}
+	result := make(chan error, 1)
+	payload := []byte("established context request")
+	mac := clientMIC(t, c, c.minimum, payload, 0)
+	go func() {
+		tsig := &dns.TSIG{Hdr: dns.RR_Header{Name: "established.example."}, Algorithm: gssAlgorithm, MAC: hex.EncodeToString(mac)}
+		if err := p.Verify(payload, tsig); err != nil {
+			result <- err
+			return
+		}
+		_, err := p.Generate([]byte("reply"), tsig)
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ticket verification blocked an established context")
+	}
+}
+
+func TestConcurrentContextAdmission(t *testing.T) {
+	for _, sameName := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sameName=%v", sameName), func(t *testing.T) {
+			const requests = 16
+			started, release := make(chan struct{}, requests), make(chan struct{})
+			p := &probe{
+				acceptor: acceptFunc(func([]byte) (*securityContext, []byte, error) {
+					started <- struct{}{}
+					<-release
+					return testContext(), []byte{1}, nil
+				}),
+				contexts: make(map[string]*securityContext),
+				logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+			}
+			initial := 0
+			if !sameName {
+				initial = 127
+				for i := range initial {
+					p.contexts[fmt.Sprintf("existing-%d.example.", i)] = testContext()
+				}
+			}
+			var wg sync.WaitGroup
+			replies := make(chan *dns.Msg, requests)
+			for i := range requests {
+				wg.Go(func() {
+					name := "shared.example."
+					if !sameName {
+						name = fmt.Sprintf("new-%d.example.", i)
+					}
+					replies <- negotiateTestContext(p, name)
+				})
+			}
+			defer wg.Wait()
+			unblock := sync.OnceFunc(func() { close(release) })
+			defer unblock()
+			for range requests {
+				select {
+				case <-started:
+				case <-time.After(5 * time.Second):
+					t.Fatal("concurrent negotiations blocked during verification")
+				}
+			}
+			// All requests finish verification before racing for admission.
+			unblock()
+			wg.Wait()
+			close(replies)
+			accepted := 0
+			for reply := range replies {
+				switch code := reply.Answer[0].(*dns.TKEY).Error; code {
+				case 0:
+					accepted++
+				case dns.RcodeBadName:
+				default:
+					t.Fatalf("unexpected admission error: %d", code)
+				}
+			}
+			if accepted != 1 || len(p.contexts) != initial+1 {
+				t.Fatalf("accepted %d requests, have %d contexts; want one admission", accepted, len(p.contexts))
+			}
+		})
 	}
 }

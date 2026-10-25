@@ -16,11 +16,15 @@ import (
 
 const gssAlgorithm = "gss-tsig."
 
+type contextAcceptor interface {
+	accept([]byte) (*securityContext, []byte, error)
+}
+
 // probe deliberately refuses every UPDATE. It can establish and authenticate
 // contexts without pretending that authentication implements authorization,
 // atomic writes, persistence or Windows DNS replacement.
 type probe struct {
-	acceptor *acceptor
+	acceptor contextAcceptor
 	logger   *slog.Logger
 	allowed  []netip.Prefix
 	zone     string
@@ -178,24 +182,13 @@ func (p *probe) negotiate(m, r *dns.Msg) {
 		m.Answer = nil
 		return
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	now := time.Now()
-	for key, c := range p.contexts {
-		if !now.Before(c.expires) {
-			delete(p.contexts, key)
-		}
-	}
-	if _, exists := p.contexts[name]; exists || len(p.contexts) >= 128 {
-		response.Error = dns.RcodeBadName
-		return
-	}
 	c, output, err := p.acceptor.accept(input)
 	if err != nil {
 		response.Error = dns.RcodeBadKey
 		p.logger.Info("context negotiation refused", "reason", err.Error())
 		return
 	}
+	now := time.Now()
 	// Bound context state independently of a long-lived service ticket.
 	if maximum := now.Add(time.Hour); c.expires.After(maximum) {
 		c.expires = maximum
@@ -205,7 +198,22 @@ func (p *probe) negotiate(m, r *dns.Msg) {
 		response.Error = dns.RcodeBadKey
 		return
 	}
+	// Ticket verification must not block lookups for established contexts.
+	// Serialize admission after verification so racing names and capacity
+	// checks cannot replace an existing context or exceed the global limit.
+	p.mu.Lock()
+	for key, existing := range p.contexts {
+		if !now.Before(existing.expires) {
+			delete(p.contexts, key)
+		}
+	}
+	if _, exists := p.contexts[name]; exists || len(p.contexts) >= 128 {
+		p.mu.Unlock()
+		response.Error = dns.RcodeBadName
+		return
+	}
 	p.contexts[name] = c
+	p.mu.Unlock()
 	response.Inception = uint32(inception)
 	response.Expiration = uint32(expiration)
 	response.Key = hex.EncodeToString(output)
