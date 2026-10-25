@@ -31,7 +31,7 @@ all: build
 ad-dns-check:
 	cd dev-docs/spikes/ad-dns && go vet ./...
 	cd dev-docs/spikes/ad-dns && CGO_ENABLED=1 go test -race -count=1 ./...
-	cd dev-docs/spikes/ad-dns && go build -trimpath -o $(abspath bin/ad-dns-probe) .
+	cd dev-docs/spikes/ad-dns && CGO_ENABLED=0 go build -trimpath -o $(abspath bin/ad-dns-probe) .
 
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/kudurru
