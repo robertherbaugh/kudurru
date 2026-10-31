@@ -3,8 +3,8 @@
 // ports under a temporary directory (sqlite store, own data directory,
 // admin socket, encryption key and admin password files, objects.d with a
 // primary zone, a block list and, on a node with a key, a policy), starts
-// the process, waits for GET /healthz/ready on the ops listener and stops
-// it again (the server log goes to test-results/; KUDURRU_E2E_KEEP=1 keeps
+// the process, waits for fixed-seed metadata, DNS and ops readiness, and
+// stops it again (the server log goes to test-results/; KUDURRU_E2E_KEEP=1 keeps
 // the temporary directory). The Go side of the same idea is
 // internal/testutil/kudurrutest.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -15,6 +15,8 @@ import dgram from 'node:dgram';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startupRoutesSettled } from './startup';
+import { query, TYPE_A } from './dns';
 
 export const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const REPO_DIR = path.resolve(WEB_DIR, '..');
@@ -244,21 +246,29 @@ async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server
     // Kept next to the traces (CI uploads test-results/ on failure).
     const logDir = path.join(WEB_DIR, 'test-results');
     fs.mkdirSync(logDir, { recursive: true });
-    fs.writeFileSync(path.join(logDir, `kudurru-${node}.log`), out);
+    // Concurrent beforeAll nodes can share a name; retain each process log.
+    fs.writeFileSync(path.join(logDir, `${path.basename(dir)}.log`), out);
     if (!process.env.KUDURRU_E2E_KEEP) fs.rmSync(dir, { recursive: true, force: true });
   };
 
   const deadline = Date.now() + 60_000;
   let last: string;
+  const remaining = (limit: number) => Math.max(1, Math.min(limit, deadline - Date.now()));
   for (;;) {
     if (exited !== null) {
       if (!process.env.KUDURRU_E2E_KEEP) fs.rmSync(dir, { recursive: true, force: true });
       throw new Error(`kudurru exited before it was ready (${exited as string}):\n${out}`);
     }
     try {
-      const r = await fetch(`http://${ports.ops}/healthz/ready`, { signal: AbortSignal.timeout(2000) });
-      if (r.ok) break;
-      last = `${r.status} ${(await r.text()).trim()}`;
+      const r = await fetch(`http://${ports.ops}/healthz/ready`, { signal: AbortSignal.timeout(remaining(2000)) });
+      if (r.ok && startupRoutesSettled(path.join(dataDir, 'state.db'), ZONE.object)) {
+        // Check fixed-seed DNS membership and current publication after
+        // metadata settles. A later command still retains its own gates.
+        const answer = await query(ports.dns, ZONE.host, TYPE_A, remaining(3000));
+        const published = await fetch(`http://${ports.ops}/healthz/ready`, { signal: AbortSignal.timeout(remaining(2000)) });
+        if (answer.rcode === 0 && answer.a.includes(ZONE.hostA) && published.ok && Date.now() <= deadline) break;
+      }
+      last = r.ok ? 'startup route status/lifecycle publication pending' : `${r.status} ${(await r.text()).trim()}`;
     } catch (err) {
       last = (err as Error).message;
     }
