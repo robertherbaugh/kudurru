@@ -277,10 +277,6 @@ func TestRunServeQuerylogFailedPrepareKeepsOldCompleteRoute(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	path := filepath.Join(cfg.QuerylogDataDir(), sqlitelog.FileName)
-	if err := os.MkdirAll(path, 0o700); err != nil {
-		t.Fatal(err)
-	}
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -289,6 +285,10 @@ func TestRunServeQuerylogFailedPrepareKeepsOldCompleteRoute(t *testing.T) {
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
 	var login api.SessionInfo
 	mountedFactorRequest(t, client, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, &login)
+	path := filepath.Join(cfg.QuerylogDataDir(), sqlitelog.FileName)
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	mountedFactorRequest(t, client, base, http.MethodPatch, "/settings", login.CSRF, map[string]any{"querylog": map[string]any{"enabled": true}}, http.StatusOK, nil)
 	deadline = time.Now().Add(5 * time.Second)
 	for offlineHTTPStatus(cfg.Listeners.Ops.Address, "/healthz/ready") != http.StatusServiceUnavailable {

@@ -163,6 +163,12 @@ func TestQuerylogPreparationCannotAdoptRetentionOrResetExistingIDs(t *testing.T)
 		t.Fatal(err)
 	}
 	defer func() { _ = r.close(t.Context()) }()
+	shippingCtx, cancelShipping := context.WithTimeout(t.Context(), time.Second)
+	shippingWriter := r.waitWriter(shippingCtx)
+	cancelShipping()
+	if shippingWriter == nil || shippingWriter != r.writer.Load() || r.reader() == nil || r.current.Load().Enabled() {
+		t.Fatal("disabled restart did not expose the retained history/shipping owner")
+	}
 	candidate := cfg.Querylog
 	candidate.Enabled = true
 	candidate.Sink = "slog"
@@ -171,8 +177,8 @@ func TestQuerylogPreparationCannotAdoptRetentionOrResetExistingIDs(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Opening existing history for a prospective slog route must neither adopt
-	// the shortened retention nor move the disabled operational route.
+	// Preparing a prospective slog route must neither adopt shortened
+	// retention nor move the disabled operational route.
 	status, err := r.reader().Status(t.Context())
 	if err != nil || status.Retention.RawSeconds != 24*60*60 || r.current.Load().Enabled() {
 		t.Fatal("unpublished candidate adopted retention/admission", err)

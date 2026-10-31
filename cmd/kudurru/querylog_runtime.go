@@ -110,23 +110,22 @@ func (r *querylogRuntime) prepare(ctx context.Context, cfg config.Querylog, prev
 	}
 	var sink querylog.Sink = borrowedQuerylogSink{r.slog}
 	var firstID uint64 = 1
-	if cfg.Enabled {
-		// Read existing history before assigning new tail IDs, including when
-		// this start uses slog. A later switch must not collide with old rows.
-		_, statErr := os.Stat(filepath.Join(r.dir, sqlitelog.FileName))
-		existing := statErr == nil
-		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-			return nil, statErr
+	// Retained history, maintenance and shipping survive disabled/slog
+	// restarts. Missing files stay lazy unless enabled SQLite needs one.
+	// Load the existing ID floor before any later enabled route can emit.
+	_, statErr := os.Stat(filepath.Join(r.dir, sqlitelog.FileName))
+	existing := statErr == nil
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return nil, statErr
+	}
+	if existing || cfg.Enabled && cfg.Sink == "sqlite" {
+		w, openErr := r.ensureWriter(ctx)
+		if openErr != nil {
+			return nil, openErr
 		}
-		if cfg.Sink == "sqlite" || existing {
-			w, openErr := r.ensureWriter(ctx)
-			if openErr != nil {
-				return nil, openErr
-			}
-			firstID = r.firstID.Load()
-			if cfg.Sink == "sqlite" {
-				sink = borrowedQuerylogSink{w}
-			}
+		firstID = r.firstID.Load()
+		if cfg.Sink == "sqlite" {
+			sink = borrowedQuerylogSink{w}
 		}
 	}
 	if err := ctx.Err(); err != nil {

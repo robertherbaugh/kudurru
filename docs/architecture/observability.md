@@ -129,8 +129,9 @@ The root prepares sinks before accepting a complete publication. Failure keeps
 the previous coherent DNS/logging bundle and reports unavailable readiness.
 There is at most one slog sink and one lazily opened SQLite writer. Once opened,
 local history, purge, retention, maintenance and configured central shipping keep
-that writer through disabled/slog modes. A rejected candidate cannot change its
-retention. The queue and tail keep their event-ID sequence across reloads.
+that writer through disabled/slog modes. A disabled or slog restart opens retained
+local history too; a missing database remains lazy unless enabled SQLite needs
+one. A rejected candidate cannot change its retention. The queue and tail keep their event-ID sequence across reloads.
 
 Shutdown stops admission and drains accepted records once under a bounded
 context, then closes SQLite after the consumer joins. A timed-out batch is
