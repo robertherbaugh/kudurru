@@ -256,7 +256,7 @@ func adguardUpstreams(m *offlineMap, p *Plan) error {
 			}
 		}
 		if valid {
-			patch["groups"] = map[string]any{"default": map[string]any{"servers": converted, "strategy": strategy}}
+			patch["groups"] = map[string]any{"default": map[string]any{"mode": "forward", "servers": converted, "strategy": strategy}}
 		} else {
 			p.loss("dns.upstream_dns: conditional syntax, credentials, resolver stamps or source selection strategy require manual conversion; the entire upstream group is omitted.")
 		}
@@ -389,7 +389,7 @@ func adguardClients(ctx context.Context, n *yaml.Node, req OfflineRequest, p *Pl
 					groups = map[string]any{}
 					patch["groups"] = groups
 				}
-				groups[group] = map[string]any{"servers": []string{server}, "strategy": "strict"}
+				groups[group] = map[string]any{"mode": "forward", "servers": []string{server}, "strategy": "strict"}
 				pol.UpstreamGroup = group
 			} else {
 				p.loss("clients.persistent.upstreams: unsupported addresses or selection semantics omitted; destination resolver routing is inherited.")

@@ -87,7 +87,7 @@ func blockyOffline(ctx context.Context, req OfflineRequest, root *offlineMap, p 
 			}
 		}
 		routing[selector] = name
-		groupPatch[name] = map[string]any{"servers": servers, "strategy": strategy, "timeout": timeout.String()}
+		groupPatch[name] = map[string]any{"mode": "forward", "servers": servers, "strategy": strategy, "timeout": timeout.String()}
 	}
 	upstreams.finish(p, "upstreams")
 	patch := map[string]any{}
@@ -364,7 +364,7 @@ func blockyConditional(n *yaml.Node, p *Plan, patch map[string]any, strategy str
 			continue
 		}
 		name := offlineName("blocky", "route", domain)
-		groups[name] = map[string]any{"servers": servers, "strategy": strategy, "timeout": timeout.String()}
+		groups[name] = map[string]any{"mode": "forward", "servers": servers, "strategy": strategy, "timeout": timeout.String()}
 		routes[domain] = name
 	}
 	if len(routes) > 0 {
