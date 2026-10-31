@@ -39,6 +39,10 @@ does not bump versions or change the release workflow.
 
 ## Implementation progress
 
+The current [implementation and validation gap ledger](gaps.md) tracks
+remaining work, the first repair batch, and the evidence needed to close each
+gap. Its dated baseline supersedes historical CI and version status below.
+
 The recommended first secondary slice is implemented in `internal/secondary`,
 with raw immutable zone data, TCP/TLS AXFR and IXFR with TSIG, independent
 per-node SOA timers,
