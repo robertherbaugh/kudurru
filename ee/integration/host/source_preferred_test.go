@@ -344,3 +344,19 @@ func TestPreferredSourceMalformedOutcomeFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestPreferredSourceRejectsCredentialEchoBeforeAdmission(t *testing.T) {
+	h, j, snapshot := preferredSourceFixture(t)
+	j.frame.instance.secrets = map[string][]byte{"apiKey": []byte("private-observation-capability")}
+	snapshot.Clients[0].Name = "prefix-private-observation-capability-suffix"
+	j.provider = sourceOnlyObserver{Integration: j.provider, observe: func(context.Context) (SourceSnapshot, error) { return snapshot, nil }}
+	h.opts.ValidateSource = func(ExecutionGuard, SourceSnapshot) error { t.Fatal("credential echo reached validator"); return nil }
+	h.opts.CommitSource = func(context.Context, ExecutionGuard, SourceSnapshot) (*Result, error) {
+		t.Fatal("credential echo reached command")
+		return nil, nil
+	}
+	answer := h.execute(t.Context(), j, command{kind: "sync"})
+	if answer.err != ErrProvider {
+		t.Fatal("credential echo did not fail safely")
+	}
+}

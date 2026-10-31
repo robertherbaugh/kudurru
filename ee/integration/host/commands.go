@@ -228,11 +228,11 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 	if err != nil {
 		return answer{err: err}
 	}
-	if err := h.fence(ctx, j, g); err != nil {
-		return answer{err: err}
-	}
 	ctx, err = h.scopedOriginal(ctx, j, f, g)
 	if err != nil {
+		return answer{err: err}
+	}
+	if err := h.fence(ctx, j, g); err != nil {
 		return answer{err: err}
 	}
 	switch c.kind {

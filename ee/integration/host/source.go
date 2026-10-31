@@ -158,6 +158,15 @@ func (h *Host) observeSource(ctx context.Context, j *job, g ExecutionGuard, obse
 	if snapshot.Desired != nil && snapshot.Desired.SourceID != source {
 		return nil, ErrInvalid
 	}
+	// Authenticated provider data is still untrusted. Reject echoed named
+	// capabilities before they can enter durable source/inventory evidence.
+	// Bounds above precede serialization and defensive copying.
+	if len(scope.instance.secrets) > 0 {
+		raw, err := json.Marshal(snapshot)
+		if err != nil || containsSecret(raw, scope.instance.secrets) {
+			return nil, ErrProvider
+		}
+	}
 	if err := h.opts.ValidateSource(g, snapshot); err != nil {
 		return nil, err
 	}

@@ -84,17 +84,28 @@ func (p providerHost) Request(ctx context.Context, provider, account string, mut
 	return fn(ctx)
 }
 
-// RequestGuard exposes the identity already carried by a host-created request
-// to its root commit adapter. It cannot sample a successor frame or grant a
-// lease: the adapter still enters WithLease/WithSource and its actual command.
-func (h *Host) RequestGuard(ctx context.Context, expected ledger.Guard) (ExecutionGuard, error) {
+// RequestGuard exposes the identity and ORIGINAL lease already carried by a
+// host-created request to its root commit adapter. Root may bind a driver token
+// from that lease while retaining the request's cancellation/deadline. It cannot
+// sample a successor frame or grant a lease: WithLease/WithSource and the actual
+// command still independently fence admission.
+func (h *Host) RequestGuard(ctx context.Context, expected ledger.Guard) (ExecutionGuard, context.Context, error) {
 	s, ok := ctx.Value(scopeKey{}).(requestScope)
 	if !ok || s.j == nil || s.g.Ledger != expected {
-		return ExecutionGuard{}, ErrFenced
+		return ExecutionGuard{}, nil, ErrFenced
 	}
-	_, current, err := h.captured(s.j)
-	if err != nil || current != s.g {
-		return ExecutionGuard{}, ErrFenced
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	j := s.j
+	if h.jobs[j.key] != j || !j.active || j.ctx.Err() != nil || j.leaseCtx.Err() != nil || !h.opts.Allowed() || j.guard != expected || j.frame.input.BundleID != s.g.BundleID {
+		return ExecutionGuard{}, nil, ErrFenced
 	}
-	return s.g, nil
+	lease := j.leaseCtx // setup scope was constructed directly from this lease
+	if s.original != nil {
+		if j.frame.instance != s.original.instance || lease != s.original.lease {
+			return ExecutionGuard{}, nil, ErrFenced
+		}
+		lease = s.original.lease
+	}
+	return s.g, lease, nil
 }
