@@ -56,7 +56,7 @@ runners. Unit tests cannot substitute for those results.
 | F02c | SQLite cluster epoch / primary fencing setters | Store and HA | Implemented; final gates open |
 | F02d | `InternalKinds` once internal kinds exist | Store and HA | Implemented; final gates open |
 | F03 | `WatchOptions.ResourceVersion`: replay-as-Added vs true resume | Store and HA | External acceptance/decision open |
-| F04 | Shared sqlite/kube table rejecting the same inputs | Store and HA | Active: store conformance agent |
+| F04 | Shared sqlite/kube table rejecting the same inputs | Store and HA | Integrated d4075f5; scoped real-driver races pass |
 | F05 | Cache parsed endpoints per record-set object | Zones and AD | Queued: partial |
 | F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Queued: missing |
 | F06b | Per-zone `notifySource` | Zones and AD | Queued: missing |
@@ -174,8 +174,8 @@ runners. Unit tests cannot substitute for those results.
 | F69 | Central reads for retired node via scope=node&node=other | Observability and release | Queued: missing |
 | F70 | Prune unreferenced central dictionaries | Observability and release | Queued: missing |
 | F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Queued: missing |
-| F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Queued: missing |
-| F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Queued: missing |
+| F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Active: diagnostics agent |
+| F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Active: diagnostics agent, after F72a |
 | F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Queued: missing |
 | F74 | Central availability/shipping lag/audit-spool Grafana panels | Observability and release | Integrated; final gates open |
 | F75a | `GET /audit/verify` using existing verifiers | Observability and release | Implemented; final gates open |

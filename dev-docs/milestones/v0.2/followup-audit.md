@@ -325,6 +325,29 @@ cover stale/fresh saved ages, live recovery, remote observation, old self terms
 and absence of detail acquisition on startup/live/ready probes. Composed
 Kubernetes offline assertions follow F01 integration.
 
+## F04 shared rejection conformance closure
+
+`d4075f5` adds 14 named typed-store rejection cases run on each production
+driver, plus two separately labeled strict decoded-input unknown-field cases.
+Literal expected structured causes are independent of the validator under test.
+Each case checks objects/ownership, driver-specific durable state and an ordered
+watch barrier. The real Kubernetes checks include managedFields; SQLite includes
+resource version, change feed and audit counts.
+
+The tests found and fixed raw apiserver Invalid errors, typed nil-target cause
+differences, and ownership mutations before schema/transition/size rejection in
+forced apply. RV-guarded real dry-run PATCH and pre/post-admission size checks
+now precede takeover. Normalization retains nullable/default/list semantics.
+Kubernetes remains a multi-request operation after successful preflight;
+subsequent backend/concurrency failures are not claimed atomic.
+
+Scoped production-driver/validator races pass: SQLite 12.448 seconds, actual
+Kubernetes envtest 34.102 seconds, validator 1.337 seconds. They include successful
+Force, patch-only RBAC, kubectl ownership and deterministic RV races. Final
+committed table-only races pass in 4.859/20.092 seconds without envtest skips;
+scoped lint reports zero issues. This closes F04's named conformance requirement,
+not deployed admission-webhook qualification or all supported-driver gates.
+
 ## Prioritized bounded implementation queue
 
 “Owner” is a proposed workstream, not an assignment or authorization to change

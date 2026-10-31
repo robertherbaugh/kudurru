@@ -23,6 +23,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Store conformance: shared invalid-input checks on SQLite and Kubernetes;
+  invalid forced Kubernetes updates are admitted in dry-run before ownership
+  changes, with consistent structured validation errors.
+
 - Health: the human `/healthz` response includes the locally observed controller
   leader and the age of the saved snapshot currently being served.
 - SQLite replication: `kudurru_cluster_fenced` reports durable and failed

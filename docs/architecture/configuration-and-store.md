@@ -412,6 +412,17 @@ Each database carries a schema version. A file newer than the binary stops
 the process with an explanation; an older one is migrated in one
 transaction.
 
+Kubernetes forced whole-object takeover first validates the proposed replacement
+with a resource-version-guarded dry-run PATCH and bounds its encoded size before
+and after admission. Invalid schema, immutable transitions and oversize inputs
+are refused before changing managed fields. Typed SSA payloads use the same
+schema-aware non-nullable-null normalization as SQLite, and apiserver Invalid
+responses retain structured field causes and Kubernetes status semantics.
+Nullable values, defaults and list elements keep their schema semantics.
+The subsequent ownership patch and SSA remain separate Kubernetes requests;
+backend failures or concurrent changes after preflight can still leave partial
+metadata effects. This is not a general transactional takeover guarantee.
+
 ## From a write to the query path
 
 ```mermaid
