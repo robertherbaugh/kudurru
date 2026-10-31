@@ -145,7 +145,7 @@ func TestCredentialMigrationTimestampTiesNeedCreationOrder(t *testing.T) {
 					continue
 				}
 				e := &AuditEntry{Time: at, Action: strings.ToLower(string(store.KindOf(item.obj))) + ".create", Key: store.KeyOf(item.obj), ResourceVersion: strconv.Itoa(item.rv), Result: AuditSuccess}
-				if err := insertAudit(context.Background(), tx, e); err != nil {
+				if err := insertLegacyAudit(context.Background(), tx, e); err != nil {
 					t.Fatal(err)
 				}
 			}

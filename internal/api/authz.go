@@ -205,7 +205,7 @@ func (s *Server) record(ctx context.Context, ev audit.Event) {
 
 // recordAction audits a successful or failed non-store mutation.
 func (s *Server) recordAction(ctx context.Context, action string, res audit.Resource, err error, before, after any) {
-	ev := audit.Event{Action: action, Resource: res, Result: audit.ResultSuccess, Before: audit.Diff(before), After: audit.Diff(after)}
+	ev := audit.Event{Action: action, Resource: res, Result: audit.ResultSuccess, Before: audit.Document(res.Kind, before), After: audit.Document(res.Kind, after)}
 	if err != nil {
 		ev.Result, ev.Reason = audit.ResultError, err.Error()
 	}

@@ -140,3 +140,21 @@ func TestGated(t *testing.T) {
 		t.Fatalf("write-only inner: %v", err)
 	}
 }
+
+func TestDocumentPreparationPreservesAbsenceAndRedactsBeforeCap(t *testing.T) {
+	for _, kind := range []string{"APIToken", "LocalUser", "DNSRecordSet", "runtime"} {
+		var absent json.RawMessage
+		if Document(kind, absent) != nil {
+			t.Fatal("typed nil document invented state")
+		}
+		ev := PrepareDocuments(Event{Resource: Resource{Kind: kind}})
+		if ev.Before != nil || ev.After != nil {
+			t.Fatal("new event preparation invented absent documents")
+		}
+	}
+	raw := json.RawMessage(`{"password":"` + strings.Repeat("fixture-credential", MaxDiff) + `","safe":"record evidence"}`)
+	safe := Document("DNSRecordSet", raw)
+	if string(safe) != `{"safe":"record evidence"}` {
+		t.Fatal("original secret size affected capped safe evidence")
+	}
+}

@@ -192,22 +192,9 @@ func (q *Query) After(ev Event) {
 // MaxDiff is the largest Before/After document kept (4 KiB, §11.4).
 const MaxDiff = 4096
 
-// Diff marshals v for Event.Before/After, replacing documents larger than
-// MaxDiff by a {"truncated":true,"bytes":N} marker. Callers redact secrets
-// before passing v.
-func Diff(v any) json.RawMessage {
-	if v == nil {
-		return nil
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil
-	}
-	if len(b) > MaxDiff {
-		b, _ = json.Marshal(map[string]any{"truncated": true, "bytes": len(b)})
-	}
-	return b
-}
+// Diff structurally redacts v before capping it. Use Document when its runtime
+// kind is known, so private carriers also follow their omission policy.
+func Diff(v any) json.RawMessage { return Document("", v) }
 
 // Multi records to every recorder and returns the joined errors.
 type Multi []Recorder

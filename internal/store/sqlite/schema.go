@@ -39,6 +39,7 @@ var migrations = []migration{
 	{version: 3, name: "bind stored credentials to account identities", up: migrateCredentialUIDs},
 	{version: 4, name: "move service account authority to private identities", up: migratePrincipalStates},
 	{version: 5, name: "convert public IAM configuration and references", up: migratePublicIAM},
+	{version: 6, name: "authenticated audit attribution", up: migrateAuditAttribution},
 }
 
 // schemaV1 is migration 1. Objects keep the whole JSON document in data;
@@ -169,6 +170,11 @@ func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now
 	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		metaSchemaVersion, strconv.Itoa(target)); err != nil {
 		return fmt.Errorf("store/sqlite: write schema_version: %w", err)
+	}
+	if target >= 6 {
+		if err := validateAuditFormats(ctx, tx); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store/sqlite: commit migration: %w", err)

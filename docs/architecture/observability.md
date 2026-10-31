@@ -293,18 +293,50 @@ purges, NOTIFY and list refreshes.
 Token creation and revocation are actual `apitoken.create` and
 `apitoken.delete` store writes. Their audit documents keep an allowlist of
 the label, owner, expiry and scopes; the token and its hash are excluded.
-Kubernetes store events also carry the authenticated principal and HTTP
-request context. Admin-socket writes name the admitted local-root peer
+Both SQLite and Kubernetes store events carry request ID, client IP,
+User-Agent, method, path and the authorization path. SQLite stores these in
+separate columns authenticated by the row hash; they are never reconstructed
+from the human-readable reason. Existing external-event reason suffixes remain
+for compatibility. Admin-socket writes name the admitted local-root peer
 instead of falling back to `system`. The dashboard shows safe token
 details and offers an `APIToken` kind filter. Older events with no token
 document cannot recover that information after the token is revoked.
 
-Audit list and export responses redact historical token documents with the
-same allowlist and omit documents for other internal identity kinds. New
-SQLite identity mutations also omit those documents. Stored records and
-their hashes remain unchanged; verification reads the original store, not
-the redacted response. Exported hashes describe the original stored data
-and cannot be recomputed from redacted documents.
+New recordings use one document policy before persistence, size capping and
+hashing. Documents for every private runtime kind (identity/security, committed
+zones and integration execution/source carriers) are omitted, except for the
+existing token allowlist. Public and virtual-resource documents retain safe
+record fields and credential references, while credential-bearing fields,
+arbitrary annotations and managed fields are removed recursively. Malformed,
+ambiguous duplicate-key or excessively nested JSON is omitted. An incoming
+truncation marker cannot retain an untrusted raw prefix or digest. SQLite's
+4 KiB summary contains a prefix and SHA-256 of the **redacted** document only;
+spool and API-action summaries retain only its safe size. This is structural
+redaction, not inspection of arbitrary free text: never put credentials in
+record targets, labels, descriptions, reasons or other ordinary text fields.
+
+Schema 6 adds SQLite attribution and a versioned chain. Upgrading leaves every
+existing row, document and hash unchanged as version 1, and records the last
+legacy ID in metadata. All new rows use the domain-separated version 2 hash,
+which authenticates every attribution column. Verification checks the recorded
+transition boundary and supported version before hashing; it never tries a
+legacy algorithm after a version 2 failure. Invalid versions, unauthenticated
+legacy attribution and missing/invalid boundary metadata are integrity errors.
+The boundary survives pruning, and verification reads it with the rows in one
+SQLite snapshot. Older binaries refuse schema 6: restore a pre-upgrade backup
+to roll back, rather than changing the schema marker by hand.
+
+List and export responses apply the same redactor to historical documents.
+Previously retained raw credentials are **not retroactively removed** from the
+database, backups or existing shipped copies. Protect those files and let the
+normal retention policy retire evidence; upgrading does not erase it. Source
+shipping keeps original source bytes and hashes. New spool recordings and the
+independent central PostgreSQL chain redact before their own hash is generated;
+central rows retain the original source hashes. Historical verification always
+reads original stored bytes, never a redacted response or a newly prepared event.
+Exported hashes therefore describe the stored data and cannot necessarily be
+recomputed from redacted response documents. Attribution unavailable on old
+rows remains empty.
 
 The dashboard's separate **Audit Log** page supports newest/oldest order,
 cursor pagination and event details. `GET /api/v1/audit/verify` requires
