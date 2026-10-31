@@ -266,11 +266,14 @@ func TestWebhookTokenHTTPListener(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	transport := &http.Transport{}
+	client := &http.Client{Transport: transport, Timeout: time.Second}
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- s.Serve(ctx, ln) }()
 	defer func() {
+		// Release this test's client connections before starting server shutdown.
+		transport.CloseIdleConnections()
 		cancel()
 		select {
 		case err := <-done:
@@ -281,7 +284,6 @@ func TestWebhookTokenHTTPListener(t *testing.T) {
 			t.Error("webhook listener did not stop")
 		}
 	}()
-	client := &http.Client{Timeout: time.Second}
 	for _, authenticated := range []bool{false, true} {
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+ln.Addr().String()+"/records", nil)
 		if err != nil {
@@ -294,7 +296,13 @@ func TestWebhookTokenHTTPListener(t *testing.T) {
 		if err != nil {
 			t.Fatal("local webhook request failed")
 		}
-		_ = resp.Body.Close()
+		// Reading to EOF lets the transport finish and reuse the connection
+		// rather than racing another dial against the shutdown below.
+		_, drainErr := io.Copy(io.Discard, resp.Body)
+		closeErr := resp.Body.Close()
+		if drainErr != nil || closeErr != nil {
+			t.Fatal("could not finish local webhook response")
+		}
 		want := http.StatusUnauthorized
 		if authenticated {
 			want = http.StatusOK
