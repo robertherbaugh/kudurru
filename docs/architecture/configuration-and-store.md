@@ -509,6 +509,14 @@ stateDiagram-v2
     end note
 ```
 
+Database placement is host configuration: empty `node.localDir` and
+`node.querylogDir` preserve `node.dataDir`; explicit directories select fixed
+`local.db` and `querylog.db` filenames on restart. Startup inspects all selected
+database/sidecar paths before initializing node state, without relaxing existing
+permissions or moving files. State, audit and other node data keep their existing
+paths. Split volumes have no shared transaction or atomic backup boundary; see
+[storage placement and offline migration](../deploy/sqlite-storage.md).
+
 In Kubernetes mode each node writes the complete object set to `local.db`
 after its first sync and then at most every 30 s when something changed. A
 pod that restarts while the apiserver is down can answer forwarded names,

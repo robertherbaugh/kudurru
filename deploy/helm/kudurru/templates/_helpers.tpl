@@ -130,6 +130,17 @@ Takes (dict "root" $ "sidecar" bool).
 {{- if or (eq $m "deployment") (eq $m "daemonset") }}true{{ end -}}
 {{- end -}}
 
+{{/* Legacy data claim selection is independent of separate component mounts. */}}
+{{- define "kudurru.dataPersistence" -}}
+{{- if include "kudurru.standalone" . -}}
+{{- if .Values.persistence.standalone.enabled }}{{ toYaml .Values.persistence.standalone }}{{ end -}}
+{{- else if .Values.persistence.querylog.enabled -}}
+{{ toYaml .Values.persistence.querylog }}
+{{- else if .Values.persistence.local.enabled -}}
+{{ toYaml .Values.persistence.local }}
+{{- end -}}
+{{- end -}}
+
 {{/* Workload kind of the kudurru pods. */}}
 {{- define "kudurru.workloadKind" -}}
 {{- if include "kudurru.standalone" . -}}
@@ -245,8 +256,11 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- $_ := set $listeners "proxyProtocolFrom" .Values.edge.proxyProtocolFrom -}}
 {{- $_ := set $listeners "proxyProtocolSecretFile" "/etc/kudurru/secrets/proxy/proxy-protocol-secret" -}}
 {{- end -}}
+{{- $node := dict "dataDir" "/var/lib/kudurru" -}}
+{{- if .Values.persistence.querylog.separate }}{{ $_ := set $node "querylogDir" "/var/lib/kudurru-querylog" }}{{ end -}}
+{{- if .Values.persistence.local.separate }}{{ $_ := set $node "localDir" "/var/lib/kudurru-local" }}{{ end -}}
 {{- $base := dict
-    "node" (dict "dataDir" "/var/lib/kudurru")
+    "node" $node
     "listeners" $listeners
     "store" (dict "driver" (ternary "sqlite" "kube" (eq $standalone "true"))) -}}
 {{- if $standalone -}}
@@ -341,6 +355,22 @@ are checked by the supervisor's parsed-address validation. */}}
 {{- end -}}
 {{- if and (eq $v.mode "kubernetes") $v.hostNetwork.enabled (or $v.persistence.querylog.enabled $v.persistence.local.enabled) -}}
 {{- fail "persistence.querylog/local need per-pod claims, which a hostNetwork DaemonSet cannot have; use extraVolumes (hostPath) instead" -}}
+{{- end -}}
+{{- range $name := list "querylog" "local" -}}
+{{- $p := index $v.persistence $name -}}
+{{- if $p.separate -}}
+{{- $path := printf "/var/lib/kudurru-%s" $name -}}
+{{- $key := printf "%sDir" $name -}}
+{{- $node := ($v.config.node.node | default dict) -}}
+{{- if and (hasKey $node $key) (ne (index $node $key) $path) -}}
+{{- fail (printf "persistence.%s.separate requires config.node.node.%s=%s" $name $key $path) -}}
+{{- end -}}
+{{- if $p.enabled -}}
+{{- if or (ne (len $p.accessModes) 1) (not (has (first $p.accessModes) (list "ReadWriteOnce" "ReadWriteOncePod"))) -}}
+{{- fail (printf "persistence.%s.separate requires ReadWriteOnce or ReadWriteOncePod; SQLite needs node-local compatible storage, never RWX/NFS" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if and $v.ingress.enabled (not $v.ingress.host) -}}
 {{- fail "ingress.host is required when ingress.enabled" -}}

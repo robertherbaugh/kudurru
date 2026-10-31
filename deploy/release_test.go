@@ -266,11 +266,11 @@ func TestDockerfile(t *testing.T) {
 	if !strings.Contains(kb, "ARG BASE_IMAGE="+base["kudurru"]+"\n") || !strings.Contains(kb, "USER 65532:65532") {
 		t.Errorf("images/base/Dockerfile must default BASE_IMAGE to %s and run as 65532", base["kudurru"])
 	}
-	// Every image has /var/lib/kudurru (0755) and /run/kudurru (1777) owned
+	// Every image has the three SQLite mount targets (0755) and /run/kudurru (1777) owned
 	// by 65532: a fresh named volume takes their owner and mode
 	// (hack/volume-check.sh runs the images).
 	for f, src := range map[string]string{"Dockerfile": s, "images/hostnetwork/Dockerfile": hn, "images/base/Dockerfile": kb} {
-		for _, want := range []string{"chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru", "chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru", " /out/var/lib/ /var/lib/\n", " /out/run/ /run/\n"} {
+		for _, want := range []string{"chmod 0755 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local && chmod 1777 /out/run/kudurru", "chown 65532:65532 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local /out/run/kudurru", " /out/var/lib/ /var/lib/\n", " /out/run/ /run/\n"} {
 			if !strings.Contains(src, want) {
 				t.Errorf("%s lacks %q (the writable directories)", f, want)
 			}

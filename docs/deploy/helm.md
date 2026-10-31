@@ -167,6 +167,13 @@ switch the Deployment to a StatefulSet so every replica gets its own claim
 DaemonSet cannot have per-pod claims; use `extraVolumes` with a `hostPath`
 there.
 
+For independent `querylog.db` and `local.db` mounts, opt into
+`persistence.querylog.separate` / `persistence.local.separate`. Existing
+`enabled` values keep their shared `data` claim behavior. See
+[separate SQLite storage](sqlite-storage.md) for claim combinations and the
+required offline migration; changing StatefulSet claim templates is not a
+rolling file move.
+
 ### Audit log
 
 Events are always recorded and shipped; reading them (the Audit tab,

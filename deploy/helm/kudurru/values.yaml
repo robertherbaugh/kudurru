@@ -326,18 +326,25 @@ probes:
     failureThreshold: 3
 
 persistence:
-  # -- querylog.db on a PVC (never RWX/NFS: SQLite WAL). mode=kubernetes
-  # allows it only with replicaCount=1 because a Deployment's pods would share
-  # the claim; standalone uses a volumeClaimTemplate.
+  # -- enabled always retains the legacy shared data claim in Kubernetes
+  # mode. separate opts into a dedicated querylog directory/volume. Claims are
+  # per-pod StatefulSet templates, including with multiple Kubernetes replicas.
+  # SQLite requires compatible local/block storage, never RWX/NFS.
   querylog:
     enabled: false
+    # -- Opt in to /var/lib/kudurru-querylog. enabled=false uses an emptyDir;
+    # enabled=true adds its own claim without removing data. No files move.
+    separate: false
     storageClass: ""
     size: 10Gi
     accessModes: [ReadWriteOnce]
-  # -- local.db (last-good snapshot) on a PVC for "DNS before the control
-  # plane" clusters; same one-replica rule as querylog.
+  # -- local.db (last-good snapshot and cache) persistence. Legacy enabled
+  # selects data; separate opts into its own per-pod directory/volume.
   local:
     enabled: false
+    # -- Opt in to /var/lib/kudurru-local; enabled controls PVC vs emptyDir.
+    # Changing claim layout requires an offline migration, not a rolling move.
+    separate: false
     storageClass: ""
     size: 1Gi
     accessModes: [ReadWriteOnce]

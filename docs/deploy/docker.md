@@ -102,7 +102,7 @@ a license key with the edge entitlement (free for eligible personal use).
 
 ### Persistence and backups
 
-Everything lives in the `kudurru-data` volume: `state.db` (objects, users,
+By default everything lives in the `kudurru-data` volume: `state.db` (objects, users,
 tokens, audit), `querylog.db`, `local.db` (cache dump), `lists/` (blocklist
 cache). Back up with the container stopped:
 
@@ -112,6 +112,11 @@ docker run --rm -v kudurru_kudurru-data:/data -v "$PWD:/backup" busybox \
   tar -czf /backup/kudurru-data.tgz -C /data .
 docker compose start kudurru
 ```
+
+Optional `deploy/compose/storage-querylog.yml` and `storage-local.yml`
+overrides select independent named volumes. Follow
+[separate SQLite storage](sqlite-storage.md) to copy existing files offline
+before enabling them, and back up all selected volumes in one stopped window.
 
 `kudurru backup --out objects.yaml` exports the objects (zones, record sets,
 lists, client groups, policies) online and `kudurru restore -f objects.yaml`
