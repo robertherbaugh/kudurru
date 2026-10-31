@@ -93,9 +93,32 @@ func TestCurrentAllOriginalFinalExpiryAndNoop(t *testing.T) {
 }
 
 func TestCurrentAllBoundsBeforeAuthentication(t *testing.T) {
-	for _, attrs := range [][]rbac.Attributes{nil, make([]rbac.Attributes, 17), {{Resource: strings.Repeat("x", 65), Verb: "read"}}} {
+	for _, attrs := range [][]rbac.Attributes{nil, make([]rbac.Attributes, 1002), {{Resource: strings.Repeat("x", 65), Verb: "read"}}} {
 		if _, err := ReauthorizeCurrentAllWithClock(t.Context(), nil, Dependencies{}, Credential{}, attrs, nil); !errors.Is(err, ErrBounds) {
 			t.Fatal("unbounded attrs reached authentication", err)
+		}
+	}
+}
+
+func TestCurrentAllBoundedLargeSelectionChecksEveryScope(t *testing.T) {
+	for _, deniedLast := range []bool{false, true} {
+		f := newFixture(t)
+		proof := Credential{Kind: Password, Username: "alice", Value: "correct-password"}
+		counter := &countedPasswordVerifier{PasswordVerifier: f.deps.Hasher}
+		f.deps.Hasher = counter
+		attrs := make([]rbac.Attributes, 1001)
+		for i := range attrs {
+			attrs[i] = readAttrs()
+		}
+		if deniedLast {
+			attrs[len(attrs)-1].Verb = "write"
+		}
+		err := f.st.Command(t.Context(), f.st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			_, err := ReauthorizeCurrentAllWithClock(ctx, tx, f.deps, proof, attrs, func() time.Time { return f.now })
+			return err
+		})
+		if counter.calls != 1 || (deniedLast && !errors.Is(err, ErrDenied)) || (!deniedLast && err != nil) {
+			t.Fatal("large selection skipped a scope or repeated authentication", err, counter.calls)
 		}
 	}
 }

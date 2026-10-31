@@ -14,7 +14,7 @@ import (
 // consumed only once. Root retains the original writer and dependency pins;
 // the detached final check performs only context and credential-time checks.
 func ReauthorizeCurrentAllWithClock(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, proof Credential, attrs []rbac.Attributes, clock func() time.Time) (auth.Principal, error) {
-	if len(attrs) == 0 || len(attrs) > 16 {
+	if len(attrs) == 0 || len(attrs) > 1001 {
 		return auth.Principal{}, ErrBounds
 	}
 	for _, attr := range attrs {
@@ -39,6 +39,9 @@ func ReauthorizeCurrentAllWithClock(ctx context.Context, tx *sqlite.CommandTx, d
 		return auth.Principal{}, err
 	}
 	for _, attr := range attrs {
+		if err := ctx.Err(); err != nil {
+			return auth.Principal{}, err
+		}
 		decision, err := view.Authorize(p, attr, now)
 		if err != nil {
 			return auth.Principal{}, err

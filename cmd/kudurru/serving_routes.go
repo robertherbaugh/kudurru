@@ -55,9 +55,8 @@ func servingUnconvertedMutation(method, requestPath string) bool {
 			return true
 		}
 	case "imports":
-		// Apply/start and cutover use bounded current programs. Adoption
-		// remains unavailable until its reviewed ownership command is mounted.
-		return method == http.MethodPost && len(parts) == 2 && parts[1] == "adopt"
+		// Apply/start, cutover and reviewed adoption use bounded current programs.
+		return false
 	case "blocklists":
 		return method != http.MethodPatch && len(parts) == 6 && parts[3] == "sources" && parts[5] == "entries"
 	default:

@@ -133,7 +133,7 @@ func (s *servingRuntime) MigrationCommand(ctx context.Context, program *api.Migr
 }
 
 func migrationCommandRequirements(attrs []rbac.Attributes) bool {
-	if len(attrs) < 1 || len(attrs) > 4 || attrs[0] != (rbac.Attributes{Resource: "settings", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}) {
+	if len(attrs) < 1 || len(attrs) > 1001 || attrs[0] != (rbac.Attributes{Resource: "settings", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}) {
 		return false
 	}
 	for _, a := range attrs[1:] {

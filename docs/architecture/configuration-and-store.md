@@ -45,10 +45,10 @@ Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 `internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
 objects, a settings merge patch and conversion warnings.
 
-The v0.2 complete SQLite runtime currently refuses migration apply/start,
-adoption and decommission writes with 503: their journal and background-job
-writes do not yet have current compound command admission. Read-only previews
-and history remain available. The legacy/Kubernetes flow below is unchanged.
+The v0.2 complete SQLite runtime mounts migration apply/start, reviewed
+adoption and decommission through current compound commands, described below.
+Imported settings use the shared transaction-local canonical planner. The
+legacy/Kubernetes flow below is unchanged.
 
 The dashboard's Tools wizard uses `POST /imports/preview` and submits the
 reviewed result to `POST /imports/start`. This returns HTTP 202, a run ID and a Location header
@@ -150,6 +150,8 @@ address changes remain external to this flow.
 `GET /imports/existing` finds API-managed primary zones matching the converter's
 stable IDs without a run annotation. Explicit `POST /imports/adopt` tracks a
 reviewed selection under resourceVersion checks without reimporting records.
+In current SQLite mode, the listing also returns each zone UID; adoption requires
+both the reviewed UID and resourceVersion.
 History and adoption use `settings.write`; each destination zone still requires
 its own `zones.write` grant. CLI `import runs`, `import decommission` and
 `import track-existing` use these same routes, with saved JSON previews required
@@ -176,18 +178,32 @@ committed outcomes. Completion uses current authorization too. If it cannot run,
 the durable deadline eventually exposes the unfinished run as interrupted with
 unresolved items, without inventing a successful terminal report.
 
+Reviewed SQLite adoption uses one immutable program step for the entire selection.
+It bounds the selection to 1,000 unique zones and 64 MiB of reviewed candidate
+and stored object data, with the existing 1 MiB journal capacity check. All
+candidates must still be previous API-imported primary zones without a migration
+annotation, match their reviewed UID, resourceVersion and authority, and pass
+canonical schema checks before any mutation. The step authenticates the original
+proof once for cluster `settings.write` and every zone's `zones.write`, keeping
+the original writer, whole HTTP lease and dependency exclusions through final
+credential and license checks. The only content change is each zone's run
+annotation; specs, authority, UIDs, managers and record sets remain intact. All
+annotations and the completed `existing` journal commit together. A duplicate,
+concurrent adoption, manager/version change, mutation error or final refusal
+leaves no partial adoption or journal and never retries against a successor.
+Durable adopted runs remain available after restart for reviewed cutover.
+
 History and previews read private journals and public objects from the same
-original complete serving image. They do not use live Store fallback. In this
-mode adoption remains explicitly unavailable. Selected settings merge with the
-current canonical singleton in the completion transaction, sharing validation
-and persistence with ordinary canonical PATCH. A selected object failure leaves
-settings `not_applied`; invalid, host-only, node-scope, or environment-locked
-settings produce durable error items without a settings mutation. Successful
-settings and their journal outcome commit together, including no-ops. The response
-reports persistence and restart-required paths; durable Settings item hints retain
-restart requirements for background imports. Branding retains the original
-complete view's Enterprise entitlement through final commit. Kubernetes retains
-the preceding legacy behavior.
+original complete serving image. They do not use live Store fallback. Selected
+settings merge with the current canonical singleton in the completion transaction,
+sharing validation and persistence with ordinary canonical PATCH. A selected
+object failure leaves settings `not_applied`; invalid, host-only, node-scope, or
+environment-locked settings produce durable error items without a settings
+mutation. Successful settings and their journal outcome commit together,
+including no-ops. The response reports persistence and restart-required paths;
+durable Settings item hints retain restart requirements for background imports.
+Branding retains the original complete view's Enterprise entitlement through
+final commit. Kubernetes retains the preceding legacy behavior.
 
 ```mermaid
 flowchart LR
@@ -815,11 +831,8 @@ original list UID/resourceVersion in the current transaction. No-op, deduplicate
 missing-result and item-error-only responses retain final proof expiry and writer
 checks. Cache invalidation and aggregate audit run after the transaction commits.
 
-SQLite still refuses migration adoption without complete current admission.
-Imported settings use the transaction-local canonical planner described above.
-Generic object commands remain available.
-These gates prevent legacy helpers from writing outside current authorization or
-returning an unchecked no-op; they are explicit remaining integration work.
+SQLite migration adoption and imported settings use the current planners
+described above. Generic object commands retain their own current admission.
 Generic apply/batch-delete retains its independent per-item result contract. All
 items retain the original HTTP lease, so a first commit can make later items
 stale; no successor capture or atomic-batch guarantee is implied.

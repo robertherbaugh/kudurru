@@ -14,7 +14,7 @@ func TestServingMutationRoutesDomainAliasesAndSourceCommand(t *testing.T) {
 		{http.MethodPost, "/api/v1/queries/42/actions", false},
 		{http.MethodPost, "/api/v1/imports/apply", false},
 		{http.MethodPost, "/api/v1/imports/start", false},
-		{http.MethodPost, "/api/v1/imports/adopt", true},
+		{http.MethodPost, "/api/v1/imports/adopt", false},
 		{http.MethodPost, "/api/v1/imports/runs/run/decommission", false},
 		{http.MethodPost, "/api/v1/imports/preview", false},
 		{http.MethodPost, "/api/v1/imports/runs/run/decommission/preview", false},

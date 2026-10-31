@@ -65,6 +65,8 @@ type migrationRunsOutput struct{ Body *List[MigrationRun] }
 
 // MigrationAuthorityChange is one reviewed change, fenced by object version.
 type MigrationAuthorityChange struct {
+	// UID pins a reviewed previous import; cutover callers may omit it.
+	UID               string                 `json:"uid,omitempty"`
 	Name              string                 `json:"name"`
 	Namespace         string                 `json:"namespace,omitempty"`
 	ZoneName          string                 `json:"zoneName"`
