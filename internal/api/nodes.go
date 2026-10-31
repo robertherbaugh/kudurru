@@ -68,12 +68,13 @@ type clusterOutput struct{ Body *ClusterInfo }
 
 // EdgeInfo is GET /edge: live supervisor readiness, backends and VIP states.
 type EdgeInfo struct {
-	Edge        EdgeComponent          `json:"edge"`
-	VIP         EdgeComponent          `json:"vip"`
-	Backends    []EdgeBackend          `json:"backends" nullable:"false"`
-	VIPs        []EdgeVIP              `json:"vips" nullable:"false"`
-	Supervisors []EdgeSupervisorStatus `json:"supervisors" nullable:"false"`
-	Node        string                 `json:"node"`
+	Observation *VIPObservationSnapshot `json:"observation,omitempty"`
+	Edge        EdgeComponent           `json:"edge"`
+	VIP         EdgeComponent           `json:"vip"`
+	Backends    []EdgeBackend           `json:"backends" nullable:"false"`
+	VIPs        []EdgeVIP               `json:"vips" nullable:"false"`
+	Supervisors []EdgeSupervisorStatus  `json:"supervisors" nullable:"false"`
+	Node        string                  `json:"node"`
 	Took
 }
 

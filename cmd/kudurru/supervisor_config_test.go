@@ -164,7 +164,7 @@ func TestSupervisorRunHydrationAndFlagContract(t *testing.T) {
 				}
 			})
 			for _, key := range config.Schema {
-				if strings.HasPrefix(key.Path, group+".") && !mapped[key.Path] {
+				if strings.HasPrefix(key.Path, group+".") && !strings.HasPrefix(key.Path, "vip.observation.") && !mapped[key.Path] {
 					t.Errorf("unreachable setting %s", key.Path)
 				}
 			}

@@ -1173,6 +1173,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
+	vipObservation, vipObserveRun, vipObserveErr := serviceVIPObservation(cfg, restCfg)
+	if vipObserveErr != nil {
+		logger.Warn("VIP ownership observation unavailable", "provider", cfg.VIP.Observation.Provider)
+	}
 	var dhcpCluster api.DHCPCluster
 	if dhcpKube != nil {
 		dhcpCluster = dhcpKube
@@ -1182,7 +1186,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPKube:        dhcpCluster,
 		DHCPSetup:       dhcpSetup,
 		DHCPSetupError:  dhcpSetupError,
-		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
+		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
@@ -1392,6 +1396,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	} else {
 		subscribeReload(ctx, reload, reloadConsumers)
+	}
+	if vipObserveRun != nil {
+		if err := add("vip-observation", false, vipObserveRun); err != nil {
+			return err
+		}
 	}
 	if rc != nil {
 		if err := add("cache-sweep", false, func(ctx context.Context) error { return rc.Run(ctx, time.Minute) }); err != nil {

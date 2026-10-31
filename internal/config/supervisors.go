@@ -6,6 +6,9 @@ import (
 	"net/netip"
 	"regexp"
 	"strings"
+	"time"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // Edge configures the existing host-local dnsdist render/run commands. Secrets
@@ -61,6 +64,7 @@ type Edge struct {
 
 // VIP configures the existing host-local keepalived render/run commands.
 type VIP struct {
+	Observation       VIPObservation `koanf:"observation" json:"observation"`
 	VIPs              []VIPInstance  `koanf:"vips" json:"vips"`
 	PreemptDelay      map[string]int `koanf:"preemptDelay" json:"preemptDelay"`
 	Peers             []string       `koanf:"peers" json:"peers"`
@@ -133,7 +137,7 @@ func (c *Config) SupervisorConfigured(path string) bool {
 }
 
 func supervisorKey(path string) bool {
-	return strings.HasPrefix(path, "edge.") || strings.HasPrefix(path, "vip.")
+	return strings.HasPrefix(path, "edge.") || strings.HasPrefix(path, "vip.") && !strings.HasPrefix(path, "vip.observation.")
 }
 
 // Only the new structured supervisor keys accept JSON environment values.
@@ -208,6 +212,7 @@ func (c *Config) validateSupervisors() []error {
 			errs = append(errs, fmt.Errorf("vip.preemptDelay[%s]: no such VIP", name))
 		}
 	}
+	errs = append(errs, c.VIP.Observation.validate()...)
 	return errs
 }
 
@@ -219,4 +224,60 @@ func supervisorRendererName(name string) string {
 	default:
 		return strings.ToLower(name)
 	}
+}
+
+// VIPObservation mounts read-only ownership reporting in serve. It never starts
+// a supervisor or permits weight, Service, allocation or cluster writes.
+type VIPObservation struct {
+	Provider           string              `koanf:"provider" json:"provider"`
+	Services           []VIPServiceBinding `koanf:"services" json:"services"`
+	AnnouncerNamespace string              `koanf:"announcerNamespace" json:"announcerNamespace"`
+	Interval           Duration            `koanf:"interval" json:"interval"`
+	Timeout            Duration            `koanf:"timeout" json:"timeout"`
+	MaxAge             Duration            `koanf:"maxAge" json:"maxAge"`
+}
+
+// VIPServiceBinding binds a configured VIP name/address to one exact Service.
+type VIPServiceBinding struct {
+	Name      string `koanf:"name" json:"name"`
+	Address   string `koanf:"address" json:"address"`
+	Namespace string `koanf:"namespace" json:"namespace"`
+	Service   string `koanf:"service" json:"service"`
+}
+
+var vipServiceBindingShape = &Shape{Type: TypeObject, Fields: []Field{
+	{Name: "name", Label: "VIP name", Help: "Local name for this observed VIP.", Required: true, Shape: Shape{Type: TypeString}},
+	{Name: "address", Label: "Address", Help: "Expected Service LoadBalancer IP, used only to match allocation, never to infer ownership.", Required: true, Shape: Shape{Type: TypeString, Format: FormatIP}},
+	{Name: "namespace", Label: "Service namespace", Help: "Exact namespace of the observed Service.", Required: true, Shape: Shape{Type: TypeString}},
+	{Name: "service", Label: "Service name", Help: "Exact Service name. kube-vip observation requires its per-Service kubevip-<name> Lease.", Required: true, Shape: Shape{Type: TypeString}},
+}}
+
+func (v VIPObservation) validate() []error {
+	var errs []error
+	if len(v.Services) > 32 {
+		errs = append(errs, fmt.Errorf("vip.observation.services: at most 32 bindings"))
+	}
+	names := map[string]bool{}
+	for i, b := range v.Services {
+		if !supervisorVIPName.MatchString(b.Name) || names[b.Name] {
+			errs = append(errs, fmt.Errorf("vip.observation.services[%d].name: invalid or duplicate name", i))
+		}
+		names[b.Name] = true
+		if len(validation.IsDNS1123Label(b.Namespace)) > 0 || len(validation.IsDNS1123Subdomain(b.Service)) > 0 {
+			errs = append(errs, fmt.Errorf("vip.observation.services[%d]: invalid Service name or namespace", i))
+		}
+	}
+	if len(validation.IsDNS1123Label(v.AnnouncerNamespace)) > 0 {
+		errs = append(errs, fmt.Errorf("vip.observation.announcerNamespace: invalid namespace"))
+	}
+	if v.Provider == "none" || v.Provider == "" {
+		return errs
+	}
+	if len(v.Services) == 0 {
+		errs = append(errs, fmt.Errorf("vip.observation.services: at least one binding required"))
+	}
+	if v.Interval.Std() < time.Second || v.Interval.Std() > time.Minute || v.Timeout.Std() < 100*time.Millisecond || v.Timeout.Std() > 5*time.Second || v.MaxAge.Std() < v.Interval.Std()+v.Timeout.Std() || v.MaxAge.Std() > time.Minute {
+		errs = append(errs, fmt.Errorf("vip.observation: interval must be 1s-1m, timeout 100ms-5s, maxAge at least interval+timeout and at most 1m"))
+	}
+	return errs
 }

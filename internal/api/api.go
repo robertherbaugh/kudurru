@@ -292,6 +292,9 @@ type Options struct {
 	// even when endpoint discovery fails.
 	EdgeSupervisors func(context.Context) ([]EdgeSupervisorEndpoint, error)
 	VIPSupervised   bool
+	// VIPObservation is a host-mounted read-only evidence snapshot. It cannot
+	// allocate VIPs, control supervisors, or grant cluster write admission.
+	VIPObservation func() VIPObservationSnapshot
 	// InternalClient fetches peer status over the authenticated internal listener.
 	InternalClient *internalapi.Client
 	// Lists is the list resolver; Refresher and Notifier are optional
