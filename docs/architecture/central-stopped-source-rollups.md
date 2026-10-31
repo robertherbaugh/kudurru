@@ -1,169 +1,161 @@
 # Stopped-source rollups and the provenance transition
 
-This is the concrete F71 design, not a description of implemented behavior.
-F69's node predicates do not fix stopped-source rollups. F71 remains open until
-both the source-owned implementation and the legacy transition below pass
-actual PostgreSQL acceptance. D256 is reserved for this design; the integrating
-parent owns the global completion records.
+Schema 5 implements source-owned central rollups and bounded recovery of stopped
+sources. Ambiguous schema-4 history remains explicitly gated. D256 is reserved
+for the integrating parent's design record; this page describes the implemented
+contract and its remaining historical-input limitation.
 
-## Storage contract
+## Ownership and shipping
 
-The unit of ownership is the query-log file's registered `source.id`, not its
-mutable node name. Two files with the same node name are independent owners.
-The source row already serializes shipping; use that lock rather than a global
-ingestion lock. A bucket's authoritative and synthesized values are alternative
-versions of that source's contribution, never two additive contributions.
+Every minute, hour and day rollup family has a nullable source foreign key.
+The unique key is `(ts, node[, dimension], source)`, with NULLs not distinct.
+A source is the registered query-log file UUID, independent of its mutable node
+name. Two files using the same node name contribute independently. Existing
+schema-4 values retain NULL ownership, their dictionary IDs and their values;
+no source is assigned to them.
 
-A versioned migration introduces source-owned storage for every existing
-rollup family, including the minute families needed to retain source identity
-before hourly and daily compaction:
+Shipping locks the source row, rechecks its stream cursor, then captures all
+families of that resolution under the local writer lock. Local compaction,
+privacy changes, writes and retention cannot split that capture across versions.
+The transaction deletes and replaces only that source's contribution in the
+covered range. An empty authoritative export removes synthesized keys. Stale
+cursor inputs fail before replacement; the cursor cannot regress. New streams
+`source_rollup_1m`, `source_rollup_1h` and `source_rollup_1d` keep upgrade coverage
+distinct from old node-only shipping cursors.
 
-| Relation | Key and contents |
-|---|---|
-| `source_rollup_<family>` | `(source, ts, node[, dimension])`; all existing metric columns; real source/node/dictionary foreign keys |
-| `source_rollup_bucket` | `(source, resolution, ts)`; authoritative/synthesized origin, captured fact revision, input boundary, explicit completeness/error state |
-| `source_fact_hour` | `(source, hour)`; monotonically increasing revision/head and retained input bounds, updated atomically with fact insertion |
-| `source_rollup_progress` | `(source, resolution)`; keyset scan position and fixed pass boundary, distinct from authoritative shipping cursors |
-| `legacy_rollup_<family>` | Original node-only rows retained unchanged until ownership is established by evidence |
-| `legacy_rollup_resolution` | Explicit unresolved/verified ownership state, original cell identity/digest, and independently verified reconstruction receipt |
+The authoritative bucket records the captured local fact head, including facts
+that have not yet arrived in an earlier shipping batch. Subsequent fact inserts
+increment the source/hour input revision. Facts beyond the captured head
+invalidate affected hour/day buckets in the same transaction. Repeated minute
+exports change revisions only when their base values change. Fact-free minute
+changes also invalidate existing source summaries. A late official hour/day
+replaces the synthesized contribution rather than adding a second copy.
 
-Existing node-shaped rollup relations can become read projections, summing only
-contributions whose ownership and overlap are resolved. A projection must not
-sum an opaque legacy cell with a possibly overlapping source contribution.
-Read-side tier selection also needs source coverage: a single active-node
-watermark cannot certify an inactive source's unfinished bucket. Either plan
-coverage per source before combining results, or maintain a transactional
-node/bucket coverage projection that proves equivalent coverage. A new schema
-column plus the existing global watermark is insufficient.
+## Bounded background work and retention
 
-Raise `compat_version` to the new schema. Already connected old writers must
-also fail: replacing writable legacy relation names with read-only projections
-makes their old `INSERT ... ON CONFLICT` operations fail atomically. An additive
-schema marker alone cannot stop an already connected replace-upsert writer.
-Do not expose new dictionary references without foreign keys and F70 reference
-enumeration/pruning coverage, including the retained legacy relations.
+The leader runs `querylog-stopped-source-rollups` before retention and dictionary
+pruning. A source is eligible at exactly two hours of inactivity. Work selects
+closed UTC buckets only, rechecks under source row locks, skips locked sources
+and has a five-second context/statement bound and 100 ms lock timeout.
 
-## Authoritative shipments and late returns
+A pass selects at most four sources and four hours plus four pending days per
+source. Per-source hour/day cursors rotate through failed and successful work;
+a durable source keyset cursor captures a fixed upper source boundary. A failed
+early bucket cannot indefinitely starve later hours or another source. An hour
+loads at most 10,001 facts to enforce a 10,000-row input limit. Oversized,
+incomplete or failed work records a fixed operational error and keeps its input.
+Transaction rollback commits neither summaries nor progress.
 
-1. Lock/register the source, recheck the current stream cursor and input
-   generation, and obtain a consistent export. Stale exports must be retried
-   from current input; taking `max(cursor)` after writing stale values does not
-   prevent an older export from replacing a newer contribution.
-2. Replace that source's complete contribution set for the covered bucket,
-   including removal of keys no longer present. An empty authoritative export
-   is a real replacement of that source's synthesized values. Another file's
-   contribution, even under the same node name, remains untouched.
-3. Replace the bucket origin/revision and update the cursor/projection in the
-   same transaction. Enforce cursor monotonicity under the source lock. Rollback
-   changes neither contributions nor revision, progress, cursor or projection.
-4. A same-source return replaces its synthesized hour/day. A new file registers
-   a new source and adds a separate contribution. Neither path reassigns legacy
-   ownership based on the current node name.
+Hourly synthesis reuses the local accumulator's status, protocol, NULL latency
+and histogram definitions for all seven families: base, client, qtype, upstream,
+domain, list and zone. Daily synthesis sums source-owned hours into the existing
+three daily families: base, client and domain. It includes the final partial day
+when that UTC day closes, even if no new hour arrives. Input revisions invalidate
+synthetic daily coverage when their underlying hours change.
 
-The fact shipper increments affected source/hour revisions in its source-locked
-transaction, including late facts for an already synthesized hour. A read never
-sees a newly committed revision with an old summary advertised as complete.
-Reconciliation rereads that source's retained input and replaces its prior
-synthetic contribution. Official late arrival takes precedence atomically.
+With shipped facts disabled or privacy suppressing facts, only the four shipped
+minute families can be synthesized. The job preserves any already known domain,
+list and zone contribution and reports `facts_unavailable`; it does not fabricate
+missing dimensions. Observed export gaps, skipped old facts, privacy transitions
+and explicit purges conservatively mark source input incomplete. A late official
+shipment can still supply authoritative coverage.
 
-## Bounded stopped-source work
+Raw retention retains partitions needed by pending, failed or legacy-gated
+hours. Expiration records which source/hour raw and minute inputs are no longer
+complete. When late facts arrive after raw expiration, an intact source-owned
+hourly baseline can accept only IDs above its captured head, atomically updating
+all retained dimensions and the daily projection. Replaying that tail does not
+add it twice. A partition cached by a still-running shipper is checked again,
+so it can recreate a partition removed by retention. If the hourly baseline
+itself has expired, the remaining tail cannot reconstruct all seven dimensions;
+`source_input_incomplete` keeps the old daily values and surviving input intact.
+Fact-free recovery likewise refuses to replace a baseline from incomplete minute
+input after minute retention. Minute/hour retention waits for corresponding durable daily coverage,
+including its current input revision. Opaque legacy cells are retained. Daily
+retention remains indefinite. All dictionary references remain in the original
+relations with their real foreign keys, so F70's complete reference enumeration
+continues to protect both opaque and source-owned contributions.
 
-The leader runs this job before fact/rollup retention and dictionary pruning.
-Select query-log sources with `last_seen <= now - 2h`; an exactly two-hour-old
-source is eligible. Capture a fixed upper source/bucket boundary for each pass,
-use durable ordered keyset progress, and cap sources, buckets, rows and elapsed
-time. Lock each selected source with a short lock timeout, then recheck
-inactivity, authoritative cursors and fact revision. A returning source can
-invalidate eligibility before the lock is acquired. Other sources keep shipping.
+## Read and operational contracts
 
-Only closed UTC hours/days are eligible. Capture the source/hour revision and
-fact head under that source lock. Use the existing accumulator definitions for
-all seven hourly families (base, client, qtype, upstream, domain, list and zone),
-including every status category, NULL latency handling and histogram boundary.
-Do not substitute a count-only summary. An oversized or timed-out bucket stays
-pending with an explicit error; it does not advance the completed boundary.
+Central reads retain source coverage after inactivity, including retired files
+and older files sharing a current node's name. A healthy new file cannot hide
+an unresolved older one. The existing global tier boundary uses conservative
+source coverage; a stopped source with no pending input does not pin that
+boundary permanently to its last shipping time. Every read remains a read-only
+repeatable-read snapshot. F69's exact node predicates and central ID namespace
+remain in effect; central failure never falls back to a peer or local database.
 
-Roll up source-owned hourly contributions into the three retained daily
-families (base, client and qtype). Track the input revision vector/digest and
-replace that source's day when any hour changes or an official day arrives.
-Reconcile a stopped source's last partial day as well as its last partial hour.
-Otherwise daily-tier selection or hourly retention loses the recovered data.
-Daily retention remains indefinite.
+`GET /querylog/status` includes bounded `backfill` metadata: capped legacy-cell,
+pending-hour and pending-day counts, up to 25 source/range details, and explicit
+capped/truncated flags. Node selection binds details to retained references in
+that node's scope. Historical responses remain partial while coverage or
+provenance is unresolved. An opaque cell remains visible as
+`legacy_provenance_required` even if its source registration is absent.
 
-Raw retention must retain every partition containing input needed by pending
-or failed eligible work. Hourly retention likewise waits for durable daily
-coverage. Failed summary work cannot authorize deletion merely because the
-Janitor continues to its next job. A source without shipped facts or suppressed
-by privacy cannot supply missing raw dimensions; preserve its authoritative
-rollups and explicitly report unavailable coverage rather than inventing data.
+`GET /querylog/rollup-evidence?source=<uuid>&hour=<unix-seconds>` captures one
+closed UTC hour; the normal `scope`/`node` parameters select central scope.
+`POST /querylog/rollup-evidence/verify` accepts that receipt and checks it against
+a fresh read-only central snapshot. Both routes require `querylog.read`, use the
+existing long-term license window, return `no-store`, and have no local/peer
+fallback. Evidence contains operational IDs/digests, not raw DNS values. The
+response carries central scope metadata and a distinct `source_id` for the file.
+Verification does not claim a later apply will succeed.
 
-## Legacy ambiguity: the unresolved upgrade gate
+The source-locked repair backend implements exact-once replacement of known
+source-owned inputs. Its callback must check current authority before work and
+immediately before commit, including duplicate receipts. A committed digest
+returns `already_applied`; new input revisions refuse the old receipt. A failed
+final check rolls back both the contribution and receipt. The API exposes capture
+and verification only; automatic leader reconciliation performs known-provenance
+repairs. There is no public mutation endpoint that assigns legacy ownership.
 
-Schema 4 stores `(ts, node[, key])`, not the source that last supplied that
-cell. Replaced files can share a node name, raw rows can have expired, and
-shipping cursors record covered ranges rather than the contents or ownership
-of each retained cell. `source.node` is mutable. Neither a join by current node
-name nor the most recently refreshed source proves who owns an old cell.
+## Independently recomputable receipt
 
-For example, a retained node/hour cell of five queries is compatible with
-source A having supplied those five and source B advancing an empty range, or
-B having supplied them and A advancing an empty range. The same retained
-sources, hour cursors and node cell can survive both histories. A later
-source-A replacement of seven requires seven in the first history and twelve
-in the second. Assigning the legacy cell to A, assigning it to B, or summing
-both a legacy default-source row and A's seven guesses in at least one history.
+Version 1 binds the source UUID, exact selected node (empty for cluster), hour,
+input revision/head, legacy boundary, fact availability/partial flag and expiry.
+The receipt expires in five minutes. The digest is SHA-256 over Go's JSON encoding
+of that ordered header (`Version`, `Source`, `Node`, `Hour`, `Revision`, `Head`,
+`Legacy`, `Facts`, `Partial`, `ExpiresAt`, `Complete`, `MinuteComplete`), followed by PostgreSQL `to_jsonb(row)::text`
+for retained facts ordered by `(source_id,id,ts)`, each terminated by a NUL byte.
+For each family in `sqlitelog.RollupTables` order, append its table name and a NUL,
+then the source's rows ordered by `(ts,node[, dimension])`, each NUL-terminated.
+Minute/hour ranges cover the selected hour; daily ranges cover its UTC day.
+The evidence read caps each relation at 10,000 rows and the combined row/header
+bytes at 4 MiB. The source/hour/node and input are recomputed under the same
+source lock before replacement. This digest is a checkable input fingerprint,
+not an authorization token or a proof of opaque historical ownership.
 
-The final day has an additional trap: knowing that A has not shipped its last
-hour does not attribute A's earlier node-only hours in that day. A synthesized
-hour can safely cover a proved missing suffix, while a day rebuilt by joining
-all earlier node hours to A can include B. A much later official day may also
-include A's earlier hours already present in an opaque baseline. Replacing
-only a synthesized tail cannot determine which baseline values to subtract.
+## The exact remaining legacy gate
 
-A cursor proves a missing suffix only if its monotonicity and row coverage are
-established. Schema 4's rollup range writer does not recheck the current cursor
-under its source lock and can regress a stale range's cursor. Future monotonic
-checks do not retroactively turn a legacy cursor into a provenance receipt.
+Schema 4 discarded source ownership in rollups. After raw expiration, the same
+retained source/cursor/node cells can describe two different histories. A node
+cell of five may belong to A or to B, even when both registered files use the
+same node name and have the same cursors. An A replacement of seven requires
+seven in one history and twelve in the other. Current names, cursor order and
+retained counts cannot distinguish them. A final missing hour also does not
+attribute earlier hours needed for a daily replacement.
 
-There are only evidence-preserving automatic cases: no legacy overlap, or
-complete independently verified source input/receipts that reconstruct all
-owners of the affected cells. Do not infer completeness merely because some
-raw facts remain: facts can be disabled, filtered by shipping retention,
-purged, or discarded by the local size cap. Counts alone cannot reconstruct
-client/domain dimensions or latency distributions.
+Migration therefore records a conservative global legacy boundary covering all
+retained legacy buckets and at least the end of the migration's UTC day. Every
+existing or subsequently registered source inherits it. Contributions at or
+after that boundary can use source ownership; earlier authoritative/synthetic
+replacement is gated. Original opaque values, facts and contributions are
+preserved, and status/read/evidence show `legacy_provenance_required`. New
+shipping coverage must not be read as proof that a skipped legacy prefix was
+attributed. Raw purge refuses a gated range; no data-loss disposition exists.
 
-For unresolved cells, retain the original values and expose an explicit
-`legacy_provenance_required` state, affected source/node/bucket ranges and
-unresolved hourly/daily coverage in status/Diagnosis and read partial metadata.
-Refuse overlapping source replacements without advancing their cursors. Keep
-needed input, and require an owner-approved reconstruction/import receipt or
-an explicit data-loss disposition before activating those ranges. A fresh
-schema can activate source ownership immediately; an upgrade cannot silently
-pretend to be fresh. The public status/repair contract and proof format for
-that owner-approved transition are unresolved. No such API, migration or
-compatibility refusal is implemented in this change.
+The missing input is independently reconstructable history establishing all
+owners of overlapping legacy cells, including daily dimensions and latency
+histograms. A digest of the surviving input cannot establish that absent
+history. This implementation deliberately has no adoption/import operation that
+can turn a guessed attribution into an accepted receipt. Reconstructing and
+validating unavailable legacy ownership remains an explicit supported-upgrade
+limitation; source-owned/new-schema behavior and safe post-boundary operation
+are implemented independently.
 
-Implementing only the fresh-database case, freezing old sources indefinitely,
-or silently skipping ambiguous daily replacements would leave the original
-supported-upgrade/late-return requirement open. Therefore this work does not
-ship a speculative schema migration or claim F71 closed. The blocker is absent
-legacy provenance and its required explicit recovery contract, not PostgreSQL
-availability, an unapproved F69 design, or a request for permission to proceed.
-
-## Required implementation acceptance
-
-Actual PostgreSQL must cover fresh and schema-4 upgrade databases, the exact
-inactivity and UTC hour/day boundaries, every metric/dimension, repeat/restart/
-rollback, bounded backlog progress and explicit failures. Concurrent tests must
-show a blocked source does not block another source; late facts invalidate a
-synthetic revision; official hour/day exports replace only their own source;
-new-file rejoin adds independently; stale/empty exports cannot regress data.
-
-Upgrade cases must retain IDs and original opaque values, reject connected old
-writers, exercise both indistinguishable legacy histories, refuse unproved
-overlap visibly, and accept only verified reconstruction receipts. Retention
-must preserve pending input and every F70 dictionary reference. Read snapshots
-must remain consistent during shipping, reconciliation, retention and pruning.
-Mounted-router acceptance must verify node isolation, partial/error metadata,
-permissions/privacy/license behavior and no peer/local fallback. These gates
-remain open; F69's passing tests do not substitute for them.
+Schema/compatibility version 5 refuses older binaries on reconnect. Removing
+the old unique conflict targets also makes already-connected schema-4
+replace-upsert writers fail atomically. Upgrade all central writers and plan
+for migration locks, indexes, source/revision backfill and extra retained-input
+storage. Do not lower compatibility markers or drop legacy rows to bypass a gate.

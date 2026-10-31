@@ -112,11 +112,31 @@ Central readers use read-only repeatable-read transactions, so a reader that
 captured data before retention keeps its matching dictionary rows through
 that read. Reclamation does not cross database/schema isolation boundaries.
 
-Statistics of a node that stops for good during an hour that it has not
-summarized yet lose that part hour; the individual queries are kept. The
-[source-provenance transition design](../architecture/central-stopped-source-rollups.md)
-records the required hourly/daily recovery and unresolved legacy upgrade gate;
-that backfill is not implemented.
+The leader recovers closed hours of sources inactive for at least two hours,
+then reconciles their final closed UTC day. Schema 5 keeps each file's contribution
+separate, so a late official shipment replaces its own summary without counting
+it twice or overwriting another file. Each pass has source/bucket/row/time bounds;
+large backlogs need multiple passes. Pending/failed summaries retain their input,
+so retention can hold more data than its configured age. Late facts after raw
+expiration add once to an intact source-owned hourly baseline. If that baseline
+has also expired, `source_input_incomplete` preserves the prior daily values and
+surviving tail rather than guessing missing hourly dimensions. Fact-free shipping can
+recover only already shipped minute dimensions; missing dimensions remain partial.
+
+`/querylog/status` exposes bounded `backfill` counts and source/hour error details.
+`legacy_provenance_required` means earlier node-only rollups cannot be assigned
+to historical files from retained evidence. Their values/input remain intact;
+this is an explicit gate, not a healthy or completed migration. New and existing
+files both respect the upgrade's conservative legacy boundary. Source-owned
+post-boundary data continues to work. Review storage growth while a gate or
+oversized-input failure is unresolved; do not delete retained evidence to make
+status appear healthy.
+
+The [source-provenance contract](../architecture/central-stopped-source-rollups.md)
+describes exact bounds, stale-refusing evidence capture/verification, atomic
+source-owned repair and the unavailable legacy attribution input. Evidence APIs
+require query-log read permission and the existing history license window. They
+do not authorize replacing opaque legacy cells.
 
 ## The dashboard's All nodes view
 
@@ -187,3 +207,14 @@ might not discover incompatibility until reconnecting; foreign keys refuse
 its stale cached-ID batch, rolling back its rows and watermark together.
 Its local queue remains subject to the existing local size cap during an
 extended upgrade/outage.
+
+
+Schema 5 adds source ownership and is another explicit compatibility boundary
+(`compat_version=5`). Existing node-only cells retain NULL ownership and every
+original metric/dictionary ID. The migration builds source indexes and retained
+fact revisions; plan for locks, time and storage, including input deliberately
+retained by unresolved provenance gates. Already-connected schema-4 rollup
+writers fail their old conflict targets atomically. Upgrade all shippers; never
+lower markers or assign old cells to a default/current source. Missing historical
+ownership requires independently reconstructable evidence and remains visible
+as `legacy_provenance_required`; no destructive bypass is provided.

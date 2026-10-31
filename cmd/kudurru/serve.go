@@ -1176,7 +1176,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var centralPurger api.QuerylogPurger
 	if centralDB != nil && cfg.Database.Querylog.Ship {
 		centralQuerylog = sqlitelog.NewCentralReader(centralDB.SQL, sqlitelog.CentralOptions{
-			RawRetention: cfg.Database.Querylog.Retention.Raw.Std(), DomainsOnLists: listedDomains})
+			RawRetention: cfg.Database.Querylog.Retention.Raw.Std(), DomainsOnLists: listedDomains, Recovery: pgquerylog.Recovery{DB: centralDB}})
 		centralPurger = pgquerylog.Purger{DB: centralDB}
 		if qlWriter == nil {
 			logger.Info("database.querylog.ship is set but this node keeps no query log (querylog.enabled and querylog.sink: sqlite); nothing is sent", "component", "central")

@@ -224,6 +224,7 @@ type ClientsBody struct {
 type clientsOutput struct{ Body *ClientsBody }
 
 func (s *Server) registerStats() {
+	s.registerRollupRecovery()
 	stats := perm{resource: "stats", verb: "read"}
 	ql := perm{resource: "querylog", verb: "read"}
 	register(s, operation(http.MethodGet, "/stats/summary", "statsSummary", "Stat tiles and sidebar counters", "stats"), stats, s.statsSummary)

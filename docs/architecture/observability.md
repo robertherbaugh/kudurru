@@ -159,7 +159,7 @@ there, and **All nodes** reads the database instead
 flowchart LR
     QL[("querylog.db<br/>(written first)")] --> SH["query-log shipper<br/>facts by id every 1 s,<br/>rollups every 30 s"]
     SH -- "rows + cursor,<br/>one transaction" --> PG[("PostgreSQL<br/>same tables, every node,<br/>query partitioned by day")]
-    JAN["leader retention<br/>raw, rollups, bounded dictionary sweep"] --> PG
+    JAN["leader recovery and retention<br/>source hours/days, raw, rollups, dictionary sweep"] --> PG
     PG --> CR["central reader<br/>(read-only repeatable-read,<br/>PostgreSQL dialect)"]
     CR --> API["GET /stats/*, /queries<br/>scope=cluster"]
     API --> HISTORY["dashboard history<br/>(central IDs)"]
@@ -177,8 +177,18 @@ reference, including daily rollups from retired sources. Durable bounded
 keyset sweeps wrap and resume after restart. The two-second pass deadline
 bounds lock ownership; failed passes roll back deletions and sweep progress.
 Read-only repeatable-read snapshots retain matching dictionary data while a
-concurrent sweep commits. See the PostgreSQL guide for the schema 4 upgrade
+concurrent sweep commits. See the PostgreSQL guide for the schema 4/5 upgrade
 boundary and migration cost.
+
+Schema 5 retains per-file source ownership across all central rollup families.
+The leader synthesizes closed hours after two hours of inactivity and reconciles
+closed days, using bounded work and the same metric accumulators as local
+compaction. Official returns replace their own source contribution atomically.
+Pending input is retained. Legacy node-only cells keep NULL ownership and remain
+visibly partial until their absent provenance can be established; a new file
+cannot assume that ownership. Scoped status and evidence verification expose
+these gates without raw DNS data. The [source recovery contract](central-stopped-source-rollups.md)
+describes the schema, limits, exact-once receipts and unresolved legacy input.
 
 The live tail follows the active replicas directly, even with a central
 database. While enabled, the dashboard shows only incoming queries; it
