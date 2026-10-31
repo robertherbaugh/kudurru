@@ -250,6 +250,7 @@ func (s *Supervisor) verifyCertificate(ctx context.Context, leaf []byte) error {
 			host = "::1"
 		}
 		addr := net.JoinHostPort(host, port)
+		// nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- Local reload probe authenticates the exact configured leaf in VerifyConnection; deployment names/private CAs need not match the loopback probe address.
 		cfg := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true, //nolint:gosec // exact configured leaf pin below, no DNS request or external endpoint
 			VerifyConnection: func(st tls.ConnectionState) error {
 				if len(st.PeerCertificates) == 0 || !bytes.Equal(st.PeerCertificates[0].Raw, leaf) {

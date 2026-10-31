@@ -133,6 +133,7 @@ class Lab:
     def __init__(self, args):
         self.args = args
         self.root = Path(tempfile.mkdtemp(prefix="dnsdist-console-", dir=args.work_dir))
+        # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions -- Private directory: only its owner may traverse it; 0644 would expose names and prevent owner traversal.
         os.chmod(self.root, 0o700)
         self.log = (self.root / "child-output.private.log").open("wb")
         os.chmod(self.log.name, 0o600)
