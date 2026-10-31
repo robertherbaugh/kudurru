@@ -169,3 +169,63 @@ func TestDHCPNamesAlongsideCapturedInventory(t *testing.T) {
 		t.Fatal("fresh request retained former DHCP name")
 	}
 }
+
+// PTR observations are a last fallback and are sampled once for the original
+// request. Alias/dependency work cannot pick a newer name or policy membership.
+func TestFallbackHostnamePrecedenceAndCapture(t *testing.T) {
+	group := func(name string, m v1alpha1.ClientMatcher) *v1alpha1.ClientGroup {
+		return &v1alpha1.ClientGroup{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{m}}}
+	}
+	ix := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{
+		group("ptr", v1alpha1.ClientMatcher{NameGlob: "*.ptr.lan"}),
+		group("dhcp", v1alpha1.ClientMatcher{Hostname: "phone.dhcp.lan"}),
+		group("inventory", v1alpha1.ClientMatcher{Hostname: "phone.inventory.lan"}),
+		group("exact-ip", v1alpha1.ClientMatcher{IP: "192.0.2.9"}),
+	}}, policy.Options{Inventory: true})
+	now := time.Now()
+	for _, source := range []string{"ptr", "dhcp", "inventory", "exact-ip"} {
+		t.Run(source, func(t *testing.T) {
+			st := New(policy.Static{Idx: ix}, nil)
+			calls := 0
+			name := "phone.ptr.lan"
+			st.FallbackHostnames = fallbackNames(func(netip.Addr) []string { calls++; return []string{name} })
+			addr := netip.MustParseAddr("192.0.2.3")
+			if source == "dhcp" {
+				st.Hostnames = fallbackNames(func(netip.Addr) []string { return []string{"phone.dhcp.lan"} })
+			}
+			if source == "inventory" {
+				inv := inventory.New(nil)
+				if err := inv.Replace("test", 1, []inventory.Client{{ID: "phone", IPs: []netip.Addr{addr}, Hostname: "phone.inventory.lan", ObservedAt: now, ExpiresAt: now.Add(time.Minute)}}); err != nil {
+					t.Fatal(err)
+				}
+				st.Inventory = inv
+			}
+			if source == "exact-ip" {
+				addr = netip.MustParseAddr("192.0.2.9")
+			}
+			req := &pipeline.Request{Client: pipeline.Client{Addr: netip.AddrPortFrom(addr, 53)}}
+			next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+			if _, err := st.Serve(req, next); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(req.Client.GroupIDs, []string{source}) {
+				t.Fatal("wrong identity precedence", req.Client.GroupIDs)
+			}
+			before := calls
+			name = "replacement.ptr.lan"
+			if _, err := st.Serve(req, next); err != nil {
+				t.Fatal(err)
+			}
+			if calls != before || !slices.Equal(req.Client.GroupIDs, []string{source}) {
+				t.Fatal("dependent identity recaptured")
+			}
+			if (source == "dhcp" || source == "inventory") && calls != 0 {
+				t.Fatal("PTR acquired despite authoritative local name")
+			}
+		})
+	}
+}
+
+type fallbackNames func(netip.Addr) []string
+
+func (f fallbackNames) Hostnames(addr netip.Addr) []string { return f(addr) }

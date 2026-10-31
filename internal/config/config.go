@@ -32,6 +32,7 @@ const EnvPrefix = "KUDURRU_"
 // Config is the typed view of kudurru.yaml. Node-scoped sections are host
 // local; cluster-scoped sections are the Kudurru singleton.
 type Config struct {
+	ClientNames ClientNames `koanf:"clientNames" json:"clientNames"`
 	// NodeLogSource captures host/default values and explicit node-file log
 	// authority. It is process source metadata, never replicated settings.
 	NodeLogSource *NodeLogSource `koanf:"-" json:"-"`
@@ -719,6 +720,9 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 // *FieldError.
 func (c *Config) Validate() error {
 	errs := c.validateSchema()
+	if err := c.ClientNames.ReversePTR.validate(); err != nil {
+		errs = append(errs, err)
+	}
 	if err := c.ValidateStorageDirs(); err != nil {
 		errs = append(errs, err)
 	}

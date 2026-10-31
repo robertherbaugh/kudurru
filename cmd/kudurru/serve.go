@@ -816,6 +816,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	idStage := identify.New(polSrc, nil)
 	idStage.Inventory = clientInventory
 	idStage.Hostnames = leaseDNS
+	ptrRun, err := mountReversePTR(cfg.ClientNames.ReversePTR, idStage)
+	if err != nil {
+		return err
+	}
 	controlView, err := control.ViewFromConfig(cfg.Control)
 	if err != nil {
 		return err
@@ -1404,6 +1408,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	} else {
 		subscribeReload(ctx, reload, reloadConsumers)
+	}
+	if ptrRun != nil {
+		if err := add("client-names-ptr", false, ptrRun); err != nil {
+			return err
+		}
 	}
 	if vipObserveRun != nil {
 		if err := add("vip-observation", false, vipObserveRun); err != nil {

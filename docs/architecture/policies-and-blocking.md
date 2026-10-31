@@ -286,7 +286,33 @@ flowchart LR
     batch --> snapshot["Immutable IP ownership snapshot"]
     transport["Address and optional client ID"] --> identify["Capture inventory once"]
     snapshot --> identify
+    dhcp["Current local DHCP names"] --> identify
+    ptr["Bounded asynchronous PTR cache"] -. "only if no inventory/DHCP name" .-> identify
     identify --> tiers["D86 matching tiers"]
     tiers --> policy["Client policy"]
     identify --> modifiers["Client names and tags"]
 ```
+
+### Optional reverse-PTR name fallback
+
+`clientNames.reversePTR.enabled` opts the host into background name acquisition.
+The operator must provide one to four unicast IP:port DNS servers and one to 32
+client CIDRs in `networks`. These node settings are host-only and require restart;
+API updates and null resets are refused. The default is disabled.
+
+Identification samples the memory cache only when captured inventory and local
+DHCP provide no name. A cold or expired lookup returns immediately and requests
+background work through a bounded nonblocking queue. Two workers and 4,096 cache
+entries are the defaults (limits: eight workers, 65,536 entries, 256 queued
+addresses). Exact IP, MAC and nonzero CIDR matching retain higher precedence.
+The resulting names and membership remain pinned to the original request and its
+dependencies. PTR is an operator-selected DNS observation, never authentication.
+
+Acquisition uses direct UDP with a single original timeout across configured
+sources. Only a direct, unambiguous PTR target with matching ID/question/owner,
+IN class and nonzero TTL is admitted. Truncated answers, CNAME chasing and invalid
+hostnames are refused. Positive lifetime starts at acquisition and is capped by
+`maxAge`; failed/negative acquisitions use `negativeTTL` backoff. No stale name is
+returned while refreshing. Shutdown cancels and joins the fixed workers and
+invalidates local observations. This source is independent of the resolver's
+ordinary DNS cache and never uses system name resolution or the query pipeline.

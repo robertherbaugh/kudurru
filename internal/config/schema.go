@@ -109,12 +109,13 @@ const (
 	GroupLogging      = "Logging"
 	GroupEdge         = "Edge"
 	GroupVIP          = "VIP"
+	GroupClientNames  = "Client names"
 )
 
 // Groups lists the UI sections in display order.
 var Groups = []string{
 	GroupNode, GroupListeners, GroupDHCP, GroupUpstreams, GroupControl, GroupDNSSEC, GroupResponse, GroupCache, GroupBlocking, GroupBlockPage, GroupBranding, GroupQuerylog, GroupDatabase,
-	GroupRateLimit, GroupSecurity, GroupZones, GroupIntegrations, GroupLogging, GroupEdge, GroupVIP,
+	GroupRateLimit, GroupSecurity, GroupZones, GroupIntegrations, GroupLogging, GroupEdge, GroupVIP, GroupClientNames,
 }
 
 // Closed sets shared by several keys.
@@ -544,6 +545,14 @@ var Schema = []Key{
 	{Path: "vip.observation.interval", Type: TypeDuration, Scope: ScopeNode, Default: "5s", HostOnly: true, RestartRequired: true, Label: "VIP observation interval", Group: GroupVIP, Help: "Read-only polling interval, 1s-1m. Polling does not renew a provider heartbeat."},
 	{Path: "vip.observation.timeout", Type: TypeDuration, Scope: ScopeNode, Default: "2s", HostOnly: true, RestartRequired: true, Label: "VIP acquisition timeout", Group: GroupVIP, Help: "Deadline for the entire acquisition, 100ms-5s. Failed reads replace previous ownership with unknown."},
 	{Path: "vip.observation.maxAge", Type: TypeDuration, Scope: ScopeNode, Default: "15s", HostOnly: true, RestartRequired: true, Label: "VIP observation maximum age", Group: GroupVIP, Help: "Local acquisition expiry measured from its original start; at least interval+timeout, at most 1m. Provider Lease or Node heartbeat expiry can shorten this; a fresh L2 status read never invents a provider heartbeat."},
+	{Path: "clientNames.reversePTR.enabled", Type: TypeBool, Scope: ScopeNode, Default: false, HostOnly: true, RestartRequired: true, Label: "Enable reverse PTR", Group: GroupClientNames, Help: "Acquire client names asynchronously from explicit DNS sources. Untrusted fallback only when inventory and DHCP have no name."},
+	{Path: "clientNames.reversePTR.servers", Type: TypeStringList, Scope: ScopeNode, Default: []string{}, HostOnly: true, RestartRequired: true, Label: "PTR DNS servers", Group: GroupClientNames, Help: "One to four explicit unicast IP:port sources. UDP only; no system resolver, DNS search, TCP fallback or CNAME chasing.", Items: &Shape{Type: TypeString, Format: FormatHostPort}},
+	{Path: "clientNames.reversePTR.networks", Type: TypeStringList, Scope: ScopeNode, Default: []string{}, HostOnly: true, RestartRequired: true, Label: "PTR client networks", Group: GroupClientNames, Help: "One to 32 explicit IPv4/IPv6 CIDRs eligible for background name acquisition.", Items: &Shape{Type: TypeString, Format: FormatCIDR}},
+	{Path: "clientNames.reversePTR.maxEntries", Type: TypeInt, Scope: ScopeNode, Default: 4096, HostOnly: true, RestartRequired: true, Label: "PTR cache entries", Group: GroupClientNames, Help: "Bounded observation cache. Cold and expired names return immediately without waiting for DNS.", Min: new(1), Max: new(65536)},
+	{Path: "clientNames.reversePTR.workers", Type: TypeInt, Scope: ScopeNode, Default: 2, HostOnly: true, RestartRequired: true, Label: "PTR workers", Group: GroupClientNames, Help: "Fixed number of background DNS workers. Demand queue holds at most 256 addresses.", Min: new(1), Max: new(8)},
+	{Path: "clientNames.reversePTR.timeout", Type: TypeDuration, Scope: ScopeNode, Default: "1s", HostOnly: true, RestartRequired: true, Label: "PTR timeout", Group: GroupClientNames, Help: "Original acquisition deadline, 100ms-5s across all configured sources."},
+	{Path: "clientNames.reversePTR.maxAge", Type: TypeDuration, Scope: ScopeNode, Default: "10m", HostOnly: true, RestartRequired: true, Label: "PTR maximum age", Group: GroupClientNames, Help: "Positive lifetime cap, 1s-1h, bounded by DNS TTL from acquisition start. Expired names never remain a fallback."},
+	{Path: "clientNames.reversePTR.negativeTTL", Type: TypeDuration, Scope: ScopeNode, Default: "30s", HostOnly: true, RestartRequired: true, Label: "PTR retry delay", Group: GroupClientNames, Help: "Negative or failed acquisition backoff, 1s-5m. No client name is retained on failure."},
 }
 
 // Lookup finds a key by path.

@@ -41,6 +41,9 @@ type Stage struct {
 	// Hostnames supplies local DHCP names, sampled once alongside inventory.
 	// Alias/dependency requests retain the original client identity.
 	Hostnames policy.HostnameResolver
+	// FallbackHostnames supplies untrusted asynchronous observations only when
+	// neither captured inventory nor local DHCP supplies a client name.
+	FallbackHostnames policy.HostnameResolver
 	// Capture and CaptureInventory read typed owners from Request.Serving.
 	// A captured query never falls back to src or the live inventory holder.
 	Capture          func(*pipeline.Request) (*policy.Index, error)
@@ -110,7 +113,7 @@ func (s *Stage) identify(req *pipeline.Request) (*identification, error) {
 	if at.IsZero() {
 		at = s.now()
 	}
-	if (s.Inventory != nil || s.CaptureInventory != nil || s.Hostnames != nil || req.Serving != nil) && !req.Client.IdentityCaptured {
+	if (s.Inventory != nil || s.CaptureInventory != nil || s.Hostnames != nil || s.FallbackHostnames != nil || req.Serving != nil) && !req.Client.IdentityCaptured {
 		var snapshot *inventory.Snapshot
 		if s.CaptureInventory != nil {
 			var err error
@@ -133,6 +136,9 @@ func (s *Stage) identify(req *pipeline.Request) (*identification, error) {
 		if s.Hostnames != nil {
 			names := append([]string(nil), req.Client.Names...)
 			req.Client.Names = append(names, s.Hostnames.Hostnames(req.Client.Addr.Addr())...)
+		}
+		if len(req.Client.Names) == 0 && s.FallbackHostnames != nil {
+			req.Client.Names = s.FallbackHostnames.Hostnames(req.Client.Addr.Addr())
 		}
 	}
 	var ix *policy.Index
