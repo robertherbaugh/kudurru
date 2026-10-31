@@ -31,7 +31,7 @@ import { Wizard, WizardDialog, type WizardStep } from '../Wizard';
 import { useNavigate } from '../../lib/router';
 import { hostError } from '../../lib/rr';
 import { DEFAULT_GROUP } from '../../lib/upstreams';
-import { aclEntryError, apexError, primaryEndpointError, QUERY_ACCESS, rnameOf, SOA_DEFAULTS, SOA_PRESETS, stubEndpointError, tsigKeyNameError, usesACL, zoneObjectName } from '../../lib/zones';
+import { aclEntryError, apexError, primaryEndpointError, QUERY_ACCESS, rnameOf, SOA_DEFAULTS, SOA_PRESETS, stubEndpointError, notifySourceError, tsigKeyNameError, usesACL, zoneObjectName } from '../../lib/zones';
 
 type Kind = 'primary' | 'forward' | 'secondary' | 'stub';
 
@@ -48,6 +48,8 @@ export interface Draft {
   minimum: string;
   queryAccess: AccessMode;
   queryACL: string[];
+  notifyTSIGKeyRef: string;
+  notifySource: string;
   upstreamGroup: string;
   dnssec: '' | 'on' | 'off';
   fallback: boolean;
@@ -71,6 +73,8 @@ export const EMPTY: Draft = {
   minimum: '',
   queryAccess: 'allow',
   queryACL: [],
+  notifyTSIGKeyRef: '',
+  notifySource: '',
   upstreamGroup: '',
   dnssec: '',
   fallback: false,
@@ -108,9 +112,13 @@ export function zoneFromDraft(d: Draft): DNSZone {
       }).filter(([, v]) => v !== undefined),
     );
     if (Object.keys(soa).length) spec.soa = soa;
+    const policy: NonNullable<DNSZoneSpec['policy']> = {};
     if (d.queryAccess !== 'allow' || cleanList(d.queryACL).length) {
-      spec.policy = { queryAccess: d.queryAccess, ...(usesACL(d.queryAccess) ? { queryACL: cleanList(d.queryACL) } : {}) };
+      Object.assign(policy, { queryAccess: d.queryAccess, ...(usesACL(d.queryAccess) ? { queryACL: cleanList(d.queryACL) } : {}) });
     }
+    if (d.notifyTSIGKeyRef.trim()) policy.notifyTSIGKeyRef = d.notifyTSIGKeyRef.trim();
+    if (d.notifySource.trim()) policy.notifySource = d.notifySource.trim();
+    if (Object.keys(policy).length) spec.policy = policy;
   } else if (d.type === 'secondary') {
     spec.secondary = {
       primaries: cleanList(d.primaries),
@@ -141,7 +149,8 @@ export function primaryError(d: Draft): string | null {
             (d.rname.trim() && !d.rname.includes('@') && hostError(d.rname) ? `Responsible mailbox: ${hostError(d.rname)}` : null) ??
             (['defaultTTL', 'refresh', 'retry', 'expire', 'minimum'] as const).map((k) => secondsError(d[k], { optional: true })).find(Boolean) ??
             (usesACL(d.queryAccess) && !cleanList(d.queryACL).length ? 'The ACL needs at least one entry for this access mode' : null) ??
-            (usesACL(d.queryAccess) ? listError(d.queryACL, (s) => aclEntryError(s, cidr)) : null)
+            (usesACL(d.queryAccess) ? listError(d.queryACL, (s) => aclEntryError(s, cidr)) : null) ??
+            tsigKeyNameError(d.notifyTSIGKeyRef) ?? notifySourceError(d.notifySource)
   );
 }
 
@@ -213,6 +222,29 @@ export function PrimaryFields({ d, set }: { d: Draft; set: SetDraft }) {
           {secs('minimum', 'Negative TTL', 'How long resolvers cache "no such name"')}
         </Grid>
       </VStack>
+      <Grid columns={2} gap={4} align="start">
+        <TextField
+          label="NOTIFY TSIG key"
+          isOptional
+          mono
+          value={d.notifyTSIGKeyRef}
+          onChange={(v) => set('notifyTSIGKeyRef', v)}
+          placeholder="notify-key.example."
+          help="Key name only, never the secret. Empty uses the first transfer key, or unsigned NOTIFY when no key is configured. An unavailable selected key fails delivery."
+          error={tsigKeyNameError(d.notifyTSIGKeyRef) ?? undefined}
+        />
+        <TextField
+          label="NOTIFY source address"
+          isOptional
+          mono
+          value={d.notifySource}
+          onChange={(v) => set('notifySource', v)}
+          placeholder="192.0.2.10 or 2001:db8::10"
+          help="Local IPv4 or IPv6 address. Empty inherits notify.source, then system selection. If the address cannot bind, NOTIFY fails without choosing another source."
+          error={notifySourceError(d.notifySource) ?? undefined}
+        />
+      </Grid>
+      <Text type="supporting">These options apply when NOTIFY is enabled for this zone. They do not change transfer authorization.</Text>
       <EnumSelect label="Who may query" value={d.queryAccess} options={QUERY_ACCESS} onChange={(v) => set('queryAccess', v as AccessMode)} />
       {usesACL(d.queryAccess) ? (
         <StringListField
@@ -330,6 +362,8 @@ export function draftFromZone(spec: DNSZoneSpec): Draft {
     minimum: str(spec.soa?.minimum),
     queryAccess: spec.policy?.queryAccess ?? 'allow',
     queryACL: spec.policy?.queryACL ?? [],
+    notifyTSIGKeyRef: spec.policy?.notifyTSIGKeyRef ?? '',
+    notifySource: spec.policy?.notifySource ?? '',
     upstreamGroup: spec.forward?.upstreamGroup ?? '',
     dnssec: spec.forward?.dnssecValidation === undefined ? '' : spec.forward.dnssecValidation ? 'on' : 'off',
     fallback: spec.fallback !== undefined,
@@ -361,6 +395,8 @@ export function applyDraft(spec: DNSZoneSpec, d: Draft): DNSZoneSpec {
     const policy = { ...spec.policy };
     delete policy.queryAccess;
     delete policy.queryACL;
+    delete policy.notifyTSIGKeyRef;
+    delete policy.notifySource;
     if (built.policy) Object.assign(policy, built.policy);
     if (Object.keys(policy).length) next.policy = policy;
     else delete next.policy;
@@ -554,6 +590,8 @@ function Review({ d }: { d: Draft }) {
             negative TTL {dflt(s.soa?.minimum, SOA_DEFAULTS.minimum)}
             {s.soa?.rname ? `, mailbox ${s.soa.rname}` : ''}
           </MetadataListItem>
+          <MetadataListItem label="NOTIFY TSIG key">{s.policy?.notifyTSIGKeyRef || 'First transfer key, otherwise unsigned'}</MetadataListItem>
+          <MetadataListItem label="NOTIFY source address">{s.policy?.notifySource || 'Global notify.source, otherwise system selection'}</MetadataListItem>
           <MetadataListItem label="Who may query">
             {QUERY_ACCESS.find((q) => q.value === (s.policy?.queryAccess ?? 'allow'))?.label}
             {s.policy?.queryACL?.length ? `: ${s.policy.queryACL.join(', ')}` : ''}

@@ -123,6 +123,8 @@ export interface DNSZoneSpec {
     transferTSIGKeyRefs?: string[];
     notify?: NotifyMode;
     notifyTargets?: string[];
+    notifyTSIGKeyRef?: string;
+    notifySource?: string;
     update?: AccessMode;
   };
   forward?: { upstreamGroup?: string; dnssecValidation?: boolean };

@@ -2,7 +2,7 @@
 // sets (primary: name servers, default TTL, SOA, who may query; forward:
 // upstream group, DNSSEC validation; secondary: primaries and TSIG key), with the
 // wizard's own fields. Saving PUTs the DNSZone with If-Match and keeps every
-// field the editor does not show (transfers, NOTIFY, ...).
+// field the editor does not show (transfer policy, NOTIFY mode/targets, ...).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Link } from '@astryxdesign/core/Link';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
@@ -57,7 +57,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
   return (
     <EditableSection<Draft>
       title="Zone settings"
-      description={value.type === 'primary' ? 'Name servers, TTLs and SOA timers, and who may query the zone.' : value.type === 'secondary' ? 'Primary servers, transfer transport and TSIG key. SOA timers and TTLs come from the primary.' : value.type === 'stub' ? 'Bootstrap servers used to discover the zone’s authorities.' : 'Where queries for the zone are sent.'}
+      description={value.type === 'primary' ? 'Name servers, TTLs, SOA timers, NOTIFY key/source and who may query the zone.' : value.type === 'secondary' ? 'Primary servers, transfer transport and TSIG key. SOA timers and TTLs come from the primary.' : value.type === 'stub' ? 'Bootstrap servers used to discover the zone’s authorities.' : 'Where queries for the zone are sent.'}
       value={value}
       readOnlyReason={roReason}
       testId="section-zone-settings"
@@ -71,6 +71,8 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
             <MetadataListItem label="Retry">{secs(value.retry, 'retry')}</MetadataListItem>
             <MetadataListItem label="Expire">{secs(value.expire, 'expire')}</MetadataListItem>
             <MetadataListItem label="Negative TTL">{secs(value.minimum, 'minimum')}</MetadataListItem>
+            <MetadataListItem label="NOTIFY TSIG key">{value.notifyTSIGKeyRef || (z.spec.policy?.transferTSIGKeyRefs?.[0] ? `First transfer key (${z.spec.policy.transferTSIGKeyRefs[0]})` : 'None (unsigned)')}</MetadataListItem>
+            <MetadataListItem label="NOTIFY source address">{value.notifySource || 'Global notify.source, otherwise system selection'}</MetadataListItem>
             <MetadataListItem label="Who may query">
               {access}
               {value.queryACL.length ? <Text color="secondary"> ({value.queryACL.join(', ')})</Text> : null}

@@ -81,6 +81,21 @@ describe('zone import', () => {
 });
 
 describe('ZoneWizardDialog', () => {
+  it('creates a primary with explicit NOTIFY key and source through typed controls', async () => {
+    renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Zone name/ }), { target: { value: 'notify.example' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: /^NOTIFY TSIG key/ }), { target: { value: 'notify-key.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^NOTIFY source address/ }), { target: { value: '2001:db8::1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const review = await screen.findByTestId('zone-review');
+    expect(review).toHaveTextContent('notify-key.');
+    expect(review).toHaveTextContent('2001:db8::1');
+    fireEvent.click(screen.getByRole('button', { name: 'Create zone' }));
+    await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'notify.example')?.spec.policy).toEqual({ notifyTSIGKeyRef: 'notify-key.', notifySource: '2001:db8::1' }));
+  });
+
   it('creates a primary zone with fallback through normal resolver routing', async () => {
     renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
     fireEvent.click(await screen.findByRole('button', { name: 'Next' }));

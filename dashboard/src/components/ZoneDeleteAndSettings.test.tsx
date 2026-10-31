@@ -228,3 +228,91 @@ describe('ZoneSettingsSection', () => {
     await waitFor(() => expect(within(section).queryByRole('button', { name: 'Save Zone settings' })).not.toBeInTheDocument());
   });
 });
+
+describe('NOTIFY options in zone settings', () => {
+  function seedNotify() {
+    signIn('admin');
+    const z = {
+      apiVersion: 'kudurru.io/v1alpha1' as const, kind: 'DNSZone' as const,
+      metadata: { name: 'notify.example', resourceVersion: '12', labels: { owner: 'dns-team' } },
+      spec: {
+        zoneName: 'notify.example.', type: 'primary' as const,
+        policy: { notify: 'specified' as const, notifyTargets: ['192.0.2.1'], transferTSIGKeyRefs: ['transfer.'], futureNotifyOption: 'retained', notifyTSIGKeyRef: 'notify.', notifySource: '127.0.0.2' },
+      },
+    };
+    mockDB().zones.push(z);
+    return z;
+  }
+
+  it.each([false, true])('saves and clears explicit choices (clear=%s) with If-Match and unrelated policy preserved', async (clear) => {
+    const z = seedNotify();
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />);
+    const section = await screen.findByTestId('section-zone-settings');
+    expect(within(section).getByText('notify.')).toBeInTheDocument();
+    fireEvent.click(within(section).getByRole('button', { name: 'Edit Zone settings' }));
+    const key = within(section).getByRole('textbox', { name: /^NOTIFY TSIG key/ });
+    const source = within(section).getByRole('textbox', { name: /^NOTIFY source address/ });
+    expect(key).toHaveValue('notify.');
+    expect(source).toHaveValue('127.0.0.2');
+    expect(key).toHaveAccessibleDescription(/Empty uses the first transfer key/);
+    expect(source).toHaveAccessibleDescription(/Empty inherits notify.source/);
+    fireEvent.change(key, { target: { value: clear ? '' : 'other-notify.' } });
+    fireEvent.change(source, { target: { value: clear ? '' : '::1' } });
+    const save = vi.fn();
+    server.use(http.put(`${API}/objects/dnszones/${z.metadata.name}`, async ({ request }) => {
+      const body = await request.json();
+      save(request.headers.get('If-Match'), body);
+      return HttpResponse.json(body);
+    }));
+    fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
+    const expectedPolicy = {
+      notify: 'specified', notifyTargets: ['192.0.2.1'], transferTSIGKeyRefs: ['transfer.'], futureNotifyOption: 'retained',
+      ...(clear ? {} : { notifyTSIGKeyRef: 'other-notify.', notifySource: '::1' }),
+    };
+    await waitFor(() => expect(save).toHaveBeenCalledExactlyOnceWith('12', { ...z, spec: { ...z.spec, policy: expectedPolicy } }));
+  });
+
+  it.each([['NOTIFY source address', '::'], ['NOTIFY TSIG key', 'a..b']])('keeps invalid %s inline without submitting', async (label, value) => {
+    const z = seedNotify();
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />);
+    const section = await screen.findByTestId('section-zone-settings');
+    fireEvent.click(within(section).getByRole('button', { name: 'Edit Zone settings' }));
+    const source = within(section).getByRole('textbox', { name: new RegExp(`^${label}`) });
+    const save = vi.fn();
+    server.use(http.put(`${API}/objects/dnszones/${z.metadata.name}`, () => { save(); return HttpResponse.json(z); }));
+    fireEvent.change(source, { target: { value } });
+    fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
+    expect(source).toHaveAttribute('aria-invalid', 'true');
+    expect(save).not.toHaveBeenCalled();
+    expect(within(section).getByRole('button', { name: 'Save Zone settings' })).toBeInTheDocument();
+  });
+
+  it('keeps refused current edits open and never replays the PUT', async () => {
+    const z = seedNotify();
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />);
+    const section = await screen.findByTestId('section-zone-settings');
+    fireEvent.click(within(section).getByRole('button', { name: 'Edit Zone settings' }));
+    fireEvent.change(within(section).getByRole('textbox', { name: /^NOTIFY source address/ }), { target: { value: '::1' } });
+    const save = vi.fn();
+    server.use(http.put(`${API}/objects/dnszones/${z.metadata.name}`, () => { save(); return HttpResponse.json({ error: { key: 'precondition_failed', message: 'resourceVersion changed' } }, { status: 412 }); }));
+    fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
+    expect(await within(section).findByText('The zone changed since this page loaded; reload and edit again.')).toBeInTheDocument();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(within(section).getByRole('textbox', { name: /^NOTIFY source address/ })).toHaveValue('::1');
+  });
+
+  it('does not expose edit controls to a viewer', async () => {
+    const z = seedNotify();
+    const save = vi.fn();
+    server.use(http.put(`${API}/objects/dnszones/${z.metadata.name}`, () => { save(); return HttpResponse.json({}); }));
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />, { user: 'viewer' });
+    const section = await screen.findByTestId('section-zone-settings');
+    const edit = within(section).getByRole('button', { name: 'Edit Zone settings' });
+    expect(edit).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(edit);
+    expect(within(section).queryByRole('textbox', { name: /^NOTIFY source address/ })).not.toBeInTheDocument();
+    expect(within(section).queryByRole('textbox', { name: /^NOTIFY TSIG key/ })).not.toBeInTheDocument();
+    expect(within(section).queryByRole('button', { name: 'Save Zone settings' })).not.toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+});

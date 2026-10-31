@@ -4,7 +4,7 @@
 import type { EnumOption } from '../components/fields/EnumSelect';
 import type { AccessMode } from '../api/types';
 import { nameError } from './objectSchemas';
-import { hostError } from './rr';
+import { hostError, isIPv4, isIPv6 } from './rr';
 import { hostPortError } from './upstreams';
 
 export const QUERY_ACCESS: (EnumOption & { value: AccessMode })[] = [
@@ -78,4 +78,23 @@ export function stubEndpointError(value: string): string | null {
 /** TSIG references are DNS key names, not secret values. */
 export function tsigKeyNameError(value: string): string | null {
   return value.trim() ? hostError(value) : null;
+}
+
+/** Optional explicit NOTIFY source; an unavailable valid address fails at send. */
+export function notifySourceError(value: string): string | null {
+  const source = value.trim();
+  if (!source) return null;
+  const error = 'Use an unscoped unicast IPv4 or IPv6 address, without a port';
+  if (isIPv4(source)) {
+    const first = Number(source.split('.')[0]);
+    return source === '0.0.0.0' || source === '255.255.255.255' || (first >= 224 && first <= 239) ? error : null;
+  }
+  if (!isIPv6(source)) return error;
+  try {
+    // URL canonicalization recognizes expanded zero/mapped/multicast spellings.
+    const canonical = new URL(`http://[${source}]/`).hostname.slice(1, -1).toLowerCase();
+    return canonical === '::' || canonical.startsWith('ff') || canonical.startsWith('::ffff:') ? error : null;
+  } catch {
+    return error;
+  }
 }
