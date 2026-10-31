@@ -211,6 +211,10 @@ var _ store.Store = (*Store)(nil)
 // times out so the caller can fall back to local.db (§4.4). cfg is copied;
 // an unset QPS becomes DefaultQPS/DefaultBurst.
 func New(cfg *rest.Config, opts Options) (*Store, error) {
+	return newStore(cfg, opts, true, nil)
+}
+
+func newStore(cfg *rest.Config, opts Options, background bool, mapper meta.RESTMapper) (*Store, error) {
 	if cfg == nil {
 		return nil, errors.New("store/kube: nil rest.Config")
 	}
@@ -260,9 +264,11 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: discovery http client: %w", err)
 	}
-	mapper, err := apiutil.NewDynamicRESTMapper(discoveryCfg, discoveryHTTP)
-	if err != nil {
-		return nil, fmt.Errorf("store/kube: rest mapper: %w", err)
+	if mapper == nil {
+		mapper, err = apiutil.NewDynamicRESTMapper(discoveryCfg, discoveryHTTP)
+		if err != nil {
+			return nil, fmt.Errorf("store/kube: rest mapper: %w", err)
+		}
 	}
 	c, err := client.NewWithWatch(cfg, client.Options{Scheme: opts.Scheme, Mapper: mapper, HTTPClient: httpClient})
 	if err != nil {
@@ -307,6 +313,10 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		informersReady: make(chan struct{}),
 		electors:       map[string]*LeaseElector{},
 		watchers:       map[*watcher]struct{}{},
+	}
+	if !background {
+		close(s.cacheDone)
+		return s, nil
 	}
 	go func() {
 		defer close(s.cacheDone)

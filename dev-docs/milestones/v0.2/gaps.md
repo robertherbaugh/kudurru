@@ -1812,3 +1812,22 @@ whose access and modification times were both older than two hours. It reclaimed
 5.409 GB; all agents were explicitly released afterward. No source, current build
 output, daemon data or lab image was deleted. This is workspace maintenance,
 not feature acceptance.
+
+
+### F59 explicit direct Kubernetes CLI transport
+
+D285 adds explicit `--transport kubernetes` for generic get/apply/delete/describe.
+The default HTTP context retains its existing meaning. One selected kubeconfig
+provides original namespace, TLS, credentials and impersonation; ambiguous API
+overrides and unsupported command families refuse. Direct public CRD access uses
+a restricted background-free driver facade with static shipped-CRD paths,
+bounded responses/listings and one original command deadline. Apply pins original
+absence/version and delete returns replacement conflicts without retrying.
+Kubernetes admission/RBAC and manager ownership remain authoritative.
+
+Scoped frozen-source races pass for internal/cli (1.432s), direct store/kube
+(18.561s) and actual CLI/envtest (11.790s). Actual tests cover CRUD, namespaces,
+impersonation/RBAC, managed ownership, version/UID replacement, source/deadline/
+continuation refusal and no background requests; no homelab credentials are used.
+Final scoped lint reports zero issues and CLI reference drift passes (0.030s).
+No full repository result is claimed.

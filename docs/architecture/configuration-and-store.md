@@ -1145,3 +1145,20 @@ command described above. `/settings` remains cluster-only: `scope=node` is
 refused, and supported node changes use `/node/config` with its existing
 permission and CSRF checks. Capability metadata does not bypass final primary,
 credential, host-lock or writer checks.
+
+
+### Direct CLI access to public Kubernetes CRDs
+
+Explicit CLI Kubernetes transport uses a restricted Get/List/Apply/Delete/Close
+facade over the original uncached driver. Public resource paths and scopes come
+from shipped CRDs, avoiding context-free discovery or unrelated watch permissions.
+The ordinary server constructor still uses dynamic discovery and starts its
+original informer runtime. The CLI facade starts no background work and exposes
+no private kinds, election, snapshot or watch capability.
+
+A direct apply carries the original observed version or absence into normal
+manager-api admission. Delete retains the original UID/version precondition and
+returns a conflict instead of reacquiring a replacement. Kubernetes credential,
+namespace, impersonation and RBAC semantics come from one explicit kubeconfig
+selection. HTTP contexts remain separate. Listing/response/document and original
+command-time bounds fail visibly; CRD describe never calls a server diagnosis API.

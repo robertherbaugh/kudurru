@@ -83,11 +83,29 @@ with the certificate to trust it. For a test only, use
 | Use a context for one command | `kudurru --context <name> nodes` |
 | Delete a context | `kudurru config delete-context <name>` |
 
+### Use a Kubernetes context directly
+
+`--context` continues to select a saved Kudurru HTTP context by default. Add
+`--transport kubernetes` to select that name from kubeconfig for generic CRD
+commands:
+
+```sh
+kudurru --transport kubernetes --kubeconfig /path/to/config --context lab get zones
+kudurru --transport kubernetes --context lab -n dns apply -f objects.yaml
+```
+
+Only `get`, `apply`, `delete` and `describe` use this mode. Credentials, optional
+impersonation, TLS trust and the default namespace come from kubeconfig;
+Kubernetes RBAC applies. Existing object ownership is enforced without force.
+Do not combine API server/token overrides with this mode. The
+[CLI start guide](../../../docs-site/content/start/api-cli.md#direct-kubernetes-crd-commands)
+describes bounds and supported kinds.
+
 ### Output formats
 
 Use `-o` to select the format: `table` (default), `wide`, `json`, `yaml`
 or `name`. Use `-n <namespace>` to select a namespace. The default
-namespace is `default`.
+namespace comes from the selected context, otherwise `default`.
 
 ## Common tasks
 

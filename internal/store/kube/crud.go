@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1validation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -91,6 +92,10 @@ func (s *Store) Get(ctx context.Context, key store.Key, into store.Object) error
 // Continue map to the list call's limit and continue token. An expired
 // token (HTTP 410) is returned as an error; callers restart the listing.
 func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+	return s.list(ctx, kind, opts, nil)
+}
+
+func (s *Store) list(ctx context.Context, kind store.Kind, opts store.ListOptions, selector labels.Selector) (store.ObjectList, error) {
 	if s.isClosed() {
 		return store.ObjectList{}, store.ErrClosed
 	}
@@ -114,6 +119,9 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 	}
 	if len(opts.LabelSelector) > 0 {
 		lo = append(lo, client.MatchingLabels(opts.LabelSelector))
+	}
+	if selector != nil {
+		lo = append(lo, client.MatchingLabelsSelector{Selector: selector})
 	}
 	if opts.Limit > 0 {
 		lo = append(lo, client.Limit(int64(opts.Limit)))
@@ -256,6 +264,10 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 // an object with finalizers stays visible with a deletionTimestamp until
 // they are removed.
 func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOptions) error {
+	return s.delete(ctx, key, opts, applyRetries)
+}
+
+func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOptions, attempts int) error {
 	if s.isClosed() {
 		return store.ErrClosed
 	}
@@ -292,7 +304,7 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 			return nil
 		case apierrors.IsNotFound(err):
 			return fmt.Errorf("%w: %s", store.ErrNotFound, key)
-		case apierrors.IsConflict(err) && attempt < applyRetries:
+		case apierrors.IsConflict(err) && attempt < attempts:
 			continue
 		case apierrors.IsConflict(err):
 			return fmt.Errorf("%w: %s changed during delete", store.ErrConflict, key)

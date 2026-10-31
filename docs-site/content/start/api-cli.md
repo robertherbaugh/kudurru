@@ -6,8 +6,9 @@ description: One REST API behind the dashboard, the CLI and your scripts, with s
 weight: 40
 ---
 
-Everything the dashboard does goes through `/api/v1`, and so does the
-`kudurru` CLI. Objects travel as the same Kubernetes-shaped YAML everywhere,
+Everything the dashboard does goes through `/api/v1`. The `kudurru` CLI uses
+that API by default, with an explicit direct Kubernetes mode for generic CRD
+commands. Objects travel as the same Kubernetes-shaped YAML everywhere,
 so a file that `kubectl apply` accepts in a cluster is what
 `kudurru apply -f` sends to a single container.
 
@@ -41,6 +42,40 @@ kudurru api GET /stats/summary             # any route, with the context's crede
 
 The [CLI reference](/reference/cli/) lists every command and flag;
 `kudurru <command> --help` prints the same text.
+
+## Direct Kubernetes CRD commands
+
+Choose this transport explicitly; existing HTTP contexts keep their meaning:
+
+```sh
+kudurru --transport kubernetes --kubeconfig /path/to/config --context lab get zones
+kudurru --transport kubernetes --context lab -n dns apply -f objects.yaml
+kudurru --transport kubernetes --context lab get cg -A -l 'team in (home,lab)'
+kudurru --transport kubernetes --context lab describe zone home-example-com
+```
+
+Without `--kubeconfig`, standard `KUBECONFIG` paths or `~/.kube/config` are used.
+The selected kube context supplies credentials, TLS trust, optional impersonation
+and the default namespace; `-n` overrides that namespace. Only generic `get`,
+`apply`, `delete` and `describe` are supported for the five existing public kinds
+(zones, record sets, block lists, client groups and policies). Other command
+families require the HTTP API. Direct `describe` shows CRD spec/status, without
+server diagnosis results.
+
+API `--server`/`--token`/CA/insecure overrides, `KUDURRU_SERVER`/`KUDURRU_TOKEN`
+and explicit `--cli-config` cannot be combined with Kubernetes transport.
+No HTTP token is forwarded or context silently reinterpreted. Treat kubeconfig,
+including its executable credential plugins, as trusted host configuration.
+Kubernetes RBAC and admission apply; no Kudurru role binding grants Kubernetes
+permissions. Direct writes retain manager `api` ownership and original absence,
+resource-version or UID preconditions. There is no force/adoption option or
+retry against a replacement object. Apply documents have independent outcomes,
+not a batch transaction.
+
+`--request-timeout` bounds the entire direct command (default 30s, maximum 5m).
+Responses are capped at 16 MiB; listings at 10,000 objects, 64 MiB and 200 pages.
+Narrow the namespace or selector if a bound is reached. An incomplete listing is
+an error. No informer, election, private Secret or background server is started.
 
 ## Tokens for automation
 
