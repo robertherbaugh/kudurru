@@ -120,6 +120,8 @@ func (r LuaRenderer) Render(in *edge.Topology) ([]File, error) {
 		w("addAction(AllRule(), SetAdditionalProxyProtocolValueAction(%d, %s), {name=%s, uuid=%s})",
 			edge.ProxyTLVSecret, luaString(t.ProxyProtocolSecret), luaString(ruleProxySecret), luaString(ruleUUID(ruleProxySecret)))
 	}
+	w("addAction(QNameRule(%s), SetSkipCacheAction(), {name=%s, uuid=%s})",
+		luaString(t.HealthCheck.QName), luaString(ruleHealthNoCache), luaString(ruleUUID(ruleHealthNoCache)))
 	if len(t.Rules.AuthoritativeZones) > 0 {
 		w("addAction(QNameSuffixRule(%s), PoolAction(%s), {name=%s, uuid=%s})",
 			luaStrings(t.Rules.AuthoritativeZones), luaString(edge.PoolAuthoritative), luaString(ruleAuthoritative), luaString(ruleUUID(ruleAuthoritative)))

@@ -164,6 +164,7 @@ type yRule struct {
 
 type ySelector struct {
 	Type      string      `yaml:"type"`
+	QName     string      `yaml:"qname,omitempty"`
 	Code      string      `yaml:"code,omitempty"`
 	QType     string      `yaml:"qtype,omitempty"`
 	Suffixes  []string    `yaml:"suffixes,omitempty"`
@@ -309,6 +310,13 @@ func yamlRules(t *edge.Topology) []yRule {
 			Action: yAction{Type: "SetAdditionalProxyProtocolValue", ProxyType: &pt, Value: t.ProxyProtocolSecret},
 		})
 	}
+	// Health can briefly SERVFAIL before active checks remove a draining
+	// backend. Never retain that failure after a healthy peer becomes usable.
+	rules = append(rules, yRule{
+		Name: ruleHealthNoCache, UUID: ruleUUID(ruleHealthNoCache),
+		Selector: ySelector{Type: "QName", QName: t.HealthCheck.QName},
+		Action:   yAction{Type: "SetSkipCache"},
+	})
 	if len(t.Rules.AuthoritativeZones) > 0 {
 		rules = append(rules, yRule{
 			Name: ruleAuthoritative, UUID: ruleUUID(ruleAuthoritative),
