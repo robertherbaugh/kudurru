@@ -388,10 +388,71 @@ After composing all three fixes, the combined primary-runtime, adoption,
 offline CLI and zone-NOTIFY race selection passes in 172.369 seconds (62 test
 and subtest results, zero failures or skips). Composed CLI-package lint reports
 zero issues, and `git diff --check` passes. This confirms local composition;
-the PR's current-head hosted run remains the final CI result. No extra browser
-or artifact rebuild is required for these test-only changes.
+the PR's current-head hosted run remains the final CI result.
 
 Compose, Edge, kind/MetalLB, GitHub docs, development image, license server,
 website and the isolated AD probe workflows also pass on `9e754cb`. The probe
 does not certify production AD support. The excluded Cloudflare check remains
 separate.
+
+### VIP cutover browser follow-up
+
+[Security 41177243778](https://github.com/robertherbaugh/kudurru/actions/runs/41177243778)
+passes all applicable checks on `a05a7cc`. Its
+[CI run](https://github.com/robertherbaugh/kudurru/actions/runs/41177243742)
+exposes a separate VIP cutover browser failure: the single decommission POST
+returns 409, `A zone changed after the preview`, instead of completing the
+nameserver update. The hosted preview and submitted payloads are identical.
+
+Two isolated diagnostic repetitions reproduce the same refusal with the
+original reviewed plan. Only the zone's resourceVersion differs; UID, spec,
+metadata generation, name, namespace, error and generated address records are
+unchanged. Public primary status advances the resourceVersion while the new
+zone becomes ready. A second read-only preview supplies comparison evidence;
+it never replaces the original plan and the refused write is never repeated.
+The hosted trace does not include the fresh transaction payload, so its exact
+apply-side resourceVersion is unknown.
+
+`47b5e7c` waits for the imported primary's Ready condition and observed
+generation before opening the VIP cutover preview. The reviewed plan, one-shot
+UI submission, success message, DNS assertions, console-error checks and
+deadlines are preserved. Ten VIP repetitions pass in 57.6 seconds; all three
+migration-file scenarios pass in 14.6 seconds. Dashboard typecheck and scoped
+ESLint pass.
+
+The full CLI-package race passes on `a05a7cc` in 788.663 seconds, including the
+three earlier Go regressions. The same hosted Go shard fails
+`internal/dhcpha.TestSnapshotCatchupForOfflineVoter`: an offline replica does
+not reach identical committed lease/configuration/claim state within the
+existing eight-second consistency bound. This is investigated separately below; the previous fixture corrections do
+not claim to fix it. Browser acceptance
+on that head is 148/149. All other workflows, including kind/MetalLB, pass.
+
+The DHCP investigation identifies an unsupported fixture deadline. The pinned
+Raft v1.7.3 independently backs off failed log replication for up to 10.24
+seconds. Holding the voter offline for eleven seconds before the original
+single offers/ACKs reproduces the eight-second consistency failure twice.
+At that deadline the returning voter has applied index zero, no storage failure
+and no leases; only applied index and lease rows differ. Full equality then
+recovers at 9.201 and 9.279 seconds after restart, with all three replicas
+initialized, healthy, at index 123 and holding 90 leases. This establishes late
+healthy recovery rather than corruption at equal indexes. The original hosted
+failure lacks those detailed indexes, so its exact retry phase is not known.
+
+`356474b` gives only the snapshot-rejoin fixture a derived 18.24-second budget:
+one maximum 10.24-second retry delay plus its existing eight-second convergence
+margin. Ordinary consistency checks stay at eight seconds. Complete state
+equality, compaction, single offers/ACKs, current authority and production
+command deadlines remain enforced. Both controlled long-outage cases pass
+with that bound in 46.824 seconds. Operator and architecture guidance now
+distinguish peer connectivity, replication catch-up and command deadlines.
+
+Final DHCP acceptance preserves the original assertions and adds safe terminal
+progress diagnostics. Ten focused one/two-CPU race runs pass in 37.555 seconds;
+the complete DHCP HA package race passes in 22.098 seconds and scoped lint
+reports zero issues. Intermediate extra snapshot/FSM-view assertions were
+removed during review because they imposed unrelated recovery/publication
+requirements; they are absent from the committed patch. The final browser and
+DHCP changes touch separate test files and compose without conflicts. Latest
+`origin/main` (`d281123`) remains fully merged. Current-head hosted results are
+recorded on the PR after this push.
