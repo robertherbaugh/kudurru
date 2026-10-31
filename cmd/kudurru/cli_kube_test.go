@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,10 +67,7 @@ func TestKubernetesTransportSelectionRefusals(t *testing.T) {
 }
 
 func TestKubernetesCLIActualContextCRUDAndRBAC(t *testing.T) {
-	assets := os.Getenv("KUBEBUILDER_ASSETS")
-	if assets == "" {
-		t.Skip("set KUBEBUILDER_ASSETS for actual direct CLI acceptance")
-	}
+	assets := mountedKubeTestAssets(t)
 	control := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{filepath.Join("..", "..", "deploy", "kustomize", "crd", "bases")}, ErrorIfCRDPathMissing: true}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
 	installed, err := control.Start()

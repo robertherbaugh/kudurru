@@ -116,7 +116,7 @@ func TestOpenAuditLogStartupDeadline(t *testing.T) {
 	}
 }
 
-func auditLogTestAPI(t *testing.T) *rest.Config {
+func mountedKubeTestAssets(t *testing.T) string {
 	t.Helper()
 	assets := os.Getenv("KUBEBUILDER_ASSETS")
 	if assets == "" {
@@ -142,6 +142,12 @@ func auditLogTestAPI(t *testing.T) *rest.Config {
 			t.Fatalf("envtest %s is a directory", binary)
 		}
 	}
+	return assets
+}
+
+func auditLogTestAPI(t *testing.T) *rest.Config {
+	t.Helper()
+	assets := mountedKubeTestAssets(t)
 	env := &envtest.Environment{
 		BinaryAssetsDirectory: assets,
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "deploy", "kustomize", "crd", "audit")},

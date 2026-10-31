@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -33,10 +32,7 @@ func vipL2CRD() *apiextensionsv1.CustomResourceDefinition {
 }
 
 func TestVIPObservationActualKubernetesAndMountedAPI(t *testing.T) {
-	assets := os.Getenv("KUBEBUILDER_ASSETS")
-	if assets == "" {
-		t.Skip("set KUBEBUILDER_ASSETS for actual Kubernetes observation qualification")
-	}
+	assets := mountedKubeTestAssets(t)
 	control := &envtest.Environment{BinaryAssetsDirectory: assets, CRDs: []*apiextensionsv1.CustomResourceDefinition{vipL2CRD()}}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
 	installed, err := control.Start()

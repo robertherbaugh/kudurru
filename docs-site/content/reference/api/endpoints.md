@@ -25,8 +25,11 @@ The [API explorer](explorer.md) shows the request and response schemas.
 |---|---|---|---|
 | POST | `/api/v1/auth/login` | Local login (sets the session cookie) | public |
 | POST | `/api/v1/auth/logout` | Clear the session cookie | authenticated |
+| POST | `/api/v1/auth/logout/browser` | Revoke the session and optionally continue provider logout | authenticated |
 | GET | `/api/v1/auth/me` | The authenticated principal, roles, permissions and CSRF token | authenticated |
 | GET | `/api/v1/auth/oidc/{idp}/callback` | OIDC redirect target (302 to the app) | public |
+| GET | `/api/v1/auth/oidc/{idp}/logout` | Continue a committed browser logout (302 to the IdP) | public |
+| GET | `/api/v1/auth/oidc/{idp}/logout/callback` | Validate the logout return state (302 to the app) | public |
 | GET | `/api/v1/auth/oidc/{idp}/start` | Start an OIDC login (302 to the IdP) | public |
 | POST | `/api/v1/auth/password` | Change the local user's own password (a cookie session gets a new cookie) | authenticated |
 | GET | `/api/v1/auth/sessions` | List own enrolled sessions | authenticated |

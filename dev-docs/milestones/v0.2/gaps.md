@@ -1898,3 +1898,23 @@ Controlled fencing, replacement and cancellation coverage and three full agent
 host race repetitions pass (20.238s); parent complete host race passes (7.797s).
 Full UniFi mounted hostname/native/edge acceptance remains in progress and has
 not been marked complete.
+
+
+### Kubernetes acceptance discovery and logout reference drift
+
+The newer direct-CLI and VIP observer tests required KUBEBUILDER_ASSETS even when
+CI had already installed its pinned envtest binaries under bin/k8s. They now
+share the existing mounted-test discovery helper. A no-environment-variable race
+run executes, without skips, direct CLI CRUD/RBAC (9.28s), VIP kube-vip/MetalLB
+observation and mounted API (9.77s) and the new webhook sidecar (5.92s); the whole
+selected cmd command passes in 26.175s. An initial helper extraction left one
+unused import and failed compilation; the final command above is the pass.
+The earlier parent logout-composition command did not set the variable and thus
+qualified transport refusals but skipped direct CLI envtest; its 48.866s is not
+credited as Kubernetes execution. The original F59 scoped real-envtest evidence
+remains independent, and the no-skip rerun supplies current composition evidence.
+
+Hosted GitHub docs 41220103686 caught three missing generated logout endpoint
+rows. Both API schemas and clients were current; the endpoint Markdown reference
+was not. `make docs-gen` regenerated it and the CLI reference, and the CLI drift
+check passes. Local Hugo success alone had not checked reference equality.
