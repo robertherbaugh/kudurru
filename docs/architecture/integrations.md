@@ -260,8 +260,7 @@ credential rotation, joined replacement and replica promotion.
 ## UniFi inventory adapter
 
 `ee/integration/unifi` polls the official UniFi Network API over verified HTTPS.
-The supported read contract is Network 10.6.106. It uses the MIT-licensed
-unpoller/unifi data types and request builder; every actual request still passes
+The supported read contract is Network 10.6.106. It uses local wire structs and a standard HTTP request builder; every request passes
 through the host's original context and durable request budget. Redirects,
 ambient proxies and hidden retries are disabled. An explicit leaf-certificate
 pin replaces CA trust while retaining hostname and certificate-time checks.

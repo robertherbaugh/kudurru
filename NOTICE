@@ -41,10 +41,6 @@ Attributions are added to this file as the dependencies land:
   Copyright (c) 2018 Andrea Barberio: DHCPv4 packet encoding and decoding.
   kudurru's lease allocation and server behavior are implemented from the
   DHCP specifications; no code from copyleft DHCP servers is used.
-- unpoller/unifi/v6 (https://github.com/unpoller/unifi), MIT, Copyright
-  2018-2020 David Newhall II and 2016 Garrett Bjerkhoel: v6.3.1 data types
-  and request builders used by the enterprise UniFi adapter. Its gofakeit
-  dependency (https://github.com/brianvoe/gofakeit) is MIT licensed.
 - cloudflare-go/v7 (https://github.com/cloudflare/cloudflare-go), Apache-2.0,
   Copyright 2026 Cloudflare: the official v7.12.0 SDK used by the enterprise
   Cloudflare DNS publication adapter. Its JSON helpers gjson, sjson, match

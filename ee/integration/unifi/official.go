@@ -9,9 +9,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	uni "github.com/unpoller/unifi/v6"
 )
+
+// Keep the small Integration API wire contract local. Importing the full SDK
+// initializes its fake-data registry and makes template execution reachable in
+// production, disabling the linker's dead-method elimination (D260).
+type siteRow struct {
+	ID                string `json:"id"`
+	InternalReference string `json:"internalReference"`
+}
+type infoRow struct {
+	ApplicationVersion string `json:"applicationVersion"`
+}
 
 type page[T any] struct {
 	Offset, Limit, Count, TotalCount *int
@@ -91,64 +100,64 @@ func list[T any](ctx context.Context, p *Provider, budget *pollBudget, path stri
 	return out, nil
 }
 
-func (p *Provider) identity(ctx context.Context, budget *pollBudget) (uni.IntegrationSite, string, error) {
+func (p *Provider) identity(ctx context.Context, budget *pollBudget) (siteRow, string, error) {
 	body, err := p.get(ctx, budget, "/info")
 	if err != nil {
-		return uni.IntegrationSite{}, "", err
+		return siteRow{}, "", err
 	}
-	var info uni.IntegrationInfo
+	var info infoRow
 	if err := decode(body, &info, false); err != nil || len(info.ApplicationVersion) > 64 || strings.ContainsAny(info.ApplicationVersion, " \x00\r\n\t") {
-		return uni.IntegrationSite{}, "", ErrInvalid
+		return siteRow{}, "", ErrInvalid
 	}
 	parts := strings.Split(info.ApplicationVersion, ".")
 	if len(parts) < 2 {
-		return uni.IntegrationSite{}, "", ErrInvalid
+		return siteRow{}, "", ErrInvalid
 	}
 	major, err := strconv.Atoi(parts[0])
 	if err != nil || major < 9 {
-		return uni.IntegrationSite{}, "", ErrInvalid
+		return siteRow{}, "", ErrInvalid
 	}
 	for _, part := range parts[1:] {
 		if part == "" {
-			return uni.IntegrationSite{}, "", ErrInvalid
+			return siteRow{}, "", ErrInvalid
 		}
 		for _, r := range part {
 			if !asciiAlphaNumeric(r) && r != '-' {
-				return uni.IntegrationSite{}, "", ErrInvalid
+				return siteRow{}, "", ErrInvalid
 			}
 		}
 	}
-	sites, err := list(ctx, p, budget, "/sites", 256, func(s uni.IntegrationSite) string { return s.ID })
+	sites, err := list(ctx, p, budget, "/sites", 256, func(s siteRow) string { return s.ID })
 	if err != nil {
-		return uni.IntegrationSite{}, "", err
+		return siteRow{}, "", err
 	}
 	requested := p.config.Site
 	if requested == "" {
 		requested = "default"
 	}
-	var selected *uni.IntegrationSite
+	var selected *siteRow
 	for _, site := range sites {
 		if !objectName(site.InternalReference) {
-			return uni.IntegrationSite{}, "", ErrInvalid
+			return siteRow{}, "", ErrInvalid
 		}
 		if site.ID == requested || site.InternalReference == requested {
 			if selected != nil {
-				return uni.IntegrationSite{}, "", ErrDrift
+				return siteRow{}, "", ErrDrift
 			}
 			candidate := site
 			selected = &candidate
 		}
 	}
 	if selected == nil {
-		return uni.IntegrationSite{}, "", ErrInvalid
+		return siteRow{}, "", ErrInvalid
 	}
 	if p.config.Legacy && major != 9 && major != 10 {
-		return uni.IntegrationSite{}, "", ErrInvalid
+		return siteRow{}, "", ErrInvalid
 	}
 	return *selected, info.ApplicationVersion, nil
 }
 
-func (p *Provider) networks(ctx context.Context, budget *pollBudget, site uni.IntegrationSite) ([]Network, error) {
+func (p *Provider) networks(ctx context.Context, budget *pollBudget, site siteRow) ([]Network, error) {
 	path := "/sites/" + site.ID + "/networks"
 	rows, err := list(ctx, p, budget, path, maxNetworks, func(n networkRow) string { return n.ID })
 	if err != nil {
@@ -205,7 +214,7 @@ func (p *Provider) networks(ctx context.Context, budget *pollBudget, site uni.In
 	return out, nil
 }
 
-func (p *Provider) clients(ctx context.Context, budget *pollBudget, site uni.IntegrationSite, observed time.Time) ([]Device, error) {
+func (p *Provider) clients(ctx context.Context, budget *pollBudget, site siteRow, observed time.Time) ([]Device, error) {
 	rows, err := list(ctx, p, budget, "/sites/"+site.ID+"/clients", maxClients, func(c clientRow) string { return c.ID })
 	if err != nil {
 		return nil, err

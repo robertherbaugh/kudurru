@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-
-	uni "github.com/unpoller/unifi/v6"
 )
 
 type legacyRow struct {
@@ -19,7 +17,7 @@ type legacyRow struct {
 	LastSeen       int64  `json:"last_seen"`
 }
 
-func (p *Provider) enrich(ctx context.Context, budget *pollBudget, site uni.IntegrationSite, clients []Device, networks []Network, diag *Diagnostics) error {
+func (p *Provider) enrich(ctx context.Context, budget *pollBudget, site siteRow, clients []Device, networks []Network, diag *Diagnostics) error {
 	byMAC := map[string]int{}
 	for i, c := range clients {
 		if c.MAC != "" {

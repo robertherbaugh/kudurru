@@ -19,7 +19,6 @@ import (
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration/host"
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
-	uni "github.com/unpoller/unifi/v6"
 )
 
 type pollBudget struct{ attempts, pages, bytes int }
@@ -100,13 +99,14 @@ func (p *Provider) getPath(ctx context.Context, budget *pollBudget, path string)
 		return nil, ErrCapacity
 	}
 	budget.attempts++
-	// Only this request builder is used. No UniFi constructor, convenience read,
-	// automatic login or library-owned Background context/network I/O is invoked.
-	u := &uni.Unifi{Client: &http.Client{}, Config: &uni.Config{URL: p.origin, APIKey: p.key, DebugLog: func(string, ...any) {}, ErrorLog: func(string, ...any) {}}}
-	req, err := u.UniReq(path, "")
+	// Build only the supported read request. Network I/O remains inside the
+	// original host loan below; no login, background context or retry is added.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.origin+path, nil)
 	if err != nil {
 		return nil, ErrInvalid
 	}
+	req.Header.Set("X-API-Key", p.key)
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Encoding", "identity")
 	var body []byte
 	err = p.host.Request(ctx, "unifi", p.bucket, false, func(loan context.Context) error {
