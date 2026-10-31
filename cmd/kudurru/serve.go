@@ -31,6 +31,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditkeys"
 	"github.com/robertherbaugh/kudurru/internal/audit/auditlog"
 	"github.com/robertherbaugh/kudurru/internal/audit/spool"
 	authn "github.com/robertherbaugh/kudurru/internal/auth"
@@ -1133,7 +1134,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		// audit.store auditlog: every replica reads every node's events.
 		if cfg.AuditStore() == config.AuditStoreAuditLog {
 			auditDiagnosis = auditLogDiagnosis(restCfg)
-			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, encPrev, logger, kubeStartupTimeout(cfg)); err != nil {
+			auditKeys, keyErr := auditkeys.NewSource(restCfg, kube.PodNamespace(), cfg.Audit.KeySecret, func() string { return st.Info().ClusterID })
+			if keyErr != nil {
+				return keyErr
+			}
+			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, auditKeys, logger, kubeStartupTimeout(cfg)); err != nil {
 				return fmt.Errorf("audit: %w", err)
 			}
 			if auditLogs != nil {

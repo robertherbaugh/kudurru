@@ -163,15 +163,13 @@ start, sessions sealed under the old key stay valid until their lifetime
 from the previous CA and clients retry the previous token, so old and new
 pods interoperate.
 
-With `audit.store: auditlog`, the cluster key also seals retained Kubernetes
-audit batches. Keep the previous key until all batches sealed with it have
-been pruned, as well as until the old sessions have expired. The default
-`audit.retention` is 400 days; the session lifetime alone is not sufficient.
-Verification accepts only the current and previous keys, so do not replace
-the previous key with another rotation while batches still need it.
-Dropping a needed key makes those batch seals unverifiable and produces an
-integrity failure even when the events are unchanged. Local SQLite and
-central PostgreSQL audit chains do not use these Kubernetes batch seals.
+AuditLog signing now uses independent operator-provisioned keys. Complete the
+[AuditLog upgrade procedure](#auditlog-key-provisioning-and-upgrades) before
+releasing master keys still needed to import historical HMAC verification
+material. After that explicit cutover, master-key retention follows sessions,
+stored secrets and internal transport compatibility; audit-key retention follows
+retained audit history independently. SQLite and central PostgreSQL source
+chains do not use Kubernetes batch signatures.
 
 **Helm:**
 
@@ -187,8 +185,8 @@ kubectl -n $NS create secret generic kudurru-encryption-key \
 helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru -n $NS --reuse-values \
   --set auth.encryptionKeyPreviousSecret=kudurru-encryption-key-previous
 kubectl -n $NS rollout status deployment/kudurru
-# 4. after old sessions expire AND old-sealed AuditLog batches are pruned,
-# drop the previous key (12 h alone suffices only without AuditLog seals)
+# 4. after old sessions expire and stored secrets/internal transport migrate,
+# drop the previous master key (complete any legacy audit import first)
 helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru -n $NS --reuse-values \
   --set auth.encryptionKeyPreviousSecret=
 kubectl -n $NS delete secret kudurru-encryption-key-previous && shred -u old.key
@@ -202,7 +200,8 @@ create a new `secrets/encryption_key`, add the secret
 `encryption_key_previous` and
 `KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE: /run/secrets/encryption_key_previous`
 to the kudurru service, `docker compose up -d`; remove both after the old
-sessions expire and any old-sealed AuditLog batches have been pruned. In
+sessions expire and stored secrets/internal transport have migrated. Complete
+any legacy AuditLog key import first. In
 the HA shape do every step on all three hosts before moving to the next.
 
 **Never** replace the key without keeping the previous one: stored secrets
@@ -215,6 +214,99 @@ edge and kudurru together (in Kubernetes: update the Secret, then restart
 the edge and kudurru workloads; queries in between are dropped as
 `proxy_unauthenticated`). The admin bootstrap Secret is read only while no
 user exists; rotating it changes nothing.
+
+## AuditLog key provisioning and upgrades
+
+**Required for Kubernetes `audit.store: auditlog`: provision independent trust
+before shipping resumes.** Missing trust stops cluster AuditLog shipping and
+verification, not DNS startup or the durable local spool. Watch spool capacity
+and retention during any interruption. SQLite and PostgreSQL audit stores do
+not need this Secret. `audit.keySecret` is host-only and restart-required when
+changing its name; ring updates at the same name are read on later operations.
+
+For a new installation, create a private operator directory and initialize a
+ring with the original `kube-system` namespace UID and the release namespace.
+The UID is public identity metadata, not a credential. Commands never contact
+the cluster or print private material; the file must remain mode 0600.
+
+```sh
+umask 077
+mkdir audit-trust
+cd audit-trust
+NS=kudurru-system
+CLUSTER_ID=$(kubectl get namespace kube-system -o jsonpath='{.metadata.uid}')
+kudurru audit keys init --file audit-ring.json --cluster-id "$CLUSTER_ID" --namespace "$NS"
+kubectl -n "$NS" create secret generic kudurru-audit-keys --from-file=ring.json=audit-ring.json
+```
+
+For an **existing installation with HMAC-sealed batches**, do this instead of a
+fresh initialization:
+
+1. Configure `audit.store: local` on every replica and complete the rollout so
+   all old shippers have stopped. Keep their persistent spools. Do not allow an
+   old binary to resume HMAC shipping after the cutover.
+2. Securely obtain protected 0600 files for **every** old master key needed by
+   retained batches. Usually these are the old current and previous keys;
+   older already-lost keys cannot be reconstructed. Do not print them.
+3. Choose an absolute whole-second RFC3339 cutoff after the final old batch was
+   created. Kubernetes creation metadata has whole-second precision; fractional
+   cutoffs are refused to prevent same-second downgrade admission. Wait until
+   the apiserver clock has reached the cutoff before resuming new writers.
+   Initialize once with explicit imports, then publish the Secret before
+   restarting upgraded replicas with `audit.store: auditlog`:
+
+   ```sh
+   kudurru audit keys init --file audit-ring.json --cluster-id "$CLUSTER_ID" --namespace "$NS" \
+     --legacy-master-file old-current.key --legacy-master-file old-previous.key \
+     --legacy-before 2026-10-30T12:00:00Z
+   kubectl -n "$NS" create secret generic kudurru-audit-keys --from-file=ring.json=audit-ring.json
+   ```
+
+   Substitute the actual cutoff; the example is not a deployment timestamp.
+   Importing derives only the historical purpose keys, not stored session
+   masters. Rotation/restart cannot extend the cutoff. Legacy batches must have
+   authenticated, nonzero apiserver creation times strictly before it. Unsigned
+   history, unknown keys and recreated metadata cannot silently regain trust.
+4. Verify the retained trail through `kudurru audit verify` on each replica.
+   Resolve missing trust explicitly; do not reseal or replay historical sources.
+
+Rotate with `kudurru audit keys rotate --file audit-ring.json`. It keeps all old
+public keys, discards the old private seed, and refuses at 128 retained keys
+instead of silently pruning trust. Publish the updated file:
+
+```sh
+kubectl -n "$NS" create secret generic kudurru-audit-keys --from-file=ring.json=audit-ring.json \
+  --dry-run=client -o yaml | kubectl apply --server-side -f -
+```
+
+Private file contents travel only through the pipe to Kubernetes. Protect shell
+history, local files, Secret access and separately encrypted backups. Updates
+are serialized with a persistent `.lock` file; do not remove that lock while
+commands may run. File replacement is atomic and synced, but a storage failure
+after rename can leave the replacement committed despite an error: inspect the
+protected file before deciding on another operator action.
+
+For compromise response, rotate first, then use
+`kudurru audit keys revoke --file audit-ring.json --key-id <old-public-fingerprint>`
+and publish. Public fingerprints are the `id` fields in the protected ring;
+only those public values may be inspected separately. Active-key revocation is
+refused. `revoke --legacy` withdraws trust in **all** imported HMAC keys. Affected
+history remains evidence but verification becomes unavailable; an invalid
+signature under a known trusted key is an integrity failure. New signatures
+never fall back to legacy HMAC. Allow only one coordinated operator publisher
+per Secret; file locks cannot serialize operators on different machines.
+
+Back up both the ring Secret/file and AuditLog objects independently of normal
+configuration backups and saved-state snapshots, which include neither. Exact
+ring restoration in the original trusted cluster/namespace retains trust;
+Secret UID/revision changes invalidate verification caches. Keep retained public
+keys for as long as any retained or external history requires them. Public keys
+alone cannot resume signing, lost seeds cannot be regenerated, and a new cluster
+UID requires a separately designed trust migration. There is no automatic
+archive import or cluster rebinding. Restoring old legacy objects gives them new
+creation metadata and may make them ineligible for the original cutoff. This
+procedure does not protect against a fully compromised signing pod, namespace
+administrator or trust-root backup.
 
 ## Upgrading
 

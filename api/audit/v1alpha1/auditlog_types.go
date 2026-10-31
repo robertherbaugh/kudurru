@@ -72,8 +72,8 @@ type AuditLogSpec struct {
 	// spool before this batch); Hash is the last event's hash.
 	PrevHash string `json:"prevHash,omitempty"`
 	Hash     string `json:"hash"`
-	// Seal is an HMAC-SHA256 over the batch keyed from the cluster
-	// encryption key, so an edit made without that key is detected.
+	// Seal is a versioned independent Ed25519 batch signature. Historical
+	// HMAC-SHA256 seals require explicit retained trust and cutover admission.
 	Seal string `json:"seal,omitempty"`
 	// Stubs counts the denied or failed events stored without documents
 	// and request data because the node exceeded its hourly budget for

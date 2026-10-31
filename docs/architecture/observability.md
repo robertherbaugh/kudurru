@@ -343,14 +343,48 @@ cursor pagination and event details. `GET /api/v1/audit/verify` requires
 `audit.read` and the audit license, and checks the complete retained store
 with a 30-second deadline. It verifies the original SQLite chain, the central
 PostgreSQL chain including its retention anchor and head, or fresh Kubernetes
-batches and their available HMAC seals plus the local pending spool. The
+batches and their independent signatures plus the local pending spool. The
 response reports verification success or a generic integrity failure;
 storage errors and timeouts return 503 with a generic message, with details
-logged on the server. Concurrent requests share one scan, and every result
-(including unavailability) is cached for 30 seconds per serving process.
-Current and previous encryption keys verify batches retained across rotation.
-Keep the previous key until the old-sealed batches have been pruned before
-dropping it or rotating again; see [the rotation runbook](../deploy/runbooks.md#rotating-the-encryption-key).
+logged on the server. Concurrent requests under the same trust revision share
+one scan; scan results (including backend unavailability) are cached for 30
+seconds per serving process. Failed trust capture or a superseded trust cut
+returns unavailable without caching a successful assertion.
+Kubernetes AuditLog storage uses an operator-provisioned `audit.keySecret`
+(default `kudurru-audit-keys`) in the release namespace. Its bounded versioned
+`ring.json` contains a random trust domain, the original cluster UID and namespace,
+one independent Ed25519 seed, and at most 128 retained public keys. New seals
+bind those fields, the full public-key fingerprint and the original batch spec.
+Rotation discards the old private seed while retaining every public key; it does
+not rewrite source hashes or old batches. Revocation explicitly withdraws trust
+in affected history. Session/master rotations do not change AuditLog keys.
+
+The runtime performs bounded authenticated Secret GETs over the original
+cluster-pinned transport: no informer, full-Secret cache, redirect, automatic
+provisioning or master-derived fallback. Signing loads fresh trust for each
+batch. Verification captures an immutable ring without its active private seed.
+Cache and singleflight identities include the Secret UID, revision and ring
+content; each response checks that its original revision is still current.
+Supersession refuses that scan instead of repairing it from a successor. The
+existing 30-second scan budget includes trust capture and checks. Permission
+and license gates precede trust reads and cached responses. There is no network
+verification on the DNS query path.
+
+**AuditLog upgrades require explicit provisioning before shipping resumes.**
+Missing, unavailable, wrong-cluster or malformed trust suspends shipping and
+verification while DNS and local durable spooling remain available, subject to
+spool caps and retention. Later requests recover when valid trust appears.
+Historical HMAC batches require explicit purpose-key import and a fixed past
+cutover; only nonzero apiserver creation times strictly before it are admitted.
+Unknown/unsigned history cannot gain trust through an algorithm fallback.
+
+Back up the private ring Secret and AuditLog history separately: configuration
+backups and saved store snapshots contain neither. Recreating the identical ring
+in the same trusted cluster retains history and invalidates old cache cuts; new
+cluster UIDs never rebind automatically. Restoring legacy objects with new
+creation metadata may lose cutoff admission. Existing workload RBAC permits
+other Secret operations, so the ring is not isolated from a compromised signing
+pod or namespace administrator. See the [key lifecycle and upgrade runbook](../deploy/runbooks.md#auditlog-key-provisioning-and-upgrades).
 Hash chains provide
 tamper evidence, not protection from an administrator who can rewrite the
 entire database and its chain. External log copies or exports provide an

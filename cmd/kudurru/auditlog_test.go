@@ -88,7 +88,7 @@ func TestOpenAuditLogStartupDeadline(t *testing.T) {
 	done := make(chan result, 1)
 	start := time.Now()
 	go func() {
-		store, err := openAuditLog(ctx, cfg, sp, bytes.Repeat([]byte{1}, 32), nil, slog.New(slog.DiscardHandler), 100*time.Millisecond)
+		store, err := openLegacyAuditLog(ctx, cfg, sp, bytes.Repeat([]byte{1}, 32), nil, slog.New(slog.DiscardHandler), 100*time.Millisecond)
 		done <- result{store: store, err: err}
 	}()
 	select {
@@ -211,7 +211,7 @@ func TestOpenAuditLogProbeAuthorizationRecovery(t *testing.T) {
 				t.Cleanup(func() { _ = sp.Close() })
 				var logs bytes.Buffer
 				logger := slog.New(slog.NewTextHandler(&logs, nil))
-				store, err := openAuditLog(t.Context(), &rest.Config{Host: gate.URL}, sp, bytes.Repeat([]byte{1}, 32), nil, logger, 2*time.Second)
+				store, err := openLegacyAuditLog(t.Context(), &rest.Config{Host: gate.URL}, sp, bytes.Repeat([]byte{1}, 32), nil, logger, 2*time.Second)
 				if err != nil || store == nil {
 					t.Fatalf("probe denial must retain a retryable store: store=%v, err=%v", store, err)
 				}
@@ -289,7 +289,7 @@ func TestOpenAuditLogPreviousKeyRotation(t *testing.T) {
 	t.Cleanup(func() { _ = sp.Close() })
 	open := func(current, previous []byte) *auditLogStore {
 		t.Helper()
-		store, err := openAuditLog(t.Context(), cfg, sp, current, previous, slog.New(slog.DiscardHandler), 2*time.Second)
+		store, err := openLegacyAuditLog(t.Context(), cfg, sp, current, previous, slog.New(slog.DiscardHandler), 2*time.Second)
 		if err != nil || store == nil {
 			t.Fatalf("openAuditLog: store=%v, err=%v", store, err)
 		}
@@ -375,4 +375,38 @@ func TestOpenAuditLogPreviousKeyRotation(t *testing.T) {
 		t.Fatalf("constructor reader missed corrupted pending spool: %v", err)
 	}
 	t.Log("constructor verifies old/new sealed batches, rejects missing rotation keys, and detects unshipped spool corruption")
+}
+
+// openLegacyAuditLog preserves the historical master-key fixture explicitly.
+// Production never selects this path or derives signing trust from master keys.
+func openLegacyAuditLog(ctx context.Context, cfg *rest.Config, sp *spool.Spool, current, previous []byte, logger *slog.Logger, timeout time.Duration) (*auditLogStore, error) {
+	c, err := openAuditLogClient(ctx, cfg, logger, timeout)
+	if err != nil || c == nil {
+		return nil, err
+	}
+	keys, err := auditSealKeys(current, previous)
+	if err != nil {
+		return nil, err
+	}
+	ns := kube.PodNamespace()
+	sh := &audit.Shipper{Source: sp, Target: &auditlog.Target{Client: c, Namespace: ns, SealKey: keys[0]}, Logger: logger}
+	return &auditLogStore{client: c, shipper: sh, reader: &auditlog.Reader{Client: c, Namespace: ns, SealKeys: keys, VerifyPending: sp.Verify, Pending: sh.Pending, PendingSource: sp.SourceID()}}, nil
+}
+
+// auditSealKeys keeps the current key first for writes and accepts the previous
+// key when verifying batches retained across a cluster encryption-key rotation.
+func auditSealKeys(current, previous []byte) ([][]byte, error) {
+	key, err := auditlog.SealKey(current)
+	if err != nil {
+		return nil, err
+	}
+	keys := [][]byte{key}
+	if len(previous) > 0 {
+		key, err := auditlog.SealKey(previous)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
 }

@@ -59,7 +59,7 @@ func TestAuditLogDiagnosisSurvivesMissingStartupResource(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sp.Close() })
-	store, err := openAuditLog(t.Context(), cfg, sp, bytes.Repeat([]byte{1}, 32), nil, slog.New(slog.DiscardHandler), 2*time.Second)
+	store, err := openLegacyAuditLog(t.Context(), cfg, sp, bytes.Repeat([]byte{1}, 32), nil, slog.New(slog.DiscardHandler), 2*time.Second)
 	if err != nil || store != nil {
 		t.Fatal("missing startup resource must retain existing local-spool fallback")
 	}

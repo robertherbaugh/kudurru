@@ -158,6 +158,24 @@ type Verifier interface {
 	Verify(context.Context) error
 }
 
+// VerificationSnapshot binds a scan and cache to one original trust revision.
+// Current must refuse replacement, never repair the captured verifier.
+type VerificationSnapshot struct {
+	Verifier Verifier
+	Identity string
+	Current  func(context.Context) error
+}
+
+// SnapshotVerifier is optional for backends with independently mutable trust.
+type SnapshotVerifier interface {
+	SnapshotVerification(context.Context) (VerificationSnapshot, error)
+}
+
+// VerifierFunc adapts a captured verification operation.
+type VerifierFunc func(context.Context) error
+
+func (f VerifierFunc) Verify(ctx context.Context) error { return f(ctx) }
+
 // ErrTampered identifies changed contents, invalid seals or broken audit links.
 // Backend failures and canceled verification must not wrap this sentinel.
 var ErrTampered = store.ErrAuditIntegrity

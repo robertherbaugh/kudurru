@@ -15,6 +15,7 @@ import (
 
 	auditv1 "github.com/robertherbaugh/kudurru/api/audit/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditkeys"
 	"github.com/robertherbaugh/kudurru/internal/audit/auditlog"
 	"github.com/robertherbaugh/kudurru/internal/audit/spool"
 	"github.com/robertherbaugh/kudurru/internal/store/kube"
@@ -34,7 +35,21 @@ type auditLogStore struct {
 // than the app): the node then shows its own spool and logs why.
 // Failed probes (including unavailable or not-yet-authorized API access)
 // retain the store so the shipper can retry without blocking DNS startup.
-func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, encKey, encPrev []byte, logger *slog.Logger, startupTimeout time.Duration) (*auditLogStore, error) {
+func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, keys *auditkeys.Source, logger *slog.Logger, startupTimeout time.Duration) (*auditLogStore, error) {
+	if keys == nil {
+		return nil, auditkeys.ErrUnavailable
+	}
+	c, err := openAuditLogClient(ctx, restCfg, logger, startupTimeout)
+	if err != nil || c == nil {
+		return nil, err
+	}
+	ns := kube.PodNamespace()
+	tgt := &auditlog.Target{Client: c, Namespace: ns, Keys: keys}
+	sh := &audit.Shipper{Source: sp, Target: tgt, Logger: logger}
+	return &auditLogStore{shipper: sh, reader: &auditlog.Reader{Client: c, Namespace: ns, Keys: keys, VerifyPending: sp.Verify, Pending: sh.Pending, PendingSource: sp.SourceID()}, client: c}, nil
+}
+
+func openAuditLogClient(ctx context.Context, restCfg *rest.Config, logger *slog.Logger, startupTimeout time.Duration) (client.Client, error) {
 	scheme := runtime.NewScheme()
 	if err := auditv1.AddToScheme(scheme); err != nil {
 		return nil, err
@@ -68,17 +83,7 @@ func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, en
 		logger.Warn("audit: AuditLog probe failed; continuing, the shipper retries",
 			"component", "audit", "error", err)
 	}
-	sealKeys, err := auditSealKeys(encKey, encPrev)
-	if err != nil {
-		return nil, err
-	}
-	tgt := &auditlog.Target{Client: c, Namespace: ns, SealKey: sealKeys[0]}
-	sh := &audit.Shipper{Source: sp, Target: tgt, Logger: logger}
-	return &auditLogStore{
-		shipper: sh,
-		reader:  &auditlog.Reader{Client: c, Namespace: ns, SealKeys: sealKeys, VerifyPending: sp.Verify, Pending: sh.Pending, PendingSource: sp.SourceID()},
-		client:  c,
-	}, nil
+	return c, nil
 }
 
 // auditLogDiagnosis is independent of the startup Reader/shipper decision: a
@@ -94,24 +99,6 @@ func auditLogDiagnosis(cfg *rest.Config) func(context.Context) auditlog.Diagnost
 		}
 	}
 	return probe.Diagnose
-}
-
-// auditSealKeys keeps the current key first for writes and accepts the previous
-// key when verifying batches retained across a cluster encryption-key rotation.
-func auditSealKeys(current, previous []byte) ([][]byte, error) {
-	key, err := auditlog.SealKey(current)
-	if err != nil {
-		return nil, err
-	}
-	keys := [][]byte{key}
-	if len(previous) > 0 {
-		key, err := auditlog.SealKey(previous)
-		if err != nil {
-			return nil, err
-		}
-		keys = append(keys, key)
-	}
-	return keys, nil
 }
 
 // prune is the leader's retention job.
