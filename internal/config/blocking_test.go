@@ -85,3 +85,26 @@ func TestBlockingCatalogueValidation(t *testing.T) {
 		t.Errorf("catalogue = %+v", c)
 	}
 }
+
+func TestBlockingHTTPSOnlyHostPolicy(t *testing.T) {
+	defaults, err := Load("", nil)
+	if err != nil || defaults.Blocking.HTTPSOnly {
+		t.Fatal("HTTPS-only must be opt-in", err)
+	}
+	cfg, err := Load("", []string{"KUDURRU_BLOCKING__HTTPSONLY=true"})
+	if err != nil || !cfg.Blocking.HTTPSOnly {
+		t.Fatal("HTTPS-only environment setting not loaded", err)
+	}
+	found := false
+	for _, key := range Schema {
+		if key.Path == "blocking.httpsOnly" {
+			found = true
+			if !key.HostOnly || !key.RestartRequired || key.Scope != ScopeNode {
+				t.Fatal("download security policy must remain host-only and restart-required")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("HTTPS-only policy is missing from settings metadata")
+	}
+}

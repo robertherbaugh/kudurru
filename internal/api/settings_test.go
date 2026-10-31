@@ -91,6 +91,8 @@ func TestSettingsPatch(t *testing.T) {
 		{"/api/v1/settings", map[string]any{"log": map[string]any{"level": "debug"}}, http.StatusBadRequest, KeyInvalid},
 		{"/api/v1/settings", map[string]any{"querylog": map[string]any{"privacy": "everything"}}, http.StatusBadRequest, KeyInvalid},
 		{"/api/v1/node/config", map[string]any{"node": map[string]any{"dataDir": "/tmp/x"}}, http.StatusBadRequest, KeyHostOnly},
+		{"/api/v1/node/config", map[string]any{"blocking": map[string]any{"httpsOnly": false}}, http.StatusBadRequest, KeyHostOnly},
+		{"/api/v1/settings", map[string]any{"blocking": map[string]any{"httpsOnly": true}}, http.StatusBadRequest, KeyHostOnly},
 		{"/api/v1/node/config", map[string]any{"cache": map[string]any{"maxEntries": 1}}, http.StatusBadRequest, KeyInvalid},
 	}
 	for _, tc := range cases {

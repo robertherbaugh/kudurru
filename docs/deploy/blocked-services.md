@@ -208,6 +208,10 @@ error or a network error keeps the catalogue in service: the last good
 download, else the embedded one. `GET /api/v1/catalogue` reports `origin`, `version`,
 `digest` and `refresh.lastError`.
 
+To refuse plaintext origins and redirect downgrades for new downloads, enable
+[the host HTTPS-only download policy](download-policy.md). Existing cached
+data and authenticated peer copies retain their current behavior.
+
 ### Document format (schema version 2)
 
 ```json

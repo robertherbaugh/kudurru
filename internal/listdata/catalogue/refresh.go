@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster"
+	"github.com/robertherbaugh/kudurru/internal/downloadpolicy"
 	"github.com/robertherbaugh/kudurru/internal/version"
 )
 
@@ -69,6 +70,9 @@ type RefresherOptions struct {
 	// Client downloads URL; default a plain client with a 1 m timeout.
 	// The wiring passes the list fetcher's guarded client.
 	Client *http.Client
+	// HTTPSOnly restricts new external downloads, including redirects.
+	// Persisted data and authenticated peer pulls keep their existing semantics.
+	HTTPSOnly bool
 	// FallbackAfter; default DefaultFallbackAfter.
 	FallbackAfter time.Duration
 	Logger        *slog.Logger
@@ -139,6 +143,9 @@ func NewRefresher(opts RefresherOptions) (*Refresher, error) {
 	}
 	if opts.Client == nil {
 		opts.Client = &http.Client{Timeout: httpTimeout}
+	}
+	if opts.HTTPSOnly {
+		opts.Client = downloadpolicy.HTTPSOnly(opts.Client)
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -243,6 +250,9 @@ func (r *Refresher) fetch(ctx context.Context) error {
 	r.mu.Unlock()
 	resp, err := r.opts.Client.Do(req)
 	if err != nil {
+		if errors.Is(err, downloadpolicy.ErrHTTPSRequired) {
+			return downloadpolicy.ErrHTTPSRequired
+		}
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()

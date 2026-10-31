@@ -13,6 +13,7 @@ To assign client addresses, use the [DHCP walkthrough](../guide/dhcp/README.md).
 | Monitoring | [helm.md#monitoring](helm.md#monitoring) | `deploy/grafana/kudurru-overview.json`, `deploy/prometheus/rules.yaml` |
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
+External filtering data: [require HTTPS for list and catalog downloads](download-policy.md).
 For scripts and CLI clients: [apply results, settings and live-event contracts](api-contracts.md).
 The optional central database for the audit log, query log and statistics of every node: [postgres.md](postgres.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).

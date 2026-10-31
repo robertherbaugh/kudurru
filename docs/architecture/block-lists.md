@@ -5,6 +5,14 @@ downloaded **once, by the leader**, shared with every other node by digest,
 and **compiled on every node**. Only bodies travel; compiled matchers never
 leave the process that built them.
 
+The host-only `blocking.httpsOnly` option applies to new external downloads
+through the leader's downloader and the replica's direct fallback, and to both
+catalog refreshers. A transport guard checks the initial URL and every redirect
+before sending it. The existing TLS roots, local-address restrictions, proxy
+configuration and deadlines still apply. Refusal keeps the last good body;
+cached data and authenticated peer copies retain their existing semantics.
+See [download policy](../deploy/download-policy.md).
+
 Code: `internal/listfetcher` (the leader's fetcher, the disk cache, every
 node's resolver), `internal/blocking` (parsing, the compiled list, the
 snapshot) and `internal/blocking/matcher`.

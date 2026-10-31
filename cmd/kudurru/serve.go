@@ -492,7 +492,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	listObjs := listfetcher.NewZoneCacheObjects(zc)
-	downloader := listfetcher.NewDownloader(lists, listfetcher.DownloadOptions{AllowLocalAddresses: cfg.Blocking.AllowLocalListURLs})
+	downloader := listfetcher.NewDownloader(lists, listfetcher.DownloadOptions{AllowLocalAddresses: cfg.Blocking.AllowLocalListURLs, HTTPSOnly: cfg.Blocking.HTTPSOnly})
 	initStrategy, err := listfetcher.ParseInitStrategy(cfg.Blocking.InitStrategy)
 	if err != nil {
 		return err
