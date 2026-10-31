@@ -23,6 +23,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- DNS controls: hot-reloadable allowed networks and blocked query types,
+  including DNS64 dependencies, with validated settings and immutable rules
+  for each captured request.
+
 - SQLite integrations: mount licensed Cloudflare and UniFi background execution
   with per-instance election, original credential/writer fencing, atomic source
   inventory and publication-qualified DNS/group updates. Retain is supported;
@@ -102,6 +106,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   availability, query shipping lag and audit spool drops.
 
 ### Fixed
+
+- Edge health: bypass dnsdist packet caching for the exact health-query name
+  so a transient lameduck failure cannot keep a healthy VIP in FAULT after
+  the draining backend has been removed.
 
 - Zone import/export: preserve non-ASCII DNS label octets and canonicalize SOA
   and apex nameserver names so repeated BIND export stays byte-identical.

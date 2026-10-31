@@ -613,3 +613,20 @@ interoperability and release gates remain independent.
 changing the configured bound or test deadline. Ten focused race repetitions
 and the full transport race suite pass. The hosted dashboard failure remains
 recorded even though 25 focused tests and all 880 dashboard tests pass locally.
+
+### F18a implementation and generated-schema acceptance
+
+`50773f9` closes the global-control implementation row: bounded validated
+network/type lists, captured immutable rules, legacy atomic hot reload, local
+edge invalidation and synthetic dependency enforcement. Ordinary generation
+and composed mounted/runtime races pass on the integrated F09/F18 source;
+actual installed Kubernetes CRDs preserve both settings and reject malformed
+shapes. Combined scoped lint reports zero issues. The [gap ledger](gaps.md)
+records exact results. F18b/c hostname sources and F39b remote edge propagation
+remain separate open requirements; G21–G24 remain applicable.
+
+`d1502a6` fixes a real F68c Docker-lab defect where cached health SERVFAILs
+could outlive backend removal and fault a healthy VIP. Exact-name cache bypass
+preserves transfer refusal, PROXY authentication, backend checks and all VRRP
+timers. Container recovery acceptance is still running; neither its partial
+results nor renderer races constitute the original two-VM qualification.

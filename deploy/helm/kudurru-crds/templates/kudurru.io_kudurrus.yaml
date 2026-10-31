@@ -385,6 +385,32 @@ spec:
                             type: string
                         type: object
                     type: object
+                  control:
+                    properties:
+                      allowedNetworks:
+                        description: Client networks allowed to query DNS, for example
+                          192.168.1.0/24 or fd00::/64. Empty allows all clients; loopback
+                          always passes this network check. Other clients receive
+                          REFUSED before local, cached or upstream answers. At most
+                          1024 IPv4 or IPv6 CIDRs; changes take effect without restart.
+                        items:
+                          maxLength: 8192
+                          type: string
+                        maxItems: 10000
+                        type: array
+                      blockedQTypes:
+                        description: DNS query types refused for every client, including
+                          loopback, for example ANY or HINFO. Empty blocks none. At
+                          most 256 case-insensitive DNS mnemonics or explicit TYPE1
+                          through TYPE65535 values; changes take effect before local,
+                          cached or upstream answers without restart. Malformed queries
+                          still drop silently.
+                        items:
+                          maxLength: 8192
+                          type: string
+                        maxItems: 10000
+                        type: array
+                    type: object
                   database:
                     properties:
                       querylog:

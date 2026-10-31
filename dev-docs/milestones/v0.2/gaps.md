@@ -859,3 +859,42 @@ production binary and refuses every UPDATE. These results do not close Windows
 DC/member/DHCP acceptance, production AD writes/ownership/aging/cutover, or the
 original two-VM keepalived gate. The container VIP runner remains active and has
 identified a real dnsdist cached-health-failure defect for a separate fix.
+
+### F18a global DNS controls and integrated contracts
+
+`50773f9` implements bounded, validated `control.allowedNetworks` and
+`control.blockedQTypes` across configuration, schema-driven settings/API/CLI,
+initial serving and hot reload. Complete requests retain their original
+immutable control component. Alias and DNS64 dependency questions use the same
+rules before local/cache/upstream lookup; missing original owners fail closed.
+Legacy settings subscribers atomically replace a validated view. Both paths
+invalidate the local edge cache; remote edge propagation remains F39b.
+
+Ordinary `GOMAXPROCS=2 make generate docs-gen` updated installed/embedded/chart
+CRDs and references. Parent tests use those files directly, without the agent's
+temporary generation overlay. Composed races pass for cmd (60.023s),
+servingbuild (10.400s), config (1.265s), generated schema (1.072s), control
+(1.034s) and integration host (1.328s). The actual `runServe` fixture exercises
+one-shot settings mutation, UDP refusal, DNS64, persistence and restart.
+Actual Kubernetes envtest admission passes in 17.938s, preserving both lists
+and rejecting wrong element/list shapes without changing the saved version.
+Combined cmd/serving/config/control/rewrite/kube/host lint reports zero issues.
+
+Agent full config/control/rewrite/serving/servingbuild races also pass, with
+475 test/subtest results. Three final mounted/reload repetitions pass in
+23.424s. Fixture setup observes initial status/NOTIFY convergence before its
+single mutation, and waits for the committed settings publication before DNS
+assertions. Distinct DNS64 names per boot preserve exact upstream-call counts
+despite the legitimate restored response cache. No refused mutation is replayed;
+no production credential/license/writer checks or deadlines were relaxed.
+
+### F68c container lab defect: cached edge health failures
+
+`d1502a6` fixes the lab-reproduced dnsdist health-cache defect (D247): YAML
+and Lua now skip packet-cache lookup/insertion only for the exact configured
+health QName, after transfer refusal/PROXY authentication and before pool
+selection. Six regression cases fail on the previous renderer and pass with
+the fix. Edge-renderer and health races pass (27.361s/1.347s); scoped lint
+reports zero issues. The runner is completing whole-node recovery acceptance.
+Partial successful cases do not count as a successful complete lab run, and
+containers do not close the original independent-VM gate.

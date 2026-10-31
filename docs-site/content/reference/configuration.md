@@ -73,6 +73,13 @@ server runs. *write-only* keys are never returned by the API.
 | <a id="response.rebinding.privateDomains"></a>`response.rebinding.privateDomains` | `string[]` | `[]` | cluster | **Domains allowed private addresses.** Domains allowed to return private addresses, including descendants. At most 256. Both the original question and the address record's owner must be in an allowed domain, so an alias cannot silently escape the exception.<br>Allowed: items: string (format domain).<br>Environment: `KUDURRU_RESPONSE__REBINDING__PRIVATEDOMAINS` |
 | <a id="response.rebinding.bypassNetworks"></a>`response.rebinding.bypassNetworks` | `string[]` | `[]` | cluster | **Clients exempt from rebinding protection.** Client networks exempt from rebinding protection. At most 256 canonical IPv4 or IPv6 CIDRs. Empty protects all clients; an explicit /0 disables protection for that address family.<br>Allowed: items: string (format cidr).<br>Environment: `KUDURRU_RESPONSE__REBINDING__BYPASSNETWORKS` |
 
+## control
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="control.allowedNetworks"></a>`control.allowedNetworks` | `string[]` | `[]` | cluster | **Allowed client networks.** Client networks allowed to query DNS, for example 192.168.1.0/24 or fd00::/64. Empty allows all clients; loopback always passes this network check. Other clients receive REFUSED before local, cached or upstream answers. At most 1024 IPv4 or IPv6 CIDRs; changes take effect without restart.<br>Allowed: items: string (format cidr).<br>Environment: `KUDURRU_CONTROL__ALLOWEDNETWORKS` |
+| <a id="control.blockedQTypes"></a>`control.blockedQTypes` | `string[]` | `[]` | cluster | **Blocked query types.** DNS query types refused for every client, including loopback, for example ANY or HINFO. Empty blocks none. At most 256 case-insensitive DNS mnemonics or explicit TYPE1 through TYPE65535 values; changes take effect before local, cached or upstream answers without restart. Malformed queries still drop silently.<br>Environment: `KUDURRU_CONTROL__BLOCKEDQTYPES` |
+
 ## dnssec
 
 | Key | Type | Default | Scope | Description |

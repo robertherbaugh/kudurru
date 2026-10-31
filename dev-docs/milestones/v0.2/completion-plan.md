@@ -18,8 +18,8 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F18a, F70 and F68c container acceptance; the parent has
-integrated F05/F31 and added a Samba AD protocol lab. Freed agents take
+agents currently own F02a/F02b/F38, F70 and F68c container acceptance; the parent has
+integrated F05/F31/F18a and added a Samba AD protocol lab. Freed agents take
 the next independent package, retaining original proofs, ownership, current
 transactions and final credential/license checks. No refused mutation replay.
 
@@ -53,8 +53,8 @@ runners. Unit tests cannot substitute for those results.
 | ID | Requirement | Workstream | Current work state |
 |---|---|---|---|
 | F01 | Cold-start cluster-ID check when kube has never reached the API | Store and HA | Integrated 1bf8586; actual startup/identity/health races pass |
-| F02a | SQLite remaining §11.4 audit columns, including authz path | Store and HA | Queued: missing |
-| F02b | SQLite secret redaction in before/after | Store and HA | Queued: partial |
+| F02a | SQLite remaining §11.4 audit columns, including authz path | Store and HA | Active: audit storage agent, shared with F38 |
+| F02b | SQLite secret redaction in before/after | Store and HA | Active: audit storage agent |
 | F02c | SQLite cluster epoch / primary fencing setters | Store and HA | Implemented; final gates open |
 | F02d | `InternalKinds` once internal kinds exist | Store and HA | Implemented; final gates open |
 | F03 | `WatchOptions.ResourceVersion`: replay-as-Added vs true resume | Store and HA | External acceptance/decision open |
@@ -83,7 +83,7 @@ runners. Unit tests cannot substitute for those results.
 | F15 | Windows acceptance with every DC DNS service stopped | Zones and AD | External acceptance/decision open |
 | F16 | Current-hour query stats beyond 100k distinct names | DNS and resolver | Queued: missing |
 | F17 | `$important` / `$badfilter` | DNS and resolver | Implemented; final gates open |
-| F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Active: global control agent |
+| F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Integrated 50773f9; generated schemas and composed mounted/publication races pass |
 | F18b | Reverse-PTR hostname cache | DNS and resolver | Queued: missing |
 | F18c | UniFi hostname source | DNS and resolver | Queued: partial |
 | F19a | Durable replicated blocking toggle on complete SQLite path | Store and HA | Implemented; final gates open |
@@ -123,7 +123,7 @@ runners. Unit tests cannot substitute for those results.
 | F35c | external-dns webhook authentication | Zones and AD | Integrated; final gates open |
 | F36 | Serve object lists from live snapshot instead of store | Operations and UI | Implemented; final gates open |
 | F37 | Adopt generated OpenAPI Go client underneath CLI client | Operations and UI | Queued: missing |
-| F38 | Dedicated SQLite authz path/request/client audit columns | Observability and release | Queued: missing |
+| F38 | Dedicated SQLite authz path/request/client audit columns | Observability and release | Active: shared F02a audit storage migration |
 | F39a | Local edge resolver-cache invalidation | Edge and VIP | Implemented; final gates open |
 | F39b | Remote edge blocking-generation pull / resolver invalidation | Edge and VIP | Queued: missing |
 | F40a | Host-only `edge.*` / `vip.*` settings keys | Edge and VIP | Queued: missing |
