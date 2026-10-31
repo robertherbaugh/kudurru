@@ -1100,6 +1100,33 @@ What kudurru does with it: networks → `Network` inventory → auto-created rev
 
 `kudurru serve --externaldns-webhook :8888` (or the `externalDNS.webhook` chart values) serves the four routes over the zone store; `external-dns --provider=webhook --webhook-provider-url=http://localhost:8888` makes Ingress/Service/Gateway hostnames flow into kudurru zones with zero kudurru-side Kubernetes code. In v0.1 because it is a thin HTTP façade over the record model and proves the `Endpoint` superset early.
 
+### 9.7 Active Directory DNS replacement (v0.2, D188)
+
+The AD integration discovers and imports Windows DNS zones, then hands
+authority to kudurru. The initial scope is an existing single-domain forest,
+including multiple DCs/sites, the forest locator zone, reverse zones, and
+Windows DHCP registrations. Completion means Windows DNS can remain stopped
+on every DC, with no DNS forwarding or update proxy back to them for migrated
+zones. AD DS continues to provide directory services, Kerberos, LDAP, GPO,
+and replication of the directory itself.
+
+Ongoing compatibility requires native authoritative service and secure
+RFC 2136 updates with a server-side Kerberos/GSS-TSIG acceptor, principal-based
+ownership rules, DHCP interoperability, aging/scavenging, durable replicated
+updates, and tested cutover/rollback. The existing shared-key `UpdatePolicy`
+schema is insufficient. Import is an integration responsibility; ongoing
+answers and registrations are DNS server responsibilities. The
+[functional outline and acceptance gates](active-directory-dns.md) identify
+the required work and unresolved designs. This is planned scope, not current
+Windows interoperability support.
+
+Implementation starts with the isolated [GSS-TSIG feasibility
+probe](spikes/ad-dns/README.md). Its separate Go module keeps experimental
+Kerberos dependencies out of the product build. MIT Kerberos and `nsupdate`
+exercise TKEY, authenticated requests and signed refusals; all writes remain
+refused until authorization and atomic/durable storage are implemented.
+Windows qualification remains open.
+
 ---
 
 ## 10. Dashboard / UI plan and API surface
@@ -1440,6 +1467,14 @@ Explicitly **not** in v0.1 and why it is safe:
 
 Secondary + stub zones (AXFR/IXFR in, TSIG, NOTIFY in, XFR over TLS; every replica transfers independently), RFC 2136 UPDATE with `key × owner × type` policies, Active Directory DNS replacement (single-domain forest), DNSSEC **validation** of forwarded answers (+ NTA; recursive groups validate since v0.1, D170), aggressive NSEC caching (RFC 8198) and RFC 5011 trust-anchor updates for recursive groups, adblock modifier slow path, rewrites/DNS64/AAAA filter/rebinding protection, MAC/ClientID identification, `external` zone type, Cloudflare `RecordSink` (split-horizon with views), UniFi `ClientSource` (+ optional push/actions), Tier-B webhook client + conformance CLI, dnsdist console diff-apply + cert reload + dynblock push (if the spike passed), compose HA **follower mode** with fenced promote and a cluster join wizard, `Kudurru`/`Integration`/`IdentityProvider`/`RoleBinding`/`ServiceAccount` CRDs, `auth.kubernetes.mode: impersonate` opt-in, CEL claim rules, CLI OIDC login (loopback PKCE + device flow), TOTP, `db` session store for Docker, RP-initiated logout, dnstap emit/listen, OTel tracing incl. dnsdist TRACEPARENT, ClickHouse/Loki sinks, "All settings" page, importers for blocky/CoreDNS Corefile/Technitium, RPZ feed import as a `BlockList` source format (D61), `v1alpha1` → `v1beta1` plan.
 
+Added 2026-10-15 (D188): [complete AD DNS replacement for a single-domain
+forest](active-directory-dns.md), including migration, server-side GSS-TSIG
+updates and principal-based permissions beyond the shared-key policies above,
+DHCP, record lifecycle, and Windows qualification. This expands the original
+scope; the historical estimate above has not been reassessed. Secure-update
+interoperability and atomic/durable storage per deployment mode are required
+feasibility gates.
+
 ### 13.3 v1.0 — "temple" (~16-20 weeks)
 
 DNSSEC **signing** on the leader (ECDSAP256SHA256 CSK default, Ed25519 opt-in, NSEC or NSEC3 with RFC 9276 params, CoreDNS `sign` timers/jitter, RFC 7583 key state machine, KSK activation gated on observed parent DS with manual override, ZSK `rolloverDays`, CDS/CDNSKEY, BIND-format key import, keys encrypted in the store, `ldns-verify-zone`/`delv` in CI, leader takeover without re-sign); **catalog zones** (RFC 9432) produced and consumed; **RPZ publishing**: a compiled `BlockList` served as a transferable RPZ zone with NOTIFY to subscribing resolvers (D61); **raft** `Store` driver (hashicorp/raft, SQLite FSM, single-voter bootstrap, learner join via single-permission token, snapshot before membership change, never fork on join failure, `MinVersion` migrations) replacing follower mode; native ACME DNS-01 via certmagic (leader); ClickHouse-backed exact cluster top-N; `clientgroup:` RBAC scope; back-channel logout; Pi-hole v6-compatible façade module; `/api/v1` freeze + deprecation policy; CRD `v1beta1`; third-party security review; published dnsperf numbers per profile; OLM bundle after `v1` CRDs.
@@ -1702,6 +1737,7 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 | D185 | Local DNS overlays with missing-name fallback | Primary zones opt in with `spec.fallback: {}` (normal policy/conditional/default routing) or `fallback.upstreamGroup` (a forwarding or recursive group). Local records, wildcards and empty non-terminals keep missing-type NODATA; absent names continue after the authoritative stage. Generated apex SOA/NS/ANY remain local, while other apex types fall back until an explicit apex record exists. ACLs and snapshot gates fail closed. Local alias chains may continue through fallback; mixed answers clear AA/AD and never claim whole-chain DNSSEC security. Lookups precede the response cache; fallback configuration joins the content hash so edge serial-based flushing follows routing changes. Transfers and NOTIFY are unavailable for partial zones. Dashboard creation/settings and shared CRD validation expose the option | Project owner requested one `herbaugh.network` zone with local overrides and public resolution for other names ([#95](https://github.com/robertherbaugh/kudurru/issues/95)) | Implicit fallback for existing primary zones; per-host zones as the only option; fallback for missing record types (can expose public IPv6 addresses); copying the entire public zone; transferring partial zones as complete authority |
 | D186 | Explicit upstream settings ownership (extends D106; adoption precedent D174) | Kubernetes sections default to GitOps, and only the complete upstreams section is switchable initially. Adoption copies effective values and owner into a separate API-created ConfigMap, using resourceVersion checks; Helm never renders it. UI-owned sections replace file sections, conflicting declarations are logged and exposed, and environment locks remain. Each replica polls shared state through the settings watcher; a node-local last-good copy supports offline startup. Docker retains writable settings files with ownership metadata in the same atomic rename. settings.write authorizes audited adoption/release and writes. Read-only YAML generation supports proposed changes. Release requires applied file configuration to match the export before the revision-checked handoff | Issue #99 and subissues #100–#102: Kubernetes should support UI administration without GitOps reconciliation undoing edits | Patching the Helm ConfigMap; implicit override merging; a new CRD; immediate release to stale Git values; changing Docker defaults; declaring mutable ownership in Helm values |
 | D187 | Reservations move live clients (amends D173) | A reservation (dashboard, Git or host file) may name another address than its client's live lease, provided no other reservation names the old one. That lease is not renewed and is not counted in `conflictingLeases`; the client's next DISCOVER frees it and offers the reservation, as it does for any lease the settings no longer allow. Taking another client's live address or quarantine stays refused. The dashboard's lease list can reserve a row's client | Project owner reported on 2026-10-18 that a lease could not be converted to a reservation without waiting for it to expire. Ownership of the old address is unaffected until the client gives it up, so live state is still never deleted administratively | Deleting or rewriting the live lease from the API; an administrative lease-delete endpoint; refusing until expiry |
+| D188 | Replace Windows DNS for a single-domain forest | Target complete AD DNS replacement in v0.2: discover/import zones, transfer authority, maintain secure Windows registrations and record lifecycle, and qualify operation with Windows DNS stopped on every DC. The integration handles migration; the DNS server handles ongoing answers and updates. See the [functional outline](active-directory-dns.md); libraries, schemas, permission translation, Windows versions, and deployment durability remain to be designed and tested | Project owner on 2026-10-15: start with a single-domain forest, outline all DNS functions, and completely replace the DCs' DNS role while retaining AD DS | Outbound publishing only; read-only import as completion; permanent forwarding or update proxying to Windows DNS for migrated zones |
 
 ---
 
