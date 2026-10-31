@@ -27,6 +27,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -37,6 +38,8 @@ import (
 // fixture. Dynamic records must be published by the complete runtime and survive
 // restart without the legacy desired-record compiler or notifier overwriting it.
 func TestRunServeSQLiteCompletePrimaryUpdateRestart(t *testing.T) {
+	t.Setenv(license.EnvKey, "")
+	t.Setenv(license.EnvKeyFile, "")
 	cfg, secret := mountedTestConfig(t)
 	v, err := validator.New()
 	if err != nil {
@@ -336,7 +339,9 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 		for _, route := range []string{"/imports/apply", "/imports/start", "/imports/adopt", "/imports/runs/mounted/decommission"} {
 			blocked.call(http.MethodPost, route, nil, http.StatusServiceUnavailable, nil)
 		}
-		blocked.call(http.MethodPost, "/unblockrequests/default/request/approve", nil, 503, nil)
+		// Unblock decisions have a current command; this unlicensed node still
+		// rejects the workflow through its entitlement gate.
+		blocked.call(http.MethodPost, "/unblockrequests/default/request/approve", api.UnblockApproval{}, http.StatusPaymentRequired, nil)
 		var created api.CreatedToken
 		client.call(http.MethodPost, "/auth/tokens", api.CreateTokenRequest{Description: "mounted", ExpiresIn: "1h", Scopes: []string{"viewer"}}, 201, &created)
 		token = created.Token

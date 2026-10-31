@@ -763,9 +763,27 @@ flush and aggregate audit reporting occur after the command; per-object durable
 audit remains transactional. Actual server tests cover native DNS publication
 and restart after these commands.
 
+SQLite unblock approval, denial/revocation and deletion now enter a closed
+current command. The original raw credential requires only
+`unblockrequests.decide` (or `delete`) on the request. Its current UID/version
+binds the derived allow entry, matching policy references and shared-entry
+ownership transfer; the delegated grant cannot write arbitrary lists or
+policies. Every affected manager and bounded effect is checked in the same
+concrete transaction. The pinned original requests entitlement and credential
+clock are checked again at final commit. Cache invalidation covers all name
+scopes and fences detached fills after commit, outside transaction/owner pins.
+
+The SQLite unblock janitor uses a separate elected system command with the
+original writer episode and full dependency exclusion through commit. It reads
+pending-expiry and retention policy from the canonical settings row in that
+transaction, merges it with the pinned host configuration, and atomically
+releases entries, transfers shared ownership, expires statuses or prunes
+requests. Cleanup still runs after license loss. It rebuilds from durable rows
+on restart and performs no network work or precommit index/cache effects.
+
 SQLite temporarily returns 503 for unsafe convenience writes without complete
 current admission: domain/allowlist/denylist mutations, query-log allow/deny
-actions and unblock-request actions. Generic object commands remain available.
+actions. Generic object commands remain available.
 These gates prevent legacy helpers from writing outside current authorization or
 returning an unchecked no-op; they are explicit remaining integration work.
 Generic apply/batch-delete retains its independent per-item result contract. All

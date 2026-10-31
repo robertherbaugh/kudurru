@@ -91,6 +91,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 	"github.com/robertherbaugh/kudurru/internal/stub"
+	"github.com/robertherbaugh/kudurru/internal/unblock"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -971,6 +972,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var migrationReads api.MigrationReadSource
 	var migrationCommand api.MigrationCommand
 	var zoneCommand api.ZoneCommand
+	var unblockCommand unblock.Command
 	var zoneNotifyCommand api.ZoneNotifyCommand
 	catalogSource := catalogueAPI(catalogs, catRefreshers)
 	if sql == nil {
@@ -1056,6 +1058,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		migrationCommand = complete.MigrationCommand
 		migrationReads = servingbuild.NewMigrationReads()
 		zoneCommand = complete.ZoneCommand
+		unblockCommand = complete.UnblockCommand
 		zoneNotifyCommand = complete.ZoneNotifyCommand
 		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
 	}
@@ -1158,7 +1161,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, PolicyListReads: policyListReads,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
@@ -1322,7 +1325,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		{"identity", false, ids.Run},
 		{"api", false, apiSrv.Run},
 		{"unblock", false, unblockBook.Run},
-		{"unblock-janitor", true, unblockBook.RunJanitor},
+		{"unblock-janitor", true, func(ctx context.Context) error {
+			if complete != nil {
+				return unblockBook.RunCurrentJanitor(ctx, func(ctx context.Context) (unblock.SweepResult, error) {
+					return complete.SweepUnblock(ctx)
+				})
+			}
+			return unblockBook.RunJanitor(ctx)
+		}},
 		{"domainlist", true, domainlist.New(domainlist.Options{Store: st, Logger: logger}).Run},
 	} {
 		if err := add(r.name, r.leaderOnly, r.fn); err != nil {

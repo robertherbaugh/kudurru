@@ -323,6 +323,8 @@ type Options struct {
 	MigrationReads   MigrationReadSource
 	// ZoneCommand admits one complete current zone convenience operation.
 	ZoneCommand ZoneCommand
+	// UnblockCommand admits closed decisions and their derived effects.
+	UnblockCommand unblock.Command
 	// ZoneNotifyCommand admits durable manual NOTIFY under current authority.
 	ZoneNotifyCommand ZoneNotifyCommand
 	// CrossOrigin shares the host's existing same-origin policy. Nil creates

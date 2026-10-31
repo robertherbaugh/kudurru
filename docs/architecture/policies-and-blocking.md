@@ -221,8 +221,9 @@ sequenceDiagram
     BP-->>U: "blocked by dns/ads: ||ads.example^" + request form
     U->>BP: POST /.kudurru/request (same origin, rate limited)
     BP->>S: Apply UnblockRequest ur-<HMAC(client, domain)> (Pending)
-    A->>S: approve (scope everyone or group, exact or subdomains, optional duration)
-    S->>S: add the entry to ui-allow[-group], attach it to the policies
+    A->>S: approve under original current proof and writer (scope, match, duration)
+    S->>S: one SQLite transaction: entry, policy references, request decision
+    Note over A,S: decide permission delegates only these derived effects; final credential and license checks
     Note over S,D: every node: list recompiles → new snapshot → allow list wins
     A->>D: the API flushes the name from this node's cache
     U->>D: A ads.example (after the old block TTL)
@@ -232,7 +233,9 @@ sequenceDiagram
 - One request object exists per (client, domain): the name is an HMAC of
   both, so repeated submissions update one object. The client address is
   stored according to `querylog.privacy`.
-- A leader janitor runs every minute: time-limited approvals expire (and
+- A leader janitor runs every minute: on SQLite its original elected writer
+  atomically applies current canonical retention/expiry policy. Time-limited
+  approvals expire (and
   their allow entry is removed), pending requests expire after 14 days, and
   decided requests are deleted after 30 days.
 - The block page finds the reason in the query log first. Under the

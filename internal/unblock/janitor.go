@@ -20,10 +20,15 @@ const SystemActor = "system"
 // RunJanitor runs Sweep every JanitorInterval until ctx ends (leader
 // only).
 func (s *Service) RunJanitor(ctx context.Context) error {
+	return s.RunCurrentJanitor(ctx, s.Sweep)
+}
+
+// RunCurrentJanitor runs the mounted atomic system sweep on the leader.
+func (s *Service) RunCurrentJanitor(ctx context.Context, sweep func(context.Context) (SweepResult, error)) error {
 	t := time.NewTicker(JanitorInterval)
 	defer t.Stop()
 	for {
-		if _, err := s.Sweep(ctx); err != nil && ctx.Err() == nil {
+		if _, err := sweep(ctx); err != nil && ctx.Err() == nil {
 			s.opts.Logger.Warn("unblock request sweep failed", "err", err)
 		}
 		select {

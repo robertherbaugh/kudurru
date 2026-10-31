@@ -45,8 +45,10 @@ func servingUnconvertedMutation(method, requestPath string) bool {
 		default:
 			return true
 		}
-	case "domains", "allowlist", "denylist", "allowlist:batch", "denylist:batch", "unblockrequests":
+	case "domains", "allowlist", "denylist", "allowlist:batch", "denylist:batch":
 		return true
+	case "unblockrequests":
+		return !(method == http.MethodDelete && len(parts) == 3 || method == http.MethodPost && len(parts) == 4 && (parts[3] == "approve" || parts[3] == "deny"))
 	case "imports":
 		// Apply/start and cutover use bounded current programs. Adoption
 		// remains unavailable until its reviewed ownership command is mounted.
