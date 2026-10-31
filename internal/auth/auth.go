@@ -28,11 +28,14 @@ const (
 // Principal is the authenticated identity. The identity key for OIDC users
 // is (provider, issuer, subject), never email.
 type Principal struct {
-	Kind     PrincipalKind
-	ID       string
-	Name     string
-	Groups   []string
-	Provider string
+	// credentialTime is detached verified request-time evidence, never mutation
+	// authority. It is private and cannot survive cookie/JSON serialization.
+	credentialTime *credentialTime
+	Kind           PrincipalKind
+	ID             string
+	Name           string
+	Groups         []string
+	Provider       string
 	// AuthMethod is how the principal authenticated: cookie, token, jwt,
 	// k8s, unix, internal.
 	AuthMethod string

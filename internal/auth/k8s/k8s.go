@@ -3,8 +3,10 @@
 // audience "kudurru" are verified offline against the cluster's OIDC
 // discovery document and JWKS (read through the apiserver with the pod's
 // own credentials), with TokenReview as the fallback when the keys cannot
-// be fetched. Verdicts are cached by sha256(token) for at most two minutes
-// (never past the token's expiry). The principal is
+// be fetched. Both paths require projected JWTs with at most ten minutes from
+// issuance to original expiry. Offline verification does not detect deletion;
+// this lifetime bounds authority after pod/ServiceAccount deletion. Verdicts
+// are cached by sha256(token) for at most two minutes, never past expiry. The principal is
 // system:serviceaccount:<namespace>:<name> with its groups; authorization
 // is SubjectAccessReview (rbac.SARAuthorizer) or kudurru bindings.
 package k8s
@@ -18,6 +20,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +45,7 @@ const (
 	negativeCacheTTL = 10 * time.Second
 	maxCacheEntries  = 10_000
 	discoveryRetry   = 10 * time.Second
+	apiTimeout       = 10 * time.Second
 )
 
 // ServiceAccountPrefix prefixes the username of every ServiceAccount.
@@ -85,9 +89,9 @@ type Authenticator struct {
 }
 
 type entry struct {
-	p   auth.Principal
-	err error
-	exp time.Time
+	p         auth.Principal
+	err       error
+	from, exp time.Time
 }
 
 // New validates opts; nothing is fetched until the first token.
@@ -107,7 +111,11 @@ func New(opts Options) (*Authenticator, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	hc, err := rest.HTTPClientFor(opts.Config)
+	clientConfig := rest.CopyConfig(opts.Config)
+	if clientConfig.Timeout <= 0 || clientConfig.Timeout > apiTimeout {
+		clientConfig.Timeout = apiTimeout
+	}
+	hc, err := rest.HTTPClientFor(clientConfig)
 	if err != nil {
 		return nil, fmt.Errorf("k8s: http client: %w", err)
 	}
@@ -144,7 +152,7 @@ func (a *Authenticator) discover(ctx context.Context) (*gooidc.IDTokenVerifier, 
 	iss, err := a.fetchIssuer(ctx)
 	if err != nil {
 		a.lastFail, a.lastErr = now, err
-		a.opts.Logger.WarnContext(ctx, "kubernetes service-account issuer discovery failed; using TokenReview", "err", err)
+		a.opts.Logger.WarnContext(ctx, "kubernetes service-account issuer discovery failed; using TokenReview")
 		return nil, "", err
 	}
 	keyCtx := gooidc.ClientContext(context.WithoutCancel(ctx), a.hc)
@@ -210,33 +218,51 @@ func (f fallback) VerifyJWT(ctx context.Context, raw string) (auth.Principal, er
 
 func (a *Authenticator) verify(ctx context.Context, raw string, allowJWKS bool) (auth.Principal, error) {
 	now := a.opts.Now()
+	claims, bounds, err := projectedBounds(raw, now)
+	if err != nil || ctx.Err() != nil {
+		return auth.Principal{}, auth.Unauthenticated(errToken)
+	}
 	key := sha256.Sum256([]byte(raw))
 	a.cacheMu.Lock()
 	e, ok := a.cache[key]
 	a.cacheMu.Unlock()
+	if ok && now.Before(e.from) {
+		return auth.Principal{}, auth.Unauthenticated(errToken)
+	}
 	if ok && now.Before(e.exp) {
+		finished := a.opts.Now()
+		if finished.Before(now) || !bounds.validAt(finished) || ctx.Err() != nil {
+			return auth.Principal{}, auth.Unauthenticated(errToken)
+		}
 		if e.err != nil {
 			return auth.Principal{}, e.err
 		}
-		return e.p, nil
+		return detached(e.p), nil
 	}
-	var (
-		p   auth.Principal
-		exp time.Time
-		err error
-	)
+	var p auth.Principal
 	v, _, derr := a.discover(ctx)
 	if allowJWKS && derr == nil {
-		p, exp, err = a.verifyJWKS(ctx, v, raw)
+		p, _, err = a.verifyJWKS(ctx, v, raw)
 	} else {
-		p, exp, err = a.tokenReview(ctx, raw)
+		p, _, err = a.tokenReview(ctx, raw)
 	}
-	ttl := now.Add(a.opts.CacheTTL)
+	if err == nil && (p.Name != claims.Sub || p.UID != claims.K8s.ServiceAccount.UID) {
+		err = errToken
+	}
+	finished := a.opts.Now()
+	if err == nil && (finished.Before(now) || !bounds.validAt(finished) || ctx.Err() != nil) {
+		err = errToken
+	}
+	ttl := minTime(now.Add(a.opts.CacheTTL), bounds.expiresAt)
 	if err != nil {
-		err = auth.Unauthenticated(err)
-		ttl = now.Add(negativeCacheTTL)
-	} else if !exp.IsZero() && exp.Before(ttl) {
-		ttl = exp
+		// Neither JWT-library nor apiserver errors may disclose raw proof or
+		// response data through the stack's internal-cause logging.
+		err = auth.Unauthenticated(errUnavailable)
+		p = auth.Principal{}
+		ttl = minTime(now.Add(negativeCacheTTL), bounds.expiresAt)
+	} else {
+		p.CredentialIssuedAt = bounds.issuedAt
+		p = auth.WithCredentialTimeBounds(p, now, bounds.issuedAt, bounds.expiresAt, a.opts.Now)
 	}
 	a.cacheMu.Lock()
 	if len(a.cache) >= maxCacheEntries {
@@ -249,9 +275,21 @@ func (a *Authenticator) verify(ctx context.Context, raw string, allowJWKS bool) 
 			clear(a.cache)
 		}
 	}
-	a.cache[key] = entry{p: p, err: err, exp: ttl}
+	a.cache[key] = entry{p: detached(p), err: err, from: now, exp: ttl}
 	a.cacheMu.Unlock()
 	return p, err
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+
+func detached(p auth.Principal) auth.Principal {
+	p.Groups = slices.Clone(p.Groups)
+	return p
 }
 
 // saClaims is the kubernetes.io claim of a projected token.
@@ -288,11 +326,11 @@ func (a *Authenticator) tokenReview(ctx context.Context, raw string) (auth.Princ
 		Spec: authenticationv1.TokenReviewSpec{Token: raw, Audiences: []string{a.opts.Audience}},
 	}, metav1.CreateOptions{})
 	if err != nil {
-		return auth.Principal{}, time.Time{}, fmt.Errorf("k8s: TokenReview: %w", err)
+		return auth.Principal{}, time.Time{}, errUnavailable
 	}
 	st := tr.Status
-	if !st.Authenticated {
-		return auth.Principal{}, time.Time{}, fmt.Errorf("k8s: TokenReview: not authenticated: %s", st.Error)
+	if !st.Authenticated || st.Error != "" {
+		return auth.Principal{}, time.Time{}, errToken
 	}
 	audOK := false
 	for _, aud := range st.Audiences {
@@ -301,7 +339,7 @@ func (a *Authenticator) tokenReview(ctx context.Context, raw string) (auth.Princ
 		}
 	}
 	if !audOK {
-		return auth.Principal{}, time.Time{}, fmt.Errorf("k8s: TokenReview: token audiences %v lack %q", st.Audiences, a.opts.Audience)
+		return auth.Principal{}, time.Time{}, errToken
 	}
 	if !strings.HasPrefix(st.User.Username, ServiceAccountPrefix) {
 		return auth.Principal{}, time.Time{}, errors.New("k8s: only ServiceAccount tokens are accepted")

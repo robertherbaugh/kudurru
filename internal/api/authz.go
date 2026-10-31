@@ -133,6 +133,9 @@ func (s *Server) require(ctx context.Context, resource, verb string, sc rbac.Sco
 		return nil
 	}
 	dec, err := s.authorize(ctx, p, resource, verb, sc, name)
+	if _, current := auth.PrincipalFrom(ctx); !current {
+		return errUnauthenticated()
+	}
 	if err != nil {
 		return errUnavailable("authorizer: %v", err)
 	}
@@ -149,16 +152,17 @@ func (s *Server) require(ctx context.Context, resource, verb string, sc rbac.Sco
 // allowed reports whether the principal holds resource.verb at sc,
 // without auditing (list filtering).
 func (s *Server) allowed(ctx context.Context, resource, verb string, sc rbac.Scope) bool {
-	st := stateFrom(ctx)
-	if st.clusterAllowed && st.allowedResource == resource && st.allowedVerb == verb {
-		return true
-	}
 	p, ok := auth.PrincipalFrom(ctx)
 	if !ok {
 		return false
 	}
+	st := stateFrom(ctx)
+	if st.clusterAllowed && st.allowedResource == resource && st.allowedVerb == verb {
+		return true
+	}
 	dec, err := s.authorize(ctx, p, resource, verb, sc, "")
-	return err == nil && dec.Allowed
+	_, current := auth.PrincipalFrom(ctx)
+	return current && err == nil && dec.Allowed
 }
 
 // auditDenied records a denied attempt (§11.4: denied attempts are audited
@@ -277,6 +281,11 @@ func (s *Server) authorizeMW(p perm) func(huma.Context, func(huma.Context)) {
 			sc = p.scope(ctx)
 		}
 		dec, err := s.authorize(ctx.Context(), pr, resource, p.verb, sc, "")
+		// A delegated SAR may cross this held proof's original expiry.
+		if _, current := auth.PrincipalFrom(ctx.Context()); !current {
+			s.writeHumaError(ctx, errUnauthenticated())
+			return
+		}
 		if err != nil {
 			s.writeHumaError(ctx, errUnavailable("authorizer: %v", err))
 			return
