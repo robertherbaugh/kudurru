@@ -16,6 +16,8 @@
 package identify
 
 import (
+	"context"
+	"sync"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/inventory"
@@ -57,8 +59,53 @@ func New(src Source, now func() time.Time) *Stage {
 // Name implements pipeline.Stage.
 func (s *Stage) Name() string { return "identify" }
 
+// identification pins both membership and policy for the original request.
+// Dependent requests inherit this context and never re-identify against a newer
+// policy source or a different inventory observation.
+type identification struct {
+	membership *policy.Membership
+	index      *policy.Index
+	at         time.Time
+	once       sync.Once
+	decision   *policy.Decision
+}
+
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
+	selected, err := s.identify(req)
+	if err != nil {
+		return nil, err
+	}
+	if selected != nil {
+		// Selection stays at the normal stage: over-limit UDP needs only the
+		// bounded membership lookup, never schedule or blocking-policy work.
+		selected.once.Do(func() { selected.decision = selected.index.Select(selected.membership, selected.at) })
+		req.Policy = selected.decision
+	}
+	return next(req)
+}
+
+// RateLimitExempt identifies an otherwise rate-limited UDP client early. The
+// normal identify position reuses this exact result; no GroupIDs supplied by a
+// transport or caller are trusted to grant an exemption.
+func (s *Stage) RateLimitExempt(req *pipeline.Request) (bool, error) {
+	selected, err := s.identify(req)
+	if err != nil || selected == nil {
+		return false, err
+	}
+	return selected.membership.RateLimitExempt(), nil
+}
+
+func (s *Stage) identify(req *pipeline.Request) (*identification, error) {
+	if req.Serving != nil && s.Capture == nil {
+		return nil, pipeline.ErrServingCapture
+	}
+	if req.Ctx != nil {
+		if selected, ok := req.Ctx.Value(s).(*identification); ok {
+			req.Client.GroupIDs = selected.membership.GroupIDs
+			return selected, nil
+		}
+	}
 	at := req.Received
 	if at.IsZero() {
 		at = s.now()
@@ -104,10 +151,15 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		if req.Serving != nil {
 			return nil, pipeline.ErrServingCapture
 		}
-		return next(req)
+		return nil, nil
 	}
 	m := ix.IdentifyAt(req.Client, at)
 	req.Client.GroupIDs = m.GroupIDs
-	req.Policy = ix.Select(m, at)
-	return next(req)
+	selected := &identification{membership: m, index: ix, at: at}
+	ctx := req.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req.Ctx = context.WithValue(ctx, s, selected)
+	return selected, nil
 }

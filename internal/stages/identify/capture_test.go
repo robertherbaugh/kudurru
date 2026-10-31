@@ -1,14 +1,17 @@
 package identify
 
 import (
+	"context"
 	"errors"
 	"net/netip"
 	"testing"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type identityLease struct{}
@@ -56,5 +59,58 @@ func TestCaptureKnownEmptyInventoryAndPolicyFailClosed(t *testing.T) {
 	}
 	if called != 2 {
 		t.Fatal("failed capture reached next")
+	}
+}
+
+func TestEarlyExemptionPinsOriginalMembershipPolicyAndIdentity(t *testing.T) {
+	at := time.Now()
+	group := &v1alpha1.ClientGroup{ObjectMeta: metav1.ObjectMeta{Name: "device", Namespace: "default", UID: "original"}, Spec: v1alpha1.ClientGroupSpec{RateLimitExempt: true}}
+	grant := policy.MACGrant{Group: "default/device", GroupUID: "original", MAC: "02:00:00:00:00:01", Source: "trusted", ExpiresAt: at.Add(time.Second)}
+	old := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{group}, MACGrants: []policy.MACGrant{grant}}, policy.Options{Inventory: true})
+	group.Spec.RateLimitExempt = false
+	fresh := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{group}, MACGrants: []policy.MACGrant{grant}}, policy.Options{Inventory: true})
+	st := New(forbiddenIndex{}, func() time.Time { return at.Add(time.Hour) })
+	st.Inventory = forbiddenInventory{}
+	captures := 0
+	st.Capture = func(*pipeline.Request) (*policy.Index, error) { captures++; return old, nil }
+	// This trusted identity was already taken from the original immutable owner.
+	st.CaptureInventory = func(*pipeline.Request) (*inventory.Snapshot, error) {
+		t.Fatal("recaptured original identity")
+		return nil, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	req := &pipeline.Request{Ctx: ctx, Serving: identityLease{}, Received: at, Deadline: at.Add(5 * time.Second), Client: pipeline.Client{Addr: netip.MustParseAddrPort("192.0.2.1:53"), IdentityCaptured: true, InventorySource: "trusted", MACs: []string{grant.MAC}}}
+	if exempt, err := st.RateLimitExempt(req); err != nil || !exempt {
+		t.Fatal("early captured membership unavailable", err)
+	}
+	if req.Policy != nil || req.Ctx.Value(st).(*identification).decision != nil {
+		t.Fatal("early exemption performed policy/schedule work")
+	}
+	if _, err := st.Serve(req, func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+	decision := policy.FromRequest(req)
+	// A concurrent successor, source change or later clock cannot replace the
+	// result pinned at ingress or renew the private grant's exclusive deadline.
+	st.Capture = func(*pipeline.Request) (*policy.Index, error) { captures++; return fresh, nil }
+	cancel()
+	called := false
+	if _, err := st.Serve(req, func(r *pipeline.Request) (*pipeline.Response, error) {
+		called = true
+		if r.Policy != decision || r.Received != at || r.Deadline != at.Add(5*time.Second) || !errors.Is(r.Ctx.Err(), context.Canceled) {
+			t.Error("early identification changed original proof/time/context")
+		}
+		return nil, nil
+	}); err != nil || !called || captures != 1 {
+		t.Fatal("normal identify recaptured successor", err, captures)
+	}
+	next := &pipeline.Request{Serving: identityLease{}, Received: at, Client: req.Client}
+	if exempt, err := st.RateLimitExempt(next); err != nil || exempt {
+		t.Fatal("fresh request adopted old exemption", err)
+	}
+	st.Capture = func(*pipeline.Request) (*policy.Index, error) { return old, nil }
+	expired := &pipeline.Request{Serving: identityLease{}, Received: grant.ExpiresAt, Client: req.Client}
+	if exempt, err := st.RateLimitExempt(expired); err != nil || exempt {
+		t.Fatal("fresh request renewed expired source grant", err)
 	}
 }

@@ -35,6 +35,13 @@ type ClientGroupSources struct {
 
 // ClientGroupSpec defines which clients belong to the group.
 type ClientGroupSpec struct {
+	// RateLimitExempt skips UDP per-prefix rate limiting for clients selected
+	// into this group by the winning identification tier. A true value in any
+	// tied group wins; groups in lower tiers do not contribute. This does not
+	// grant authentication or bypass DNS policy, ACLs or message validation.
+	// +optional
+	RateLimitExempt bool `json:"rateLimitExempt,omitempty"`
+
 	// +optional
 	// +kubebuilder:validation:MaxItems=1000
 	Clients []ClientMatcher `json:"clients,omitempty"`

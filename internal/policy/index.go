@@ -181,9 +181,14 @@ type Membership struct {
 	// when no group (not even the default group) exists.
 	GroupIDs []string
 	// Tier is the identification tier that matched.
-	Tier Tier
-	set  *policySet
+	Tier            Tier
+	set             *policySet
+	rateLimitExempt bool
 }
+
+// RateLimitExempt reports the compiled exemption of the winning membership.
+// It is independent of policy priority/schedules and grants no authority.
+func (m *Membership) RateLimitExempt() bool { return m != nil && m.rateLimitExempt }
 
 // Diagnosis reasons.
 const (
@@ -234,9 +239,10 @@ func (d Diagnosis) String() string {
 // Index is the immutable identification and policy index of one snapshot.
 // It is safe for concurrent use.
 type Index struct {
-	generation uint64
-	groupIDs   []string // sorted; index = group number
-	groupSets  []*policySet
+	generation  uint64
+	groupIDs    []string // sorted; index = group number
+	groupSets   []*policySet
+	groupExempt []bool
 
 	ip        map[netip.Addr]*Membership
 	mac       map[string]*Membership
@@ -409,6 +415,7 @@ func Build(in Input, opts Options) *Index {
 	for i, g := range groups {
 		id := objectID(g.Namespace, g.Name)
 		ix.groupIDs = append(ix.groupIDs, id)
+		ix.groupExempt = append(ix.groupExempt, g.Spec.RateLimitExempt)
 		b.groupNum[id] = i
 	}
 
@@ -815,6 +822,7 @@ func (b *builder) membership(groups []int, tier Tier) *Membership {
 	m := &Membership{Tier: tier, set: b.ix.policySetFor(groups)}
 	for _, g := range groups {
 		m.GroupIDs = append(m.GroupIDs, b.ix.groupIDs[g])
+		m.rateLimitExempt = m.rateLimitExempt || b.ix.groupExempt[g]
 	}
 	b.members[key] = m
 	return m
@@ -1071,6 +1079,7 @@ func (ix *Index) joinMembership(groups []int, tier Tier) *Membership {
 	m := &Membership{Tier: tier, set: ix.policySetFor(groups)}
 	for _, g := range groups {
 		m.GroupIDs = append(m.GroupIDs, ix.groupIDs[g])
+		m.rateLimitExempt = m.rateLimitExempt || ix.groupExempt[g]
 	}
 	actual, _ := ix.dynamic.LoadOrStore(key, m)
 	return actual.(*Membership)

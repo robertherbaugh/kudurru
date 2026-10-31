@@ -848,7 +848,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	stages := []pipeline.Stage{
-		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
+		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, GroupExempt: idStage.RateLimitExempt, Lameduck: checker.IsLameduck},
 		idStage,
 		controlStage,
 		post,

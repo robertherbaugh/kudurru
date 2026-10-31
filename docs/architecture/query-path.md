@@ -401,3 +401,20 @@ The authoritative stage can answer A/PTR records from committed in-memory
 runs after the unsynced gate when no zone matches or the match is the
 catch-all root forward zone. Specific configured zones and a primary root
 retain precedence. It does not add a pipeline stage or modify zone contents.
+
+### ClientGroup rate-limit exemptions
+
+`ClientGroup.spec.rateLimitExempt: true` skips the UDP per-prefix limiter for
+clients selected into that group. Global disabled, transport, loopback,
+configured-prefix and health-name exemptions retain precedence. For other UDP
+queries, ingress asks the normal identify stage to resolve the original
+captured policy index and inventory snapshot early. The normal stage and
+synchronous dependencies reuse the same membership, decision, source identity
+and request time; DNS never reads the store for this decision.
+
+The existing identification tiers apply: exact IP, MAC, longest CIDR,
+hostname/name glob, client ID, catch-all CIDR, then default group. Any true value
+among tied groups in the winning tier exempts; lower-tier or disabled groups do
+not contribute. Exemption does not bypass message validation, DNS policy or
+ACLs, and grants no authentication. Unmatched and non-exempt clients retain
+the existing shared prefix budgets, slip/drop behavior and bucket bounds.
