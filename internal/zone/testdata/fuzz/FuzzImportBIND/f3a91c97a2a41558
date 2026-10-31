@@ -1,0 +1,2 @@
+go test fuzz v1
+string("@ SOA 0 \x9c\xab\x8f\x9a\x7f\xff.\\\\\\070 0")

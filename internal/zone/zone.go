@@ -398,10 +398,13 @@ func hostName(s string) (string, error) {
 	if _, ok := dns.IsDomainName(n); !ok {
 		return "", errBadName
 	}
-	if _, err := canonicalKey(n); err != nil {
+	key, err := canonicalKey(n)
+	if err != nil {
 		return "", err
 	}
-	return n, nil
+	// SOA and apex NS bypass endpoint parsing. Give their names the same
+	// stable presentation spelling as owners, including escaped letters.
+	return nameFromKey(key), nil
 }
 
 func (b *Builder) defaultTTL() uint32 {
