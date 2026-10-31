@@ -1,9 +1,9 @@
 # Stopped-source rollups and the provenance transition
 
 Schema 5 implements source-owned central rollups and bounded recovery of stopped
-sources. Ambiguous schema-4 history remains explicitly gated. D256 is reserved
-for the integrating parent's design record; this page describes the implemented
-contract and its remaining historical-input limitation.
+sources. Ambiguous schema-4 history remains explicitly gated. D271 records that contract and its remaining historical-input limitation.
+Schema 6 adds the retained-fact domain index (D269) without replacing source
+rollups or relaxing provenance gates.
 
 ## Ownership and shipping
 
@@ -159,3 +159,12 @@ the old unique conflict targets also makes already-connected schema-4
 replace-upsert writers fail atomically. Upgrade all central writers and plan
 for migration locks, indexes, source/revision backfill and extra retained-input
 storage. Do not lower compatibility markers or drop legacy rows to bypass a gate.
+
+
+Schema/compatibility version 6 also fences pre-index readers and janitors on
+reconnect. An always-empty foreign-key guard on the fact partition tree refuses
+already-connected old partition DROP/TRUNCATE commands. Upgraded purge names
+the guard explicitly and removes matching index cells; retention removes the
+cells and detaches each partition before dropping it. Migration holds source
+then fact write locks while seeding the index and installing triggers, so a
+concurrent shipper cannot leave unindexed facts between those steps.

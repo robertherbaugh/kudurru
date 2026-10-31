@@ -98,7 +98,7 @@ flowchart LR
     COL --> TAIL["live tail<br/>ring of 65 536 + SSE subscribers"]
     COL --> BATCH["batch: 1000 events or 1 s"]
     PUB["original DNS publication<br/>enabled, sink, privacy owner"] -.-> OBS
-    BATCH -->|"captured SQLite sink"| DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups, one transaction")]
+    BATCH -->|"captured SQLite sink"| DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups + domain/hour index, one transaction")]
     BATCH -->|"captured slog sink"| SLOG["structured logger"]
     TAIL --> API["dashboard: live tail,<br/>block page reasons"]
     DB --> API2["dashboard: query log,<br/>stats, top lists,<br/>bounded JSON export"]
@@ -165,9 +165,20 @@ answer in one line.
 | Table | Granularity | Kept |
 |---|---|---|
 | `query` (facts) | one row per query | `querylog.retention.raw` (720 h) and `maxDBBytes` (10 GiB) |
+| `query_domain_hour` | retained fact counts per hour/node/domain, plus source centrally | exactly the retained facts |
 | `rollup_1m`, `_client_1m`, `_qtype_1m`, `_upstream_1m` | minute | 35 days |
 | `rollup_1h`, `_client_1h`, `_qtype_1h`, `_upstream_1h`, `_domain_1h`, `_list_1h`, `_zone_1h` | hour | 400 days |
 | `rollup_1d`, `_client_1d`, `_domain_1d` | day | forever |
+
+Current-hour unique/top-domain queries use a transaction-maintained index,
+including above 100,000 distinct names. Whole domain/hour entries contribute
+exact totals; entries crossing a requested interval edge read their matching
+raw facts through the domain/time index. Conservative first/last timestamps
+after deletion may cause extra edge reads, never approximate counts. Space
+scales with retained domain/hour pairs; adversarial ragged intervals can still
+read every matching boundary fact. Local readers pin a real WAL snapshot while
+copying pending totals, after acquiring a reader connection and before releasing
+the writer lock. SQL facts, index cells and pending totals describe one cut.
 
 Names, clients, upstreams, zones, lists and policies are stored once in
 `dict_*` tables and referenced by ID. Charts read the rollups, so a 30-day

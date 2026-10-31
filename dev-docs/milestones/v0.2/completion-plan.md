@@ -83,7 +83,7 @@ runners. Unit tests cannot substitute for those results.
 | F14b | Aging/scavenging with static-record protection | Zones and AD | Queued: missing |
 | F14c | AD administration/diagnostics/backup and restore | Zones and AD | Queued: partial |
 | F15 | Windows acceptance with every DC DNS service stopped | Zones and AD | External acceptance/decision open |
-| F16 | Current-hour query stats beyond 100k distinct names | DNS and resolver | Queued: missing |
+| F16 | Current-hour query stats beyond 100k distinct names | DNS and resolver | Integrated 8b98f41; exact local/central index, real migrations/races and 1M-row scale checks pass; parent composed PostgreSQL/API/SQLite races pass |
 | F17 | `$important` / `$badfilter` | DNS and resolver | Implemented; final gates open |
 | F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Integrated 50773f9; generated schemas and composed mounted/publication races pass |
 | F18b | Reverse-PTR hostname cache | DNS and resolver | Queued: missing |
@@ -135,7 +135,7 @@ runners. Unit tests cannot substitute for those results.
 | F42 | Per-VRID `--hmac-key-file` in chart | Edge and VIP | Integrated 49a9cf8/376d63d/e760dd7; chart/CLI races and real keepalived staging/preflight pass |
 | F43a | dnsdist console backend diff-apply | Edge and VIP | Queued: missing |
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Queued: missing |
-| F43c | Console spike (a) gates both changes | Edge and VIP | External acceptance/decision open |
+| F43c | Console spike (a) gates both changes | Edge and VIP | D275: actual dnsdist 2.1.3 YAML console, live DNS/cert/invalid-cert/PID/restart checks pass; established-connection limit recorded |
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |
 | F44b | Cluster-wide production use on every advertised driver/route | IAM and access | Queued: partial |
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |

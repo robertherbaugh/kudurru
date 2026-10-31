@@ -218,3 +218,13 @@ writers fail their old conflict targets atomically. Upgrade all shippers; never
 lower markers or assign old cells to a default/current source. Missing historical
 ownership requires independently reconstructable evidence and remains visible
 as `legacy_provenance_required`; no destructive bypass is provided.
+
+
+Schema 6 adds an exact retained-fact domain/hour index for current-hour unique
+and top-domain reads. Plan for extra storage proportional to distinct
+hour/node/source/domain combinations and a write-locked seed over retained
+facts. Source then fact locks span seed and trigger installation. Upgrade all
+central users: older binaries are incompatible on reconnect, and an empty
+foreign-key guard refuses already-connected old DROP/TRUNCATE janitors.
+Upgraded retention and purge maintain the index with its facts. Do not remove
+the guard to make an old janitor run. Schema-5 recovery/provenance gates remain.

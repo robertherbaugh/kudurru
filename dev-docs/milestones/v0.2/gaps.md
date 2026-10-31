@@ -1486,3 +1486,53 @@ CI 41213309865 has no failed jobs at this checkpoint, with Go shard 1/2 still
 running. GitHub docs 41213309876 exposed stale endpoint references for F54/F71;
 this batch regenerates those references. The separate Cloudflare build remains
 excluded. Subsequent heads require their own hosted checks.
+
+### F16 exact current-hour domain statistics
+
+`8b98f41` implements D269 with a transaction-maintained retained-fact
+hour/node/domain index, plus original source centrally. Whole cells aggregate
+directly; ragged interval edges use indexed raw rows. Counts remain exact after
+privacy, rollback, purge and retention. SQLite schema 3 pins its WAL snapshot
+with pending totals; central schema/compatibility 6 seeds under write locks and
+uses an empty FK guard to refuse old connected partition DROP/TRUNCATE paths.
+Older readers/janitors must upgrade. Index size scales with retained distinct
+hour/node/source/domain entries; pathological boundary intervals still read
+matching facts. Source-recovery provenance gates remain unchanged.
+
+Agent final regression passes 61 SQLite, 10 central and 111 pgquerylog cases;
+scoped races cover snapshot, upgrade/destructive-operation, privacy, retention
+and source recovery. Final scoped lint reports zero issues. Parent composed real
+PostgreSQL migrations/pgquerylog, mounted recovery/stats/export API and SQLite
+races pass in 1.735s/41.926s/4.217s/173.457s. Its owned fixture and volume were
+removed after the command passed.
+
+The exact 1M-row/252k-name SQLite workload passes: raw unique aggregation
+1.063s versus index 433.950ms; raw top 1.011s versus index 346.301ms. Full Summary
+521.945ms, TopDomains 429.856ms, ingest 63.246s and index 9,809,920 bytes. Central
+1M/252k acceptance also passes: Summary 217.787ms, TopDomains 379.051ms, ingest
+312.606s and index/indexes 74,096,640 bytes. The central timing predates final
+upgrade/snapshot refinements; final regression validates those refinements.
+These are shared-sandbox measurements, not fixed-class qualification.
+
+### F43c console capability under YAML
+
+D275 and `hack/labs/dnsdist-console/run.py` qualify the external dnsdist 2.1.3
+gate. Ten actual Docker checks pass against the immutable local image
+`sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e`:
+YAML startup/DNS, failed-command refusal, new UDP/DoT routing, backend add/down/
+remove, certificate replacement with active-session continuity, invalid-cert
+retention, unchanged PID and persisted-YAML restart convergence. The runner
+uses the external client and private configuration, never console keys in argv.
+A terminal return acknowledgment is needed; Lua print reaches the daemon log.
+
+An established DoT connection selected to the removed/down backend returned
+SERVFAIL, while new connections reached the replacement. This is recorded,
+not hidden by reconnect/replay. Certificate-only reload preserved the separately
+established connection. Minimal fixture members are forced up; production
+health validators, PROXYv2, other encrypted protocols, bounded supervisor
+failure convergence and readiness remain F43a/b implementation acceptance.
+The capability gate is satisfied without claiming that implementation complete.
+
+Hosted CI 41213309865 on 8ea7367 was superseded/canceled with Go shard 1/2
+unfinished; its aggregate ci-ok failed because of that cancellation. The newer
+8bdb218 CI remains running. No full old-head CI success is claimed.

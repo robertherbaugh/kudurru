@@ -28,6 +28,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Query statistics: exact retained-fact domain/hour indexes remove the current-hour
+  100,000-name cliff. Local schema 3 and central schema/compatibility 6 include
+  atomic migration and old-janitor guards; central upgrades require write locks
+  and additional index storage.
+
 - Query log: reload admission and sinks with each request retaining its original
   publication. Accepted batches drain once to their original sink; local history
   stays readable after disabling logging or restarting with a slog sink.
