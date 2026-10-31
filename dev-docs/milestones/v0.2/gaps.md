@@ -1425,3 +1425,22 @@ before the dependent record command, preserving single-attempt mutations and
 all command fences. The browser cases above verify this fix; later hosted
 results still apply to their own heads. Latest fetched `origin/main` is already
 contained in this branch.
+
+### F41b chart/provider annotation parity
+
+D272 reconciles the ServiceProvider address/pool/sharing options with a named
+Helm DNS annotation helper. Selected provider annotations override matching
+explicit values and unrelated annotations survive. kube-vip no longer receives
+an implicit MetalLB sharing key. Historical split-Service sharing under
+`provider: none` is preserved for external MetalLB allocation. Service-based
+providers now refuse ClusterIP/NodePort DNS topologies that cannot allocate the
+requested LoadBalancer address.
+
+Actual Helm render/Go contract parity passes for 16 mixed/split combinations
+across direct, sidecar, Deployment and DaemonSet edge modes, with IPv6 family
+selection and conflicting explicit address values. Four unsupported topology
+cases refuse rendering; existing split/kube-vip/MetalLB cases and the original
+provider API pass (deploy 1.377s, provider 0.008s). Scoped lint reports zero issues.
+This closes annotation parity only. F41a announcer-owner observation and actual
+provider failover qualification remain separate; an annotation is not evidence
+of the announcing node.

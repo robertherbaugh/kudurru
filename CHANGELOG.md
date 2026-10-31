@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Helm: provider annotation parity for mixed/split DNS Services across edge
+  topologies; kube-vip avoids implicit MetalLB sharing, and Service VIP
+  providers require a LoadBalancer DNS Service.
+
 - DNS: TSIG verification and signed responses on DoH, DoQ and DoH3, with
   original signature deadlines and no-store HTTP replies. Encrypted transports
   still cannot authorize native UPDATE or NOTIFY mutations.

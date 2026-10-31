@@ -131,7 +131,7 @@ runners. Unit tests cannot substitute for those results.
 | F40a | Host-only `edge.*` / `vip.*` settings keys | Edge and VIP | Queued: missing |
 | F40b | Keepalived provider events to audit/SSE in serve | Edge and VIP | Queued: missing |
 | F41a | ServiceProvider current Owner | Edge and VIP | Queued: missing |
-| F41b | Chart provider annotations | Edge and VIP | Queued: partial |
+| F41b | Chart provider annotations | Edge and VIP | Implemented; actual Helm/Go parity across 16 supported modes and four topology refusals pass; owner observation separate |
 | F42 | Per-VRID `--hmac-key-file` in chart | Edge and VIP | Integrated 49a9cf8/376d63d/e760dd7; chart/CLI races and real keepalived staging/preflight pass |
 | F43a | dnsdist console backend diff-apply | Edge and VIP | Queued: missing |
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Queued: missing |

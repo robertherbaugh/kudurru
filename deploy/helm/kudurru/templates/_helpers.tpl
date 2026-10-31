@@ -372,6 +372,9 @@ are checked by the supervisor's parsed-address validation. */}}
 {{- if and (has $v.vip.provider (list "kube-vip" "metallb")) (not $v.vip.address) -}}
 {{- fail (printf "vip.address is required with vip.provider=%s" $v.vip.provider) -}}
 {{- end -}}
+{{- if and (has $v.vip.provider (list "kube-vip" "metallb")) (ne $v.service.dns.type "LoadBalancer") -}}
+{{- fail "Service-based vip.provider requires service.dns.type=LoadBalancer" -}}
+{{- end -}}
 {{- if include "kudurru.anyTLS" . -}}
 {{- if and $v.edge.enabled (not $v.edge.tlsSecretName) }}{{ fail "service.dot/doh/doq/doh3 with edge.enabled need edge.tlsSecretName (dnsdist terminates TLS)" }}{{ end -}}
 {{- if and (not $v.edge.enabled) (not $v.tls.secretName) }}{{ fail "service.dot/doh/doq/doh3 need tls.secretName (a kubernetes.io/tls Secret)" }}{{ end -}}
@@ -504,4 +507,23 @@ true
 {{- end -}}
 {{- end -}}
 {{- toYaml $files -}}
+{{- end -}}
+
+{{/* DNS Service provider contract: ee/edge/vip.ServiceProvider, with render
+     parity tests in deploy. Explicit provider values override matching user
+     annotations; unrelated annotations are preserved. Preserve the historical
+     split-Service sharing key for provider=none (externally managed MetalLB). */}}
+{{- define "kudurru.dns.annotations" -}}
+{{- $svc := .Values.service.dns -}}
+{{- $ann := deepCopy ($svc.annotations | default dict) -}}
+{{- if eq .Values.vip.provider "kube-vip" -}}
+{{- $_ := set $ann "kube-vip.io/loadbalancerIPs" .Values.vip.address -}}
+{{- else if eq .Values.vip.provider "metallb" -}}
+{{- $_ := set $ann "metallb.io/loadBalancerIPs" .Values.vip.address -}}
+{{- if .Values.vip.metallbPool }}{{ $_ := set $ann "metallb.io/address-pool" .Values.vip.metallbPool }}{{ end -}}
+{{- end -}}
+{{- if and $svc.splitProtocols (has .Values.vip.provider (list "none" "metallb")) -}}
+{{- $_ := set $ann "metallb.io/allow-shared-ip" (include "kudurru.fullname" .) -}}
+{{- end -}}
+{{- toYaml $ann -}}
 {{- end -}}

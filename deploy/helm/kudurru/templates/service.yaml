@@ -2,17 +2,7 @@
 {{- $s := .Values.service -}}
 {{- $edgeSeparate := include "kudurru.edge.separate" . -}}
 {{- $prefix := ternary "edge-" "" .Values.edge.enabled -}}
-{{- /* Service-level annotations: VIP provider and shared-IP for split Services. */ -}}
-{{- $ann := deepCopy ($svc.annotations | default dict) -}}
-{{- if eq .Values.vip.provider "kube-vip" -}}
-{{- $_ := set $ann "kube-vip.io/loadbalancerIPs" .Values.vip.address -}}
-{{- else if eq .Values.vip.provider "metallb" -}}
-{{- $_ := set $ann "metallb.io/loadBalancerIPs" .Values.vip.address -}}
-{{- if .Values.vip.metallbPool }}{{ $_ := set $ann "metallb.io/address-pool" .Values.vip.metallbPool }}{{ end -}}
-{{- end -}}
-{{- if $svc.splitProtocols -}}
-{{- $_ := set $ann "metallb.io/allow-shared-ip" (include "kudurru.fullname" .) -}}
-{{- end -}}
+{{- $ann := include "kudurru.dns.annotations" . | fromYaml -}}
 {{- /* Ports by protocol; the mixed Service carries both lists. */ -}}
 {{- $udp := list (dict "name" "dns-udp" "port" $svc.port "target" (printf "%sdns-udp" $prefix)) -}}
 {{- $tcp := list (dict "name" "dns-tcp" "port" $svc.port "target" (printf "%sdns-tcp" $prefix)) -}}

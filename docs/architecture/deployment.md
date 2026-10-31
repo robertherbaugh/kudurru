@@ -219,3 +219,19 @@ unused. The compose twins have no read-only mode, and a zone transfer from
 twins should name one node, because each twin stamps its own serials. The
 follower driver (v0.2) and raft (v1.0) replace twins with one writable
 primary.
+
+### Service-provider annotations
+
+For `vip.provider: kube-vip` or `metallb`, the chart requires the DNS Service
+(type `LoadBalancer`) and renders the selected provider's address request on
+each mixed or split DNS Service. MetalLB additionally receives the configured
+pool and, for split UDP/TCP Services, the release's shared-IP key. kube-vip does
+not acquire MetalLB sharing annotations implicitly. Existing explicitly supplied
+annotations remain; selected provider values override matching address/pool keys.
+For compatibility, split Services with `provider: none` retain their historical
+MetalLB sharing key for externally managed address allocation.
+
+The named chart annotation helper is checked against the Go ServiceProvider
+annotation contract across direct, sidecar, separate Deployment and DaemonSet
+edge topologies. These annotations request allocation; they do not prove which
+node currently announces an address. Owner observation remains a separate task.

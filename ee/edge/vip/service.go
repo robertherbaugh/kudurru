@@ -48,6 +48,19 @@ func (p *ServiceProvider) Events() <-chan Event { return nil }
 // from the provider; sharingKey lets MetalLB put the UDP and TCP Services
 // of one VIP on the same address.
 func (p *ServiceProvider) Annotations(vip, sharingKey string) map[string]string {
+	return p.AnnotationsWithOptions(vip, ServiceAnnotationOptions{SharingKey: sharingKey})
+}
+
+// ServiceAnnotationOptions describes MetalLB pool and split-Service requests.
+// kube-vip ignores these MetalLB-specific options.
+type ServiceAnnotationOptions struct {
+	Pool       string
+	SharingKey string
+}
+
+// AnnotationsWithOptions is the provider contract mirrored by the Helm DNS
+// Service helper and checked against actual rendered charts in deploy tests.
+func (p *ServiceProvider) AnnotationsWithOptions(vip string, options ServiceAnnotationOptions) map[string]string {
 	var addr string
 	for _, v := range p.vips {
 		if v.Name == vip {
@@ -62,8 +75,11 @@ func (p *ServiceProvider) Annotations(vip, sharingKey string) map[string]string 
 		return map[string]string{"kube-vip.io/loadbalancerIPs": addr}
 	default:
 		a := map[string]string{"metallb.io/loadBalancerIPs": addr}
-		if sharingKey != "" {
-			a["metallb.io/allow-shared-ip"] = sharingKey
+		if options.Pool != "" {
+			a["metallb.io/address-pool"] = options.Pool
+		}
+		if options.SharingKey != "" {
+			a["metallb.io/allow-shared-ip"] = options.SharingKey
 		}
 		return a
 	}
