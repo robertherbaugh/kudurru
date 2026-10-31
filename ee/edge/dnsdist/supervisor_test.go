@@ -62,6 +62,11 @@ func freePort(t *testing.T) string {
 // it into the fake).
 func fakeBinary(t *testing.T) string {
 	t.Helper()
+	// The fake reexecutes this race-instrumented test binary. Its default
+	// one-second exit grace is not dnsdist work and would exceed the bounded
+	// console/health deadlines. Preserve race detection and all other options;
+	// only child startup reads this setting (the parent runtime already did).
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
