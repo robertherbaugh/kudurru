@@ -23,6 +23,14 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Diagnosis and doctor: bounded AuditLog API availability and namespace batch
+  counts, gated by audit permission and license. Incomplete scans remain explicit;
+  healthy informational diagnoses no longer make doctor report a warning.
+
+- DoH: advertise an active matching native HTTP/3 endpoint with Alt-Svc while
+  preserving its address, port, certificate, query path and client-ID policy.
+  Reverse proxies remain responsible for their public advertisement.
+
 - Kubernetes recovery: independently configured cluster identity pins initial
   online access and saved DNS/settings admission. Offline recovery requires
   `store.kube.expectedClusterID`; legacy identity-free state needs live refresh.

@@ -655,3 +655,25 @@ correct age for admitted fresh/stale snapshots, no age for first boot or wrong/
 legacy identity, and no leader during outage. Missing host pin is covered by
 the separate startup-refusal test; it intentionally cannot start offline.
 Final CLI lint reports zero issues and generated configuration/CLI docs pass.
+
+### F72 composed AuditLog diagnosis
+
+`e77d025` implements the bounded metadata probe, existing Diagnosis response
+integration and doctor reuse. Limits and exact failure semantics are recorded
+in the audit closure and D235. Agent actual Kubernetes/HTTP probe races pass in
+12.714s; API and CLI/startup races pass in 3.837s/18.397s. Integrated actual signed
+projected-JWT tests exercise both JWKS and TokenReview mounting with original
+expiry before and during acquisition, and the production audit callback refuses
+wrong-cluster metadata reads through F01's guard. Composed auth/API/CLI races
+pass in 6.126s/2.840s/5.719s. No full browser or image qualification is claimed.
+
+### F22b native HTTP/3 discovery
+
+The registry connects only identical bound native DoH/DoH3 endpoints, including
+TLS file identity, request path and client-ID policy. Actual HTTP/1.1 and HTTP/2
+requests receive the short-lived same-authority Alt-Svc only while HTTP/3 is
+ready; a real verifying HTTP/3 client follows it with the same selector.
+Plaintext, proxy headers, different public ports and nonmatching/missing/stopped
+listeners do not advertise. Focused races pass in 1.299s and the full dnsserver
+race suite in 30.461s. Reverse proxies and external UDP reachability remain
+explicit deployment responsibilities. Response padding is F22c, still open.

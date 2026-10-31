@@ -426,6 +426,49 @@ with available assets and passed; three final envtest/projected repetitions pass
 in 13.225 seconds. Combined auth/k8s/core/stack races pass in
 11.264/1.047/10.941 seconds. D231 and deployment guidance state the limits.
 
+## F72 AuditLog Diagnosis and doctor closure
+
+`e77d025` adds a lazy, guarded, metadata-only namespace probe independent of
+the startup reader/shipper decision. It reports missing/denied/unavailable or
+incomplete scans, exact complete counts up to 50,000, and an explicit lower
+bound at 50,001. Limits are one active scan, 500 objects/page, 101 pages,
+2 MiB/page, 64 MiB/scan and three seconds. Pagination retains one RV; repeated
+continuations, malformed/expired/oversized replies never yield a healthy count.
+No discovery, redirects, full-object fallback or remote error text is exposed.
+
+The generic Diagnosis renderer consumes the existing response shape. Doctor
+reuses it and treats informational successful scans as OK. Original captured
+source failure remains terminal; audit permission/license precede acquisition
+and are rechecked afterward. Late API availability does not activate shipping
+without restart, and does not affect DNS readiness.
+
+Agent probe races with real Kubernetes metadata endpoints pass in 12.714s;
+actual router/API and CLI/startup races pass in 3.837s/18.397s. Integrated tests
+then use actual signed projected JWTs through both mounted JWKS and TokenReview
+paths: expiry before acquisition makes zero calls; expiry during acquisition
+withholds results. A production callback test proves wrong cluster identity
+prevents the metadata request. Composed auth/API/CLI races pass in
+6.126s/2.840s/5.719s. These supplement the actual signed-license deadline and
+permission-revocation tests. The UI response shape and renderer are unchanged;
+this package does not claim a new browser-suite pass.
+
+## F22b native HTTP/3 discovery closure
+
+Native DoH advertises a running DoH3 alternative only when bound address/port,
+certificate/key files, path and client-ID policy match. TLS is required;
+forwarding headers and a differing public HTTPS port suppress advertising.
+The header preserves the authority/path and expires after 60 seconds. A stopped
+listener is no longer advertised. Reverse proxies own public discovery and must
+strip/replace backend headers; native readiness cannot prove firewall/NAT reachability.
+
+Actual HTTP/1.1 and HTTP/2 acceptance follows the advertised endpoint with a
+verifying HTTP/3 client and preserves the client-ID selector. Tests cover missing,
+different-port/path/policy/certificate alternatives, plaintext/proxy requests,
+IPv6 authority parsing and stopped listeners. Focused transport races pass in
+1.299s; the complete native DNS transport race suite passes in 30.461s. D240
+and query-path deployment guidance describe the conservative matching contract.
+F22c response padding remains separate work.
+
 ## Prioritized bounded implementation queue
 
 “Owner” is a proposed workstream, not an assignment or authorization to change

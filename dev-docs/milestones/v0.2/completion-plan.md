@@ -18,7 +18,7 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F29b, F09b and F72; the parent integrates F01/F47/F64b. Freed agents take
+agents currently own F29b, F09b and F06; the parent integrates F72/F22b. Freed agents take
 the next independent package, retaining original proofs, ownership, current
 transactions and final credential/license checks. No refused mutation replay.
 
@@ -58,8 +58,8 @@ runners. Unit tests cannot substitute for those results.
 | F03 | `WatchOptions.ResourceVersion`: replay-as-Added vs true resume | Store and HA | External acceptance/decision open |
 | F04 | Shared sqlite/kube table rejecting the same inputs | Store and HA | Integrated d4075f5; scoped real-driver races pass |
 | F05 | Cache parsed endpoints per record-set object | Zones and AD | Queued: partial |
-| F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Queued: missing |
-| F06b | Per-zone `notifySource` | Zones and AD | Queued: missing |
+| F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Active: NOTIFY agent |
+| F06b | Per-zone `notifySource` | Zones and AD | Active: NOTIFY agent |
 | F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Queued: missing |
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Queued: missing |
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Queued: missing |
@@ -94,7 +94,7 @@ runners. Unit tests cannot substitute for those results.
 | F21b | Response-cache inspect REST | DNS and resolver | Queued: missing |
 | F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |
 | F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Implemented; actual transport/config/mounted races pass |
-| F22b | DoH `Alt-Svc` | DNS and resolver | Queued: missing |
+| F22b | DoH `Alt-Svc` | DNS and resolver | Implemented; actual HTTPS/HTTP3 and full transport races pass |
 | F22c | RFC 8467 response padding | DNS and resolver | Queued: missing |
 | F22d | DoH path client IDs | DNS and resolver | Implemented; final gates open |
 | F23 | Separate public blocked-services/safe-search data repo (D120) | DNS and resolver | External acceptance/decision open |
@@ -174,8 +174,8 @@ runners. Unit tests cannot substitute for those results.
 | F69 | Central reads for retired node via scope=node&node=other | Observability and release | Queued: missing |
 | F70 | Prune unreferenced central dictionaries | Observability and release | Queued: missing |
 | F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Queued: missing |
-| F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Active: diagnostics agent |
-| F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Active: diagnostics agent, after F72a |
+| F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Integrated e77d025; bounded real-envtest and composed auth races pass |
+| F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Integrated e77d025; actual router/CLI and composed races pass |
 | F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Queued: missing |
 | F74 | Central availability/shipping lag/audit-spool Grafana panels | Observability and release | Integrated; final gates open |
 | F75a | `GET /audit/verify` using existing verifiers | Observability and release | Implemented; final gates open |
