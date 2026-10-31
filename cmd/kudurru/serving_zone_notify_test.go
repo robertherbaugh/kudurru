@@ -12,10 +12,12 @@ import (
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime/sqliteadapter"
+	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -250,21 +252,89 @@ func TestServingZoneNotifyRejectsFallbackWithoutIntent(t *testing.T) {
 	f := newServingCommandFixture(t)
 	defer f.stop()
 	servingNotifySeed(t, f, public.NotifyNone, false)
+	srv := servingNotifyAPI(t, f)
 	var z public.DNSZone
 	if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "DNSZone", Name: "notify"}, &z); err != nil {
 		t.Fatal(err)
 	}
 	z.Spec.Fallback = &public.ZoneFallbackSpec{}
-	if _, err := f.s.opts.Store.Apply(t.Context(), &z, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+	saved, err := f.s.opts.Store.Apply(t.Context(), &z, store.ApplyOptions{Manager: store.ManagerAPI})
+	if err != nil {
 		t.Fatal(err)
 	}
-	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady && f.s.primary.driver.Status().Ready })
+	wantSource, err := primaryzone.SourceToken(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fallback changes the primary content hash and queues an automatic intent.
+	// Even with delivery disabled, clearing that intent commits another head.
+	// Wait for that exact source/head and its completed publication before the
+	// single request; restore readiness alone permits these intermediate cuts.
+	awaitServingRuntime(t, f.s, func() bool {
+		status := f.s.publisher.Status()
+		driver := f.s.primary.driver.Status()
+		if !status.ProtectedReady || status.Preparing || !driver.Ready {
+			return false
+		}
+		image, err := f.s.opts.Store.ReadGeneration(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		lease, err := f.s.publisher.CaptureHTTP(t.Context())
+		if err != nil {
+			return false
+		}
+		defer lease.Release()
+		bundle := lease.Bundle()
+		if bundle.Identity() != status.Served || !bundle.Identity().Base.Same(image.Generation()) {
+			return false
+		}
+		component, _ := bundle.Component("runtime")
+		owner, ok := component.(*servingbuild.RuntimeOwner)
+		if !ok || owner.Primary() == nil || !owner.Primary().Base().Same(image.Generation()) {
+			return false
+		}
+		o, ok := owner.Primary().CommittedPrimaryStatus("notify")
+		wantLifecycleSource := zk.LifecycleSource{UID: wantSource.UID, ResourceVersion: wantSource.ResourceVersion, IntentDigest: wantSource.IntentDigest}
+		if !ok || !o.ConfigMatchesDesired || o.Source != wantLifecycleSource || o.CommittedSource != wantSource || !owner.Primary().Admitted("manual.test.", f.now) {
+			return false
+		}
+		route := owner.Zones().Zones(f.now).Match("manual.test.")
+		if route == nil || route.Name() != "manual.test." || !route.HasFallback() || !route.RoutingAvailableAt(f.now) {
+			return false
+		}
+		var head zk.ZoneState
+		if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: zk.KindZoneState, Name: zk.HeadName(o.HeadZone)}, &head); err != nil {
+			t.Fatal(err)
+		}
+		if head.ResourceVersion != o.HeadResourceVersion || head.Spec.NotifySequence != 0 || head.Spec.NotifySerial != 0 {
+			return false
+		}
+		acknowledged := false
+		for _, zone := range driver.Zones {
+			if zone.ObjectName == "notify" {
+				acknowledged = zone.Installed && zone.Acknowledged && zone.Published && zone.Version == o.Member.Version && zone.Incarnation == o.Member.Incarnation && zone.Sequence == o.Member.Sequence
+			}
+		}
+		current := f.s.publisher.Status()
+		return acknowledged && current.ProtectedReady && !current.Preparing && current.Served == status.Served
+	})
 	f.s.primary.notifyIntent = func(context.Context, *sqlite.CommandTx, pr.PrimaryStatusObservation) (sqliteadapter.NotifyIntentResult, error) {
 		t.Error("fallback must not queue a NOTIFY intent")
 		return sqliteadapter.NotifyIntentResult{}, errors.New("unexpected intent")
 	}
-	w := servingZoneRequest(t, f, servingNotifyAPI(t, f), http.MethodPost, "/api/v1/zones/notify/notify", nil)
+	before, err := f.s.opts.Store.ReadGeneration(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := servingZoneRequest(t, f, srv, http.MethodPost, "/api/v1/zones/notify/notify", nil)
 	if w.Code != http.StatusUnprocessableEntity {
-		t.Fatal("fallback NOTIFY was not refused", w.Code)
+		status := f.s.publisher.Status()
+		t.Fatalf("fallback NOTIFY was not refused: status=%d preparing=%t publication=%d revision=%d", w.Code, status.Preparing, status.Served.Publication, status.Served.Base.Revision)
+	}
+	f.stop()
+	after, err := f.s.opts.Store.ReadGeneration(t.Context())
+	if err != nil || !before.Generation().Same(after.Generation()) {
+		t.Fatal("fallback refusal changed durable state", err)
 	}
 }
