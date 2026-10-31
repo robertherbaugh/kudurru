@@ -37,6 +37,17 @@ until you add a key (a free personal key covers 3 nodes) or set
 `replicaCount=1`. Changes with `kubectl` are not affected. See
 [License key](#license-key).
 
+### AuditLog trust
+
+When using the Kubernetes AuditLog store (`audit.store: auto` without a central
+database, or `audit.store: auditlog`), provision the independent
+`kudurru-audit-keys` Secret in the release namespace using the
+[AuditLog key runbook](runbooks.md#auditlog-key-provisioning-and-upgrades).
+Helm does not generate or rotate this trust root. Without it, DNS starts and
+local audit spooling continues, but cluster audit shipping and verification are
+unavailable. Existing installations must follow the legacy-cutover procedure
+before upgrading; session encryption keys no longer determine new audit seals.
+
 ### First login
 
 The chart generates three Secrets once and keeps them on uninstall

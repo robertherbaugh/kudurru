@@ -23,6 +23,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Kubernetes audit: independent persisted signing and retained verification
+  keys, explicit rotation/revocation and trust-aware verification caching.
+  Existing AuditLog deployments require the documented key-provisioning and
+  legacy-cutover procedure before upgraded cluster shipping resumes.
 - File objects: live reload of the node configuration’s inline objects, with
   whole-source validation, last-good retention and environment precedence.
 

@@ -68,7 +68,7 @@ runners. Unit tests cannot substitute for those results.
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Queued: missing |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |
 | F09b | Production integration-host wiring and failover | Zones and AD | SQLite mount integrated 687371f; Kubernetes atomic-source and Delete dependencies remain |
-| F10a | Reload inline objects without restart | Zones and AD | Queued: missing |
+| F10a | Reload inline objects without restart | Zones and AD | Integrated 71c0393; whole-source refusal and actual mounted reload races pass |
 | F10b | `Policy/default` as explicit fallback | Zones and AD | Implemented; final gates open |
 | F11a | Server-side Kerberos/GSS-TSIG/TKEY feasibility implementation | Zones and AD | Queued: partial |
 | F11b | Real Windows DC/member/DHCP; SPN provisioning/rotation; edge/VIP routing | Zones and AD | External acceptance/decision open |
@@ -179,7 +179,7 @@ runners. Unit tests cannot substitute for those results.
 | F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Active: central history agent, D256 design pending |
 | F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Integrated e77d025; bounded real-envtest and composed auth races pass |
 | F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Integrated e77d025; actual router/CLI and composed races pass |
-| F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Active: audit key lifecycle agent, D252 reserved |
+| F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Integrated d3604c1; independent trust, historical retention, real envtest and mounted races pass; explicit upgrade provisioning required |
 | F74 | Central availability/shipping lag/audit-spool Grafana panels | Observability and release | Integrated; final gates open |
 | F75a | `GET /audit/verify` using existing verifiers | Observability and release | Implemented; final gates open |
 | F75b | `kudurru audit verify` | Observability and release | Integrated; final gates open |

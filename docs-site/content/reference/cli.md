@@ -158,6 +158,61 @@ Flags:
       --since string   RFC 3339 time or a duration back from now (24h)
 ```
 
+### kudurru audit keys
+
+Manage an operator-protected 0600 ring file. Publish it separately as the ring.json entry of audit.keySecret in the release namespace. These commands never contact a server or print private material. Back up the ring and AuditLog history separately; ordinary configuration backups contain neither.
+
+Before upgrading existing AuditLog storage, explicitly import each retained legacy master-key file and set a past --legacy-before cutoff. Missing old keys cannot be recovered. Rotation preserves public keys; revocation withdraws trust in affected history. Keep the containing directory private and do not remove the persistent .lock file while commands may run.
+
+#### kudurru audit keys init
+
+Initialize an explicitly cluster-bound ring.
+
+```text
+kudurru audit keys init [flags]
+```
+
+Flags:
+
+```text
+      --cluster-id string            Original kube-system namespace UID (required)
+      --file string                  Private ring file (required; 0600)
+      --legacy-before string         Past whole-second RFC3339 cutoff; legacy objects must
+                                     predate it
+      --legacy-master-file strings   Explicit protected legacy master-key files (maximum 16)
+      --namespace string             AuditLog release namespace (required)
+```
+
+#### kudurru audit keys revoke
+
+Withdraw trust in a retained signer.
+
+```text
+kudurru audit keys revoke [flags]
+```
+
+Flags:
+
+```text
+      --file string     Private ring file (required; 0600)
+      --key-id string   Retained public-key fingerprint to revoke
+      --legacy          Withdraw trust in all imported legacy HMAC keys
+```
+
+#### kudurru audit keys rotate
+
+Replace the signer and retain old public keys.
+
+```text
+kudurru audit keys rotate [flags]
+```
+
+Flags:
+
+```text
+      --file string   Private ring file (required; 0600)
+```
+
 ### kudurru audit verify
 
 Ask the server to verify the complete retained audit trail and available batch seals. Requires audit.read and an audit license. The server caches verification results for 30 seconds; checkedAt identifies the scan.

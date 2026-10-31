@@ -1115,3 +1115,27 @@ was weakened. Fresh hosted confirmation remains required.
 Prior-head f7ccf4a CI exposed TestBINDSecondary/NOTIFY failure in job124555248768.
 That actual interoperability regression is assigned for investigation and is
 not closed by successful local chart or protocol tests.
+
+
+### F10a inline declaration reload and F73 independent audit trust
+
+F10a is implemented in `71c0393` (D257). Re-read the bounded original node
+file, validate the entire inline section before reconciliation and preserve
+last-good ownership on unreadable/invalid/oversized input. Environment-locked
+objects remain authoritative. Valid removal intentionally deletes owned
+objects. Parent-directory watching and polling handle atomic replacements and
+missing directories. Per-object writes retain their original fences; this is
+not a cross-object transaction. Full object races pass in 3.408s; composed
+objects/configuration/actual runServe reload races pass in 3.432s/1.553s/30.056s.
+Eleven AttachDialog cases and scoped frontend/Go lint pass.
+
+F73 is implemented in `d3604c1` (D252). Operator-provisioned Ed25519 trust in
+`audit.keySecret` is independent of session keys, retains historical public
+keys and supports explicit revocation. Verification captures and rechecks the
+Secret revision. Legacy HMAC import requires original retained purpose keys
+and a fixed historical creation cutoff. Existing installations must follow the
+upgrade runbook: absent trust suspends cluster shipping/verification while DNS
+and local audit spooling continue. No replacement trust is silently generated.
+Full auditkeys/auditlog races with real Kubernetes envtest pass in 4.919s/15.684s;
+composed API/configuration/actual mounted startup and reload races pass in
+2.142s/1.199s/53.535s. CRDs and configuration/CLI reference are regenerated.
