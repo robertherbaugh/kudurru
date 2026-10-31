@@ -112,3 +112,10 @@ Every settings key can also be set as `KUDURRU_<SECTION>__<KEY>` (for example
 keys (listeners, upstream groups) only from the file. An environment variable
 that names no key stops the server at start, so typos do not go unnoticed.
 `kudurru config schema` lists every key.
+
+## Kubernetes API clients
+
+Jobs and controllers using ServiceAccount credentials must project an audience
+`kudurru` token with a ten-minute lifetime. See [ServiceAccount authentication](kubernetes-service-account-auth.md)
+for the exact projection, rotation requirements, bounded deletion revocation and
+API-outage behavior. Legacy and ordinary one-hour incoming tokens are rejected.

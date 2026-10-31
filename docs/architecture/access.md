@@ -441,7 +441,7 @@ flowchart TD
     B -- "no" --> J{"Bearer JWT?"}
     J -- "yes" --> ISS{"route by iss"}
     ISS -- "a configured OIDC issuer" --> OIDC["verify ID token (JWKS),<br/>aud, azp, claim mapping"]
-    ISS -- "the cluster's issuer" --> K8S["ServiceAccount token:<br/>JWKS offline, else TokenReview<br/>(cached 2 min)"]
+    ISS -- "the cluster's issuer" --> K8S["ServiceAccount token:<br/>JWKS offline, else TokenReview<br/>JWT lifetime ≤ 10 min; cache ≤ 2 min"]
     J -- "no" --> CK{"session cookie?"}
     CK -- "yes" --> SES["open the sealed cookie: expiry,<br/>idle timeout, sessionsValidAfter;<br/>unsafe method needs X-Kudurru-CSRF"]
     CK -- "no" --> UX{"unix socket peer?"}
@@ -461,6 +461,43 @@ flowchart TD
 A credential that is present but wrong is rejected at once (401); it never
 falls through to the next authenticator, and an unknown bearer value is
 never anonymous.
+
+## Kubernetes ServiceAccount credential bounds
+
+The Kubernetes-store identity stack accepts projected ServiceAccount JWTs for
+`audience: kudurru`. Both offline JWKS verification and the TokenReview fallback
+require canonical whole-second `iat` and `exp`, nonfuture issuance, a valid
+optional `nbf`, and `0 < exp - iat <= 10 minutes`. Original expiry is exclusive:
+verification, cache lookup and later request authorization reject at equality.
+Opaque legacy ServiceAccount tokens, missing issuance/expiry, malformed dates,
+one-hour projections and extended-lifetime tokens are rejected. These bounds
+apply to incoming kudurru credentials, not the server's own Kubernetes client.
+
+Offline verification does **not** detect deletion immediately. A deleted pod or
+ServiceAccount can retain offline authority until the original JWT expires,
+within at most ten minutes of issuance. Kubernetes must stop issuing/renewing the
+credential after deletion. TokenReview can observe deletion sooner; a successful
+review is cached for at most two minutes and never beyond the original JWT
+expiry. Every acquisition also checks time after it finishes. Clock rollback
+before verification or issuance fails closed. Neither cache renewal nor a newer
+credential changes an already held proof's expiry.
+
+During an API outage, an already known JWKS can verify a correctly signed token
+within those original bounds. Missing keys or an unavailable/rejecting
+TokenReview deny authentication. Discovery, JWKS and review requests have a
+maximum ten-second transport timeout; shorter caller/client limits remain in
+force. Review responses must match the projected subject, ServiceAccount UID and
+requested audience. Errors and logs omit remote review error text and raw proof.
+This policy bounds offline revocation without introducing periodic TokenReview
+or network fallback into captured reads/current commands.
+
+The verifier retains private, nonserializable request time evidence. Principal
+lookup and the stack/REST authorization gates recheck it, including after a slow
+SAR and before reusing an allowing per-object decision. This time evidence cannot
+authorize a current mutation. Kubernetes tokens remain mounted only in the
+Kubernetes identity stack; SQLite's captured provider path does not accept them.
+Its original raw-proof/publication/writer exclusions and final credential/license
+checks are unchanged. See the [projected token configuration](../deploy/kubernetes-service-account-auth.md).
 
 ## Signing in
 
