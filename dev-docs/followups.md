@@ -102,7 +102,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | Edge resolver-cache flush for remote edges. Local edges (sidecar, compose) are flushed by `dnsdist.CacheFlusher` wired into serve (blocking toggle changes and every compiled list snapshot). Remote edges (edge Deployment/DaemonSet) need a pull path, e.g. a blocking generation in `internalapi.ZoneList` that the supervisor's zone poll turns into a resolver flush | dev-docs/milestones/m3/edge.md, burndown-edge-release | v0.2 |
 | `edge.*`/`vip.*` settings keys (hostOnly) and serve wiring of `vip.NewKeepalived` (Events → audit `cluster.vip.changed`, event `vip.master_changed`) | dev-docs/milestones/m3/edge.md | v0.2 (the Nodes/Edge page now reads live supervisor status; audit events and settings keys remain) |
 | `vip.ServiceProvider` (kube-vip/MetalLB): Owner from the Service status / announcing node; chart annotations from `Annotations()` | dev-docs/milestones/m3/edge.md | v0.2 (moved from M4: MetalLB and kube-vip announce without it; only Owner reporting waits) |
-| `--hmac-key-file` per VRID in the chart (one shared key file today; compose uses the single-file form too) | dev-docs/milestones/m3/edge.md | v0.2 |
+| Per-VRID Helm HMAC references shipped in 376d63d (F42/D253), with private staging and exact mapping; shared defaults retained and coordinated restart required (docs/deploy/vrrp-keys.md) | dev-docs/milestones/m3/edge.md | v0.2 |
 | v0.2 console diff-apply (`newServer`/`setDown`/`rmServer`) and `reloadAllCertificates()` instead of restarts, gated on spike (a) (D17) | §3.6, dev-docs/milestones/m3/edge.md | v0.2 |
 
 ## Auth
@@ -132,7 +132,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 
 | Item | Source | Target |
 |---|---|---|
-| "Is it allowed?" makes a second request to find list exceptions; the dig answer could report a matched exclusion itself | allowlist stream (D144) | v0.2 |
+| "Is it allowed?" now consumes original-query disabled-rule evidence (8879459, D255/F52); no second list read or browser regex matching. Evidence is bounded and does not override the final verdict | allowlist stream (D144) | v0.2 |
 | Allowlist/Denylist: a group list applies through the group's policies, so a policy covering several groups applies it to all of them; a query-time group scope in the policy engine would make the scope exact | allowlist stream (D143) | v0.2 |
 | Regex allow/deny entries get no "overrides block list" information and no response-cache flush (there is no single name to look up or flush) | allowlist stream | v0.2 |
 | Entries browser re-parses the whole cached body for every page of a URL source; add a per-digest index if multi-million-line lists are slow (concurrent parses are capped at 4 per node since dev-docs/milestones/m5/security-v0.1-round.md V15) | allowlist stream | v0.2 |

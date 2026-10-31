@@ -18,7 +18,7 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F73, F42 and a hosted dashboard test failure; the parent
+agents currently own F73, F69/F71 and a hosted BIND NOTIFY failure; the parent
 has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
 disposable Samba/VIP labs. Freed agents take
 the next independent package, retaining original proofs, ownership, current
@@ -131,7 +131,7 @@ runners. Unit tests cannot substitute for those results.
 | F40b | Keepalived provider events to audit/SSE in serve | Edge and VIP | Queued: missing |
 | F41a | ServiceProvider current Owner | Edge and VIP | Queued: missing |
 | F41b | Chart provider annotations | Edge and VIP | Queued: partial |
-| F42 | Per-VRID `--hmac-key-file` in chart | Edge and VIP | Active: per-VRID chart HMAC agent, D253 reserved |
+| F42 | Per-VRID `--hmac-key-file` in chart | Edge and VIP | Integrated 49a9cf8/376d63d/e760dd7; chart/CLI races and real keepalived staging/preflight pass |
 | F43a | dnsdist console backend diff-apply | Edge and VIP | Queued: missing |
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Queued: missing |
 | F43c | Console spike (a) gates both changes | Edge and VIP | External acceptance/decision open |
@@ -146,7 +146,7 @@ runners. Unit tests cannot substitute for those results.
 | F49 | Optional external-dns shared-secret header / tokenFile | IAM and access | Integrated; final gates open |
 | F50 | Separate Kubernetes vs Kudurru SA binding subject or document overlap | IAM and access | D254 documents shared namespace/name compatibility; actual binding engine/token-scope races pass |
 | F51 | Optional HTTPS-only catalogue and BlockList downloads | Operations and UI | Integrated a15480e; HTTP/TLS, redirect, real startup and API refusal races pass |
-| F52 | Dig answer reports matched exclusion, avoiding second request | Operations and UI | Queued: missing |
+| F52 | Dig answer reports matched exclusion, avoiding second request | Operations and UI | Integrated 8879459; original selected-rule evidence, mounted/API races and 28 domain UI cases pass |
 | F53 | Query-time exact ClientGroup scope for allow/deny lists (D143) | Operations and UI | Queued: partial |
 | F54a | Regex “overrides block list” explanation | Operations and UI | Queued: missing |
 | F54b | Regex allow/deny cache invalidation | Operations and UI | Queued: partial |
@@ -174,9 +174,9 @@ runners. Unit tests cannot substitute for those results.
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
 | F68b | Knot catalog consumer interoperability | Zones and AD | Queued: missing |
 | F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; original VM qualification remains external |
-| F69 | Central reads for retired node via scope=node&node=other | Observability and release | Queued: missing |
+| F69 | Central reads for retired node via scope=node&node=other | Observability and release | Active: central history agent, D256 design pending |
 | F70 | Prune unreferenced central dictionaries | Observability and release | Integrated eef61bd/b1a29e8/a7304d8; actual PostgreSQL 17 races and lint pass |
-| F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Queued: missing |
+| F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Active: central history agent, D256 design pending |
 | F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Integrated e77d025; bounded real-envtest and composed auth races pass |
 | F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Integrated e77d025; actual router/CLI and composed races pass |
 | F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Active: audit key lifecycle agent, D252 reserved |

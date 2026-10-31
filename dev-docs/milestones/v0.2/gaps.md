@@ -1069,3 +1069,49 @@ independent Kubernetes SAR grants. No provider-isolated subject is claimed.
 On pushed `f7ccf4a`, hosted security run
 [41207334455](https://github.com/robertherbaugh/kudurru/actions/runs/41207334455)
 passes all applicable jobs. Later commits require their own hosted results.
+
+### F42 per-VRID secrets, F52 query explanations and dashboard transport
+
+F42 is implemented by `49a9cf8`, `376d63d`, `e760dd7` (D253). Explicit Secret
+references must cover every configured VRID exactly once, with no shared fallback
+or Helm content reads. A bounded init stages private root0600 files because
+real keepalived 2.4.3 refuses group-readable HMAC files. The normal container
+retains SETUID/SETGID for its existing script user; the init drops all capabilities.
+Real baseline preflight fails without these script capabilities and passes with
+them. Seven disposable cases cover per-VRID/shared/rotated references, missing/
+empty/oversized refusal and staging all 255 files (0.531s, retained 30s bound).
+Parent composed deployment/CLI/keepalived races pass in 4.774s/1.196s/16.969s.
+Ordinary deploy generation and local pinned Trivy misconfiguration scan pass.
+Agent lint reports zero issues. Actual kubelet/CSI projection, enforced cgroup
+limits and seamless mixed-key rotation are not claimed; coordinated restart
+remains required. Owned lab resources were removed.
+
+F52 is implemented in `8879459` (D255). Actual removed rules remain bounded
+diagnostic witnesses in the immutable compiled lists. HTTP dig uses the original
+question/client/policy selection, requires list-read permission for evidence,
+and keeps it outside response caches. The UI uses the same answer without a
+second list read or browser regex evaluation; another rule can still block.
+Compile/query bounds and partial evidence are explicit. Stale/unselected rules
+are omitted; response-address and alias-target exclusions are outside scope.
+Full blocking/parser/matcher/stage races pass (1.672s/1.144s/3.280s/1.325s);
+API/capture/schema races pass in 4.876s. Actual runServe SQLite/API acceptance
+passes in 3.350s, including a disabled rule and a still-blocking second source.
+All 28 domain UI tests pass in 39.67s, plus typecheck and scoped frontend/Go
+lint. OpenAPI and both clients are regenerated. Fixed-class performance and
+remote edge invalidation retain their separate gates.
+
+Dashboard fixture fix `69e23c8` owns a test-only Undici 8.12.3 dispatcher and
+closes it before MSW teardown. A controlled cancellation/native-fetch regression
+exposes eight unintended real TCP connections with the old fixture and zero
+with the fix. The original hosted component failure's native cause was not
+captured, so this is a concrete transport defect fix, not a claim that a passing
+rerun alone identifies every intermittent failure. The unchanged authenticator
+and session tests plus regression pass 1,100 executions; full exact hosted
+Node24.22.0 acceptance passes 881/881 (148.55s). Parent `e90dd7a` binds the probe
+explicitly to loopback; 26 composed cases pass in 5.78s. No authentication
+assertion, timeout, retry, production fetch path or MSW unhandled-request rule
+was weakened. Fresh hosted confirmation remains required.
+
+Prior-head f7ccf4a CI exposed TestBINDSecondary/NOTIFY failure in job124555248768.
+That actual interoperability regression is assigned for investigation and is
+not closed by successful local chart or protocol tests.

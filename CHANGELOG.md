@@ -23,6 +23,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Helm: explicit per-VRID HMAC Secret references, strict complete mapping,
+  private key staging and coordinated restart guidance for keepalived.
 - Domain checks: matching disabled rules come from the query's captured lists
   and client policy, with bounded evidence and no second browser request.
 - CLI: reviewed zone-option get/set commands with resource-version checks,
