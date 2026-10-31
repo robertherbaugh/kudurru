@@ -39,8 +39,10 @@ type ClientGroupSpec struct {
 	// into this group by the winning identification tier. A true value in any
 	// tied group wins; groups in lower tiers do not contribute. This does not
 	// grant authentication or bypass DNS policy, ACLs or message validation.
+	// Typed writes include false so SSA can clear the last spec field without
+	// turning the required spec object into null.
 	// +optional
-	RateLimitExempt bool `json:"rateLimitExempt,omitempty"`
+	RateLimitExempt bool `json:"rateLimitExempt"`
 
 	// +optional
 	// +kubebuilder:validation:MaxItems=1000

@@ -247,7 +247,7 @@ export interface ClientMatcher {
 
 export type ClientGroup = KObject<
   'ClientGroup',
-  { clients?: ClientMatcher[]; sources?: { integrationRef?: { name: string; namespace?: string } } },
+  { clients?: ClientMatcher[]; rateLimitExempt?: boolean; sources?: { integrationRef?: { name: string; namespace?: string } } },
   { observedGeneration?: number; members?: number; conditions?: Condition[] }
 >;
 
