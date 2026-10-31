@@ -604,3 +604,54 @@ active owners and separate external qualification. All GitHub workflows on
 `6fe025e` pass, including [CI 41182647688](https://github.com/robertherbaugh/kudurru/actions/runs/41182647688)
 and [Security 41182647671](https://github.com/robertherbaugh/kudurru/actions/runs/41182647671).
 The known Cloudflare docs check remains excluded by the user.
+
+### F01/F47 integrated identity and credential boundaries
+
+`1bf8586` requires an independently configured kube-system UID for offline
+objects/settings and guards initial online requests, including auxiliary
+clients. Empty pins retain online-only compatibility; saved state without
+identity needs verified refresh. Initial verification is cached until restart;
+endpoint retargeting requires restart and continuous replacement detection is
+not claimed. D230 and the generated configuration reference record the contract.
+
+`101b614`, `9e7b177` and `41a7694` bound Kubernetes projected credentials to
+ten minutes of original lifetime on both JWKS and TokenReview paths, retain
+private time evidence through delegated/per-object authorization, and bound the
+complete review acquisition including pre-request throttling. A rotating
+600-second audience kudurru projection is required; opaque legacy and ordinary
+hour-long tokens are deliberately refused. Offline pod/ServiceAccount deletion
+is bounded by original expiry, not immediately detected. D231 and the operator
+projection example describe this compatibility change.
+
+Combined real-asset package races pass: config 7.932s, settings 4.231s, localdb
+2.046s, zonecache 23.589s, Kubernetes authentication 11.264s, core authentication
+1.047s, auth stack 10.941s and the actual Kubernetes store 76.313s. These run
+without the envtest skip flag. The agent's full TokenReview deadline acceptance
+also passes three real-envtest repetitions in 13.225s, including throttling,
+shorter caller/client deadlines and observed HTTP cancellation. The existing
+legitimate token fixture already requests 600 seconds; refusal cases remain.
+
+### Hosted fuzz regression: escaped SOA export
+
+The `fuzz 2/7` job on `41ffd21` failed `FuzzImportBIND`: an escaped SOA
+name exported to different text after re-import. The exact hosted corpus
+`f3a91c97a2a41558` reproduces locally and is retained. `fqdn` now folds only
+ASCII bytes, preserving arbitrary DNS octets, and SOA/apex NS names use the
+existing canonical presentation renderer. Exact mailbox presentation assertions
+now expect the canonical spelling of the same escaped label; additional
+wire/key comparisons require byte preservation and a stable round trip.
+
+Zone races pass in 3.395 seconds; the unchanged fixed-point fuzz invariant
+passes a 60-second run with 109,418 executions. Scoped zone/config/store/auth/API/
+CLI lint reports zero issues. This fixes the observed fuzz failure; hosted
+checks on the subsequent pushed head remain separate evidence.
+
+Composed startup/identity/health races pass in 38.391 seconds. The new health
+fixture first incorrectly expected 200 for stale/unadmitted states; it now
+asserts their existing 503 response. It also waits for actual snapshot admission
+or explicit refusal within the original 20-second budget, because initial
+unsynced and admitted-stale states share SERVFAIL/503. It then requires the
+correct age for admitted fresh/stale snapshots, no age for first boot or wrong/
+legacy identity, and no leader during outage. Missing host pin is covered by
+the separate startup-refusal test; it intentionally cannot start offline.
+Final CLI lint reports zero issues and generated configuration/CLI docs pass.

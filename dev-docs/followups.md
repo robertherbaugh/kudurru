@@ -23,7 +23,7 @@ The evidence audit preserves their original requirements and limits.
 
 | Item | Source | Target |
 |---|---|---|
-| Cold-start cluster-ID check is skipped while the kube driver has never reached the apiserver (its cluster ID is unknown then, the very outage case); compare against an independent source such as a node setting or the downward API | hardening report | v0.2 |
+| Cold-start cluster identity now requires an independently provisioned host pin for offline admission, with guarded initial online verification; F01 closure and compatibility limits are in the v0.2 audit | hardening report | v0.2 |
 | sqlite: remaining §11.4 audit fields (incl. `auth.DecisionFrom(ctx).Path`) via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing; `InternalKinds` once internal kinds exist (the daily `PruneAudit` leader loop and `WithActor` from the API principal landed in dev-docs/milestones/m5/burndown-server.md) | store-sqlite report | v0.2 |
 | `WatchOptions.ResourceVersion` semantics: replay-as-Added (documented) vs true resume | store-kube spike | v0.2 |
 | conformance: shared "rejects the same inputs" table run against sqlite and kube | validator spike | v0.2 (moved from M2: test-only, both drivers already pass the conformance suite) |
@@ -72,7 +72,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | D60 blocked-services and safe-search catalogue in a separate public data repository: v0.1 embeds a kudurru-authored catalogue (`internal/listdata/catalogue`) that `blocking.catalogue.url` can replace at runtime (D120); move the data to its own repository once the project owner creates it | D120 | v0.2 (the owner creates and publishes the repository) |
 | ratelimit: exemptions per ClientGroup (slip counter landed in `661174c`; `ratelimit.*` reload without a restart landed in dev-docs/milestones/m5/burndown-server.md) | hardening report | v0.2 |
 | Multi-socket listeners for DoT (same code path, left at one socket) and DoQ/DoH3 (needs QUIC connection-ID aware routing) | hardening report | v0.2 (moved from M3: one socket limits throughput only) |
-| Settings hot reload caveats: a `querylog.privacy`/`anonymize`/`exclude.*` reload builds a new privacy transform, so `pseudonym` mode draws a new HMAC key (pseudonyms change at the reload); `cache.maxEntries` growth keeps the shard count chosen at start (very large growth means large shards); `blocking.refreshInterval`, `blocking.allowDegraded`, `querylog.enabled/sink`, `auth.*` still need a restart (restartRequired) | dev-docs/milestones/m5/burndown-server.md | v0.2 |
+| Settings hot reload caveats: exclusion-only reloads preserve daily pseudonym identity (F26a closed); privacy mode/method changes retain separate lifecycles; `cache.maxEntries` growth keeps the shard count chosen at start (very large growth means large shards); `blocking.refreshInterval`, `blocking.allowDegraded`, `querylog.enabled/sink`, `auth.*` still need a restart (restartRequired) | dev-docs/milestones/m5/burndown-server.md | v0.2 |
 
 ## Recursive resolver (D170)
 
@@ -112,7 +112,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | Binding revocation times (`rbac.BindingSource`, which stops honoring a sealed session grant once a binding change removed it) live in memory per replica; after a restart only the "a live binding still provides it" rule applies. Persist a revocation epoch (state.db / the runtime ConfigMap) or bump a cluster-wide grants-valid-after on narrowing | dev-docs/milestones/m3/auth.md | v0.2 |
 | OIDC identities have no stored record: no per-user "log out everywhere" or disable, and an OIDC user's personal tokens stay valid until expiry while bindings still provide their frozen grants. Needs the v0.2 user store (with `autoProvision: never`, `syncGroups`) | dev-docs/milestones/m3/auth.md | v0.2 |
 | Login lockouts (5/IP → 5 min, 10/user → 15 min) are in memory per replica, so N replicas allow N× the attempts; share counters through the store if that matters | dev-docs/milestones/m3/auth.md | v0.2 |
-| Projected ServiceAccount tokens verified offline by JWKS are not re-checked against a deleted pod or ServiceAccount within their lifetime (TokenReview would catch it); cap the accepted `exp - iat` or re-validate with TokenReview every few minutes | dev-docs/milestones/m3/auth.md | v0.2 |
+| Projected ServiceAccount credentials now require an original lifetime of at most ten minutes on JWKS and TokenReview paths, with expiry retained through authorization and cache bounds (F47 closed). Offline deletion is not immediately observable; explicit 600-second audience kudurru projection is required | dev-docs/milestones/m3/auth.md | v0.2 |
 | `autoProvision: never` and `syncGroups` once the user store exists; RP-initiated logout | auth spike | v0.2 |
 
 ## Security (dev-docs/milestones/m5/security.md)

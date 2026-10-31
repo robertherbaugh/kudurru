@@ -18,7 +18,7 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents initially own F01, F47 and F04; the parent owns F64a. Freed agents take
+agents currently own F29b, F09b and F72; the parent integrates F01/F47/F64b. Freed agents take
 the next independent package, retaining original proofs, ownership, current
 transactions and final credential/license checks. No refused mutation replay.
 
@@ -50,7 +50,7 @@ runners. Unit tests cannot substitute for those results.
 
 | ID | Requirement | Workstream | Current work state |
 |---|---|---|---|
-| F01 | Cold-start cluster-ID check when kube has never reached the API | Store and HA | Active: cluster identity agent |
+| F01 | Cold-start cluster-ID check when kube has never reached the API | Store and HA | Integrated 1bf8586; actual startup/identity/health races pass |
 | F02a | SQLite remaining §11.4 audit columns, including authz path | Store and HA | Queued: missing |
 | F02b | SQLite secret redaction in before/after | Store and HA | Queued: partial |
 | F02c | SQLite cluster epoch / primary fencing setters | Store and HA | Implemented; final gates open |
@@ -64,7 +64,7 @@ runners. Unit tests cannot substitute for those results.
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Queued: missing |
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Queued: missing |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |
-| F09b | Production integration-host wiring and failover | Zones and AD | Queued: partial |
+| F09b | Production integration-host wiring and failover | Zones and AD | Active: integration-host agent |
 | F10a | Reload inline objects without restart | Zones and AD | Queued: missing |
 | F10b | `Policy/default` as explicit fallback | Zones and AD | Implemented; final gates open |
 | F11a | Server-side Kerberos/GSS-TSIG/TKEY feasibility implementation | Zones and AD | Queued: partial |
@@ -110,7 +110,7 @@ runners. Unit tests cannot substitute for those results.
 | F27 | RFC 8198 aggressive NSEC/NSEC3 cached synthesis | DNS and resolver | Queued: missing |
 | F28 | RFC 5011 automatic trust-anchor updates | DNS and resolver | Queued: missing |
 | F29a | Expiring negative trust anchors for forwarded validation | DNS and resolver | Implemented; final gates open |
-| F29b | Negative trust anchors for recursive groups | DNS and resolver | Queued: missing |
+| F29b | Negative trust anchors for recursive groups | DNS and resolver | Active: recursive NTA agent |
 | F30 | DNSSEC validation of forwarded answers | DNS and resolver | Implemented; final gates open |
 | F31 | DNS cookies to authoritative servers | DNS and resolver | Queued: missing |
 | F32 | Persist node-scope API changes or remove write half | Operations and UI | Queued: partial |
@@ -137,7 +137,7 @@ runners. Unit tests cannot substitute for those results.
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |
 | F45b | External per-user disable / log out everywhere administration | IAM and access | Queued: partial |
 | F46 | Share login lockout counters across replicas | IAM and access | Queued: missing |
-| F47 | Bound offline Kubernetes SA tokens or periodically TokenReview | IAM and access | Active: service-account agent |
+| F47 | Bound offline Kubernetes SA tokens or periodically TokenReview | IAM and access | Integrated 101b614/9e7b177/41a7694; real envtest and races pass |
 | F48a | `autoProvision: never` and `syncGroups` with user store | IAM and access | Implemented; final gates open |
 | F48b | RP-initiated logout | IAM and access | Queued: missing |
 | F49 | Optional external-dns shared-secret header / tokenFile | IAM and access | Integrated; final gates open |
@@ -163,7 +163,7 @@ runners. Unit tests cannot substitute for those results.
 | F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Queued: partial |
 | F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | External acceptance/decision open |
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
-| F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; composed kube outage check pending F01 integration |
+| F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
 | F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Queued: missing |
 | F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Queued: missing |

@@ -23,6 +23,14 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Kubernetes recovery: independently configured cluster identity pins initial
+  online access and saved DNS/settings admission. Offline recovery requires
+  `store.kube.expectedClusterID`; legacy identity-free state needs live refresh.
+- Kubernetes authentication: require projected audience credentials with at most
+  ten minutes of original lifetime, retain expiry through authorization, and
+  bound complete TokenReview acquisition. Legacy and hour-long tokens are
+  refused; use a rotating audience `kudurru` projection with 600-second expiry.
+
 - Query-log privacy: exclusion-only reloads preserve daily client pseudonyms,
   including across midnight; privacy mode/method changes and restart keep their
   separate key lifecycles.
@@ -61,6 +69,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   availability, query shipping lag and audit spool drops.
 
 ### Fixed
+
+- Zone import/export: preserve non-ASCII DNS label octets and canonicalize SOA
+  and apex nameserver names so repeated BIND export stays byte-identical.
 
 - SQLite administration: restore current domain, Allowlist, Denylist, query-log
   actions and unblock decisions with atomic list/policy effects and final

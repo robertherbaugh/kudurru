@@ -323,7 +323,11 @@ Real runServe HTTP and local state-transition races pass in 2.160 seconds;
 health and authenticated peer-health races pass in 1.040/3.338 seconds. Tests
 cover stale/fresh saved ages, live recovery, remote observation, old self terms
 and absence of detail acquisition on startup/live/ready probes. Composed
-Kubernetes offline assertions follow F01 integration.
+Kubernetes startup/identity/health races now pass in 38.391 seconds after F01
+integration. Fresh and stale admitted snapshots report their actual age;
+first boot and rejected identities report no age; API outage reports no leader.
+The fixture observes admission/refusal within its original startup budget,
+because unsynced and admitted-stale states both return SERVFAIL/503.
 
 ## F04 shared rejection conformance closure
 
@@ -385,6 +389,42 @@ including exclusion application, ingestion/lookup equality, midnight, detached
 caller objects, mode changes and a fresh collector. The production reload
 subscription test passes under races (`cmd/kudurru`, 1.146 seconds). Scoped
 querylog/CLI lint reports zero issues. Other F26 reload requirements remain open.
+
+## F01 independent offline identity closure
+
+`1bf8586` adds host-only restart-required `store.kube.expectedClusterID` and
+shared saved-state admission. Both saved and independently supplied identities
+must be nonempty and equal; a known online mismatch also refuses. All ordinary
+and auxiliary Kubernetes requests inherit the initial identity guard. Matching
+verification is cached for the process lifetime, so endpoint retargeting requires
+restart. Empty pins preserve online compatibility but disable offline objects
+and settings. Legacy identity-free saved state requires verified live refresh.
+No saved data is relabeled, and auxiliary requests do not refresh snapshot age.
+
+Combined config/settings/localdb/zonecache/store races pass with real envtest
+assets (7.932/4.231/2.046/23.589/76.313 seconds). Agent acceptance includes actual
+cold start and live recovery; composed health acceptance is recorded below.
+D230 and the generated/operator configuration document the compatibility policy.
+
+## F47 bounded projected credential closure
+
+`101b614`, `9e7b177` and `41a7694` require integral original issuance/expiry,
+valid optional not-before and at most ten minutes lifetime on both Kubernetes
+verification paths. Positive cache entries last at most two minutes and never
+past original expiry; clock rollback refuses. Private time evidence is rechecked
+after delegated SAR and before cached object authorization. Complete TokenReview
+acquisition, including client-go throttling, has a ten-second maximum with
+shorter caller/client deadlines and cancellation preserved. No new Kubernetes
+credential route is added to SQLite current commands.
+
+Use a rotating audience kudurru projection with expirationSeconds 600; opaque
+legacy and hour-long tokens are intentionally refused. Offline deletion remains
+possible until original expiry, not immediate revocation. Real signatures/JWKS,
+authoritative deletion/outage HTTP fixtures and actual REST cache-flush refusal
+exercise these boundaries. The previously skipped existing envtest was rerun
+with available assets and passed; three final envtest/projected repetitions pass
+in 13.225 seconds. Combined auth/k8s/core/stack races pass in
+11.264/1.047/10.941 seconds. D231 and deployment guidance state the limits.
 
 ## Prioritized bounded implementation queue
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +52,7 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 			t.Cleanup(unavailable.Close)
 			cfg := offlineServeConfig(t, unavailable.URL)
 			cfg.Store.Kube.ExpectedClusterID = tc.expected
+			started := time.Now()
 			if tc.snapshot {
 				db, err := localdb.OpenSnapshotStore(t.Context(), filepath.Join(cfg.Node.DataDir, localdb.FileName))
 				if err != nil {
@@ -104,6 +107,60 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 						rcode = answer.Rcode
 					}
 					t.Fatalf("DNS never reached expected snapshot state: response_received=%t rcode=%d exchange_failed=%t readiness=%d", answer != nil, rcode, err != nil, ready)
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			// Human diagnostics report only the admitted served snapshot, even
+			// when it is stale, and never invent a leader during API outage.
+			clientHTTP := &http.Client{Timeout: time.Second}
+			for {
+				resp, err := clientHTTP.Get("http://" + cfg.Listeners.Ops.Address + "/healthz")
+				if err != nil {
+					t.Fatal("human health unavailable during API outage")
+				}
+				var body map[string]json.RawMessage
+				err = json.NewDecoder(resp.Body).Decode(&body)
+				_ = resp.Body.Close()
+				if err != nil || resp.StatusCode != tc.wantReady {
+					t.Fatal("human health returned an invalid response")
+				}
+				var leader, snapshotAge string
+				if json.Unmarshal(body["leader"], &leader) != nil || json.Unmarshal(body["snapshotAge"], &snapshotAge) != nil {
+					t.Fatal("human health omitted string leader/snapshotAge fields")
+				}
+				if leader != "" {
+					t.Fatal("human health reported a leader without API contact")
+				}
+				settled := false
+				if tc.snapshot && tc.expected != "" && tc.expected == tc.savedID {
+					if snapshotAge != "" {
+						age, parseErr := time.ParseDuration(snapshotAge)
+						if parseErr != nil || age < tc.age-time.Second || age > tc.age+time.Since(started)+time.Second {
+							t.Fatal("human health age does not describe the admitted snapshot")
+						}
+						settled = true
+					}
+				} else {
+					if snapshotAge != "" {
+						t.Fatal("human health reported an unadmitted snapshot age")
+					}
+					var unready []string
+					if json.Unmarshal(body["unready"], &unready) != nil {
+						t.Fatal("human health omitted unavailable snapshot diagnosis")
+					}
+					for _, reason := range unready {
+						if strings.Contains(reason, "local.db snapshot rejected:") || (!tc.snapshot && strings.Contains(reason, "local.db holds no snapshot yet")) {
+							settled = true
+						}
+					}
+				}
+				if settled {
+					break
+				}
+				// Unsynced and stale both return SERVFAIL/503. Wait for the
+				// actual admission/refusal within the original startup budget.
+				if time.Now().After(deadline) {
+					t.Fatal("human health never reported the expected snapshot decision")
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
