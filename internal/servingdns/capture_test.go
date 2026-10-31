@@ -21,6 +21,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/responsepolicy"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingdns"
@@ -202,7 +203,7 @@ func TestBundleCaptureAllOldAllNewThroughCNAMEAndDNS64(t *testing.T) {
 			_ = set.Close()
 			return serving.Prepared{}, err
 		}
-		components := map[string]any{"objects": c.Image, "zones": zone.Set(zs), "policy": ix, "resolution": rv, "response": response, "cache": cv, "blocking": block, "inventory": inventoryView{inv.Snapshot()}, "auth": emptyAuthView{c.Token.Generation()}, "runtime": fixtureRuntime{"dns-fixture", addresses[cut]}, "control": controls}
+		components := map[string]any{"objects": c.Image, "zones": zone.Set(zs), "policy": ix, "resolution": rv, "response": response, "cache": cv, "blocking": block, "inventory": inventoryView{inv.Snapshot()}, "auth": emptyAuthView{c.Token.Generation()}, "runtime": fixtureRuntime{"dns-fixture", addresses[cut]}, "control": controls, "logging": &querylog.Captured{}}
 		prepared := serving.Prepared{Current: func() bool { return true }}
 		for name, value := range components {
 			component := serving.Component{Name: name, Base: c.Token.Generation(), Identity: c.Token.Generation().Digest + ":" + name, Value: value}

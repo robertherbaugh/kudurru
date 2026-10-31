@@ -601,8 +601,8 @@ Each key in the metadata table
 |---|---|---|
 | node, `hostOnly`, restart | `node.*`, `listeners.*`, `store.*`, `tsigKeys`, `auth.adminSocket.*` | file or environment, then restart; never through the API |
 | node, dedicated DHCP setup | enabled state and complete DHCP scope topology | DHCP setup API/dashboard, explicit file adoption, then restart; generic Settings remains host-only |
-| cluster, hot | `control.*`, `upstreams.*`, `cache.*`, `blocking.enabled/defaultResponse/blockTTL`, `ratelimit.*`, `querylog.privacy/retention` | API, dashboard, settings file; applied without a restart |
-| cluster, restart | `querylog.enabled`, `blocking.initStrategy`, `auth.session.*` | as above, applied at the next start |
+| cluster, hot | `control.*`, `upstreams.*`, `cache.*`, `blocking.enabled/defaultResponse/blockTTL`, `ratelimit.*`, `querylog.enabled/sink/privacy/retention` | API, dashboard, settings file; applied without a restart |
+| cluster, restart | `blocking.initStrategy`, `auth.session.*` | as above, applied at the next start |
 | cluster, `hostOnly` | `auth.identityProviders`, `rbac.bindings` | file or environment only |
 
 ```mermaid

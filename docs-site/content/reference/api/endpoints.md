@@ -135,12 +135,14 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/allowlist/{id}` | Get a Allowlist entry | `blocklists.read` (cluster) |
 | PATCH | `/api/v1/allowlist/{id}` | Change a Allowlist entry | `blocklists.write` (cluster) |
 | DELETE | `/api/v1/allowlist/{id}` | Delete a Allowlist entry | `blocklists.write` (cluster) |
+| GET | `/api/v1/allowlist/{id}/impact` | Test a regex entry against one domain and opposing lists | `blocklists.read` (cluster) |
 | POST | `/api/v1/allowlist:batch` | Switch on, off or delete several Allowlist entries | `blocklists.write` (cluster) |
 | GET | `/api/v1/denylist` | List Denylist entries | `blocklists.read` (cluster) |
 | POST | `/api/v1/denylist` | Add Denylist entries | `blocklists.write` (cluster) |
 | GET | `/api/v1/denylist/{id}` | Get a Denylist entry | `blocklists.read` (cluster) |
 | PATCH | `/api/v1/denylist/{id}` | Change a Denylist entry | `blocklists.write` (cluster) |
 | DELETE | `/api/v1/denylist/{id}` | Delete a Denylist entry | `blocklists.write` (cluster) |
+| GET | `/api/v1/denylist/{id}/impact` | Test a regex entry against one domain and opposing lists | `blocklists.read` (cluster) |
 | POST | `/api/v1/denylist:batch` | Switch on, off or delete several Denylist entries | `blocklists.write` (cluster) |
 | GET | `/api/v1/domains` | List Allowlist and Denylist entries together | `blocklists.read` (cluster) |
 
@@ -213,6 +215,8 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/queries/suggestions` | Filter value suggestions | `querylog.read` (cluster) |
 | POST | `/api/v1/queries/{id}/actions` | Allow or deny the domain of a logged query | `blocklists.write` (cluster) |
 | DELETE | `/api/v1/querylog` | Delete query-log rows | `querylog.purge` (cluster) |
+| GET | `/api/v1/querylog/rollup-evidence` | Capture bounded retained-input recovery evidence | `querylog.read` (cluster) |
+| POST | `/api/v1/querylog/rollup-evidence/verify` | Verify recovery evidence without changing history | `querylog.read` (cluster) |
 | GET | `/api/v1/querylog/status` | Query-log size, retention and writer state | `querylog.read` (cluster) |
 
 ## runtime

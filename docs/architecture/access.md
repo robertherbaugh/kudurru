@@ -19,6 +19,25 @@ grant, so role bindings and Kubernetes SubjectAccessReview grant nothing. The
 first-boot administrator, the bootstrap token and the admin socket keep full
 access.
 
+## CLI operation transport
+
+`internal/apiclient` retains authentication snapshots, cookie/CSRF handling,
+pagination, structured errors and SSE. Its documented routes call the matching
+`internal/apiclient/openapi` operation method through a generated dispatch table.
+`make client-go` regenerates that table from OpenAPI and the generated Go AST;
+unsupported or missing operation coverage fails generation.
+
+The adapter preserves raw request bodies and original contexts. Its final guard
+checks method, origin and escaped path segments before supplying the original
+query, headers and body policy. An encoded slash cannot become a route separator.
+Unknown method/path pairs retain the raw compatibility path; matched parameter,
+build or transport failures never cause fallback or an adapter retry. Single-use
+auth retains disabled redirects and cleared replay headers/GetBody. SSE removes
+only the per-call HTTP timeout while retaining cancellation and its existing
+explicit subscription policy. Custom HTTP clients and low-level generated
+request editors remain trusted extension points; the public CLI exposes no
+request editor.
+
 ## Coherent authentication owner foundation
 
 `internal/servingauth` prepares an immutable auth view from one complete SQLite

@@ -1751,10 +1751,10 @@
       "type": "bool",
       "scope": "cluster",
       "default": true,
-      "help": "Record the queries each node answers, for the dashboard's query log, statistics and charts; off records nothing and those pages stay empty. Each node keeps its own log (querylog.db with rollups, the stats API).",
+      "help": "Record the queries each node answers, for the dashboard's query log, statistics and charts; off stops new recording and preserves earlier local history. Each node keeps its own log (querylog.db with rollups, the stats API).",
       "hostOnly": false,
       "envLocked": false,
-      "restartRequired": true,
+      "restartRequired": false,
       "writeOnly": false,
       "label": "Query log enabled",
       "group": "Query log"
@@ -1889,10 +1889,10 @@
       "type": "string",
       "scope": "cluster",
       "default": "sqlite",
-      "help": "Where queries are recorded: sqlite (default) keeps them in a database the dashboard reads; slog writes one JSON log line per query and stores nothing, for an external log system.",
+      "help": "Where queries are recorded: sqlite (default) keeps them in a database the dashboard reads; slog writes one JSON log line per query without adding database rows, for an external log system.",
       "hostOnly": false,
       "envLocked": false,
-      "restartRequired": true,
+      "restartRequired": false,
       "writeOnly": false,
       "label": "Query log sink",
       "group": "Query log",
@@ -1905,7 +1905,7 @@
         {
           "value": "slog",
           "label": "Log lines",
-          "help": "One JSON log line per query and nothing stored; the dashboard shows no query history."
+          "help": "One JSON log line per query; earlier local history remains readable."
         }
       ]
     },

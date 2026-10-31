@@ -28,6 +28,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Query log: reload admission and sinks with each request retaining its original
+  publication. Accepted batches drain once to their original sink; local history
+  stays readable after disabling logging or restarting with a slog sink.
+- CLI: use generated OpenAPI operation methods beneath the existing auth,
+  pagination, SSE and error helpers, with reproducible endpoint dispatch.
+
 - Helm: provider annotation parity for mixed/split DNS Services across edge
   topologies; kube-vip avoids implicit MetalLB sharing, and Service VIP
   providers require a LoadBalancer DNS Service.

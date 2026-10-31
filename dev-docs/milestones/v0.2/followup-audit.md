@@ -725,3 +725,45 @@ was weakened. Fresh hosted confirmation remains required.
 Prior-head f7ccf4a CI exposed TestBINDSecondary/NOTIFY failure in job124555248768.
 That actual interoperability regression is assigned for investigation and is
 not closed by successful local chart or protocol tests.
+
+### F26d captured query-log sinks and disabled restart
+
+`08ee759` and `9a62eb4` implement D266. Complete DNS publications include the
+logging owner, retaining enabled/sink/privacy through emission. One bounded
+queue/tail and at most one SQLite writer plus one slog sink survive reloads.
+Sink preparation precedes publication; failure retains the previous bundle.
+Accepted batches drain once to their original destination without replay.
+Local history, purge, retention and configured shipping survive disabled/slog
+modes, including restart with an existing database. Missing files stay lazy.
+Shutdown joins the consumer before closing its writer; a timed-out external
+handler cannot cause a replacement writer or close under pending I/O.
+
+Agent mounted races pass in 48.457s, collector/SQLite in 1.154s/67.021s and full
+servingbuild in 161.917s. Actual two-start UDP/TCP/history/purge regressions pass
+twice in 85.887s. Parent mounted races pass in 38.366s, composed servingbuild/API
+in 6.240s/9.873s, complete servingdns in 2.147s and combined CLI/restart races
+in 33.815s. Scoped lint reports zero issues. Settings UI passes 22 cases;
+generated schemas, help and references are updated. The agent full API run
+hit its 180-second limit in source-scan coverage; no full API pass is claimed.
+
+### F37 generated CLI transport
+
+`a106708` plus the parent-generated artifact and Makefile hook implement D270.
+The reproducible generator covers all 156 merged OpenAPI operations with direct
+calls to their matching generated methods. The CLI retains raw body and
+query/header ownership, cookie/CSRF, pagination, SSE, structured errors and
+original cancellation. Final method/origin/escaped-segment checks prevent path
+rewrites. Unknown routes retain one raw fallback; matched failures never retry
+or fall back. Custom HTTP clients and low-level editors remain trusted extensions.
+
+Complete agent generator/client races pass in 2.983s/1.633s and selected actual
+router/SQLite CLI races cover 72 tests/subtests in 21.925s; scoped lint reports
+zero issues. Parent regenerated for the merged routes; generator/client races
+pass in 2.784s/1.580s and combined actual-router CLI/restart races in 33.815s.
+These are scoped acceptance results, not a full repository qualification.
+
+Hosted security 41213309941 and kind/MetalLB 41213309889 pass on `8ea7367`.
+CI 41213309865 has no failed jobs at this checkpoint, with Go shard 1/2 still
+running. GitHub docs 41213309876 exposed stale endpoint references for F54/F71;
+this batch regenerates those references. The separate Cloudflare build remains
+excluded. Subsequent heads require their own hosted checks.

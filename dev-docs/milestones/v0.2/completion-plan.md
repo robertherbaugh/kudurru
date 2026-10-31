@@ -18,8 +18,8 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own stopped-source rollups, doctor/Knot acceptance and
-blocking/query-log reload; the parent
+agents currently own high-cardinality statistics, exact ClientGroup list scope
+and typed supervisor settings; the parent
 has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
 disposable Samba/VIP labs. Freed agents take
 the next independent package, retaining original proofs, ownership, current
@@ -109,7 +109,7 @@ runners. Unit tests cannot substitute for those results.
 | F26a | Privacy reload preserves daily pseudonym identity | DNS and resolver | Implemented; lifecycle/concurrency/production reload races pass |
 | F26b | Cache growth retains initial shard count | DNS and resolver | Integrated 62990dd; safe resharding, mounted reload, races and local growth benchmarks pass |
 | F26c | Blocking refresh/degraded settings hot reload | DNS and resolver | Integrated 38153fa; real download/publication and scheduler/readiness races pass; generated inheritance schema included |
-| F26d | Querylog enabled/sink hot reload | DNS and resolver | Queued: missing |
+| F26d | Querylog enabled/sink hot reload | DNS and resolver | Integrated 08ee759/9a62eb4; captured sink/drain, mounted reload and disabled-restart history races pass |
 | F26e | `auth.*` hot reload | DNS and resolver | Queued: partial |
 | F27 | RFC 8198 aggressive NSEC/NSEC3 cached synthesis | DNS and resolver | Queued: missing |
 | F28 | RFC 5011 automatic trust-anchor updates | DNS and resolver | Queued: missing |
@@ -124,7 +124,7 @@ runners. Unit tests cannot substitute for those results.
 | F35b | `kudurru externaldns-webhook` sidecar subcommand | Zones and AD | Queued: missing |
 | F35c | external-dns webhook authentication | Zones and AD | Integrated; final gates open |
 | F36 | Serve object lists from live snapshot instead of store | Operations and UI | Implemented; final gates open |
-| F37 | Adopt generated OpenAPI Go client underneath CLI client | Operations and UI | Queued: missing |
+| F37 | Adopt generated OpenAPI Go client underneath CLI client | Operations and UI | Integrated a106708 plus generated 156-operation dispatch; complete adapter/generator and selected actual-router CLI races pass |
 | F38 | Dedicated SQLite authz path/request/client audit columns | Observability and release | Integrated aa3784c; dedicated authenticated attribution columns |
 | F39a | Local edge resolver-cache invalidation | Edge and VIP | Implemented; final gates open |
 | F39b | Remote edge blocking-generation pull / resolver invalidation | Edge and VIP | Queued: missing |
