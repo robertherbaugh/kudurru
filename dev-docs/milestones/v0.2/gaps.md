@@ -1257,3 +1257,33 @@ Hosted security run 41210334267 passes every applicable job on `a45f749`.
 CI's only completed failure so far is exported-method documentation; `29dbec0`
 adds the missing VerifierFunc.Verify comment and scoped audit lint passes.
 The final built-dashboard artifact at `a45f749` is also 77,074,592 bytes.
+
+
+### F08 doctor and F24b group UDP exemption
+
+F08 `c46f8c9` adds an opt-in authenticated self-NOTIFY diagnostic with one
+three-second UDP exchange, selected file-backed TSIG and configured source.
+The complete SQLite listener signs its observed address only under original
+publication/proof and current key/writer/readiness checks. No writes, callbacks
+or zone refreshes occur. Loopback is explicitly local-route evidence; the
+Kubernetes serving path is not qualified. D261 and the runbook describe these
+limits. Agent doctor races pass twice; parent composed doctor/exemption races
+pass in 30.921s. Actual non-loopback Docker qualification is tracked with Knot.
+
+F24b `3234ad4` compiles optional ClientGroup exemptions into original membership.
+Only the winning identification tier contributes; ties use any enabled grant.
+Eligible UDP resolves membership once before prefix accounting and reuses it
+later, with policy/schedule work deferred. Exempt traffic consumes no prefix
+budget. Actual mounted UDP/TCP/API/held-publication races pass; parent composed
+validator/policy/ingress/identify races pass in 1.357s/1.076s/1.178s/1.073s.
+The dashboard explicit-save control preserves membership and ownership; all
+13 group-page tests, TypeScript and scoped ESLint pass.
+
+Real Kubernetes admission exposed SSA removing an empty spec when the only
+true exemption became omitted false. Typed serialization now explicitly writes
+false, retaining the required spec object and revoking the grant. The actual
+apiserver persists true and false and rejects nonboolean updates without
+changing the object; final Kubernetes/embedded-schema races pass in
+14.176s/1.560s. The invalid-value fixture uses a real update to exercise CRD
+admission (SSA's earlier type-check reports a distinct non-admission error).
+Kustomize, Helm, embedded schema and public references are regenerated.

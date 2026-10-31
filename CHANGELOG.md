@@ -28,6 +28,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Doctor: opt-in authenticated self-NOTIFY reports the listener-observed UDP
+  source address on the complete SQLite path, with bounded work and explicit
+  loopback limitations.
+- Client groups: optional UDP rate-limit exemption with captured membership,
+  generated CRD validation and an ownership-aware dashboard control.
+
 - Upstreams: bounded dnsmasq/dnsproxy routing-file import into canonical
   groups, with unsupported-line reports, collision refusal and ownership checks.
 

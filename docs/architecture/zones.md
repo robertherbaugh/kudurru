@@ -236,6 +236,24 @@ and on gaining leadership it notifies every zone once.
   acknowledgment. Key rotation/revocation or desired key/source replacement
   refuses acknowledgment and leaves the original pending intent intact.
 
+### Doctor egress observation
+
+`kudurru doctor --notify --notify-key <name> --notify-target <host:port>`
+uses the selected file-backed TSIG key and global `notify.source` for one
+UDP exchange with a three-second deadline. The complete SQLite listener
+returns the source address it observed in a signed TXT acknowledgment at
+`health.kudurru.internal.`. This does not refresh a zone, mutate state or
+send callbacks. The listener retains the original verified NOTIFY proof and
+captured objects/runtime/zones; the key, writer authority and source/zone
+readiness must still be current when the response is admitted.
+
+An omitted target uses the first configured UDP listener; wildcard addresses
+become loopback. Loopback proves only the local path. An external or hairpin
+target reports the address on that route, which can differ from the route to
+an external secondary. Missing keys, bind failures, stale authority and
+unsigned or malformed replies fail without selecting another credential or
+source. Kubernetes serving qualification remains open.
+
 ## Transfers out
 
 | Request | Over UDP | Over TCP / DoT |

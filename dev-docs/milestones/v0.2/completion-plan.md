@@ -19,7 +19,7 @@ Later pushes require their own hosted results.
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
 agents currently own stopped-source rollups, doctor/Knot acceptance and
-client-group rate-limit exemptions; the parent
+blocking/query-log reload; the parent
 has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
 disposable Samba/VIP labs. Freed agents take
 the next independent package, retaining original proofs, ownership, current
@@ -66,7 +66,7 @@ runners. Unit tests cannot substitute for those results.
 | F06b | Per-zone `notifySource` | Zones and AD | Integrated c80c6f2/46d7641; actual source/refusal races and UI unit tests pass |
 | F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Queued: missing |
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Queued: missing |
-| F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Queued: missing |
+| F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Integrated c46f8c9; authenticated SQLite native/CLI races pass; Kubernetes qualification remains open |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |
 | F09b | Production integration-host wiring and failover | Zones and AD | SQLite mount integrated 687371f; Kubernetes atomic-source and Delete dependencies remain |
 | F10a | Reload inline objects without restart | Zones and AD | Integrated 71c0393; whole-source refusal and actual mounted reload races pass |
@@ -103,7 +103,7 @@ runners. Unit tests cannot substitute for those results.
 | F22d | DoH path client IDs | DNS and resolver | Implemented; final gates open |
 | F23 | Separate public blocked-services/safe-search data repo (D120) | DNS and resolver | External acceptance/decision open |
 | F24a | Rate-limit slip metric | DNS and resolver | Integrated; final gates open |
-| F24b | Per-ClientGroup rate-limit exemptions | DNS and resolver | Queued: missing |
+| F24b | Per-ClientGroup rate-limit exemptions | DNS and resolver | Integrated 3234ad4; actual mounted UDP/TCP/publication, real Kubernetes admission and 13 UI cases pass; generated CRDs included |
 | F25a | Multi-socket DoT | DNS and resolver | Integrated eeb68c2; real TLS/rotation/limits/shutdown and local socket benchmarks pass |
 | F25b | Multi-socket DoQ/DoH3 with connection-ID-aware routing | DNS and resolver | Queued: missing |
 | F26a | Privacy reload preserves daily pseudonym identity | DNS and resolver | Implemented; lifecycle/concurrency/production reload races pass |

@@ -372,6 +372,26 @@ when it overflows).
 this node can use (during a rolling upgrade): upgrade the node. It keeps its
 data locally until then.
 
+## Inspect the NOTIFY source address
+
+On a complete SQLite serving node with a configured file-backed TSIG key, run:
+
+```sh
+kudurru doctor --notify --notify-key secondary-key --notify-target dns.example:53
+```
+
+Use the intended reachable UDP listener and run with the node's normal config.
+The command reports the listener-observed address only after verifying its
+signed reply. It binds `notify.source` when configured and makes one bounded
+exchange. It does not send zone refreshes or change records. A missing key,
+source-bind failure, unavailable writer or stale serving source fails closed;
+check readiness and routing before retrying the diagnostic.
+
+The default wildcard listener resolves to loopback and produces a warning:
+that only proves local connectivity. A hairpin route may have different NAT
+from the route to your secondary; confirm its logs before changing allowlists.
+This diagnostic is not yet qualified on the Kubernetes serving path.
+
 ## Recursive group gets no answers
 
 Symptoms: every name routed to a recursive group (`mode: recursive`) gets

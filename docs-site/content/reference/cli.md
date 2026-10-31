@@ -414,6 +414,8 @@ diagnoses  configuration diagnoses reported by the server (GET /info/messages)
 database   with database.dsn set: the central database answers, runs
            PostgreSQL 16 or newer and has a schema this binary can use;
            warns about sslmode=disable to another host
+notify     with --notify: authenticated UDP self-NOTIFY to the DNS health
+           listener; reports the source address observed by that listener
 vrrp       warns when `kudurru vip run --legacy` renders keepalived without
            auth_hmac (unauthenticated VRRP adverts); silent on nodes
            without keepalived
@@ -430,6 +432,12 @@ Flags:
 ```text
       --keepalived-config kudurru vip run   keepalived.conf rendered by kudurru vip run
                                             (default "/etc/keepalived/keepalived.conf")
+      --notify                              perform an authenticated self-NOTIFY using local
+                                            tsigKeys and notify.source
+      --notify-key string                   configured tsigKeys name for self-NOTIFY (defaults
+                                            to the first entry; no key fallback)
+      --notify-target string                UDP host:port reachable from this node (defaults
+                                            to its first UDP DNS listener)
       --skip-api                            do not contact the API server
       --skip-ports                          do not test whether listener ports can be bound
       --vip-run-dir kudurru vip run         run directory shared with kudurru vip run

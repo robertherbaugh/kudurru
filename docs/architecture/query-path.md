@@ -174,11 +174,22 @@ before ad blocking, so your own zones are exempt from ad blocking. Blocking come
 the cache, so a block is never cached and one raw cached answer can serve clients with the same resolution context; blocking also wraps the cache, so cached answers are still inspected
 on the way out.
 
+Eligible UDP requests resolve immutable client membership before prefix-rate
+accounting. `ClientGroup.spec.rateLimitExempt` skips that accounting when any
+group selected at the winning identification tier grants an exemption; disabled
+or lower-tier groups do not contribute. Membership uses the request's original
+policy/inventory publication and received time, then the normal identify stage
+reuses it. Policy and schedule selection remain deferred until that stage.
+Exempt requests create no prefix bucket and still pass DNS controls and ACLs.
+Existing disabled-limiter, encrypted/TCP, loopback, configured-network and health
+exceptions remain in force. A publication change affects newly captured requests.
+
 ### The whole decision as one flowchart
 
 ```mermaid
 flowchart TD
-    Q(["query"]) --> RL{"UDP and over<br/>the rate limit?"}
+    Q(["query"]) --> EX["captured membership / exemptions"]
+    EX --> RL{"nonexempt UDP over<br/>the rate limit?"}
     RL -- "yes" --> SLIP["50 %: empty TC=1 answer<br/>50 %: silence"]
     RL -- "no" --> SAN{"supported opcode and shape,<br/>EDNS version 0?"}
     SAN -- "no" --> ERR["NOTIMP / FORMERR /<br/>BADVERS / REFUSED"]
