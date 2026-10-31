@@ -55,6 +55,14 @@ test('VIP cutover creates and serves generated nameserver addresses', async ({ p
     objects: [{ apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name }, spec: { zoneName: domain, type: 'primary', nameservers: ['old.test.'], soa: { mname: 'old.test.', rname: 'hostmaster.test.' } } }],
   });
   try {
+    // Finish the seed primary's status publication before reviewing its RV.
+    // A later Ready status update correctly invalidates an earlier cutover plan.
+    await expect.poll(async () => {
+      const zone = await api.get<DNSZone>(`/objects/dnszones/${name}`);
+      if (zone.status !== 200) return false;
+      const { metadata, status } = zone.body;
+      return status?.observedGeneration === metadata.generation && status?.conditions?.some((c) => c.type === 'Ready' && c.status === 'True' && c.observedGeneration === metadata.generation) === true;
+    }).toBe(true);
     await page.route('**/api/v1/edge', (route) => route.fulfill({ json: { vips: [{ address: '192.0.2.53/24' }, { address: '2001:db8::53/64' }] } }));
     await page.goto('/tools'); await settle(page);
     await page.getByRole('button', { name: `Review migration ${result.runID}` }).click();
