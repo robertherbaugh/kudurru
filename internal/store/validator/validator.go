@@ -220,6 +220,24 @@ func (v *Validator) ValidateStatus(ctx context.Context, obj, old store.Object) e
 	return setStatus(obj, merged)
 }
 
+// PruneApplyNulls removes non-nullable, defaultless null fields from a private
+// SSA payload, matching the decode normalization used by Validate. Kubernetes
+// SSA type-checks its apply configuration before normal CRD decode pruning; a
+// typed nil slice would otherwise report TypeInvalid/null instead of Required.
+// Nullable values, list elements, schema defaults and validation remain the
+// destination's responsibility. The caller must pass its own payload copy.
+func (v *Validator) PruneApplyNulls(obj *unstructured.Unstructured) error {
+	if obj == nil {
+		return fmt.Errorf("validator: nil object")
+	}
+	ks, ok := v.kinds[store.Kind(obj.GetKind())]
+	if !ok || obj.GroupVersionKind() != ks.gvk {
+		return fmt.Errorf("%w: %s", ErrUnknownKind, obj.GroupVersionKind())
+	}
+	structuraldefaulting.PruneNonNullableNullsWithoutDefaults(obj.Object, ks.structural)
+	return nil
+}
+
 // ValidateUnstructured is Validate for decoded YAML or JSON (the API, `kudurru
 // apply -f`, objects.d files) before it is converted to a Go type. Unlike
 // the typed path it can see fields the schema does not declare and rejects
