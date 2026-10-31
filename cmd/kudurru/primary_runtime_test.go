@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	cachedata "github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
@@ -36,6 +38,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/zonestate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -283,6 +286,12 @@ func TestPrimaryRuntimeNativeUpdateUsesCompletePublishedAuthority(t *testing.T) 
 
 func TestPrimaryRuntimeHeldNativeRequestCannotAdoptNewKeyring(t *testing.T) {
 	f := newPrimaryNetworkFixture(t)
+	rcode := func(msg *dns.Msg) int {
+		if msg == nil {
+			return -1
+		}
+		return msg.Rcode
+	}
 	f.pause.Store(true)
 	type result struct {
 		msg *dns.Msg
@@ -309,12 +318,12 @@ func TestPrimaryRuntimeHeldNativeRequestCannotAdoptNewKeyring(t *testing.T) {
 	f.wait(t, func() bool { s := f.publisher.Status(); return s.ProtectedReady && s.Served != old })
 	f.resume <- struct{}{}
 	got := <-done
-	if got.err != nil || got.msg.Rcode != dns.RcodeServerFailure {
-		t.Fatal("old request adopted new publication", got.msg, got.err)
+	if got.err != nil || rcode(got.msg) != dns.RcodeServerFailure {
+		t.Fatalf("old request adopted new publication: rcode=%d transport_error=%t", rcode(got.msg), got.err != nil)
 	}
 	answer, err := f.exchange(primaryUpdateMessage("example.", "stale-listener.example.", true), true)
-	if err != nil || answer.Rcode != dns.RcodeRefused {
-		t.Fatal("old listener proof bypassed current keyring", answer, err)
+	if err != nil || rcode(answer) != dns.RcodeRefused {
+		t.Fatalf("old listener proof bypassed current keyring: rcode=%d transport_error=%t", rcode(answer), err != nil)
 	}
 	if err := f.keyrings.Replace(t.Context(), f.keys); err != nil {
 		t.Fatal(err)
@@ -326,19 +335,76 @@ func TestPrimaryRuntimeHeldNativeRequestCannotAdoptNewKeyring(t *testing.T) {
 		}
 		defer lease.Release()
 		value, _ := lease.Bundle().Component("runtime")
-		id, keys, current := value.(*servingbuild.RuntimeOwner).NotifyKeys()
-		return id == f.keyrings.Capture().Identity() && keys == f.keys && current()
+		owner := value.(*servingbuild.RuntimeOwner)
+		id, keys, current := owner.NotifyKeys()
+		if id != f.keyrings.Capture().Identity() || keys != f.keys || !current() || !owner.Primary().Admitted("example.", time.Now()) {
+			return false
+		}
+		// Restoring transport keys can publish before the primary driver has
+		// reconciled the intervening keyring's durable UPDATE policy. Inspect
+		// the head and its chunks from this exact complete published image;
+		// never repair a captured read with a later live head or retry a write.
+		image, _, err := f.store.ReadServingCandidate(t.Context())
+		if err != nil {
+			t.Fatal("could not read restored primary candidate")
+		}
+		if !image.Generation().Same(lease.Bundle().Identity().Base) {
+			return false
+		}
+		member, ok := owner.Primary().Cut(time.Now()).Member("example.")
+		if !ok {
+			return false
+		}
+		var head *zk.ZoneState
+		chunks := map[string]*zk.ZoneChunk{}
+		for _, raw := range image.Payload.Objects {
+			var header metav1.TypeMeta
+			if json.Unmarshal(raw, &header) != nil {
+				t.Fatal("could not decode restored primary object kind")
+			}
+			switch header.Kind {
+			case zk.KindZoneState:
+				var candidate zk.ZoneState
+				if json.Unmarshal(raw, &candidate) != nil {
+					t.Fatal("could not decode restored primary head")
+				}
+				if candidate.Spec.Zone == member.Version.Zone {
+					head = &candidate
+				}
+			case zk.KindZoneChunk:
+				var chunk zk.ZoneChunk
+				if json.Unmarshal(raw, &chunk) != nil {
+					t.Fatal("could not decode restored primary chunk")
+				}
+				chunks[chunk.Spec.Digest] = &chunk
+			}
+		}
+		if head == nil || head.Spec.CommitSequence != member.Version.CommitSequence || head.Spec.RootDigest != member.Version.RootDigest {
+			return false
+		}
+		aggregate, err := zonestate.Decode(head, func(digest string) (*zk.ZoneChunk, error) { return chunks[digest], nil }, zonestate.Limits{})
+		if err != nil {
+			t.Fatal("could not verify restored primary policy")
+		}
+		expected, ok := keys.Identity("updates.")
+		policy := aggregate.Policy
+		if !ok || !policy.Enabled || len(policy.Credentials) != 1 || policy.Credentials[0].Key != expected.Key || policy.Credentials[0].Version != expected.CredentialVersion {
+			return false
+		}
+		driver := f.runtime.driver.Status()
+		return driver.Running && driver.Ready && !f.publisher.Status().Preparing &&
+			f.publisher.CheckWriterLease(t.Context(), lease, serving.TermActivation{Term: driver.Writer.Term, Incarnation: driver.Writer.Incarnation}) == nil
 	})
 	// Fresh native verification may use a newly installed ring with old bytes.
 	// The held request above remains rejected and must never have added its RR.
 	answer, err = f.exchange(primaryUpdateMessage("example.", "fresh.example.", true), true)
-	if err != nil || answer.Rcode != dns.RcodeSuccess {
-		t.Fatal("fresh restored installation failed", answer, err)
+	if err != nil || rcode(answer) != dns.RcodeSuccess {
+		t.Fatalf("fresh restored installation failed: rcode=%d transport_error=%t", rcode(answer), err != nil)
 	}
 	query := new(dns.Msg)
 	query.SetQuestion("held.example.", dns.TypeA)
 	answer, err = f.exchange(query, true)
-	if err != nil || answer.Rcode != dns.RcodeNameError {
-		t.Fatal("rejected held request mutated durable data", answer, err)
+	if err != nil || rcode(answer) != dns.RcodeNameError {
+		t.Fatalf("rejected held request mutated durable data: rcode=%d transport_error=%t", rcode(answer), err != nil)
 	}
 }
