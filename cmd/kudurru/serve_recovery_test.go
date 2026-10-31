@@ -83,6 +83,13 @@ func TestRunServeKubeBootstrapAfterRecovery(t *testing.T) {
 	}))
 	t.Cleanup(gate.Close)
 	cfg := offlineServeConfig(t, gate.URL)
+	// Provision the independent host pin from the trusted admin connection,
+	// before the outage. Never derive it from saved objects or the gate.
+	var clusterNamespace corev1.Namespace
+	if err := admin.Get(t.Context(), client.ObjectKey{Name: "kube-system"}, &clusterNamespace); err != nil {
+		t.Fatal("could not provision the test cluster identity")
+	}
+	cfg.Store.Kube.ExpectedClusterID = string(clusterNamespace.UID)
 	cfg.Store.Kube.StartupTimeout = config.Duration(2 * time.Second)
 	cfg.Auth.Session.Secure = "never"
 	cfg.Auth.IdentityProviders = []map[string]any{{

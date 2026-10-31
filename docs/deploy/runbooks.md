@@ -12,12 +12,56 @@ D91).
 have deadlines bounded by `store.kube.startupTimeout` (15 s by default);
 apiserver availability failures defer bootstrap and identity initialization.
 After those bounded reads, the zone cache waits the startup timeout, loads
-`local.db`, reports ready for a fresh snapshot and serves cached and
+`local.db`, checks its identity against `store.kube.expectedClusterID`, reports ready for a fresh matching snapshot and serves cached and
 forwarded answers and
 primary zones from the snapshot (`kudurru_store_snapshot_serving 1`). Once
 the snapshot is older than `store.kube.snapshot.maxAge` (24 h), names under
 primary zones answer SERVFAIL (never NXDOMAIN) while forwarding continues.
 A pod that never synced and has no snapshot answers SERVFAIL.
+
+**Provision the independent cluster identity before an outage.** In a trusted
+Kubernetes context, read the nonsecret UID of the `kube-system` namespace:
+
+```sh
+kubectl --context YOUR_TRUSTED_CONTEXT get namespace kube-system -o jsonpath='{.metadata.uid}'
+```
+
+Put that exact UID in the host-owned node configuration on every replica. With
+Helm this is under `config.node`; with a directly managed configuration it is
+`store.kube.expectedClusterID` (or
+`KUDURRU_STORE__KUBE__EXPECTEDCLUSTERID`). For example, the node document is:
+
+```yaml
+store:
+  kube:
+    expectedClusterID: "REPLACE_WITH_TRUSTED_KUBE_SYSTEM_UID"
+```
+
+The value is an identity, not a secret. Distribute it through independently
+managed host/Helm configuration, never through runtime settings, a copied
+`local.db`, or a cached UI-settings document. Changing it requires restart.
+A configured pin also checks authenticated online requests before permitting
+ordinary Kubernetes reads, writes, discovery or lease traffic. A wrong online
+cluster is refused; a missing/invalid identity response is not an availability
+fallback. The bounded probe honors the configured Kubernetes credentials,
+refuses redirects and reads at most 1 MiB. This is initial verification: the
+verified identity is retained for the process lifetime, without periodic
+identity probes. Restart after
+retargeting the API endpoint or changing the intended cluster; an endpoint
+that changes clusters while keeping valid transport trust is not continuously
+reverified by this guard.
+
+**Upgrade compatibility.** An empty pin preserves online startup, but disables
+offline saved-state admission and cached shared-settings fallback. Before
+relying on outage recovery, provision the pin while the API is reachable and
+allow a complete live sync to refresh both saved objects and shared settings.
+Old object snapshots without a cluster ID are refused during an outage even
+with the correct pin. Old unpinned settings caches are not reused after pinning.
+Snapshots that already contain the matching cluster ID remain compatible;
+no SQLite format migration is required. Never stamp an old snapshot with a new
+identity or copy the identity out of saved state to make it pass. A foreign or
+identity-free snapshot contributes no policy namespace or serving objects;
+readiness stays unavailable until a verified live sync supplies current data.
 
 **Prepare (Helm):**
 

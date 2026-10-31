@@ -199,11 +199,22 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		}
 		s, err := kube.New(restCfg, kube.Options{
 			Scheme: scheme, InternalKinds: privateStoreKinds(),
-			Identity: cfg.Node.Name, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), Logger: logger.With("component", "store"),
+			Identity: cfg.Node.Name, ExpectedClusterID: cfg.Store.Kube.ExpectedClusterID, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), Logger: logger.With("component", "store"),
 		})
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		checkCtx, cancel := context.WithTimeout(ctx, kubeStartupTimeout(cfg))
+		identityErr := s.CheckClusterIdentity(checkCtx)
+		cancel()
+		if ctx.Err() != nil || identityErr != nil && !kube.IsUnavailable(identityErr) {
+			_ = s.Close()
+			if ctx.Err() != nil {
+				return nil, nil, nil, ctx.Err()
+			}
+			return nil, nil, nil, identityErr
+		}
+		restCfg = s.RESTConfig()
 		st = s
 	default:
 		return nil, nil, nil, fmt.Errorf("store.driver %q is not supported", cfg.Store.Driver)
@@ -323,16 +334,16 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 			// Select the same policy fallback as the last serving snapshot.
 			// Never ignore malformed SQLite data or reuse another cluster's
-			// namespace when its identity is already known.
+			// namespace without an independently trusted matching identity.
 			namespace = releaseNamespace
 			saved, loadErr := snapDB.Load(ctx)
 			if loadErr != nil && !errors.Is(loadErr, localdb.ErrNoSnapshot) {
 				return loadErr
 			}
-			if loadErr == nil && (st.Info().ClusterID == "" || st.Info().ClusterID == saved.ClusterID) {
+			if loadErr == nil && localdb.CheckClusterIdentity(cfg.Store.Kube.ExpectedClusterID, st.Info().ClusterID, saved.ClusterID) == nil {
 				namespace = bootstrap.NamespaceFromObjects(saved.Objects, releaseNamespace)
 			}
-			logger.Warn("policy namespace read deferred; using snapshot namespace", "namespace", namespace, "error", err)
+			logger.Warn("policy namespace read deferred; using admitted startup namespace", "namespace", namespace, "error", err)
 		}
 		if namespace != releaseNamespace {
 			logger.Warn("keeping legacy default policy namespace", "namespace", namespace, "releaseNamespace", releaseNamespace)
@@ -452,7 +463,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		zcLocal = snapDB
 	}
 	zc, err := zonecache.New(st, zonecache.Options{
-		LocalDB: zcLocal, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), MaxAge: cfg.Store.Kube.Snapshot.MaxAge.Std(),
+		LocalDB: zcLocal, ExpectedClusterID: cfg.Store.Kube.ExpectedClusterID, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), MaxAge: cfg.Store.Kube.Snapshot.MaxAge.Std(),
 		Registerer: reg, Logger: logger,
 	})
 	if err != nil {

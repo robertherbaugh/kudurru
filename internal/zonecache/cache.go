@@ -70,6 +70,9 @@ func (b funcBuilder) Build(objects ObjectSet) (any, error) { return b.build(obje
 // Options configures a Cache. The zero value watches every kudurru.io kind
 // with the §4.4 defaults and neither persists nor cold-starts.
 type Options struct {
+	// ExpectedClusterID is an independently provisioned kube-system UID.
+	// Kubernetes saved-state admission requires it even before API contact.
+	ExpectedClusterID string
 	// Kinds to watch. Default DefaultKinds().
 	Kinds []store.Kind
 	// Debounce is the window after a change during which further changes

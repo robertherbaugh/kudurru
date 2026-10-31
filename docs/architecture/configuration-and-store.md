@@ -40,6 +40,43 @@ Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 `internal/objects` (the file loader), `internal/bootstrap`,
 `internal/controller`, `internal/config`, `cmd/kudurru/reload.go`.
 
+## Kubernetes saved-state identity
+
+Kubernetes outage admission uses the host-only, restart-required
+`store.kube.expectedClusterID`, provisioned independently from the intended
+cluster's `kube-system` UID. Both policy namespace fallback and zonecache
+require a nonempty saved identity matching that pin. A known online identity
+must match as well; neither a live observation nor saved data can replace a
+missing host pin for offline admission. Old identity-free object snapshots
+require a complete verified live sync; they are never relabeled. Existing
+matching snapshots remain compatible without a database-format migration.
+
+When configured, the pin gates the kube driver's authenticated HTTP transport
+before ordinary discovery, reads, mutations and lease operations. The sole
+identity probe uses the original credential-bearing transport rather than its
+own wrapper, honors cancellation and the startup timeout, rejects redirects,
+and bounds the namespace response to 1 MiB. This guard verifies the identity
+initially: a match is cached for the process lifetime; a mismatch remains
+refused until restart. Unavailability
+admits no HTTP operation and never queues a refused mutation for replay.
+The pinned driver disables the separate legacy cluster-discovery goroutine;
+`Store.Info().ClusterID` reads that guard's observation, so a later discovery
+cannot overwrite the trusted identity. No periodic or query-path identity
+probe is added. Retargeting an API endpoint requires a process restart to
+verify its identity again; the guard does not continuously detect a different
+cluster behind an endpoint that still satisfies the configured transport trust.
+Auxiliary serve clients inherit the same guarded REST config; the separately
+constructed shared-settings client installs the same guard. Shared-settings
+cache identity includes the independent pin, so legacy unpinned or differently
+pinned caches are not reused. Without a pin, online startup remains compatible
+but offline shared-settings fallback and object snapshot admission are disabled.
+New Kubernetes snapshots are not persisted or refreshed before the live cluster
+identity is known. Age limits and original authority/ownership/credential gates
+remain additional requirements, including when recovering with a matching pin.
+
+See the [cold-start runbook](../deploy/runbooks.md#cold-start-without-the-apiserver)
+for the nonsecret provisioning and upgrade procedure.
+
 ## API migrations
 
 `internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
@@ -457,7 +494,7 @@ Errors in a file become diagnoses; they never stop the server.
 stateDiagram-v2
     [*] --> Unsynced: process start
     Unsynced --> Live: every watch has synced
-    Unsynced --> FromSnapshot: kube only: no sync within 15 s,<br/>local.db loaded (same cluster ID)
+    Unsynced --> FromSnapshot: kube only: no sync within 15 s,<br/>local.db identity matches host pin
     FromSnapshot --> Live: informers sync
     Live --> Live: store events → rebuild → swap
     note right of Unsynced
@@ -474,8 +511,10 @@ stateDiagram-v2
 
 In Kubernetes mode each node writes the complete object set to `local.db`
 after its first sync and then at most every 30 s when something changed. A
-pod that restarts while the apiserver is down therefore still answers:
-forwarded names, cached names, and primary zones from the copy.
+pod that restarts while the apiserver is down can answer forwarded names,
+cached names, and primary zones from an identified copy matching the
+independently provisioned host pin. Missing pins or unidentified/foreign
+copies do not admit saved serving state.
 
 Startup reads for the policy namespace, default-object seeding and identity
 caches have bounded deadlines. An apiserver availability failure defers

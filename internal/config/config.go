@@ -188,8 +188,12 @@ type StoreConfig struct {
 
 // KubeStore tunes the kube driver and the local.db cold-start path (§4.4).
 type KubeStore struct {
-	StartupTimeout Duration     `koanf:"startupTimeout" json:"startupTimeout"`
-	Snapshot       KubeSnapshot `koanf:"snapshot" json:"snapshot"`
+	// ExpectedClusterID is the independently provisioned kube-system UID.
+	// It is required for offline snapshot admission and pins online clients
+	// when set. Never derive it from local.db or a cached settings document.
+	ExpectedClusterID string       `koanf:"expectedClusterID" json:"expectedClusterID"`
+	StartupTimeout    Duration     `koanf:"startupTimeout" json:"startupTimeout"`
+	Snapshot          KubeSnapshot `koanf:"snapshot" json:"snapshot"`
 }
 
 // KubeSnapshot bounds how old a local.db snapshot may be and still serve.
@@ -624,6 +628,12 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 // *FieldError.
 func (c *Config) Validate() error {
 	errs := c.validateSchema()
+	if id := c.Store.Kube.ExpectedClusterID; len(id) > 128 || strings.IndexFunc(id, func(r rune) bool {
+		allowed := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.'
+		return !allowed
+	}) >= 0 {
+		errs = append(errs, errors.New("store.kube.expectedClusterID: use at most 128 ASCII letters, digits, hyphens, underscores or periods"))
+	}
 	if len(c.Listeners.DNS) == 0 {
 		errs = append(errs, errors.New("listeners.dns: at least one listener is required"))
 	}

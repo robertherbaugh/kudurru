@@ -25,6 +25,10 @@ func settingsBackend(cfg *config.Config) (settings.Backend, error) {
 	if err != nil {
 		return nil, err
 	}
+	restConfig, err = kube.WithExpectedClusterID(restConfig, cfg.Store.Kube.ExpectedClusterID, kubeStartupTimeout(cfg))
+	if err != nil {
+		return nil, err
+	}
 	// Bound startup and poll reads during an apiserver outage.
 	restConfig.Timeout = config.DefaultSettingsPoll
 	core, err := coreclient.NewForConfig(restConfig)
@@ -36,6 +40,12 @@ func settingsBackend(cfg *config.Config) (settings.Backend, error) {
 		name = settings.DefaultResource
 	}
 	backend := settings.KubeBackend{Maps: core.ConfigMaps(kube.PodNamespace()), Name: name}
-	identity := fmt.Sprintf("%x", sha256.Sum256([]byte(restConfig.Host+"/"+kube.PodNamespace()+"/"+name)))
-	return settings.CachedBackend{Backend: backend, Path: filepath.Join(cfg.Node.DataDir, "ui-settings-"+identity[:16]+".json")}, nil
+	// An unconfigured pin permits online operation, never offline settings.
+	if cfg.Store.Kube.ExpectedClusterID == "" {
+		return backend, nil
+	}
+	// Keep this cache independent of a copied local.db and legacy unpinned
+	// settings. A pin change needs a verified online refresh of this cache.
+	identity := fmt.Sprintf("%x", sha256.Sum256([]byte("cluster-pin-v1/"+cfg.Store.Kube.ExpectedClusterID+"/"+restConfig.Host+"/"+kube.PodNamespace()+"/"+name)))
+	return settings.CachedBackend{Backend: backend, AllowOffline: kube.IsUnavailable, Path: filepath.Join(cfg.Node.DataDir, "ui-settings-"+identity[:16]+".json")}, nil
 }

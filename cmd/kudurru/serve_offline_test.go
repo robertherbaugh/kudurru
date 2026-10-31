@@ -33,10 +33,15 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 		snapshot  bool
 		wantCode  int
 		wantReady int
+		expected  string
+		savedID   string
 	}{
-		{"fresh", time.Minute, true, dns.RcodeSuccess, http.StatusOK},
-		{"stale", 48 * time.Hour, true, dns.RcodeServerFailure, http.StatusServiceUnavailable},
-		{"first boot", 0, false, dns.RcodeServerFailure, http.StatusServiceUnavailable},
+		{"fresh matching identity", time.Minute, true, dns.RcodeSuccess, http.StatusOK, "offline-cluster", "offline-cluster"},
+		{"stale", 48 * time.Hour, true, dns.RcodeServerFailure, http.StatusServiceUnavailable, "offline-cluster", "offline-cluster"},
+		{"first boot", 0, false, dns.RcodeServerFailure, http.StatusServiceUnavailable, "offline-cluster", ""},
+		{"other saved cluster", time.Minute, true, dns.RcodeServerFailure, http.StatusServiceUnavailable, "offline-cluster", "other-cluster"},
+		{"wrong expected cluster", time.Minute, true, dns.RcodeServerFailure, http.StatusServiceUnavailable, "other-cluster", "offline-cluster"},
+		{"old snapshot without identity", time.Minute, true, dns.RcodeServerFailure, http.StatusServiceUnavailable, "offline-cluster", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			unavailable := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -44,6 +49,7 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 			}))
 			t.Cleanup(unavailable.Close)
 			cfg := offlineServeConfig(t, unavailable.URL)
+			cfg.Store.Kube.ExpectedClusterID = tc.expected
 			if tc.snapshot {
 				db, err := localdb.OpenSnapshotStore(t.Context(), filepath.Join(cfg.Node.DataDir, localdb.FileName))
 				if err != nil {
@@ -58,7 +64,7 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 					Spec: v1alpha1.DNSRecordSetSpec{ZoneRef: v1alpha1.ObjectRef{Name: "home"},
 						Endpoints: []v1alpha1.Endpoint{{DNSName: "nas.home.example.", RecordType: "A", Targets: []string{"192.0.2.42"}}}},
 				}
-				if err := db.Write(t.Context(), &localdb.Snapshot{Objects: []store.Object{zone, rs}, ClusterID: "offline-cluster", WrittenAt: time.Now().Add(-tc.age)}); err != nil {
+				if err := db.Write(t.Context(), &localdb.Snapshot{Objects: []store.Object{zone, rs}, ClusterID: tc.savedID, WrittenAt: time.Now().Add(-tc.age)}); err != nil {
 					t.Fatal(err)
 				}
 				if err := db.Close(); err != nil {
@@ -88,12 +94,16 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 				ready := offlineHTTPStatus(cfg.Listeners.Ops.Address, "/healthz/ready")
 				if err == nil && answer.Rcode == tc.wantCode && ready == tc.wantReady {
 					if tc.wantCode == dns.RcodeSuccess && (!answer.Authoritative || len(answer.Answer) != 1 || answer.Answer[0].(*dns.A).A.String() != "192.0.2.42") {
-						t.Fatalf("snapshot answer: %v", answer)
+						t.Fatalf("snapshot answer invalid: authoritative=%t answers=%d", answer.Authoritative, len(answer.Answer))
 					}
 					break
 				}
 				if time.Now().After(deadline) {
-					t.Fatalf("DNS never reached expected snapshot state: answer=%v err=%v readiness=%d", answer, err, ready)
+					rcode := -1
+					if answer != nil {
+						rcode = answer.Rcode
+					}
+					t.Fatalf("DNS never reached expected snapshot state: response_received=%t rcode=%d exchange_failed=%t readiness=%d", answer != nil, rcode, err != nil, ready)
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
@@ -136,6 +146,7 @@ func offlineServeConfig(t *testing.T, apiURL string) *config.Config {
 		t.Fatal(err)
 	}
 	cfg.Store.Driver = "kube"
+	cfg.Store.Kube.ExpectedClusterID = "offline-cluster"
 	cfg.Node.DataDir = t.TempDir()
 	cfg.Node.Lameduck = 0
 	cfg.Store.Kube.StartupTimeout = config.Duration(100 * time.Millisecond)

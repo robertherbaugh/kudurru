@@ -78,6 +78,9 @@ const applyRetries = 5
 
 // Options configures the driver. The zero value is usable in a pod.
 type Options struct {
+	// ExpectedClusterID pins authenticated online requests to kube-system UID.
+	// Empty preserves online behavior but cannot authorize offline saved state.
+	ExpectedClusterID string
 	// Namespace holds the driver's Leases and the Secrets of internal
 	// kinds. Default: the pod's namespace (PodNamespace), else "default".
 	Namespace string
@@ -187,7 +190,9 @@ type Store struct {
 	cacheDone      chan struct{}      // closed when cache.Start returns
 	informersReady chan struct{}      // closed when every kind has an informer
 
-	clusterID atomic.Pointer[string]
+	clusterID  atomic.Pointer[string]
+	identity   *clusterIdentity
+	restConfig *rest.Config
 
 	mu       sync.Mutex
 	closed   bool
@@ -209,13 +214,19 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err := opts.setDefaults(); err != nil {
 		return nil, err
 	}
-	cfg = rest.CopyConfig(cfg)
+	cfg, identity, err := pinClusterIdentity(cfg, opts.ExpectedClusterID, opts.StartupTimeout)
+	if err != nil {
+		return nil, err
+	}
 	if cfg.QPS == 0 && cfg.RateLimiter == nil {
 		// client-go would default to 5 QPS / burst 10, which turns a
 		// Restore or bulk import of 1,000 objects into minutes. The
 		// apiserver's priority and fairness is the real limiter.
 		cfg.QPS, cfg.Burst = DefaultQPS, DefaultBurst
 	}
+	// Auxiliary clients share the identity pin, but must not advance the
+	// driver's contact clock and refresh object-snapshot confirmation age.
+	auxiliaryConfig := rest.CopyConfig(cfg)
 	ct := &contact{now: time.Now}
 	cfg.Wrap(ct.wrap)
 	kinds, err := newRegistry(opts.Scheme)
@@ -275,6 +286,8 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Store{
 		opts:           opts,
+		identity:       identity,
+		restConfig:     auxiliaryConfig,
 		kinds:          kinds,
 		mapper:         mapper,
 		c:              c,
@@ -298,7 +311,9 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		}
 	}()
 	go s.startInformers(ctx)
-	go s.discoverClusterID(ctx)
+	if s.identity == nil {
+		go s.discoverClusterID(ctx)
+	}
 	return s, nil
 }
 
@@ -368,7 +383,9 @@ func (s *Store) WaitForSync(ctx context.Context) bool {
 // the first one.
 func (s *Store) Info() store.Info {
 	info := store.Info{Driver: DriverName, SchemaVersion: store.SchemaVersion, LastContact: s.contact.Last()}
-	if id := s.clusterID.Load(); id != nil {
+	if s.identity != nil {
+		info.ClusterID = s.identity.id()
+	} else if id := s.clusterID.Load(); id != nil {
 		info.ClusterID = *id
 	}
 	s.mu.Lock()
