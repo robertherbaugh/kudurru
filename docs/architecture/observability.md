@@ -165,6 +165,31 @@ stateDiagram-v2
 | `GET /healthz` | JSON roll-up with every component, for `kudurru health` and Docker's `HEALTHCHECK` |
 | `GET/POST/DELETE /lameduck` | read or set lameduck (writes from loopback only) |
 
+`GET /api/v1/nodes/{name}/health` requires `cluster.read` and returns the
+selected node's readiness plus its `/healthz` JSON document. Self reads use the
+local checker. Remote reads resolve the name only through cluster membership
+and call `GET /internal/health` over the existing TLS and cluster bearer-token
+transport; public caller credentials are not forwarded, and redirects are
+refused. The peer endpoint shares the internal listener's authentication and
+rate limit. It reports an unhealthy checker as a successful observation with
+`ready: false`, preserving that peer's component details without adding local
+components.
+
+Remote discovery and the request share a two-second deadline, and peer health
+responses are capped at 1 MiB. The response node must match membership; derived
+node certificates must also identify that member. Configured service
+certificates retain their configured TLS verification and use the response's
+node identity. An unknown member returns 404. Failed discovery, a missing
+internal client/address, an older peer without this endpoint, unreachable or
+slow peers, and malformed, oversized or mismatched responses return 503 with
+redacted messages. An unavailable peer does not report healthy. Check internal
+listener connectivity and cluster credentials when those reads fail.
+
+These readiness documents are current operational observations. They do not
+replace captured canonical objects or establish which publication served a
+configuration read. `GET /nodes` retains its separate peer-status behavior,
+including unknown readiness for failed or older peers.
+
 Upstream reachability is **never** a readiness condition: a node whose
 upstreams are down still answers its zones and its cache, and taking it out
 of rotation would make things worse.

@@ -2,12 +2,10 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/central"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
@@ -188,24 +187,55 @@ func (s *Server) ready() (bool, []string) {
 }
 
 func (s *Server) nodeHealth(ctx context.Context, in *nodeNameInput) (*nodeHealthOutput, error) {
-	if in.Name != s.opts.NodeName {
-		peers, _ := s.opts.Membership.Peers(ctx)
-		for _, p := range peers {
-			if p.Name == in.Name {
-				return nil, newError(http.StatusNotImplemented, KeyNotImplemented, "health of other nodes needs scatter-gather over the internal listener",
-					"ask "+in.Name+" directly")
-			}
+	if in.Name == s.opts.NodeName {
+		var handler http.Handler
+		if s.opts.Health != nil {
+			handler = s.opts.Health.Handler()
 		}
-		return nil, errNotFound("node " + in.Name)
+		out, err := internalapi.LocalHealth(ctx, s.opts.NodeName, handler)
+		if err != nil {
+			return nil, errUnavailable("node health: unavailable")
+		}
+		return &nodeHealthOutput{Body: &NodeHealth{Node: out.Node, Ready: out.Ready, Health: out.Health}}, nil
 	}
-	ready, _ := s.ready()
-	out := &NodeHealth{Node: s.opts.NodeName, Ready: ready, Health: map[string]any{}}
-	if s.opts.Health != nil {
-		rec := httptest.NewRecorder()
-		s.opts.Health.Handler().ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/healthz", nil))
-		_ = json.Unmarshal(rec.Body.Bytes(), &out.Health)
+	peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	peers, err := s.opts.Membership.Peers(peerCtx)
+	if err != nil {
+		return nil, errUnavailable("node health: membership unavailable")
 	}
-	return &nodeHealthOutput{Body: out}, nil
+	for _, p := range peers {
+		if p.Name != in.Name {
+			continue
+		}
+		if p.Self || s.opts.InternalClient == nil || p.Address == "" {
+			return nil, errUnavailable("peer health: unavailable")
+		}
+		out, err := s.opts.InternalClient.Health(peerCtx, p.Address, p.Name)
+		if err != nil {
+			return nil, errUnavailable("%s", peerHealthError(err))
+		}
+		return &nodeHealthOutput{Body: &NodeHealth{Node: out.Node, Ready: out.Ready, Health: out.Health}}, nil
+	}
+	return nil, errNotFound("node " + in.Name)
+}
+
+func peerHealthError(err error) string {
+	var netErr net.Error
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "peer health: canceled"
+	case errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout():
+		return "peer health: timeout"
+	case errors.Is(err, internalapi.ErrHealthUnsupported):
+		return "peer health: unsupported"
+	case errors.Is(err, internalapi.ErrHealthInvalid), errors.Is(err, internalapi.ErrHealthTooLarge), errors.Is(err, internalapi.ErrHealthIdentity):
+		return "peer health: invalid response"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "peer health: connection refused"
+	default:
+		return "peer health: unavailable"
+	}
 }
 
 func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, error) {

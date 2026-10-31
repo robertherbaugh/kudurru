@@ -103,6 +103,8 @@ type ServerOptions struct {
 	Credentials *Credentials
 	// Status fills GET /internal/status; nil serves an empty status.
 	Status func(ctx context.Context) Status
+	// Health fills GET /internal/health with local operational readiness; nil answers 404.
+	Health func(context.Context) (Health, error)
 	// Lists serves GET /internal/lists/{digest}; nil answers 404.
 	Lists ListOpener
 	// Zones fills GET /internal/zones (the primary and secondary zones
@@ -198,6 +200,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		mux.HandleFunc("GET "+PathQuerylogStream, s.handleQuerylogStream)
 	}
 	mux.HandleFunc("GET "+PathStatus, s.handleStatus)
+	if opts.Health != nil {
+		mux.HandleFunc("GET "+PathHealth, s.handleHealth)
+	}
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
 	if opts.Zones != nil {
 		mux.HandleFunc("GET "+PathZones, s.handleZones)
@@ -298,6 +303,8 @@ func routeOf(p string) string {
 		return "querylog"
 	case p == PathStatus:
 		return "status"
+	case p == PathHealth:
+		return "health"
 	case p == PathZones:
 		return "zones"
 	case p == PathCatalogue, p == PathCatalogueAdGuard:

@@ -607,6 +607,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 					Snapshot: zc.Snapshot().SnapshotAge(time.Now()),
 				}
 			},
+			Health: func(ctx context.Context) (internalapi.Health, error) {
+				return internalapi.LocalHealth(ctx, cfg.Node.Name, checker.Handler())
+			},
 			// Zones and serials for the edge supervisors (§3.6 step 5).
 			Zones: func(ctx context.Context) internalapi.ZoneList {
 				zl := internalapi.ZoneList{Node: cfg.Node.Name}
