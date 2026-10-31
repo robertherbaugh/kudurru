@@ -33,7 +33,7 @@ func retryFailure(err error) *Failure {
 }
 func (h *Host) retryDelay(err error, failures uint32) (time.Duration, bool) {
 	f := retryFailure(err)
-	if f != nil && f.Kind == FailurePermanent {
+	if f == nil || f.Kind == FailurePermanent {
 		return 0, false
 	}
 	delay := time.Second

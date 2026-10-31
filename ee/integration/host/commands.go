@@ -81,6 +81,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		return
 	}
 	instance := j.frame.instance
+	originalFrame := j.frame
 	g, err := instance.Guard(h.leaseID(j))
 	if err != nil {
 		h.mu.Unlock()
@@ -101,8 +102,8 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 	h.mu.Unlock()
 	providerHost := providerHost{h: h, j: j}
 	setupCtx, setupCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
-	setupCtx = scoped(setupCtx, j, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()})
-	if h.fence(setupCtx, j, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()}) == nil {
+	setupCtx, err = h.scopedOriginal(setupCtx, j, originalFrame, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()})
+	if err == nil && h.fence(setupCtx, j, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()}) == nil {
 		err = provider.Provision(setupCtx, providerHost, instance.ProviderSpec(), instance.Secrets())
 		if err == nil {
 			err = provider.Validate(setupCtx)
@@ -136,9 +137,13 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
 		return
 	}
+	startCtx, err := h.scopedOriginal(ctx, j, originalFrame, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()})
+	if err != nil {
+		h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
+		return
+	}
 	started := make(chan error, 1)
 	startDone = make(chan struct{})
-	startCtx := scoped(ctx, j, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()})
 	go func() { defer close(startDone); started <- provider.Start(startCtx) }()
 	h.setLocal(j, "Running", "Provisioned", Result{}, true)
 	// Start must honor cancellation; Stop quiesces rather than spawning writes.

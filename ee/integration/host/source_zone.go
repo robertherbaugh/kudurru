@@ -36,7 +36,11 @@ func (p providerHost) SourceZone(ctx context.Context, ref public.ObjectRef) (*pu
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	z, ok := j.frame.input.Objects.Zone(ref.Name)
+	input := j.frame.input
+	if request, ok := ctx.Value(scopeKey{}).(requestScope); ok && request.original != nil {
+		input = request.original.input
+	}
+	z, ok := input.Objects.Zone(ref.Name)
 	if !ok || z == nil || z.Spec.Type != public.ZoneTypePrimary || public.IsDisabled(z) || !z.DeletionTimestamp.IsZero() || z.UID == "" || z.ResourceVersion == "" {
 		return nil, ErrUnavailable
 	}

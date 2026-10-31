@@ -2,10 +2,12 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
+	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -85,5 +87,51 @@ func TestRequestGuardDoesNotAdoptSuccessor(t *testing.T) {
 	}
 	if _, _, err := h.RequestGuard(t.Context(), g.Ledger); err != ErrFenced {
 		t.Fatal("unscoped request acquired authority")
+	}
+}
+
+func TestOriginalResourceSurvivesEquivalentAuthorityRefresh(t *testing.T) {
+	h, j, _, _, _ := engineFixture(t)
+	original, successor := new(int), new(int)
+	j.frame.input.Resource = original
+	encoded, err := json.Marshal(j.frame.input.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.sourceDigest = kinds.Digest(encoded)
+	f, g, err := h.captured(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := h.scopedOriginal(t.Context(), j, f, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := f.input
+	next.Resource = successor
+	h.opts.Capture = func(context.Context) (Input, error) { return next, nil }
+	h.refresh(t.Context())
+	got, err := h.RequestResource(held, g.Ledger)
+	if err != nil || got != original {
+		t.Fatal("equivalent refresh replaced original resource", err)
+	}
+	fresh, freshGuard, err := h.captured(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	future, err := h.scopedOriginal(t.Context(), j, fresh, freshGuard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = h.RequestResource(future, freshGuard.Ledger)
+	if err != nil || got != successor {
+		t.Fatal("future request did not capture refreshed resource", err)
+	}
+	h.mu.Lock()
+	replacement := *j.frame.instance
+	j.frame.instance = &replacement
+	h.mu.Unlock()
+	if _, err = h.RequestResource(held, g.Ledger); !errors.Is(err, ErrFenced) {
+		t.Fatal("same-guard replacement repaired held resource", err)
 	}
 }

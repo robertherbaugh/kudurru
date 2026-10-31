@@ -154,3 +154,24 @@ func TestSourceZoneRejectsStaleScopeAndReplacement(t *testing.T) {
 		})
 	}
 }
+
+func TestSourceZoneRetainsOriginalInputAcrossEquivalentRefresh(t *testing.T) {
+	h, j, _, _, _ := engineFixture(t)
+	original := &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "lan"}, Spec: public.DNSZoneSpec{Type: public.ZoneTypePrimary, ZoneName: "original.example."}}
+	j.frame.input.Objects = sourceZoneObjects(t, original)
+	f, g, err := h.captured(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := h.scopedOriginal(t.Context(), j, f, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := original.DeepCopy()
+	replacement.Spec.ZoneName = "successor.example."
+	j.frame.input.Objects = sourceZoneObjects(t, replacement)
+	got, err := (providerHost{h, j}).SourceZone(ctx, public.ObjectRef{Name: "lan"})
+	if err != nil || got.Spec.ZoneName != "original.example." {
+		t.Fatal("captured source read adopted future inputs", err)
+	}
+}

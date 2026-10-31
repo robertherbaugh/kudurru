@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/credentials"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -161,5 +162,31 @@ func TestCaptureRejectsMalformedPerInstanceSourceDigest(t *testing.T) {
 	in.ReconcileDigests = map[InstanceID]string{{ClusterID: "cluster", Namespace: "dns", Name: "source", UID: "original"}: "not-a-digest"}
 	if _, err := CaptureInstances(t.Context(), in); err != ErrInvalid {
 		t.Fatal("malformed source digest accepted")
+	}
+}
+
+func TestPerInstanceAuthorityDigestDoesNotChangeOtherGuard(t *testing.T) {
+	in := captureInput(t, webhook("first"), webhook("second"))
+	instances, err := CaptureInstances(t.Context(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := instances[0].Owner(), instances[1].Owner()
+	in.AuthorityDigests = map[InstanceID]string{first: kinds.Digest([]byte("first")), second: kinds.Digest([]byte("second"))}
+	before, err := CaptureInstances(t.Context(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.AuthorityDigests[first] = kinds.Digest([]byte("changed"))
+	after, err := CaptureInstances(t.Context(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before[0].BundleID() == after[0].BundleID() || before[1].BundleID() != after[1].BundleID() {
+		t.Fatal("instance authority was omitted or leaked across instances")
+	}
+	in.AuthorityDigests[first] = "invalid"
+	if _, err := CaptureInstances(t.Context(), in); !errors.Is(err, ErrInvalid) {
+		t.Fatal("invalid authority digest admitted", err)
 	}
 }

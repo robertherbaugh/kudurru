@@ -46,6 +46,13 @@ type Input struct {
 	// Values are deterministic digests of its desired inputs, excluding the host's
 	// own admitted observation/receipt/status writes. BundleID still fences reads.
 	ReconcileDigests map[InstanceID]string
+	// AuthorityDigests optionally binds each instance to only its complete
+	// authority dependencies. Root must still validate original object versions
+	// at effects; equal authority never permits replacing held request inputs.
+	AuthorityDigests map[InstanceID]string
+	// Resource is a root-owned immutable resource captured with these objects.
+	// It is retained by original request frames, never serialized or acquired.
+	Resource any `json:"-"`
 }
 
 // Instance retains one private definition and resolved named capabilities.
@@ -69,12 +76,14 @@ func CaptureInstances(ctx context.Context, in Input) ([]*Instance, error) {
 	if !in.Complete || in.Term.Validate() != nil || in.BundleID == "" || len(in.BundleID) > 512 {
 		return nil, ErrInvalid
 	}
-	if len(in.ReconcileDigests) > MaxInstances {
+	if len(in.ReconcileDigests) > MaxInstances || len(in.AuthorityDigests) > MaxInstances {
 		return nil, ErrCapacity
 	}
-	for owner, digest := range in.ReconcileDigests {
-		if owner.Validate() != nil || !kinds.ValidDigest(digest) {
-			return nil, ErrInvalid
+	for _, digests := range []map[InstanceID]string{in.ReconcileDigests, in.AuthorityDigests} {
+		for owner, digest := range digests {
+			if owner.Validate() != nil || !kinds.ValidDigest(digest) {
+				return nil, ErrInvalid
+			}
 		}
 	}
 	objects := in.Objects.List(store.Kind("Integration"))
@@ -110,6 +119,9 @@ func CaptureInstances(ctx context.Context, in Input) ([]*Instance, error) {
 			return nil, ErrInvalid
 		}
 		i := &Instance{owner: owner, definition: d, providerSpec: spec, configDigest: kinds.Digest(definitionJSON), fingerprints: map[string]string{}, secrets: map[string][]byte{}, term: in.Term, bundleID: in.BundleID}
+		if digest, present := in.AuthorityDigests[owner]; present {
+			i.bundleID = kinds.Digest([]byte(in.BundleID + "/" + digest))
+		}
 		names := slices.Sorted(maps.Keys(d.Spec.Credentials))
 		if d.Spec.Type == "cloudflare" && d.Spec.Credentials["apiToken"] == (public.CredentialReference{}) || d.Spec.Type == "unifi" && d.Spec.Credentials["apiKey"] == (public.CredentialReference{}) {
 			i.credentialError = true

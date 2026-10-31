@@ -112,9 +112,14 @@ func TestRetryClassificationBounds(t *testing.T) {
 		t.Fatal("Retry-After ignored", delay, retry)
 	}
 	for _, count := range []uint32{1, 10, 32} {
-		delay, retry := h.retryDelay(errors.New("transport"), count)
+		delay, retry := h.retryDelay(&Failure{Kind: FailureTemporary}, count)
 		if !retry || delay < time.Second || delay > 375*time.Second {
 			t.Fatal("unbounded backoff", delay)
+		}
+	}
+	for _, refusal := range []error{ErrFenced, ErrStalePreview, ErrInvalid, ErrUnavailable, context.Canceled, context.DeadlineExceeded, errors.New("unclassified")} {
+		if _, retry := h.retryDelay(refusal, 1); retry {
+			t.Fatal("refused or unclassified operation retried")
 		}
 	}
 	if retryFailure(&Failure{Kind: FailureRateLimited, RetryAfter: 24 * time.Hour}) != nil {

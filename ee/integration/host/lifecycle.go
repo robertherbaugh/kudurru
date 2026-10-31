@@ -124,12 +124,27 @@ func (h *Host) refresh(ctx context.Context) {
 				nextDigest = digest
 			}
 			changed := j.sourceDigest != nextDigest
+			if !j.active && (changed || j.frame.input.BundleID != i.BundleID()) {
+				// A setup refusal releases its callback, not the elector's Run.
+				// Changed authority must join that old election before a new
+				// lifecycle can start; unchanged refused work is never replayed.
+				j.cancel()
+				continue
+			}
 			j.sourceDigest = nextDigest
 			// An identical capture is the same immutable cut. Keep its original
 			// frame so periodic polls cannot fence a longer source observation.
 			// Any real bundle/source/RV replacement still revokes that frame.
-			if changed || j.frame.input.BundleID != input.BundleID || j.frame.instance.definition.ResourceVersion != i.definition.ResourceVersion {
-				j.frame = frame{i, input}
+			if changed || j.frame.input.BundleID != i.BundleID() || j.frame.instance.definition.ResourceVersion != i.definition.ResourceVersion {
+				nextInput := input
+				nextInput.BundleID = i.BundleID()
+				j.frame = frame{i, nextInput}
+			} else {
+				// Equal authority may refresh FUTURE request resources. Current
+				// requests retain their original immutable input in requestOrigin.
+				nextInput := input
+				nextInput.BundleID = i.BundleID()
+				j.frame.input = nextInput
 			}
 			if j.active {
 				j.guard.IntegrationResourceVersion = i.definition.ResourceVersion
@@ -171,7 +186,9 @@ func (h *Host) refresh(ctx context.Context) {
 		if selected, ok := input.ReconcileDigests[i.owner]; ok {
 			digest = selected
 		}
-		j := &job{key: key, frame: frame{i, input}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
+		nextInput := input
+		nextInput.BundleID = i.BundleID()
+		j := &job{key: key, frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
 		h.jobs[key] = j
 		h.statuses[key] = InstanceStatus{Owner: i.owner, Phase: "Waiting", Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
 		go h.elect(j)

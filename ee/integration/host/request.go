@@ -20,6 +20,7 @@ type requestScope struct {
 type requestOrigin struct {
 	instance *Instance
 	lease    context.Context
+	input    Input
 }
 
 func scoped(ctx context.Context, j *job, g ExecutionGuard) context.Context {
@@ -32,7 +33,7 @@ func (h *Host) scopedOriginal(ctx context.Context, j *job, f frame, g ExecutionG
 	if h.jobs[j.key] != j || !j.active || j.guard != g.Ledger || j.frame.instance != f.instance || j.frame.input.BundleID != g.BundleID || j.ctx.Err() != nil || j.leaseCtx == nil || j.leaseCtx.Err() != nil {
 		return nil, ErrFenced
 	}
-	return context.WithValue(ctx, scopeKey{}, requestScope{j: j, g: g, original: &requestOrigin{instance: f.instance, lease: j.leaseCtx}}), nil
+	return context.WithValue(ctx, scopeKey{}, requestScope{j: j, g: g, original: &requestOrigin{instance: f.instance, lease: j.leaseCtx, input: f.input}}), nil
 }
 func (p providerHost) guard(ctx context.Context) (ExecutionGuard, error) {
 	s, ok := ctx.Value(scopeKey{}).(requestScope)
@@ -108,4 +109,17 @@ func (h *Host) RequestGuard(ctx context.Context, expected ledger.Guard) (Executi
 		lease = s.original.lease
 	}
 	return s.g, lease, nil
+}
+
+// RequestResource returns only the original root-owned resource retained at
+// entry. It never samples a newer frame as a substitute for a held operation.
+func (h *Host) RequestResource(ctx context.Context, expected ledger.Guard) (any, error) {
+	if _, _, err := h.RequestGuard(ctx, expected); err != nil {
+		return nil, err
+	}
+	s := ctx.Value(scopeKey{}).(requestScope)
+	if s.original == nil {
+		return nil, ErrFenced
+	}
+	return s.original.input.Resource, nil
 }

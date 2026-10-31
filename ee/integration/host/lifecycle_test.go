@@ -2,12 +2,14 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration"
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -230,4 +232,25 @@ func TestBundleOnlyRefreshDoesNotSelfTriggerSync(t *testing.T) {
 	in.Sources = sources()
 	replace(in)
 	waitFor(t, func() bool { return p.plans.Load() == 2 })
+}
+
+func TestChangedAuthorityJoinsInactiveElectionWithoutRefusalReplay(t *testing.T) {
+	h, j, _, _, _ := engineFixture(t)
+	j.active = false
+	input := j.frame.input
+	encoded, err := json.Marshal(input.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.sourceDigest = kinds.Digest(encoded)
+	h.opts.Capture = func(context.Context) (Input, error) { return input, nil }
+	h.refresh(t.Context())
+	if j.ctx.Err() != nil {
+		t.Fatal("unchanged refused input restarted election")
+	}
+	input.BundleID = "changed-authority"
+	h.refresh(t.Context())
+	if j.ctx.Err() == nil || h.jobs[j.key] != j {
+		t.Fatal("changed input did not cancel and retain old job until joined")
+	}
 }

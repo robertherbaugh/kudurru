@@ -107,11 +107,14 @@ func (h *Host) deliveries(ctx context.Context, owner InstanceID) ([]*kinds.Integ
 	return out, nil
 }
 func (h *Host) drainEvents(ctx context.Context, j *job) error {
-	_, g, err := h.captured(j)
+	f, g, err := h.captured(j)
 	if err != nil {
 		return err
 	}
-	ctx = scoped(ctx, j, g)
+	ctx, err = h.scopedOriginal(ctx, j, f, g)
+	if err != nil {
+		return err
+	}
 	queued, err := h.deliveries(ctx, g.Ledger.Owner)
 	if err != nil {
 		return err
