@@ -64,7 +64,9 @@ func newServingCommandFixture(t *testing.T) *servingCommandFixture {
 	done := make(chan error, 1)
 	go func() {
 		done <- f.s.opts.Store.Elector("http-command-test").Run(ctx, func(ctx context.Context) {
-			if err := f.s.RunWriter(ctx); err != nil && ctx.Err() == nil {
+			// RunWriter also derives cancellation from the independent serving
+			// root. That root can stop before the elector's context is canceled.
+			if err := f.s.RunWriter(ctx); err != nil && ctx.Err() == nil && f.s.life.Err() == nil {
 				t.Error(err)
 			}
 		}, nil)
@@ -93,6 +95,16 @@ func newServingCommandFixture(t *testing.T) *servingCommandFixture {
 }
 
 var commandSettingsWrite = rbac.Attributes{Resource: "settings", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}
+
+func TestServingCommandFixtureJoinsRootCancellation(t *testing.T) {
+	f := newServingCommandFixture(t)
+	// The always-on root can stop before the independent elector context.
+	// Its writer has to join without reporting expected shutdown as a failure.
+	if err := f.s.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	f.stop()
+}
 
 func (f *servingCommandFixture) request() *http.Request {
 	r := httptest.NewRequest(http.MethodPatch, "http://kudurru.test/api/v1/settings", nil)
