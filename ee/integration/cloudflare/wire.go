@@ -5,7 +5,6 @@ import (
 	"math"
 	"strings"
 
-	cf "github.com/cloudflare/cloudflare-go/v7"
 	sdk "github.com/cloudflare/cloudflare-go/v7/dns"
 	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -24,21 +23,30 @@ func (p *Provider) post(e public.Endpoint, target string, z resolvedZone) (sdk.R
 	if len(comment) > z.commentLimit {
 		return sdk.RecordBatchParamsPost{}, ErrInvalid
 	}
-	body := sdk.RecordBatchParamsPost{Name: cf.F(strings.TrimSuffix(e.DNSName, ".")), Type: cf.F(typ), TTL: cf.F(sdk.TTL(e.RecordTTL)), Comment: cf.F(comment), Proxied: cf.F(props["cloudflare/proxied"] == "true"), Content: cf.F(target), PrivateRouting: cf.F(props["cloudflare/private-routing"] == "true")}
+	// Set the service fields directly: the SDK root helpers also import every
+	// service and retain their init registrations in the production binary.
+	body := sdk.RecordBatchParamsPost{}
+	body.Name.Value, body.Name.Present = strings.TrimSuffix(e.DNSName, "."), true
+	body.Type.Value, body.Type.Present = typ, true
+	body.TTL.Value, body.TTL.Present = sdk.TTL(e.RecordTTL), true
+	body.Comment.Value, body.Comment.Present = comment, true
+	body.Proxied.Value, body.Proxied.Present = props["cloudflare/proxied"] == "true", true
+	body.Content.Value, body.Content.Present = target, true
+	body.PrivateRouting.Value, body.PrivateRouting.Present = props["cloudflare/private-routing"] == "true", true
 	settings := map[string]bool{}
 	for _, key := range []string{"ipv4-only", "ipv6-only", "flatten-cname"} {
 		if props["cloudflare/"+key] == "true" {
 			settings[strings.ReplaceAll(key, "-", "_")] = true
 		}
 	}
-	body.Settings = cf.F[any](settings)
+	body.Settings.Value, body.Settings.Present = settings, true
 	tags := []string{}
 	if value := props["cloudflare/tags"]; value != "" {
 		if json.Unmarshal([]byte(value), &tags) != nil {
 			return sdk.RecordBatchParamsPost{}, ErrInvalid
 		}
 	}
-	body.Tags = cf.F[any](tags)
+	body.Tags.Value, body.Tags.Present = tags, true
 	rr, err := dns.NewRR(e.DNSName + " 1 IN " + e.RecordType + " " + target)
 	if err != nil {
 		return sdk.RecordBatchParamsPost{}, ErrInvalid
@@ -46,8 +54,8 @@ func (p *Provider) post(e public.Endpoint, target string, z resolvedZone) (sdk.R
 	var data map[string]any
 	switch r := rr.(type) {
 	case *dns.MX:
-		body.Content = cf.F(strings.TrimSuffix(r.Mx, "."))
-		body.Priority = cf.F(float64(r.Preference))
+		body.Content.Value, body.Content.Present = strings.TrimSuffix(r.Mx, "."), true
+		body.Priority.Value, body.Priority.Present = float64(r.Preference), true
 	case *dns.LOC:
 		coordinate := func(v uint32, positive, negative string) (float64, float64, float64, string) {
 			n := int64(v) - (1 << 31)
@@ -98,8 +106,8 @@ func (p *Provider) post(e public.Endpoint, target string, z resolvedZone) (sdk.R
 		data = map[string]any{"priority": float64(r.Priority), "target": r.Target, "value": value}
 	}
 	if data != nil {
-		body.Content = cf.F("")
-		body.Data = cf.F[any](data)
+		body.Content.Value, body.Content.Present = "", true
+		body.Data.Value, body.Data.Present = data, true
 	}
 	return body, nil
 }

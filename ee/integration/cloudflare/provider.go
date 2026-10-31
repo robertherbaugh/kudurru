@@ -16,7 +16,6 @@ import (
 	"time"
 	"unicode"
 
-	cf "github.com/cloudflare/cloudflare-go/v7"
 	sdk "github.com/cloudflare/cloudflare-go/v7/dns"
 	"github.com/cloudflare/cloudflare-go/v7/option"
 	"github.com/cloudflare/cloudflare-go/v7/user"
@@ -234,14 +233,20 @@ func (p *Provider) Destinations(ctx context.Context) ([]host.Publication, error)
 		var zone zones.Zone
 		if z.ZoneID != "" {
 			var env envelope[zones.Zone]
-			_, err = p.zones.Get(ctx, zones.ZoneGetParams{ZoneID: cf.F(z.ZoneID)}, option.WithResponseBodyInto(&env))
+			params := zones.ZoneGetParams{}
+			params.ZoneID.Value, params.ZoneID.Present = z.ZoneID, true
+			_, err = p.zones.Get(ctx, params, option.WithResponseBodyInto(&env))
 			if err == nil {
 				err = env.valid()
 			}
 			zone = env.Result
 		} else {
 			var env envelope[[]zones.Zone]
-			_, err = p.zones.List(ctx, zones.ZoneListParams{Name: cf.F(strings.TrimSuffix(apex, ".")), PerPage: cf.F(float64(50)), Page: cf.F(float64(1))}, option.WithResponseBodyInto(&env))
+			params := zones.ZoneListParams{}
+			params.Name.Value, params.Name.Present = strings.TrimSuffix(apex, "."), true
+			params.PerPage.Value, params.PerPage.Present = 50, true
+			params.Page.Value, params.Page.Present = 1, true
+			_, err = p.zones.List(ctx, params, option.WithResponseBodyInto(&env))
 			if err == nil {
 				err = env.valid()
 			}

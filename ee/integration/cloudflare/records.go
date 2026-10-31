@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	cf "github.com/cloudflare/cloudflare-go/v7"
 	sdk "github.com/cloudflare/cloudflare-go/v7/dns"
 	"github.com/cloudflare/cloudflare-go/v7/option"
 	"github.com/cloudflare/cloudflare-go/v7/shared"
@@ -54,7 +53,13 @@ func (p *Provider) read(ctx context.Context, z resolvedZone) ([]plan.RemoteRecor
 	encoded := 0
 	for page := 1; page <= maxPages; page++ {
 		var env envelope[[]sdk.RecordResponse]
-		_, err := p.records.List(ctx, sdk.RecordListParams{ZoneID: cf.F(z.destination.Zone), Page: cf.F(float64(page)), PerPage: cf.F(float64(pageSize)), Order: cf.F(sdk.RecordListParamsOrderName), Direction: cf.F(shared.SortDirectionAsc)}, option.WithResponseBodyInto(&env))
+		params := sdk.RecordListParams{}
+		params.ZoneID.Value, params.ZoneID.Present = z.destination.Zone, true
+		params.Page.Value, params.Page.Present = float64(page), true
+		params.PerPage.Value, params.PerPage.Present = float64(pageSize), true
+		params.Order.Value, params.Order.Present = sdk.RecordListParamsOrderName, true
+		params.Direction.Value, params.Direction.Present = shared.SortDirectionAsc, true
+		_, err := p.records.List(ctx, params, option.WithResponseBodyInto(&env))
 		if err != nil {
 			return nil, safe(ctx, err)
 		}

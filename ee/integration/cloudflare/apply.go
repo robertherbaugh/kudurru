@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	cf "github.com/cloudflare/cloudflare-go/v7"
 	sdk "github.com/cloudflare/cloudflare-go/v7/dns"
 	"github.com/cloudflare/cloudflare-go/v7/option"
 	"github.com/miekg/dns"
@@ -364,14 +363,17 @@ func (p *Provider) pause(ctx context.Context) error {
 	return ctx.Err()
 }
 func (p *Provider) batch(ctx context.Context, z resolvedZone, effects []effect) (sdk.RecordBatchResponse, error) {
-	params := sdk.RecordBatchParams{ZoneID: cf.F(z.destination.Zone)}
+	params := sdk.RecordBatchParams{}
+	params.ZoneID.Value, params.ZoneID.Present = z.destination.Zone, true
 	var deletes []sdk.RecordBatchParamsDelete
 	var posts []sdk.RecordBatchParamsPostUnion
 	var patches, puts []map[string]any
 	for _, e := range effects {
 		switch e.kind {
 		case "deletes":
-			deletes = append(deletes, sdk.RecordBatchParamsDelete{ID: cf.F(e.id)})
+			item := sdk.RecordBatchParamsDelete{}
+			item.ID.Value, item.ID.Present = e.id, true
+			deletes = append(deletes, item)
 		case "posts":
 			posts = append(posts, e.body)
 		case "patches", "puts":
@@ -392,18 +394,18 @@ func (p *Provider) batch(ctx context.Context, z resolvedZone, effects []effect) 
 		}
 	}
 	if len(deletes) > 0 {
-		params.Deletes = cf.F(deletes)
+		params.Deletes.Value, params.Deletes.Present = deletes, true
 	}
 	if len(posts) > 0 {
-		params.Posts = cf.F(posts)
+		params.Posts.Value, params.Posts.Present = posts, true
 	}
 	// SDK Raw fields preserve the typed Post serialization when adding IDs across
 	// the generated batch union types; routing/auth/retry/decoding remain SDK-owned.
 	if len(patches) > 0 {
-		params.Patches = cf.Raw[[]sdk.BatchPatchUnionParam](patches)
+		params.Patches.Raw, params.Patches.Present = patches, true
 	}
 	if len(puts) > 0 {
-		params.Puts = cf.Raw[[]sdk.BatchPutUnionParam](puts)
+		params.Puts.Raw, params.Puts.Present = puts, true
 	}
 	var env envelope[sdk.RecordBatchResponse]
 	_, err := p.records.Batch(ctx, params, option.WithResponseBodyInto(&env))
