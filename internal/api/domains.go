@@ -13,6 +13,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -235,6 +236,9 @@ func (s *Server) registerDomainLists() {
 		})
 		register(s, operation(http.MethodGet, path+"/{id}", "get"+title+"Entry", "Get a "+title+" entry", tag), perm{resource: "blocklists", verb: "read"},
 			func(ctx context.Context, in *domainIDInput) (*domainEntryOutput, error) {
+				if s.capturedConvenienceReads() {
+					return s.getCapturedDomainEntry(ctx, a, in.ID)
+				}
 				e, set, err := s.findDomainEntry(ctx, a, in.ID)
 				if err != nil {
 					return nil, err
@@ -340,6 +344,9 @@ func (s *Server) namespaceOr(ns string) string {
 }
 
 func (s *Server) listDomainEntries(ctx context.Context, actions []domainlist.Action, in *domainListInput) (*domainListOutput, error) {
+	if s.capturedConvenienceReads() {
+		return s.listCapturedDomainEntries(ctx, actions, in)
+	}
 	set, err := s.domainLists().Load(ctx, in.Namespace)
 	if err != nil {
 		return nil, storeError(err)
@@ -352,6 +359,10 @@ func (s *Server) listDomainEntries(ctx context.Context, actions []domainlist.Act
 			return nil, errInvalid("continue: not a token returned by this API")
 		}
 	}
+	return s.domainEntriesPage(ctx, actions, in, set, start, s.legacyDomainLists(), func(offset int) string { return encodeCursor(strconv.Itoa(offset)) })
+}
+
+func (s *Server) domainEntriesPage(ctx context.Context, actions []domainlist.Action, in *domainListInput, set *domainlist.Set, start int, lists *blocking.Snapshot, next func(int) string) (*domainListOutput, error) {
 	scope := strings.TrimSpace(in.Scope)
 	listScope, byList := strings.CutPrefix(scope, "list:")
 	if byList && !strings.Contains(listScope, "/") {
@@ -382,6 +393,9 @@ func (s *Server) listDomainEntries(ctx context.Context, actions []domainlist.Act
 	out.Total = len(all)
 	n := 0
 	for _, e := range all {
+		if ctx.Err() != nil {
+			return nil, objectReadUnavailable()
+		}
 		if in.Kind != "" && e.Kind != in.Kind ||
 			in.Type != "" && string(e.Type) != in.Type ||
 			in.Enabled != "" && strconv.FormatBool(e.Enabled()) != in.Enabled ||
@@ -398,11 +412,11 @@ func (s *Server) listDomainEntries(ctx context.Context, actions []domainlist.Act
 		}
 		if len(out.Items) == limit {
 			if out.Continue == "" {
-				out.Continue = encodeCursor(strconv.Itoa(n - 1))
+				out.Continue = next(n - 1)
 			}
 			continue
 		}
-		out.Items = append(out.Items, s.domainView(e, set))
+		out.Items = append(out.Items, s.domainViewWithLists(e, set, lists))
 	}
 	for _, l := range set.Lists {
 		if !slices.Contains(actions, l.Action) {
@@ -426,8 +440,22 @@ func domainMatches(e *domainlist.Entry, q string) bool {
 	return slices.ContainsFunc(e.Copies, func(c domainlist.Copy) bool { return strings.Contains(strings.ToLower(c.List), q) })
 }
 
-// domainView is the API form of e.
+// legacyDomainLists samples the optional legacy display cache.
+func (s *Server) legacyDomainLists() *blocking.Snapshot {
+	if s.opts.Cache != nil {
+		if snap := s.opts.Cache.Snapshot(); snap != nil {
+			return snap.Objects.Lists()
+		}
+	}
+	return nil
+}
+
+// domainView preserves the legacy and postcommit projection entry point.
 func (s *Server) domainView(e *domainlist.Entry, set *domainlist.Set) DomainEntry {
+	return s.domainViewWithLists(e, set, s.legacyDomainLists())
+}
+
+func (s *Server) domainViewWithLists(e *domainlist.Entry, set *domainlist.Set, lists *blocking.Snapshot) DomainEntry {
 	p := e.Primary()
 	v := DomainEntry{
 		ID: e.ID(), Action: string(e.Action), Namespace: e.Namespace, Value: e.Value, Type: string(e.Type), Rule: e.Rule(),
@@ -439,7 +467,7 @@ func (s *Server) domainView(e *domainlist.Entry, set *domainlist.Set) DomainEntr
 		v.Kind = domainlist.KindEntry
 	}
 	if e.Kind == domainlist.KindException {
-		return s.exceptionView(v, e, set)
+		return s.exceptionViewWithLists(v, e, set, lists)
 	}
 	if v.Origin == "" {
 		v.Origin = string(v1alpha1.OriginManual)
@@ -466,12 +494,12 @@ func (s *Server) domainView(e *domainlist.Entry, set *domainlist.Set) DomainEntr
 	if owner := e.ReadOnly(); owner != "" {
 		v.ReadOnly, v.ReadOnlyReason = true, "a list of this entry is managed by "+owner+"; change it there"
 	}
-	v.Overrides = s.domainOverrides(e)
+	v.Overrides = domainOverridesWithLists(e, lists)
 	return v
 }
 
-// exceptionView completes the API form of a list exception.
-func (s *Server) exceptionView(v DomainEntry, e *domainlist.Entry, set *domainlist.Set) DomainEntry {
+// exceptionViewWithLists completes the API form of a list exception.
+func (s *Server) exceptionViewWithLists(v DomainEntry, e *domainlist.Entry, set *domainlist.Set, lists *blocking.Snapshot) DomainEntry {
 	c := e.Copies[0]
 	v.Origin = "list"
 	managed := c.ManagedBy
@@ -487,20 +515,16 @@ func (s *Server) exceptionView(v DomainEntry, e *domainlist.Entry, set *domainli
 		v.ReadOnly, v.ReadOnlyReason = true, "the list is managed by "+c.ManagedBy+"; change it there"
 	}
 	t, name, ok := domainlist.FromRule(e.Value, "")
-	if !ok || s.opts.Cache == nil {
-		return v
-	}
-	snap := s.opts.Cache.Snapshot()
-	if snap == nil || snap.Objects.Lists() == nil {
+	if !ok || lists == nil {
 		return v
 	}
 	n := domainlist.MatchName(t, name)
 	if n == "" {
 		return v
 	}
-	hits := snap.Objects.Lists().Contains(n)
+	hits := lists.Contains(n)
 	if e.Action == domainlist.Deny {
-		hits = snap.Objects.Lists().ContainsAllow(n)
+		hits = lists.ContainsAllow(n)
 	}
 	for list, rule := range hits {
 		if list != c.List {
@@ -511,21 +535,13 @@ func (s *Server) exceptionView(v DomainEntry, e *domainlist.Entry, set *domainli
 	return v
 }
 
-// domainOverrides finds the compiled lists an entry interacts with: for an
+// domainOverridesWithLists finds the compiled lists an entry interacts with: for an
 // allow entry the block lists that contain the name, for a deny entry the
 // allow lists that win over it.
-func (s *Server) domainOverrides(e *domainlist.Entry) []DomainOverride {
+func domainOverridesWithLists(e *domainlist.Entry, lists *blocking.Snapshot) []DomainOverride {
 	out := []DomainOverride{}
 	name := domainlist.MatchName(e.Type, e.Value)
-	if name == "" || s.opts.Cache == nil {
-		return out
-	}
-	snap := s.opts.Cache.Snapshot()
-	if snap == nil {
-		return out
-	}
-	lists := snap.Objects.Lists()
-	if lists == nil {
+	if name == "" || lists == nil {
 		return out
 	}
 	hits := lists.Contains(name)

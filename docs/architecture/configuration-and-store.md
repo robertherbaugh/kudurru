@@ -696,6 +696,24 @@ images alive across page requests. Compiled blocklist search uses the same
 captured list bodies and modes; missing compiled data returns 503 even if a live
 cache or inline source could answer. Kubernetes keeps the existing read path.
 
+Domain, Allowlist and Denylist GETs project entries, list exceptions, group
+scopes, policy references and unattached managed policies from that same original
+image. Match summaries use its compiled lists. An inactive exception retains its
+original list/source identity and policy references; external source rules open
+only the captured digest receipt. Missing capabilities or receipts return 503
+without a live Store, cache or body fallback. Domain and unblock pagination bind
+the normalized request query, page size and whole publication identity, including
+dependency replacements at an unchanged canonical generation; changes return 409.
+
+Unblock GETs retain the complete image's workflow rows on the runtime owner,
+separate from the DNS object roster. Rows, state counts and pending expiry use
+those original objects and canonical settings. The original auth view evaluates
+its finite unblock entitlement against the current clock before returning a
+response: times before its lower bound or at its exclusive deadline deny with
+402, even after a live renewal. Read projections grant no decision authority;
+mutation responses continue to use their exact committed command results.
+Kubernetes keeps its existing Store/index, configuration and license read paths.
+
 Catalog GETs read the original blocking view, report actual acquired base/import
 provenance, and omit live refresher status. Services, categories and safe-search
 entries use that same catalog; missing owners return 503 without a Holder

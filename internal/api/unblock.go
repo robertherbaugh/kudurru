@@ -164,6 +164,9 @@ func (s *Server) registerUnblock() {
 	register(s, list, perm{resource: "unblockrequests", verb: "read"}, s.listUnblock)
 	register(s, operation(http.MethodGet, "/unblockrequests/{namespace}/{name}", "getUnblockRequest", "Get an unblock request", "unblockrequests"),
 		perm{resource: "unblockrequests", verb: "read"}, func(ctx context.Context, in *nsObjectInput) (*unblockOutput, error) {
+			if s.capturedConvenienceReads() {
+				return s.getCapturedUnblock(ctx, in)
+			}
 			if err := s.requireRequests(); err != nil {
 				return nil, err
 			}
@@ -226,6 +229,9 @@ func (s *Server) allUnblock(ctx context.Context) ([]*v1alpha1.UnblockRequest, er
 }
 
 func (s *Server) listUnblock(ctx context.Context, in *unblockListInput) (*unblockListOutput, error) {
+	if s.capturedConvenienceReads() {
+		return s.listCapturedUnblock(ctx, in)
+	}
 	if err := s.requireRequests(); err != nil {
 		return nil, err
 	}
@@ -241,6 +247,10 @@ func (s *Server) listUnblock(ctx context.Context, in *unblockListInput) (*unbloc
 			return nil, errInvalid("continue: not a token returned by this API")
 		}
 	}
+	return unblockPage(all, in, start, s.unblockSettingsExpiry(), func(offset int) string { return encodeCursor(strconv.Itoa(offset)) }), nil
+}
+
+func unblockPage(all []*v1alpha1.UnblockRequest, in *unblockListInput, start int, expiry time.Duration, next func(int) string) *unblockListOutput {
 	limit := clampLimit(in.Limit, 100, 500)
 	out := &UnblockRequestList{Items: []UnblockRequest{}}
 	i := 0
@@ -262,13 +272,13 @@ func (s *Server) listUnblock(ctx context.Context, in *unblockListInput) (*unbloc
 		switch {
 		case i < start:
 		case len(out.Items) < limit:
-			out.Items = append(out.Items, s.unblockView(r))
+			out.Items = append(out.Items, unblockViewWithExpiry(r, expiry))
 		case out.Continue == "":
-			out.Continue = encodeCursor(strconv.Itoa(i))
+			out.Continue = next(i)
 		}
 		i++
 	}
-	return &unblockListOutput{Body: out}, nil
+	return &unblockListOutput{Body: out}
 }
 
 func (s *Server) actor(ctx context.Context) string {
@@ -384,6 +394,10 @@ func timePtr(t *metav1.Time) *time.Time {
 }
 
 func (s *Server) unblockView(r *v1alpha1.UnblockRequest) UnblockRequest {
+	return unblockViewWithExpiry(r, s.unblockSettingsExpiry())
+}
+
+func unblockViewWithExpiry(r *v1alpha1.UnblockRequest, expiry time.Duration) UnblockRequest {
 	v := UnblockRequest{
 		Namespace: r.Namespace, Name: r.Name, Domain: r.Spec.Domain, Client: r.Spec.Client, ClientPrivacy: string(r.Spec.ClientPrivacy),
 		Groups: nonNil(r.Spec.Groups), Policies: nonNil(r.Spec.Policies), Node: r.Spec.Node,
@@ -399,7 +413,7 @@ func (s *Server) unblockView(r *v1alpha1.UnblockRequest) UnblockRequest {
 		v.Block = &UnblockBlock{Kind: b.Kind, List: b.List, Rule: b.Rule, Policy: b.Policy}
 	}
 	if r.EffectiveState() == v1alpha1.UnblockPending {
-		exp := unblock.RequestedAt(r).Add(s.unblockSettingsExpiry()).UTC()
+		exp := unblock.RequestedAt(r).Add(expiry).UTC()
 		v.ExpiresAt = &exp
 	}
 	for _, h := range r.Status.History {

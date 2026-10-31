@@ -48,6 +48,8 @@ type semanticOwners struct {
 	auth       *servingauth.View
 	upstreams  *upstream.Set
 	lists      string
+
+	unblockRequests []*public.UnblockRequest
 }
 
 func (s *semanticOwners) release() {
@@ -111,6 +113,9 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 		}
 		if run, ok := object.(*internal.MigrationRun); ok {
 			owners.migrations = append(owners.migrations, run)
+		}
+		if request, ok := object.(*public.UnblockRequest); ok {
+			owners.unblockRequests = append(owners.unblockRequests, request)
 		}
 		if slices.Contains(kinds, store.KindOf(object)) {
 			objects = append(objects, object)

@@ -14,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/blocking/parser"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 // List exceptions: an entry of a block list switched off there
@@ -58,11 +59,15 @@ func (s *Server) exceptionEntry(ctx context.Context, a domainlist.Action, ns, li
 	if !ok {
 		t = v1alpha1.EntryExact
 	}
+	return inactiveExceptionEntry(bl, a, idx, value, t), set, nil
+}
+
+func inactiveExceptionEntry(bl *v1alpha1.BlockList, a domainlist.Action, idx int, value string, t v1alpha1.EntryType) *domainlist.Entry {
 	off := false
 	return &domainlist.Entry{
-		Kind: domainlist.KindException, Namespace: ns, Action: a, Type: t, Value: value,
-		Copies: []domainlist.Copy{{List: ns + "/" + list, Source: blocking.SourceName(idx, src), Entry: v1alpha1.ListEntry{Value: value, Type: t, Enabled: &off}}},
-	}, set, nil
+		Kind: domainlist.KindException, Namespace: bl.Namespace, Action: a, Type: t, Value: value,
+		Copies: []domainlist.Copy{{List: bl.Namespace + "/" + bl.Name, Source: blocking.SourceName(idx, bl.Spec.Sources[idx]), ManagedBy: store.ManagedBy(bl), Entry: v1alpha1.ListEntry{Value: value, Type: t, Enabled: &off}}},
+	}
 }
 
 // setException switches the exception on (adds the exclusion) or off
