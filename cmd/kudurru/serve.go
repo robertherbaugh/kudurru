@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -432,9 +433,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if cfg.Source != "" {
 		inlineSource = filepath.Base(cfg.Source)
 	}
+	inlineFile := cfg.Source
+	if slices.Contains(cfg.EnvLocked, "objects") {
+		inlineFile = "" // the process environment retains precedence over the file
+	}
 	loader, err := objects.New(objects.Options{
 		Store: st, Validator: v, Logger: logger, Registerer: reg,
-		Inline: cfg.Objects, InlineSource: inlineSource, Dir: cfg.ObjectsDir,
+		Inline: cfg.Objects, InlineFile: inlineFile, InlineSource: inlineSource, Dir: cfg.ObjectsDir,
 	})
 	if err != nil {
 		return err

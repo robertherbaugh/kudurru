@@ -229,7 +229,7 @@ func TestWatchSettingsReloads(t *testing.T) {
 // TestRestartRequired pins the keys applied without a restart; adding one
 // here means wiring a config.Reloadable subscriber in serve (reload.go).
 func TestRestartRequired(t *testing.T) {
-	hot := map[string]bool{"log.level": true}
+	hot := map[string]bool{"log.level": true, "objects": true} // objects has its own file watcher
 	for _, p := range []string{
 		"response.dns64.prefix", "response.dns64.excludeDomains", "response.dns64.excludeIPv4", "response.filterAAAA", "response.bogusNXDOMAIN", "response.nxdomainIPv4", "response.nxdomainIPv6", "response.ttl", "response.rebinding.enabled", "response.rebinding.privateDomains", "response.rebinding.bypassNetworks",
 		"control.allowedNetworks", "control.blockedQTypes", "dnssec.enabled", "dnssec.useBuiltinAnchors", "dnssec.trustAnchors", "dnssec.negativeTrustAnchors",
@@ -252,7 +252,7 @@ func TestRestartRequired(t *testing.T) {
 		if k.RestartRequired == hot[k.Path] {
 			t.Errorf("%s: restartRequired %v, but the key is hot=%v", k.Path, k.RestartRequired, hot[k.Path])
 		}
-		if k.HostOnly && !k.RestartRequired {
+		if k.HostOnly && !k.RestartRequired && k.Path != "objects" {
 			t.Errorf("%s: hostOnly keys are read at start only", k.Path)
 		}
 	}

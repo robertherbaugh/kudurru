@@ -23,6 +23,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- File objects: live reload of the node configuration’s inline objects, with
+  whole-source validation, last-good retention and environment precedence.
+
 - Helm: explicit per-VRID HMAC Secret references, strict complete mapping,
   private key staging and coordinated restart guidance for keepalived.
 - Domain checks: matching disabled rules come from the query's captured lists

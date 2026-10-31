@@ -1893,3 +1893,5 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 | **Rollup** | Pre-aggregated query-log tables (`rollup_1m/_1h/_1d` and per-client/qtype/upstream/domain/list/zone variants) that power dashboards without scanning facts. |
 | **Scatter-gather** | Cluster-scope API calls fan out to every node's `/internal/*` with a 2 s timeout and merge results (`partial: true` on failure). |
 | **Seam** | An interface or schema field that exists in v0.1 so a deferred feature can be added without a rewrite (§13.1). |
+
+| D257 | Reload file-authored inline objects | Re-read the original node file on object-source events and polling; strictly decode and schema-check its entire inline section before reconciliation. Preserve all owned objects on unreadable/invalid input and keep process environment precedence. | Inline and directory sources should update without restart while retaining one writer per object and last-good serving. Parent-directory watching survives editor and ConfigMap replacement. | Reloading unrelated node settings; deleting on read failure; partial parsing; treating per-object writes as a cross-driver atomic transaction |

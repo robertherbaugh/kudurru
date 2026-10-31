@@ -67,10 +67,10 @@ describe('attachWhere', () => {
     expect(w.after).toMatch(/watches the directory .* without a restart/);
   });
 
-  it('objects: of the configuration file: restart after the change', () => {
+  it('objects: of the configuration file: valid edits are watched', () => {
     const w = text('file:kudurru.yaml');
     expect(w.lead).toContain('under objects: in kudurru.yaml');
-    expect(w.after).toMatch(/restart kudurru/);
+    expect(w.after).toMatch(/watches the configuration file .* without a restart/);
   });
 
   it('Kubernetes: kubectl or the GitOps manifest', () => {

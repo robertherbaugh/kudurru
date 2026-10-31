@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -48,6 +49,11 @@ type Options struct {
 	Validator *validator.Validator
 	// Inline are the objects embedded in kudurru.yaml (config.Config.Objects).
 	Inline []map[string]any
+	// InlineFile, when nonempty, re-reads the objects section of this node
+	// configuration file on every load instead of using Inline. An unreadable
+	// or invalid source retains its last good objects. Other settings are not
+	// reloaded by this loader.
+	InlineFile string
 	// InlineSource names the inline objects' source; their manager is
 	// "file:<InlineSource>". Default "kudurru.yaml".
 	InlineSource string
@@ -179,7 +185,7 @@ func (l *Loader) Load(ctx context.Context) Report {
 	l.loadMu.Lock()
 	defer l.loadMu.Unlock()
 
-	srcs, brokenPrefixes, readDiags := l.readSources()
+	srcs, brokenPrefixes, readDiags := l.readSources(ctx)
 	rep := l.rec.run(ctx, srcs, brokenPrefixes, readDiags)
 	l.m.observe(rep, len(srcs))
 
@@ -245,8 +251,10 @@ func (l *Loader) logReport(rep Report, diagsChanged bool) {
 }
 
 // readSources reads the inline objects and the directory, in apply order.
-func (l *Loader) readSources() (srcs []source, brokenPrefixes []string, diags []Diagnosis) {
-	if len(l.opts.Inline) > 0 {
+func (l *Loader) readSources(ctx context.Context) (srcs []source, brokenPrefixes []string, diags []Diagnosis) {
+	if l.opts.InlineFile != "" {
+		srcs = append(srcs, l.readInlineFile(ctx))
+	} else if len(l.opts.Inline) > 0 {
 		srcs = append(srcs, source{name: l.opts.InlineSource, decoded: decodeInline(l.opts.InlineSource, l.opts.Inline)})
 	}
 	if l.opts.Dir == "" {
@@ -301,7 +309,15 @@ func readFile(name string) (data []byte, skip bool, err error) {
 	if fi.Size() > maxFileBytes {
 		return nil, false, fmt.Errorf("file is larger than %d bytes", maxFileBytes)
 	}
-	data, err = os.ReadFile(name) //nolint:gosec // the operator chooses objectsDir (hostOnly)
+	f, err := os.Open(name) //nolint:gosec // the operator chooses the object source (hostOnly)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = f.Close() }()
+	data, err = io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	if len(data) > maxFileBytes {
+		return nil, false, fmt.Errorf("file is larger than %d bytes", maxFileBytes)
+	}
 	return data, false, err
 }
 
@@ -320,7 +336,7 @@ func (l *Loader) Trigger() {
 	}
 }
 
-// Watch re-runs Load on file changes in Dir (fsnotify, debounced) and every
+// Watch re-runs Load on changes to InlineFile or Dir (fsnotify, debounced) and every
 // PollInterval, until ctx is done. A directory that does not exist yet, or
 // disappears, is picked up again on the next poll. Watch does not perform
 // an initial load; serve calls Load first so the objects are in the store
@@ -331,7 +347,7 @@ func (l *Loader) Watch(ctx context.Context) error {
 		errs   <-chan error
 		w      *fsnotify.Watcher
 	)
-	if l.opts.Dir != "" {
+	if len(l.watchDirs()) != 0 {
 		var err error
 		if w, err = fsnotify.NewWatcher(); err != nil {
 			l.log.Warn("objects: file watching unavailable; polling only", "error", err, "interval", l.opts.PollInterval)
@@ -361,7 +377,10 @@ func (l *Loader) Watch(ctx context.Context) error {
 				events = nil
 				continue
 			}
-			if filepath.Clean(ev.Name) == l.opts.Dir && ev.Has(fsnotify.Remove|fsnotify.Rename) {
+			if !l.relevantEvent(ev) {
+				continue
+			}
+			if slices.Contains(l.watchDirs(), filepath.Clean(ev.Name)) && ev.Has(fsnotify.Remove|fsnotify.Rename) {
 				watching = false
 				l.setWatching(false)
 			}
@@ -385,21 +404,50 @@ func (l *Loader) Watch(ctx context.Context) error {
 	}
 }
 
-// addWatch starts watching Dir; false when there is nothing to watch or
-// the directory cannot be watched (yet).
+func (l *Loader) watchDirs() []string {
+	var dirs []string
+	if l.opts.Dir != "" {
+		dirs = append(dirs, filepath.Clean(l.opts.Dir))
+	}
+	if l.opts.InlineFile != "" {
+		dir := filepath.Dir(l.opts.InlineFile)
+		if !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
+func (l *Loader) relevantEvent(ev fsnotify.Event) bool {
+	name := filepath.Clean(ev.Name)
+	if l.opts.Dir != "" && (name == l.opts.Dir || filepath.Dir(name) == l.opts.Dir) {
+		return true
+	}
+	if l.opts.InlineFile == "" {
+		return false
+	}
+	parent := filepath.Dir(l.opts.InlineFile)
+	return name == parent || name == filepath.Clean(l.opts.InlineFile) ||
+		(filepath.Dir(name) == parent && strings.HasPrefix(filepath.Base(name), "..")) // projected ConfigMap swaps
+}
+
+// addWatch watches the objects directory and inline file's parent. Watching
+// the parent survives atomic replacement and projected ConfigMap symlink swaps.
 func (l *Loader) addWatch(w *fsnotify.Watcher) bool {
 	if w == nil {
 		return false
 	}
-	if err := w.Add(l.opts.Dir); err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			l.log.Warn("objects: cannot watch the objects directory; polling", "dir", l.opts.Dir, "error", err)
+	watching := len(l.watchDirs()) > 0
+	for _, dir := range l.watchDirs() {
+		if err := w.Add(dir); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				l.log.Warn("objects: cannot watch source directory; polling", "dir", dir, "error", err)
+			}
+			watching = false
 		}
-		l.setWatching(false)
-		return false
 	}
-	l.setWatching(true)
-	return true
+	l.setWatching(watching)
+	return watching
 }
 
 func (l *Loader) setWatching(v bool) {

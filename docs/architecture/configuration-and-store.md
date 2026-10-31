@@ -486,7 +486,21 @@ The file loader takes the same path with manager `file:<path>`: it reads
 `objects:` in `kudurru.yaml` and every `objects.d/*.yaml`, applies them,
 deletes the objects that its files no longer declare, and re-applies on a
 file change (fsnotify, 500 ms debounce) and every 60 s to repair drift.
-Errors in a file become diagnoses; they never stop the server.
+The node configuration is read once per load, capped at 64 MiB, with one YAML
+mapping and no duplicate keys. Its entire `objects` section is decoded and
+schema-validated before reconciliation (4 MiB per flattened object). Missing,
+unreadable, oversized or invalid input preserves all objects owned by that
+inline source and prevents another file from taking them over. A valid empty,
+null or removed `objects` section intentionally removes its owned objects.
+Unrelated node settings are not applied by this watcher. An environment override
+of `objects` keeps precedence and remains fixed for the process lifetime.
+
+The watcher observes the node file's parent directory, so editor replacements
+and projected ConfigMap symlink swaps keep working. A missing watch directory is
+retried during polling. Reconciliation still uses individual store operations
+with the original manager, current validation and writer fencing; a valid source
+is not a cross-object database transaction. Errors become diagnoses without
+logging node-file contents, and never stop the server.
 
 ### The snapshot's life
 
