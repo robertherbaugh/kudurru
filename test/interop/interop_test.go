@@ -104,7 +104,7 @@ spec:
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil { //nolint:gosec // test-owned temporary fixture paths
 		t.Fatal(err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
@@ -150,12 +150,18 @@ func TestBINDSecondary(t *testing.T) {
 	kd := kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{})
 	t.Logf("timing: kudurru ready in %s", time.Since(start).Round(time.Millisecond))
 
+	primaryStatus := primaryStatusProbe(t, spec)
 	var primarySerial uint32
 	if !kudurrutest.Eventually(20*time.Second, 100*time.Millisecond, func() bool {
-		primarySerial, _ = soaSerial(t, spec.Ports.DNS, "interop.test.")
-		return primarySerial != 0
+		statusSerial, settled := primaryStatus()
+		if !settled {
+			return false
+		}
+		var rcode int
+		primarySerial, rcode = soaSerial(t, spec.Ports.DNS, "interop.test.")
+		return rcode == dns.RcodeSuccess && primarySerial != 0 && primarySerial == statusSerial
 	}) {
-		t.Fatal("kudurru does not serve interop.test SOA")
+		t.Fatal("kudurru primary status and interop.test SOA did not settle")
 	}
 
 	// named: the secondary.
@@ -224,13 +230,17 @@ zone "denied.test" {
 	})
 
 	t.Run("NOTIFY", func(t *testing.T) {
-		before, _ := soaSerial(t, spec.Ports.DNS, "interop.test.")
+		// AXFR already verified this serial on both servers. A fresh SOA
+		// probe can fail and return zero; using it would mistake the unchanged
+		// zone for progress before the file change has been published.
+		before := primarySerial
 		changed := time.Now()
 		writeFile(t, filepath.Join(objDir, "records.yaml"), recordsYAML(`{ dnsName: new.interop.test, recordType: A, targets: ["192.0.2.77"] }`))
 		var after uint32
 		if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
-			after, _ = soaSerial(t, spec.Ports.DNS, "interop.test.")
-			return after != before
+			var rcode int
+			after, rcode = soaSerial(t, spec.Ports.DNS, "interop.test.")
+			return rcode == dns.RcodeSuccess && after != 0 && after != before
 		}) {
 			t.Fatalf("kudurru serial did not move after the record change (still %d)", before)
 		}

@@ -30,6 +30,7 @@ import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { cleanPolicySpec, ContentCategoryFields, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../components/PolicyFields';
 import { EngineList, LogoStack } from '../components/ServiceGrid';
+import { ResponsePolicyFields, responsePolicyError, responsePolicySummary } from '../components/ResponsePolicyFields';
 import { YamlDialog } from '../components/YamlDialog';
 import { contentCategoryOfList, ensureContentLists } from '../lib/contentCategories';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
@@ -231,6 +232,17 @@ export default function PolicyDetailPage({ params }: PageProps) {
         edit={(d, set) => <WhenFields spec={d} onChange={set} {...fieldProps} />}
         validate={whenError}
         onSave={(d) => saveSpec(d, 'the schedule')}
+      />
+      <EditableSection<PolicySpec>
+        title="Response processing"
+        description="Client-specific rewrites, DNS64 and IPv6 filtering for forwarded queries."
+        value={spec}
+        readOnlyReason={roReason}
+        testId="section-response"
+        view={<Text>{responsePolicySummary(spec)}</Text>}
+        edit={(d, set) => <ResponsePolicyFields spec={d} onChange={set} {...fieldProps} />}
+        validate={responsePolicyError}
+        onSave={(d) => saveSpec(d, 'response processing')}
       />
       <ActivitySection policyRef={`${ns}/${name}`} state={state} derived={st.derived} />
 

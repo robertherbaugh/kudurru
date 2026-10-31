@@ -36,23 +36,23 @@ spec:
   template:
     {{- include "kudurru.podTemplate" . | nindent 4 }}
   {{- if eq $kind "StatefulSet" }}
-  {{- $p := dict -}}
-  {{- if include "kudurru.standalone" . }}
-  {{- if .Values.persistence.standalone.enabled }}{{ $p = .Values.persistence.standalone }}{{ end }}
-  {{- else if .Values.persistence.querylog.enabled }}
-  {{- $p = .Values.persistence.querylog }}
-  {{- else }}
-  {{- $p = .Values.persistence.local }}
-  {{- end }}
-  {{- if $p }}
+  {{- $claims := dict -}}
+  {{- $data := include "kudurru.dataPersistence" . | fromYaml -}}
+  {{- if $data }}{{ $_ := set $claims "data" $data }}{{ end -}}
+  {{- range $name := list "querylog" "local" -}}
+  {{- $p := index $.Values.persistence $name -}}
+  {{- if and $p.separate $p.enabled }}{{ $_ := set $claims $name $p }}{{ end -}}
+  {{- end -}}
+  {{- if $claims }}
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Retain
     whenScaled: Retain
   volumeClaimTemplates:
+    {{- range $name, $p := $claims }}
     - metadata:
-        name: data
+        name: {{ $name }}
         labels:
-          {{- include "kudurru.selectorLabels" . | nindent 10 }}
+          {{- include "kudurru.selectorLabels" $ | nindent 10 }}
       spec:
         accessModes:
           {{- toYaml $p.accessModes | nindent 10 }}
@@ -62,5 +62,6 @@ spec:
         resources:
           requests:
             storage: {{ $p.size }}
+    {{- end }}
   {{- end }}
   {{- end }}

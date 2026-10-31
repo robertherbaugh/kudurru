@@ -1,6 +1,6 @@
 # AD DNS secure-registration feasibility probe
 
-Started 2026-10-22 for [D188](../../design-record.md#16-decision-log) and
+Started 2026-10-22 for [D222](../../design-record.md#16-decision-log) and
 [AD6 in the functional outline](../../active-directory-dns.md).
 
 The probe establishes a Kerberos security context through RFC 2930/3645

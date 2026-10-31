@@ -16,21 +16,25 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
+	"github.com/robertherbaugh/kudurru/internal/apiclient/openapi"
 	"github.com/robertherbaugh/kudurru/internal/cli"
+	"github.com/robertherbaugh/kudurru/internal/importers"
 )
 
 // zoneSummary is one item of GET /zones (and the body of GET
 // /zones/{zone}): "type, serial, recordCount, ready, managedBy". The
 // object name is "name"; the zone apex is read from "zoneName" or "zone".
 type zoneSummary struct {
-	Name        string `json:"name"`
-	ZoneName    string `json:"zoneName,omitempty"`
-	Zone        string `json:"zone,omitempty"`
-	Type        string `json:"type"`
-	Serial      uint32 `json:"serial"`
-	RecordCount int    `json:"recordCount"`
-	Ready       any    `json:"ready"`
-	ManagedBy   string `json:"managedBy,omitempty"`
+	Name             string                    `json:"name"`
+	ZoneName         string                    `json:"zoneName,omitempty"`
+	Zone             string                    `json:"zone,omitempty"`
+	Type             string                    `json:"type"`
+	Serial           uint32                    `json:"serial"`
+	RecordCount      int                       `json:"recordCount"`
+	Ready            any                       `json:"ready"`
+	ManagedBy        string                    `json:"managedBy,omitempty"`
+	SecondaryRuntime *openapi.SecondaryRuntime `json:"secondaryRuntime,omitempty"`
+	StubRuntime      *openapi.StubRuntime      `json:"stubRuntime,omitempty"`
 }
 
 func (z zoneSummary) apex() string { return firstNonEmpty(z.ZoneName, z.Zone) }
@@ -54,13 +58,55 @@ func readyString(v any) string {
 
 func zoneTable(zs []zoneSummary) *cli.Table {
 	t := &cli.Table{Headers: []string{"NAME", "ZONE", "TYPE", "SERIAL", "RECORDS", "READY", "MANAGED-BY"}}
+	local := false
 	for _, z := range zs {
-		t.Add(z.Name, firstNonEmpty(z.apex(), "-"), z.Type, strconv.FormatUint(uint64(z.Serial), 10), strconv.Itoa(z.RecordCount), readyString(z.Ready), firstNonEmpty(z.ManagedBy, "-"))
+		if z.Type == "secondary" || z.Type == "stub" {
+			local = true
+			break
+		}
+	}
+	if local {
+		t.Headers = append(t.Headers, "NODE")
+	}
+	for _, z := range zs {
+		serial, count, state, node := strconv.FormatUint(uint64(z.Serial), 10), strconv.Itoa(z.RecordCount), readyString(z.Ready), "-"
+		if z.Type == "secondary" {
+			serial, count, state = "-", "-", "Unknown"
+			if rt := z.SecondaryRuntime; rt != nil {
+				state, node = string(rt.State), rt.Node
+				if rt.Serial != nil {
+					serial = strconv.FormatInt(int64(*rt.Serial), 10)
+				}
+				if rt.RecordCount != nil {
+					count = strconv.FormatInt(*rt.RecordCount, 10)
+				}
+				if rt.State != openapi.SecondaryRuntimeStateServing && rt.Serial != nil {
+					serial += " (last)"
+				}
+			}
+		}
+		if z.Type == "stub" {
+			serial, count, state = "-", "-", "Unknown"
+			if rt := z.StubRuntime; rt != nil {
+				state, node = string(rt.State), rt.Node
+				if rt.Serial != nil {
+					serial = strconv.FormatInt(*rt.Serial, 10)
+					if rt.State != openapi.StubRuntimeStateRouting {
+						serial += " (last)"
+					}
+				}
+			}
+		}
+		row := []string{z.Name, firstNonEmpty(z.apex(), "-"), z.Type, serial, count, state, firstNonEmpty(z.ManagedBy, "-")}
+		if local {
+			row = append(row, node)
+		}
+		t.Add(row...)
 	}
 	return t
 }
 
-// newZonesCmd is `kudurru zones list|get|import|export|notify|delete`.
+// newZonesCmd is `kudurru zones list|get|options|import|export|notify|delete`.
 func newZonesCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "zones", Aliases: []string{"zone"}, Short: "List, import, export, notify and delete zones"}
 	list := &cobra.Command{
@@ -99,7 +145,7 @@ func newZonesCmd(o *cliOpts) *cobra.Command {
 			return o.render(cmd, raw, func(bool) (*cli.Table, error) { return zoneTable([]zoneSummary{z}), nil })
 		},
 	}
-	cmd.AddCommand(list, get, newZoneImportCmd(o, "import <zone> -f file.zone"), newZoneExportCmd(o), newZoneNotifyCmd(o), newZoneDeleteCmd(o))
+	cmd.AddCommand(list, get, newZoneOptionsCmd(o), newZoneImportCmd(o, "import <zone> -f file.zone"), newZoneExportCmd(o), newZoneNotifyCmd(o), newZoneDeleteCmd(o))
 	return cmd
 }
 
@@ -471,10 +517,11 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 	return cmd
 }
 
-// newImportCmd includes file-based BIND imports and live API migrations.
+// newImportCmd includes offline file conversions and tracked API migrations.
 func newImportCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "import", Short: "Import data from other DNS servers"}
 	cmd.AddCommand(newZoneImportCmd(o, "bind <zone> -f file.zone"))
+	cmd.AddCommand(newOfflineMigrationCmd(o, "adguard", importers.PreviewAdGuard), newOfflineMigrationCmd(o, "blocky", importers.PreviewBlocky))
 	cmd.AddCommand(newMigrationCmd(o, "pihole"), newMigrationCmd(o, "technitium"), newMigrationRunsCmd(o), newMigrationDecommissionCmd(o), newMigrationTrackCmd(o))
 	return cmd
 }

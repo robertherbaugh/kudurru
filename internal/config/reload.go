@@ -304,6 +304,7 @@ func MergeCluster(cur, fresh *Config) (*Config, error) {
 		return nil, err
 	}
 	next.EnvLocked, next.Source, next.SettingsFile = cur.EnvLocked, cur.Source, cur.SettingsFile
+	CopyNodeLogSource(next, cur)
 	next.Node.Name = cur.Node.Name
 	next.DeclaredSections, next.FileRevision = fresh.DeclaredSections, fresh.FileRevision
 	return next, nil

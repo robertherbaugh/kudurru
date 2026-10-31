@@ -157,3 +157,17 @@ func writeTestCert(t *testing.T, dir string) {
 		}
 	}
 }
+
+func TestVIPRenderPerVRIDHMACFiles(t *testing.T) {
+	out := run(t, "vip", "render", "--vip=a=10.0.0.53/24@eth0#53", "--vip=b=10.0.0.54/24@eth0#54",
+		"--peers=10.0.0.12", "--unicast-src=10.0.0.11", "--router-id=chart-test",
+		"--hmac-key-file=/etc/kudurru/secrets/vrrp/vrrp_hmac_{vrid}")
+	for _, ref := range []string{"key 1 file:/etc/kudurru/secrets/vrrp/vrrp_hmac_53\n", "key 1 file:/etc/kudurru/secrets/vrrp/vrrp_hmac_54\n", "active_key 1", "anti_replay monotonic", "advert_int 1", "nopreempt"} {
+		if !strings.Contains(out, ref) {
+			t.Fatal("CLI lost per-VRID key identity or existing authentication/timer contract")
+		}
+	}
+	if strings.Contains(out, "{vrid}") || strings.Contains(out, "file:/etc/kudurru/secrets/vrrp/vrrp-hmac") {
+		t.Fatal("CLI left an unresolved or shared HMAC fallback")
+	}
+}

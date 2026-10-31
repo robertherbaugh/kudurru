@@ -1,8 +1,8 @@
 // The "Zone settings" section of a zone's page: what the new-zone wizard
 // sets (primary: name servers, default TTL, SOA, who may query; forward:
-// upstream group, DNSSEC validation), shown and edited in place with the
+// upstream group, DNSSEC validation; secondary: primaries and TSIG key), with the
 // wizard's own fields. Saving PUTs the DNSZone with If-Match and keeps every
-// field the editor does not show (transfers, NOTIFY, ...).
+// field the editor does not show (transfer policy, NOTIFY mode/targets, ...).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Link } from '@astryxdesign/core/Link';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
@@ -15,7 +15,7 @@ import { readOnlyReason, type Ownership } from '../lib/managedBy';
 import { QUERY_ACCESS, SOA_DEFAULTS } from '../lib/zones';
 import { EditableSection } from './EditableSection';
 import { secondsLabel } from './fields/DurationField';
-import { applyDraft, draftFromZone, ForwardFields, primaryError, PrimaryFields, type Draft } from './wizards/ZoneWizard';
+import { applyDraft, draftFromZone, ForwardFields, primaryError, PrimaryFields, secondaryError, SecondaryFields, stubError, StubFields, type Draft } from './wizards/ZoneWizard';
 import { ErrorBanner, useNotify } from './Feedback';
 
 export interface ZoneSettingsSectionProps {
@@ -32,7 +32,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
   const obj = useQuery({ queryKey: [...qk.objects('dnszones'), zone], queryFn: () => api.objects.get<DNSZone>('dnszones', zone) });
   if (obj.error) return <ErrorBanner error={obj.error} />;
   const z = obj.data;
-  if (!z || (z.spec.type !== 'primary' && z.spec.type !== 'forward')) return null;
+  if (!z || (z.spec.type !== 'primary' && z.spec.type !== 'forward' && z.spec.type !== 'secondary' && z.spec.type !== 'stub')) return null;
   const value = draftFromZone(z.spec);
   const roReason = !own.editable ? readOnlyReason(own) : !can('zones', 'write') ? 'Needs zones.write' : undefined;
 
@@ -57,7 +57,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
   return (
     <EditableSection<Draft>
       title="Zone settings"
-      description={value.type === 'primary' ? 'Name servers, TTLs and SOA timers, and who may query the zone.' : 'Where queries for the zone are sent.'}
+      description={value.type === 'primary' ? 'Name servers, TTLs, SOA timers, NOTIFY key/source and who may query the zone.' : value.type === 'secondary' ? 'Primary servers, transfer transport and TSIG key. SOA timers and TTLs come from the primary.' : value.type === 'stub' ? 'Bootstrap servers used to discover the zone’s authorities.' : 'Where queries for the zone are sent.'}
       value={value}
       readOnlyReason={roReason}
       testId="section-zone-settings"
@@ -71,10 +71,23 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
             <MetadataListItem label="Retry">{secs(value.retry, 'retry')}</MetadataListItem>
             <MetadataListItem label="Expire">{secs(value.expire, 'expire')}</MetadataListItem>
             <MetadataListItem label="Negative TTL">{secs(value.minimum, 'minimum')}</MetadataListItem>
+            <MetadataListItem label="NOTIFY TSIG key">{value.notifyTSIGKeyRef || (z.spec.policy?.transferTSIGKeyRefs?.[0] ? `First transfer key (${z.spec.policy.transferTSIGKeyRefs[0]})` : 'None (unsigned)')}</MetadataListItem>
+            <MetadataListItem label="NOTIFY source address">{value.notifySource || 'Global notify.source, otherwise system selection'}</MetadataListItem>
             <MetadataListItem label="Who may query">
               {access}
               {value.queryACL.length ? <Text color="secondary"> ({value.queryACL.join(', ')})</Text> : null}
             </MetadataListItem>
+          </MetadataList>
+        ) : value.type === 'secondary' ? (
+          <MetadataList columns="multi">
+            <MetadataListItem label="Primary servers">{value.primaries.length ? value.primaries.join(', ') : <Text color="secondary">none configured</Text>}</MetadataListItem>
+            <MetadataListItem label="Transfer">AXFR/IXFR over {value.transferProtocol === 'tls' ? 'verified TLS' : 'TCP'}; default port 53</MetadataListItem>
+            <MetadataListItem label="TSIG key name">{value.tsigKeyRef || <Text color="secondary">none (unsigned transfers)</Text>}</MetadataListItem>
+          </MetadataList>
+        ) : value.type === 'stub' ? (
+          <MetadataList columns="multi">
+            <MetadataListItem label="Bootstrap servers">{value.bootstrapServers.length ? value.bootstrapServers.join(', ') : <Text color="secondary">none configured</Text>}</MetadataListItem>
+            <MetadataListItem label="Routing">Direct to discovered authorities</MetadataListItem>
           </MetadataList>
         ) : (
           <MetadataList columns="multi">
@@ -88,16 +101,16 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
               )}
             </MetadataListItem>
             <MetadataListItem label="DNSSEC validation">
-              {value.dnssec === '' ? <Text color="secondary">as the upstream group does</Text> : <Badge variant="neutral" label={value.dnssec === 'on' ? 'validate' : 'do not validate'} />}
+              {value.dnssec === '' ? <Text color="secondary">global setting</Text> : <Badge variant="neutral" label={value.dnssec === 'on' ? 'validate' : 'do not validate'} />}
             </MetadataListItem>
           </MetadataList>
         )
       }
       edit={(draft, setDraft) => {
         const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
-        return draft.type === 'primary' ? <PrimaryFields d={draft} set={set} /> : <ForwardFields d={draft} set={set} />;
+        return draft.type === 'primary' ? <PrimaryFields d={draft} set={set} /> : draft.type === 'secondary' ? <SecondaryFields d={draft} set={set} /> : draft.type === 'stub' ? <StubFields d={draft} set={set} /> : <ForwardFields d={draft} set={set} />;
       }}
-      validate={(d) => (d.type === 'primary' ? primaryError(d) : null)}
+      validate={(d) => (d.type === 'primary' ? primaryError(d) : d.type === 'secondary' ? secondaryError(d) : d.type === 'stub' ? stubError(d) : null)}
       onSave={save}
     />
   );

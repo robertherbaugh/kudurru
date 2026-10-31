@@ -17,6 +17,9 @@ func TestReconfigureResizesAndKeepsEntries(t *testing.T) {
 	}
 	// Growing keeps everything.
 	c.Reconfigure(Options{MaxEntries: 4096, StaleTTL: time.Hour})
+	if len(c.shards) != 64 {
+		t.Fatalf("growth retained initial shard count: %d", len(c.shards))
+	}
 	before := c.Len()
 	for i := 1000; i < 3000; i++ {
 		c.Set(key(fmt.Sprintf("n%d.example.", i)), []byte{1}, Positive, time.Minute)
@@ -26,13 +29,13 @@ func TestReconfigureResizesAndKeepsEntries(t *testing.T) {
 	}
 	// Shrinking evicts at once and the bound holds afterwards.
 	c.Reconfigure(Options{MaxEntries: 100, StaleTTL: time.Hour})
-	if n := c.Len(); n > 100+len(c.shards) {
+	if n := c.Len(); n > 100 {
 		t.Fatalf("after shrinking: %d entries", n)
 	}
 	for i := 3000; i < 3500; i++ {
 		c.Set(key(fmt.Sprintf("n%d.example.", i)), []byte{1}, Positive, time.Minute)
 	}
-	if n := c.Len(); n > 100+len(c.shards) {
+	if n := c.Len(); n > 100 {
 		t.Fatalf("bound after shrinking: %d entries", n)
 	}
 	// MaxEntries 0 keeps the size; the stale window applies to new entries.

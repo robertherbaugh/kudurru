@@ -25,8 +25,9 @@
 *Figure 1. Use an IP address or CIDR range for device matching.*
 
 You can click **Add** beside a recently seen client instead of entering its address.
-The DNS listeners in v0.1.0 do not receive client IDs or MAC addresses.
-Use IP or CIDR matchers. Clients with no matching group use `default`.
+IP and CIDR matchers work directly. Other matchers require a configured inventory
+source or supported client-identity transport; adding a matcher does not discover
+a device's MAC address. Clients with no matching group use `default`.
 
 ## Change membership
 
@@ -45,3 +46,18 @@ File-managed and Kubernetes-managed groups need edits at their source.
 Generate a query from the device, then open its [client details](clients.md).
 Confirm the expected **Groups** and **Policy right now**.
 If every client appears as the router, give clients the kudurru DNS address directly.
+
+## Exempt a group from the UDP rate limit
+
+Open the group and select **Edit** in **UDP rate limit**, check **Exempt members
+from the UDP rate limit**, then save. File-managed or Kubernetes-managed groups
+use `spec.rateLimitExempt: true` at their source. Clear the checkbox or set the
+field to `false` to restore the configured limit.
+
+Only groups selected at the winning identification tier contribute. If several
+groups tie, any enabled exemption wins; a lower-priority matching group cannot
+override that selection. The exemption skips the UDP per-prefix budget and
+leaves DNS policies, ACLs and message checks in force. TCP/encrypted transports,
+loopback, configured exempt networks and the health name keep their existing
+behavior. New queries use the new setting after publication; an already held
+request retains its original group decision.

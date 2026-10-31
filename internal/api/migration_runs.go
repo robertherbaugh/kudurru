@@ -65,6 +65,8 @@ type migrationRunsOutput struct{ Body *List[MigrationRun] }
 
 // MigrationAuthorityChange is one reviewed change, fenced by object version.
 type MigrationAuthorityChange struct {
+	// UID pins a reviewed previous import; cutover callers may omit it.
+	UID               string                 `json:"uid,omitempty"`
 	Name              string                 `json:"name"`
 	Namespace         string                 `json:"namespace,omitempty"`
 	ZoneName          string                 `json:"zoneName"`
@@ -107,7 +109,11 @@ func (s *Server) registerMigrationRuns() {
 		if limit == 0 {
 			limit = 25
 		}
-		list, err := s.opts.Store.List(ctx, internal.KindMigrationRun, store.ListOptions{Limit: limit, Continue: in.Continue})
+		reader, err := s.migrationReader(ctx)
+		if err != nil {
+			return nil, err
+		}
+		list, err := reader.List(ctx, internal.KindMigrationRun, store.ListOptions{Limit: limit, Continue: in.Continue})
 		if err != nil {
 			return nil, storeError(err)
 		}
@@ -145,8 +151,12 @@ func (s *Server) registerMigrationRuns() {
 }
 
 func (s *Server) getMigrationRun(ctx context.Context, id string) (*internal.MigrationRun, error) {
+	reader, err := s.migrationReader(ctx)
+	if err != nil {
+		return nil, err
+	}
 	r := &internal.MigrationRun{}
-	if err := s.opts.Store.Get(ctx, store.Key{Kind: internal.KindMigrationRun, Name: id}, r); err != nil {
+	if err := reader.Get(ctx, store.Key{Kind: internal.KindMigrationRun, Name: id}, r); err != nil {
 		return nil, storeError(err)
 	}
 	return r, nil
@@ -167,6 +177,17 @@ func (s *Server) saveMigrationRun(ctx context.Context, r *internal.MigrationRun)
 	return nil
 }
 func (s *Server) newMigrationRun(ctx context.Context, plan *importers.Plan, source string) (*internal.MigrationRun, error) {
+	r, err := s.buildMigrationRun(ctx, plan, source)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.saveMigrationRun(ctx, r); err != nil {
+		return nil, storeError(err)
+	}
+	return r, nil
+}
+
+func (s *Server) buildMigrationRun(ctx context.Context, plan *importers.Plan, source string) (*internal.MigrationRun, error) {
 	selected, settings, err := plan.Selected()
 	if err != nil {
 		return nil, errInvalid("%s", err)
@@ -181,16 +202,22 @@ func (s *Server) newMigrationRun(ctx context.Context, plan *importers.Plan, sour
 	deadline := metav1.NewTime(s.opts.Now().Add(migrationTimeout))
 	r.Spec.Deadline = &deadline
 	if plan.Source != nil {
-		if plan.Source.Type != "pihole" && plan.Source.Type != "technitium" {
+		r.Spec.Source = plan.Source.Type
+		switch plan.Source.Type {
+		case "adguard", "blocky":
+			if plan.Source.URL != "" {
+				return nil, errInvalid("offline migration source must not include a URL or file path")
+			}
+		case "pihole", "technitium":
+			// Persist only the origin. Paths and queries may contain credentials.
+			u, err := url.Parse(plan.Source.URL)
+			if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+				return nil, errInvalid("invalid source URL")
+			}
+			r.Spec.SourceURL = (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
+		default:
 			return nil, errInvalid("unknown migration source")
 		}
-		r.Spec.Source = plan.Source.Type
-		// Persist only the origin. Paths and queries may contain credentials.
-		u, err := url.Parse(plan.Source.URL)
-		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return nil, errInvalid("invalid source URL")
-		}
-		r.Spec.SourceURL = (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
 	}
 	seen := map[string]bool{}
 	for _, doc := range plan.Objects {
@@ -245,10 +272,6 @@ func (s *Server) newMigrationRun(ctx context.Context, plan *importers.Plan, sour
 	}
 	if err := migrationImportCapacity(r); err != nil {
 		return nil, err
-	}
-	if err := s.saveMigrationRun(ctx, r); err != nil {
-		s.log.Error("migration progress could not be saved", "run", r.Name, "error", err)
-		return nil, storeError(err)
 	}
 	return r, nil
 }
@@ -354,9 +377,19 @@ func equalAuthority(a []string, ap string, b []string, bp string) bool {
 	return strings.EqualFold(strings.TrimSuffix(ap, "."), strings.TrimSuffix(bp, ".")) && slices.Equal(normalize(a), normalize(b))
 }
 func (s *Server) migrationZone(ctx context.Context, r *internal.MigrationRun, z internal.MigrationZone) (*v1alpha1.DNSZone, error) {
+	reader, err := s.migrationReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return migrationZoneFrom(ctx, reader, r, z)
+}
+func migrationZoneFrom(ctx context.Context, reader migrationRead, r *internal.MigrationRun, z internal.MigrationZone) (*v1alpha1.DNSZone, error) {
 	current := &v1alpha1.DNSZone{}
-	if err := s.opts.Store.Get(ctx, store.Key{Kind: "DNSZone", Namespace: z.Namespace, Name: z.Name}, current); err != nil {
+	if err := reader.Get(ctx, store.Key{Kind: "DNSZone", Namespace: z.Namespace, Name: z.Name}, current); err != nil {
 		return nil, storeError(err)
+	}
+	if store.ManagedBy(current) != store.ManagerAPI {
+		return nil, errManagedBy(store.KeyOf(current), store.ManagedBy(current))
 	}
 	if current.Annotations[migrationRunAnnotation] != r.Name || (z.UID != "" && string(current.UID) != z.UID) || current.Spec.ZoneName != z.ZoneName || current.Spec.Type != v1alpha1.ZoneTypePrimary {
 		return nil, errConflict("Zone was replaced or belongs to another migration", "Import it again to create a new run")
@@ -375,6 +408,13 @@ func (s *Server) migrationZone(ctx context.Context, r *internal.MigrationRun, z 
 	return current, nil
 }
 func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.MigrationRun, names, addresses []string) (*MigrationCutoverPlan, error) {
+	reader, err := s.migrationReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.previewMigrationCutoverFrom(ctx, reader, r, names, addresses, true)
+}
+func (s *Server) previewMigrationCutoverFrom(ctx context.Context, reader migrationRead, r *internal.MigrationRun, names, addresses []string, authorize bool) (*MigrationCutoverPlan, error) {
 	if len(r.Spec.Zones) == 0 {
 		return nil, errInvalid("This migration has no authoritative zones to decommission")
 	}
@@ -403,8 +443,11 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 		"This updates apex NS and SOA primary names in the imported zones, plus generated A/AAAA records when serving IPs are selected. Update registrar/parent delegations, glue, and delegations in other zones separately. The source server is not shut down.",
 		"Writes are not transactional. Successful changes remain if another zone fails; review errors and preview again to retry.",
 	}}
+	if s.currentMigrations() {
+		p.Warnings[2] = "Each zone and its generated nameserver records commit together. Successful earlier zones remain if a later command fails; review errors and preview again to retry."
+	}
 	if len(ips) > 0 {
-		sets, err := s.allRecordSets(ctx, "")
+		sets, err := migrationRecordSets(ctx, reader)
 		if err != nil {
 			return nil, err
 		}
@@ -415,8 +458,8 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 	}
 	for _, tracked := range r.Spec.Zones {
 		c := MigrationAuthorityChange{Name: tracked.Name, Namespace: tracked.Namespace, ZoneName: tracked.ZoneName, Nameservers: []string{}}
-		z, err := s.migrationZone(ctx, r, tracked)
-		if err == nil {
+		z, err := migrationZoneFrom(ctx, reader, r, tracked)
+		if err == nil && authorize {
 			k, _ := kindByKind("DNSZone")
 			body, _ := objectMap(k, z)
 			err = s.authorizeWrite(ctx, k, writeRequest{kind: k, body: body})
@@ -425,7 +468,7 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 			c.TargetNameservers, _, err = importers.Authority(z.Spec.ZoneName, ns, ips)
 		}
 		if err == nil && len(ips) > 0 {
-			c.AddressRecordSet, err = s.migrationAddressRecordSet(ctx, r, z, ips, p.recordSets[z.Name])
+			c.AddressRecordSet, err = s.migrationAddressesFrom(ctx, reader, r, z, ips, p.recordSets[z.Name], authorize)
 		}
 		if err != nil {
 			c.Error = err.Error()
@@ -439,6 +482,9 @@ func (s *Server) previewMigrationCutover(ctx context.Context, r *internal.Migrat
 	return p, nil
 }
 func (s *Server) applyMigrationCutover(ctx context.Context, id string, p *MigrationCutoverPlan) (*MigrationResult, error) {
+	if s.currentMigrations() {
+		return s.applyCurrentCutover(ctx, id, p)
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}

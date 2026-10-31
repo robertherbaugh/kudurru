@@ -11,18 +11,20 @@ external DNS servers that kudurru asks.
 
 ## Zones
 
-A zone is a part of the DNS name space. kudurru has two types of zone.
+A zone is a part of the DNS name space. kudurru serves three types of zone.
 
 | Type | Meaning |
 |---|---|
 | Primary | kudurru is the authority. You keep the records in kudurru. kudurru answers from these records. |
 | Forward | kudurru sends the queries for the zone to an upstream group. Use it for a company or Active Directory zone. |
+| Secondary | Every kudurru node copies records from an external primary. Changes belong on that primary. |
+| Stub | Each node discovers the zone’s authorities and sends queries directly to them. |
 
 A block list cannot block a name in a primary zone. The records of your own
 zone always get an answer.
 
-NOTE: In this release the wizard makes primary and forward zones. Secondary,
-stub and catalog zones need a YAML file and the command `kudurru apply`.
+The wizard creates primary, forward, secondary and stub zones. Catalog zones
+are reserved for a later release.
 
 ### See the zones
 
@@ -36,7 +38,9 @@ The zone `.` is the root zone. It is a forward zone that the system makes.
 It sends all other queries to the upstream group `default`.
 
 The column **Serial** shows the SOA serial. kudurru increases it when you
-change a record. **Ready** shows **Ready** when the zone answers.
+change a primary record. Secondary serials and availability are labeled with
+the responding node; different replicas may temporarily report different
+copies. Shared Kubernetes status does not assert that every secondary is ready.
 
 ### Create a primary zone
 
@@ -153,8 +157,81 @@ keep normal primary-zone behavior: missing names answer NXDOMAIN.
 The upstream group must exist. [Create an upstream
 group](#create-an-upstream-group) first if it does not.
 
-NOTE: The per-zone DNSSEC setting is reserved for a later version.
-Recursive upstream groups validate DNSSEC with their recursion settings.
+Forwarded-answer DNSSEC validation and the per-zone override are implemented
+on the v0.2 development branch. In v0.1.0, recursive upstream groups validate
+DNSSEC using their recursion settings.
+
+### Create a secondary zone
+
+1. Open **DNS** > **Zones** > **New zone** and select **Secondary**.
+2. Enter the zone's apex, such as `partner.example.`.
+3. Enter one or more primary addresses in preference order. Hostnames and IPs
+   are accepted, with port 53 by default: `primary.example`, `192.0.2.53:5300`,
+   or `[2001:db8::53]:5300`.
+4. If the primary requires TSIG, enter the key name. Configure that key's
+   secret in `tsigKeys` on every kudurru node; the form does not store secrets.
+5. Review and create the zone. Allow each node's source address through the
+   primary's transfer ACL.
+
+The zone detail shows the copy on the responding node: serial, record count,
+last confirmation, expiry, next attempt and the latest transfer error. Refresh,
+retry, expiry and record TTLs come from the primary's SOA and records. Records
+are read-only in kudurru; its local record editor and import are unavailable
+for secondaries.
+
+A failed refresh keeps the last good copy until expiry. At expiry, that node
+answers SERVFAIL for the zone until it refreshes successfully. Restarting does
+not extend the deadline. Keep each node's data directory on persistent storage
+to retain copies across restarts; an ephemeral replacement needs a new transfer.
+Changes to the secondary configuration or its credentials also require a fresh
+transfer. Other zones can continue to answer while this secondary is unavailable.
+
+Primaries may send NOTIFY to any replica's UDP, TCP, or DoT listener. The source
+address must match a configured primary, and the configured TSIG key is required
+when present. For primary hostnames, address authorization is refreshed every
+30 seconds and expires after two minutes if resolution fails. The receiving
+replica sends a refresh hint to peers over the authenticated internal listener;
+every replica then checks and transfers independently. Lost hints recover at
+the next SOA refresh. NOTIFY never extends expiry by itself.
+
+Choose TCP or TLS in the transfer settings. TLS checks the primary certificate
+against each node's trust store and requires its hostname or IP in the
+certificate; install a private CA in each node's trust store when needed.
+The default port is 53 for either transport, so include `:853` for a primary
+listening on the standard TLS port. Failed TLS verification never falls back
+to plaintext.
+
+Initial copies use AXFR. Later serial changes use IXFR with automatic AXFR
+fallback when the primary lacks incremental history. Expired copies and
+credential changes require a fresh AXFR. Invalid deltas retain the last-good
+copy until its existing expiry. Signed secondaries preserve and serve their
+transferred signatures with NSEC or NSEC3 proofs (including opt-out). Malformed
+or incomplete signed copies are rejected. Ordinary queries requesting DNSSEC
+material fail with SERVFAIL if a required signature has expired, even when
+SOA expiry has not elapsed. Queries without DO can still use the copy until
+SOA expiry. Explicit RRSIG queries retain the original signature bytes for
+diagnostics. The secondary does not sign locally or assert validation through
+AD. Local secondary export is not available yet.
+
+### Create a stub zone
+
+Choose **Stub** in the new-zone wizard, enter the zone apex, and add one to 16
+**Bootstrap servers**. Use hostnames or IP addresses, optionally with a port.
+For example, `192.0.2.53` uses UDP port 53, while `tcp://ns.corp.example:5353`
+uses TCP port 5353. Use brackets for IPv6 with a port. TLS is not supported.
+The discovered servers use the successful bootstrap server's protocol and port.
+
+Each node discovers and refreshes the zone's authorities independently. The
+zone page shows **Stub on this node**, including discovered addresses, the last
+observed SOA serial, confirmation and expiry. This is a route, so the page has
+no editable records, import, export, or NOTIFY controls. Change records at the
+external authority; edit bootstrap servers under **Zone settings**.
+
+A failed discovery keeps an unexpired route. Once the route expires, queries
+for the zone answer SERVFAIL until discovery succeeds. Restarting preserves
+the original deadline. Recursive clients receive a direct authority answer;
+non-recursive clients receive the discovered NS/glue referral. Child referrals
+are returned without being followed. Stub answers do not assert DNSSEC AD.
 
 ### Add a record
 
@@ -190,7 +267,12 @@ The page has these functions:
 - **Edit** and **Delete** in a row change or remove one record.
 - **Import BIND** adds the records of a BIND zone file.
 - **Export** downloads the zone in BIND format.
-- **Send NOTIFY** tells the secondary servers of the zone to fetch it.
+- **Send NOTIFY** queues a notification for the zone's committed serial. On
+  SQLite, success confirms durable acceptance; delivery happens in the
+  background and pending requests survive restart. Repeating a request while
+  one is pending coalesces it. A later request after acknowledgment sends the
+  same serial again without editing records. The zone's NOTIFY policy still
+  controls its recipients; `none` performs no delivery.
 
 ### Import a zone file
 
@@ -446,3 +528,77 @@ Click **Delete** to remove a group that is not in use.
 | Export a zone | `kudurru zones export <zone>` |
 | Send NOTIFY | `kudurru zones notify <zone>` |
 | Change the upstreams | `kudurru settings set upstreams.bootstrap=9.9.9.9,1.1.1.1` |
+
+
+### Select an outbound NOTIFY key and source
+
+For primary zones, the creation wizard and **Zone settings** expose **NOTIFY
+TSIG key** and **NOTIFY source address**. Enter only a configured key name,
+never its secret. Clearing the key uses the first transfer key, or unsigned
+NOTIFY if neither is configured. A missing selected key fails delivery rather
+than sending unsigned traffic. These options apply when the zone's existing
+NOTIFY mode enables delivery; they do not enable NOTIFY or change which keys
+may request a transfer.
+
+The source is a literal local IPv4 or IPv6 unicast address. Clearing it inherits
+the global `notify.source`, then system selection. Hostnames, ports, scoped or
+IPv4-mapped IPv6 addresses are rejected. A valid address that cannot bind or
+reach a target's address family fails without an alternate source. NAT can
+still change the address observed by the secondary.
+
+The same optional fields are available through zone YAML and the object API:
+
+```yaml
+spec:
+  policy:
+    notify: specified
+    notifyTargets: [192.0.2.20]
+    notifyTSIGKeyRef: notify-key.example.
+    notifySource: 192.0.2.10
+```
+
+Both selected key and source belong to the captured zone policy. Rotation or a
+policy change during delivery cannot acknowledge the obsolete pending intent.
+
+
+## Import a dnsmasq routing file
+
+Set `upstreams.importFile` in the node configuration (or
+`KUDURRU_UPSTREAMS__IMPORTFILE`) to a local routing file. Relative paths resolve
+beside the node configuration. For example:
+
+```yaml
+upstreams:
+  importFile: upstream-routes.conf
+```
+
+```text
+server=/corp.example/10.in-addr.arpa/192.0.2.53#5353
+server=/corp.example/192.0.2.54
+server=/public.corp.example/#
+[/svc.example/]tls://192.0.2.55 tcp://192.0.2.56
+```
+
+Repeated rules for a suffix combine servers in their original order. Imported
+conditional groups use strict failover and names `dnsmasq-1`, `dnsmasq-2`, etc.;
+`#` selects the normal default group. Global `server=192.0.2.53` or plain server
+lines can replace the compiled default when no explicit default group is set.
+This translates routing, not dnsmasq's adaptive upstream selection strategy.
+
+The whole import is refused on a collision, unsupported directive or malformed
+input. Errors report line numbers without echoing the source. `local=`, local
+answer rules, `address=`, DHCP options, source-interface selectors and wildcard
+selectors require explicit Kudurru configuration. Blank lines and full-line
+comments are supported; shell expansions and inline comments are not.
+
+Limits are 4 MiB per regular file, 64 KiB per line, 65,536 rules and suffixes,
+4,096 conditional groups, 256 servers per suffix and 1,024 default servers.
+Expansion is also capped at 65,536 suffix/server assignments and 4 MiB of
+server-address bytes, preventing short input from multiplying into large routes.
+Up to 64 unsupported-line reports are retained. No partial import is installed.
+
+The path is host-only. Existing environment overrides, persisted canonical
+settings and UI ownership retain precedence. To adopt or release upstreams,
+use the normal reviewed ownership workflow; adopted values survive a missing
+original file, but release requires a matching available source. The setting
+adds no watcher and does not overwrite an existing cluster singleton on restart.

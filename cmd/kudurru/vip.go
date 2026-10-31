@@ -27,6 +27,7 @@ type vipFlags struct {
 	peers                  []string
 	peersFile, peersFrom   string
 	priorityIndex          int
+	priorityConfigured     bool
 	nodeCount              int
 	unicastSrc             string
 	vrrpInterface          string
@@ -164,15 +165,16 @@ func interfaceAddress(v keepalived.VIP) (string, error) {
 	return "", fmt.Errorf("interface %s has no usable address", v.Interface)
 }
 
-func newVIPCmd() *cobra.Command {
+func newVIPCmd(configPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vip",
 		Short: "keepalived supervisor and VIP tools (PID 1 of the kudurru-keepalived image)",
 	}
 	var rf, uf vipFlags
 	render := &cobra.Command{
-		Use:   "render",
-		Short: "Print the keepalived.conf the supervisor would run",
+		Use:     "render",
+		Short:   "Print the keepalived.conf the supervisor would run",
+		PreRunE: func(c *cobra.Command, _ []string) error { return rf.load(c, *configPath) },
 		RunE: func(c *cobra.Command, _ []string) error {
 			if _, _, err := rf.nodePeers(c, false); err != nil {
 				return err
@@ -191,8 +193,9 @@ func newVIPCmd() *cobra.Command {
 	}
 	rf.register(render, false)
 	run := &cobra.Command{
-		Use:   "run",
-		Short: "Render, keepalived -t, exec and supervise keepalived; SIGHUP on re-render",
+		Use:     "run",
+		Short:   "Render, keepalived -t, exec and supervise keepalived; SIGHUP on re-render",
+		PreRunE: func(c *cobra.Command, _ []string) error { return uf.load(c, *configPath) },
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runVIP(c, &uf)
 		},

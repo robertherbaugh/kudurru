@@ -153,7 +153,7 @@ func TestShipFactsAndRollups(t *testing.T) {
 	if n := scalar(t, db, `SELECT sum(total) FROM rollup_domain_1h`); n != 20 {
 		t.Fatalf("domain hours %d", n)
 	}
-	if n := scalar(t, db, `SELECT c.last_id FROM ship_cursor c WHERE c.stream = 'rollup_1h'`); n != t0.Unix() {
+	if n := scalar(t, db, `SELECT c.last_id FROM ship_cursor c WHERE c.stream = 'source_rollup_1h'`); n != t0.Unix() {
 		t.Fatalf("hour cursor %d", n)
 	}
 	if s.ShippedThrough() != 20 {
@@ -239,6 +239,11 @@ func TestCentralRetention(t *testing.T) {
 		t.Fatalf("facts within the central retention %d", n)
 	}
 	ctx := context.Background()
+	// Retention waits for durable source/hour coverage.
+	if err := w.Maintain(ctx); err != nil {
+		t.Fatal(err)
+	}
+	shipAll(t, s)
 	for _, job := range Jobs(2 * 24 * time.Hour) {
 		if err := db.Tx(ctx, func(tx pgx.Tx) error { _, err := job.Run(ctx, tx, t0); return err }); err != nil {
 			t.Fatalf("%s: %v", job.Name, err)

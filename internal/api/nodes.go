@@ -2,12 +2,10 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/central"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
@@ -69,12 +68,13 @@ type clusterOutput struct{ Body *ClusterInfo }
 
 // EdgeInfo is GET /edge: live supervisor readiness, backends and VIP states.
 type EdgeInfo struct {
-	Edge        EdgeComponent          `json:"edge"`
-	VIP         EdgeComponent          `json:"vip"`
-	Backends    []EdgeBackend          `json:"backends" nullable:"false"`
-	VIPs        []EdgeVIP              `json:"vips" nullable:"false"`
-	Supervisors []EdgeSupervisorStatus `json:"supervisors" nullable:"false"`
-	Node        string                 `json:"node"`
+	Observation *VIPObservationSnapshot `json:"observation,omitempty"`
+	Edge        EdgeComponent           `json:"edge"`
+	VIP         EdgeComponent           `json:"vip"`
+	Backends    []EdgeBackend           `json:"backends" nullable:"false"`
+	VIPs        []EdgeVIP               `json:"vips" nullable:"false"`
+	Supervisors []EdgeSupervisorStatus  `json:"supervisors" nullable:"false"`
+	Node        string                  `json:"node"`
 	Took
 }
 
@@ -112,6 +112,7 @@ type DiagnosisMessage struct {
 type messagesOutput struct{ Body *List[DiagnosisMessage] }
 
 func (s *Server) registerNodes() {
+	s.registerVIPEvents()
 	cl := perm{resource: "cluster", verb: "read"}
 	register(s, operation(http.MethodGet, "/nodes", "listNodes", "Nodes of the cluster", "cluster"), cl, s.listNodes)
 	register(s, operation(http.MethodGet, "/nodes/{name}/health", "nodeHealth", "Readiness detail of one node", "cluster"), cl, s.nodeHealth)
@@ -188,24 +189,55 @@ func (s *Server) ready() (bool, []string) {
 }
 
 func (s *Server) nodeHealth(ctx context.Context, in *nodeNameInput) (*nodeHealthOutput, error) {
-	if in.Name != s.opts.NodeName {
-		peers, _ := s.opts.Membership.Peers(ctx)
-		for _, p := range peers {
-			if p.Name == in.Name {
-				return nil, newError(http.StatusNotImplemented, KeyNotImplemented, "health of other nodes needs scatter-gather over the internal listener",
-					"ask "+in.Name+" directly")
-			}
+	if in.Name == s.opts.NodeName {
+		var handler http.Handler
+		if s.opts.Health != nil {
+			handler = s.opts.Health.Handler()
 		}
-		return nil, errNotFound("node " + in.Name)
+		out, err := internalapi.LocalHealth(ctx, s.opts.NodeName, handler)
+		if err != nil {
+			return nil, errUnavailable("node health: unavailable")
+		}
+		return &nodeHealthOutput{Body: &NodeHealth{Node: out.Node, Ready: out.Ready, Health: out.Health}}, nil
 	}
-	ready, _ := s.ready()
-	out := &NodeHealth{Node: s.opts.NodeName, Ready: ready, Health: map[string]any{}}
-	if s.opts.Health != nil {
-		rec := httptest.NewRecorder()
-		s.opts.Health.Handler().ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/healthz", nil))
-		_ = json.Unmarshal(rec.Body.Bytes(), &out.Health)
+	peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	peers, err := s.opts.Membership.Peers(peerCtx)
+	if err != nil {
+		return nil, errUnavailable("node health: membership unavailable")
 	}
-	return &nodeHealthOutput{Body: out}, nil
+	for _, p := range peers {
+		if p.Name != in.Name {
+			continue
+		}
+		if p.Self || s.opts.InternalClient == nil || p.Address == "" {
+			return nil, errUnavailable("peer health: unavailable")
+		}
+		out, err := s.opts.InternalClient.Health(peerCtx, p.Address, p.Name)
+		if err != nil {
+			return nil, errUnavailable("%s", peerHealthError(err))
+		}
+		return &nodeHealthOutput{Body: &NodeHealth{Node: out.Node, Ready: out.Ready, Health: out.Health}}, nil
+	}
+	return nil, errNotFound("node " + in.Name)
+}
+
+func peerHealthError(err error) string {
+	var netErr net.Error
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "peer health: canceled"
+	case errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout():
+		return "peer health: timeout"
+	case errors.Is(err, internalapi.ErrHealthUnsupported):
+		return "peer health: unsupported"
+	case errors.Is(err, internalapi.ErrHealthInvalid), errors.Is(err, internalapi.ErrHealthTooLarge), errors.Is(err, internalapi.ErrHealthIdentity):
+		return "peer health: invalid response"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "peer health: connection refused"
+	default:
+		return "peer health: unavailable"
+	}
 }
 
 func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, error) {
@@ -223,7 +255,10 @@ func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, e
 	return &clusterOutput{Body: out}, nil
 }
 
-func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, error) {
+func (s *Server) infoMessages(ctx context.Context, _ *struct{}) (*messagesOutput, error) {
+	if s.opts.InfoMessageReads != nil || s.opts.ObjectReads != nil || s.opts.ZoneReads != nil || s.opts.CanonicalSettings != nil {
+		return s.capturedInfoMessages(ctx)
+	}
 	var out []DiagnosisMessage
 	add := func(m DiagnosisMessage) {
 		m.Node = s.opts.NodeName
@@ -269,9 +304,43 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 		if snap := s.opts.Cache.Snapshot(); snap != nil && snap.State == zonecache.FromSnapshot {
 			msg := "serving from the local.db snapshot while the store is unreachable"
 			if snap.Stale {
-				msg = "serving a stale local.db snapshot; names in primary zones answer SERVFAIL"
+				msg = "serving a stale local.db snapshot; names in primary and secondary zones answer SERVFAIL"
 			}
 			add(DiagnosisMessage{Severity: "warning", Source: "zonecache", Reason: "ServingFromSnapshot", Message: msg})
+		}
+	}
+	if s.opts.Secondaries != nil {
+		for _, st := range s.opts.Secondaries.Statuses() {
+			runtime := secondaryRuntime(s.opts.NodeName, st, true)
+			if runtime.Message == "" {
+				continue
+			}
+			severity := "warning"
+			if !st.Available {
+				severity = "error"
+			}
+			if runtime.State == "pending" {
+				severity = "info"
+			}
+			add(DiagnosisMessage{Severity: severity, Source: "secondary", Reason: runtime.Reason, Object: "DNSZone/" + st.Zone,
+				Message: runtime.Message, Hint: "This node's served serial and expiry are available in the zone's secondary status."})
+		}
+	}
+	if s.opts.Stubs != nil {
+		for _, st := range s.opts.Stubs.Statuses() {
+			runtime := stubRuntime(s.opts.NodeName, st, true)
+			if runtime.Message == "" {
+				continue
+			}
+			severity := "warning"
+			if !st.Available {
+				severity = "error"
+			}
+			if runtime.State == "pending" {
+				severity = "info"
+			}
+			add(DiagnosisMessage{Severity: severity, Source: "stub", Reason: runtime.Reason, Object: "DNSZone/" + st.Zone,
+				Message: runtime.Message, Hint: "This node's discovered authorities and expiry are available in the zone's stub status."})
 		}
 	}
 	if s.opts.Objects != nil && s.opts.Objects.APIReadOnly() {
@@ -288,7 +357,59 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 			add(DiagnosisMessage{Severity: "error", Source: "health", Reason: "NotReady", Message: u})
 		}
 	}
+	if m, ok := s.auditLogMessage(ctx); ok {
+		add(m)
+	}
 	return &messagesOutput{Body: newList(out, "")}, nil
+}
+
+// infoOperationalMessages samples process observations. These do not attest to
+// the policy, lists, or routes installed in the original request's serving cut.
+func (s *Server) infoOperationalMessages(ctx context.Context, now time.Time, add func(DiagnosisMessage) error) error {
+	if m, ok := s.auditLogMessage(ctx); ok {
+		if err := add(m); err != nil {
+			return err
+		}
+	}
+	if s.opts.Objects != nil {
+		for _, d := range s.opts.Objects.Diagnoses() {
+			const prefix = "Current object loader: "
+			if len(d.Source) > maxInfoMessageText-len(prefix)-2 || len(d.Message) > maxInfoMessageText-len(prefix)-2-len(d.Source) || len(d.Object) > 512 || len(d.Hint) > 8<<10 {
+				return errUnavailable("object loader diagnosis exceeds bounds")
+			}
+			message := prefix + d.Source + ": " + d.Message
+			if err := add(DiagnosisMessage{Severity: string(d.Severity), Source: "objects", Reason: string(d.Reason), Object: d.Object, Message: message, Hint: d.Hint}); err != nil {
+				return err
+			}
+		}
+		if s.opts.Objects.APIReadOnly() {
+			if err := add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)", Hint: "edit objects.d on every node"}); err != nil {
+				return err
+			}
+		}
+	}
+	if s.opts.Central != nil {
+		st := s.opts.Central.State()
+		if len(st.LastError) > maxInfoMessageText-len("the central database is unreachable: ") {
+			return errUnavailable("central diagnosis exceeds bounds")
+		}
+		if m, ok := centralMessage(st, now); ok {
+			if err := add(m); err != nil {
+				return err
+			}
+		}
+	}
+	if ok, unready := s.ready(); !ok {
+		for _, u := range unready {
+			if len(u) > maxInfoMessageText-len("Current node readiness: ") {
+				return errUnavailable("node health diagnosis exceeds bounds")
+			}
+			if err := add(DiagnosisMessage{Severity: "error", Source: "health", Reason: "NotReady", Message: "Current node readiness: " + u}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // centralUnreachableAfter is how long the central database may be away

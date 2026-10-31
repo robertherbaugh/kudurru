@@ -73,10 +73,26 @@ describe('GroupDetailPage', () => {
     expect(group('kids')?.spec.clients?.[1]).toEqual({ ip: '192.168.1.31', name: 'kids-laptop', comment: 'school laptop' });
   });
 
+  it('saves and removes a UDP exemption without changing group membership', async () => {
+    const members = structuredClone(group('kids')!.spec.clients);
+    renderWithApp(<GroupDetailPage params={{ ns: 'default', name: 'kids' }} />, { route: '/groups/default/kids' });
+    await clickWhenEnabled('Edit UDP rate limit');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Exempt members from the UDP rate limit' }));
+    expect(group('kids')?.spec.rateLimitExempt).toBeUndefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Save UDP rate limit' }));
+    await waitFor(() => expect(group('kids')?.spec.rateLimitExempt).toBe(true));
+    expect(group('kids')?.spec.clients).toEqual(members);
+    await clickWhenEnabled('Edit UDP rate limit');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Exempt members from the UDP rate limit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save UDP rate limit' }));
+    await waitFor(() => expect(group('kids')?.spec.rateLimitExempt).toBe(false));
+  });
+
   it('is read-only when managed by a file and cannot delete the default group', async () => {
     renderWithApp(<GroupDetailPage params={{ ns: 'default', name: 'iot' }} />, { route: '/groups/default/iot' });
     expect(await screen.findByText('Read-only: managed by file:objects.d/groups.yaml')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit Members' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Edit UDP rate limit' })).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('enables a disabled group and deletes one after confirmation', async () => {

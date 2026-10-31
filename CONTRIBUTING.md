@@ -59,6 +59,26 @@ Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo de
 
 Open pull requests against `main`; each push to one builds `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` for trying the branch. Releases are cut by merging `main` into `release-candidate` (tags `v<VERSION>-rc.<N>`, a GitHub pre-release) and `release-candidate` into `release` (tags `v<VERSION>`, moves `latest`), where `VERSION` is the file in the repository root. Never push release tags by hand. The steps and the checks around them are in [dev-docs/release-checklist.md](dev-docs/release-checklist.md#release-pipeline).
 
+After editing `VERSION`, run `make version-sync`. To set it and synchronize in
+one command, run `python3 hack/sync-version.py --version 0.3.0` (substitute the
+next version). `make version-check` reports drift without writing; CI runs it.
+These commands need Python 3.9+, Git, Go and Helm on `PATH` in a Git checkout.
+
+The script updates both charts, supervisor version defaults from their
+Dockerfiles, generated Kustomize manifests, Compose images, and current install
+references in the README and deployment/start guides. It adds a missing
+changelog section marked unreleased. Release notes, dates, feature claims and
+historical links still need editorial review; API/CRD versions, dependency
+versions, digest pins and development tags have independent lifecycles.
+Rendering finishes in a temporary directory before tracked files change.
+
+GoReleaser stages manifests and the Compose bundle with the exact GA or RC tag
+in `bin/release`, preserving tracked source. To inspect an RC bundle locally,
+run `make release-manifests RELEASE_ARTIFACT_VERSION=0.3.0-rc.1` with a base
+matching `VERSION`; this installs pinned kustomize if needed and publishes
+nothing. Only tracked deployment files enter the bundle, excluding local
+Compose secrets and data.
+
 ## Layout and seams
 
 - `api/v1alpha1/` holds the Go types for every kind. The same structs are the CRDs, what the SQLite driver persists, and what the REST API, CLI and UI exchange. Change the type, run `make generate`, and all three follow.

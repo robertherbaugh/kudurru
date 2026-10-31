@@ -64,7 +64,7 @@ describe('license wording', () => {
 
   it('names every feature the server knows, with a sentence each', () => {
     // internal/license Features(): keep in step when a feature is added.
-    expect(FEATURES.map((f) => f.key).sort()).toEqual(['audit', 'edge', 'integrations', 'longterm', 'oidc', 'rbac', 'requests']);
+    expect(FEATURES.map((f) => f.key).sort()).toEqual(['audit', 'branding', 'edge', 'integrations', 'longterm', 'oidc', 'rbac', 'requests']);
     for (const f of FEATURES) expect(f.unlocks.length).toBeGreaterThan(20);
     expect(featureLabel('longterm')).toBe('Long-term statistics');
     expect(featureLabel('from-the-future')).toBe('from-the-future');

@@ -75,11 +75,21 @@ func TestForwardedShapes(t *testing.T) {
 		t.Fatalf("status %+v", status)
 	}
 	var login api.SessionInfo
+	c.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "admin-password-1", TOTPCode: "123456"}, http.StatusServiceUnavailable, nil)
 	c.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "admin-password-1"}, http.StatusOK, &login)
 	if login.CSRF == "" || !slices.Equal(login.Roles, []string{"admin"}) {
 		t.Fatalf("login %+v", login)
 	}
 	c.csrf = login.CSRF
+	c.call(http.MethodGet, "/auth/sessions", nil, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodDelete, "/auth/sessions/unavailable", nil, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodGet, "/auth/totp", nil, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodPost, "/auth/totp/setup", api.TOTPProofRequest{CurrentPassword: "unused-password"}, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodPost, "/auth/totp/confirm", api.TOTPConfirmRequest{CurrentPassword: "unused-password", Challenge: "unavailable", Code: "123456"}, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodPost, "/auth/totp/disable", api.TOTPProofRequest{CurrentPassword: "unused-password"}, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodPost, "/iam/users/admin/totp/recover", api.TOTPRecoverRequest{UID: "unavailable"}, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodPost, "/iam/users", api.CreateLocalUserRequest{Name: "unavailable", Password: "unused-password"}, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodPost, "/iam/users/admin/password", api.ResetLocalUserPasswordRequest{UID: "unavailable", ResourceVersion: "unavailable", NewPassword: "unused-password"}, http.StatusServiceUnavailable, nil)
 	var me api.Me
 	c.call(http.MethodGet, "/auth/me", nil, http.StatusOK, &me)
 	if !slices.Equal(me.Roles, login.Roles) || me.CSRF != login.CSRF || me.MustChangePassword || len(me.Permissions) == 0 {
@@ -104,7 +114,7 @@ func TestForwardedShapes(t *testing.T) {
 
 	var users api.AuthList[api.IAMUser]
 	c.call(http.MethodGet, "/iam/users", nil, http.StatusOK, &users)
-	if len(users.Items) != 1 || users.Items[0].Name != "admin" || !users.Items[0].BuiltinAdmin {
+	if len(users.Items) != 1 || users.Items[0].Name != "admin" || users.Items[0].UID == "" || users.Items[0].ResourceVersion == "" || !users.Items[0].BuiltinAdmin {
 		t.Fatalf("users %+v", users)
 	}
 	var sas api.AuthList[api.ServiceAccountInfo]

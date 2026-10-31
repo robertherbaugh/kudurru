@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"context"
 	"crypto/tls"
 	"errors"
@@ -16,9 +18,10 @@ import (
 )
 
 // dnsListener serves Do53 over UDP or TCP, or DoT (tcp-tls), on miekg/dns
-// servers. A udp or tcp listener binds env.sockets sockets with
-// SO_REUSEPORT (socket.go), one miekg server and read loop each; DoT binds
-// one. With an enabled PROXYv2 policy every socket is wrapped so
+// servers. Each listener binds env.sockets sockets with SO_REUSEPORT
+// (socket.go), one miekg server and read loop each. Each DoT socket wraps its
+// own TCP listener with the shared reloadable TLS configuration. With an
+// enabled PROXYv2 policy every socket is wrapped so
 // authenticated headers are stripped and forged ones dropped before miekg
 // sees the bytes.
 type dnsListener struct {
@@ -67,7 +70,7 @@ func (l *dnsListener) Sockets() int {
 
 // socketCount is the number of sockets this listener binds.
 func (l *dnsListener) socketCount() int {
-	if l.spec.Protocol == ProtoDoT || l.env.sockets < 1 {
+	if l.env.sockets < 1 {
 		return 1
 	}
 	return l.env.sockets
@@ -81,8 +84,9 @@ func (l *dnsListener) Bind() error {
 		WriteTimeout: lim.WriteTimeout,
 		// miekg's default UDP read buffer is 512 bytes, which truncates
 		// EDNS queries (and a PROXYv2 header plus query) silently.
-		UDPSize:      dns.DefaultMsgSize,
-		TsigProvider: l.env.tsigProvider(),
+		UDPSize:       dns.DefaultMsgSize,
+		TsigProvider:  l.env.tsigProvider(),
+		MsgAcceptFunc: acceptDNSMessage,
 	}
 	proxied := l.env.proxy.Enabled()
 	switch l.spec.Protocol {
@@ -275,7 +279,7 @@ func (l *dnsListener) Serve(ctx context.Context) error {
 
 // ServeDNS implements dns.Handler.
 func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
-	serveMiekg(l.env.handler, l.env, l.proto, w, r)
+	serveMiekg(l.env.handler, l.env, l.proto, w, r, l.spec.ClientIDDomain)
 }
 
 // serveMiekg answers one message delivered by a miekg/dns server. Requests
@@ -285,13 +289,26 @@ func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 // over UDP nothing is written, over TCP and DoT the connection is closed
 // (other queries pipelined on it are abandoned, as a client that is being
 // dropped deserves).
-func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg) {
+func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg, clientIDDomain ...string) {
+	padding := paddingFor(r, proto)
 	client := clientFrom(w.RemoteAddr(), proto)
+	if client.ClientID == "" && proto == pipeline.ProtoDoT && len(clientIDDomain) > 0 {
+		if cs, ok := w.(dns.ConnectionStater); ok {
+			if state := cs.ConnectionState(); state != nil {
+				client.ClientID = clientid.FromSNI(state.ServerName, clientIDDomain[0])
+			}
+		}
+	}
 	sig, ok := verifyTSIG(h, e, w, r, &client)
 	if !ok {
 		return
 	}
-	m, stream := h.resolve(context.Background(), r, client)
+	ctx := context.Background()
+	if sig.proof != nil {
+		ctx = context.WithValue(ctx, verifiedTSIGKey{}, sig.proof)
+	}
+	m, stream, cleanup := h.resolve(ctx, r, client)
+	defer cleanup()
 	if m == nil {
 		if proto != pipeline.ProtoUDP {
 			_ = w.Close()
@@ -299,7 +316,7 @@ func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, 
 		return
 	}
 	if stream != nil && proto != pipeline.ProtoUDP {
-		writeStream(h, w, stream, sig)
+		writeStream(h, w, stream, sig, padding)
 		return
 	}
 	if proto == pipeline.ProtoUDP {
@@ -313,6 +330,7 @@ func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, 
 		m.Truncate(size)
 	}
 	sig.sign(m)
+	m = padding.apply(m)
 	if err := w.WriteMsg(m); err != nil {
 		h.logger().Debug("write failed", "err", err, "proto", proto.String())
 	}

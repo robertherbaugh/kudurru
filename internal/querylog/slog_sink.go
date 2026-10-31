@@ -31,8 +31,17 @@ func (s *SlogSink) Open(_ context.Context, _ json.RawMessage, _ prometheus.Regis
 
 // Write implements Sink.
 func (s *SlogSink) Write(batch []*Event) error {
+	return s.WriteBatch(context.Background(), batch, PrivacyFull)
+}
+
+// WriteBatch uses the original batch cancellation. Events already carry their
+// captured privacy transform; the sink never reads current settings.
+func (s *SlogSink) WriteBatch(ctx context.Context, batch []*Event, _ Mode) error {
 	for _, ev := range batch {
-		s.Logger.Log(context.Background(), s.Level, "query",
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		s.Logger.Log(ctx, s.Level, "query",
 			"log", "query",
 			"client", ev.Client.String(),
 			"proto", ev.Proto.String(),

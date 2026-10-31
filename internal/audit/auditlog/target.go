@@ -19,6 +19,7 @@ import (
 
 	auditv1 "github.com/robertherbaugh/kudurru/api/audit/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditkeys"
 )
 
 // Target defaults.
@@ -44,6 +45,9 @@ type Target struct {
 	Client client.Client
 	// Namespace is the release namespace.
 	Namespace string
+	// Keys supplies independent operator-provisioned trust in production.
+	Keys *auditkeys.Source
+	// SealKey is an explicit legacy test/import seam.
 	// SealKey seals every batch (SealKey of the encryption key); nil
 	// leaves batches unsealed.
 	SealKey []byte
@@ -174,7 +178,16 @@ func (t *Target) create(ctx context.Context, src audit.Source, events []auditv1.
 			spec.Until = e.Time
 		}
 	}
-	if len(t.SealKey) > 0 {
+	if t.Keys != nil {
+		ring, _, err := t.Keys.Load(ctx)
+		if err != nil {
+			return err
+		}
+		spec.Seal, err = ring.Sign(spec)
+		if err != nil {
+			return err
+		}
+	} else if len(t.SealKey) > 0 {
 		s, err := seal(t.SealKey, spec)
 		if err != nil {
 			return err

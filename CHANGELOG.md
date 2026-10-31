@@ -15,9 +15,243 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Cache capacity reload now adjusts shard topology with bounded migration and
+  preserves entry scope, security metadata and absolute deadlines.
+- Remove UniFi SDK initialization of fake-data templates from production,
+  restoring linker dead-method elimination without changing request checks.
+
 - Docker: the compose files and the `docker run` examples now pass `serve`.
   The 0.1.0 image has no default command, so as shipped the container
   printed the CLI help, exited and restarted in a loop.
+
+## [0.2.0] - unreleased
+
+### Added
+
+- Client identification: optional host-selected asynchronous reverse-PTR fallback
+  with bounded workers/cache, strict answer validation, original TTL expiry and
+  inventory/DHCP precedence.
+- Node settings: durable SQLite log preferences and null resets survive restart;
+  unsupported node writes are explicitly read-only in the API and dashboard.
+- VIP notifications: bounded keepalived transition journal feeds audit and live
+  permissioned SSE with original credential/source expiry and gap refusal.
+- Edge: targeted node health qualifies same-process named backend additions;
+  legacy or structural changes retain validated restart behavior.
+
+- VIP: opt-in read-only kube-vip/MetalLB ownership evidence with bounded source
+  reads, exact source identity and expiry; status never grants writer authority.
+
+- Cache: permissioned exact-key REST inspection reports TTL/state/size metadata
+  without resolving misses or exposing stored answer bodies and client subnets.
+
+- Blocking: exact captured ClientGroup scope for allow/deny lists, including
+  shared policies and legacy group-list names. General lists can declare bounded
+  namespace-local `clientGroupRefs`; conflicting reserved-name scopes are refused.
+
+- Supervisor configuration: typed host-only `edge.*` and `vip.*` settings feed
+  existing render/run commands with file/environment/explicit-flag precedence.
+  Remote settings writes and resets remain refused.
+
+- Kubernetes store: explicit watch cursors resume retained server event history,
+  including deletions, with detectable expiration and bounded delivery. Initial
+  informer list/watch behavior is preserved.
+
+- Query statistics: exact retained-fact domain/hour indexes remove the current-hour
+  100,000-name cliff. Local schema 3 and central schema/compatibility 6 include
+  atomic migration and old-janitor guards; central upgrades require write locks
+  and additional index storage.
+
+- Query log: reload admission and sinks with each request retaining its original
+  publication. Accepted batches drain once to their original sink; local history
+  stays readable after disabling logging or restarting with a slog sink.
+- CLI: use generated OpenAPI operation methods beneath the existing auth,
+  pagination, SSE and error helpers, with reproducible endpoint dispatch.
+
+- Helm: provider annotation parity for mixed/split DNS Services across edge
+  topologies; kube-vip avoids implicit MetalLB sharing, and Service VIP
+  providers require a LoadBalancer DNS Service.
+
+- DNS: TSIG verification and signed responses on DoH, DoQ and DoH3, with
+  original signature deadlines and no-store HTTP replies. Encrypted transports
+  still cannot authorize native UPDATE or NOTIFY mutations.
+- Central history: source-owned schema-5 rollups recover stopped sources from
+  bounded retained input, preserve late returns and expose scoped recovery
+  evidence. Legacy history without provable ownership remains intact with an
+  explicit provenance gate; older replace-upsert writers are refused.
+
+- Domains: read-only concrete-name regex inspection with opposing list/rule
+  evidence, scope, disabled state and explicit partial-result limits.
+
+- Source-entry browsing: bounded digest/parser indexes avoid repeated parsing
+  of large downloaded lists while preserving exact exclusions, line numbers,
+  original-publication cursors and body verification.
+
+- Blocking: refresh interval and degraded readiness reload without restarting
+  in-flight downloads. New lists inherit the cluster refresh default unless
+  they specify an interval; existing stored durations remain overrides.
+- Interoperability: pinned Knot DNS 3.6.2 acceptance for ordinary primary-zone
+  RFC 9432 catalog data, automatic member replacement and transfer refusals.
+
+- Doctor: opt-in authenticated self-NOTIFY reports the listener-observed UDP
+  source address on the complete SQLite path, with bounded work and explicit
+  loopback limitations.
+- Client groups: optional UDP rate-limit exemption with captured membership,
+  generated CRD validation and an ownership-aware dashboard control.
+
+- Upstreams: bounded dnsmasq/dnsproxy routing-file import into canonical
+  groups, with unsupported-line reports, collision refusal and ownership checks.
+
+- Central history: read retained data for retired nodes without live peer
+  membership, with exact-node statistics, dictionaries and export.
+- DNS over TLS: use configured Linux listener sockets, retaining TLS rotation
+  and existing connection limits.
+
+- Query log: download a filtered JSON page of up to 1,000 retained queries,
+  preserving privacy, source, continuation and partial-node metadata.
+
+- Kubernetes audit: independent persisted signing and retained verification
+  keys, explicit rotation/revocation and trust-aware verification caching.
+  Existing AuditLog deployments require the documented key-provisioning and
+  legacy-cutover procedure before upgraded cluster shipping resumes.
+- File objects: live reload of the node configuration’s inline objects, with
+  whole-source validation, last-good retention and environment precedence.
+
+- Helm: explicit per-VRID HMAC Secret references, strict complete mapping,
+  private key staging and coordinated restart guidance for keepalived.
+- Domain checks: matching disabled rules come from the query's captured lists
+  and client policy, with bounded evidence and no second browser request.
+- CLI: reviewed zone-option get/set commands with resource-version checks,
+  complete-spec replacement and the existing server ownership/authority checks.
+- Audit: dedicated authenticated SQLite authorization/request/client columns
+  and shared credential-field redaction before new document persistence.
+  Legacy audit bytes and verification remain compatible through schema 6.
+- Storage: independent query log and local snapshot directories with additive
+  Helm/Compose volumes, path preflight and explicit offline migration.
+- Downloads: opt-in host HTTPS-only policy for lists and catalogs, including
+  redirect downgrade refusal, without changing existing cached data.
+
+- Central query storage: bounded reference-safe dictionary pruning, guarded
+  cached-ID reuse and transactional schema-4 upgrade constraints. Retained
+  facts and rollups keep their dictionary entries.
+- Acceptance tooling: disposable Samba GSS-TSIG protocol and two-node
+  dnsdist/keepalived Docker labs, plus a Windows provisioning prompt.
+- CLI: actual-router conformance for apply outcomes, settings, pagination and
+  live query events, with documented wire contracts.
+
+- DNS controls: hot-reloadable allowed networks and blocked query types,
+  including DNS64 dependencies, with validated settings and immutable rules
+  for each captured request.
+
+- SQLite integrations: mount licensed Cloudflare and UniFi background execution
+  with per-instance election, original credential/writer fencing, atomic source
+  inventory and publication-qualified DNS/group updates. Retain is supported;
+  Kubernetes atomic-source execution and Delete cleanup remain pending.
+
+- Recursive DNS: negotiate per-authority DNS cookies with bounded peer state,
+  address-bound random client cookies, rotation and budgeted BADCOOKIE recovery.
+  Cookies stay out of shared response caches and client answers.
+- Zone reconciliation: bounded per-record-set parsing reuse with detached RRs
+  and identity, TTL and expiry invalidation across controller and primary builds.
+
+- Zones: select a separate NOTIFY TSIG key and local source address through
+  zone policy and primary-zone wizard/settings controls. Missing keys and bind
+  failures refuse delivery without switching identity or source.
+- Recursive DNS: expiring negative trust anchors with independent configuration,
+  absolute cache deadlines and preserved validation of alias targets outside
+  the exception. Reload and restore do not extend authority.
+- Dashboard: self-hosted Inter and JetBrains Mono with normal/italic variable
+  weights, bundled license notices and system fallbacks. Font payloads count
+  toward the unchanged initial-load size budget.
+
+- Encrypted DNS: negotiated RFC 8467 response padding on DoT, DoH, DoQ and
+  DoH3, bounded by the client's payload limit and preserving TSIG signatures
+  and transfer chains. Shared cache entries remain independent of padding.
+
+- Diagnosis and doctor: bounded AuditLog API availability and namespace batch
+  counts, gated by audit permission and license. Incomplete scans remain explicit;
+  healthy informational diagnoses no longer make doctor report a warning.
+
+- DoH: advertise an active matching native HTTP/3 endpoint with Alt-Svc while
+  preserving its address, port, certificate, query path and client-ID policy.
+  Reverse proxies remain responsible for their public advertisement.
+
+- Kubernetes recovery: independently configured cluster identity pins initial
+  online access and saved DNS/settings admission. Offline recovery requires
+  `store.kube.expectedClusterID`; legacy identity-free state needs live refresh.
+- Kubernetes authentication: require projected audience credentials with at most
+  ten minutes of original lifetime, retain expiry through authorization, and
+  bound complete TokenReview acquisition. Legacy and hour-long tokens are
+  refused; use a rotating audience `kudurru` projection with 600-second expiry.
+
+- Query-log privacy: exclusion-only reloads preserve daily client pseudonyms,
+  including across midnight; privacy mode/method changes and restart keep their
+  separate key lifecycles.
+
+- Native DNS listeners: host-only, restart-required TCP query-count, QUIC
+  connection-count and TCP/HTTP/QUIC idle-timeout settings. Existing unlimited
+  count defaults and idle durations are preserved.
+
+- Store conformance: shared invalid-input checks on SQLite and Kubernetes;
+  invalid forced Kubernetes updates are admitted in dry-run before ownership
+  changes, with consistent structured validation errors.
+
+- Health: the human `/healthz` response includes the locally observed controller
+  leader and the age of the saved snapshot currently being served.
+- SQLite replication: `kudurru_cluster_fenced` reports durable and failed
+  in-memory authority fences, with an immediate Prometheus alert and Grafana
+  panel. Healthy read-only followers do not trigger the fencing alert.
+
+- Independent secondary-zone AXFR/IXFR ingestion over TCP or verified TLS, with optional TSIG,
+  SOA refresh/retry/expiry, RFC 1982 serial handling and durable node-local
+  last-good copies. Invalid, unauthenticated and oversized transfers retain
+  previous data; expired or unavailable secondaries answer SERVFAIL.
+- Secondary configuration in the zone wizard/settings and node-specific
+  serial, availability, expiry and failure reporting in the API, dashboard
+  and metrics. Transferred records remain read-only.
+- Authenticated health queries for remote cluster members, with bounded
+  requests and explicit unavailable or incompatible-peer errors.
+- Offline AdGuard Home and Blocky CLI import previews, selection and tracked
+  application, with bounded YAML input and explicit conversion-loss reports.
+- `kudurru audit verify`, including structured results and nonzero exit status
+  for integrity failures, unavailable verification or denied access.
+- Accessible help for nested settings list items, map keys and values.
+- Optional file-backed bearer authentication for the external-dns webhook,
+  with bounded startup loading and restart-required rotation.
+- A rate-limit slip counter and Grafana panels for central database
+  availability, query shipping lag and audit spool drops.
+
+### Fixed
+
+- Edge health: bypass dnsdist packet caching for the exact health-query name
+  so a transient lameduck failure cannot keep a healthy VIP in FAULT after
+  the draining backend has been removed.
+
+- Zone import/export: preserve non-ASCII DNS label octets and canonicalize SOA
+  and apex nameserver names so repeated BIND export stays byte-identical.
+
+- SQLite administration: restore current domain, Allowlist, Denylist, query-log
+  actions and unblock decisions with atomic list/policy effects and final
+  credential and license checks. Domain and unblock reads retain one captured
+  publication, including compiled lists, settings and finite entitlements.
+- Migrations: restore apply, background import and authority cutover; tracking
+  previous imports now atomically checks every reviewed zone UID and version.
+  Selected settings commit with their durable import result, preserve map
+  deletion/reset semantics and report restart requirements. SQLite authority
+  cutover completes its report in the final zone transaction, preventing a
+  fully applied cutover from retaining an unfinished report.
+- Primary publication stops waiting for an obsolete desired source, allowing
+  reconciliation after authority changes without serving stale data.
+
+- CNAME/DNAME chasing rechecks the most specific local zone before following
+  a target, so parent wildcard data cannot bypass a child zone's data or expiry.
+- Current SQLite commands recheck verified credential expiry at final admission,
+  including no-op and dedup results. Captured primary routing now enforces the
+  earliest ancestor expiry without changing durable head evidence.
+
+Stub zones and signed secondary serving are implemented on the development
+branch. Inbound NOTIFY verifies the primary source
+and configured TSIG, schedules bounded local refreshes, and fans authenticated
+hints to peers so every replica transfers independently.
 
 ## [0.1.0] - 2026-10-18
 

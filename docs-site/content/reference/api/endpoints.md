@@ -29,11 +29,17 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/auth/oidc/{idp}/callback` | OIDC redirect target (302 to the app) | public |
 | GET | `/api/v1/auth/oidc/{idp}/start` | Start an OIDC login (302 to the IdP) | public |
 | POST | `/api/v1/auth/password` | Change the local user's own password (a cookie session gets a new cookie) | authenticated |
+| GET | `/api/v1/auth/sessions` | List own enrolled sessions | authenticated |
+| DELETE | `/api/v1/auth/sessions/{id}` | Revoke an enrolled session of the current account | authenticated |
 | GET | `/api/v1/auth/status` | Login options | public |
 | GET | `/api/v1/auth/tokens` | List own API tokens | authenticated |
 | POST | `/api/v1/auth/tokens` | Create a personal API token (the secret is returned once) | authenticated |
 | GET | `/api/v1/auth/tokens/{id}` | Get one API token (someone else's needs tokens.read) | authenticated |
 | DELETE | `/api/v1/auth/tokens/{id}` | Revoke one API token (someone else's needs tokens.delete) | authenticated |
+| GET | `/api/v1/auth/totp` | Own local authenticator status | authenticated |
+| POST | `/api/v1/auth/totp/confirm` | Activate the authenticator and revoke existing sessions | authenticated |
+| POST | `/api/v1/auth/totp/disable` | Disable own authenticator and revoke existing sessions | authenticated |
+| POST | `/api/v1/auth/totp/setup` | Prepare an authenticator (provisioning secret returned once) | authenticated |
 
 ## blocklists
 
@@ -80,6 +86,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/cluster` | Store, leader and shape | `cluster.read` (cluster) |
 | GET | `/api/v1/doctor` | The checks of `kudurru doctor` as this node sees them | `settings.read` (cluster) |
 | GET | `/api/v1/edge` | dnsdist backends and VIP owners | `edge.read` (cluster) |
+| GET | `/api/v1/edge/vip/stream` | Local observed VIP transitions (Server-Sent Events) | `edge.read` (cluster) |
 | GET | `/api/v1/info/messages` | Diagnosis messages (objects, policies, lists, readiness) | `settings.read` (cluster) |
 | GET | `/api/v1/license` | License state, node limit and licensed features of this node | `settings.read` (cluster) |
 | GET | `/api/v1/nodes` | Nodes of the cluster | `cluster.read` (cluster) |
@@ -129,12 +136,14 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/allowlist/{id}` | Get a Allowlist entry | `blocklists.read` (cluster) |
 | PATCH | `/api/v1/allowlist/{id}` | Change a Allowlist entry | `blocklists.write` (cluster) |
 | DELETE | `/api/v1/allowlist/{id}` | Delete a Allowlist entry | `blocklists.write` (cluster) |
+| GET | `/api/v1/allowlist/{id}/impact` | Test a regex entry against one domain and opposing lists | `blocklists.read` (cluster) |
 | POST | `/api/v1/allowlist:batch` | Switch on, off or delete several Allowlist entries | `blocklists.write` (cluster) |
 | GET | `/api/v1/denylist` | List Denylist entries | `blocklists.read` (cluster) |
 | POST | `/api/v1/denylist` | Add Denylist entries | `blocklists.write` (cluster) |
 | GET | `/api/v1/denylist/{id}` | Get a Denylist entry | `blocklists.read` (cluster) |
 | PATCH | `/api/v1/denylist/{id}` | Change a Denylist entry | `blocklists.write` (cluster) |
 | DELETE | `/api/v1/denylist/{id}` | Delete a Denylist entry | `blocklists.write` (cluster) |
+| GET | `/api/v1/denylist/{id}/impact` | Test a regex entry against one domain and opposing lists | `blocklists.read` (cluster) |
 | POST | `/api/v1/denylist:batch` | Switch on, off or delete several Denylist entries | `blocklists.write` (cluster) |
 | GET | `/api/v1/domains` | List Allowlist and Denylist entries together | `blocklists.read` (cluster) |
 
@@ -142,10 +151,13 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
-| GET | `/api/v1/iam/identityproviders` | List identityproviders (read-only; the write API is v0.2) | `identityproviders.read` (cluster) |
-| GET | `/api/v1/iam/rolebindings` | List rolebindings (read-only; the write API is v0.2) | `rolebindings.read` (cluster) |
-| GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts (read-only; the write API is v0.2) | `serviceaccounts.read` (cluster) |
-| GET | `/api/v1/iam/users` | List users (read-only; the write API is v0.2) | `users.read` (cluster) |
+| GET | `/api/v1/iam/identityproviders` | List identityproviders | `identityproviders.read` (cluster) |
+| GET | `/api/v1/iam/rolebindings` | List rolebindings | `rolebindings.read` (cluster) |
+| GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts | `serviceaccounts.read` (cluster) |
+| GET | `/api/v1/iam/users` | List users | `users.read` (cluster) |
+| POST | `/api/v1/iam/users` | Create an API-managed local user requiring a password change | `users.write` (cluster) |
+| POST | `/api/v1/iam/users/{name}/password` | Reset an exact API-managed local account's password | `users.write` (cluster) |
+| POST | `/api/v1/iam/users/{name}/totp/recover` | Disable a lost authenticator for an exact account UID | `users.write` (cluster) |
 
 ## imports
 
@@ -165,6 +177,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
+| GET | `/api/v1/branding` | Public Enterprise branding, or the built-in presentation | public |
 | GET | `/api/v1/version` | Build information of this node | public |
 
 ## objects
@@ -198,10 +211,13 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | Method | Path | Summary | Permission |
 |---|---|---|---|
 | GET | `/api/v1/queries` | Query log page (keyset cursor, newest first) | `querylog.read` (cluster) |
+| GET | `/api/v1/queries/export` | Download one filtered query-log page as JSON (up to 1000 rows) | `querylog.read` (cluster) |
 | GET | `/api/v1/queries/stream` | Live query tail (Server-Sent Events) | `querylog.read` (cluster) |
 | GET | `/api/v1/queries/suggestions` | Filter value suggestions | `querylog.read` (cluster) |
 | POST | `/api/v1/queries/{id}/actions` | Allow or deny the domain of a logged query | `blocklists.write` (cluster) |
 | DELETE | `/api/v1/querylog` | Delete query-log rows | `querylog.purge` (cluster) |
+| GET | `/api/v1/querylog/rollup-evidence` | Capture bounded retained-input recovery evidence | `querylog.read` (cluster) |
+| POST | `/api/v1/querylog/rollup-evidence/verify` | Verify recovery evidence without changing history | `querylog.read` (cluster) |
 | GET | `/api/v1/querylog/status` | Query-log size, retention and writer state | `querylog.read` (cluster) |
 
 ## runtime
@@ -209,6 +225,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | Method | Path | Summary | Permission |
 |---|---|---|---|
 | POST | `/api/v1/cache/flush` | Flush the response cache (or one name) | `cache.flush` (cluster) |
+| GET | `/api/v1/cache/inspect` | Inspect one raw default-route cache entry without resolving | `cache.read` (cluster) |
 | GET | `/api/v1/dns/blocking` | Blocking state of this node | `blocking.read` (cluster) |
 | POST | `/api/v1/dns/blocking` | Enable blocking, or disable it for a while | `blocking.toggle` (cluster) |
 | POST | `/api/v1/dns/query` | Run one query through the pipeline in-process (built-in dig) | `stats.read` (cluster) |

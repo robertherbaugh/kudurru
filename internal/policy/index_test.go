@@ -34,6 +34,35 @@ func identificationFixture() Input {
 	}}
 }
 
+func TestCapturedInventoryPrecedenceAndMACUnion(t *testing.T) {
+	in := identificationFixture()
+	in.ClientGroups = append(in.ClientGroups, group(ns, "second-mac", v1alpha1.ClientMatcher{MAC: "02:00:00:00:00:02"}))
+	ip := netip.MustParseAddr("192.168.1.50")
+	ix := Build(in, Options{Inventory: true, Hostnames: staticHosts{ip: {"living-room-tv"}}})
+	c := pipeline.Client{Addr: netip.AddrPortFrom(ip, 53), IdentityCaptured: true, MACs: []string{"02:00:00:00:00:02", "aa:bb:cc:dd:ee:ff"}, Names: []string{"ps5-x"}, ClientID: "pixel"}
+	for range 2 {
+		m := ix.Identify(c)
+		if m.Tier != TierMAC || !slices.Equal(m.GroupIDs, []string{"default/lab-b", "default/second-mac"}) {
+			t.Fatalf("MAC union: %+v", m)
+		}
+		slices.Reverse(c.MACs)
+	}
+	c.MACs = nil
+	m := ix.Identify(c)
+	if m.Tier != TierNameGlob || !slices.Equal(m.GroupIDs, []string{"default/consoles", "default/kids"}) {
+		t.Fatalf("captured hostname ignored: %+v", m)
+	}
+	c.Names = nil
+	if m := ix.Identify(c); m.Tier != TierClientID {
+		t.Fatalf("known-empty inventory consulted a newer hostname source: %+v", m)
+	}
+	c.MACs = []string{"02:00:00:00:00:02"}
+	c.Addr = netip.MustParseAddrPort("10.0.20.7:53")
+	if m := ix.Identify(c); m.Tier != TierIP {
+		t.Fatalf("MAC overrode exact IP: %+v", m)
+	}
+}
+
 func TestIdentificationMatrix(t *testing.T) {
 	hosts := staticHosts{
 		netip.MustParseAddr("192.168.1.50"): {"ps5-kids.lan"},

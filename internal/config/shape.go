@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The typed-control metadata of a key (ux-plan contract C1): closed sets,
@@ -52,6 +53,8 @@ const (
 	// optional "name=" prefix.
 	FormatUpstream Format = "upstream"
 	FormatEmail    Format = "email"
+	// FormatDateTime is an absolute RFC3339 timestamp with a time zone.
+	FormatDateTime Format = "date-time"
 )
 
 // Ref names the kind of object a value refers to.
@@ -70,6 +73,8 @@ const (
 // the keys and values of a map (Keys, Values) or the members of an object
 // (Fields). A Key carries the same constraints for its own value.
 type Shape struct {
+	// Help describes this nested value for operators; it does not affect validation.
+	Help string
 	Type Type
 	// Enum is the closed set of a string value.
 	Enum []Option
@@ -519,6 +524,10 @@ func checkFormat(f Format, v string) string {
 	case FormatEmail:
 		if a, err := mail.ParseAddress(v); err != nil || a.Address != v {
 			return "is not an email address"
+		}
+	case FormatDateTime:
+		if _, err := time.Parse(time.RFC3339, v); err != nil {
+			return "is not an absolute RFC3339 timestamp"
 		}
 	}
 	return ""

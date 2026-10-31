@@ -241,6 +241,12 @@ spec:
         {{- end }}
         - name: data
           mountPath: /var/lib/kudurru
+        {{- range $name := list "querylog" "local" }}
+        {{- if (index $.Values.persistence $name).separate }}
+        - name: {{ $name }}
+          mountPath: /var/lib/kudurru-{{ $name }}
+        {{- end }}
+        {{- end }}
         - name: run
           mountPath: /run/kudurru
         - name: tmp
@@ -309,12 +315,16 @@ spec:
     - name: dnsdist-config
       emptyDir: {}
     {{- end }}
-    {{- if ne $kind "StatefulSet" }}
+    {{- if not (include "kudurru.dataPersistence" .) }}
     - name: data
       emptyDir: {}
-    {{- else if and (include "kudurru.standalone" .) (not .Values.persistence.standalone.enabled) }}
-    - name: data
+    {{- end }}
+    {{- range $name := list "querylog" "local" }}
+    {{- $p := index $.Values.persistence $name }}
+    {{- if and $p.separate (not $p.enabled) }}
+    - name: {{ $name }}
       emptyDir: {}
+    {{- end }}
     {{- end }}
     - name: run
       emptyDir:

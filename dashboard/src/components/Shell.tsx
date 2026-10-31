@@ -17,6 +17,7 @@ import { ScopeSelector } from './ScopeSelector';
 import { MessagesBadge } from './MessagesBadge';
 import { AppearanceButton } from './AppearanceButton';
 import { AccountMenu } from './AccountMenu';
+import { useBranding } from '../lib/branding';
 import { BrandLogo } from './BrandLogo';
 import { SidebarStatus } from './SidebarStatus';
 import { DefaultCredentialsBanner } from './DefaultCredentialsBanner';
@@ -25,8 +26,9 @@ import { UnblockBadge } from './UnblockBadge';
 import { Page, PageHeader } from './layout/Page';
 
 function Brand() {
+  const brand = useBranding();
   return (
-    <BrandLink href="/" label="kudurru dashboard home">
+    <BrandLink href="/" label={`${brand.name || 'kudurru'} dashboard home`}>
       <BrandLogo alt="" />
     </BrandLink>
   );

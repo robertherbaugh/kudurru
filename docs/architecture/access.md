@@ -19,6 +19,415 @@ grant, so role bindings and Kubernetes SubjectAccessReview grant nothing. The
 first-boot administrator, the bootstrap token and the admin socket keep full
 access.
 
+## CLI operation transport
+
+`internal/apiclient` retains authentication snapshots, cookie/CSRF handling,
+pagination, structured errors and SSE. Its documented routes call the matching
+`internal/apiclient/openapi` operation method through a generated dispatch table.
+`make client-go` regenerates that table from OpenAPI and the generated Go AST;
+unsupported or missing operation coverage fails generation.
+
+The adapter preserves raw request bodies and original contexts. Its final guard
+checks method, origin and escaped path segments before supplying the original
+query, headers and body policy. An encoded slash cannot become a route separator.
+Unknown method/path pairs retain the raw compatibility path; matched parameter,
+build or transport failures never cause fallback or an adapter retry. Single-use
+auth retains disabled redirects and cleared replay headers/GetBody. SSE removes
+only the per-call HTTP timeout while retaining cancellation and its existing
+explicit subscription policy. Custom HTTP clients and low-level generated
+request editors remain trusted extension points; the public CLI exposes no
+request editor.
+
+## Coherent authentication owner foundation
+
+`internal/servingauth` prepares an immutable auth view from one complete SQLite
+replication image. Its input includes public ServiceAccount, RoleBinding and
+IdentityProvider configuration, private LocalUser, APIToken and PrincipalState
+objects, the Kudurru singleton, and versioned security state. Public IAM objects
+remain outside DNS snapshot readiness. Explicit empty manifest entries are valid;
+missing kinds, a safe export, or missing security history cannot create a view.
+
+The required `auth/v1/root` row inventories every auth-owned security row and
+records a monotonic epoch. Sessions bind the exact account UID and issuance epoch
+to durable enrollment, expiry, grants, a CSRF verifier and revocation state.
+Account/provider floors also bind UIDs; normalized grant floors persist across
+deletion and regrant. Cookies issued at or before a floor are rejected. The new
+version 2 cookie requires its matching enrollment, so activating this owner will
+require users of legacy sealed cookies to sign in again.
+
+Startup initialization and security commands account for every owner's rows in
+the shared security section. They check the combined count and byte limits before
+staging a new auth manifest, including other rows staged after the command loaded
+auth state. Exceeding those limits rolls back the complete command; another
+owner’s capacity cannot silently make the next authentication image unreadable.
+Current transaction reads first use scalar SQL row and byte counts, including
+staged data, before allocating section payloads. Malformed historical data cannot
+bypass those limits merely because it predates owner validation.
+
+`internal/auth/providerregistry` owns a separate `oidc-provider/v1/root` manifest
+in the same replicated section. Configured providers receive independent durable
+UIDs and creation times; spec edits retain them, removal retains a tombstone, and
+recreation gets a new UID. Both config and object providers have exact accepted
+credential/trust/entitlement receipts. Replacing or withdrawing a receipt raises
+the old incarnation's auth floor in the same SQLite command, before staging the
+registry plan. No-op receipt admission still checks the actual staged source.
+
+Authority acceptance supplies the complete active inventory across both origins.
+Omitted receipts become inactive history; unavailable unchanged providers retain
+their accepted receipt. A newly configured provider retires a shadowed object's
+accepted authority. History has an explicit finite cap and is never silently
+evicted to recover capacity.
+
+Management entitlement loss and regain is a security transition even if the
+license or provider credentials return with identical bytes. The root owner
+must withdraw and later reactivate accepted authority with revocation floors,
+or assign a new captured entitlement identity and admit its changed receipt.
+Replaying an unchanged active receipt is deliberately a no-op and cannot record
+that transition. Denied entitlement performs no provider credential or network
+acquisition; current authentication reads the durable floors in its own command.
+
+`providerentitlement` supplies the shared receipt format and pure selection
+helpers. One activation binds the actual cluster, verified management-policy
+profile and a random primary-admitted nonce across the complete provider inventory.
+The profile includes effective license identity, plan, nodes, features and original
+grace deadline; signed issue/not-before times and signing-key identity are not
+profile fields. License cuts still enforce current verification and eligibility.
+A pending nonce grants nothing, and a local license installation ID cannot serve
+as shared authority. Startup, writer turnover and observed license replacement
+must withdraw old authority with floors before admitting a new activation, even
+when the profile is unchanged. Historical restarted or tainted followers wait
+for a new primary activation. The helper has signed-license and actual replica
+acceptance. The provider host now owns the local continuity state and exact
+license/static/auth-key exclusion. A restarted or tainted follower uses its first
+validated current installed image only to establish a baseline; a later different
+primary activation is required. If observation is delayed past a new activation,
+recovery can conservatively require one additional primary reset.
+
+SQLite startup initializes both owner roots together through an explicit fenced
+command. Followers receive them only in a complete image. The replica feature
+`provider-registry-v1` requires receiver support, and composed image validation
+rejects missing or incomplete inventories before installation, serving capture or
+promotion. The complete builder derives config-provider precedence from that
+same registry image; local resource omission cannot reveal a shadowed object.
+
+`internal/auth/providerresources` acquires discovery and JWKS in bounded background
+jobs. Each immutable resource binds the actual credential fingerprint, explicit
+trust roots, endpoint and algorithm policy, management entitlement, and the exact
+accepted source receipt. Config and stored-object credential capabilities remain
+separate. Changed desired authority installs an unavailable resource before any
+network call; a privately verified acquisition candidate still needs durable
+receipt admission. Old jobs and held leases cannot revive across A → B → A.
+
+Current commands hold the resource pin through writer waits, final validation and
+commit, including no-op responses. Their provider dependencies come from the
+actual staged registry and IdentityProvider objects. Authority changes use
+publication exclusion, exclusive resource replacement, then SQLite in that order.
+They stage revocation floors before receipts and replace the desired resource cut
+before releasing exclusion. A failed replacement retires the memory cut and
+requires fresh canonical capture. Complete publication uses the same resource
+exclusion through its pointer swap. No network or credential resolution occurs
+under these guards or during authentication.
+
+Explicit TLS/origin policy, bounded document parsing and absolute resource
+freshness apply to discovery and JWKS refresh. Transient failures can retain only
+an unchanged resource until its original deadline; security mismatches retire it.
+Unknown token keys never initiate discovery. These resource and transaction
+adapters are tested with real TLS, SQLite and the publisher. SQLite startup mounts
+the coordinator, captured local HTTP routes and browser OIDC. Browser exchange
+uses an explicit credential-bound handle from the same published resource lease;
+it does not perform discovery or select a newer provider during a request.
+
+Host-only `auth.providerResources` settings now declare explicit network origins,
+local exceptions, asymmetric JWT algorithms, system trust and extra CA files.
+They require restart and cannot be changed through replicated settings or public
+IdentityProvider objects. The root trust loader captures actual CA bytes before
+locks, deduplicates and sorts them, and enforces 2 MiB/256-certificate limits.
+Linux uses the first existing standard CA bundle; macOS uses `/etc/ssl/cert.pem`
+and BSD uses its documented file locations. It does not query the macOS keychain
+or read `SSL_CERT_FILE`/`SSL_CERT_DIR`. Other platforms need explicit CA files
+with system trust disabled. Missing, malformed or oversized requested trust is
+an error, without partial or implicit system-pool fallback. These inputs and the
+loader feed the root static preparation adapter, which detaches permissions,
+bindings, sealing/TOTP keys and per-provider credential capabilities before locks.
+An explicitly configured file belongs only to that config provider; it does not
+grant a stored provider filesystem access. A separate auth-key installation owner
+pins the loaded keys through complete transactions and excludes replacement.
+
+`providerhost.PinHostCurrent` supplies a predicate for the original pinned local
+generation, license, static resources and deadline. It is memory/clock-only and
+ends at callback exit. Root still retains the original elected writer and its
+concrete transaction checks separately. Host captures distinguish independent
+local installations even when their serials or configuration bytes are equal;
+their local identities never replace the shared entitlement activation. A bounded
+four-entry memo preserves concurrently prepared old/new resource projections.
+Host reset, follower observation, real JWT/current commands and reference lifetimes
+have actual SQLite/complete-publisher acceptance and are mounted in SQLite
+startup with the original elected writer lifecycle.
+
+```mermaid
+flowchart LR
+    I["One complete image"] --> C["Sealed auth cut"]
+    D["Pinned key and management policy"] --> V["Immutable auth view"]
+    C --> V
+    V --> R["Leased HTTP read"]
+    P["Raw credential proof"] --> T["Current command transaction"]
+    T --> A["Reverify current account and permissions"]
+    A --> W["Mutation or dedup response"]
+```
+
+Local passwords, local/service-account tokens and enrolled cookies verify without
+store reads from the view. Command authentication instead rereads the current
+identities and security rows through an actual `sqlite.CommandTx`, including
+staged changes and dedup replay. A previously authenticated principal cannot
+authorize that write. Current local groups and private administrator state remain
+authoritative; token scopes narrow administrator permissions too.
+
+`internal/servinghttp` captures the complete publisher lease before checking a
+cookie, API token or OIDC JWT and keeps it until the bounded handler finishes.
+JWTs use only the captured offline verifier and bounded claim policy; unknown
+issuers, expired signatures and oversized proofs cannot trigger discovery or a
+cookie fallback. Ordinary raw HTTP proofs survive only for the lease lifetime.
+A bounded migration program can retain its original untrusted proof for its original ten-minute job
+deadline and elected writer episode; each later step captures its own initial
+lease and reverifies that proof against current transaction-local authority.
+No previously successful step grants permission to another step. CSRF uses
+the same captured enrollment. Authorization rechecks the original proof against
+that view; a caller-supplied principal cannot replace it. Pending publication
+returns 503, and a rejected bearer never falls back to a cookie. Mutations must
+pass the retained raw proof to the current command verifier separately.
+The HTTP writer check uses that original request lease and the carried writer
+target at entry and final commit. A newer publication cannot repair an old
+request. This memory-only check is safe inside the actual transaction hook;
+it does not replace current credential verification or dependency exclusion.
+
+The root current-command adapter retains the original elected episode and holds
+publication, provider, host/license/auth-key, TSIG, catalog and manager exclusion
+through the whole SQLite command. Only the coordinator's host wrapper expands
+these lower pins; the publication source and primary guard keep their existing
+base host pins. Current raw authentication runs before mutations or a dedup result.
+`ReauthorizeCurrentWithClock` retains private validity from that same successful
+verification and checks it again at final admission, including no-ops. Token
+expiry, enrolled cookie absolute/idle expiry and verified JWT time bounds reject
+at equality; a clock moving before authentication time also rejects. This final
+check performs no store read, parsing, crypto or policy evaluation. Password/TOTP
+consumption remains once in the transaction, and enrolled external cookies keep
+their own durable deadlines rather than inheriting the source JWT's expiry.
+
+These owners are tested across held old/new views, store closure, restart, actual
+replica installation and promotion. The HTTP bridge also tests held reads during
+revocation, current-command denial and cleanup on cancellation/panic. SQLite
+`serve.go` now mounts the captured HTTP adapter for authentication, authorization,
+local login, password changes, token CRUD, IAM reads and own-session inventory
+and revocation. The API and adapter share the same cookie and cross-origin policy.
+Login verifies the current password/TOTP once, stages durable enrollment, checks
+its original deadlines at final commit, and seals only from a published view
+containing that enrollment. Password changes raise revocation floors and can
+revoke tokens atomically with replacement enrollment. Session responses expose
+only the identifier, timestamps and current/revoked flags for the exact account
+UID. The Access page lists those browser sessions and revokes an explicitly
+selected identifier. Revoking another session preserves the caller. Revoking
+the current session clears local authentication and cached answers after 204,
+without a second logout request; it does not claim to clear the HttpOnly cookie.
+Late responses and cancellation cleanup check the original session lifetime
+before touching state, including after awaiting query cancellation. A stale
+postcommit inventory remains pending until a fresh read shows the revocation;
+mutations are never retried automatically.
+
+The password-change floor uses the same successful current-authentication time
+sample. A transient later clock rollback cannot put the floor before an old
+session and silently preserve it; replacement issuance and final original-proof
+checks still use the actual clock.
+
+When own-password change requests token revocation, it matches both supported
+local provider spellings by exact account identity. It deletes system-issued
+tokens without Force; a foreign-manager failure rolls back the password change
+and all staged revocations.
+
+Generic public object writes and canonical settings writes reauthorize the
+original raw proof within the admitted command, including unchanged writes.
+
+`POST /iam/users` creates ordinary API-managed local accounts. The bounded
+request accepts only a canonical name, display name and initial password.
+Hash preparation happens before command pins; current cluster `users.write`
+authorization, CreateOnly, password status and the final staged UID/version
+projection share one transaction. New accounts have no groups or authenticator
+and must change their password. The own-password route preserves explicitly
+supported API/system ownership; it cannot adopt file/controller-managed users.
+
+`POST /iam/users/{name}/password` is an administrator reset of an API-managed,
+non-built-in account. It requires the exact UID and opaque resourceVersion from
+authorized inventory. The transaction preserves the authenticator, replay record
+and disabled state, sets must-change, raises the account floor and revokes every
+exact-owned local personal token, including the legacy empty-provider spelling.
+Account floors alone do not revoke those tokens. An incompatible token manager
+aborts the entire reset; no Force or partial success is used. Self-reset keeps
+the original successful proof's final time checks and clears its cookie after
+commit, without reauthorizing against its own newly raised floor. No replacement
+credential is issued. A stale version requires a fresh read and deliberate
+request; commands are not retried automatically. Kubernetes explicitly returns
+503 for these writes. Profile/groups, disable/delete and other IAM writers remain
+separate work.
+
+SQLite OIDC start/callback routes use the captured browser adapter described
+below; an unavailable capability returns 503 without a legacy Stack fallback.
+Startup bootstrap and local admin-socket integration still use the legacy Stack,
+with its provider discovery disabled on SQLite. Completing current admission for
+those administrative paths remains open. SQLite also mounts the
+factor management routes described below. Kubernetes retains the legacy Stack
+and its separate verified migration journal gate; its factor management routes
+return 503 until equivalent current commands are available.
+
+SQLite startup initializes the explicit empty security manifest under its writer
+fence and validates owner rows on later writes/replica installation. Existing
+history is preserved; an absent root beside other auth rows is an error.
+Startup explicitly upgrades complete version 1, 2 or 3 manifests to version 4,
+preserving every session, replay row and revocation floor and advancing the
+security epoch once. Version 3 introduced external identities and sessions;
+version 4 adds the mandatory pending browser-attempt inventory. Replication
+requires the `auth-browser-attempts-v1` feature, so receivers without this support
+reject these images. Coordinated upgrades must account for that compatibility
+boundary. Version 1 or empty-state initialization rejects legacy account seeds
+without replay authority, including disabled accounts; the version 2 upgrade
+preserves supported active factors. Startup never silently adopts or clears a
+seed. Other security owners' rows remain intact.
+`internal/auth/security` supplies transaction-bound object changes and monotonic
+revocation floors, session enrollment/revocation, and expiry collection. Current
+local-password issuance resolves the actual account, grants and canonical login
+policy/TTL before staging enrollment in that same command. Cookie sealing requires
+a committed view containing the enrollment. These command APIs are tested; the
+production HTTP stack still needs to adopt them for every relevant writer.
+
+`internal/auth/totp` implements the fixed SHA-1, six-digit, 30-second RFC 6238
+profile with a one-step window. A purpose-separated sealed seed binds the exact
+LocalUser UID, seed version and random seed identity. Replay rows retain the
+greatest consumed step, including step zero, across encryption-key and seed
+rotation. Auth roots from version 2 require an explicit inventory of these rows;
+ordinary decoding never substitutes an empty replay history.
+
+Current password authentication verifies both factors and stages replay
+consumption inside the actual command transaction. Session issuance then loads
+that staged state and enrolls the session in the same transaction. A later
+failure rolls both changes back; concurrent use of one code can enroll only
+one session. Immutable auth views cannot consume a code or accept a factor
+password login.
+
+The current command layer also supports factor setup, confirmation, removal and
+administrator recovery. Setup verifies the current local password and existing
+factor, then returns a five-minute purpose-separated challenge and provisioning
+secret through an explicit disclosure API. The challenge binds the exact account
+UID/resource version, prior seed version, keyring and dependency identity.
+Confirmation rechecks current proof, verifies a code from the new seed, and commits
+the seed, replay consumption and session revocation together. Rotation preserves
+the old replay floor; removal and recovery retain the disabled replay row. Recovery
+separately requires current users/write permission and the exact target UID.
+Concurrent confirmation can enroll once; failed callbacks consume nothing.
+Clock-aware commands retain the same verified credential or decoded challenge
+bounds through final commit, including no-ops. Their final checks read only
+memory, context and actual time; they never consume a second code.
+
+SQLite exposes own status at `GET /auth/totp` and setup, confirmation and removal
+at `POST /auth/totp/{setup,confirm,disable}`. These routes require a current local
+enrolled cookie; mutations also verify the current password and existing factor.
+Administrator recovery uses `POST /iam/users/{name}/totp/recover` with the exact
+UID returned by authorized IAM reads. It reauthorizes the original raw proof for
+cluster `users.write` inside the complete current command. Requests are bounded
+and reject duplicate or unknown fields, and factor attempts share login's rate
+limiter. Setup discloses its secret only after successful commit and a final
+deadline check, with private response headers. Confirmation and removal clear
+the cookie after commit and require a fresh login; self-target recovery does too.
+The consumed confirmation code cannot be reused for login.
+
+Dashboard login and password change accept an optional six-digit authenticator
+code, preserve leading zeros and clear it after submission. They do not retry
+factor-bearing mutations. The Access page provides a three-step enrollment and
+replacement wizard with a manual key, plus removal and administrator recovery
+dialogs. Local enrollment requires a local cookie session; recovery also permits
+external cookie administrators with cluster `users.write`. Recovery binds the
+selected account name and UID and checks a fresh inventory before submission.
+An account replacement requires explicit reselection.
+
+Passwords, codes and setup secrets remain in the mounted component, outside
+query and mutation caches. Closing a pending dialog aborts the request and
+reports an unknown outcome; it never retries the mutation. Successful
+confirmation, removal and self-recovery clear the session, CSRF value and cached
+answers without a second logout. Canceled session reads cannot restore old
+CSRF state after cleanup. No external QR service receives provisioning material.
+
+```mermaid
+flowchart LR
+    Proof["Password + TOTP code"] --> Current["Current UID-bound account and seed"]
+    Current --> Replay["Verify and stage increasing replay step"]
+    Replay --> Enroll["Load staged security state and enroll session"]
+    Enroll --> Commit["One fenced commit"]
+    Commit --> Published["Committed auth view seals cookie"]
+```
+
+### Offline provider verification and claim policy
+
+`internal/auth/oidccore` verifies signed ID tokens against an explicitly captured
+issuer, asymmetric algorithm allowlist and public JWKS. It performs no discovery,
+refresh, store read or enrollment. An opaque verified token carries detached
+claims and typed issuance/expiry times. Policy evaluation checks time again, so
+holding a verified token does not extend its lifetime. Browser evaluation also
+requires the verifier's nonce and optional `at_hash` check.
+
+The compiler consumes the public IdentityProvider scalar and expression fields.
+CEL exposes only `claims`, with bounded source, AST, comprehension depth and
+per-expression/aggregate execution cost. Validation rules return booleans;
+username/display/email mappings return strings; group mappings return string
+lists. Missing claims, type errors and exhausted budgets deny authentication.
+Prefixes, verified-email requirements and exact allowed email domains still
+apply after mapping. Identity remains the provider/issuer/subject tuple.
+
+```mermaid
+flowchart LR
+    Keys["Captured issuer + public JWKS"] --> Verify["Offline signature and time checks"]
+    Proof["Raw ID token + optional browser proof"] --> Verify
+    Verify --> Facts["Opaque verified facts"]
+    Spec["Captured public provider spec"] --> Compile["Bounded scalar/CEL compiler"]
+    Compile --> Evaluate["Current-time audience and claim policy"]
+    Facts --> Evaluate
+    Evaluate --> Identity["External identity; no granted rights"]
+```
+
+`servingauth` binds each selected provider's ID, actual UID, origin, spec and
+compiled policy to exactly one immutable verifier resource or explicit unavailable
+resource. Config providers retain precedence even when unavailable; no fallback
+to an object or live discovery can bypass that decision. Unknown or mismatched
+resources reject preparation. Unavailable providers deny external proofs while
+local authentication remains available. Management licensing remains explicit.
+
+External identities have independently generated durable UIDs. External cookie
+version 3 requires an exact enrolled session, CSRF, expiry and revocation state.
+Purpose-separated encrypted evidence binds the original verified claims to the
+provider incarnation, identity UID and session. Enrolled sessions may outlive the
+original ID token, but current claim policy and durable authority are reevaluated.
+Request evidence retains strict JWT expiry and exact resource identity. Session
+and personal-token grants intersect frozen grants with current subject authority;
+scopes and persistent floors still apply. Missing identity rows with retained
+floors cannot silently reprovision a new UID.
+
+`security.IssueExternal` resolves raw proof against the current command, creates
+or reuses the independent identity UID, and atomically commits profile, group
+snapshot, revocation floors and session enrollment. Initial groups come from the
+verified proof; later group updates obey `syncGroups`. Username changes and group
+removal raise the account floor. Issuance samples the real clock again, rechecks
+original proof expiry, and must be strictly later than any new floor. Equality
+rejects the command; timestamps are never adjusted to bypass revocation. Cookie
+sealing requires a complete committed view containing the new enrollment.
+
+External issuance rechecks the private verified proof at final command admission,
+after all staged enrollment and other callback work. Expiry or a clock regression
+rolls back the entire enrollment. The outer resource pin still excludes provider
+rotation through the actual commit; a time check alone is not that exclusion.
+
+These owners and commands are tested with real signed JWTs, concurrent concrete
+transactions, rollback, restart, replica installation and promotion. SQLite
+browser login now composes bounded discovery/exchange, durable pending-attempt
+consumption and external enrollment. CLI OIDC login and migration of the legacy
+Kubernetes OIDC adapter remain separate work; that adapter rejects expression
+policies until it adopts this owner.
+
 ## Principals
 
 | Kind | Comes from | Typical caller |
@@ -47,11 +456,11 @@ flowchart LR
 ```mermaid
 flowchart TD
     R(["request to /api/v1"]) --> B{"Authorization:<br/>Bearer kdr_…?"}
-    B -- "yes" --> TOK["API token: look up the id, compare<br/>sha256 in constant time, check expiry"]
+    B -- "yes" --> TOK["API token: look up the id, compare<br/>sha256 in constant time, check expiry<br/>and account UID"]
     B -- "no" --> J{"Bearer JWT?"}
     J -- "yes" --> ISS{"route by iss"}
     ISS -- "a configured OIDC issuer" --> OIDC["verify ID token (JWKS),<br/>aud, azp, claim mapping"]
-    ISS -- "the cluster's issuer" --> K8S["ServiceAccount token:<br/>JWKS offline, else TokenReview<br/>(cached 2 min)"]
+    ISS -- "the cluster's issuer" --> K8S["ServiceAccount token:<br/>JWKS offline, else TokenReview<br/>JWT lifetime ≤ 10 min; cache ≤ 2 min"]
     J -- "no" --> CK{"session cookie?"}
     CK -- "yes" --> SES["open the sealed cookie: expiry,<br/>idle timeout, sessionsValidAfter;<br/>unsafe method needs X-Kudurru-CSRF"]
     CK -- "no" --> UX{"unix socket peer?"}
@@ -62,7 +471,8 @@ flowchart TD
     TOK --> P(["principal"])
     OIDC --> P
     K8S --> P
-    SES --> P
+    SES --> UID["local account UID must match;<br/>load current groups and account state"]
+    UID --> P
     ROOT --> P
     NODE --> P
 ```
@@ -70,6 +480,43 @@ flowchart TD
 A credential that is present but wrong is rejected at once (401); it never
 falls through to the next authenticator, and an unknown bearer value is
 never anonymous.
+
+## Kubernetes ServiceAccount credential bounds
+
+The Kubernetes-store identity stack accepts projected ServiceAccount JWTs for
+`audience: kudurru`. Both offline JWKS verification and the TokenReview fallback
+require canonical whole-second `iat` and `exp`, nonfuture issuance, a valid
+optional `nbf`, and `0 < exp - iat <= 10 minutes`. Original expiry is exclusive:
+verification, cache lookup and later request authorization reject at equality.
+Opaque legacy ServiceAccount tokens, missing issuance/expiry, malformed dates,
+one-hour projections and extended-lifetime tokens are rejected. These bounds
+apply to incoming kudurru credentials, not the server's own Kubernetes client.
+
+Offline verification does **not** detect deletion immediately. A deleted pod or
+ServiceAccount can retain offline authority until the original JWT expires,
+within at most ten minutes of issuance. Kubernetes must stop issuing/renewing the
+credential after deletion. TokenReview can observe deletion sooner; a successful
+review is cached for at most two minutes and never beyond the original JWT
+expiry. Every acquisition also checks time after it finishes. Clock rollback
+before verification or issuance fails closed. Neither cache renewal nor a newer
+credential changes an already held proof's expiry.
+
+During an API outage, an already known JWKS can verify a correctly signed token
+within those original bounds. Missing keys or an unavailable/rejecting
+TokenReview deny authentication. Discovery, JWKS and review requests have a
+maximum ten-second transport timeout; shorter caller/client limits remain in
+force. Review responses must match the projected subject, ServiceAccount UID and
+requested audience. Errors and logs omit remote review error text and raw proof.
+This policy bounds offline revocation without introducing periodic TokenReview
+or network fallback into captured reads/current commands.
+
+The verifier retains private, nonserializable request time evidence. Principal
+lookup and the stack/REST authorization gates recheck it, including after a slow
+SAR and before reusing an allowing per-object decision. This time evidence cannot
+authorize a current mutation. Kubernetes tokens remain mounted only in the
+Kubernetes identity stack; SQLite's captured provider path does not accept them.
+Its original raw-proof/publication/writer exclusions and final credential/license
+checks are unchanged. See the [projected token configuration](../deploy/kubernetes-service-account-auth.md).
 
 ## Signing in
 
@@ -88,8 +535,11 @@ address for 5 minutes after 5 failures, and an account for 15 minutes after
 
 ### OIDC in the browser
 
-kudurru is a confidential client (backend for frontend): the browser never
-sees a token, only a sealed cookie.
+kudurru is a confidential client: the browser receives a sealed session cookie,
+not provider tokens. On SQLite, background discovery prepares the exact accepted
+provider capability before a request starts. Start commits a random pending
+attempt bound to provider UID, spec/resource identity, redirect, client and the
+preauth payload hash, then seals from a published view containing that row.
 
 ```mermaid
 sequenceDiagram
@@ -98,25 +548,117 @@ sequenceDiagram
     participant K as kudurru API
     participant I as identity provider
     B->>K: GET /api/v1/auth/oidc/{idp}/start?next=/zones
-    K->>K: discovery (lazy), state, nonce, PKCE verifier
+    K->>K: capture provider; generate state, nonce and PKCE verifier
+    K->>K: current command commits pending attempt
+    K->>K: published view seals exact pending row
     K-->>B: 302 to IdP + sealed pre-auth cookie (10 min, single use)
     B->>I: authorize (code, S256 challenge, nonce)
     I-->>B: 302 /callback?code&state
     B->>K: GET /api/v1/auth/oidc/{idp}/callback
-    K->>K: open pre-auth cookie, check state
-    K->>I: exchange code + verifier + client secret
+    K->>K: original view checks pre-auth cookie, state and pending row
+    K->>I: bounded code exchange outside owner/transaction guards
     I-->>K: ID token
     K->>K: verify signature, aud, azp, nonce, at_hash
     K->>K: claims → username (prefix) and groups (prefix)
-    K->>K: bindings for the user and groups → grants<br/>(none: defaultRole, or 403 no_bindings)
-    K-->>B: Set-Cookie session (sealed) + 302 next
+    K->>K: current command consumes pending row and enrolls session atomically
+    K->>K: published view seals exact enrollment
+    K-->>B: Set-Cookie session + 302 next
     B->>K: GET /api/v1/auth/me → principal, permissions, CSRF token
 ```
 
-OIDC users are not stored. Their grants are resolved at sign-in and frozen
-in the session; deleting or narrowing a binding revokes frozen grants on the
-next request. There is no refresh token: the session lasts 12 hours, or
-30 minutes without activity.
+The pending inventory allows at most 256 attempts, each valid for ten minutes.
+Missing, consumed or expired rows deny callbacks, including after restart,
+promotion or garbage collection. Callback consumes the exact row in the same
+command as external enrollment; failure rolls both changes back. The exchange
+supports S256 and `client_secret_basic`, enforces the original resource and
+credential identity before and after I/O, and performs no automatic retries or
+redirect following. No refresh token is retained. Provider receipt profile
+`provider-metadata/v2-browser` requires fresh authority admission; identical-byte
+withdrawal/reactivation cannot revive a preauth cookie across its provider floor.
+
+#### Browser logout
+
+On the complete SQLite runtime, `POST /auth/logout/browser` retains the original
+credential, CSRF and final writer checks and durably revokes the exact local
+session before clearing cookies. Its response may contain a same-origin
+continuation path. The dashboard clears cached session state and CSRF before
+navigating. Existing `POST /auth/logout` remains local and returns 204 for CLI
+cleanup and old callers; legacy Kubernetes hosts retain local logout.
+
+Verified browser enrollment can seal an HttpOnly hint cookie bound to the exact
+session, provider UID, origin, spec/resource identities, issuer, client and
+redirect URI. The raw ID token is neither persisted nor returned to JavaScript.
+The public continuation checks those original bindings against a ready captured
+provider and checks its original installed credential fingerprint once. It then
+redirects only to the trusted discovery `end_session_endpoint`, with the original
+hint and fresh state. Changed or unavailable capabilities return locally.
+Providers without an endpoint retain their previous metadata trust identity.
+
+The callback authenticates a separate encrypted state cookie, exact provider and
+original deadlines, clears it and returns to the configured app prefix. It cannot
+issue a session or restore a revoked one. Unknown or duplicate query fields and
+phase confusion refuse. Cookie deletion provides normal browser consumption;
+there is no durable logout replay tombstone. Replaying copied valid callback
+state grants only the same safe local redirect.
+
+```mermaid
+sequenceDiagram
+    actor B as browser
+    participant K as Kudurru API
+    participant I as identity provider
+    B->>K: POST /auth/logout/browser with original CSRF
+    K->>K: Commit exact session revocation; clear cookies
+    K-->>B: Optional same-origin continuation path
+    B->>B: Clear session/cache/CSRF
+    B->>K: GET continuation with encrypted logout cookie
+    K->>K: Check original provider, credential and expiry
+    K-->>B: Redirect to trusted end-session endpoint
+    B->>I: Original ID-token hint and fixed callback/state
+    I-->>B: Logout callback
+    B->>K: GET callback with authenticated state
+    K-->>B: Configured local app prefix; no session issuance
+```
+
+Register an additional OP return URI derived from the configured login callback:
+replace its final `/callback` with `/logout/callback`, for example
+`https://host/prefix/api/v1/auth/oidc/corp/logout/callback`. The configured login
+URI must end in canonical `/api/v1/auth/oidc/{idp}/callback`, without query,
+fragment, userinfo or escaped path. Otherwise remote logout stays local. Neither
+Host headers nor a `next` parameter determines the destination.
+
+The hint expires at the earliest original verified token, enrollment absolute or
+idle deadline, without renewal. Continuation and callback also cap at two minutes.
+Raw hints over 2000 bytes, plaintext over 2500 bytes or sealed cookies over 3800
+bytes safely fall back to local logout. Missing, expired or cross-session hints
+do the same. If the OP becomes unavailable after navigation, local revocation
+and cookie clearing have already committed.
+
+SQLite stores independent external identity and enrollment records. Grants are
+frozen at sign-in and intersected with current authority on every request. The
+legacy Kubernetes stack does not store OIDC users. Session defaults remain twelve
+hours absolute and thirty minutes idle; current settings and durable revocation
+floors govern SQLite enrollments. Startup provider resets can revoke old sessions
+and pending browser attempts even when the configuration bytes are unchanged.
+
+Stored providers can read only exact file paths granted by the operator in
+`credentials.allowedFiles`. This node setting is host-only and requires a
+restart; it is excluded from canonical cluster settings and replication.
+The resolver bounds reads to 64 KiB, requires a regular file, and redacts
+credential-resolution errors. `credentials.allowedEnvironment` grants named
+environment variables to credential references; values remain local.
+A host-configured `auth.identityProviders` entry separately delegates access
+to its configured secret file, without granting that path to stored objects.
+Config entries retain precedence over same-name stored providers even if their
+secret disappears: a failed config entry cannot activate another issuer.
+
+```mermaid
+flowchart LR
+    Stored["Stored provider reference"] --> Grant["Exact host file grant"]
+    Host["Host-configured provider"] --> Private["Entry's own file capability"]
+    Grant --> Read["Bounded background credential read"]
+    Private --> Read
+    Read --> Registry["OIDC registry; config names stay reserved"]
+```
 
 ### The sealed session cookie
 
@@ -140,15 +682,125 @@ serves a self-signed certificate unless told otherwise), HttpOnly and
 SameSite=Lax, and is re-sealed at most once a minute to slide the idle
 timeout.
 
+Local sessions now carry the account UID in their sealed principal, and
+personal and service-account tokens carry it in `spec.owner.uid`. Deleting and
+recreating an account cannot inherit credentials, even within the same second.
+Token creation reads the current account and refuses a supplied stale UID;
+authentication reads memory snapshots. Legacy local cookies without a UID
+require a fresh login.
+
+SQLite schema 3 binds existing tokens before normal decoding, in the same
+transaction as the schema upgrade. Hashes, ownership, status, object metadata
+and audit history are preserved. Missing owners and tokens predating their
+owner remain unbound and cannot authenticate. Equal creation timestamps require
+audit evidence that the current account was created before the token; without
+that evidence, reissue the token. An invalid stored document rolls back the
+entire upgrade, and older binaries reject the newer database schema.
+Kubernetes legacy token conversion uses the explicit offline IAM migration;
+an unbound token is never silently rebound during authentication.
+
+Service-account bootstrap authority lives in private `PrincipalState` objects,
+keyed by the account UID. ServiceAccount specs no longer contain a
+`builtinAdmin` field. Schema 4 moves the old flag and its identity binding in
+one transaction; a conflicting private row aborts the upgrade. New bootstrap
+accounts use an atomic create-only precondition. If an account already exists
+without matching private authority, bootstrap refuses to elevate it. A crash
+between creating a new account and recording authority can leave an unprivileged
+account; local administrator recovery remains available. Ordinary annotations
+and name reuse cannot grant bootstrap privileges.
+
+ServiceAccount, RoleBinding and IdentityProvider now share the public CRD
+object model. Safe exports include their configuration while continuing to
+omit LocalUser, APIToken and PrincipalState. IdentityProvider uses
+`clientSecretRef` with exactly one `secretRef`, `file` or `env` capability;
+the old `clientSecretFile` field remains accepted only in host configuration.
+Credential Secret namespaces are chosen by the operator, never by public spec.
+
+The provider schema also distinguishes scalar claim rules from bounded CEL
+expressions. A rule selects exactly one claim or expression; mappings may keep
+their existing defaults or select one form. Scalar comparison defaults to an
+empty required value. Each expression is limited to 4 KiB, with at most 64
+validation rules. The captured offline provider compiler is being implemented;
+the existing live provider adapter rejects expressions before resolving a
+credential, so a stored restriction cannot be silently ignored.
+
+SQLite schema 5 converts the old file/Secret references in the migration
+transaction, preserving UIDs, creation order, ownership, status and token hashes.
+It validates public admission and rolls back the entire upgrade if a legacy
+document is malformed, ambiguous or exceeds the migration bounds. Conversion
+does not read a file or grant its path. Kubernetes uses new server-issued CRD
+UIDs. The offline `kudurru iam migrate` command preserves original Secrets,
+archives the complete pinned source set and creates targets with private exact
+UID receipts. An uncertain Create cannot be adopted from matching public
+annotations or contents. Resume requires an explicit offline acknowledgment and
+the exact inspected journal resource version; see the
+[upgrade runbook](../deploy/iam-upgrade.md).
+
+The token verifier has an optional migration resolver for private cutover proof.
+It verifies the token hash and expiry first, then checks the current account's
+disabled state, exact target UID, original token UID and original account
+creation floor. The resolver cannot supply roles or bootstrap authority. Local
+accounts retain their original UID and creation instant; name reuse, absent
+proof and later replacements fail closed. Kubernetes runtime admission captures
+status and immutable bindings from the same uncached, verified journal cut. It
+rechecks the journal UID and resourceVersion after verification. Native installs
+return no migration bindings; incomplete state and errors close remote admission.
+
+The gate runs before identity bootstrap and outside the HTTP authentication
+stack, including login and OIDC callbacks. It admits at most eight concurrent
+checks, each bounded to five seconds. Closed admission returns a sanitized 503
+with retry advice; IAM mutations independently recheck current admission before
+writing. Every unfinished initialization attempt captures fresh admission before
+priming and bootstrap. A startup API outage defers initialization and retries;
+it does not permanently disable user or token bootstrap. Explicitly disabled
+bootstrap stays disabled. DNS snapshots exclude management IAM kinds and DNS queries never call
+this gate. These reads do not provide a multi-object Kubernetes transaction:
+migration still requires all readers and writers to remain stopped. Complete
+immutable authentication publication and durable session state remain separate
+v0.2 work. Ordinary object backups do not yet carry raw migration journals and
+archives; protect them with the Kubernetes backup described in the runbook.
+
+```mermaid
+flowchart LR
+    Legacy["Legacy IAM configuration"] --> Convert["Offline bounded conversion"]
+    Convert --> Journal["Private archives and exact UID receipts"]
+    Journal --> Complete["Completion CAS"]
+    Convert --> Public["Public SA / RoleBinding / IdP"]
+    Public --> Ref["Credential reference"]
+    Ref --> Host["Host-granted resolver"]
+    Private["Private token / user / PrincipalState"] --> UID["Exact account UID binding"]
+    UID --> Public
+    Complete --> Gate["Verified journal cut and admission"]
+    Gate --> HTTP["Login, callbacks and authenticated HTTP"]
+    Gate --> Writes["Current IAM write admission"]
+```
+
 ### The CLI
 
-`kudurru login --token kdr_…` stores a token. `kudurru login --username`
-signs in with a password, creates a personal token
-(`kudurru-cli@<host>`), signs out, and stores the token. Tokens go to the
-OS keyring, with a 0600 file as the fallback. Browser and device-code
-sign-in for the CLI are planned for v0.2.
+`kudurru login --token kdr_…` verifies and stores a token. Local username login
+signs in once, creates a personal token (`kudurru-cli@<host>`), attempts session
+logout, verifies the token, and stores it in the OS keyring or a 0600 fallback
+file. An enrolled authenticator uses `--totp` for a hidden terminal prompt or
+`--totp-stdin` for a six-digit code line. Combined password/code stdin uses one
+bounded reader, with the password first. Neither a code-valued flag nor a TOTP
+environment variable is supported, and codes are never persisted.
+
+Typed login, token creation and logout refuse every redirect using a private
+client copy for each dispatch. Generic client requests retain their existing
+policy. The login flow makes no discovery probe, second login or automatic
+mutation retry; printable credential-chain errors use static safe messages.
+A lost response can follow a successful remote commit, so it leaves an uncertain
+outcome requiring explicit inspection. Only a verified personal token is saved.
+Browser and device-code sign-in for the CLI remain planned for v0.2.
 
 ## Authorization
+
+Kudurru `ServiceAccount` binding subjects share one exact namespace/name across
+Kudurru and Kubernetes identities (D254). They do not select a provider.
+Authentication, account UIDs and disable/revocation lifecycles remain distinct;
+API-token scopes narrow both authorization paths. Use different names or
+namespaces for different grants and review account-creation rights and both
+binding/SAR paths. See the [service-account binding contract](../deploy/kubernetes-service-account-auth.md#service-account-binding-names).
 
 ```mermaid
 flowchart TD

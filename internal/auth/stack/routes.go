@@ -77,8 +77,13 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodGet, Path: "/auth/status", Access: AccessPublic, Handler: http.HandlerFunc(s.handleStatus)},
 		{Method: http.MethodPost, Path: "/auth/login", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogin)},
 		{Method: http.MethodPost, Path: "/auth/logout", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogout)},
+		// Legacy hosts retain safe local logout; remote logout requires the
+		// complete captured provider/session authority in the SQLite runtime.
+		{Method: http.MethodPost, Path: "/auth/logout/browser", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogout)},
 		{Method: http.MethodGet, Path: "/auth/me", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handleMe)},
 		{Method: http.MethodPost, Path: "/auth/password", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handlePassword)},
+		{Method: http.MethodGet, Path: "/auth/sessions", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handleSessionsUnavailable)},
+		{Method: http.MethodDelete, Path: "/auth/sessions/{id}", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handleSessionsUnavailable)},
 		{Method: http.MethodGet, Path: "/auth/oidc/{idp}/start", Access: AccessPublic, Handler: http.HandlerFunc(s.handleOIDC)},
 		{Method: http.MethodGet, Path: "/auth/oidc/{idp}/callback", Access: AccessPublic, Handler: http.HandlerFunc(s.handleOIDC)},
 		{Method: http.MethodGet, Path: "/auth/tokens", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleListTokens)},
@@ -90,6 +95,10 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodGet, Path: "/iam/rolebindings", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBindings)},
 		{Method: http.MethodGet, Path: "/iam/identityproviders", Access: AccessPermission, Resource: "identityproviders", Verb: "read", Handler: http.HandlerFunc(s.handleIAMIdentityProviders)},
 	}
+}
+
+func (s *Stack) handleSessionsUnavailable(w http.ResponseWriter, r *http.Request) {
+	writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "sessions_unavailable", Message: "enrolled session management requires the complete SQLite authentication runtime"})
 }
 
 // Guard wraps a route's handler with its access rule (auth.Require for
@@ -202,6 +211,7 @@ func (s *Stack) handleStatus(w http.ResponseWriter, _ *http.Request) {
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	TOTPCode string `json:"totpCode,omitempty"`
 }
 
 func (s *Stack) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -222,6 +232,10 @@ func (s *Stack) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Username == "" || req.Password == "" {
 		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "invalid", Message: "username and password are required"})
+		return
+	}
+	if req.TOTPCode != "" {
+		writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "factor_unavailable", Message: "authenticator login requires the complete SQLite authentication runtime"})
 		return
 	}
 	usr, err := s.users.Login(r.Context(), req.Username, req.Password, s.opts.ClientIP(r))
@@ -441,7 +455,8 @@ type PasswordRequest struct {
 	NewPassword     string `json:"newPassword"`
 	// RevokeTokens also revokes every API token of the user (a changed
 	// password alone revokes sessions, not tokens).
-	RevokeTokens bool `json:"revokeTokens,omitempty"`
+	RevokeTokens bool   `json:"revokeTokens,omitempty"`
+	TOTPCode     string `json:"totpCode,omitempty"`
 }
 
 func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
@@ -453,6 +468,10 @@ func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
 	var req PasswordRequest
 	if e := decode(r, &req); e != nil {
 		writeErr(w, r, e)
+		return
+	}
+	if req.TOTPCode != "" {
+		writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "factor_unavailable", Message: "authenticator password changes require the complete SQLite authentication runtime"})
 		return
 	}
 	if err := users.CheckNewPassword(req.NewPassword); err != nil {

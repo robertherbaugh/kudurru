@@ -26,6 +26,22 @@ function list(ks: SettingKey[], cluster: Record<string, unknown>, onSave = vi.fn
 }
 
 describe('SettingsList', () => {
+  it('keeps node values visible without save or reset when this server reports read-only', () => {
+    const log = settingKey({ path: 'log.level', type: 'string', scope: 'node', default: 'info', readOnly: true });
+    const onSave = vi.fn();
+    const cluster = keys.filter((key) => key.path === 'cache.maxEntries');
+    renderWithApp(<SettingsList keys={[log, ...cluster]} cluster={{ cache: { maxEntries: 42 } }} node={{ log: { level: 'warn' } }} canWriteCluster canWriteNode onSave={onSave} />, { user: null });
+    const local = row('log.level');
+    expect(local).toHaveAttribute('data-locked', 'true');
+    expect(within(local).getByRole('textbox')).toHaveValue('warn');
+    expect(within(local).getByTestId('lock-log.level')).toHaveTextContent('Read-only on this server: change the node configuration file or environment.');
+    expect(within(local).queryByRole('button', { name: 'Save' })).toBeNull();
+    expect(within(local).queryByRole('button', { name: /Reset/ })).toBeNull();
+    expect(row('cache.maxEntries')).toHaveAttribute('data-locked', 'false');
+    expect(within(row('cache.maxEntries')).getByRole('button', { name: /Reset/ })).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('renders host-only keys read-only with the reason and no save', () => {
     renderWithApp(
       <SettingsList keys={keys} cluster={{ cache: { maxEntries: 50000 }, querylog: { enabled: true } }} node={{ node: { dataDir: '/data' }, log: { level: 'debug' } }} canWriteCluster canWriteNode onSave={vi.fn()} />,
@@ -264,6 +280,23 @@ describe('SettingsPage', () => {
     ]);
     expect(within(row('upstreams.recursion.dnssec')).getByRole('switch')).toBeChecked();
     expect(within(row('upstreams.recursion.dnssec')).getByRole('link', { name: 'Also on the Upstreams page' })).toHaveAttribute('href', '/upstreams');
+  });
+
+  it('edits DNSSEC and preserves an absolute exception expiry', async () => {
+    const expiry = '2026-10-15T12:34:56Z';
+    (mockDB().settings.dnssec as Record<string, unknown>).negativeTrustAnchors = [{ domain: 'broken.example.', reason: 'Signer incident', expiresAt: expiry }];
+    renderWithApp(<SettingsPage />, { route: '/settings?view=expert&q=dnssec' });
+    const sw = await waitFor(() => within(row('dnssec.enabled')).getByRole('switch'));
+    expect(sw).not.toBeChecked();
+    fireEvent.click(sw);
+    await waitFor(() => expect((mockDB().settings.dnssec as Record<string, unknown>).enabled).toBe(true));
+    const exceptions = row('dnssec.negativeTrustAnchors');
+    expect(within(exceptions).getByLabelText('Expires at (UTC)')).toBeInTheDocument();
+    fireEvent.change(within(exceptions).getByRole('textbox', { name: 'Reason' }), { target: { value: 'Repair confirmed with owner' } });
+    fireEvent.click(within(exceptions).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect((mockDB().settings.dnssec as Record<string, unknown>).negativeTrustAnchors).toEqual([
+      { domain: 'broken.example.', reason: 'Repair confirmed with owner', expiresAt: expiry },
+    ]));
   });
 
   it('shows the block page section with the HTTPS caveat and a sandboxed preview', async () => {

@@ -94,8 +94,10 @@ func (d dialect) prefixEnd(prefix string) string {
 
 // rtx is a read transaction that binds its queries for the dialect.
 type rtx struct {
-	tx *sql.Tx
-	d  dialect
+	tx     *sql.Tx
+	d      dialect
+	scoped bool
+	node   int64
 }
 
 func (t *rtx) QueryContext(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
@@ -104,4 +106,52 @@ func (t *rtx) QueryContext(ctx context.Context, q string, args ...any) (*sql.Row
 
 func (t *rtx) QueryRowContext(ctx context.Context, q string, args ...any) *sql.Row {
 	return t.tx.QueryRowContext(ctx, t.d.bind(q), args...)
+}
+
+// nodeWhere is appended explicitly at each fact/rollup relation, before its
+// grouping, count, ordering or limit. Values always remain bound parameters.
+func (t *rtx) nodeWhere(alias string, args *[]any) string {
+	if !t.scoped {
+		return ""
+	}
+	*args = append(*args, t.node)
+	return " AND " + alias + "node=?"
+}
+
+// dictionaryWhere requires a retained selected-node reference. Global interner
+// timestamps alone never expose another node's identities after raw expiry.
+func (t *rtx) dictionaryWhere(table, alias string, args *[]any) string {
+	if !t.scoped {
+		return ""
+	}
+	key := strings.TrimPrefix(table, "dict_")
+	refs := []struct{ table, column string }{{"query", key}}
+	if key == "domain" {
+		refs = append(refs, struct{ table, column string }{"query", "cname"})
+	}
+	for _, r := range RollupTables {
+		if r.Key == key || key == "node" {
+			refs = append(refs, struct{ table, column string }{r.Name, key})
+		}
+	}
+	parts := make([]string, 0, len(refs))
+	for _, r := range refs {
+		parts = append(parts, "EXISTS (SELECT 1 FROM "+r.table+" ref WHERE ref."+r.column+"="+alias+"id"+t.nodeWhere("ref.", args)+")")
+	}
+	return " AND (" + strings.Join(parts, " OR ") + ")"
+}
+
+// clientSeen uses only retained selected-node facts and rollups. A dictionary
+// timestamp is global; using it here would leak another node's more recent use.
+func (t *rtx) clientSeen(alias string, args *[]any) string {
+	if !t.scoped {
+		return "coalesce(" + alias + "last_seen,0)"
+	}
+	parts := []string{"SELECT max(ts)/1000000 AS ts FROM query WHERE client=" + alias + "id" + t.nodeWhere("", args)}
+	for _, r := range RollupTables {
+		if r.Key == "client" {
+			parts = append(parts, "SELECT max(ts) AS ts FROM "+r.Name+" WHERE client="+alias+"id"+t.nodeWhere("", args))
+		}
+	}
+	return "coalesce((SELECT max(ts) FROM (" + strings.Join(parts, " UNION ALL ") + ") seen),0)"
 }

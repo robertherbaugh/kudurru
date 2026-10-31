@@ -20,7 +20,8 @@ const FileName = "querylog.db"
 //  1. v0.1 (dev-docs/design-record.md §11.2)
 //  2. query.policy and dict_policy: the deciding policy per row; rows
 //     written before the upgrade keep policy NULL
-const SchemaVersion = 2
+//  3. exact retained-fact domain/hour index (D269)
+const SchemaVersion = 3
 
 // ErrSchemaTooNew is returned by Open for a database written by a newer
 // kudurru.
@@ -251,6 +252,7 @@ const createDictPolicy = `CREATE TABLE dict_policy   (id INTEGER PRIMARY KEY, na
 // transaction. Every step is additive (new tables, nullable columns), so
 // existing rows stay valid and no table is rewritten.
 var migrations = map[int][]string{
+	2: domainHourSchema,
 	1: {createDictPolicy, `ALTER TABLE query ADD COLUMN policy INTEGER REFERENCES dict_policy`},
 }
 
@@ -288,7 +290,7 @@ func migrate(ctx context.Context, db *sql.DB) (created bool, err error) {
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, stmt := range schema {
+	for _, stmt := range append(append([]string{}, schema...), domainHourSchema...) {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return false, fmt.Errorf("sqlitelog: create schema: %w\n%s", err, stmt)
 		}

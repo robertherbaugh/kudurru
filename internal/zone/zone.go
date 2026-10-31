@@ -29,20 +29,23 @@ const (
 // need no locks. Changes produce a new Zone that is swapped in through a
 // Snapshot.
 type Zone struct {
-	name          string // lowercased absolute origin
-	key           string
-	typ           v1alpha1.ZoneType
-	serial        uint32
-	upstream      string // forward zones
-	fallback      bool
-	fallbackGroup string
-	apexOverride  bool // apex has user records, beyond generated SOA/NS
-	access        accessPolicy
-	transfer      accessPolicy
+	name             string // lowercased absolute origin
+	key              string
+	typ              v1alpha1.ZoneType
+	serial           uint32
+	upstream         string // forward zones
+	fallback         bool
+	fallbackGroup    string
+	apexOverride     bool // apex has user records, beyond generated SOA/NS
+	access           accessPolicy
+	transfer         accessPolicy
+	dnssecValidation *bool // nullable forward-zone override
 	// transferKeys are the canonical names of spec.policy.transferTSIGKeyRefs.
 	transferKeys []string
 	notify       v1alpha1.NotifyMode
 	notifyTo     []netip.AddrPort
+	notifyKey    string
+	notifySource netip.Addr
 
 	tree tree
 	// index maps every key in tree to its node. The tree gives canonical
@@ -51,7 +54,7 @@ type Zone struct {
 	// ~17-level pointer chase through a 100k-name tree (dev-docs/milestones/m1/zone.md).
 	index  map[string]*node
 	apex   *node
-	soa    *dns.SOA // served SOA (status.serial)
+	soa    *dns.SOA // served SOA (external primary's serial for secondaries)
 	negSOA *dns.SOA // SOA for negative answers: TTL = min(TTL, minimum)
 	negNs  []dns.RR // authority section of negative answers: {negSOA}
 
@@ -64,15 +67,23 @@ type Zone struct {
 	records    int
 	nextExpiry time.Time
 	generation int64
+	// secondaryIdentity binds transferred data to its configuration object.
+	secondaryIdentity    string
+	hasSignatures        bool
+	secondaryProofs      *SecondaryProofs
+	stub                 *stubRoute
+	committed            bool
+	committedUnavailable bool
 }
 
 // Name returns the lowercased absolute zone name.
 func (z *Zone) Name() string { return z.name }
 
-// Type returns the zone type (primary or forward in v0.1).
+// Type returns the zone type.
 func (z *Zone) Type() v1alpha1.ZoneType { return z.typ }
 
-// Serial returns the SOA serial served for the zone (status.serial).
+// Serial returns the served SOA serial: status.serial for primary zones,
+// the external primary's serial for secondary zones.
 func (z *Zone) Serial() uint32 { return z.serial }
 
 // Generation returns metadata.generation of the DNSZone the zone was built
@@ -90,10 +101,20 @@ func (z *Zone) HasFallback() bool { return z.fallback }
 // normal resolver routing.
 func (z *Zone) FallbackGroup() string { return z.fallbackGroup }
 
+// DNSSECValidation returns a private nullable forward-zone validation override.
+func (z *Zone) DNSSECValidation() *bool {
+	if z.dnssecValidation == nil {
+		return nil
+	}
+	value := *z.dnssecValidation
+	return &value
+}
+
 // ContentHash returns the canonical content hash ("sha256:<hex>") the
 // controller compares with status.contentHash to decide on a serial bump.
-// It covers every served RR including the SOA fields, except the serial,
-// and the fallback routing settings.
+// Primary hashes cover served RRs except the SOA serial and include fallback
+// routing settings. Secondary hashes cover raw uncompressed RRs,
+// including the external serial.
 func (z *Zone) ContentHash() string { return z.hash }
 
 // RecordCount returns the number of served RRs excluding the SOA.
@@ -105,10 +126,19 @@ func (z *Zone) Names() int { return z.tree.count }
 
 // NextExpiry returns the earliest expiresAt among the records that were
 // still live at build time, or the zero time. The zone cache rebuilds the
-// zone at that instant so expired records leave service on time.
+// zone at that instant so expired records leave service on time. For a
+// secondary with data it returns the transferred zone's expiry.
 func (z *Zone) NextExpiry() time.Time { return z.nextExpiry }
 
-// SOA returns a copy of the zone's SOA record, or nil for forward zones.
+// CommittedAvailableAt checks the durable primary deadline. Other models are
+// unaffected. AvailableAt's owner must delegate here before its type check.
+func (z *Zone) CommittedAvailableAt(now time.Time) bool {
+	return !z.committed || (!z.committedUnavailable && z.soa != nil &&
+		(z.nextExpiry.IsZero() || now.Before(z.nextExpiry)))
+}
+
+// SOA returns a copy of the zone's SOA record, or nil for forward zones and
+// secondary placeholders.
 func (z *Zone) SOA() *dns.SOA {
 	if z.soa == nil {
 		return nil
@@ -132,9 +162,11 @@ func (z *Zone) QueryAllowed(client netip.Addr) bool { return z.access.allowed(cl
 // mode is deny); when transferTSIGKeyRefs is non-empty the request must
 // also have been signed with one of those keys. tsigKey is the verified
 // key name ("" for an unsigned request), compared case-insensitively.
-// Forward zones and primary zones with fallback are never transferable.
+// Available secondary zones are transferable; forward zones, primary zones
+// with fallback, and secondary placeholders or expired data are not.
 func (z *Zone) TransferAllowed(client netip.Addr, tsigKey string) bool {
-	if z.typ != v1alpha1.ZoneTypePrimary || z.fallback || !z.transfer.allowed(client) {
+	if (z.typ != v1alpha1.ZoneTypePrimary && z.typ != v1alpha1.ZoneTypeSecondary) ||
+		z.fallback || !z.AvailableAt(time.Now()) || !z.transfer.allowed(client) {
 		return false
 	}
 	if len(z.transferKeys) == 0 {
@@ -153,6 +185,22 @@ func (z *Zone) NotifyMode() v1alpha1.NotifyMode { return z.notify }
 // NotifyTargets returns spec.policy.notifyTargets as addresses with the
 // port defaulted to 53.
 func (z *Zone) NotifyTargets() []netip.AddrPort { return slices.Clone(z.notifyTo) }
+
+// NotifyKey returns the explicit NOTIFY key, or the first transfer key for
+// compatibility. Empty means unsigned only when neither selects a key.
+func (z *Zone) NotifyKey() string {
+	if z.notifyKey != "" {
+		return z.notifyKey
+	}
+	if len(z.transferKeys) != 0 {
+		return z.transferKeys[0]
+	}
+	return ""
+}
+
+// NotifySource returns the zone's explicit source. An invalid address means
+// inherit the host's notify.source, then system selection when that is unset.
+func (z *Zone) NotifySource() netip.Addr { return z.notifySource }
 
 // NameServer is one apex NS host and the in-zone addresses (glue) the zone
 // itself publishes for it.
@@ -205,6 +253,8 @@ func (z *Zone) RRsets(fn func(*RRset) bool) {
 
 // BuildOptions tune Build.
 type BuildOptions struct {
+	// Records optionally reuses per-object parsing; it never caches serving decisions.
+	Records *RecordCache
 	// Now is the instant expiresAt is compared with; zero means time.Now().
 	Now time.Time
 	// MergeUnion merges endpoints of the same name and type from different
@@ -218,11 +268,13 @@ type BuildOptions struct {
 // namespace/name) so that "Duplicated on the later object" is
 // deterministic.
 type Builder struct {
-	z       *Zone
-	spec    v1alpha1.DNSZoneSpec
-	now     time.Time
-	merge   bool
-	nsNames []string
+	records     *RecordCache
+	recordScope parseScope
+	z           *Zone
+	spec        v1alpha1.DNSZoneSpec
+	now         time.Time
+	merge       bool
+	nsNames     []string
 	// owners maps an endpoint identity to the source that claimed it
 	// first. Endpoints that are not served (disabled, expired, view-scoped)
 	// still claim their identity, so toggling one never moves ownership
@@ -285,6 +337,12 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	transfer, terrs := compileTransfer(spec.Policy, policyPath)
 	keys, kerrs := compileKeyRefs(spec.Policy.TransferTSIGKeyRefs, policyPath.Child("transferTSIGKeyRefs"))
 	notify, targets, nerrs := compileNotify(spec.Policy, policyPath)
+	notifyKey, notifySource, noerrs := compileNotifyOptions(spec.Policy, policyPath)
+	if len(noerrs) > 0 {
+		// Never turn an invalid explicit choice into compatibility fallback.
+		notify = v1alpha1.NotifyNone
+	}
+	nerrs = append(nerrs, noerrs...)
 	var policyErrs field.ErrorList
 	if len(terrs) > 0 || len(kerrs) > 0 {
 		// Fail closed: a transfer policy that does not compile allows
@@ -330,6 +388,8 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		transferKeys: keys,
 		notify:       notify,
 		notifyTo:     targets,
+		notifyKey:    notifyKey,
+		notifySource: notifySource,
 		generation:   dz.Generation,
 	}
 	if spec.Fallback != nil {
@@ -339,13 +399,18 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	}
 	if spec.Type == v1alpha1.ZoneTypeForward {
 		z.upstream = DefaultUpstreamGroup
+		if spec.Forward != nil && spec.Forward.DNSSECValidation != nil {
+			value := *spec.Forward.DNSSECValidation
+			z.dnssecValidation = &value
+		}
 		if spec.Forward != nil && spec.Forward.UpstreamGroup != "" {
 			z.upstream = spec.Forward.UpstreamGroup
 		}
 	} else {
 		z.apex = z.tree.upsert(key, z.name)
 	}
-	return &Builder{z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames,
+	return &Builder{
+		records: opts.Records, recordScope: recordScope(dz), z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames,
 		owners: map[identity]string{}, nameSource: map[string]string{}, policyErrs: policyErrs}, nil
 }
 
@@ -364,10 +429,13 @@ func hostName(s string) (string, error) {
 	if _, ok := dns.IsDomainName(n); !ok {
 		return "", errBadName
 	}
-	if _, err := canonicalKey(n); err != nil {
+	key, err := canonicalKey(n)
+	if err != nil {
 		return "", err
 	}
-	return n, nil
+	// SOA and apex NS bypass endpoint parsing. Give their names the same
+	// stable presentation spelling as owners, including escaped letters.
+	return nameFromKey(key), nil
 }
 
 func (b *Builder) defaultTTL() uint32 {
@@ -421,6 +489,10 @@ func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) fi
 		return nil
 	}
 	rrs, errs := ParseEndpoint(b.z.name, b.defaultTTL(), ep, path)
+	return b.addParsed(source, path, ep, rrs, errs)
+}
+
+func (b *Builder) addParsed(source string, path *field.Path, ep *v1alpha1.Endpoint, rrs []dns.RR, errs field.ErrorList) field.ErrorList {
 	if len(errs) > 0 {
 		return errs
 	}
@@ -737,7 +809,16 @@ func Build(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, opts BuildOption
 	out.Policy = b.PolicyErrors()
 	for _, rs := range sets {
 		src := rs.Namespace + "/" + rs.Name
-		if errs := b.AddRecordSet(src, rs.Spec.Endpoints); len(errs) > 0 {
+		var recordErrs field.ErrorList
+		if opts.Records == nil {
+			recordErrs = b.AddRecordSet(src, rs.Spec.Endpoints)
+		} else {
+			parsed := b.ParseRecordSet(rs)
+			for i := range rs.Spec.Endpoints {
+				recordErrs = append(recordErrs, parsed.Add(src, i)...)
+			}
+		}
+		if errs := recordErrs; len(errs) > 0 {
 			if out.RecordSets == nil {
 				out.RecordSets = map[string]field.ErrorList{}
 			}

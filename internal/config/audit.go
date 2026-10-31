@@ -3,12 +3,16 @@ package config
 import (
 	"errors"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // Audit configures where audit events are kept (dev-docs/design-record.md
-// §11.4, D157). Both keys are hostOnly: whoever can change settings
+// §11.4, D157). These keys are hostOnly: whoever can change settings
 // through the API must not be able to move or shorten the audit trail.
 type Audit struct {
+	// KeySecret is the operator-provisioned independent AuditLog signing ring.
+	KeySecret string `koanf:"keySecret" json:"keySecret"`
 	// Store is auto, database, auditlog or local; AuditStore resolves
 	// auto.
 	Store string `koanf:"store" json:"store"`
@@ -45,6 +49,9 @@ func (c *Config) AuditStore() string {
 
 func (c *Config) validateAudit() []error {
 	var errs []error
+	if len(validation.IsDNS1123Subdomain(c.Audit.KeySecret)) != 0 {
+		errs = append(errs, errors.New("audit.keySecret: a Kubernetes Secret name is required"))
+	}
 	if c.Audit.Retention < minAuditRetention {
 		errs = append(errs, errors.New("audit.retention: at least 24h"))
 	}

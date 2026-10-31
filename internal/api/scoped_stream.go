@@ -41,8 +41,8 @@ func (s *Server) openStreamSource(ctx context.Context, p cluster.Peer, after uin
 	if p.Self {
 		if s.opts.Tail != nil {
 			source.events = s.opts.Tail.Subscribe(ctx)
-		} else if s.opts.Querylog != nil {
-			source.events = s.opts.Querylog.Subscribe(ctx)
+		} else if s.localQuerylog() != nil {
+			source.events = s.localQuerylog().Subscribe(ctx)
 		} else {
 			source.err = fmt.Errorf("live tail unavailable")
 		}

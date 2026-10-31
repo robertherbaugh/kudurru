@@ -117,7 +117,7 @@ type attempt struct {
 	msg *dns.Msg
 	err error
 	rtt time.Duration
-	sec recursor.Security
+	sec recursor.Validation
 }
 
 // errRcode marks a response whose rcode makes it unusable (SERVFAIL,
@@ -223,9 +223,9 @@ func (s *server) countResponse(rcode int) {
 //
 // The recursive resolver honors ctx itself and reports the DNSSEC state
 // of its answer.
-func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, recursor.Security, error) {
+func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, recursor.Validation, error) {
 	if r, ok := s.u.(*recursor.Resolver); ok {
-		return r.ExchangeValidated(ctx, m)
+		return r.ExchangeWithValidation(ctx, m)
 	}
 	type result struct {
 		msg *dns.Msg
@@ -239,9 +239,9 @@ func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, recursor.Securit
 	}()
 	select {
 	case r := <-ch:
-		return r.msg, recursor.SecUnknown, r.err
+		return r.msg, recursor.Validation{}, r.err
 	case <-ctx.Done():
-		return nil, recursor.SecUnknown, ctx.Err()
+		return nil, recursor.Validation{}, ctx.Err()
 	}
 }
 

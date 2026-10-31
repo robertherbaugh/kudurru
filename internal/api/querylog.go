@@ -11,5 +11,12 @@ func (s *Server) clusterQuerylog() *sqlitelog.Reader {
 	if s.opts.CentralQuerylog != nil {
 		return s.opts.CentralQuerylog
 	}
+	return s.localQuerylog()
+}
+
+func (s *Server) localQuerylog() *sqlitelog.Reader {
+	if s.opts.QuerylogSource != nil {
+		return s.opts.QuerylogSource()
+	}
 	return s.opts.Querylog
 }

@@ -8,11 +8,13 @@ import { Grid } from '@astryxdesign/core/Grid';
 import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { Trash2 } from 'lucide-react';
+import { useId } from 'react';
 import type { ObjectKind, SettingRef } from '../../api/types';
 import { emptyDraft, isMapDraft, keyError, str, type MapDraft } from '../../lib/shapes';
 import type { UiShape } from '../../lib/settingsMeta';
 import { UpstreamGroupSelect } from '../UpstreamGroupSelect';
 import { BytesField } from './BytesField';
+import { DateTimeField } from './DateTimeField';
 import { DURATION_PRESETS, DurationField, durationPresets } from './DurationField';
 import { EnumSelect } from './EnumSelect';
 import { FieldGroup } from './FieldGroup';
@@ -52,15 +54,17 @@ function RemoveButton({ label, isDisabled, onClick }: { label: string; isDisable
 }
 
 /** Help under a group of fields. */
-function Help({ text }: { text?: string | undefined }) {
+function Help({ text, id }: { text?: string | undefined; id: string }) {
   return text ? (
-    <Text type="supporting" display="block">
+    <Text type="supporting" display="block" id={id}>
       {text}
     </Text>
   ) : null;
 }
 
-export function ShapeField({ label, isLabelHidden, description, shape, value, onChange, isDisabled, placeholder }: ShapeFieldProps) {
+export function ShapeField({ label, isLabelHidden, description: fieldHelp, shape, value, onChange, isDisabled, placeholder }: ShapeFieldProps) {
+  const description = fieldHelp ?? shape.help;
+  const helpId = useId();
   switch (shape.type) {
     case 'bool':
       return <SwitchField label={label} isLabelHidden={isLabelHidden} help={description} value={value === true} isDisabled={isDisabled} onChange={onChange} />;
@@ -101,6 +105,7 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
           value={Array.isArray(value) ? (value as string[]) : []}
           onChange={onChange}
           options={shape.items?.enum ?? undefined}
+          itemHelp={shape.items?.help}
           placeholder={shape.items?.format ? `e.g. ${FORMAT_EXAMPLES[shape.items.format]}` : undefined}
           itemError={shape.items?.format ? (v) => formatError(shape.items?.format, v) : undefined}
           isDisabled={isDisabled}
@@ -112,7 +117,7 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
       return <MapRows label={label} isLabelHidden={isLabelHidden} description={description} shape={shape} value={value} onChange={onChange} isDisabled={isDisabled} />;
     case 'object':
       return (
-        <FieldGroup label={label} isLabelHidden={isLabelHidden}>
+        <FieldGroup label={label} isLabelHidden={isLabelHidden} describedBy={description ? helpId : undefined}>
           <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
             {(shape.fields ?? []).map((f) => {
               const o = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
@@ -129,7 +134,7 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
               );
             })}
           </Grid>
-          <Help text={description} />
+          <Help text={description} id={helpId} />
         </FieldGroup>
       );
     default:
@@ -139,6 +144,9 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
 
 function StringField({ label, isLabelHidden, description, shape, value, onChange, isDisabled, placeholder }: ShapeFieldProps) {
   const v = str(value);
+  if (shape.format === 'date-time') {
+    return <DateTimeField label={label} isLabelHidden={isLabelHidden} help={description} value={v} onChange={onChange} isDisabled={isDisabled} />;
+  }
   if (shape.enum?.length) {
     return <EnumSelect label={label} isLabelHidden={isLabelHidden} description={description} value={v} options={shape.enum} onChange={onChange} isDisabled={isDisabled} />;
   }
@@ -173,12 +181,13 @@ function StringField({ label, isLabelHidden, description, shape, value, onChange
 }
 
 function ListRows({ label, isLabelHidden, description, shape, value, onChange, isDisabled }: Omit<ShapeFieldProps, 'placeholder'>) {
+  const helpId = useId();
   const items: unknown[] = Array.isArray(value) ? (value as unknown[]) : [];
   const item = shape.items as UiShape;
   // A group of fields per entry takes the full width, with Remove under it.
   const wide = isGroup(item);
   return (
-    <FieldGroup label={label} isLabelHidden={isLabelHidden}>
+    <FieldGroup label={label} isLabelHidden={isLabelHidden} describedBy={description ? helpId : undefined}>
       {items.length === 0 ? <Text type="supporting">None.</Text> : null}
       {items.map((x, i) => {
         const field = <ShapeField label={`${label} ${i + 1}`} shape={item} value={x} onChange={(v) => onChange(items.map((y, j) => (j === i ? v : y)))} isDisabled={isDisabled} />;
@@ -198,12 +207,13 @@ function ListRows({ label, isLabelHidden, description, shape, value, onChange, i
       <HStack gap={2}>
         <Button label="Add" size="sm" variant="secondary" isDisabled={isDisabled} onClick={() => onChange([...items, emptyDraft(item)])} />
       </HStack>
-      <Help text={description} />
+      <Help text={description} id={helpId} />
     </FieldGroup>
   );
 }
 
 function MapRows({ label, isLabelHidden, description, shape, value, onChange, isDisabled }: Omit<ShapeFieldProps, 'placeholder'>) {
+  const helpId = useId();
   const rows = isMapDraft(value) ? value.__rows : [];
   const vshape = shape.values as UiShape;
   const keyLabel = shape.keyLabel ?? 'Key';
@@ -212,7 +222,7 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
   const counts = new Map<string, number>();
   for (const [k] of rows) counts.set(k.trim(), (counts.get(k.trim()) ?? 0) + 1);
   return (
-    <FieldGroup label={label} isLabelHidden={isLabelHidden}>
+    <FieldGroup label={label} isLabelHidden={isLabelHidden} describedBy={description ? helpId : undefined}>
       {rows.length === 0 ? <Text type="supporting">None.</Text> : null}
       {rows.map(([k, v], i) => {
         const dup = k.trim() && (counts.get(k.trim()) ?? 0) > 1;
@@ -220,6 +230,7 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
           shape.keys?.type === 'int' ? (
             <NumberField
               label={keyLabel}
+              help={shape.keys?.help}
               isLabelHidden={i > 0}
               value={k}
               placeholder={shape.keyPlaceholder}
@@ -232,6 +243,7 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
           ) : (
             <TextField
               label={keyLabel}
+              help={shape.keys?.help}
               isLabelHidden={i > 0}
               value={k}
               placeholder={shape.keyPlaceholder}
@@ -276,7 +288,7 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
       <HStack gap={2}>
         <Button label="Add" size="sm" variant="secondary" isDisabled={isDisabled} onClick={() => emit([...rows, ['', emptyDraft(vshape)]])} />
       </HStack>
-      <Help text={description} />
+      <Help text={description} id={helpId} />
     </FieldGroup>
   );
 }

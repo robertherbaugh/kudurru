@@ -158,6 +158,25 @@ type Verifier interface {
 	Verify(context.Context) error
 }
 
+// VerificationSnapshot binds a scan and cache to one original trust revision.
+// Current must refuse replacement, never repair the captured verifier.
+type VerificationSnapshot struct {
+	Verifier Verifier
+	Identity string
+	Current  func(context.Context) error
+}
+
+// SnapshotVerifier is optional for backends with independently mutable trust.
+type SnapshotVerifier interface {
+	SnapshotVerification(context.Context) (VerificationSnapshot, error)
+}
+
+// VerifierFunc adapts a captured verification operation.
+type VerifierFunc func(context.Context) error
+
+// Verify calls the wrapped verification function with the original context.
+func (f VerifierFunc) Verify(ctx context.Context) error { return f(ctx) }
+
 // ErrTampered identifies changed contents, invalid seals or broken audit links.
 // Backend failures and canceled verification must not wrap this sentinel.
 var ErrTampered = store.ErrAuditIntegrity
@@ -192,22 +211,9 @@ func (q *Query) After(ev Event) {
 // MaxDiff is the largest Before/After document kept (4 KiB, §11.4).
 const MaxDiff = 4096
 
-// Diff marshals v for Event.Before/After, replacing documents larger than
-// MaxDiff by a {"truncated":true,"bytes":N} marker. Callers redact secrets
-// before passing v.
-func Diff(v any) json.RawMessage {
-	if v == nil {
-		return nil
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil
-	}
-	if len(b) > MaxDiff {
-		b, _ = json.Marshal(map[string]any{"truncated": true, "bytes": len(b)})
-	}
-	return b
-}
+// Diff structurally redacts v before capping it. Use Document when its runtime
+// kind is known, so private carriers also follow their omission policy.
+func Diff(v any) json.RawMessage { return Document("", v) }
 
 // Multi records to every recorder and returns the joined errors.
 type Multi []Recorder

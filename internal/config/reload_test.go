@@ -229,17 +229,20 @@ func TestWatchSettingsReloads(t *testing.T) {
 // TestRestartRequired pins the keys applied without a restart; adding one
 // here means wiring a config.Reloadable subscriber in serve (reload.go).
 func TestRestartRequired(t *testing.T) {
-	hot := map[string]bool{"log.level": true}
+	hot := map[string]bool{"log.level": true, "objects": true} // objects has its own file watcher
 	for _, p := range []string{
+		"response.dns64.prefix", "response.dns64.excludeDomains", "response.dns64.excludeIPv4", "response.filterAAAA", "response.bogusNXDOMAIN", "response.nxdomainIPv4", "response.nxdomainIPv6", "response.ttl", "response.rebinding.enabled", "response.rebinding.privateDomains", "response.rebinding.bypassNetworks",
+		"control.allowedNetworks", "control.blockedQTypes", "dnssec.enabled", "dnssec.useBuiltinAnchors", "dnssec.trustAnchors", "dnssec.negativeTrustAnchors",
 		"upstreams.groups", "upstreams.bootstrap", "upstreams.conditional", "upstreams.ecs.mode", "upstreams.ecs.ipv4Prefix", "upstreams.ecs.ipv6Prefix",
-		"upstreams.recursion.dnssec", "upstreams.recursion.qnameMinimization", "upstreams.recursion.ipv6", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints",
+		"upstreams.recursion.dnssec", "upstreams.recursion.qnameMinimization", "upstreams.recursion.ipv6", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints", "upstreams.recursion.negativeTrustAnchors",
 		"cache.maxEntries", "cache.minTTL", "cache.maxTTL", "cache.negativeTTL", "cache.prefetch.threshold", "cache.prefetch.window",
 		"cache.serveStale.ttl", "cache.serveStale.answerTTL", "cache.serveStale.maxWait",
-		"blocking.enabled", "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP.v4", "blocking.customIP.v6",
+		"blocking.refreshInterval", "blocking.allowDegraded", "blocking.enabled", "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP.v4", "blocking.customIP.v6",
 		"blockPage.ipv4", "blockPage.ipv6", "blockPage.title", "blockPage.message", "blockPage.contact", "blockPage.showDetails",
 		"blockPage.dashboardURL", "blockPage.rateLimit",
+		"branding.name", "branding.logoLight", "branding.logoDark", "branding.favicon", "branding.accentColor",
 		"unblockRequests.enabled", "unblockRequests.rateLimit", "unblockRequests.maxPending", "unblockRequests.pendingExpiry", "unblockRequests.retention",
-		"querylog.privacy", "querylog.anonymize", "querylog.retention.raw", "querylog.retention.maxDBBytes",
+		"querylog.enabled", "querylog.sink", "querylog.privacy", "querylog.anonymize", "querylog.retention.raw", "querylog.retention.maxDBBytes",
 		"querylog.exclude.domains", "querylog.exclude.clients", "querylog.exclude.sudn",
 		"ratelimit.enabled", "ratelimit.ipv4", "ratelimit.ipv6", "ratelimit.slip", "ratelimit.maxBuckets", "ratelimit.exempt",
 	} {
@@ -249,7 +252,7 @@ func TestRestartRequired(t *testing.T) {
 		if k.RestartRequired == hot[k.Path] {
 			t.Errorf("%s: restartRequired %v, but the key is hot=%v", k.Path, k.RestartRequired, hot[k.Path])
 		}
-		if k.HostOnly && !k.RestartRequired {
+		if k.HostOnly && !k.RestartRequired && k.Path != "objects" {
 			t.Errorf("%s: hostOnly keys are read at start only", k.Path)
 		}
 	}

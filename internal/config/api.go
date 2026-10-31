@@ -74,6 +74,9 @@ type ExternalDNS struct {
 type ExternalDNSWebhook struct {
 	Enabled bool   `koanf:"enabled" json:"enabled"`
 	Listen  string `koanf:"listen" json:"listen"`
+	// TokenFile enables shared bearer authentication; empty keeps legacy clients compatible.
+	// The file is read at startup, so changing its contents requires a restart.
+	TokenFile string `koanf:"tokenFile" json:"tokenFile"`
 	// Namespace receives the DNSRecordSets written for external-dns.
 	Namespace string `koanf:"namespace" json:"namespace"`
 	// ZoneSelector is a label selector on DNSZones; empty selects every

@@ -22,6 +22,10 @@ func (LuaRenderer) Main() string { return "dnsdist.conf" }
 
 // Render implements Renderer.
 func (r LuaRenderer) Render(in *edge.Topology) ([]File, error) {
+	return r.render(in, nil)
+}
+
+func (r LuaRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]File, error) {
 	t, err := prepare(in)
 	if err != nil {
 		return nil, err
@@ -96,10 +100,14 @@ func (r LuaRenderer) Render(in *edge.Topology) ([]File, error) {
 	w("-- backends")
 	hc := t.HealthCheck
 	for _, be := range t.Backends {
+		mode := "auto"
+		if initialDown[be.ID] {
+			mode = "down"
+		}
 		w("do")
-		w("  local s = newServer({address=%s, id=%s, name=%s, pool=%s, useProxyProtocol=%t, weight=%d, order=%d, sockets=%d, healthCheckMode=\"auto\", checkName=%s, checkType=%s, checkInterval=%d, checkTimeout=%d, maxCheckFailures=%d, rise=%d, mustResolve=%t})",
+		w("  local s = newServer({address=%s, id=%s, name=%s, pool=%s, useProxyProtocol=%t, weight=%d, order=%d, sockets=%d, healthCheckMode=%s, checkName=%s, checkType=%s, checkInterval=%d, checkTimeout=%d, maxCheckFailures=%d, rise=%d, mustResolve=%t})",
 			luaString(be.Address), luaString(be.ID), luaString(be.DisplayName()), luaStrings(be.Pools), be.ProxyProtocol,
-			be.Weight, be.Order, be.Sockets, luaString(hc.QName), luaString(hc.QType), hc.Interval, hc.Timeout, hc.MaxFailures, hc.Rise, hc.MustResolve)
+			be.Weight, be.Order, be.Sockets, luaString(mode), luaString(hc.QName), luaString(hc.QType), hc.Interval, hc.Timeout, hc.MaxFailures, hc.Rise, hc.MustResolve)
 		if fn := validatorName(t, be); fn != "" {
 			w("  s:setHealthCheckResponseValidator(%s)", fn)
 		}
@@ -120,6 +128,8 @@ func (r LuaRenderer) Render(in *edge.Topology) ([]File, error) {
 		w("addAction(AllRule(), SetAdditionalProxyProtocolValueAction(%d, %s), {name=%s, uuid=%s})",
 			edge.ProxyTLVSecret, luaString(t.ProxyProtocolSecret), luaString(ruleProxySecret), luaString(ruleUUID(ruleProxySecret)))
 	}
+	w("addAction(QNameRule(%s), SetSkipCacheAction(), {name=%s, uuid=%s})",
+		luaString(t.HealthCheck.QName), luaString(ruleHealthNoCache), luaString(ruleUUID(ruleHealthNoCache)))
 	if len(t.Rules.AuthoritativeZones) > 0 {
 		w("addAction(QNameSuffixRule(%s), PoolAction(%s), {name=%s, uuid=%s})",
 			luaStrings(t.Rules.AuthoritativeZones), luaString(edge.PoolAuthoritative), luaString(ruleAuthoritative), luaString(ruleUUID(ruleAuthoritative)))

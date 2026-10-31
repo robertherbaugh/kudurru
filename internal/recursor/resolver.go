@@ -2,17 +2,20 @@ package recursor
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"net/netip"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/robertherbaugh/kudurru/internal/dnssec"
 )
 
 // Security is the DNSSEC state of an answer (RFC 4033 §5). The values
@@ -66,6 +69,33 @@ func (s Security) rank() int {
 	return 4
 }
 
+// RRset identifies data whose authentication was explicitly excepted.
+// It contains no wire proof and is produced only by native validation.
+type RRset struct {
+	Name string
+	Type uint16
+}
+
+// Validation carries native state and the exact RRsets allowed by an NTA.
+// Raw expired signatures for these sets are data, not authenticated deadlines.
+type Validation struct {
+	State    Security
+	Excepted []RRset
+}
+
+// Excepts reports native operator-authorized provenance, never wire AD.
+func (v Validation) Excepts(sig *dns.RRSIG) bool {
+	if v.State != SecInsecure {
+		return false
+	}
+	for _, set := range v.Excepted {
+		if equalName(set.Name, sig.Hdr.Name) && set.Type == sig.TypeCovered {
+			return true
+		}
+	}
+	return false
+}
+
 // IPv6Mode decides whether name servers are asked over IPv6.
 type IPv6Mode string
 
@@ -90,6 +120,8 @@ type Config struct {
 	IPv6              IPv6Mode
 	// TrustAnchors replace the built-in root DS records; empty keeps them.
 	TrustAnchors []string
+	// NegativeTrustAnchors are independent of forwarded validation exceptions.
+	NegativeTrustAnchors []dnssec.NTA
 	// RootHints replace the built-in root server addresses; empty keeps
 	// them.
 	RootHints []string
@@ -104,7 +136,12 @@ func DefaultConfig() Config {
 }
 
 // Validate checks the configuration.
-func (c Config) Validate() error {
+func (c Config) Validate() error { return c.validate(time.Now()) }
+
+func (c Config) validate(now time.Time) error {
+	if _, err := dnssec.NewExceptions(c.NegativeTrustAnchors, now); err != nil {
+		return err
+	}
 	switch c.IPv6 {
 	case "", IPv6Auto, IPv6On, IPv6Off:
 	default:
@@ -158,10 +195,11 @@ const (
 
 // settings is one applied configuration.
 type settings struct {
-	cfg     Config
-	anchors []*dns.DS
-	hints   *zoneCut
-	v6      bool
+	cfg        Config
+	exceptions *dnssec.Exceptions
+	anchors    []*dns.DS
+	hints      *zoneCut
+	v6         bool
 	// internalOK lets name servers have private, link-local and shared
 	// addresses: only with operator-supplied root hints, i.e. a private
 	// DNS tree.
@@ -208,14 +246,14 @@ func New(cfg Config, opts Options) (*Resolver, error) {
 		now:           opts.Now,
 		allowLoopback: opts.AllowLoopback,
 	}
-	if r.ex == nil {
-		r.ex = netExchanger{}
-	}
 	if r.logger == nil {
 		r.logger = slog.Default()
 	}
 	if r.now == nil {
 		r.now = time.Now
+	}
+	if r.ex == nil {
+		r.ex = netExchanger{cookies: newCookieJar(r.now)}
 	}
 	r.infra = newInfra(r.now)
 	size := cfg.CacheSize
@@ -229,10 +267,10 @@ func New(cfg Config, opts Options) (*Resolver, error) {
 	return r, nil
 }
 
-// Reconfigure applies cfg. Changing the trust anchors, root hints or
-// validation drops the cached delegations and keys.
+// Reconfigure applies cfg. Changing the trust anchors, root hints,
+// exceptions or validation drops the cached delegations and keys.
 func (r *Resolver) Reconfigure(cfg Config) error {
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.validate(r.now()); err != nil {
 		return err
 	}
 	if cfg.IPv6 == "" {
@@ -240,6 +278,13 @@ func (r *Resolver) Reconfigure(cfg Config) error {
 	}
 	if cfg.CacheSize == 0 {
 		cfg.CacheSize = DefaultConfig().CacheSize
+	}
+	cfg.TrustAnchors = slices.Clone(cfg.TrustAnchors)
+	cfg.RootHints = slices.Clone(cfg.RootHints)
+	cfg.NegativeTrustAnchors = slices.Clone(cfg.NegativeTrustAnchors)
+	exceptions, err := dnssec.NewExceptions(cfg.NegativeTrustAnchors, r.now())
+	if err != nil {
+		return err
 	}
 	anchors := DefaultTrustAnchors
 	if len(cfg.TrustAnchors) > 0 {
@@ -250,7 +295,7 @@ func (r *Resolver) Reconfigure(cfg Config) error {
 		return err
 	}
 	hints, _ := ParseRootHints(cfg.RootHints) // validated above
-	s := &settings{cfg: cfg, anchors: ds, hints: hintCut(hints), internalOK: len(hints) > 0}
+	s := &settings{cfg: cfg, exceptions: exceptions, anchors: ds, hints: hintCut(hints), internalOK: len(hints) > 0}
 	switch cfg.IPv6 {
 	case IPv6On:
 		s.v6 = true
@@ -261,7 +306,7 @@ func (r *Resolver) Reconfigure(cfg Config) error {
 	s.gen = 1
 	if prev != nil {
 		s.gen = prev.gen
-		if prev.cfg.DNSSEC != cfg.DNSSEC || !sameStrings(prev.cfg.TrustAnchors, cfg.TrustAnchors) || !sameStrings(prev.cfg.RootHints, cfg.RootHints) {
+		if !slices.Equal(prev.cfg.NegativeTrustAnchors, cfg.NegativeTrustAnchors) || prev.cfg.DNSSEC != cfg.DNSSEC || !sameStrings(prev.cfg.TrustAnchors, cfg.TrustAnchors) || !sameStrings(prev.cfg.RootHints, cfg.RootHints) {
 			// Queries still running with the old settings key their
 			// writes by the old generation, so nothing they learn under
 			// old anchors or hints is read again.
@@ -286,7 +331,19 @@ func sameStrings(a, b []string) bool {
 }
 
 // Config returns the configuration in effect.
-func (r *Resolver) Config() Config { return r.set.Load().cfg }
+func (r *Resolver) Config() Config {
+	c := r.set.Load().cfg
+	c.TrustAnchors = slices.Clone(c.TrustAnchors)
+	c.RootHints = slices.Clone(c.RootHints)
+	c.NegativeTrustAnchors = slices.Clone(c.NegativeTrustAnchors)
+	return c
+}
+
+// TrustContext captures active recursive exceptions and the next absolute expiry.
+// It performs no I/O and never consults forwarded validation configuration.
+func (r *Resolver) TrustContext() ([32]byte, time.Time) {
+	return r.set.Load().exceptions.Context(r.now())
+}
 
 // Flush drops every cached delegation, address and key.
 func (r *Resolver) Flush() { r.cache.flush() }
@@ -312,20 +369,28 @@ func (r *Resolver) Exchange(ctx context.Context, req *dns.Msg) (*dns.Msg, error)
 // ExchangeValidated is Exchange that also reports the DNSSEC state of the
 // answer.
 func (r *Resolver) ExchangeValidated(ctx context.Context, req *dns.Msg) (*dns.Msg, Security, error) {
+	m, v, err := r.ExchangeWithValidation(ctx, req)
+	return m, v.State, err
+}
+
+// ExchangeWithValidation retains exact exception provenance for the raw cache.
+// Existing direct callers can continue using ExchangeValidated.
+func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*dns.Msg, Validation, error) {
 	if len(req.Question) != 1 {
 		m := new(dns.Msg)
 		m.SetRcode(req, dns.RcodeFormatError)
-		return m, SecUnknown, nil
+		return m, Validation{}, nil
 	}
 	question := req.Question[0]
 	if question.Qclass != dns.ClassINET {
 		m := new(dns.Msg)
 		m.SetRcode(req, dns.RcodeNotImplemented)
 		m.RecursionAvailable = true
-		return m, SecUnknown, nil
+		return m, Validation{}, nil
 	}
 	s := r.set.Load()
 	var a *answer
+	var excepted []RRset
 	if zone, ok := localZone(question.Name); ok {
 		a = localAnswer(zone, question)
 	} else {
@@ -335,31 +400,52 @@ func (r *Resolver) ExchangeValidated(ctx context.Context, req *dns.Msg) (*dns.Ms
 			// Not RRsets of their own; returned unvalidated.
 			q.validate = false
 		}
+		if !q.validate {
+			q.st.exceptionUntil = time.Time{}
+		}
 		a = q.resolve(question.Name, question.Qtype)
+		for set := range q.st.excepted {
+			excepted = append(excepted, set)
+		}
+		if until := q.st.exceptionUntil; !until.IsZero() {
+			if !r.now().Before(until) {
+				a.sec, a.ede, a.why = SecBogus, dns.ExtendedErrorCodeSignatureExpired, "negative trust anchor expired during resolution"
+			}
+			// Direct resolver consumers also cannot cache an exception beyond
+			// its original deadline, even with CD set. Never renew on reload.
+			left := uint32(min(max(0, until.Sub(r.now())/time.Second), 1<<32-1)) //nolint:gosec // clamped to uint32 even if the clock moves backward
+			for _, section := range [][]dns.RR{a.records, a.authority, a.proofs} {
+				for _, rr := range section {
+					rr.Header().Ttl = min(rr.Header().Ttl, left)
+				}
+			}
+		}
 		if a.fail != nil {
 			if err := ctx.Err(); err != nil {
-				return nil, SecUnknown, err
+				return nil, Validation{}, err
 			}
 			// A socket deadline set from ctx can fire a moment before
 			// ctx itself reports it: still the caller's deadline.
 			if d, ok := ctx.Deadline(); ok && !time.Now().Before(d) {
-				return nil, SecUnknown, context.DeadlineExceeded
+				return nil, Validation{}, context.DeadlineExceeded
 			}
 		}
 	}
 	if s.cfg.DNSSEC {
 		r.metrics.validated(a.sec)
 	}
-	return reply(req, a), a.sec, nil
+	return reply(req, a), Validation{State: a.sec, Excepted: excepted}, nil
 }
 
 // clientState is shared by every nested lookup of one client query.
 type clientState struct {
-	budget     int
-	sigBudget  int
-	hashBudget int
-	inKeys     map[string]bool
-	tooDeep    bool // a lookup hit maxDepth
+	budget         int
+	exceptionUntil time.Time
+	excepted       map[RRset]struct{}
+	sigBudget      int
+	hashBudget     int
+	inKeys         map[string]bool
+	tooDeep        bool // a lookup hit maxDepth
 }
 
 // query is one (possibly nested) lookup.
@@ -370,25 +456,28 @@ type query struct {
 	st       *clientState
 	depth    int
 	validate bool
+	active   string // exception activation captured before any native cache access
 }
 
 func (r *Resolver) newQuery(ctx context.Context, s *settings) *query {
+	active, until := s.exceptions.Context(r.now())
 	return &query{
-		r: r, s: s, ctx: ctx, validate: s.cfg.DNSSEC,
-		st: &clientState{budget: maxQueries, sigBudget: maxSigBudget, hashBudget: maxNSEC3Hashes, inKeys: map[string]bool{}},
+		active: hex.EncodeToString(active[:]),
+		r:      r, s: s, ctx: ctx, validate: s.cfg.DNSSEC,
+		st: &clientState{exceptionUntil: until, budget: maxQueries, sigBudget: maxSigBudget, hashBudget: maxNSEC3Hashes, inKeys: map[string]bool{}},
 	}
 }
 
 // nested returns a lookup one level deeper, sharing the budgets.
 func (q *query) nested(validate bool) *query {
-	return &query{r: q.r, s: q.s, ctx: q.ctx, st: q.st, depth: q.depth + 1, validate: validate && q.s.cfg.DNSSEC}
+	return &query{r: q.r, s: q.s, ctx: q.ctx, st: q.st, depth: q.depth + 1, active: q.active, validate: validate && q.s.cfg.DNSSEC}
 }
 
 func (q *query) now() time.Time { return q.r.now() }
 
 // key is the cache key of name under prefix for this query's settings.
 func (q *query) key(prefix, name string) string {
-	return prefix + strconv.FormatUint(q.s.gen, 36) + "|" + name
+	return prefix + strconv.FormatUint(q.s.gen, 36) + "|" + q.active + "|" + name
 }
 
 // limited reports whether this client query ran into one of its limits

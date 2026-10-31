@@ -52,8 +52,8 @@ type setBlockingInput struct {
 
 type flushInput struct {
 	Body *struct {
-		// Name flushes only this name (every common type, with and without
-		// DO/CD); absent flushes the whole cache.
+		// Name flushes only this exact name; absent flushes the whole cache.
+		// Complete serving includes every scope, type, class, flag and subnet.
 		Name string `json:"name,omitempty"`
 	}
 	Name string `query:"name" doc:"Same as the body field."`
@@ -87,24 +87,36 @@ type DNSQueryRequest struct {
 
 // DNSQueryResult is the answer of POST /dns/query.
 type DNSQueryResult struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	Client      string   `json:"client"`
-	Rcode       string   `json:"rcode"`
-	Status      string   `json:"status"`
-	StatusClass string   `json:"status_class"`
-	Upstream    string   `json:"upstream,omitempty"`
-	List        string   `json:"list,omitempty"`
-	Rule        string   `json:"rule,omitempty"`
-	Answer      []string `json:"answer" nullable:"false"`
-	Authority   []string `json:"authority" nullable:"false"`
-	Additional  []string `json:"additional" nullable:"false"`
-	Flags       DNSFlags `json:"flags"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Client      string `json:"client"`
+	Rcode       string `json:"rcode"`
+	Status      string `json:"status"`
+	StatusClass string `json:"status_class"`
+	Upstream    string `json:"upstream,omitempty"`
+	List        string `json:"list,omitempty"`
+	Rule        string `json:"rule,omitempty"`
+	// Exclusions are matching disabled rules from the original query's selected
+	// lists. They do not assert that the final answer or whole list is allowed.
+	Exclusions          []DNSRuleExclusion `json:"exclusions,omitempty"`
+	ExclusionsTruncated bool               `json:"exclusionsTruncated,omitempty" doc:"Question exclusion evidence exceeded a compile or query diagnostic bound."`
+	Answer              []string           `json:"answer" nullable:"false"`
+	Authority           []string           `json:"authority" nullable:"false"`
+	Additional          []string           `json:"additional" nullable:"false"`
+	Flags               DNSFlags           `json:"flags"`
 	// LatencyMS is the pipeline latency.
 	LatencyMS float64 `json:"latency_ms"`
 	Error     string  `json:"error,omitempty"`
 	Node      string  `json:"node"`
 	Took
+}
+
+// DNSRuleExclusion is one disabled rule from the captured filtering selection.
+type DNSRuleExclusion struct {
+	List   string `json:"list"`
+	Source int    `json:"source" doc:"Zero-based compiled source index, excluding RPZ sources; never a source URL."`
+	Rule   string `json:"rule"`
+	Effect string `json:"effect" enum:"block,allow,exception,rewrite"`
 }
 
 // DNSFlags are the header flags of the answer.
@@ -126,6 +138,8 @@ type dnsQueryOutput struct {
 }
 
 func (s *Server) registerRuntime() {
+	register(s, operation(http.MethodGet, "/cache/inspect", "inspectCache", "Inspect one raw default-route cache entry without resolving", "runtime"),
+		perm{resource: "cache", verb: "read"}, s.inspectCache)
 	register(s, operation(http.MethodGet, "/dns/blocking", "getBlocking", "Blocking state of this node", "runtime"),
 		perm{resource: "blocking", verb: "read"}, s.getBlocking)
 	register(s, operation(http.MethodPost, "/dns/blocking", "setBlocking", "Enable blocking, or disable it for a while", "runtime"),
@@ -156,11 +170,33 @@ func (s *Server) blockingState() *BlockingState {
 	return out
 }
 
-func (s *Server) getBlocking(_ context.Context, _ *struct{}) (*blockingOutput, error) {
+func (s *Server) getBlocking(ctx context.Context, _ *struct{}) (*blockingOutput, error) {
+	if s.opts.BlockingReads != nil {
+		if ctx == nil || ctx.Err() != nil {
+			return nil, errUnavailable("original blocking state unavailable")
+		}
+		now := s.opts.Now()
+		if now.IsZero() {
+			return nil, errUnavailable("original blocking observation time unavailable")
+		}
+		configured, enabled, until, err := s.opts.BlockingReads.BlockingState(ctx, now)
+		if err != nil || ctx.Err() != nil || enabled && !configured {
+			return nil, errUnavailable("original blocking state unavailable")
+		}
+		out := &BlockingState{Configured: configured, Blocking: enabled, Scope: "cluster", Node: s.opts.NodeName}
+		if configured && !enabled && until.After(now) && until.Before(blockingstage.Forever) {
+			u, seconds := until.UTC(), until.Sub(now).Seconds()
+			out.Until, out.Timer = &u, &seconds
+		}
+		return &blockingOutput{Body: out}, nil
+	}
 	return &blockingOutput{Body: s.blockingState()}, nil
 }
 
 func (s *Server) setBlocking(ctx context.Context, in *setBlockingInput) (*blockingOutput, error) {
+	if s.opts.BlockingCommand != nil || s.opts.CanonicalSettings != nil || s.opts.ObjectCommand != nil || s.opts.BlockingReads != nil {
+		return s.setBlockingCommand(ctx, in)
+	}
 	if s.opts.Blocking == nil {
 		return nil, errNotImplemented("the blocking toggle")
 	}
@@ -190,13 +226,34 @@ func (s *Server) setBlocking(ctx context.Context, in *setBlockingInput) (*blocki
 	return &blockingOutput{Body: after}, nil
 }
 
-// flushTypes are the query types a by-name flush removes.
-var flushTypes = []uint16{
-	dns.TypeA, dns.TypeAAAA, dns.TypeCNAME, dns.TypeMX, dns.TypeTXT, dns.TypeNS, dns.TypeSOA, dns.TypePTR,
-	dns.TypeSRV, dns.TypeHTTPS, dns.TypeSVCB, dns.TypeCAA, dns.TypeDS, dns.TypeDNSKEY, dns.TypeANY, dns.TypeNAPTR,
-}
-
 func (s *Server) flushCache(ctx context.Context, in *flushInput) (*flushOutput, error) {
+	if s.opts.CacheFlushCommand != nil {
+		name := in.Name
+		if in.Body != nil && in.Body.Name != "" {
+			name = in.Body.Name
+		}
+		if name != "" {
+			if len(name) > 1024 || strings.TrimSpace(name) == "" {
+				return nil, errInvalid("name: invalid domain name")
+			}
+			name = dns.CanonicalName(strings.TrimSpace(name))
+			if _, ok := dns.IsDomainName(name); !ok {
+				return nil, errInvalid("name: invalid domain name")
+			}
+		}
+		removed, err := s.opts.CacheFlushCommand(ctx, name)
+		if removed < 0 && err == nil {
+			err = errUnavailable("invalid cache flush receipt")
+		}
+		s.recordAction(ctx, "cache.flush", audit.Resource{Kind: "cache", Name: name}, err, nil, map[string]any{"flushed": removed})
+		if err != nil {
+			return nil, storeError(err)
+		}
+		return &flushOutput{Body: &FlushResult{Flushed: removed, Name: name, Node: s.opts.NodeName}}, nil
+	}
+	if s.opts.CanonicalSettings != nil || s.opts.DNSQueryCapture != nil || s.opts.ObjectReads != nil || s.opts.ObjectCommand != nil {
+		return nil, errUnavailable("current local cache command unavailable")
+	}
 	if s.opts.ResponseCache == nil {
 		return nil, errNotImplemented("the response cache")
 	}
@@ -225,6 +282,10 @@ var protoByName = map[string]pipeline.Proto{
 }
 
 func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutput, error) {
+	complete := s.opts.DNSQueryCapture != nil || s.opts.ObjectReads != nil || s.opts.CanonicalSettings != nil
+	if complete && (s.opts.DNSQueryCapture == nil || s.opts.Chain == nil) {
+		return nil, errUnavailable("the original DNS serving generation is unavailable")
+	}
 	if s.opts.Chain == nil {
 		return nil, errNotImplemented("the DNS pipeline")
 	}
@@ -262,15 +323,33 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 	start := time.Now()
 	preq := &pipeline.Request{
 		Ctx: qctx, Msg: m, Received: start, Deadline: start.Add(5 * time.Second),
+		CollectExclusions: s.allowed(ctx, "blocklists", "read", clusterScope),
 		// Synthetic: the caller chooses the client address, so the log
 		// stage must not record this as that client's traffic.
 		Client: pipeline.Client{Addr: netip.AddrPortFrom(client, 0), Proto: proto, ClientID: "api-dig", Synthetic: true},
 	}
+	if s.opts.DNSQueryCapture != nil {
+		lease, err := s.opts.DNSQueryCapture(preq)
+		if lease != nil {
+			defer lease.Release() // response cleanup below must finish first
+		}
+		if err != nil || lease == nil {
+			return nil, errUnavailable("the original DNS serving generation is unavailable")
+		}
+		preq.Serving = lease
+	}
 	resp, err := s.opts.Chain.Serve(preq)
+	defer func() { resp.Close() }() // nil-safe, including error and unused stream responses
 	out := &DNSQueryResult{
 		Name: name, Type: dns.TypeToString[qtype], Client: client.String(), Node: s.opts.NodeName,
 		Answer: []string{}, Authority: []string{}, Additional: []string{},
 		LatencyMS: float64(time.Since(start).Microseconds()) / 1000,
+	}
+	if preq.CollectExclusions {
+		for _, match := range preq.Exclusions {
+			out.Exclusions = append(out.Exclusions, DNSRuleExclusion{List: match.List, Source: match.Source, Rule: match.Rule, Effect: match.Effect})
+		}
+		out.ExclusionsTruncated = preq.ExclusionsTruncated
 	}
 	if err != nil {
 		out.Rcode = dns.RcodeToString[dns.RcodeServerFailure]
@@ -280,6 +359,10 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 		if errors.Is(err, pipeline.ErrDrop) {
 			out.Status, out.Rcode = pipeline.StatusDropped.String(), "none"
 			out.StatusClass = string(pipeline.StatusDropped.Class())
+			if resp != nil {
+				out.Status, out.StatusClass = resp.Status.String(), string(resp.Status.Class())
+				out.Upstream, out.List, out.Rule = resp.Upstream, resp.List, resp.Rule
+			}
 		}
 		return &dnsQueryOutput{Body: out}, nil
 	}

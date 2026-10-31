@@ -33,6 +33,9 @@ func main() {
 
 // errorHint suggests the next step for common API failures.
 func errorHint(err error) string {
+	if hint := kubeTransportHint(err); hint != "" {
+		return hint
+	}
 	switch {
 	case apiclient.IsStatus(err, http.StatusUnauthorized):
 		return "the server rejected the credentials; run `kudurru login` (or check KUDURRU_TOKEN / --token)"
@@ -60,6 +63,23 @@ func newRootWith(o *cliOpts) *cobra.Command {
 	}
 	root.PersistentFlags().StringVar(&configPath, "config", envOr("KUDURRU_CONFIG", defaultConfigPath), "path to the server's kudurru.yaml")
 	o.addFlags(root)
+	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		switch o.transportKind() {
+		case "api":
+			return o.apiTransport()
+		case "kubernetes":
+			if cmd.Parent() == root {
+				switch cmd.Name() {
+				case "get", "apply", "delete", "describe":
+					return nil
+				}
+			}
+			return errors.New("kubernetes transport supports only generic get, apply, delete and describe CRD commands")
+		default:
+			return errors.New("--transport must be api or kubernetes")
+		}
+	}
+
 	root.AddGroup(
 		&cobra.Group{ID: "server", Title: "Server:"},
 		&cobra.Group{ID: "objects", Title: "Objects:"},
@@ -73,11 +93,11 @@ func newRootWith(o *cliOpts) *cobra.Command {
 			root.AddCommand(c)
 		}
 	}
-	add("server", newServeCmd(&configPath), newHealthCmd(), newLameduckCmd(), newDoctorCmd(&configPath, o), newVersionCmd(), newEdgeCmd(), newVIPCmd())
+	add("server", newServeCmd(&configPath), newHealthCmd(), newLameduckCmd(), newDoctorCmd(&configPath, o), newVersionCmd(), newEdgeCmd(&configPath), newVIPCmd(&configPath))
 	add("objects", newGetCmd(o), newApplyCmd(o), newDeleteCmd(o), newDescribeCmd(o), newExportCmd(o), newBackupCmd(o), newRestoreCmd(o), newImportCmd(o))
 	add("dns", newZonesCmd(o), newRecordsCmd(o), newListsCmd(o), newBlockingCmd(o), newCacheCmd(o), newQueryCmd(o))
 	add("observe", newStatsCmd(o), newLogsCmd(o), newNodesCmd(o), newAuditCmd(o))
-	add("admin", newLoginCmd(o), newLogoutCmd(o), newConfigCmd(&configPath, o), newSettingsCmd(o), newAdminCmd(o), newTokenCmd(), newLicenseCmd(&configPath), newAPICmd(o), newCompletionCmd())
+	add("admin", newLoginCmd(o), newLogoutCmd(o), newConfigCmd(&configPath, o), newSettingsCmd(o), newAdminCmd(o), newIAMCmd(&configPath), newTokenCmd(), newLicenseCmd(&configPath), newAPICmd(o), newCompletionCmd())
 	root.SetHelpCommandGroupID("admin")
 	root.SetCompletionCommandGroupID("admin")
 	return root

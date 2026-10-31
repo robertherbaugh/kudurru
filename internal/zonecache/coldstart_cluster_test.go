@@ -19,23 +19,27 @@ type clusterStore struct {
 func (c clusterStore) Info() store.Info {
 	info := c.fakeStore.Info()
 	info.ClusterID = c.id
+	info.Driver = "kube"
 	return info
 }
 
 // TestColdStartClusterIDCheck: a local.db snapshot from another cluster is
-// refused at cold start (not ready until the store syncs); a matching or
-// unknown cluster ID on either side serves the snapshot.
+// refused at cold start (not ready until the store syncs); only an independently pinned, matching identity serves the snapshot.
 func TestColdStartClusterIDCheck(t *testing.T) {
 	tests := []struct {
 		name      string
 		snapshot  string // ClusterID recorded in local.db
 		store     string // Info().ClusterID of the store
+		expected  string // independently provisioned host pin
 		wantServe bool
 	}{
-		{"same cluster", "c1", "c1", true},
-		{"other cluster", "c-copied", "c1", false},
-		{"store does not know its cluster yet", "c-copied", "", true},
-		{"snapshot without a cluster ID", "", "c1", true},
+		{"same cluster online", "c1", "c1", "c1", true},
+		{"same cluster offline", "c1", "", "c1", true},
+		{"other saved cluster", "c-copied", "", "c1", false},
+		{"other online cluster", "c1", "c-other", "c1", false},
+		{"missing expected identity offline", "c1", "", "", false},
+		{"missing expected identity with live observation", "c1", "c1", "", false},
+		{"old snapshot without identity", "", "c1", "c1", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -49,7 +53,7 @@ func TestColdStartClusterIDCheck(t *testing.T) {
 			}
 			fs := newFakeStore()
 			fs.holdBookmarks()
-			c := newCache(t, clusterStore{fakeStore: fs, id: tt.store}, Options{LocalDB: db, StartupTimeout: 20 * time.Millisecond, Debounce: time.Millisecond})
+			c := newCache(t, clusterStore{fakeStore: fs, id: tt.store}, Options{LocalDB: db, ExpectedClusterID: tt.expected, StartupTimeout: 20 * time.Millisecond, Debounce: time.Millisecond})
 			if err := c.Register(zonesBuilder()); err != nil {
 				t.Fatal(err)
 			}
@@ -64,7 +68,7 @@ func TestColdStartClusterIDCheck(t *testing.T) {
 				if len(msgs) > 0 {
 					last = msgs[len(msgs)-1]
 				}
-				return !ok && strings.Contains(last, "local.db snapshot rejected") && strings.Contains(last, `"c-copied"`)
+				return !ok && strings.Contains(last, "local.db snapshot rejected")
 			})
 			if s := c.State(); s == FromSnapshot {
 				t.Fatalf("serving a snapshot from another cluster (state %s)", s)
@@ -77,6 +81,12 @@ func TestColdStartClusterIDCheck(t *testing.T) {
 			// The store syncs: live data takes over as usual.
 			fs.releaseBookmarks()
 			waitState(t, c, Live)
+			if tt.snapshot == "" {
+				eventually(t, 5*time.Second, "the old snapshot to be replaced by identified live state", func() bool {
+					saved, err := db.Load(t.Context())
+					return err == nil && saved.ClusterID == tt.store
+				})
+			}
 		})
 	}
 }

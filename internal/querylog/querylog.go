@@ -196,3 +196,9 @@ type Sink interface {
 	Flush(ctx context.Context) error
 	Close() error
 }
+
+// BatchSink accepts an original captured privacy mode and cancellation for a
+// pending batch. Async never retries a batch after this call was attempted.
+type BatchSink interface {
+	WriteBatch(context.Context, []*Event, Mode) error
+}

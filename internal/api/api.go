@@ -37,6 +37,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditlog"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/central"
@@ -50,16 +51,21 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/settings"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/unblock"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
+	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
@@ -74,9 +80,12 @@ const APIVersion = "v1"
 // DefaultNamespace is used for namespaced objects that name none.
 const DefaultNamespace = "default"
 
-// maxBodyBytes caps request bodies (the 1.5 MiB etcd object cap plus
-// headroom for multi-document apply and zone imports).
-const maxBodyBytes = 32 << 20
+// MaxRequestBodyBytes caps public API request bodies, with headroom beyond
+// the 1.5 MiB object cap for multi-document apply and zone imports. CLI
+// converters check their generated payload against this same bound.
+const MaxRequestBodyBytes = 32 << 20
+
+const maxBodyBytes = MaxRequestBodyBytes
 
 // PolicySource returns the current policy index (policy.Source).
 type PolicySource interface {
@@ -116,6 +125,47 @@ type ZoneNotifier interface {
 	NotifyZone(ctx context.Context, zone string) ([]string, error)
 }
 
+// ObjectReadSource returns immutable public desired objects and their exact
+// generation from the original HTTP request lease, valid only in that handler.
+// Missing, released, or canceled capture must fail instead of recapturing.
+type ObjectReadSource interface {
+	ObjectSnapshot(context.Context) (zonecache.ObjectSet, replication.Generation, error)
+}
+
+// PolicyListReadSource reports actual compiled list counts and availability
+// from the original complete request cut at the caller's observation time.
+type PolicyListReadSource interface {
+	PolicyListState(context.Context, string, string, time.Time) (entries int, ready bool, err error)
+}
+
+// BlockingReadSource projects the original complete request's blocking settings
+// and absolute deadline at one caller-supplied observation time.
+type BlockingReadSource interface {
+	BlockingState(context.Context, time.Time) (configured, enabled bool, disabledUntil time.Time, err error)
+}
+
+// UpstreamReadSource samples local operational health on the original complete
+// request's retained routes. Counter values are not frozen serving metadata.
+type UpstreamReadSource interface {
+	UpstreamStates(context.Context) ([]upstream.ServerStatus, error)
+}
+
+// ZoneReadSource reads actual serving data from the original complete HTTP
+// request lease. Objects/models are immutable and valid only within the handler.
+// ReadZone distinguishes a missing desired key (store.ErrNotFound) from present
+// but unavailable contents. PrimaryStatus is durable evidence, not readiness.
+type ZoneReadSource interface {
+	ZoneObjects(context.Context) (zonecache.ObjectSet, error)
+	ReadZone(context.Context, string) (*zone.Zone, error)
+	PrimaryStatus(context.Context, string) (primaryruntime.PrimaryStatusObservation, bool, error)
+}
+
+// ZoneRuntimeReadSource retains metadata of an expired transferred copy from
+// the original request cut. It grants no record-reading or routing authority.
+type ZoneRuntimeReadSource interface {
+	ReadTransferredMetadata(context.Context, string) (*zone.Zone, error)
+}
+
 // QuerylogPurger deletes query-log rows older than before (zero: all) and
 // returns how many were deleted. sqlitelog.Writer has the batched delete
 // machinery but no exported purge yet; nil answers 501.
@@ -129,6 +179,15 @@ type QuerylogPurger interface {
 // keeps changes in memory, which GET /settings then reports.
 type SettingsWriter interface {
 	WriteSettings(ctx context.Context, next *config.Config, changed []string) error
+}
+
+// CanonicalSettings reads the original request's complete settings image and
+// persists changes through current command admission. Implementations return a
+// detached effective config and reject stale requests. A successful write is a
+// durable acknowledgment; serving changes only after complete publication.
+type CanonicalSettings interface {
+	Settings(context.Context) (*config.Config, error)
+	SettingsWriter
 }
 
 // UpstreamStatus reports the upstream servers (*upstream.Set).
@@ -169,6 +228,10 @@ type Options struct {
 	// Cache is the zonecache; list and zone reads come from its snapshot
 	// when it has synced.
 	Cache *zonecache.Cache
+	// Secondaries reports transferred data and expiry on the serving node.
+	Secondaries *secondary.Manager
+	// Stubs reports discovered authority routes and expiry on this node.
+	Stubs *stub.Manager
 	// Policy is the policy index source (policy.Source{Cache}).
 	Policy PolicySource
 	// Blocking is the blocking stage; its Toggle backs /dns/blocking.
@@ -176,8 +239,11 @@ type Options struct {
 	// Querylog reads the node's query log; Tail is the live tail (SSE
 	// resume via Last-Event-ID); Purger backs DELETE /querylog.
 	Querylog *sqlitelog.Reader
-	Tail     *querylog.Tail
-	Purger   QuerylogPurger
+	// QuerylogSource returns a lifetime-stable local reader after lazy sink
+	// preparation. Once available it stays open through server shutdown.
+	QuerylogSource func() *sqlitelog.Reader
+	Tail           *querylog.Tail
+	Purger         QuerylogPurger
 	// CentralQuerylog answers scope=cluster from the central database
 	// (sqlitelog.NewCentralReader, D161) and CentralPurger purges it with
 	// this node's rows; nil without a central database.
@@ -188,17 +254,35 @@ type Options struct {
 	// upstream stage when the set is swapped on settings reloads.
 	Upstreams     UpstreamStatus
 	ResponseCache *cache.Cache
+	// CacheInspect reads one raw response using the original captured owners.
+	CacheInspect CacheInspectRead
 	// Chain runs POST /dns/query in-process.
 	Chain *pipeline.Chain
+	// DNSQueryCapture clones the original HTTP request's complete cut for a
+	// synthetic query. Ownership transfers even when a lease accompanies an
+	// error. Complete mounts require it; nil preserves legacy query capture.
+	DNSQueryCapture pipeline.Capture
 	// Config is the effective configuration (settings routes, listener);
-	// Settings persists PATCH /settings (cluster scope; PATCH /node/config
-	// changes stay in memory). Reload, when set, is the live configuration:
+	// Settings persists PATCH /settings (cluster scope). Node PATCH requires
+	// the separate durable NodeConfigCommand; otherwise it is read-only.
+	// Reload, when set, is the live configuration:
 	// reads use Reload.Current() and PATCHes are applied with Reload.Set,
 	// which notifies the hot-reload subscribers; Config is then ignored.
 	Config            *config.Config
 	Settings          SettingsWriter
 	SettingsOwnership *settings.Manager
 	Reload            *config.Reloadable
+	// CanonicalSettings replaces cluster settings reads/writes only. It never
+	// updates Reload or the legacy settings file after a canonical commit.
+	CanonicalSettings CanonicalSettings
+	// BrandingReads projects public branding from the original serving cut.
+	BrandingReads BrandingReadSource
+	// NodeConfigCommand admits local node PATCHes separately from cluster
+	// settings. It must durably own preferences and the SAME Reload document
+	// used for local GETs. Nil makes local node writes read-only.
+	NodeConfigCommand NodeConfigCommand
+	// CacheFlushCommand admits invalidation of the SAME cache used by DNS.
+	CacheFlushCommand CacheFlushCommand
 	// Objects is the file-managed objects loader (CheckAPIWrite for the
 	// ha-static shape, diagnoses for /info/messages).
 	Objects *objects.Loader
@@ -210,6 +294,12 @@ type Options struct {
 	// even when endpoint discovery fails.
 	EdgeSupervisors func(context.Context) ([]EdgeSupervisorEndpoint, error)
 	VIPSupervised   bool
+	// VIPObservation is a host-mounted read-only evidence snapshot. It cannot
+	// allocate VIPs, control supervisors, or grant cluster write admission.
+	VIPObservation func() VIPObservationSnapshot
+	// VIPEvents is an optional bounded local notification source, never a
+	// provider/writer or replay history. The route still requires edge.read.
+	VIPEvents *VIPEventHub
 	// InternalClient fetches peer status over the authenticated internal listener.
 	InternalClient *internalapi.Client
 	// Lists is the list resolver; Refresher and Notifier are optional
@@ -220,6 +310,45 @@ type Options struct {
 	// source for the entries browser; nil answers 503 for those sources.
 	ListBodies ListBodies
 	Notifier   ZoneNotifier
+	// ZoneReads replaces DNS diagnostics/contents with the original complete
+	// request cut. Nil retains the legacy store/compiler/Kubernetes behavior.
+	ZoneReads ZoneReadSource
+	// ObjectReads replaces generic object GETs with original complete-cut reads.
+	// Nil preserves the legacy store-backed paths, including Kubernetes.
+	ObjectReads ObjectReadSource
+	// InfoMessageReads projects serving diagnoses from the original request cut.
+	InfoMessageReads InfoMessageReadSource
+	// SourceBodyReads opens exact captured source receipts for entries GETs.
+	// Complete mode requires ObjectReads too; neither path uses live fallback.
+	SourceBodyReads SourceBodyReadSource
+	// PolicyListReads supplies original text/RPZ state for complete policy GETs.
+	// Complete mode also requires CanonicalSettings and Catalogue.Read.
+	PolicyListReads PolicyListReadSource
+	// BlockingReads replaces blocking GETs with original complete-cut reads.
+	// Nil preserves the legacy node-local toggle projection.
+	BlockingReads BlockingReadSource
+	// BlockingCommand replaces legacy toggle mutation with a current command.
+	BlockingCommand BlockingCommand
+	// UpstreamReads replaces local upstream health reads with original routes.
+	// Nil preserves legacy live-stage status sampling.
+	UpstreamReads UpstreamReadSource
+	// ObjectCommand admits canonical object writes in the supplied current
+	// transaction. Nil retains the legacy object-management implementation.
+	ObjectCommand ObjectCommand
+	// MigrationCommand admits bounded journal and destination programs.
+	MigrationCommand MigrationCommand
+	MigrationReads   MigrationReadSource
+	// ZoneCommand admits one complete current zone convenience operation.
+	ZoneCommand ZoneCommand
+	// UnblockCommand admits closed decisions and their derived effects.
+	UnblockCommand unblock.Command
+	// DomainCommand admits complete current domain convenience mutations.
+	DomainCommand DomainCommand
+	// ZoneNotifyCommand admits durable manual NOTIFY under current authority.
+	ZoneNotifyCommand ZoneNotifyCommand
+	// CrossOrigin shares the host's existing same-origin policy. Nil creates
+	// the default protection with no trusted-origin exceptions.
+	CrossOrigin *http.CrossOriginProtection
 	// Central is the optional central database (internal/central); its
 	// state is reported by /info/messages. nil: none configured.
 	Central CentralState
@@ -230,6 +359,10 @@ type Options struct {
 	// feature (license.FeatureAudit), answered 402 without it.
 	Audit       audit.Recorder
 	AuditReader audit.Reader
+	// AuditLogDiagnosis observes bounded live operational API availability and
+	// namespace batch count. It is separate from original canonical reads,
+	// gated by audit.read and the audit license before acquisition/disclosure.
+	AuditLogDiagnosis func(context.Context) auditlog.Diagnostic
 	// License is the node's license (*license.Manager). It backs GET
 	// /license and the 402 for configuration writes while the cluster is
 	// larger than the license allows; nil turns both gates off.
@@ -311,6 +444,8 @@ type Server struct {
 	// bodyScans is the semaphore of the parses of cached list bodies
 	// (maxBodyScans).
 	bodyScans chan struct{}
+	// sourceIndexes caches bounded derived parser results, never read authority.
+	sourceIndexes sourceIndexCache
 
 	// unblockFallback serves /unblockrequests without Options.Unblock.
 	unblockOnce     sync.Once
@@ -398,7 +533,10 @@ func New(opts Options) (*Server, error) {
 	s.mux.Handle(BasePath+"/", http.HandlerFunc(s.apiNotFound))
 	s.mux.Handle("/", s.ui)
 
-	cop := http.NewCrossOriginProtection()
+	cop := opts.CrossOrigin
+	if cop == nil {
+		cop = http.NewCrossOriginProtection()
+	}
 	inner := chain(s.mux,
 		onPrefix(BasePath+"/auth/login", opts.RateLimit),
 		onPrefix(BasePath+"/", opts.Authenticate),

@@ -2,7 +2,7 @@
 
 **Status:** scope agreed with the project owner on 2026-10-15; functional
 outline for implementation planning. This document describes requirements,
-not features that already work. See decision D188 in the
+not features that already work. See decision D222 in the
 [design record](design-record.md#16-decision-log).
 
 ## 1. Outcome and supported topology

@@ -18,8 +18,9 @@ const (
 )
 
 type auditVerificationResult struct {
-	result AuditVerification
-	err    error
+	identity string
+	result   AuditVerification
+	err      error
 }
 
 type auditVerificationCache struct {
@@ -29,10 +30,10 @@ type auditVerificationCache struct {
 	group singleflight.Group
 }
 
-func (c *auditVerificationCache) cached(now time.Time) (auditVerificationResult, bool) {
+func (c *auditVerificationCache) cached(now time.Time, identity string) (auditVerificationResult, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.value, c.have && now.Sub(c.value.result.CheckedAt) < auditVerificationTTL
+	return c.value, c.have && c.value.identity == identity && now.Sub(c.value.result.CheckedAt) < auditVerificationTTL
 }
 
 func (s *Server) verifyAudit(ctx context.Context, _ *struct{}) (*auditVerifyOutput, error) {
@@ -57,20 +58,37 @@ func verificationUnavailable() *Error {
 }
 
 func (s *Server) cachedAuditVerification(ctx context.Context, v audit.Verifier) (auditVerificationResult, error) {
-	c := &s.auditVerification
-	if value, ok := c.cached(s.opts.Now()); ok {
-		return value, nil
+	opCtx, cancel := context.WithTimeout(ctx, auditVerificationTimeout)
+	defer cancel()
+	snapshot := audit.VerificationSnapshot{Verifier: v, Current: func(context.Context) error { return nil }}
+	if source, ok := v.(audit.SnapshotVerifier); ok {
+		var err error
+		snapshot, err = source.SnapshotVerification(opCtx)
+		if err != nil {
+			return auditVerificationResult{}, err
+		}
+		if snapshot.Identity == "" || snapshot.Verifier == nil || snapshot.Current == nil {
+			return auditVerificationResult{}, errors.New("audit trust snapshot unavailable")
+		}
 	}
-	result := c.group.DoChan("audit", func() (any, error) {
+	c := &s.auditVerification
+	if value, ok := c.cached(s.opts.Now(), snapshot.Identity); ok {
+		return value, snapshot.Current(opCtx)
+	}
+	result := c.group.DoChan("audit:"+snapshot.Identity, func() (any, error) {
 		// Another caller may have filled the cache between the first lookup and
 		// joining the shared scan. Recheck it inside the single-flight group.
-		if value, ok := c.cached(s.opts.Now()); ok {
+		if value, ok := c.cached(s.opts.Now(), snapshot.Identity); ok {
 			return value, nil
 		}
-		checkCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), auditVerificationTimeout)
+		deadline, _ := opCtx.Deadline()
+		checkCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), deadline)
 		defer cancel()
-		err := v.Verify(checkCtx)
-		value := auditVerificationResult{result: AuditVerification{Verified: err == nil, CheckedAt: s.opts.Now()}}
+		err := snapshot.Verifier.Verify(checkCtx)
+		if currentErr := snapshot.Current(checkCtx); currentErr != nil {
+			return auditVerificationResult{}, currentErr
+		}
+		value := auditVerificationResult{identity: snapshot.Identity, result: AuditVerification{Verified: err == nil, CheckedAt: s.opts.Now()}}
 		if err != nil {
 			s.log.Warn("audit verification failed", "err", err)
 			if errors.Is(err, audit.ErrTampered) {
@@ -86,10 +104,13 @@ func (s *Server) cachedAuditVerification(ctx context.Context, v audit.Verifier) 
 		return value, nil
 	})
 	select {
-	case <-ctx.Done():
-		return auditVerificationResult{}, ctx.Err()
+	case <-opCtx.Done():
+		return auditVerificationResult{}, opCtx.Err()
 	case shared := <-result:
 		value, _ := shared.Val.(auditVerificationResult)
-		return value, shared.Err
+		if shared.Err != nil {
+			return value, shared.Err
+		}
+		return value, snapshot.Current(opCtx)
 	}
 }

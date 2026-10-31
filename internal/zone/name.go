@@ -146,7 +146,15 @@ func isKeyPrefix(name, ancestor string) bool { return strings.HasPrefix(name, an
 // fqdn lowercases name and makes it absolute. Escapes are kept as written;
 // use canonicalName where the spelling matters.
 func fqdn(name string) string {
-	return dns.Fqdn(strings.ToLower(name))
+	// DNS labels are octets. Unicode case folding can change their wire
+	// value or replace invalid UTF-8 before presentation escapes are read.
+	b := []byte(name)
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + ('a' - 'A')
+		}
+	}
+	return dns.Fqdn(string(b))
 }
 
 // canonicalName returns the one presentation spelling of name: absolute,

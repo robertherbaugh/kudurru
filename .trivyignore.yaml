@@ -24,6 +24,15 @@ misconfigurations:
       image comment explains the capability set it needs.
   - id: DS-0002
     paths:
+      - hack/labs/ad-samba/Dockerfile
+    statement: >-
+      Disposable Samba AD protocol fixture, never shipped with Kudurru.
+      Domain provisioning and DC identity changes require root. The runner
+      confines it to private tmpfs and an internal Docker network, with no
+      published ports, host realm, privileged mode or additional capabilities.
+      See dev-docs/labs/samba-ad-protocol.md.
+  - id: DS-0002
+    paths:
       - license-server/cloudflare/local/Dockerfile
     statement: >-
       FROM the portal image without changes, so it inherits USER

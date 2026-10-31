@@ -220,11 +220,11 @@ func TestRefresherAdGuard(t *testing.T) {
 	if st := r.Status(); st.Kind != KindAdGuard || st.LastError != "" {
 		t.Errorf("status = %+v", st)
 	}
-	b, err := os.ReadFile(filepath.Join(dir, fileAdGuard)) //nolint:gosec // G304: the test's temp dir
+	b, err := r.readReceipt()
 	if err != nil || string(b) != adguardFixture {
 		t.Errorf("kept copy: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, fileDocument)); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, fileReceipt)); err == nil {
 		t.Error("the import was kept as the catalogue document")
 	}
 	// Failures keep the last good import.

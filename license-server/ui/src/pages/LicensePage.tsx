@@ -273,7 +273,7 @@ function TermsSection({ license: l }: { license: LicenseDetail }) {
   const choosePlan = (d: TermsDraft, p: Plan) => {
     fe.edited('plan');
     if (p === 'personal') {
-      // A personal key always carries every feature.
+      // A personal key always carries all features available to Personal.
       set({ plan: p, nodes: String(Math.min(Number(d.nodes) || PERSONAL_MAX_NODES, PERSONAL_MAX_NODES)), features: null, featuresTouched: true });
     } else if (d.plan === 'personal' && l.plan !== 'personal') {
       // Back from Personal: the license's own features again, untouched.
@@ -363,7 +363,7 @@ function TermsSection({ license: l }: { license: LicenseDetail }) {
                 fe.edited('features');
               }}
               showErrors={showErrors && draft.featuresTouched}
-              lockedAllReason={draft.plan === 'personal' ? 'A personal key always carries every feature.' : undefined}
+              lockedAllReason={draft.plan === 'personal' ? 'A personal key always carries all features available to Personal.' : undefined}
               error={fe.field('features')}
             />
           )}

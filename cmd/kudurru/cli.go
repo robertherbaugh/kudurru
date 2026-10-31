@@ -25,15 +25,17 @@ import (
 // cliOpts holds the global client flags and the injectable environment of
 // the API verbs. One instance is shared by every command of a root.
 type cliOpts struct {
-	cliConfig string
-	context   string
-	server    string
-	token     string
-	namespace string
-	output    string
-	insecure  bool
-	caFile    string
-	timeout   time.Duration
+	transport  string
+	kubeconfig string
+	cliConfig  string
+	context    string
+	server     string
+	token      string
+	namespace  string
+	output     string
+	insecure   bool
+	caFile     string
+	timeout    time.Duration
 
 	// getenv, stdin and now are replaced by tests.
 	getenv func(string) string
@@ -53,19 +55,24 @@ func newCLIOpts() *cliOpts {
 // addFlags registers the global client flags on the root.
 func (o *cliOpts) addFlags(cmd *cobra.Command) {
 	f := cmd.PersistentFlags()
+	f.StringVar(&o.transport, "transport", "api", "object transport: api or kubernetes (direct CRD verbs only)")
+	f.StringVar(&o.kubeconfig, "kubeconfig", "", "kubeconfig file for explicit Kubernetes transport (otherwise KUBECONFIG/default)")
 	f.StringVar(&o.cliConfig, "cli-config", "", "CLI contexts file (default $KUDURRU_CLI_CONFIG or ~/.config/kudurru/config.yaml)")
-	f.StringVar(&o.context, "context", "", "CLI context to use (default: the current context, or $KUDURRU_CONTEXT)")
+	f.StringVar(&o.context, "context", "", "context to use: stored API context, or kubeconfig context with --transport kubernetes (env KUDURRU_CONTEXT)")
 	f.StringVar(&o.server, "server", "", "API server URL, e.g. https://dns.example (overrides the context; env KUDURRU_SERVER)")
 	f.StringVar(&o.token, "token", "", "API token kdr_… (overrides the context; env KUDURRU_TOKEN)")
 	f.StringVarP(&o.namespace, "namespace", "n", "", "namespace for namespaced kinds (default: the context's, else \"default\")")
 	f.StringVarP(&o.output, "output", "o", "", "output format: table, wide, json, yaml or name")
 	f.BoolVar(&o.insecure, "insecure-skip-tls-verify", false, "do not verify the server's TLS certificate (lab use only)")
 	f.StringVar(&o.caFile, "ca-file", "", "PEM bundle to trust for the API server")
-	f.DurationVar(&o.timeout, "request-timeout", 30*time.Second, "timeout of each API request")
+	f.DurationVar(&o.timeout, "request-timeout", 30*time.Second, "timeout per API request or complete direct Kubernetes command")
 	_ = cmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return cli.Formats, cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc("context", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		if o.transportKind() != "api" {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
 		cfg, err := o.loadConfig()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -99,6 +106,9 @@ func (o *cliOpts) credentials() *cli.Credentials {
 
 // resolve picks the endpoint from flags, environment and context.
 func (o *cliOpts) resolve() (cli.Resolved, error) {
+	if err := o.apiTransport(); err != nil {
+		return cli.Resolved{}, err
+	}
 	cfg, err := o.loadConfig()
 	if err != nil {
 		return cli.Resolved{}, err
@@ -111,6 +121,9 @@ func (o *cliOpts) resolve() (cli.Resolved, error) {
 
 // newClient builds an API client for a resolved endpoint.
 func (o *cliOpts) newClient(r cli.Resolved) (*apiclient.Client, error) {
+	if err := o.apiTransport(); err != nil {
+		return nil, err
+	}
 	return apiclient.New(r.Server, apiclient.Options{
 		Token: r.Token, InsecureSkipVerify: r.InsecureSkipVerify, CAFile: r.CAFile,
 		Timeout: o.timeout, UserAgent: "kudurru-cli/" + version.Get().Version, HTTPClient: o.httpClient,

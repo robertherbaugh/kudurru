@@ -3,6 +3,7 @@ package pgquerylog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
@@ -289,7 +290,7 @@ func TestReaderTwoNodes(t *testing.T) {
 	// A node whose statistics stopped arriving ten minutes ago makes the
 	// answer partial (cursor times are the database's; the clock is fake).
 	if err := db.Tx(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE ship_cursor SET updated_at = $1 WHERE stream = 'rollup_1m'
+		_, err := tx.Exec(ctx, `UPDATE ship_cursor SET updated_at = $1 WHERE stream = 'source_rollup_1m'
 			AND source IN (SELECT id FROM source WHERE node = 'node-a')`, fc.Now().Add(-10*time.Minute))
 		return err
 	}); err != nil {
@@ -307,7 +308,7 @@ func TestReaderUnavailable(t *testing.T) {
 	}
 	defer db.Close()
 	r := sqlitelog.NewCentralReader(db.SQL, sqlitelog.CentralOptions{})
-	if _, err := r.Summary(context.Background(), sqlitelog.SummaryQuery{}); err != central.ErrUnavailable {
+	if _, err := r.Summary(context.Background(), sqlitelog.SummaryQuery{}); !errors.Is(err, central.ErrUnavailable) {
 		t.Fatalf("summary: %v", err)
 	}
 }

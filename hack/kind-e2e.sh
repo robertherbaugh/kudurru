@@ -356,6 +356,18 @@ done
 log "helm install kudurru-crds and kudurru ($REPLICAS replicas, vip.provider=metallb, address $LB_IP)"
 kubectl create namespace "$NS"
 helm install kudurru-crds "$ROOT/deploy/helm/kudurru-crds" --namespace "$NS" --wait
+# AuditLog trust is independently provisioned, never derived from session
+# encryption or automatically invented by a serving replica. This is a fresh
+# disposable cluster, so there is no legacy history/key to import.
+log "provision independent AuditLog trust for this disposable cluster"
+audit_cluster_id=$(kubectl get namespace kube-system -o jsonpath='{.metadata.uid}')
+mkdir -m 700 "$WORK/audit-keys"
+docker run --rm --network none --user "$(id -u):$(id -g)" \
+  --cap-drop ALL --security-opt no-new-privileges \
+  -v "$WORK/audit-keys:/keys" "$IMAGE" audit keys init \
+  --file /keys/ring.json --cluster-id "$audit_cluster_id" --namespace "$NS"
+kubectl -n "$NS" create secret generic kudurru-audit-keys \
+  --from-file="ring.json=$WORK/audit-keys/ring.json"
 if [ "$DATABASE" = 1 ]; then
   # Started now, used in part 2. The connection string names the Service
   # like a CloudNativePG uri does (<service>.<namespace>), which the pods

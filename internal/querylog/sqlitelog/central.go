@@ -3,14 +3,17 @@ package sqlitelog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
-	"sync"
+	"strings"
 	"time"
 )
 
 // CentralOptions configures NewCentralReader.
 type CentralOptions struct {
+	// Recovery owns bounded source-provenance receipts and replacements.
+	Recovery RollupRecovery
 	// Now is the clock; default time.Now.
 	Now func() time.Time
 	// RawRetention is the central database's fact retention
@@ -34,9 +37,7 @@ type central struct {
 	open func() (*sql.DB, error)
 	opts CentralOptions
 
-	mu      sync.Mutex
-	nodes   []NodeResult
-	partial bool
+	node string // immutable exact historical node selector; empty selects the cluster
 }
 
 // NewCentralReader answers the stats and query-log questions for every
@@ -60,6 +61,22 @@ func NewCentralReader(open func() (*sql.DB, error), opts CentralOptions) *Reader
 	return &Reader{c: &central{open: open, opts: opts}, d: dialectPostgres}
 }
 
+// ErrUnknownNode means the central database has no retained query-log source
+// registered for the requested node.
+var ErrUnknownNode = errors.New("sqlitelog: unknown historical node")
+
+// ErrCentralRead identifies an unavailable historical read without exposing database errors.
+var ErrCentralRead = errors.New("sqlitelog: central history unavailable")
+
+// ForNode derives an independent immutable central reader. A node's local
+// reader cannot be reinterpreted as a central reader.
+func (r *Reader) ForNode(node string) *Reader {
+	if r.c == nil || node == "" {
+		return nil
+	}
+	return &Reader{c: &central{open: r.c.open, opts: r.c.opts, node: node}, d: r.d}
+}
+
 func (c *central) domainsOnLists() func() int64 {
 	if c == nil {
 		return nil
@@ -70,7 +87,12 @@ func (c *central) domainsOnLists() func() int64 {
 // read runs fn in a read-only, repeatable-read transaction with a
 // snapshot of the cluster's rollup progress: the hours and days every
 // active node has shipped.
-func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error) error {
+func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error) (err error) {
+	defer func() {
+		if err != nil && !errors.Is(err, ErrUnknownNode) {
+			err = fmt.Errorf("%w: %w", ErrCentralRead, err)
+		}
+	}()
 	db, err := c.open()
 	if err != nil {
 		return err
@@ -82,12 +104,41 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 	defer func() { _ = tx.Rollback() }()
 	t := &rtx{tx: tx, d: dialectPostgres}
 	now := c.opts.Now()
-	rows, err := t.QueryContext(ctx, `SELECT s.node, coalesce(h.last_id, 0), coalesce(d.last_id, 0), m.updated_at
+	progressWhere := "true"
+	progressArgs := []any{}
+	if c.node != "" {
+		t.scoped, t.node = true, -1
+		if err := t.QueryRowContext(ctx, `SELECT id FROM dict_node WHERE name=?`, c.node).Scan(&t.node); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		// source.node can change when an existing file is renamed. Retained
+		// facts/rollups still prove the old node existed; an orphan dictionary
+		// name alone does not. Source registration also preserves empty history.
+		args := []any{c.node, t.node}
+		visible := t.dictionaryWhere("dict_node", "n.", &args)
+		var known bool
+		if err := t.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM source WHERE kind='querylog' AND node=?) OR EXISTS(SELECT 1 FROM dict_node n WHERE n.id=?`+visible+`)`, args...).Scan(&known); err != nil {
+			return err
+		}
+		if !known {
+			return ErrUnknownNode
+		}
+		progressWhere, progressArgs = "true", []any{}
+		progressWhere += t.sourceWhere("s.", &progressArgs)
+
+	}
+	rows, err := t.QueryContext(ctx, `SELECT s.node, greatest(coalesce(h.last_id,oh.last_id,0),coalesce(rs.hour_done,0)), greatest(coalesce(d.last_id,od.last_id,0),coalesce(rs.day_done,0)), coalesce(m.updated_at,om.updated_at), s.last_seen, coalesce(rs.legacy_before,0), coalesce(rs.input_partial,false), EXISTS(SELECT 1 FROM rollup_input_hour f LEFT JOIN rollup_bucket b ON b.source=f.source AND b.resolution=3600 AND b.ts=f.ts WHERE f.source=s.id AND f.ts<? AND (b.source IS NULL OR b.origin='pending' OR b.origin='synthetic' AND b.revision<>f.revision)),
+ EXISTS(SELECT 1 FROM rollup_input_hour f LEFT JOIN rollup_bucket d ON d.source=f.source AND d.resolution=86400 AND d.ts=(f.ts/86400)*86400 WHERE f.source=s.id AND f.ts<? AND (d.source IS NULL OR d.origin='pending' OR d.origin='synthetic' AND d.revision<>(SELECT sum(i.revision) FROM rollup_input_hour i WHERE i.source=f.source AND i.ts>=(f.ts/86400)*86400 AND i.ts<(f.ts/86400+1)*86400))),
+ EXISTS(SELECT 1 FROM rollup_bucket b WHERE b.source=s.id AND b.error_key<>'')
 		FROM source s
-		LEFT JOIN ship_cursor h ON h.source = s.id AND h.stream = 'rollup_1h'
-		LEFT JOIN ship_cursor d ON d.source = s.id AND d.stream = 'rollup_1d'
-		LEFT JOIN ship_cursor m ON m.source = s.id AND m.stream = 'rollup_1m'
-		WHERE s.kind = 'querylog' AND s.last_seen >= ?`, now.Add(-c.opts.Active))
+		LEFT JOIN ship_cursor h ON h.source = s.id AND h.stream = 'source_rollup_1h'
+		LEFT JOIN ship_cursor d ON d.source = s.id AND d.stream = 'source_rollup_1d'
+		LEFT JOIN ship_cursor m ON m.source = s.id AND m.stream = 'source_rollup_1m'
+		LEFT JOIN ship_cursor oh ON oh.source=s.id AND oh.stream='rollup_1h'
+  LEFT JOIN ship_cursor od ON od.source=s.id AND od.stream='rollup_1d'
+  LEFT JOIN ship_cursor om ON om.source=s.id AND om.stream='rollup_1m'
+  LEFT JOIN rollup_source_state rs ON rs.source=s.id
+  WHERE s.kind = 'querylog' AND `+progressWhere, append([]any{floorTo(now.Unix(), 3600), floorTo(now.Unix(), 86400)}, progressArgs...)...)
 	if err != nil {
 		return fmt.Errorf("sqlitelog: central progress: %w", err)
 	}
@@ -98,9 +149,21 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 		var node string
 		var hour, day int64
 		var minute sql.NullTime
-		if err := rows.Scan(&node, &hour, &day, &minute); err != nil {
+		var seen time.Time
+		var legacy int64
+		var inputPartial, backfillPartial, dayPartial, detailPartial bool
+		if err := rows.Scan(&node, &hour, &day, &minute, &seen, &legacy, &inputPartial, &backfillPartial, &dayPartial, &detailPartial); err != nil {
 			_ = rows.Close()
 			return err
+		}
+
+		if seen.Before(now.Add(-c.opts.Active)) && legacy == 0 {
+			if !backfillPartial {
+				hour = floorTo(now.Unix(), 3600)
+			}
+			if !dayPartial {
+				day = floorTo(now.Unix(), 86400)
+			}
 		}
 		if first || hour < s.hourDone {
 			s.hourDone = hour
@@ -109,20 +172,65 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 			s.dayDone = day
 		}
 		first = false
+		if c.node != "" {
+			node = c.node
+		}
 		nr := NodeResult{Name: node, OK: true}
 		switch {
+		case legacy > 0:
+			nr.OK, nr.Error = false, "legacy_provenance_required"
+		case backfillPartial || dayPartial || detailPartial:
+			nr.OK, nr.Error = false, "source rollup recovery incomplete"
+		case inputPartial:
+			nr.OK, nr.Error = false, "source input incomplete"
+		case seen.Before(now.Add(-c.opts.Active)):
+			// Inactive sources describe retained history, not peer health.
 		case !minute.Valid:
 			nr.OK, nr.Error = false, "no statistics received yet"
 		case now.Sub(minute.Time) > c.opts.Lagging:
 			nr.OK, nr.Error = false, "statistics last received "+now.Sub(minute.Time).Round(time.Second).String()+" ago"
 		}
-		// A node with several sources (a replaced volume) counts once,
-		// as its freshest.
-		if prev, ok := byNode[node]; !ok || nr.OK && !prev.OK {
+		// A replaced file cannot hide an unresolved older source.
+		if prev, ok := byNode[node]; !ok || !nr.OK && prev.OK || nr.Error == ErrRollupLegacy.Error() {
 			byNode[node] = nr
 		}
 	}
 	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if c.node != "" && len(byNode) == 0 {
+		byNode[c.node] = NodeResult{Name: c.node, OK: true}
+	}
+
+	// Opaque legacy cells can outlive even their source registration. They remain
+	// visible and partial without attributing them to any current file.
+	clauses := []string{}
+	for _, table := range RollupTables {
+		clauses = append(clauses, "EXISTS(SELECT 1 FROM "+table.Name+" l WHERE l.source IS NULL AND l.node=n.id)")
+	}
+	legacyArgs := []any{}
+	legacyWhere := ""
+	if t.scoped {
+		legacyWhere = " AND n.id=?"
+		legacyArgs = append(legacyArgs, t.node)
+	}
+	legacyNodes, err := t.QueryContext(ctx, `SELECT n.name FROM dict_node n WHERE (`+strings.Join(clauses, " OR ")+`)`+legacyWhere, legacyArgs...)
+	if err != nil {
+		return err
+	}
+	for legacyNodes.Next() {
+		var name string
+		if err := legacyNodes.Scan(&name); err != nil {
+			_ = legacyNodes.Close()
+			return err
+		}
+		byNode[name] = NodeResult{Name: name, OK: false, Error: ErrRollupLegacy.Error()}
+	}
+	_ = legacyNodes.Close()
+	if err := legacyNodes.Err(); err != nil {
 		return err
 	}
 	nodes := make([]NodeResult, 0, len(byNode))
@@ -132,23 +240,11 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 		partial = partial || !nr.OK
 	}
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
-	c.mu.Lock()
-	c.nodes, c.partial = nodes, partial
-	c.mu.Unlock()
-	return fn(t, s)
-}
-
-// scope is the answer's scope: every node that shipped recently.
-func (c *central) scope(start time.Time) Scope {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	took := float64(time.Since(start).Microseconds()) / 1000
-	nodes := make([]NodeResult, len(c.nodes))
-	for i, n := range c.nodes {
-		n.TookMS = took
-		nodes[i] = n
+	s.scope = Scope{Scope: ScopeCluster, Nodes: nodes, Partial: partial, Source: SourceCentral}
+	if c.node != "" {
+		s.scope.Scope = ScopeNode
 	}
-	return Scope{Scope: ScopeCluster, Nodes: nodes, Partial: c.partial, Source: SourceCentral}
+	return fn(t, s)
 }
 
 // status answers GET /querylog/status for the central database.
@@ -158,27 +254,31 @@ func (c *central) status(ctx context.Context, r *Reader) (*Status, error) {
 		RawSeconds: int64(c.opts.RawRetention / time.Second),
 		Rollup1m:   MinuteRetention.String(), Rollup1h: HourRetention.String(), Rollup1d: "forever",
 	}}
-	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM query LIMIT ?) AS t`, centralCap+1).Scan(&res.Rows); err != nil {
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, _ *snapshot) error {
+		args := []any{}
+		where := tx.nodeWhere("", &args)
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM query WHERE 1=1`+where+` LIMIT ?) AS t`, append(args, centralCap+1)...).Scan(&res.Rows); err != nil {
 			return err
 		}
 		if err := tx.QueryRowContext(ctx, `SELECT coalesce(sum(pg_total_relation_size(c.oid)), 0)::bigint FROM pg_class c
-			WHERE c.relname = 'query' OR c.relname LIKE 'query\_%' OR c.relname LIKE 'rollup\_%' OR c.relname LIKE 'dict\_%'`).Scan(&res.DBBytes); err != nil {
+			WHERE c.relnamespace = current_schema()::regnamespace AND (c.relname = 'query' OR c.relname LIKE 'query\_%' OR c.relname LIKE 'rollup\_%' OR c.relname LIKE 'dict\_%')`).Scan(&res.DBBytes); err != nil {
 			return err
 		}
 		var oldest sql.NullInt64
-		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query`).Scan(&oldest); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query WHERE 1=1`+where, args...).Scan(&oldest); err != nil {
 			return err
 		}
 		if oldest.Valid {
 			t := time.UnixMicro(oldest.Int64).UTC()
 			res.OldestTS = &t
 		}
-		return nil
+		var err error
+		res.Backfill, err = tx.backfillStatus(ctx)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	res.Scope = r.scope(start)
+	res.Scope = scope
 	return res, nil
 }

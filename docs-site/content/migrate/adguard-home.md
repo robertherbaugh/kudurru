@@ -11,8 +11,11 @@ v0.1.0 does not implement AdGuard Home's full filtering language. Treat this
 as a configuration migration with explicit behavior checks.
 
 **Before you start:** complete [preparation and CLI setup](/migrate/cutover/#prepare).
-Keep AdGuard Home serving the network. There is no `AdGuardHome.yaml` or
-working-directory importer.
+Keep AdGuard Home serving the network. In v0.2,
+`kudurru import adguard --file AdGuardHome.yaml` previews a supported subset
+of the YAML configuration offline. Review the [offline conversion guide](/migrate/offline-config/)
+for selection, application, and explicit losses. The manual steps below remain
+useful for unsupported semantics; the working directory is never imported.
 
 ## Compare the features you use
 

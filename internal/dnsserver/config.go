@@ -5,6 +5,18 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 )
 
+// LimitsFromConfig applies the native DNS limits to every listener in a
+// registry. Zero counts remain unlimited and zero durations take the registry
+// defaults. Configuration validation rejects negative values before startup.
+func LimitsFromConfig(l config.Listeners) Limits {
+	return Limits{
+		MaxTCPQueries:   l.Limits.MaxTCPQueries,
+		QUICMaxConns:    l.Limits.QUICMaxConns,
+		IdleTimeout:     l.Limits.IdleTimeout.Std(),
+		QUICIdleTimeout: l.Limits.QUICIdleTimeout.Std(),
+	}
+}
+
 // SpecsFromConfig turns the listeners section of kudurru.yaml into registry
 // specs: one Spec per protocol of every dns entry (udp and tcp when the
 // list is empty) and one per dot, doh, doq and doh3 entry.
@@ -23,16 +35,24 @@ func SpecsFromConfig(l config.Listeners) []Spec {
 		return Spec{Protocol: p, Address: address, Path: path, CertFile: t.CertFile, KeyFile: t.KeyFile}
 	}
 	for _, x := range l.DoT {
-		specs = append(specs, tlsSpec(ProtoDoT, x.Address, "", x.TLS))
+		s := tlsSpec(ProtoDoT, x.Address, "", x.TLS)
+		s.ClientIDDomain = x.ClientIDDomain
+		specs = append(specs, s)
 	}
 	for _, x := range l.DoH {
-		specs = append(specs, tlsSpec(ProtoDoH, x.Address, x.Path, x.TLS))
+		s := tlsSpec(ProtoDoH, x.Address, x.Path, x.TLS)
+		s.ClientIDs = x.ClientIDs
+		specs = append(specs, s)
 	}
 	for _, x := range l.DoQ {
-		specs = append(specs, tlsSpec(ProtoDoQ, x.Address, "", x.TLS))
+		s := tlsSpec(ProtoDoQ, x.Address, "", x.TLS)
+		s.ClientIDDomain = x.ClientIDDomain
+		specs = append(specs, s)
 	}
 	for _, x := range l.DoH3 {
-		specs = append(specs, tlsSpec(ProtoDoH3, x.Address, x.Path, x.TLS))
+		s := tlsSpec(ProtoDoH3, x.Address, x.Path, x.TLS)
+		s.ClientIDs = x.ClientIDs
+		specs = append(specs, s)
 	}
 	return specs
 }

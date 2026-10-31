@@ -1,11 +1,11 @@
 MODULE      := github.com/robertherbaugh/kudurru
 BIN         := bin/kudurru
-# RELEASE_VERSION is what a build without a reachable tag reports (a
-# tarball, a shallow clone, a fork without tags): the VERSION file, which
+# RELEASE_VERSION is what a build without a reachable tag for this version
+# reports (a tarball, a shallow clone, a new version): the VERSION file, which
 # also names the next release candidate and release tags
 # (dev-docs/release-checklist.md, "Release pipeline").
 RELEASE_VERSION := $(shell tr -d '[:space:]' < VERSION 2>/dev/null)
-VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo $(RELEASE_VERSION))
+VERSION     ?= $(shell git describe --tags --match 'v$(RELEASE_VERSION)' --match 'v$(RELEASE_VERSION)-rc.*' --dirty 2>/dev/null || echo $(RELEASE_VERSION))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE        ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w -X $(MODULE)/internal/version.Version=$(VERSION) -X $(MODULE)/internal/version.Commit=$(COMMIT) -X $(MODULE)/internal/version.Date=$(DATE)
@@ -25,6 +25,15 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 
 all: build
 
+.PHONY: version-sync version-check
+## Synchronize charts, rendered manifests, Compose and install examples from VERSION.
+## To start another version: python3 hack/sync-version.py --version 0.3.0
+version-sync:
+	python3 hack/sync-version.py
+
+version-check:
+	python3 hack/sync-version.py --check
+
 .PHONY: ad-dns-check
 ## ad-dns-check: isolated GSS-TSIG feasibility probe, outside the product build.
 ## Set KUDURRU_AD_MIT_TEST=1 to also test an ephemeral MIT KDC with nsupdate.
@@ -35,6 +44,11 @@ ad-dns-check:
 
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/kudurru
+
+.PHONY: test-adguard
+# Pinned external executable; first-party corpus, no vendored copyleft data.
+test-adguard:
+	bash hack/test-adguard.sh
 
 ## size: build the stripped CGO_ENABLED=0 release binary and fail when it is
 ## larger than SIZE_BUDGET bytes (D75, D138). History: 46,575,776 at the end
@@ -62,9 +76,13 @@ run: build
 ## when `make envtest` has installed the control-plane binaries and skip
 ## otherwise. TEST_PKGS narrows the run (ci.yml passes one shard of
 ## hack/go-test-shard.sh).
+# The mounted-server and current-command integration tests now exceed Go’s
+# default ten-minute per-package limit under race instrumentation. Individual
+# fixtures retain their own bounded waits; this is the complete package budget.
 TEST_PKGS ?= ./...
+TEST_TIMEOUT ?= 30m
 test:
-	CGO_ENABLED=1 go test -race -count=1 $(TEST_PKGS)
+	CGO_ENABLED=1 go test -race -count=1 -timeout=$(TEST_TIMEOUT) $(TEST_PKGS)
 
 ## test-short: no race detector, no cgo; what `go test` gives on a plain checkout
 test-short:
@@ -116,13 +134,14 @@ OAPI_CODEGEN ?= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@
 client-go: openapi
 	$(OAPI_CODEGEN) -config internal/apiclient/openapi/oapi-codegen.yaml api/openapi-3.0.json
 	gofmt -s -w internal/apiclient/openapi
+	go run ./hack/clientdispatch
 
 tidy:
 	go mod tidy
 
 ## generate: deepcopy functions, CRD manifests and the CRD chart copies.
 ## Deepcopy covers api/v1alpha1 and the internal kinds of api/internalkinds/v1alpha1
-## (LocalUser, APIToken, ServiceAccount, RoleBinding, IdentityProvider); the
+## (LocalUser, APIToken, PrincipalState); the
 ## CRD run reads api/v1alpha1 only, because the internal kinds are never CRDs
 ## (Secrets in Kubernetes, JSON rows in state.db; D26).
 generate: manifests
@@ -135,6 +154,7 @@ generate: manifests
 ## all are copied into the kudurru-crds chart.
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/bases
+	go run ./hack/settingscrd -file deploy/kustomize/crd/bases/kudurru.io_kudurrus.yaml
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/audit/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/audit
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/dhcp/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/dhcp
 	mkdir -p deploy/helm/kudurru-crds/templates
@@ -236,13 +256,13 @@ BENCH_RUN        = for i in $$(seq $(BENCH_COUNT)); do \
 bench:
 	@mkdir -p $(dir $(BENCH_OUT))
 	{ $(BENCH_RUN); } | tee $(BENCH_OUT)
-	go run ./internal/blocking/benchgate -baseline $(BENCH_BASELINE) -limits $(BENCH_LIMITS) -threshold $(BENCH_THRESHOLD) $(BENCH_OUT)
+	go run ./hack/benchgate -baseline $(BENCH_BASELINE) -limits $(BENCH_LIMITS) -threshold $(BENCH_THRESHOLD) $(BENCH_OUT)
 
 ## bench-baseline: re-record bench/baseline.txt on this machine and check it against the limits
 bench-baseline:
 	@mkdir -p $(dir $(BENCH_OUT))
 	{ $(BENCH_RUN); } | tee $(BENCH_OUT)
-	go run ./internal/blocking/benchgate -limits $(BENCH_LIMITS) $(BENCH_OUT)
+	go run ./hack/benchgate -limits $(BENCH_LIMITS) $(BENCH_OUT)
 	cp $(BENCH_OUT) $(BENCH_BASELINE)
 
 ## dashboard-*: the dashboard SPA in dashboard/ (Bun + Vite, dev-docs/design-record.md §10,
@@ -388,12 +408,11 @@ helm-check: helm-lint deploy-tools
 deploy-assets:
 	go test -count=1 ./deploy/ -update
 
-## release-manifests: crds.yaml and install.yaml (kustomize build
-## deploy/kustomize/default) for the GitHub release, written to bin/release/.
+## Release artifacts are staged at the actual tag, including RC image references.
+## No tracked files are modified. GoReleaser supplies its exact build version.
+RELEASE_ARTIFACT_VERSION ?= $(RELEASE_VERSION)
 release-manifests: $(DEPLOY_BIN)/kustomize
-	mkdir -p bin/release
-	$(DEPLOY_BIN)/kustomize build deploy/kustomize/crd > bin/release/crds.yaml
-	$(DEPLOY_BIN)/kustomize build deploy/kustomize/default > bin/release/install.yaml
+	PATH=$(DEPLOY_BIN):$$PATH python3 hack/sync-version.py --artifact-version '$(RELEASE_ARTIFACT_VERSION)'
 
 ## edge-check: validate the golden dnsdist and keepalived configurations
 ## (ee/edge/*/testdata) with the real programs inside the pinned images:

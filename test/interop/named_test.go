@@ -87,7 +87,8 @@ func startNamed(t *testing.T, bin, dir, conf string, port int) *named {
 	}
 	if err == nil {
 		if out, err := exec.Command(check, path).CombinedOutput(); err != nil { //nolint:gosec // test binary
-			t.Fatalf("named-checkconf: %v\n%s\n%s", err, out, conf)
+			// The configuration can contain TSIG secrets; never print it.
+			t.Fatalf("named-checkconf: %v\n%s", err, out)
 		}
 	}
 	n := &named{dir: dir, addr: fmt.Sprintf("127.0.0.1:%d", port), log: &lockedBuffer{}, done: make(chan struct{})}

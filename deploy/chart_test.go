@@ -196,10 +196,13 @@ var chartCases = []chartCase{
 			t.Fatal("keepalived container missing")
 		}
 		caps := list(dig(k, "securityContext", "capabilities", "add"))
-		for _, c := range []string{"NET_ADMIN", "NET_RAW", "NET_BROADCAST"} {
+		for _, c := range []string{"NET_ADMIN", "NET_RAW", "NET_BROADCAST", "SETUID", "SETGID"} {
 			if !slices.Contains(caps, any(c)) {
 				t.Errorf("keepalived lacks %s", c)
 			}
+		}
+		if len(caps) != 5 || !slices.Equal(list(dig(k, "securityContext", "capabilities", "drop")), []any{"ALL"}) {
+			t.Error("keepalived capabilities must stay limited to networking and its unprivileged script identity")
 		}
 		if !slices.Contains(list(k["args"]), any("--vip=dns=10.0.0.53/24@eth0#53")) {
 			t.Errorf("keepalived args = %v", k["args"])

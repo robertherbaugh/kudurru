@@ -17,6 +17,7 @@ import (
 
 	auditv1 "github.com/robertherbaugh/kudurru/api/audit/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditkeys"
 )
 
 // Reader defaults.
@@ -41,6 +42,9 @@ type Reader struct {
 	Client client.Reader
 	// Namespace is the release namespace.
 	Namespace string
+	// Keys captures independent trust for production verification.
+	Keys *auditkeys.Source
+	// SealKeys is the explicit legacy test seam.
 	// SealKeys verify batch seals using the cluster encryption keys.
 	SealKeys [][]byte
 	// VerifyPending checks the local spool, including events not shipped yet.
@@ -66,13 +70,40 @@ var _ audit.Reader = (*Reader)(nil)
 
 // Verify reads fresh batches from the API server, bypassing the read caches.
 func (r *Reader) Verify(ctx context.Context) error {
-	if err := Verify(ctx, r.Client, r.Namespace, r.SealKeys); err != nil {
+	snapshot, err := r.SnapshotVerification(ctx)
+	if err != nil {
 		return err
 	}
-	if r.VerifyPending != nil {
-		return r.VerifyPending(ctx)
+	if err = snapshot.Verifier.Verify(ctx); err != nil {
+		return err
 	}
-	return nil
+	return snapshot.Current(ctx)
+}
+
+// SnapshotVerification never substitutes live trust for the captured ring.
+func (r *Reader) SnapshotVerification(ctx context.Context) (audit.VerificationSnapshot, error) {
+	keys, reader, namespace, legacy, pending := r.Keys, r.Client, r.Namespace, r.SealKeys, r.VerifyPending
+	var ring *auditkeys.Ring
+	identity := "legacy"
+	current := func(context.Context) error { return nil }
+	if keys != nil {
+		loaded, id, err := keys.Load(ctx)
+		if err != nil {
+			return audit.VerificationSnapshot{}, err
+		}
+		ring, identity = loaded.VerificationOnly(), id
+		current = func(ctx context.Context) error { return keys.Current(ctx, id) }
+	}
+	verify := audit.VerifierFunc(func(ctx context.Context) error {
+		if err := verifyWithRing(ctx, reader, namespace, legacy, ring); err != nil {
+			return err
+		}
+		if pending != nil {
+			return pending(ctx)
+		}
+		return nil
+	})
+	return audit.VerificationSnapshot{Verifier: verify, Identity: identity, Current: current}, nil
 }
 
 // batchMeta is what the reader knows of a batch without its events.

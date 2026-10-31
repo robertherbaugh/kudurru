@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"context"
 	"encoding/binary"
 	"errors"
@@ -245,26 +247,22 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 		return
 	}
 
-	resp := l.env.handler.resolveFreshID(st.Context(), req, clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ))
-	if resp == nil {
+	client := clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ)
+	client.ClientID = clientid.FromSNI(conn.ConnectionState().TLS.ServerName, l.spec.ClientIDDomain)
+	out, err := l.env.handler.resolveEncrypted(st.Context(), l.env, wire, req, client)
+	if err != nil {
+		st.CancelWrite(DoQInternalError)
+		return
+	}
+	if out == nil {
 		// A pipeline drop: reset the stream without a response.
 		st.CancelRead(DoQRequestCancelled)
 		st.CancelWrite(DoQRequestCancelled)
 		return
 	}
-	out, err := resp.Pack()
-	if err != nil {
-		fail := new(dns.Msg)
-		fail.SetRcode(req, dns.RcodeServerFailure)
-		fail.Id = 0
-		if out, err = fail.Pack(); err != nil {
-			st.CancelWrite(DoQInternalError)
-			return
-		}
-	}
-	buf := make([]byte, 2+len(out))
-	binary.BigEndian.PutUint16(buf, uint16(len(out))) //nolint:gosec // Pack never exceeds 65535 bytes
-	copy(buf[2:], out)
+	buf := make([]byte, 2+len(out.wire))
+	binary.BigEndian.PutUint16(buf, uint16(len(out.wire))) //nolint:gosec // Pack never exceeds 65535 bytes
+	copy(buf[2:], out.wire)
 	_ = st.SetWriteDeadline(time.Now().Add(lim.WriteTimeout))
 	if _, err := st.Write(buf); err != nil {
 		st.CancelWrite(DoQInternalError)

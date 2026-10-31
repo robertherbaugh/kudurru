@@ -44,10 +44,11 @@ const (
 
 // Errors of Create and Revoke.
 var (
-	ErrNotFound         = errors.New("tokens: no such token")
-	ErrLifetimeTooLong  = errors.New("tokens: expiry exceeds auth.tokens.maxLifetime")
-	ErrInvalidOwner     = errors.New("tokens: invalid owner")
-	ErrNoServiceAccount = errors.New("tokens: no such service account")
+	ErrNotFound          = errors.New("tokens: no such token")
+	ErrLifetimeTooLong   = errors.New("tokens: expiry exceeds auth.tokens.maxLifetime")
+	ErrInvalidOwner      = errors.New("tokens: invalid owner")
+	ErrNoServiceAccount  = errors.New("tokens: no such service account")
+	ErrBootstrapIdentity = errors.New("tokens: existing account lacks private bootstrap authority; use local recovery with a new account")
 )
 
 // Generate returns a fresh token in wire form and its id.
@@ -106,7 +107,25 @@ type Options struct {
 	Logger *slog.Logger
 	// Now is the clock; default time.Now.
 	Now func() time.Time
+	// Migration resolves exact private cutover provenance. It never grants
+	// privileges and must use the same captured identity view as the caller.
+	Migration MigrationResolver
+	// LocalUser supplies the current account for a UID-less local migration.
+	// It does no I/O; nil leaves those credentials unusable.
+	LocalUser func(context.Context, string) (*internalv1.LocalUser, bool)
 }
+
+// MigratedIdentity binds one old credential to one current account incarnation.
+// The resolver must verify immutable token UID/spec and private journal proof.
+type MigratedIdentity struct {
+	AccountUID        string
+	TokenUID          string
+	OriginalCreatedAt time.Time
+}
+
+// MigrationResolver reads trusted immutable cutover evidence. Implementations
+// must not infer a binding from names, timestamps or public annotations.
+type MigrationResolver func(context.Context, *internalv1.APIToken, store.Object) (MigratedIdentity, bool)
 
 // DefaultNamespace is the namespace of kudurru's own service accounts.
 const DefaultNamespace = "kudurru-system"
@@ -116,11 +135,12 @@ const lastUsedInterval = time.Minute
 
 // Tokens is the token store and the bearer kdr_ step of the chain.
 type Tokens struct {
-	st   store.Store
-	opts Options
-	toks *objcache.Cache[*internalv1.APIToken]
-	sas  *objcache.Cache[*internalv1.ServiceAccount]
-	log  *slog.Logger
+	st         store.Store
+	opts       Options
+	toks       *objcache.Cache[*internalv1.APIToken]
+	sas        *objcache.Cache[*internalv1.ServiceAccount]
+	principals *objcache.Cache[*internalv1.PrincipalState]
+	log        *slog.Logger
 
 	usedMu sync.Mutex
 	used   map[string]time.Time
@@ -155,10 +175,11 @@ func New(opts Options) (*Tokens, error) {
 	}
 	return &Tokens{
 		st: opts.Store, opts: opts, log: opts.Logger,
-		toks:   objcache.New[*internalv1.APIToken](opts.Store, internalv1.KindAPIToken, objcache.Options{Logger: opts.Logger}),
-		sas:    objcache.New[*internalv1.ServiceAccount](opts.Store, internalv1.KindServiceAccount, objcache.Options{Logger: opts.Logger}),
-		used:   map[string]time.Time{},
-		usedCh: make(chan usage, 256),
+		toks:       objcache.New[*internalv1.APIToken](opts.Store, internalv1.KindAPIToken, objcache.Options{Logger: opts.Logger}),
+		sas:        objcache.New[*internalv1.ServiceAccount](opts.Store, internalv1.KindServiceAccount, objcache.Options{Logger: opts.Logger}),
+		principals: objcache.New[*internalv1.PrincipalState](opts.Store, internalv1.KindPrincipalState, objcache.Options{Logger: opts.Logger}),
+		used:       map[string]time.Time{},
+		usedCh:     make(chan usage, 256),
 	}, nil
 }
 
@@ -173,7 +194,10 @@ func (t *Tokens) Prime(ctx context.Context) error {
 	if err := t.toks.Prime(ctx); err != nil {
 		return err
 	}
-	return t.sas.Prime(ctx)
+	if err := t.sas.Prime(ctx); err != nil {
+		return err
+	}
+	return t.principals.Prime(ctx)
 }
 
 // Run keeps both caches current and writes lastUsedAt/IP (at most once a
@@ -182,6 +206,7 @@ func (t *Tokens) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { _ = t.toks.Run(ctx) })
 	wg.Go(func() { _ = t.sas.Run(ctx) })
+	wg.Go(func() { _ = t.principals.Run(ctx) })
 	for {
 		select {
 		case <-ctx.Done():
@@ -256,13 +281,27 @@ func (t *Tokens) Create(ctx context.Context, o CreateOptions) (string, *internal
 		if o.Owner.Name == "" || o.Owner.ID == "" {
 			return "", nil, fmt.Errorf("%w: a user owner needs name and id", ErrInvalidOwner)
 		}
-	case internalv1.OwnerServiceAccount:
-		if _, ok := t.serviceAccount(o.Owner.Namespace, o.Owner.Name); !ok {
-			var sa internalv1.ServiceAccount
-			if err := t.st.Get(ctx, saKey(o.Owner.Namespace, o.Owner.Name), &sa); err != nil {
-				return "", nil, fmt.Errorf("%w: %s/%s", ErrNoServiceAccount, o.Owner.Namespace, o.Owner.Name)
+		if o.Owner.Provider == "local" || strings.HasPrefix(o.Owner.ID, "local:") {
+			var user internalv1.LocalUser
+			if err := t.st.Get(ctx, store.Key{Kind: internalv1.KindLocalUser, Name: o.Owner.Name}, &user); err != nil {
+				return "", nil, fmt.Errorf("%w: local account unavailable", ErrInvalidOwner)
 			}
+			if user.Spec.Disabled || user.UID == "" || o.Owner.ID != "local:"+user.Name || (o.Owner.UID != "" && o.Owner.UID != string(user.UID)) {
+				return "", nil, ErrInvalidOwner
+			}
+			o.Owner.UID = string(user.UID)
+			o.Owner.Provider = "local"
 		}
+	case internalv1.OwnerServiceAccount:
+		var sa internalv1.ServiceAccount
+		if err := t.st.Get(ctx, saKey(o.Owner.Namespace, o.Owner.Name), &sa); err != nil {
+			return "", nil, fmt.Errorf("%w: %s/%s", ErrNoServiceAccount, o.Owner.Namespace, o.Owner.Name)
+		}
+		if sa.Spec.Disabled || sa.UID == "" || (o.Owner.UID != "" && o.Owner.UID != string(sa.UID)) {
+			return "", nil, ErrInvalidOwner
+		}
+		o.Owner.UID = string(sa.UID)
+		t.sas.Upsert(&sa)
 		o.Owner.ID = ServiceAccountID(o.Owner.Namespace, o.Owner.Name)
 	default:
 		return "", nil, fmt.Errorf("%w: kind %q", ErrInvalidOwner, o.Owner.Kind)
@@ -340,6 +379,17 @@ func (t *Tokens) EnsureServiceAccount(ctx context.Context, namespace, name, desc
 	var cur internalv1.ServiceAccount
 	err := t.st.Get(ctx, saKey(namespace, name), &cur)
 	if err == nil {
+		if builtinAdmin {
+			owner := accountOwner(&cur)
+			var state internalv1.PrincipalState
+			if err := t.st.Get(ctx, store.Key{Kind: internalv1.KindPrincipalState, Name: internalv1.PrincipalStateName(owner)}, &state); err != nil {
+				return nil, ErrBootstrapIdentity
+			}
+			if state.Spec.Owner != owner || !state.Spec.BuiltinAdmin {
+				return nil, ErrBootstrapIdentity
+			}
+			t.principals.Upsert(&state)
+		}
 		t.sas.Upsert(&cur)
 		return &cur, nil
 	}
@@ -347,15 +397,24 @@ func (t *Tokens) EnsureServiceAccount(ctx context.Context, namespace, name, desc
 		return nil, err
 	}
 	sa := &internalv1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-		Spec: internalv1.ServiceAccountSpec{Description: description, BuiltinAdmin: builtinAdmin}}
+		Spec: internalv1.ServiceAccountSpec{Description: description}}
 	if err := sa.Validate(); err != nil {
 		return nil, err
 	}
-	out, err := t.st.Apply(ctx, sa, store.ApplyOptions{Manager: store.ManagerSystem})
+	out, err := t.st.Apply(ctx, sa, store.ApplyOptions{Manager: store.ManagerSystem, CreateOnly: true})
 	if err != nil {
 		return nil, err
 	}
 	created := out.(*internalv1.ServiceAccount)
+	if builtinAdmin {
+		owner := accountOwner(created)
+		state := &internalv1.PrincipalState{ObjectMeta: metav1.ObjectMeta{Name: internalv1.PrincipalStateName(owner)}, Spec: internalv1.PrincipalStateSpec{Owner: owner, BuiltinAdmin: true}}
+		out, err := t.st.Apply(ctx, state, store.ApplyOptions{Manager: store.ManagerSystem, CreateOnly: true})
+		if err != nil {
+			return nil, err
+		}
+		t.principals.Upsert(out.(*internalv1.PrincipalState))
+	}
 	t.sas.Upsert(created)
 	return created, nil
 }
@@ -385,7 +444,7 @@ func remoteHost(r *http.Request) string {
 // failure is the same auth.Unauthenticated error (unknown id, wrong
 // secret, malformed, expired, owner gone or disabled); the cause is only
 // logged.
-func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, error) {
+func (t *Tokens) Verify(ctx context.Context, wire, ip string) (auth.Principal, error) {
 	id, ok := Parse(wire)
 	want := dummyHash
 	tok, known := (*internalv1.APIToken)(nil), false
@@ -408,11 +467,26 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 	switch owner.Kind {
 	case internalv1.OwnerUser:
 		p.Kind, p.ID, p.Name, p.Provider = auth.KindUser, owner.ID, owner.Name, owner.Provider
+		p.AccountUID = owner.UID
 		if p.Provider == "" && strings.HasPrefix(owner.ID, "local:") {
 			// Tokens minted from a session that did not carry the provider
 			// still belong to the local user store (LoadPrincipal re-reads
 			// the builtin-admin flag, groups and the disabled state).
 			p.Provider = "local"
+		}
+		if p.Provider == "local" && p.AccountUID == "" {
+			var user *internalv1.LocalUser
+			if t.opts.LocalUser != nil {
+				user, _ = t.opts.LocalUser(ctx, owner.Name)
+			}
+			if user == nil || user.Spec.Disabled || user.Name != owner.Name || user.Namespace != "" {
+				return auth.Principal{}, auth.Unauthenticated(errors.New("local token requires identity migration"))
+			}
+			binding, ok := t.migratedIdentity(ctx, tok, user)
+			if !ok || !binding.OriginalCreatedAt.Equal(user.CreationTimestamp.Time) {
+				return auth.Principal{}, auth.Unauthenticated(errors.New("local token requires identity migration"))
+			}
+			p.AccountUID = binding.AccountUID
 		}
 		if len(tok.Spec.Grants) > 0 {
 			p.Grants = slices.Clone(tok.Spec.Grants)
@@ -423,21 +497,41 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 		if !ok || sa.Spec.Disabled {
 			return auth.Principal{}, auth.Unauthenticated(errors.New("service account missing or disabled"))
 		}
+		created := sa.CreationTimestamp.Time
+		if owner.UID == "" || owner.UID != string(sa.UID) {
+			binding, ok := t.migratedIdentity(ctx, tok, sa)
+			if !ok {
+				return auth.Principal{}, auth.Unauthenticated(errors.New("token service account identity does not match"))
+			}
+			owner.UID, created = binding.AccountUID, binding.OriginalCreatedAt
+		}
+		p.AccountUID = owner.UID
 		// A token older than the account belongs to a deleted account of
 		// the same name (whole-second timestamps on both sides).
-		if created := sa.CreationTimestamp.Time; !created.IsZero() && !tok.CreationTimestamp.IsZero() && tok.CreationTimestamp.Unix() < created.Unix() {
+		if !created.IsZero() && !tok.CreationTimestamp.IsZero() && tok.CreationTimestamp.Unix() < created.Unix() {
 			return auth.Principal{}, auth.Unauthenticated(errors.New("token predates its service account"))
 		}
 		p.Kind, p.ID = auth.KindServiceAccount, ServiceAccountID(owner.Namespace, owner.Name)
 		p.Name = "serviceaccount:" + owner.Namespace + ":" + owner.Name
 		p.ServiceAccount = owner.Namespace + "/" + owner.Name
 		p.Provider = "kudurru"
-		p.BuiltinAdmin = sa.Spec.BuiltinAdmin
+		p.BuiltinAdmin = t.BuiltinAdmin(sa)
 	default:
 		return auth.Principal{}, auth.Unauthenticated(errors.New("token owner kind unknown"))
 	}
 	t.noteUse(id, ip, now)
 	return p, nil
+}
+
+func (t *Tokens) migratedIdentity(ctx context.Context, tok *internalv1.APIToken, account store.Object) (MigratedIdentity, bool) {
+	if t.opts.Migration == nil || tok.UID == "" || account.GetUID() == "" {
+		return MigratedIdentity{}, false
+	}
+	binding, ok := t.opts.Migration(ctx, tok, account)
+	if !ok || binding.AccountUID != string(account.GetUID()) || binding.TokenUID != string(tok.UID) || binding.OriginalCreatedAt.IsZero() || tok.CreationTimestamp.IsZero() || tok.CreationTimestamp.Before(&metav1.Time{Time: binding.OriginalCreatedAt}) {
+		return MigratedIdentity{}, false
+	}
+	return binding, true
 }
 
 func (t *Tokens) noteUse(id, ip string, now time.Time) {

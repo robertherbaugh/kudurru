@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
-	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/unblock"
@@ -166,6 +164,9 @@ func (s *Server) registerUnblock() {
 	register(s, list, perm{resource: "unblockrequests", verb: "read"}, s.listUnblock)
 	register(s, operation(http.MethodGet, "/unblockrequests/{namespace}/{name}", "getUnblockRequest", "Get an unblock request", "unblockrequests"),
 		perm{resource: "unblockrequests", verb: "read"}, func(ctx context.Context, in *nsObjectInput) (*unblockOutput, error) {
+			if s.capturedConvenienceReads() {
+				return s.getCapturedUnblock(ctx, in)
+			}
 			if err := s.requireRequests(); err != nil {
 				return nil, err
 			}
@@ -228,6 +229,9 @@ func (s *Server) allUnblock(ctx context.Context) ([]*v1alpha1.UnblockRequest, er
 }
 
 func (s *Server) listUnblock(ctx context.Context, in *unblockListInput) (*unblockListOutput, error) {
+	if s.capturedConvenienceReads() {
+		return s.listCapturedUnblock(ctx, in)
+	}
 	if err := s.requireRequests(); err != nil {
 		return nil, err
 	}
@@ -243,6 +247,10 @@ func (s *Server) listUnblock(ctx context.Context, in *unblockListInput) (*unbloc
 			return nil, errInvalid("continue: not a token returned by this API")
 		}
 	}
+	return unblockPage(all, in, start, s.unblockSettingsExpiry(), func(offset int) string { return encodeCursor(strconv.Itoa(offset)) }), nil
+}
+
+func unblockPage(all []*v1alpha1.UnblockRequest, in *unblockListInput, start int, expiry time.Duration, next func(int) string) *unblockListOutput {
 	limit := clampLimit(in.Limit, 100, 500)
 	out := &UnblockRequestList{Items: []UnblockRequest{}}
 	i := 0
@@ -264,13 +272,13 @@ func (s *Server) listUnblock(ctx context.Context, in *unblockListInput) (*unbloc
 		switch {
 		case i < start:
 		case len(out.Items) < limit:
-			out.Items = append(out.Items, s.unblockView(r))
+			out.Items = append(out.Items, unblockViewWithExpiry(r, expiry))
 		case out.Continue == "":
-			out.Continue = encodeCursor(strconv.Itoa(i))
+			out.Continue = next(i)
 		}
 		i++
 	}
-	return &unblockListOutput{Body: out}, nil
+	return &unblockListOutput{Body: out}
 }
 
 func (s *Server) actor(ctx context.Context) string {
@@ -293,7 +301,7 @@ func (s *Server) approveUnblock(ctx context.Context, in *unblockApproveInput) (*
 		}
 	}
 	res := audit.Resource{Kind: v1alpha1.KindUnblockRequest, Namespace: in.Namespace, Name: in.Name}
-	out, err := s.unblockService().Approve(ctx, in.Namespace, in.Name, unblock.Decision{
+	out, err := s.runUnblockCommand(ctx, unblock.Target{Namespace: in.Namespace, Name: in.Name, Action: unblock.Approve}, unblock.Decision{
 		Scope: in.Body.Scope, Match: in.Body.Match, Group: in.Body.Group, Duration: d, Note: in.Body.Note, Actor: s.actor(ctx),
 	})
 	if err != nil {
@@ -318,11 +326,12 @@ func (s *Server) denyUnblock(ctx context.Context, in *unblockDenyInput) (*unbloc
 		return nil, err
 	}
 	res := audit.Resource{Kind: v1alpha1.KindUnblockRequest, Namespace: in.Namespace, Name: in.Name}
-	r, err := s.unblockService().Deny(ctx, in.Namespace, in.Name, in.Body.Note, s.actor(ctx))
+	out, err := s.runUnblockCommand(ctx, unblock.Target{Namespace: in.Namespace, Name: in.Name, Action: unblock.Deny}, unblock.Decision{Note: in.Body.Note, Actor: s.actor(ctx)})
 	if err != nil {
 		s.recordAction(ctx, "unblockrequests.deny", res, err, nil, in.Body)
 		return nil, unblockError(err, in.Namespace, in.Name)
 	}
+	r := out.Request
 	s.recordAction(ctx, "unblockrequests.deny", res, nil, nil, map[string]any{"domain": r.Spec.Domain, "note": in.Body.Note})
 	body := &UnblockDecisionResult{Request: s.unblockView(r), Attached: []string{}, Skipped: []string{}}
 	body.Flushed = s.flushName(r.Spec.Domain)
@@ -337,31 +346,24 @@ func (s *Server) deleteUnblock(ctx context.Context, in *nsObjectInput) (*emptyOu
 		return nil, err
 	}
 	res := audit.Resource{Kind: v1alpha1.KindUnblockRequest, Namespace: in.Namespace, Name: in.Name}
-	r, err := s.unblockService().Delete(ctx, in.Namespace, in.Name)
+	out, err := s.runUnblockCommand(ctx, unblock.Target{Namespace: in.Namespace, Name: in.Name, Action: unblock.Delete}, unblock.Decision{})
 	if err != nil {
 		s.recordAction(ctx, "unblockrequests.delete", res, err, nil, nil)
 		return nil, unblockError(err, in.Namespace, in.Name)
 	}
+	r := out.Request
 	s.recordAction(ctx, "unblockrequests.delete", res, nil, map[string]any{"domain": r.Spec.Domain, "state": r.EffectiveState()}, nil)
 	return &emptyOutput{}, nil
 }
 
 // flushName removes name from this node's response cache (every common
-// type, with and without DO/CD) and returns how many entries went.
+// type, class, flags, ECS and resolution scope), fences detached fills, and
+// returns how many entries went.
 func (s *Server) flushName(name string) int {
 	if s.opts.ResponseCache == nil {
 		return 0
 	}
-	fq := dns.Fqdn(strings.ToLower(strings.TrimSpace(name)))
-	before := s.opts.ResponseCache.Len()
-	for _, t := range flushTypes {
-		for _, do := range []bool{false, true} {
-			for _, cd := range []bool{false, true} {
-				s.opts.ResponseCache.Delete(cache.MakeKey(fq, t, dns.ClassINET, do, cd, netip.Prefix{}))
-			}
-		}
-	}
-	return max(before-s.opts.ResponseCache.Len(), 0)
+	return s.opts.ResponseCache.FlushName(dns.Fqdn(strings.ToLower(strings.TrimSpace(name))))
 }
 
 func unblockError(err error, ns, name string) error {
@@ -392,6 +394,10 @@ func timePtr(t *metav1.Time) *time.Time {
 }
 
 func (s *Server) unblockView(r *v1alpha1.UnblockRequest) UnblockRequest {
+	return unblockViewWithExpiry(r, s.unblockSettingsExpiry())
+}
+
+func unblockViewWithExpiry(r *v1alpha1.UnblockRequest, expiry time.Duration) UnblockRequest {
 	v := UnblockRequest{
 		Namespace: r.Namespace, Name: r.Name, Domain: r.Spec.Domain, Client: r.Spec.Client, ClientPrivacy: string(r.Spec.ClientPrivacy),
 		Groups: nonNil(r.Spec.Groups), Policies: nonNil(r.Spec.Policies), Node: r.Spec.Node,
@@ -407,7 +413,7 @@ func (s *Server) unblockView(r *v1alpha1.UnblockRequest) UnblockRequest {
 		v.Block = &UnblockBlock{Kind: b.Kind, List: b.List, Rule: b.Rule, Policy: b.Policy}
 	}
 	if r.EffectiveState() == v1alpha1.UnblockPending {
-		exp := unblock.RequestedAt(r).Add(s.unblockSettingsExpiry()).UTC()
+		exp := unblock.RequestedAt(r).Add(expiry).UTC()
 		v.ExpiresAt = &exp
 	}
 	for _, h := range r.Status.History {
@@ -432,4 +438,30 @@ func allowView(a *v1alpha1.UnblockAllow) *UnblockAllow {
 		Scope: a.Scope, Match: a.Match, Group: a.Group, List: a.List, Entry: a.Entry, Added: a.Added,
 		Policies: nonNil(a.Policies), ExpiresAt: timePtr(a.ExpiresAt), Removed: timePtr(a.Removed),
 	}
+}
+
+// An installed current capability's refusal never falls back to live helpers.
+func (s *Server) runUnblockCommand(ctx context.Context, target unblock.Target, d unblock.Decision) (*unblock.Outcome, error) {
+	if s.opts.UnblockCommand != nil {
+		out, err := s.opts.UnblockCommand(ctx, target, d)
+		if err == nil && (out == nil || out.Request == nil) {
+			return nil, errUnavailable("current unblock command returned no result")
+		}
+		return out, err
+	}
+	if s.opts.ObjectCommand != nil {
+		return nil, errUnavailable("current unblock command unavailable")
+	}
+	svc := s.unblockService()
+	switch target.Action {
+	case unblock.Approve:
+		return svc.Approve(ctx, target.Namespace, target.Name, d)
+	case unblock.Deny:
+		r, err := svc.Deny(ctx, target.Namespace, target.Name, d.Note, d.Actor)
+		return &unblock.Outcome{Request: r}, err
+	case unblock.Delete:
+		r, err := svc.Delete(ctx, target.Namespace, target.Name)
+		return &unblock.Outcome{Request: r}, err
+	}
+	return nil, errUnavailable("unsupported unblock command")
 }

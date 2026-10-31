@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/robertherbaugh/kudurru/internal/auditdocument"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -35,6 +36,16 @@ type AuditEntry struct {
 	// ID is assigned on insert; IDs only increase.
 	ID   int64
 	Time time.Time
+	// ChainVersion is 1 for preserved legacy rows and 2 for all new writes.
+	// Callers cannot choose a legacy format for a new insertion.
+	ChainVersion int
+	// Request attribution is stored and authenticated independently of Reason.
+	Authz         string
+	RequestID     string
+	ClientIP      string
+	UserAgent     string
+	RequestMethod string
+	RequestPath   string
 	// Actor is the principal (from Options.ActorFromContext); it falls back
 	// to Manager when the context names none.
 	Actor string
@@ -116,21 +127,30 @@ func capDiff(doc json.RawMessage) json.RawMessage {
 
 // Audit statements.
 const (
-	sqlReadAudit     = `SELECT id, ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash FROM audit`
+	sqlReadAudit     = `SELECT id, ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash, chain_version, authz, request_id, client_ip, user_agent, request_method, request_path FROM audit`
 	sqlLastAuditHash = `SELECT hash FROM audit ORDER BY id DESC LIMIT 1`
 	sqlInsertAudit   = `INSERT INTO audit
-		(ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		(ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash, chain_version, authz, request_id, client_ip, user_agent, request_method, request_path)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 )
 
-// auditHash computes the chain hash of e (whose PrevHash is set).
+// auditHash uses exactly the recorded supported format. Verification also checks
+// the migration boundary before hashing; a failed v2 hash never falls back to v1.
 func auditHash(e *AuditEntry) string {
+	if e.ChainVersion != 1 && e.ChainVersion != 2 {
+		return ""
+	}
 	h := sha256.New()
-	for _, f := range []string{
+	fields := []string{
 		strconv.FormatInt(e.Time.UnixNano(), 10), e.Actor, e.Manager, e.Action,
 		string(e.Key.Kind), e.Key.Namespace, e.Key.Name, e.ResourceVersion,
 		e.Result, e.Reason, string(e.Before), string(e.After), e.PrevHash,
-	} {
+	}
+	if e.ChainVersion == 2 {
+		fields = append([]string{"kudurru/sqlite/audit", "2"}, fields...)
+		fields = append(fields, e.Authz, e.RequestID, e.ClientIP, e.UserAgent, e.RequestMethod, e.RequestPath)
+	}
+	for _, f := range fields {
 		h.Write([]byte(strconv.Itoa(len(f))))
 		h.Write([]byte{':'})
 		h.Write([]byte(f))
@@ -144,7 +164,28 @@ func insertAudit(ctx context.Context, tx txQueryer, e *AuditEntry) error {
 	if e.Actor == "" {
 		e.Actor = e.Manager
 	}
-	e.Before, e.After = capDiff(e.Before), capDiff(e.After)
+	e.ChainVersion = 2
+	request, authz := store.AuditRequestFrom(ctx)
+	if e.Authz == "" {
+		e.Authz = authz
+	}
+	if e.RequestID == "" {
+		e.RequestID = request.ID
+	}
+	if e.ClientIP == "" {
+		e.ClientIP = request.IP
+	}
+	if e.UserAgent == "" {
+		e.UserAgent = request.UA
+	}
+	if e.RequestMethod == "" {
+		e.RequestMethod = request.Method
+	}
+	if e.RequestPath == "" {
+		e.RequestPath = request.Path
+	}
+	e.Before = capDiff(auditdocument.Redact(string(e.Key.Kind), e.Before))
+	e.After = capDiff(auditdocument.Redact(string(e.Key.Kind), e.After))
 	e.Time = time.Unix(0, e.Time.UnixNano()) // stored as UnixNano; drop the monotonic reading
 	switch err := tx.QueryRowContext(ctx, sqlLastAuditHash).Scan(&e.PrevHash); {
 	case errors.Is(err, sql.ErrNoRows):
@@ -155,7 +196,7 @@ func insertAudit(ctx context.Context, tx txQueryer, e *AuditEntry) error {
 	e.Hash = auditHash(e)
 	res, err := tx.ExecContext(ctx, sqlInsertAudit,
 		e.Time.UnixNano(), e.Actor, e.Manager, e.Action, string(e.Key.Kind), e.Key.Namespace, e.Key.Name,
-		e.ResourceVersion, e.Result, e.Reason, nullJSON(e.Before), nullJSON(e.After), e.PrevHash, e.Hash)
+		e.ResourceVersion, e.Result, e.Reason, nullJSON(e.Before), nullJSON(e.After), e.PrevHash, e.Hash, e.ChainVersion, e.Authz, e.RequestID, e.ClientIP, e.UserAgent, e.RequestMethod, e.RequestPath)
 	if err != nil {
 		return fmt.Errorf("store/sqlite: write audit: %w", err)
 	}
@@ -267,7 +308,7 @@ func queryAudit(ctx context.Context, q auditQuerier, query string, args ...any) 
 		var kind string
 		var before, after sql.NullString
 		if err := rows.Scan(&e.ID, &ts, &e.Actor, &e.Manager, &e.Action, &kind, &e.Key.Namespace, &e.Key.Name,
-			&e.ResourceVersion, &e.Result, &e.Reason, &before, &after, &e.PrevHash, &e.Hash); err != nil {
+			&e.ResourceVersion, &e.Result, &e.Reason, &before, &after, &e.PrevHash, &e.Hash, &e.ChainVersion, &e.Authz, &e.RequestID, &e.ClientIP, &e.UserAgent, &e.RequestMethod, &e.RequestPath); err != nil {
 			return nil, fmt.Errorf("store/sqlite: read audit: %w", err)
 		}
 		e.Time = time.Unix(0, ts)
@@ -313,6 +354,10 @@ func (s *Store) VerifyAudit(ctx context.Context) error {
 		return fmt.Errorf("store/sqlite: begin audit verification: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	boundary, err := auditLegacyBoundary(ctx, tx)
+	if err != nil {
+		return err
+	}
 	prev := ""
 	first := true
 	var after int64
@@ -326,6 +371,9 @@ func (s *Store) VerifyAudit(ctx context.Context) error {
 		}
 		for i := range page {
 			e := &page[i]
+			if !validAuditFormat(e, boundary) {
+				return fmt.Errorf("%w: store/sqlite: audit row %d has unsupported chain format", store.ErrAuditIntegrity, e.ID)
+			}
 			// The oldest retained row may point at a pruned predecessor.
 			if !first && e.PrevHash != prev {
 				return fmt.Errorf("%w: store/sqlite: audit row %d does not chain to row before it", store.ErrAuditIntegrity, e.ID)

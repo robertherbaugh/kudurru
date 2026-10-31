@@ -17,9 +17,10 @@ import (
 	"github.com/knadh/koanf/maps"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
-	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+	"github.com/robertherbaugh/kudurru/internal/dnssec"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 
@@ -31,23 +32,37 @@ const EnvPrefix = "KUDURRU_"
 // Config is the typed view of kudurru.yaml. Node-scoped sections are host
 // local; cluster-scoped sections are the Kudurru singleton.
 type Config struct {
-	Node      Node        `koanf:"node" json:"node"`
-	Listeners Listeners   `koanf:"listeners" json:"listeners"`
-	Store     StoreConfig `koanf:"store" json:"store"`
-	DHCP      DHCP        `koanf:"dhcp" json:"dhcp"`
-	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
-	Cache     Cache       `koanf:"cache" json:"cache"`
-	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
-	BlockPage BlockPage   `koanf:"blockPage" json:"blockPage"`
+	ClientNames ClientNames `koanf:"clientNames" json:"clientNames"`
+	// NodeLogSource captures host/default values and explicit node-file log
+	// authority. It is process source metadata, never replicated settings.
+	NodeLogSource *NodeLogSource `koanf:"-" json:"-"`
+
+	Edge                 Edge `koanf:"edge" json:"edge"`
+	VIP                  VIP  `koanf:"vip" json:"vip"`
+	supervisorConfigured map[string]bool
+
+	Node      Node               `koanf:"node" json:"node"`
+	Listeners Listeners          `koanf:"listeners" json:"listeners"`
+	Store     StoreConfig        `koanf:"store" json:"store"`
+	DHCP      DHCP               `koanf:"dhcp" json:"dhcp"`
+	Upstreams Upstreams          `koanf:"upstreams" json:"upstreams"`
+	Control   Control            `koanf:"control" json:"control"`
+	DNSSEC    DNSSEC             `koanf:"dnssec" json:"dnssec"`
+	Response  ResponseProcessing `koanf:"response" json:"response"`
+	Cache     Cache              `koanf:"cache" json:"cache"`
+	Blocking  Blocking           `koanf:"blocking" json:"blocking"`
+	BlockPage BlockPage          `koanf:"blockPage" json:"blockPage"`
+	Branding  Branding           `koanf:"branding" json:"branding"`
 	// UnblockRequests configures the block page's request form.
-	UnblockRequests UnblockRequests `koanf:"unblockRequests" json:"unblockRequests"`
-	Querylog        Querylog        `koanf:"querylog" json:"querylog"`
-	Audit           Audit           `koanf:"audit" json:"audit"`
-	Database        Database        `koanf:"database" json:"database"`
-	RateLimit       RateLimit       `koanf:"ratelimit" json:"ratelimit"`
-	Log             Log             `koanf:"log" json:"log"`
-	Auth            Auth            `koanf:"auth" json:"auth"`
-	RBAC            RBAC            `koanf:"rbac" json:"rbac"`
+	UnblockRequests UnblockRequests  `koanf:"unblockRequests" json:"unblockRequests"`
+	Querylog        Querylog         `koanf:"querylog" json:"querylog"`
+	Audit           Audit            `koanf:"audit" json:"audit"`
+	Database        Database         `koanf:"database" json:"database"`
+	RateLimit       RateLimit        `koanf:"ratelimit" json:"ratelimit"`
+	Log             Log              `koanf:"log" json:"log"`
+	Auth            Auth             `koanf:"auth" json:"auth"`
+	Credentials     CredentialGrants `koanf:"credentials" json:"credentials"`
+	RBAC            RBAC             `koanf:"rbac" json:"rbac"`
 
 	// TSIGKeys are the node's TSIG keys (RFC 8945) for zone transfers and
 	// NOTIFY; secrets stay in files and never pass through the API.
@@ -80,8 +95,10 @@ type Config struct {
 
 // Node identifies this instance.
 type Node struct {
-	Name    string `koanf:"name" json:"name"`
-	DataDir string `koanf:"dataDir" json:"dataDir"`
+	QuerylogDir string `koanf:"querylogDir" json:"querylogDir"`
+	LocalDir    string `koanf:"localDir" json:"localDir"`
+	Name        string `koanf:"name" json:"name"`
+	DataDir     string `koanf:"dataDir" json:"dataDir"`
 	// Lameduck is how long readiness stays 503 after SIGTERM before the
 	// listeners close, so load balancers and dnsdist drain the node.
 	Lameduck Duration `koanf:"lameduck" json:"lameduck"`
@@ -105,10 +122,20 @@ type Listeners struct {
 	// Sockets is how many SO_REUSEPORT sockets each udp and tcp listener
 	// binds (Linux; one elsewhere); 0 means GOMAXPROCS.
 	Sockets int `koanf:"sockets" json:"sockets"`
+	// Limits are shared resource limits applied separately to each DNS listener.
+	Limits ListenerLimits `koanf:"limits" json:"limits"`
 	// Internal is the node-to-node listener (§3.1, D47).
 	Internal InternalListener `koanf:"internal" json:"internal"`
 	// BlockPage is the block page listener (blockPage.enabled).
 	BlockPage BlockPageListener `koanf:"blockPage" json:"blockPage"`
+}
+
+// ListenerLimits controls native DNS transports. Changes require restart.
+type ListenerLimits struct {
+	MaxTCPQueries   int      `koanf:"maxTCPQueries" json:"maxTCPQueries"`
+	QUICMaxConns    int      `koanf:"quicMaxConns" json:"quicMaxConns"`
+	IdleTimeout     Duration `koanf:"idleTimeout" json:"idleTimeout"`
+	QUICIdleTimeout Duration `koanf:"quicIdleTimeout" json:"quicIdleTimeout"`
 }
 
 // InternalListener is the node-to-node listener (:8082). It is always
@@ -145,6 +172,8 @@ type TLSFiles struct {
 type TLSListener struct {
 	Address string   `koanf:"address" json:"address"`
 	TLS     TLSFiles `koanf:"tls" json:"tls"`
+	// ClientIDDomain opts into <id>.<domain> SNI policy selectors.
+	ClientIDDomain string `koanf:"clientIDDomain" json:"clientIDDomain,omitempty"`
 }
 
 // HTTPListener is a DoH (tcp, h2 and http/1.1) or DoH3 (udp, h3) bind.
@@ -152,6 +181,8 @@ type HTTPListener struct {
 	Address string   `koanf:"address" json:"address"`
 	Path    string   `koanf:"path" json:"path"`
 	TLS     TLSFiles `koanf:"tls" json:"tls"`
+	// ClientIDs opts into /path/<id> policy selectors, never authentication.
+	ClientIDs bool `koanf:"clientIDs" json:"clientIDs,omitempty"`
 }
 
 // Listener is an HTTP bind.
@@ -169,8 +200,12 @@ type StoreConfig struct {
 
 // KubeStore tunes the kube driver and the local.db cold-start path (§4.4).
 type KubeStore struct {
-	StartupTimeout Duration     `koanf:"startupTimeout" json:"startupTimeout"`
-	Snapshot       KubeSnapshot `koanf:"snapshot" json:"snapshot"`
+	// ExpectedClusterID is the independently provisioned kube-system UID.
+	// It is required for offline snapshot admission and pins online clients
+	// when set. Never derive it from local.db or a cached settings document.
+	ExpectedClusterID string       `koanf:"expectedClusterID" json:"expectedClusterID"`
+	StartupTimeout    Duration     `koanf:"startupTimeout" json:"startupTimeout"`
+	Snapshot          KubeSnapshot `koanf:"snapshot" json:"snapshot"`
 }
 
 // KubeSnapshot bounds how old a local.db snapshot may be and still serve.
@@ -180,11 +215,20 @@ type KubeSnapshot struct {
 
 // Upstreams configures forwarding.
 type Upstreams struct {
+	ImportFile  string                   `koanf:"importFile" json:"importFile,omitempty"`
 	Groups      map[string]UpstreamGroup `koanf:"groups" json:"groups"`
 	Bootstrap   []string                 `koanf:"bootstrap" json:"bootstrap"`
 	Conditional map[string]string        `koanf:"conditional" json:"conditional"`
 	ECS         ECS                      `koanf:"ecs" json:"ecs"`
 	Recursion   Recursion                `koanf:"recursion" json:"recursion"`
+}
+
+// RecursiveNegativeTrustAnchor has an absolute expiry, decoded from RFC3339.
+// It is independent of the forwarded DNSSEC exception setting.
+type RecursiveNegativeTrustAnchor struct {
+	Domain    string    `koanf:"domain" json:"domain"`
+	Reason    string    `koanf:"reason" json:"reason"`
+	ExpiresAt time.Time `koanf:"expiresAt" json:"expiresAt"`
 }
 
 // Recursion configures the built-in recursive resolver that upstream
@@ -199,7 +243,8 @@ type Recursion struct {
 	// route), on or off.
 	IPv6 string `koanf:"ipv6" json:"ipv6"`
 	// TrustAnchors replace the built-in root DS records; empty keeps them.
-	TrustAnchors []string `koanf:"trustAnchors" json:"trustAnchors"`
+	TrustAnchors         []string                       `koanf:"trustAnchors" json:"trustAnchors"`
+	NegativeTrustAnchors []RecursiveNegativeTrustAnchor `koanf:"negativeTrustAnchors" json:"negativeTrustAnchors"`
 	// RootHints replace the built-in root server addresses; empty keeps
 	// them.
 	RootHints []string `koanf:"rootHints" json:"rootHints"`
@@ -480,8 +525,29 @@ type SectionLoader func(*Config) (map[string]any, error)
 // LoadWithSections reads the normal layers, then replaces owned sections before
 // decoding and validating. This also permits startup with stale Git declarations.
 func LoadWithSections(path string, environ []string, owned SectionLoader) (*Config, error) {
+	return load(path, environ, owned, nil)
+}
+
+// LoadSupervisors loads the normal layers, followed by explicitly supplied
+// render/run flag overrides. Only known host-local supervisor keys are allowed.
+// This does not grant settings writers access to host-only keys.
+func LoadSupervisors(path string, environ []string, final map[string]any) (*Config, error) {
+	for path := range final {
+		key, ok := Lookup(path)
+		if !ok || !supervisorKey(path) || key.Scope != ScopeNode || !key.HostOnly {
+			return nil, fmt.Errorf("config: %s is not a host supervisor setting", path)
+		}
+	}
+	return load(path, environ, nil, final)
+}
+
+func load(path string, environ []string, owned SectionLoader, final map[string]any) (*Config, error) {
 	k := koanf.New(".")
 	declared := map[string]bool{}
+	configured := map[string]bool{}
+	defaultUpstreamDeclared := false
+	var nodeLogFileLocked []string
+	var nodeFile map[string]any
 	if path != "" {
 		b, err := os.ReadFile(path) //nolint:gosec // operator-selected node configuration file
 		if err != nil {
@@ -491,6 +557,22 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 		if err != nil {
 			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
+		nodeFile = raw
+		defaultUpstreamDeclared = declaresDefaultUpstream(raw)
+		if values, ok := subMap(raw, "log"); ok {
+			for _, leaf := range []string{"level", "format"} {
+				if _, exists := values[leaf]; exists {
+					nodeLogFileLocked = append(nodeLogFileLocked, "log."+leaf)
+				}
+			}
+		}
+		for _, section := range []string{"edge", "vip"} {
+			if values, ok := subMap(raw, section); ok {
+				for name := range values {
+					configured[section+"."+name] = true
+				}
+			}
+		}
 		for section := range raw {
 			declared[section] = true
 		}
@@ -499,11 +581,13 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 		return nil, fmt.Errorf("config: defaults: %w", err)
 	}
 	if path != "" {
-		if err := k.Load(file.Provider(path), yaml.Parser(), koanf.WithMergeFunc(mergeLayer)); err != nil {
+		// Source declarations and effective values must belong to the same
+		// original read. Empty delimiter preserves the parsed nested map.
+		if err := k.Load(confmap.Provider(nodeFile, ""), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
 			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
 	}
-	overrides, locked, err := envOverrides(environ)
+	overrides, locked, err := envOverrides(environ, final)
 	if err != nil {
 		return nil, err
 	}
@@ -542,6 +626,7 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 		if err != nil {
 			return nil, err
 		}
+		defaultUpstreamDeclared = defaultUpstreamDeclared || declaresDefaultUpstream(tree)
 		// Validate only authoritative file sections. Even malformed or unknown
 		// keys in a UI-owned section are ignored as a whole, before decoding.
 		checked := map[string]any{}
@@ -558,6 +643,15 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 			return nil, fmt.Errorf("config: settings file %s: %w", settingsPath, err)
 		}
 	}
+	importPath := k.String("upstreams.importFile")
+	if value, ok := overrides["upstreams.importFile"].(string); ok {
+		importPath = value
+	}
+	if _, uiOwned := sections["upstreams"]; !uiOwned {
+		if err := importUpstreams(k, path, importPath, defaultUpstreamDeclared); err != nil {
+			return nil, err
+		}
+	}
 	fileBytes, err := json.Marshal(k.Get("upstreams"))
 	if err != nil {
 		return nil, err
@@ -569,14 +663,35 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 			return nil, err
 		}
 	}
+	// The source path remains host-owned even when the public section is UI-owned.
+	if err := k.Load(confmap.Provider(map[string]any{"upstreams.importFile": importPath}, "."), nil); err != nil {
+		return nil, err
+	}
+	// Supervisor collections replace whole lower values, including maps. Delete
+	// before merging so an explicit empty map or list also clears the lower layer.
+	for key := range overrides {
+		if supervisorKey(key) {
+			k.Delete(key)
+			configured[key] = true
+		}
+	}
 	if err := k.Load(confmap.Provider(overrides, "."), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)
+	}
+	for key := range final {
+		k.Delete(key)
+		configured[key] = true
+	}
+	if err := k.Load(confmap.Provider(final, "."), nil); err != nil {
+		return nil, fmt.Errorf("config: supervisor flags: %w", err)
 	}
 
 	var cfg Config
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("config: decode: %w", err)
 	}
+	cfg.NodeLogSource = &NodeLogSource{Baseline: cfg.Log, FileLocked: nodeLogFileLocked}
+	cfg.supervisorConfigured = configured
 	cfg.Upstreams.normalize()
 	cfg.EnvLocked = locked
 	cfg.Source = path
@@ -605,23 +720,51 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 // *FieldError.
 func (c *Config) Validate() error {
 	errs := c.validateSchema()
+	if err := c.ClientNames.ReversePTR.validate(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := c.ValidateStorageDirs(); err != nil {
+		errs = append(errs, err)
+	}
+	if id := c.Store.Kube.ExpectedClusterID; len(id) > 128 || strings.IndexFunc(id, func(r rune) bool {
+		allowed := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.'
+		return !allowed
+	}) >= 0 {
+		errs = append(errs, errors.New("store.kube.expectedClusterID: use at most 128 ASCII letters, digits, hyphens, underscores or periods"))
+	}
 	if len(c.Listeners.DNS) == 0 {
 		errs = append(errs, errors.New("listeners.dns: at least one listener is required"))
 	}
 	errs = append(errs, c.Listeners.validateTLS()...)
 	errs = append(errs, c.Listeners.validateProxyProtocol()...)
+	for path, value := range map[string]Duration{
+		"listeners.limits.idleTimeout":     c.Listeners.Limits.IdleTimeout,
+		"listeners.limits.quicIdleTimeout": c.Listeners.Limits.QUICIdleTimeout,
+	} {
+		if value < 0 {
+			errs = append(errs, fmt.Errorf("%s: must not be negative", path))
+		}
+	}
 	if _, ok := c.Upstreams.Groups["default"]; !ok {
 		errs = append(errs, errors.New("upstreams.groups.default is required"))
 	}
 	errs = append(errs, c.Upstreams.validate()...)
 	errs = append(errs, c.Cache.validate()...)
+	if _, err := c.DNSSEC.Validator(nil); err != nil {
+		errs = append(errs, err)
+	}
+	if _, err := c.Response.Compile(); err != nil {
+		errs = append(errs, err)
+	}
 	errs = append(errs, c.Blocking.validate()...)
 	errs = append(errs, c.validateBlockPage()...)
+	errs = append(errs, c.Branding.Validate())
 	errs = append(errs, c.validateUnblockRequests()...)
 	errs = append(errs, c.Querylog.validate()...)
 	errs = append(errs, c.validateAudit()...)
 	errs = append(errs, c.Database.validate()...)
 	errs = append(errs, c.validateDHCP()...)
+	errs = append(errs, c.validateSupervisors()...)
 	if t := c.Listeners.Internal.TLS; (t.CertFile == "") != (t.KeyFile == "") {
 		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))
 	}
@@ -629,10 +772,14 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.Listeners.API.validate()...)
 	errs = append(errs, c.ExternalDNS.validate()...)
 	errs = append(errs, c.Auth.validate()...)
+	errs = append(errs, c.Credentials.validate()...)
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))
 		}
+	}
+	if _, err := c.Control.Rules(); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
@@ -680,6 +827,20 @@ func (c *Cache) validate() []error {
 // listener.
 func (l *Listeners) validateTLS() []error {
 	var errs []error
+	for _, listeners := range [][]TLSListener{l.DoT, l.DoQ} {
+		for _, listener := range listeners {
+			if listener.ClientIDDomain != "" && !clientid.Domain(listener.ClientIDDomain) {
+				errs = append(errs, errors.New("listeners: clientIDDomain must be a DNS suffix with room for an ID label"))
+			}
+		}
+	}
+	for _, listeners := range [][]HTTPListener{l.DoH, l.DoH3} {
+		for _, listener := range listeners {
+			if listener.ClientIDs && strings.HasSuffix(listener.Path, "/") {
+				errs = append(errs, errors.New("listeners: client ID base path must not end with /"))
+			}
+		}
+	}
 	check := func(key string, i int, path string) {
 		if path != "" && !strings.HasPrefix(path, "/") {
 			errs = append(errs, fmt.Errorf("listeners.%s[%d].path %q must start with /", key, i, path))
@@ -720,7 +881,7 @@ func (l *Listeners) validateProxyProtocol() []error {
 }
 
 // envOverrides maps KUDURRU_<SECTION>__<KEY>[_FILE]=value onto schema paths.
-func envOverrides(environ []string) (map[string]any, []string, error) {
+func envOverrides(environ []string, final map[string]any) (map[string]any, []string, error) {
 	paths := lowerPaths()
 	out := map[string]any{}
 	var locked []string
@@ -740,6 +901,11 @@ func envOverrides(environ []string) (map[string]any, []string, error) {
 		if !known {
 			return nil, nil, fmt.Errorf("config: environment variable %s does not match a settings key", name)
 		}
+		// Only a validated, explicitly supplied supervisor override may skip
+		// parsing its lower environment value, including an overridden _FILE read.
+		if _, replaced := final[path]; replaced && supervisorKey(path) {
+			continue
+		}
 		if fromFile {
 			b, err := os.ReadFile(value) //nolint:gosec // the operator names the file on purpose (KUDURRU_*_FILE)
 			if err != nil {
@@ -748,7 +914,7 @@ func envOverrides(environ []string) (map[string]any, []string, error) {
 			value = strings.TrimSpace(string(b))
 		}
 		key, _ := Lookup(path)
-		typed, err := coerce(key.Type, value)
+		typed, err := coerceSupervisor(key, value)
 		if err != nil {
 			return nil, nil, fmt.Errorf("config: %s: %w", name, err)
 		}
@@ -841,6 +1007,9 @@ func (u Upstreams) validate() []error {
 				errs = append(errs, &FieldError{Path: "upstreams.groups[" + n + "].servers", Message: msgRequired})
 			}
 		}
+	}
+	if _, err := dnssec.NewExceptions(u.Recursion.NTAs(), time.Now()); err != nil {
+		errs = append(errs, fmt.Errorf("upstreams.recursion.negativeTrustAnchors: %w", err))
 	}
 	if len(u.Recursion.TrustAnchors) > 0 {
 		if _, err := recursor.ParseTrustAnchors(u.Recursion.TrustAnchors); err != nil {

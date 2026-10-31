@@ -13,6 +13,8 @@ To assign client addresses, use the [DHCP walkthrough](../guide/dhcp/README.md).
 | Monitoring | [helm.md#monitoring](helm.md#monitoring) | `deploy/grafana/kudurru-overview.json`, `deploy/prometheus/rules.yaml` |
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
+External filtering data: [require HTTPS for list and catalog downloads](download-policy.md).
+For scripts and CLI clients: [apply results, settings and live-event contracts](api-contracts.md).
 The optional central database for the audit log, query log and statistics of every node: [postgres.md](postgres.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
@@ -31,8 +33,8 @@ Keep IPv6 router and DNS advertisements on your router.
 
 v0.1.0 ("stone"), dated 18 October 2026, is the first release. Its
 [release page](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)
-has binaries, packages and deployment assets. The examples in these guides
-use the `0.1.0` image and chart versions.
+has binaries, packages and deployment assets. Installation examples in this
+checkout follow `VERSION`; use the tagged checkout for a published release.
 
 Releases are cut by merging `main` into `release-candidate` (a
 `v<version>-rc.<N>` pre-release) and `release-candidate` into `release` (the
@@ -48,10 +50,16 @@ Both run `.github/workflows/publish.yml`, which runs goreleaser
   release candidate does not;
 - binaries for linux and darwin on amd64 and arm64, deb/rpm/apk packages with
   a hardened systemd unit, a compose bundle, `crds.yaml` and `install.yaml`
-  (`kustomize build deploy/kustomize/default`), all covered by `checksums.txt`, which is
-  cosign-signed, plus GitHub build provenance;
+  (rendered from the charts and Kustomize tree at the exact release tag,
+  including RC tags), all covered by `checksums.txt`, which is cosign-signed,
+  plus GitHub build provenance;
 - the Helm charts at `oci://ghcr.io/robertherbaugh/charts/kudurru` and
   `.../kudurru-crds`, cosign-signed.
+
+`make version-sync` keeps checkout deployment references aligned with `VERSION`;
+`make version-check` checks them without writing. Release packaging stages
+tag-specific manifests and Compose files in `bin/release` without modifying
+tracked files ([contributor instructions](../../CONTRIBUTING.md#branches-and-releases)).
 
 Every pull request against `main` also pushes
 `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` (unsigned, for testing the
@@ -60,7 +68,7 @@ branch; later pushes overwrite it).
 Verify an image:
 
 ```sh
-cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
+cosign verify ghcr.io/robertherbaugh/kudurru:0.2.0 \
   --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -106,3 +114,10 @@ Every settings key can also be set as `KUDURRU_<SECTION>__<KEY>` (for example
 keys (listeners, upstream groups) only from the file. An environment variable
 that names no key stops the server at start, so typos do not go unnoticed.
 `kudurru config schema` lists every key.
+
+## Kubernetes API clients
+
+Jobs and controllers using ServiceAccount credentials must project an audience
+`kudurru` token with a ten-minute lifetime. See [ServiceAccount authentication](kubernetes-service-account-auth.md)
+for the exact projection, rotation requirements, bounded deletion revocation and
+API-outage behavior. Legacy and ordinary one-hour incoming tokens are rejected.

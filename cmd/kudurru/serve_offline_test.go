@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,10 +35,15 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 		snapshot  bool
 		wantCode  int
 		wantReady int
+		expected  string
+		savedID   string
 	}{
-		{"fresh", time.Minute, true, dns.RcodeSuccess, http.StatusOK},
-		{"stale", 48 * time.Hour, true, dns.RcodeServerFailure, http.StatusServiceUnavailable},
-		{"first boot", 0, false, dns.RcodeServerFailure, http.StatusServiceUnavailable},
+		{"fresh matching identity", time.Minute, true, dns.RcodeSuccess, http.StatusOK, "offline-cluster", "offline-cluster"},
+		{"stale", 48 * time.Hour, true, dns.RcodeServerFailure, http.StatusServiceUnavailable, "offline-cluster", "offline-cluster"},
+		{"first boot", 0, false, dns.RcodeServerFailure, http.StatusServiceUnavailable, "offline-cluster", ""},
+		{"other saved cluster", time.Minute, true, dns.RcodeServerFailure, http.StatusServiceUnavailable, "offline-cluster", "other-cluster"},
+		{"wrong expected cluster", time.Minute, true, dns.RcodeServerFailure, http.StatusServiceUnavailable, "other-cluster", "offline-cluster"},
+		{"old snapshot without identity", time.Minute, true, dns.RcodeServerFailure, http.StatusServiceUnavailable, "offline-cluster", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			unavailable := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -44,6 +51,8 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 			}))
 			t.Cleanup(unavailable.Close)
 			cfg := offlineServeConfig(t, unavailable.URL)
+			cfg.Store.Kube.ExpectedClusterID = tc.expected
+			started := time.Now()
 			if tc.snapshot {
 				db, err := localdb.OpenSnapshotStore(t.Context(), filepath.Join(cfg.Node.DataDir, localdb.FileName))
 				if err != nil {
@@ -58,7 +67,7 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 					Spec: v1alpha1.DNSRecordSetSpec{ZoneRef: v1alpha1.ObjectRef{Name: "home"},
 						Endpoints: []v1alpha1.Endpoint{{DNSName: "nas.home.example.", RecordType: "A", Targets: []string{"192.0.2.42"}}}},
 				}
-				if err := db.Write(t.Context(), &localdb.Snapshot{Objects: []store.Object{zone, rs}, ClusterID: "offline-cluster", WrittenAt: time.Now().Add(-tc.age)}); err != nil {
+				if err := db.Write(t.Context(), &localdb.Snapshot{Objects: []store.Object{zone, rs}, ClusterID: tc.savedID, WrittenAt: time.Now().Add(-tc.age)}); err != nil {
 					t.Fatal(err)
 				}
 				if err := db.Close(); err != nil {
@@ -88,19 +97,78 @@ func TestRunServeKubeOfflineSnapshot(t *testing.T) {
 				ready := offlineHTTPStatus(cfg.Listeners.Ops.Address, "/healthz/ready")
 				if err == nil && answer.Rcode == tc.wantCode && ready == tc.wantReady {
 					if tc.wantCode == dns.RcodeSuccess && (!answer.Authoritative || len(answer.Answer) != 1 || answer.Answer[0].(*dns.A).A.String() != "192.0.2.42") {
-						t.Fatalf("snapshot answer: %v", answer)
+						t.Fatalf("snapshot answer invalid: authoritative=%t answers=%d", answer.Authoritative, len(answer.Answer))
 					}
 					break
 				}
 				if time.Now().After(deadline) {
-					t.Fatalf("DNS never reached expected snapshot state: answer=%v err=%v readiness=%d", answer, err, ready)
+					rcode := -1
+					if answer != nil {
+						rcode = answer.Rcode
+					}
+					t.Fatalf("DNS never reached expected snapshot state: response_received=%t rcode=%d exchange_failed=%t readiness=%d", answer != nil, rcode, err != nil, ready)
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
-			// A snapshot is configuration, not a source of offline IAM users.
+			// Human diagnostics report only the admitted served snapshot, even
+			// when it is stale, and never invent a leader during API outage.
+			clientHTTP := &http.Client{Timeout: time.Second}
 			for {
-				status := offlineHTTPStatus(cfg.Listeners.API.Address, "/api/v1/zones")
-				if status == http.StatusUnauthorized {
+				resp, err := clientHTTP.Get("http://" + cfg.Listeners.Ops.Address + "/healthz")
+				if err != nil {
+					t.Fatal("human health unavailable during API outage")
+				}
+				var body map[string]json.RawMessage
+				err = json.NewDecoder(resp.Body).Decode(&body)
+				_ = resp.Body.Close()
+				if err != nil || resp.StatusCode != tc.wantReady {
+					t.Fatal("human health returned an invalid response")
+				}
+				var leader, snapshotAge string
+				if json.Unmarshal(body["leader"], &leader) != nil || json.Unmarshal(body["snapshotAge"], &snapshotAge) != nil {
+					t.Fatal("human health omitted string leader/snapshotAge fields")
+				}
+				if leader != "" {
+					t.Fatal("human health reported a leader without API contact")
+				}
+				settled := false
+				if tc.snapshot && tc.expected != "" && tc.expected == tc.savedID {
+					if snapshotAge != "" {
+						age, parseErr := time.ParseDuration(snapshotAge)
+						if parseErr != nil || age < tc.age-time.Second || age > tc.age+time.Since(started)+time.Second {
+							t.Fatal("human health age does not describe the admitted snapshot")
+						}
+						settled = true
+					}
+				} else {
+					if snapshotAge != "" {
+						t.Fatal("human health reported an unadmitted snapshot age")
+					}
+					var unready []string
+					if json.Unmarshal(body["unready"], &unready) != nil {
+						t.Fatal("human health omitted unavailable snapshot diagnosis")
+					}
+					for _, reason := range unready {
+						if strings.Contains(reason, "local.db snapshot rejected:") || (!tc.snapshot && strings.Contains(reason, "local.db holds no snapshot yet")) {
+							settled = true
+						}
+					}
+				}
+				if settled {
+					break
+				}
+				// Unsynced and stale both return SERVFAIL/503. Wait for the
+				// actual admission/refusal within the original startup budget.
+				if time.Now().After(deadline) {
+					t.Fatal("human health never reported the expected snapshot decision")
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			// A DNS snapshot cannot prove IAM migration admission. v0.2 returns
+			// unavailable after the bounded journal check, without authenticating.
+			for {
+				status := offlineHTTPStatusWithTimeout(cfg.Listeners.API.Address, "/api/v1/zones", 6*time.Second)
+				if status == http.StatusServiceUnavailable {
 					break
 				}
 				if status != 0 || time.Now().After(deadline) {
@@ -135,6 +203,7 @@ func offlineServeConfig(t *testing.T, apiURL string) *config.Config {
 		t.Fatal(err)
 	}
 	cfg.Store.Driver = "kube"
+	cfg.Store.Kube.ExpectedClusterID = "offline-cluster"
 	cfg.Node.DataDir = t.TempDir()
 	cfg.Node.Lameduck = 0
 	cfg.Store.Kube.StartupTimeout = config.Duration(100 * time.Millisecond)
@@ -181,7 +250,11 @@ func offlineFreeAddress(t *testing.T, network string) string {
 }
 
 func offlineHTTPStatus(address, path string) int {
-	c := &http.Client{Timeout: time.Second}
+	return offlineHTTPStatusWithTimeout(address, path, time.Second)
+}
+
+func offlineHTTPStatusWithTimeout(address, path string, timeout time.Duration) int {
+	c := &http.Client{Timeout: timeout}
 	res, err := c.Get("http://" + address + path)
 	if err != nil {
 		return 0

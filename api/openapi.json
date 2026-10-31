@@ -256,6 +256,40 @@
         ],
         "type": "object"
       },
+      "AuthListSessionRecordInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "type": "string"
+          },
+          "diagnoses": {
+            "description": "Why entries were ignored (role bindings, identity providers).",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionRecordInfo"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "continue",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "AuthListTokenInfo": {
         "additionalProperties": false,
         "properties": {
@@ -502,6 +536,138 @@
           "configured",
           "scope",
           "node",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "BrandingInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "accentColor": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "favicon": {
+            "type": "string"
+          },
+          "logoDark": {
+            "type": "string"
+          },
+          "logoLight": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "validUntil": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "name",
+          "logoLight",
+          "logoDark",
+          "favicon",
+          "accentColor"
+        ],
+        "type": "object"
+      },
+      "BrowserLogoutBody": {
+        "additionalProperties": false,
+        "properties": {
+          "continuePath": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CacheEntryMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "ageSeconds": {
+            "format": "double",
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "positive",
+              "negative"
+            ],
+            "type": "string"
+          },
+          "remainingSeconds": {
+            "description": "Zero for stale entries.",
+            "format": "double",
+            "type": "number"
+          },
+          "state": {
+            "enum": [
+              "fresh",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "ttlSeconds": {
+            "description": "Original stored lifetime.",
+            "format": "double",
+            "type": "number"
+          },
+          "validation": {
+            "type": "string"
+          },
+          "wireBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "ageSeconds",
+          "ttlSeconds",
+          "remainingSeconds",
+          "wireBytes",
+          "validation"
+        ],
+        "type": "object"
+      },
+      "CacheInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "cacheable": {
+            "type": "boolean"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/CacheEntryMetadata"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "node",
+          "cacheable",
+          "found",
           "took_ms"
         ],
         "type": "object"
@@ -1075,6 +1241,34 @@
           "lastTransitionTime",
           "reason",
           "message"
+        ],
+        "type": "object"
+      },
+      "CreateLocalUserRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "description": "Display name; bounded to 256 UTF-8 bytes without control characters.",
+            "maxLength": 256,
+            "type": "string"
+          },
+          "name": {
+            "description": "Canonical local username, already normalized as a DNS subdomain.",
+            "maxLength": 253,
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "description": "Initial password, at least 8 characters and at most 1024 bytes; never returned or logged.",
+            "maxLength": 1024,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "name",
+          "password"
         ],
         "type": "object"
       },
@@ -2350,6 +2544,19 @@
           "error": {
             "type": "string"
           },
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/DNSRuleExclusion"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "exclusionsTruncated": {
+            "description": "Question exclusion evidence exceeded a compile or query diagnostic bound.",
+            "type": "boolean"
+          },
           "flags": {
             "$ref": "#/components/schemas/DNSFlags"
           },
@@ -2483,6 +2690,38 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "DNSRuleExclusion": {
+        "additionalProperties": false,
+        "properties": {
+          "effect": {
+            "enum": [
+              "block",
+              "allow",
+              "exception",
+              "rewrite"
+            ],
+            "type": "string"
+          },
+          "list": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "source": {
+            "description": "Zero-based compiled source index, excluding RPZ sources; never a source URL.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "list",
+          "source",
+          "rule",
+          "effect"
+        ],
         "type": "object"
       },
       "DhcpReservationInputBody": {
@@ -3029,6 +3268,63 @@
         ],
         "type": "object"
       },
+      "DomainRegexImpact": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "everyone": {
+            "type": "boolean"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "incomplete": {
+            "description": "Some lists or matches exceeded the diagnostic work/output bounds.",
+            "type": "boolean"
+          },
+          "matches": {
+            "description": "The selected expression matches this normalized name using the production regex engine.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overlaps": {
+            "description": "Opposing per-list rules for an A/IN question without client identity. This is not a final client policy decision.",
+            "items": {
+              "$ref": "#/components/schemas/DomainOverride"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "action",
+          "expression",
+          "matches",
+          "enabled",
+          "everyone",
+          "groups",
+          "overlaps",
+          "incomplete"
+        ],
+        "type": "object"
+      },
       "DomainUnattached": {
         "additionalProperties": false,
         "properties": {
@@ -3179,6 +3475,9 @@
           },
           "node": {
             "type": "string"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/VIPObservationSnapshot"
           },
           "supervisors": {
             "items": {
@@ -3565,10 +3864,19 @@
           "passwordChangedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "resourceVersion": {
+            "description": "Opaque version required for administrator password-reset compare-and-swap.",
+            "type": "string"
+          },
+          "uid": {
+            "description": "Immutable account identity required for administrator recovery and password reset.",
+            "type": "string"
           }
         },
         "required": [
           "name",
+          "uid",
           "builtinAdmin",
           "disabled",
           "mustChangePassword"
@@ -4131,6 +4439,10 @@
           "password": {
             "type": "string"
           },
+          "totpCode": {
+            "description": "The enrolled authenticator code, when required.",
+            "type": "string"
+          },
           "username": {
             "type": "string"
           }
@@ -4298,6 +4610,9 @@
               "array",
               "null"
             ]
+          },
+          "uid": {
+            "type": "string"
           },
           "zoneName": {
             "type": "string"
@@ -5046,6 +5361,10 @@
           "revokeTokens": {
             "description": "Also revoke every API token of the user; a password change alone revokes sessions, not tokens.",
             "type": "boolean"
+          },
+          "totpCode": {
+            "description": "The enrolled authenticator code, when required.",
+            "type": "string"
           }
         },
         "required": [
@@ -5983,6 +6302,9 @@
       "QuerylogStatusBody": {
         "additionalProperties": false,
         "properties": {
+          "backfill": {
+            "$ref": "#/components/schemas/RollupBackfillStatus"
+          },
           "db_bytes": {
             "format": "int64",
             "type": "integer"
@@ -6251,6 +6573,36 @@
         },
         "type": "object"
       },
+      "ResetLocalUserPasswordRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "newPassword": {
+            "description": "Replacement password, at least 8 characters and at most 1024 bytes; never returned or logged. This does not recover a lost authenticator.",
+            "maxLength": 1024,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          },
+          "resourceVersion": {
+            "description": "Exact observed opaque resourceVersion; a conflict requires a fresh read and deliberate request.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uid": {
+            "description": "Exact immutable UID from the authorized user inventory.",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "resourceVersion",
+          "newPassword"
+        ],
+        "type": "object"
+      },
       "Resource": {
         "additionalProperties": false,
         "properties": {
@@ -6344,6 +6696,151 @@
         ],
         "type": "object"
       },
+      "RollupBackfillDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "hour": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "legacy_before": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "resolution": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "state"
+        ],
+        "type": "object"
+      },
+      "RollupBackfillStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "capped": {
+            "type": "boolean"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/RollupBackfillDetail"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "legacy_cells": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pending_days": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pending_hours": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "legacy_cells",
+          "pending_days",
+          "pending_hours",
+          "details",
+          "capped",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "RollupEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_reason": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "head": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "hour": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "node": {
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeResult"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "node",
+          "hour",
+          "revision",
+          "head",
+          "digest",
+          "expires_at",
+          "scope",
+          "nodes",
+          "partial"
+        ],
+        "type": "object"
+      },
+      "RollupVerifyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "type": "object"
+      },
       "SafeSearchEngine": {
         "additionalProperties": false,
         "properties": {
@@ -6399,6 +6896,59 @@
           "list",
           "domains",
           "source"
+        ],
+        "type": "object"
+      },
+      "SecondaryRuntime": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastConfirmedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recordCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "serial": {
+            "format": "int64",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "serving",
+              "expired",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "state"
         ],
         "type": "object"
       },
@@ -6590,6 +7140,41 @@
         ],
         "type": "object"
       },
+      "SessionRecordInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "idleExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "issuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "issuedAt",
+          "expiresAt",
+          "idleExpiresAt",
+          "current",
+          "revoked"
+        ],
+        "type": "object"
+      },
       "SetBlockingInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -6643,7 +7228,8 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
             "type": "string"
           },
@@ -6751,7 +7337,8 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
             "type": "string"
           },
@@ -6799,6 +7386,9 @@
               "array",
               "null"
             ]
+          },
+          "readOnly": {
+            "type": "boolean"
           },
           "ref": {
             "enum": [
@@ -6896,8 +7486,12 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
+            "type": "string"
+          },
+          "help": {
             "type": "string"
           },
           "items": {
@@ -7262,7 +7856,9 @@
           "type": {
             "enum": [
               "pihole",
-              "technitium"
+              "technitium",
+              "adguard",
+              "blocky"
             ],
             "type": "string"
           },
@@ -7271,8 +7867,7 @@
           }
         },
         "required": [
-          "type",
-          "url"
+          "type"
         ],
         "type": "object"
       },
@@ -7299,6 +7894,83 @@
           "batches",
           "rows",
           "rollup_flushes"
+        ],
+        "type": "object"
+      },
+      "StubAuthority": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "enum": [
+              "udp",
+              "tcp"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "protocol"
+        ],
+        "type": "object"
+      },
+      "StubRuntime": {
+        "additionalProperties": false,
+        "properties": {
+          "authorities": {
+            "items": {
+              "$ref": "#/components/schemas/StubAuthority"
+            },
+            "type": "array"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastConfirmedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "serial": {
+            "format": "int64",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "routing",
+              "expired",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "state",
+          "authorities"
         ],
         "type": "object"
       },
@@ -7522,6 +8194,106 @@
         ],
         "type": "object"
       },
+      "TOTPConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge": {
+            "maxLength": 8192,
+            "type": "string"
+          },
+          "code": {
+            "description": "The new candidate factor's code.",
+            "pattern": "^[0-9]{6}$",
+            "type": "string"
+          },
+          "currentPassword": {
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "totpCode": {
+            "description": "The previously enrolled factor's code, when rotating.",
+            "pattern": "^[0-9]{6}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "challenge",
+          "code"
+        ],
+        "type": "object"
+      },
+      "TOTPProofRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "currentPassword": {
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "totpCode": {
+            "description": "The current factor's code, when already enabled.",
+            "pattern": "^[0-9]{6}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword"
+        ],
+        "type": "object"
+      },
+      "TOTPRecoverRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "uid": {
+            "description": "The current immutable UID from the authorized user inventory.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
+      "TOTPSetupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "otpauthURI": {
+            "description": "Local authenticator provisioning URI; never send it to an external QR service.",
+            "type": "string"
+          },
+          "secret": {
+            "description": "Base32 provisioning secret, shown only during setup.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge",
+          "secret",
+          "otpauthURI",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "TOTPStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
       "TimeseriesBody": {
         "additionalProperties": false,
         "properties": {
@@ -7658,6 +8430,10 @@
           },
           "provider": {
             "description": "local, or the identity provider id.",
+            "type": "string"
+          },
+          "uid": {
+            "description": "Immutable account identity for local users and service accounts.",
             "type": "string"
           }
         },
@@ -8323,6 +9099,100 @@
         ],
         "type": "object"
       },
+      "VIPAnnouncerEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "livenessAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "renewedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "resourceVersion": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "uid",
+          "resourceVersion",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "VIPObservationSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "vips": {
+            "items": {
+              "$ref": "#/components/schemas/VIPOwnerObservation"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider",
+          "vips"
+        ],
+        "type": "object"
+      },
+      "VIPOwnerObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/VIPAnnouncerEvidence"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "known": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "serviceUID": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "known",
+          "checkedAt",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "VersionOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -8487,10 +9357,16 @@
           "resourceVersion": {
             "type": "string"
           },
+          "secondaryRuntime": {
+            "$ref": "#/components/schemas/SecondaryRuntime"
+          },
           "serial": {
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "stubRuntime": {
+            "$ref": "#/components/schemas/StubRuntime"
           },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
@@ -8617,10 +9493,16 @@
           "resourceVersion": {
             "type": "string"
           },
+          "secondaryRuntime": {
+            "$ref": "#/components/schemas/SecondaryRuntime"
+          },
           "serial": {
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "stubRuntime": {
+            "$ref": "#/components/schemas/StubRuntime"
           },
           "type": {
             "type": "string"
@@ -8858,7 +9740,7 @@
         }
       },
       "post": {
-        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
+        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
         "operationId": "createAllowlistEntries",
         "requestBody": {
           "content": {
@@ -9319,6 +10201,131 @@
           "resource": "blocklists",
           "scope": "cluster",
           "verb": "write"
+        }
+      }
+    },
+    "/allowlist/{id}/impact": {
+      "get": {
+        "description": "Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.",
+        "operationId": "explainAllowRegex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainRegexImpact"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Test a regex entry against one domain and opposing lists",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },
@@ -10220,6 +11227,98 @@
         "x-kudurru-permission": "authenticated"
       }
     },
+    "/auth/logout/browser": {
+      "post": {
+        "operationId": "browserLogout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserLogoutBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Revoke the session and optionally continue provider logout",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
     "/auth/me": {
       "get": {
         "operationId": "me",
@@ -10361,6 +11460,136 @@
           }
         },
         "summary": "OIDC redirect target (302 to the app)",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "public"
+      }
+    },
+    "/auth/oidc/{idp}/logout": {
+      "get": {
+        "operationId": "oidcLogout",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Continue a committed browser logout (302 to the IdP)",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "public"
+      }
+    },
+    "/auth/oidc/{idp}/logout/callback": {
+      "get": {
+        "operationId": "oidcLogoutCallback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Validate the logout return state (302 to the app)",
         "tags": [
           "auth"
         ],
@@ -10546,6 +11775,193 @@
           }
         },
         "summary": "Change the local user's own password (a cookie session gets a new cookie)",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthListSessionRecordInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List own enrolled sessions",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/sessions/{id}": {
+      "delete": {
+        "operationId": "revokeSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Revoke an enrolled session of the current account",
         "tags": [
           "auth"
         ],
@@ -11005,6 +12421,443 @@
           }
         },
         "summary": "Get one API token (someone else's needs tokens.read)",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/totp": {
+      "get": {
+        "operationId": "totpStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TOTPStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Own local authenticator status",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/totp/confirm": {
+      "post": {
+        "description": "Brute-force limited per client address and user: 429 with Retry-After.",
+        "operationId": "confirmTOTP",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Activate the authenticator and revoke existing sessions",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/totp/disable": {
+      "post": {
+        "description": "Brute-force limited per client address and user: 429 with Retry-After.",
+        "operationId": "disableTOTP",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPProofRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Disable own authenticator and revoke existing sessions",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
+    "/auth/totp/setup": {
+      "post": {
+        "description": "Brute-force limited per client address and user: 429 with Retry-After.",
+        "operationId": "beginTOTP",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPProofRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TOTPSetupResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Prepare an authenticator (provisioning secret returned once)",
         "tags": [
           "auth"
         ],
@@ -12548,6 +14401,75 @@
         }
       }
     },
+    "/branding": {
+      "get": {
+        "operationId": "getBranding",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingInfo"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Public Enterprise branding, or the built-in presentation",
+        "tags": [
+          "meta"
+        ],
+        "x-kudurru-permission": "public"
+      }
+    },
     "/cache/flush": {
       "post": {
         "operationId": "flushCache",
@@ -12672,6 +14594,167 @@
           "resource": "cache",
           "scope": "cluster",
           "verb": "flush"
+        }
+      }
+    },
+    "/cache/inspect": {
+      "get": {
+        "operationId": "inspectCache",
+        "parameters": [
+          {
+            "description": "Exact DNS name; no wildcard or cache enumeration.",
+            "explode": false,
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Exact DNS name; no wildcard or cache enumeration.",
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "DNS type mnemonic.",
+            "explode": false,
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "default": "A",
+              "description": "DNS type mnemonic.",
+              "maxLength": 16,
+              "type": "string"
+            }
+          },
+          {
+            "description": "DNSSEC OK bit of the raw cache key.",
+            "explode": false,
+            "in": "query",
+            "name": "do",
+            "schema": {
+              "description": "DNSSEC OK bit of the raw cache key.",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Checking Disabled bit of the raw cache key.",
+            "explode": false,
+            "in": "query",
+            "name": "cd",
+            "schema": {
+              "description": "Checking Disabled bit of the raw cache key.",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Address used only to derive ECS; default 127.0.0.1.",
+            "explode": false,
+            "in": "query",
+            "name": "client",
+            "schema": {
+              "description": "Address used only to derive ECS; default 127.0.0.1.",
+              "maxLength": 45,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CacheInspection"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Inspect one raw default-route cache entry without resolving",
+        "tags": [
+          "runtime"
+        ],
+        "x-kudurru-permission": {
+          "resource": "cache",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },
@@ -14101,12 +16184,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           }
@@ -14479,7 +16562,7 @@
         }
       },
       "post": {
-        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
+        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
         "operationId": "createDenylistEntries",
         "requestBody": {
           "content": {
@@ -14940,6 +17023,131 @@
           "resource": "blocklists",
           "scope": "cluster",
           "verb": "write"
+        }
+      }
+    },
+    "/denylist/{id}/impact": {
+      "get": {
+        "description": "Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.",
+        "operationId": "explainDenyRegex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainRegexImpact"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Test a regex entry against one domain and opposing lists",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },
@@ -16241,6 +18449,120 @@
         }
       }
     },
+    "/edge/vip/stream": {
+      "get": {
+        "description": "Bounded local notifications: event vip.master_changed contains VIP, node, VRID, previous/state, original transition time and source session/sequence. Source diagnostics use vip.observation_status without a fabricated transition. No historical replay; cursors are refused. Observer startup baselines existing history; source restart/gaps close streams. Each emission rechecks original request credentials and edge.read permission; no writer authority is granted.",
+        "operationId": "vipEventStream",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Live local notification stream"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Local observed VIP transitions (Server-Sent Events)",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "edge",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/iam/identityproviders": {
       "get": {
         "operationId": "listIdentityProviders",
@@ -16316,7 +18638,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List identityproviders (read-only; the write API is v0.2)",
+        "summary": "List identityproviders",
         "tags": [
           "iam"
         ],
@@ -16402,7 +18724,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List rolebindings (read-only; the write API is v0.2)",
+        "summary": "List rolebindings",
         "tags": [
           "iam"
         ],
@@ -16488,7 +18810,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List serviceaccounts (read-only; the write API is v0.2)",
+        "summary": "List serviceaccounts",
         "tags": [
           "iam"
         ],
@@ -16574,7 +18896,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List users (read-only; the write API is v0.2)",
+        "summary": "List users",
         "tags": [
           "iam"
         ],
@@ -16582,6 +18904,360 @@
           "resource": "users",
           "scope": "cluster",
           "verb": "read"
+        }
+      },
+      "post": {
+        "description": "Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued.",
+        "operationId": "createLocalUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLocalUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IAMUser"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create an API-managed local user requiring a password change",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/users/{name}/password": {
+      "post": {
+        "description": "Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session.",
+        "operationId": "resetLocalUserPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetLocalUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Reset an exact API-managed local account's password",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/users/{name}/totp/recover": {
+      "post": {
+        "operationId": "recoverTOTP",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPRecoverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Disable a lost authenticator for an exact account UID",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
         }
       }
     },
@@ -22104,6 +24780,265 @@
         }
       }
     },
+    "/queries/export": {
+      "get": {
+        "description": "Uses the same filters, scope, privacy and cursor as GET /queries. Defaults to 1000 rows. The JSON retains source, node errors, partial results and cursor_next; it is not an unbounded or cross-page snapshot export. Output is capped at 16 MiB and the read at 15 seconds. No attachment is sent on error or cancellation.",
+        "operationId": "exportQueries",
+        "parameters": [
+          {
+            "description": "IP, CIDR or client name (* wildcards).",
+            "explode": false,
+            "in": "query",
+            "name": "client",
+            "schema": {
+              "description": "IP, CIDR or client name (* wildcards).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact name or * wildcard.",
+            "explode": false,
+            "in": "query",
+            "name": "domain",
+            "schema": {
+              "description": "Exact name or * wildcard.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated statuses (blocked_list,forwarded).",
+            "explode": false,
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "description": "Comma-separated statuses (blocked_list,forwarded).",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "status_class",
+            "schema": {
+              "enum": [
+                "permitted",
+                "cached",
+                "blocked",
+                "error",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "qtype",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "upstream",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "list",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "zone",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deciding policy, namespace/name.",
+            "explode": false,
+            "in": "query",
+            "name": "policy",
+            "schema": {
+              "description": "Deciding policy, namespace/name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339, inclusive.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "RFC 3339, inclusive.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339, exclusive.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "RFC 3339, exclusive.",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "contentEncoding": "base64",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Download one filtered query-log page as JSON (up to 1000 rows)",
+        "tags": [
+          "querylog"
+        ],
+        "x-kudurru-permission": {
+          "resource": "querylog",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/queries/stream": {
       "get": {
         "description": "text/event-stream of query rows: `id:` is the query id, `event: query`, `data:` one JSON row shaped like GET /queries items. Reconnects send Last-Event-ID and receive the rows after it from the in-memory ring first. A comment line is sent every 15 s.",
@@ -22369,6 +25304,22 @@
           {
             "explode": false,
             "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
             "name": "field",
             "required": true,
             "schema": {
@@ -22500,6 +25451,16 @@
       "post": {
         "operationId": "queryAction",
         "parameters": [
+          {
+            "description": "Exact historical node for a central row ID; valid only with node scope.",
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "description": "Exact historical node for a central row ID; valid only with node scope.",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "id",
@@ -22767,9 +25728,312 @@
         }
       }
     },
+    "/querylog/rollup-evidence": {
+      "get": {
+        "operationId": "rollupEvidence",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Start of a closed UTC hour, Unix seconds.",
+            "explode": false,
+            "in": "query",
+            "name": "hour",
+            "required": true,
+            "schema": {
+              "description": "Start of a closed UTC hour, Unix seconds.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollupEvidence"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Capture bounded retained-input recovery evidence",
+        "tags": [
+          "querylog"
+        ],
+        "x-kudurru-permission": {
+          "resource": "querylog",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/querylog/rollup-evidence/verify": {
+      "post": {
+        "operationId": "verifyRollupEvidence",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollupEvidence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollupVerifyBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Verify recovery evidence without changing history",
+        "tags": [
+          "querylog"
+        ],
+        "x-kudurru-permission": {
+          "resource": "querylog",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/querylog/status": {
       "get": {
         "operationId": "querylogStatus",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -22820,6 +26084,16 @@
               }
             },
             "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
           },
           "500": {
             "content": {
@@ -22941,6 +26215,16 @@
       "patch": {
         "operationId": "patchSettings",
         "parameters": [
+          {
+            "description": "Cluster settings only. Node settings use PATCH /node/config and require a supported durable node writer.",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "Cluster settings only. Node settings use PATCH /node/config and require a supported durable node writer.",
+              "type": "string"
+            }
+          },
           {
             "description": "Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams.",
             "in": "header",
@@ -23461,12 +26745,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           },
@@ -23758,12 +27042,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           }
@@ -23911,12 +27195,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           },
@@ -24074,12 +27358,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           },
@@ -24262,12 +27546,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           }

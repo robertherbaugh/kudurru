@@ -101,11 +101,38 @@ identical, file-managed configuration that you distribute (Git, Ansible,
 rsync). keepalived decides who holds the VIP; every dnsdist sends to every
 kudurru with PROXYv2 plus the shared TLV secret.
 
+### Host supervisor configuration
+
+The explicit `edge render|run` and `vip render|run` commands accept typed
+`edge.*` and `vip.*` sections from the selected node configuration. Every key
+is node-scoped, host-only and restart-required; neither settings API can write
+or reset one. These sections do not start a supervisor from `serve`. Secrets
+remain file references, and `--out` remains an invocation-only output location.
+
+Precedence is schema defaults, then node file, then environment, then flags
+explicitly supplied on that invocation. Explicit false, zero, empty strings and
+empty/replacement collections retain their meaning. Only an explicitly overridden
+supervisor key skips parsing its lower environment value or `_FILE` input;
+unrelated invalid environment still fails. `--readiness-address` aliases
+`edge.healthAddress`, and `--node-name` aliases `vip.routerID`. YAML/Lua renderer
+aliases and protocol casing retain their existing behavior.
+
+`vip.vips` is a list of `{name, address, interface, vrid}` records, and
+`vip.preemptDelay` maps VIP names to integer seconds. Only those two new keys
+accept structured JSON environment values. VRIDs remain operator-assigned and
+cannot change through a remote write. A configured `priorityIndex: 0` retains
+its source provenance during Kubernetes node discovery; only an omitted
+priority derives from the node's discovered position. All existing credential,
+frontend-address, source and renderer refusals still apply to the effective
+configuration. The [generated reference](../../docs-site/content/reference/configuration.md)
+lists the exact keys and constraints.
+
 ### The edge supervisor (`kudurru edge run`)
 
 ```mermaid
 flowchart TD
-    START(["container start"]) --> MEM["backends: --backends list,<br/>or an EndpointSlice (ready endpoints)"]
+    START(["explicit edge run"]) --> HOST["defaults → node file → environment<br/>→ explicitly supplied flags"]
+    HOST --> MEM["backends: configured list,<br/>or an EndpointSlice (ready endpoints)"]
     MEM --> CRED["new console key, API key,<br/>dashboard password (per start)"]
     CRED --> REN["render dnsdist.yml:<br/>pool resolver (chashed, packet cache)<br/>pool authoritative (leastOutstanding, no cache)<br/>add TLV 0xE0, refuse XFR/NOTIFY/UPDATE<br/>health check TXT health.kudurru.internal."]
     REN --> CHK{"dnsdist --check-config"}
@@ -113,11 +140,16 @@ flowchart TD
     CHK -- "ok" --> SWAP["swap files atomically,<br/>write the API key to /run/kudurru"]
     SWAP --> EXEC["start dnsdist --supervised"]
     EXEC --> LOOP{"event<br/>(debounced 5 s)"}
-    LOOP -- "backends, zones or<br/>certificates changed" --> REN2["re-render"]
-    REN2 --> DIFF{"bytes changed?"}
-    DIFF -- "no" --> LOOP
-    DIFF -- "yes" --> RST["readiness 503 for 1 s,<br/>stop dnsdist, start it again"]
+    LOOP -- "certificate changed" --> TLS["validate private immutable pair<br/>reload and verify every fresh TLS leaf"]
+    TLS --> LOOP
+    LOOP -- "backends or zones changed" --> REN2["render and validate target"]
+    REN2 --> DIFF{"supported runtime diff?"}
+    DIFF -- "removal or anonymous addition" --> APPLY["qualify private-pool automatic health<br/>persist target, promote, drain and remove"]
+    APPLY --> LOOP
+    DIFF -- "new named validator or other change" --> RST["validated staged restart<br/>retain original identity checks"]
     RST --> LOOP
+    APPLY -- "uncertain acknowledgment" --> RECOVER["readiness false until validated<br/>restart target and fresh status converge"]
+    RECOVER --> LOOP
     LOOP -- "dnsdist exited" --> BO["restart with backoff<br/>0.5 s .. 30 s"]
     BO --> LOOP
 ```
@@ -129,9 +161,29 @@ changes (when that pool is cached). The poll needs the internal credentials
 (`KUDURRU_ENCRYPTION_KEY[_FILE]` or `--internal-token-file`); the shipped
 chart, Kustomize and Compose files mount the backend's encryption key into
 the edge for this.
-Membership changes restart dnsdist in
-v0.1: invisible behind a VIP or a LoadBalancer with two edge replicas, a
-sub-second gap for a lone edge.
+Runtime removal and qualified backend addition use bounded acknowledged console
+commands. New entries stay in private pools until original automatic health
+checks succeed; removal first marks the old backend down, then waits the purge
+delay before removal. Named backends qualify the first-party v1 targeted-health
+contract with exact-owner and random wrong-owner probes using original PROXYv2
+authentication. Ongoing probes address a name derived from the exact node ID;
+the captured ingress owner refuses wrong identities and preserves lameduck
+failure. Qualified named additions retain the running PID. Legacy generic-only
+backends, same-UUID replacements and structural routing changes retain a
+validated restart path; dnsdist 2.1.3 cannot install the original response
+validator at runtime. Readiness stays false after uncertain runtime
+changes until a validated restart and fresh status converge. Established DNS
+connections may return SERVFAIL after their selected backend is removed; the
+supervisor does not replay queries or promise connection migration.
+
+Certificate rotation uses bounded, valid matching pairs in private immutable
+snapshots and an atomic active selection. `reloadAllCertificates()` must receive
+an acknowledgment and fresh DoT/DoH/DoQ/DoH3 handshakes must present the exact
+candidate leaf before acceptance. Half rotations and invalid material retain the
+accepted snapshot, including after child restart. The external console client
+reads credentials from private configuration; keys never appear in command
+arguments or returned diagnostics. The actual pinned dnsdist acceptance also
+qualifies held DoT through successful rotation and uncertain-mutation recovery.
 
 ### The VIP (`kudurru vip run`)
 
@@ -146,6 +198,15 @@ VIP names, addresses and VRIDs must be unique. Keepalived tracks both the
 VRRP interface and each VIP's address interface; loss of either link faults
 the instance and withdraws its address. Gratuitous ARP uses the address
 interface ([Helm guide](../deploy/helm.md)).
+
+The Helm chart selects either the original shared HMAC Secret or an exact
+VRID-to-Secret-key mapping (`vip.keepalived.hmacKeySecrets`). Only selected
+keys enter a bounded root init copy into private memory files, mode 0600, so
+the edge's fsGroup cannot make keepalived's runtime keys group-readable.
+The source projection is init-only; the private mount is keepalived-only.
+The existing `{vrid}` CLI substitution binds each instance to its selected
+file, with no shared-key fallback. Key changes require coordinated restart;
+see [key placement and rotation](../deploy/vrrp-keys.md).
 
 The supervisor renders `keepalived.conf` (VRRPv3 unicast, `state BACKUP`,
 `nopreempt`, `auth_hmac`, priority `200 - 10 × index`), checks it, and runs
@@ -210,3 +271,91 @@ unused. The compose twins have no read-only mode, and a zone transfer from
 twins should name one node, because each twin stamps its own serials. The
 follower driver (v0.2) and raft (v1.0) replace twins with one writable
 primary.
+
+### Service-provider annotations
+
+For `vip.provider: kube-vip` or `metallb`, the chart requires the DNS Service
+(type `LoadBalancer`) and renders the selected provider's address request on
+each mixed or split DNS Service. MetalLB additionally receives the configured
+pool and, for split UDP/TCP Services, the release's shared-IP key. kube-vip does
+not acquire MetalLB sharing annotations implicitly. Existing explicitly supplied
+annotations remain; selected provider values override matching address/pool keys.
+For compatibility, split Services with `provider: none` retain their historical
+MetalLB sharing key for externally managed address allocation.
+
+The named chart annotation helper is checked against the Go ServiceProvider
+annotation contract across direct, sidecar, separate Deployment and DaemonSet
+edge topologies. These annotations request allocation; they do not prove which
+node currently announces an address. Owner observation remains a separate task.
+
+### Read-only Service VIP ownership
+
+`serve` can observe an explicitly selected Kubernetes VIP provider through
+host-only `vip.observation.*` settings. The default provider is `none`; selecting
+`kube-vip` or `metallb` does not launch a supervisor or change a Service/Lease:
+
+```yaml
+vip:
+  observation:
+    provider: metallb
+    services:
+      - name: dns
+        address: 192.0.2.53
+        namespace: dns
+        service: kudurru-dns
+    announcerNamespace: metallb-system
+    interval: 5s
+    timeout: 2s
+    maxAge: 15s
+```
+
+The Service list is file-only structured configuration. API writes/resets are
+refused. Scalar environment values retain normal host precedence. Observation
+uses the installed Kubernetes credentials and transport, including impersonation;
+operators must grant the exact source reads. Both providers need `get` Services
+and Nodes. kube-vip needs `get` its namespace-local `kubevip-<service>` Lease.
+MetalLB needs `list/get` ServiceL2Status and `get` speaker Pods in the announcer
+namespace, plus `get` speaker Node Leases in `kube-node-lease`.
+
+`GET /api/v1/edge` includes optional `observation` under existing `edge.read`.
+An allocated address is only a prerequisite. kube-vip per-Service ARP ownership
+requires an unexpired Lease matching the Service's `vipHost` and a Ready Node.
+MetalLB L2 evidence requires matching status, a live Ready speaker Pod with the
+original UID, and a Ready Node whose fresh Lease has that exact Node UID as
+owner. Replacement/deletion, ambiguity, unreadable sources and expiry clear the
+owner. BGP and global kube-vip election do not establish a single current owner.
+
+Each acquisition is bounded to 32 bindings, 64 MetalLB status objects, 2 MiB per
+response and a total timeout of 100 ms–5 s. Original Lease and local acquisition
+deadlines bound observation age. MetalLB status has no provider heartbeat:
+`createdAt`, UID and resource version retain its original age; `livenessAt`
+is separately the Node Lease renewal. This reports provider state and does not
+certify physical ARP/BGP ownership or create writer authority.
+
+### Local keepalived notifications
+
+Set host-only `vip.observation.provider: keepalived` and
+`vip.observation.runDir` to the existing Consumer's run directory. Explicit
+`node.name` and up to 32 `vip.vips` mappings bind observed names to operator VRIDs.
+The Consumer writes its state atomically with mode 0600; the serving UID must
+already be able to read it. Observation does not broaden permissions, open a
+second FIFO reader, launch a supervisor or expose track-file writers.
+
+The additive state format retains a random source session and the latest 64
+sequenced transitions. Its `updated` timestamp remains the last transition,
+not a heartbeat. Startup baselines the current head without replay. Original
+transition age bounds audit and delivery, even across queue delays. Legacy files
+remain readable by existing consumers but cannot provide sequenced notifications.
+Source restart, regression, gaps, malformed/foreign files and failed acquisition
+close active streams; new streams return 503 until valid acquisition recovers.
+This availability means journal acquisition, never DNS or physical VIP readiness.
+
+`GET /api/v1/edge/vip/stream` requires `edge.read` and emits
+`vip.master_changed` with node, VIP, VRID, previous/state, original time and
+session/sequence. Source diagnostics use `vip.observation_status`. The stream
+has no replay or cursor support; limits are 16 subscriptions and 32 queued events
+per subscription, with bounded writes and cancellation. Every emission rechecks
+the original request credential, authorizer and time evidence. Slow consumers
+are disconnected. The existing audit recorder receives the same typed evidence;
+audit refusal/timeout closes streams without retrying the transition. Neither
+notifications nor provider observations grant allocation or writer authority.

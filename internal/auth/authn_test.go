@@ -107,10 +107,12 @@ func TestMiddlewareChain(t *testing.T) {
 }
 
 func TestWriteErrorRetryAfter(t *testing.T) {
-	rec := httptest.NewRecorder()
-	WriteError(rec, nil, &Error{Status: http.StatusTooManyRequests, Key: "rate_limited", Message: "slow down", RetryAfter: 1500 * time.Millisecond})
-	if rec.Code != 429 || rec.Header().Get("Retry-After") != "2" {
-		t.Fatalf("429: %d Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		rec := httptest.NewRecorder()
+		WriteError(rec, nil, &Error{Status: status, Key: "retry", Message: "try again later", RetryAfter: 1500 * time.Millisecond})
+		if rec.Code != status || rec.Header().Get("Retry-After") != "2" {
+			t.Fatalf("%d: %d Retry-After %q", status, rec.Code, rec.Header().Get("Retry-After"))
+		}
 	}
 }
 

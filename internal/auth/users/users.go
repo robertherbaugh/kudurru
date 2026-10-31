@@ -162,7 +162,8 @@ func PrincipalID(name string) string { return PrincipalIDPrefix + name }
 func Principal(usr *internalv1.LocalUser) auth.Principal {
 	return auth.Principal{
 		Kind: auth.KindUser, ID: PrincipalID(usr.Name), Name: usr.Name, Provider: Provider,
-		Groups: slices.Clone(usr.Spec.Groups), BuiltinAdmin: usr.Spec.BuiltinAdmin,
+		AccountUID: string(usr.UID),
+		Groups:     slices.Clone(usr.Spec.Groups), BuiltinAdmin: usr.Spec.BuiltinAdmin,
 		MustChangePassword: usr.Spec.MustChangePassword,
 	}
 }
@@ -202,6 +203,9 @@ func (u *Users) LoadPrincipal(_ context.Context, p auth.Principal) (auth.Princip
 	}
 	if usr.Spec.Disabled {
 		return auth.Principal{}, auth.Unauthenticated(ErrDisabled)
+	}
+	if p.AccountUID != string(usr.UID) || p.AccountUID == "" {
+		return auth.Principal{}, auth.Unauthenticated(errors.New("credential account identity does not match"))
 	}
 	// A credential issued before this account existed belongs to a deleted
 	// account of the same name (one-second resolution: session iat and

@@ -90,6 +90,9 @@ type ListOpener interface {
 
 // ServerOptions configures a Server.
 type ServerOptions struct {
+	// Event queues an authenticated peer hint without rebroadcasting it.
+	// False reports an inapplicable generation or a full queue.
+	Event func(Event) bool
 	// Querylog serves local-only query-log and stats reads behind the peer guard.
 	Querylog func(context.Context, QuerylogRequest) (*QuerylogResponse, error)
 	// QueryTail returns the privacy-transformed live tail.
@@ -100,6 +103,8 @@ type ServerOptions struct {
 	Credentials *Credentials
 	// Status fills GET /internal/status; nil serves an empty status.
 	Status func(ctx context.Context) Status
+	// Health fills GET /internal/health with local operational readiness; nil answers 404.
+	Health func(context.Context) (Health, error)
 	// Lists serves GET /internal/lists/{digest}; nil answers 404.
 	Lists ListOpener
 	// Zones fills GET /internal/zones (the primary and secondary zones
@@ -185,6 +190,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		}
 	}
 	mux := http.NewServeMux()
+	if opts.Event != nil {
+		mux.HandleFunc("POST "+PathEvents, s.handleEvent)
+	}
 	if opts.Querylog != nil {
 		mux.HandleFunc("GET "+PathQuerylog, s.handleQuerylog)
 	}
@@ -192,6 +200,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		mux.HandleFunc("GET "+PathQuerylogStream, s.handleQuerylogStream)
 	}
 	mux.HandleFunc("GET "+PathStatus, s.handleStatus)
+	if opts.Health != nil {
+		mux.HandleFunc("GET "+PathHealth, s.handleHealth)
+	}
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
 	if opts.Zones != nil {
 		mux.HandleFunc("GET "+PathZones, s.handleZones)
@@ -257,8 +268,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}
 }
 
-// guard applies, in order: the per-address rate limit, the no-body rule
-// and the bearer token.
+// guard applies the per-address rate limit, route-specific body rule and
+// bearer token. Only the bounded peer-event POST accepts a request body.
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := routeOf(r.URL.Path)
@@ -269,7 +280,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(rw, "rate limited", http.StatusTooManyRequests)
 			return
 		}
-		if r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
+		bodyAllowed := s.opts.Event != nil && r.Method == http.MethodPost && r.URL.Path == PathEvents
+		if !bodyAllowed && (r.ContentLength != 0 || len(r.TransferEncoding) > 0) {
 			http.Error(rw, "request bodies are not accepted", http.StatusBadRequest)
 			return
 		}
@@ -285,10 +297,14 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 func routeOf(p string) string {
 	switch {
+	case p == PathEvents:
+		return "events"
 	case p == PathQuerylog, p == PathQuerylogStream:
 		return "querylog"
 	case p == PathStatus:
 		return "status"
+	case p == PathHealth:
+		return "health"
 	case p == PathZones:
 		return "zones"
 	case p == PathCatalogue, p == PathCatalogueAdGuard:

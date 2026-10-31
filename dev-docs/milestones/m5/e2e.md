@@ -289,7 +289,29 @@ did 1.4k execs). `hack/fuzz.sh` passes `-fuzzminimizetime 5s`
 mock OP) now runs in the `e2e` CI job. The separate `auth-e2e` job is gone,
 so it does not run twice. Locally, with the cached dex build, `TestDexEndToEnd` (17 subtests) and `TestMockOPEndToEnd` passed in 12 s.
 
-## Not done here
+## 6. AdGuard Home grammar conformance
+
+`make test-adguard` downloads the official AdGuard Home v0.107.79 executable
+for Linux amd64 or arm64, verifies its pinned SHA-256, and runs
+`TestAdGuardBlackBox` under the Go race detector. It runs in the `e2e` CI job.
+The executable and temporary configuration are removed afterward; neither its
+copyleft implementation nor its rule data is vendored or included in artifacts.
+The corpus is first-party data written from the public grammar. It checks
+modifiers, exception precedence, rewrites and returned-answer inspection over
+loopback DNS with a local stub upstream, without public resolver dependencies.
+
+The test records two known v0.107.79 differences: bare `NOERROR` precedence
+against address rewrites and combined client/type selectors on returned CNAMEs.
+These explicit assertions remain reviewable; a version update must review them
+and update the two archive hashes in `hack/test-adguard.sh`. This gate does not
+claim complete list-corpus compatibility or performance qualification.
+
+Other hosts can run the existing test directly with
+`KUDURRU_ADGUARD_BINARY=/absolute/path/to/AdGuardHome go test -race -count=1 -v -run '^TestAdGuardBlackBox$' ./internal/blocking`.
+An unset binary skips the ordinary unit-suite comparator; the Make target always
+downloads the pinned executable and fails on download, checksum or test errors.
+
+## Remaining external acceptance
 
 All recorded in followups:
 
@@ -297,7 +319,6 @@ All recorded in followups:
 - the apiserver-outage test (kill the control plane, restart a pod, answer
   from local.db);
 - the 2-VM keepalived failover;
-- the AdGuard Home black-box corpus;
 - the Knot catalog consumer.
 
 They need Docker, kind or VMs. The `kudurrutest` harness is ready for a

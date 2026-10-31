@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 )
@@ -27,6 +28,49 @@ func index() *policy.Index {
 				Schedule: &v1alpha1.Schedule{Weekdays: []string{"mon"}, Start: "08:00", End: "12:00"}}},
 		},
 	}, policy.Options{})
+}
+
+func TestInventoryIdentityUsesOneLiveSnapshot(t *testing.T) {
+	now := time.Now()
+	inv := inventory.New(func() time.Time { return now })
+	ip := netip.MustParseAddr("192.0.2.9")
+	client := inventory.Client{ID: "phone", IPs: []netip.Addr{ip}, MACs: []string{"02:00:00:00:00:09"}, Hostname: "phone.lan", Tags: []string{"child"}, ObservedAt: now, ExpiresAt: now.Add(time.Minute)}
+	if err := inv.Replace("test", 1, []inventory.Client{client}); err != nil {
+		t.Fatal(err)
+	}
+	group := func(name string, matcher v1alpha1.ClientMatcher) *v1alpha1.ClientGroup {
+		return &v1alpha1.ClientGroup{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{matcher}}}
+	}
+	ix := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{
+		group("default", v1alpha1.ClientMatcher{CIDR: "0.0.0.0/0"}),
+		group("device", v1alpha1.ClientMatcher{MAC: client.MACs[0]}),
+		group("hostname", v1alpha1.ClientMatcher{Hostname: client.Hostname}),
+		group("remote", v1alpha1.ClientMatcher{ClientID: "phone"}),
+	}}, policy.Options{Inventory: true})
+	st := New(policy.Static{Idx: ix}, func() time.Time { return now })
+	st.Inventory = inv
+	next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+	req := &pipeline.Request{Client: pipeline.Client{Addr: netip.AddrPortFrom(ip, 53), ClientID: "phone"}}
+	if _, err := st.Serve(req, next); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(req.Client.GroupIDs, []string{"device"}) || !slices.Equal(req.Client.Tags, []string{"child"}) {
+		t.Fatalf("identity not applied: %+v", req.Client)
+	}
+	now = now.Add(time.Minute)
+	if _, err := st.Serve(req, next); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(req.Client.GroupIDs, []string{"device"}) {
+		t.Fatal("captured request identity changed during dependency resolution")
+	}
+	fresh := &pipeline.Request{Client: pipeline.Client{Addr: req.Client.Addr, ClientID: "phone"}}
+	if _, err := st.Serve(fresh, next); err != nil {
+		t.Fatal(err)
+	}
+	if len(fresh.Client.MACs) != 0 || !slices.Equal(fresh.Client.GroupIDs, []string{"remote"}) {
+		t.Fatalf("stale inventory masked ClientID: %+v", fresh.Client)
+	}
 }
 
 func TestServe(t *testing.T) {
@@ -88,3 +132,100 @@ func BenchmarkServe(b *testing.B) {
 		_, _ = st.Serve(req, next)
 	}
 }
+
+type leaseNames struct {
+	names []string
+	calls int
+}
+
+func (h *leaseNames) Hostnames(netip.Addr) []string { h.calls++; return h.names }
+
+func TestDHCPNamesAlongsideCapturedInventory(t *testing.T) {
+	ix := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{{ObjectMeta: metav1.ObjectMeta{Name: "lease-client"}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{Hostname: "dhcp.lan"}}}}}}, policy.Options{Inventory: true})
+	st := New(policy.Static{Idx: ix}, nil)
+	hosts := &leaseNames{names: []string{"dhcp.lan"}}
+	st.Hostnames = hosts
+	st.CaptureInventory = func(*pipeline.Request) (*inventory.Snapshot, error) { return nil, nil }
+	req := &pipeline.Request{Client: pipeline.Client{Addr: netip.MustParseAddrPort("192.0.2.9:53")}}
+	next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+	if _, err := st.Serve(req, next); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(req.Client.GroupIDs, []string{"lease-client"}) {
+		t.Fatalf("DHCP identity lost: %+v", req.Client)
+	}
+	hosts.names[0] = "replacement.lan"
+	if _, err := st.Serve(req, next); err != nil {
+		t.Fatal(err)
+	}
+	if hosts.calls != 1 || !slices.Equal(req.Client.GroupIDs, []string{"lease-client"}) {
+		t.Fatal("dependency changed captured DHCP identity")
+	}
+	fresh := &pipeline.Request{Client: pipeline.Client{Addr: req.Client.Addr}}
+	if _, err := st.Serve(fresh, next); err != nil {
+		t.Fatal(err)
+	}
+	if len(fresh.Client.GroupIDs) != 0 || hosts.calls != 2 {
+		t.Fatal("fresh request retained former DHCP name")
+	}
+}
+
+// PTR observations are a last fallback and are sampled once for the original
+// request. Alias/dependency work cannot pick a newer name or policy membership.
+func TestFallbackHostnamePrecedenceAndCapture(t *testing.T) {
+	group := func(name string, m v1alpha1.ClientMatcher) *v1alpha1.ClientGroup {
+		return &v1alpha1.ClientGroup{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{m}}}
+	}
+	ix := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{
+		group("ptr", v1alpha1.ClientMatcher{NameGlob: "*.ptr.lan"}),
+		group("dhcp", v1alpha1.ClientMatcher{Hostname: "phone.dhcp.lan"}),
+		group("inventory", v1alpha1.ClientMatcher{Hostname: "phone.inventory.lan"}),
+		group("exact-ip", v1alpha1.ClientMatcher{IP: "192.0.2.9"}),
+	}}, policy.Options{Inventory: true})
+	now := time.Now()
+	for _, source := range []string{"ptr", "dhcp", "inventory", "exact-ip"} {
+		t.Run(source, func(t *testing.T) {
+			st := New(policy.Static{Idx: ix}, nil)
+			calls := 0
+			name := "phone.ptr.lan"
+			st.FallbackHostnames = fallbackNames(func(netip.Addr) []string { calls++; return []string{name} })
+			addr := netip.MustParseAddr("192.0.2.3")
+			if source == "dhcp" {
+				st.Hostnames = fallbackNames(func(netip.Addr) []string { return []string{"phone.dhcp.lan"} })
+			}
+			if source == "inventory" {
+				inv := inventory.New(nil)
+				if err := inv.Replace("test", 1, []inventory.Client{{ID: "phone", IPs: []netip.Addr{addr}, Hostname: "phone.inventory.lan", ObservedAt: now, ExpiresAt: now.Add(time.Minute)}}); err != nil {
+					t.Fatal(err)
+				}
+				st.Inventory = inv
+			}
+			if source == "exact-ip" {
+				addr = netip.MustParseAddr("192.0.2.9")
+			}
+			req := &pipeline.Request{Client: pipeline.Client{Addr: netip.AddrPortFrom(addr, 53)}}
+			next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+			if _, err := st.Serve(req, next); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(req.Client.GroupIDs, []string{source}) {
+				t.Fatal("wrong identity precedence", req.Client.GroupIDs)
+			}
+			before := calls
+			name = "replacement.ptr.lan"
+			if _, err := st.Serve(req, next); err != nil {
+				t.Fatal(err)
+			}
+			if calls != before || !slices.Equal(req.Client.GroupIDs, []string{source}) {
+				t.Fatal("dependent identity recaptured")
+			}
+			if (source == "dhcp" || source == "inventory") && calls != 0 {
+				t.Fatal("PTR acquired despite authoritative local name")
+			}
+		})
+	}
+}
+
+type fallbackNames func(netip.Addr) []string
+
+func (f fallbackNames) Hostnames(addr netip.Addr) []string { return f(addr) }

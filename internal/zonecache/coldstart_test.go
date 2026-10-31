@@ -242,7 +242,7 @@ func TestUnsyncedWithoutSnapshot(t *testing.T) {
 				return len(msgs) == 2
 			})
 			ok, msgs := c.Ready()
-			if ok || !strings.Contains(msgs[0], "waiting for the initial sync of BlockList, ClientGroup, DNSRecordSet, DNSZone, Policy") || msgs[1] != tc.why {
+			if ok || !strings.Contains(msgs[0], "waiting for the initial sync of BlockList, ClientGroup, DNSRecordSet, DNSZone, Integration, Kudurru, Policy") || msgs[1] != tc.why {
 				t.Fatalf("Ready() = %v %q", ok, msgs)
 			}
 			snap := c.Snapshot()

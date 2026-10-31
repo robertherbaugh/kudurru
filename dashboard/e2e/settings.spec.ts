@@ -42,14 +42,26 @@ test('an enum key is a Selector that saves and shows the new value', async ({ pa
   await choose(select, labels[next] ?? next);
   // The chosen option's help (server metadata) shows under the control and describes it.
   await expect(select).toHaveAccessibleDescription(/load/i);
+  const saved = page.waitForResponse((r) => r.request().method() === 'PATCH' && new URL(r.url()).pathname === '/api/v1/settings');
   await row.getByRole('button', { name: 'Save' }).click();
+  expect((await saved).status()).toBe(200);
+  // "changed" can already be visible for a nondefault starting value. Wait
+  // for this save and its publication before reloading; never repeat the PATCH.
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/v1/settings');
+    if (!response.ok()) return null;
+    const body = await response.json() as { settings: { blocking: { initStrategy: string } } };
+    return body.settings.blocking.initStrategy;
+  }).toBe(next);
   await expect(row.getByText('changed', { exact: true })).toBeVisible();
   await page.reload();
   await settle(page);
   await expect(selector(row, 'List loading at start')).toHaveAttribute('data-value', next);
   // Back to what the suite started with.
   await choose(selector(row, 'List loading at start'), labels[before] ?? before);
+  const restored = page.waitForResponse((r) => r.request().method() === 'PATCH' && new URL(r.url()).pathname === '/api/v1/settings');
   await row.getByRole('button', { name: 'Save' }).click();
+  expect((await restored).status()).toBe(200);
   await expect(selector(row, 'List loading at start')).toHaveAttribute('data-value', before);
   await expect(row.getByRole('button', { name: 'Save' })).toHaveCount(0);
 });

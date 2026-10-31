@@ -152,11 +152,13 @@ type fixture struct {
 }
 
 type fixtureOpts struct {
-	specs  []Spec
-	proxy  *proxyproto.Policy
-	limits Limits
-	stages []pipeline.Stage // replaces the default ingress/recorder/upstream chain
-	cert   *testcert.Pair
+	specs     []Spec
+	proxy     *proxyproto.Policy
+	limits    Limits
+	stages    []pipeline.Stage // replaces the default ingress/recorder/upstream chain
+	cert      *testcert.Pair
+	tsig      TSIGKeyring
+	beforeRun func(*Registry) // install test observers before serving starts
 }
 
 // startFixture runs a registry on 127.0.0.1 with ephemeral ports. TLS specs
@@ -185,6 +187,7 @@ func startFixture(t *testing.T, o fixtureOpts) *fixture {
 		Logger:  quietLogger,
 		Proxy:   o.proxy,
 		Limits:  o.limits,
+		TSIG:    o.tsig,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -202,6 +205,9 @@ func startFixture(t *testing.T, o fixtureOpts) *fixture {
 	}
 	if err := reg.Bind(); err != nil {
 		t.Fatal(err)
+	}
+	if o.beforeRun != nil {
+		o.beforeRun(reg)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

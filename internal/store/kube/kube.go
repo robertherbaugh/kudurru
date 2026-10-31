@@ -8,10 +8,12 @@
 //     apiserver through an uncached controller-runtime client. API callers
 //     need read-your-writes and keyset pagination (Continue tokens), and an
 //     informer cache offers neither.
-//   - Watch is served from a controller-runtime informer cache (one
+//   - Initial Watch is served from a controller-runtime informer cache (one
 //     informer per kudurru.io kind, managedFields stripped). This is the
 //     high-volume path: zonecache and the reconcilers consume it, and it
-//     keeps working from memory while the apiserver is away (§4.4).
+//     keeps working from memory while the apiserver is away (§4.4). Explicit
+//     resourceVersion resumes instead use a direct watch of retained server
+//     history, with no replacement list after expiration or stream failure.
 //
 // Info().LastContact reports the last successful apiserver round trip so
 // consumers can tell a quiet cluster from an outage.
@@ -78,6 +80,9 @@ const applyRetries = 5
 
 // Options configures the driver. The zero value is usable in a pod.
 type Options struct {
+	// ExpectedClusterID pins authenticated online requests to kube-system UID.
+	// Empty preserves online behavior but cannot authorize offline saved state.
+	ExpectedClusterID string
 	// Namespace holds the driver's Leases and the Secrets of internal
 	// kinds. Default: the pod's namespace (PodNamespace), else "default".
 	Namespace string
@@ -170,13 +175,14 @@ func podNamespace() string {
 
 // Store implements store.Store over the Kubernetes apiserver.
 type Store struct {
-	opts   Options
-	kinds  *registry
-	mapper meta.RESTMapper
-	c      client.Client // uncached: reads and writes go to the apiserver
-	cache  cache.Cache   // informers for Watch
-	leases coordinationv1client.LeasesGetter
-	log    *slog.Logger
+	opts        Options
+	kinds       *registry
+	mapper      meta.RESTMapper
+	c           client.Client    // uncached: reads and writes go to the apiserver
+	directWatch client.WithWatch // exact resourceVersion resumes, same guarded transport
+	cache       cache.Cache      // informers for Watch
+	leases      coordinationv1client.LeasesGetter
+	log         *slog.Logger
 
 	internal *internalKinds  // Options.InternalKinds, served as Secrets
 	coreREST rest.Interface  // core/v1 client for the internal-kind informer
@@ -187,7 +193,9 @@ type Store struct {
 	cacheDone      chan struct{}      // closed when cache.Start returns
 	informersReady chan struct{}      // closed when every kind has an informer
 
-	clusterID atomic.Pointer[string]
+	clusterID  atomic.Pointer[string]
+	identity   *clusterIdentity
+	restConfig *rest.Config
 
 	mu       sync.Mutex
 	closed   bool
@@ -203,19 +211,29 @@ var _ store.Store = (*Store)(nil)
 // times out so the caller can fall back to local.db (§4.4). cfg is copied;
 // an unset QPS becomes DefaultQPS/DefaultBurst.
 func New(cfg *rest.Config, opts Options) (*Store, error) {
+	return newStore(cfg, opts, true, nil)
+}
+
+func newStore(cfg *rest.Config, opts Options, background bool, mapper meta.RESTMapper) (*Store, error) {
 	if cfg == nil {
 		return nil, errors.New("store/kube: nil rest.Config")
 	}
 	if err := opts.setDefaults(); err != nil {
 		return nil, err
 	}
-	cfg = rest.CopyConfig(cfg)
+	cfg, identity, err := pinClusterIdentity(cfg, opts.ExpectedClusterID, opts.StartupTimeout)
+	if err != nil {
+		return nil, err
+	}
 	if cfg.QPS == 0 && cfg.RateLimiter == nil {
 		// client-go would default to 5 QPS / burst 10, which turns a
 		// Restore or bulk import of 1,000 objects into minutes. The
 		// apiserver's priority and fairness is the real limiter.
 		cfg.QPS, cfg.Burst = DefaultQPS, DefaultBurst
 	}
+	// Auxiliary clients share the identity pin, but must not advance the
+	// driver's contact clock and refresh object-snapshot confirmation age.
+	auxiliaryConfig := rest.CopyConfig(cfg)
 	ct := &contact{now: time.Now}
 	cfg.Wrap(ct.wrap)
 	kinds, err := newRegistry(opts.Scheme)
@@ -246,11 +264,13 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: discovery http client: %w", err)
 	}
-	mapper, err := apiutil.NewDynamicRESTMapper(discoveryCfg, discoveryHTTP)
-	if err != nil {
-		return nil, fmt.Errorf("store/kube: rest mapper: %w", err)
+	if mapper == nil {
+		mapper, err = apiutil.NewDynamicRESTMapper(discoveryCfg, discoveryHTTP)
+		if err != nil {
+			return nil, fmt.Errorf("store/kube: rest mapper: %w", err)
+		}
 	}
-	c, err := client.New(cfg, client.Options{Scheme: opts.Scheme, Mapper: mapper, HTTPClient: httpClient})
+	c, err := client.NewWithWatch(cfg, client.Options{Scheme: opts.Scheme, Mapper: mapper, HTTPClient: httpClient})
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: client: %w", err)
 	}
@@ -275,9 +295,12 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Store{
 		opts:           opts,
+		identity:       identity,
+		restConfig:     auxiliaryConfig,
 		kinds:          kinds,
 		mapper:         mapper,
 		c:              c,
+		directWatch:    c,
 		cache:          ca,
 		leases:         leases,
 		internal:       internal,
@@ -291,6 +314,10 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		electors:       map[string]*LeaseElector{},
 		watchers:       map[*watcher]struct{}{},
 	}
+	if !background {
+		close(s.cacheDone)
+		return s, nil
+	}
 	go func() {
 		defer close(s.cacheDone)
 		if err := ca.Start(ctx); err != nil {
@@ -298,7 +325,9 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		}
 	}()
 	go s.startInformers(ctx)
-	go s.discoverClusterID(ctx)
+	if s.identity == nil {
+		go s.discoverClusterID(ctx)
+	}
 	return s, nil
 }
 
@@ -368,7 +397,9 @@ func (s *Store) WaitForSync(ctx context.Context) bool {
 // the first one.
 func (s *Store) Info() store.Info {
 	info := store.Info{Driver: DriverName, SchemaVersion: store.SchemaVersion, LastContact: s.contact.Last()}
-	if id := s.clusterID.Load(); id != nil {
+	if s.identity != nil {
+		info.ClusterID = s.identity.id()
+	} else if id := s.clusterID.Load(); id != nil {
 		info.ClusterID = *id
 	}
 	s.mu.Lock()

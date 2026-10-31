@@ -10,10 +10,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
 // PolicyState is GET /policies/{namespace}/{name}/state: what the policy
@@ -151,9 +153,34 @@ func (s *Server) registerPolicies() {
 
 func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policyStateOutput, error) {
 	k, _ := kindByPlural("policies")
-	obj, err := s.getObject(ctx, k, in.Namespace, in.Name)
-	if err != nil {
-		return nil, err
+	captured := s.opts.ObjectReads != nil
+	var objects zonecache.ObjectSet
+	var obj store.Object
+	var err error
+	if captured {
+		if s.opts.CanonicalSettings == nil || s.opts.Catalogue.Read == nil || s.opts.PolicyListReads == nil {
+			return nil, errUnavailable("complete policy read capabilities unavailable")
+		}
+		objects, _, err = s.capturedObjects(ctx)
+		if err != nil {
+			return nil, err
+		}
+		var found bool
+		obj, found = objects.Get(keyFor(k, in.Namespace, in.Name))
+		if !found {
+			if err := s.require(ctx, k.resource, "read", s.guessScope(k, in.Name), in.Name); err != nil {
+				return nil, err
+			}
+			return nil, errNotFound(in.Namespace + "/" + in.Name)
+		}
+		if err := s.require(ctx, k.resource, "read", objectScope(k, obj), in.Name); err != nil {
+			return nil, err
+		}
+	} else {
+		obj, err = s.getObject(ctx, k, in.Namespace, in.Name)
+		if err != nil {
+			return nil, err
+		}
 	}
 	p, ok := obj.(*v1alpha1.Policy)
 	if !ok {
@@ -180,13 +207,33 @@ func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policySta
 			}
 		},
 	} {
-		if err := s.listAll(ctx, kind, ns, fn); err != nil {
+		if captured {
+			for _, o := range objects.List(kind) {
+				if o.GetNamespace() == ns {
+					fn(o)
+				}
+			}
+		} else if err := s.listAll(ctx, kind, ns, fn); err != nil {
 			return nil, err
 		}
 	}
 
+	var cfg *config.Config
+	var cat *catalogue.Catalogue
+	if captured {
+		cfg, err = s.opts.CanonicalSettings.Settings(ctx)
+		if err != nil || cfg == nil {
+			return nil, errUnavailable("original policy settings unavailable")
+		}
+		cat, err = s.catalogueFor(ctx)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		cfg, cat = s.config(), s.catalogue()
+	}
+	// One instant governs schedules, RPZ expiry, and historical query windows.
 	now := s.opts.Now()
-	cfg := s.config()
 	out := &PolicyState{
 		Policy: ns + "/" + p.Name, Enabled: !v1alpha1.IsDisabled(p), Priority: p.Spec.Priority,
 		ShadowedBy: policy.ShadowedBy(p, pols), ManagedBy: store.ManagedBy(p),
@@ -238,11 +285,20 @@ func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policySta
 		refs []string
 	}{{"block", p.Spec.BlockListRefs}, {"allow", p.Spec.AllowListRefs}} {
 		for _, name := range ref.refs {
-			out.Lists = append(out.Lists, policyListState(name, ref.role, lists[name]))
+			l := policyListState(name, ref.role, lists[name])
+			if captured {
+				l.Entries, l.Ready = 0, false
+				if l.Exists && l.Enabled {
+					l.Entries, l.Ready, err = s.opts.PolicyListReads.PolicyListState(ctx, ns, name, now)
+					if err != nil || l.Entries < 0 {
+						return nil, errUnavailable("original policy list state unavailable")
+					}
+				}
+			}
+			out.Lists = append(out.Lists, l)
 		}
 	}
 
-	cat := s.catalogue()
 	policyService := func(id string) PolicyService {
 		ps := PolicyService{ID: id, Name: id}
 		if svc, ok := cat.Service(id); ok {
@@ -314,6 +370,9 @@ func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policySta
 		if st.Queries > 0 {
 			out.Stats24h.BlockedPercent = math.Round(float64(st.Blocked)*1000/float64(st.Queries)) / 10
 		}
+	}
+	if captured && ctx.Err() != nil {
+		return nil, errUnavailable("original policy request ended")
 	}
 	return &policyStateOutput{Body: out}, nil
 }

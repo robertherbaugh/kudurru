@@ -28,6 +28,34 @@ See [configuration and the store](configuration-and-store.md#settings) for
 revision checks, environment locks, persistence and the handoff flow.
 Changes still swap the upstream set and flush cached answers as described below.
 
+## File-authored routing imports
+
+The host-only `upstreams.importFile` setting expands a bounded dnsmasq/dnsproxy
+file during ordinary configuration loading. Relative paths use the node file's
+directory. One parser also backs `upstream.ImportDnsmasq`; reports identify
+unsupported lines without repeating their contents. No network request or
+query-path file read is introduced.
+
+```mermaid
+flowchart LR
+    FILE["Node/settings declarations + import file"] --> PARSE["Bounded parse and collision checks"]
+    PARSE --> CANON["Canonical groups and suffix routes"]
+    OWN["Stored UI-owned public section"] --> LAYER["Ownership and environment precedence"]
+    CANON --> LAYER
+    LAYER --> CAPTURE["Existing canonical publication and captured upstream set"]
+```
+
+Unsupported local-answer/address/DHCP directives, malformed input or conflicting
+named groups/suffixes reject the entire source. Repeated server rules combine
+ordered alternatives; conditional groups use strict failover. This does not
+emulate dnsmasq's adaptive upstream scheduling. Unscoped servers replace only
+the compiled default, and conflict with an explicit default declaration.
+Environment locks still win. An explicitly UI-owned section skips the stale
+file source; adoption stores public canonical values, never the host file path.
+Revision/handoff checks include imported effective routing, and release needs
+an available matching file source. Existing persisted canonical cluster settings
+retain authority; setting this path does not reseed them or add a file watcher.
+
 ## Which group answers
 
 Three places can name a group, and they are checked in a fixed order. The
@@ -188,6 +216,7 @@ upstreams:
     qnameMinimization: true                    # RFC 9156 (default)
     ipv6: auto                                 # auto | on | off: ask name servers over IPv6
     trustAnchors: []                           # empty: built-in root KSK-2017 (20326) and KSK-2024 (38696)
+    negativeTrustAnchors: []                   # temporary domain/reason/absolute expiresAt exceptions
     rootHints: []                              # empty: built-in IANA root server addresses
 ```
 
@@ -198,7 +227,9 @@ routing, server health, metrics, the query log and the response cache work
 as for any other group. Any group can be recursive: a Policy, a forward
 zone or a conditional rule can send some clients or names to recursion and
 the rest to forwarders. The resolver outlives settings reloads; it drops
-its cache only when `trustAnchors`, `rootHints` or `dnssec` change.
+its cache when `trustAnchors`, `rootHints`, `dnssec` or
+`negativeTrustAnchors` change. Native cache keys also include active exception
+state, so an expiry immediately prevents reuse without a reload.
 Forwarding to 1.1.1.1 and 9.9.9.9 stays the default for new installs
 (D170).
 
@@ -282,7 +313,9 @@ forwarding group that holds the router.
 flowchart TD
     A(["answer from the authoritative server"]) --> ON{"upstreams.recursion.dnssec?"}
     ON -- "false" --> UNK["state unknown<br/>answer returned"]
-    ON -- "true" --> SIGNED{"zone in a chain of<br/>trust from the root?"}
+    ON -- "true" --> NTA{"active recursive NTA<br/>covers this RRset or zone?"}
+    NTA -- "yes" --> INS
+    NTA -- "no" --> SIGNED{"zone in a chain of<br/>trust from the root?"}
     SIGNED -- "a delegation without DS is proven,<br/>or only unsupported algorithms" --> INS["insecure<br/>answer returned, no AD"]
     SIGNED -- "yes" --> OK{"signatures and denial<br/>proofs check out?"}
     OK -- "yes" --> SEC["secure<br/>AD for clients that sent DO or AD"]
@@ -299,6 +332,31 @@ parent. Positive answers, wildcard expansions, NXDOMAIN and NODATA (NSEC,
 and NSEC3 with opt-out) are proven. Unsigned data below a signed zone is
 insecure only when the delegation without DS is proven, otherwise it is
 bogus.
+
+`upstreams.recursion.negativeTrustAnchors` supplies temporary recursive
+exceptions with typed absolute RFC3339 `expiresAt`, `domain` and `reason`.
+It is independent of forwarded `dnssec.negativeTrustAnchors`. Both use the
+same bounded exception compiler: at most 128 canonical domains, reasons up
+to 256 bytes, expiry no more than seven days away. Expired entries are valid
+configuration but inactive. A match treats covered data or a zone's trust
+chain as insecure, never secure; aliases outside the domain still validate.
+CD and DO retain their normal meanings. An exception cannot set AD. Native
+validation records exactly which RRsets used the exception, so raw expired
+signatures for those RRsets can remain available to DO clients without
+relaxing authenticated proof deadlines for an outside alias target. Forwarded
+responses cannot supply this native provenance; restored raw answers must
+match their original recursive context and absolute deadlines.
+
+The native delegation/key/address cache and the raw response cache both
+include active recursive exception state. For conservative isolation, any
+recursive exception expiry changes the native cache context and bounds all
+recursive response reuse, including unrelated names, at the next expiry.
+Minimum TTLs and stale windows cannot extend that absolute deadline.
+Expired in-flight exception work is refused without retrying it. Reload,
+complete SQLite publications, settings restore and cache dump/load retain
+the original instant; none turns it into a fresh duration. Each complete
+publication keeps its own resolver and exception plan. See the
+[exception runbook](../deploy/dnssec-validation.md#recursive-exceptions).
 
 Algorithms: RSASHA1, RSASHA1-NSEC3-SHA1, RSASHA256, RSASHA512,
 ECDSAP256SHA256, ECDSAP384SHA384 and ED25519; DS digests SHA-1, SHA-256 and
@@ -325,6 +383,38 @@ forwarder such as 1.1.1.1 included, is logged as `dnssec_bogus` instead of
 `servfail_upstream`. Like other upstream failures, it lets serve-stale
 answer with the cached copy (for a recursive group, one that was validated
 when it was stored).
+
+### Authority DNS Cookies
+
+The native resolver automatically negotiates DNS Cookies with authoritative
+servers (RFC 7873 and RFC 9018). These are outbound transport credentials,
+separate from cookies in an incoming client query or a forwarded response.
+They never establish DNSSEC security or AD, and never enter DNS answer caches
+or client replies. The resolver still validates the original answer under its
+captured DNSSEC and recursive NTA settings.
+
+The connected socket determines the actual local IP and authority IP/port.
+A random 64-bit client cookie and the authority's opaque server cookie are
+scoped to that address pair. Echoes must match exactly; malformed cookies,
+incorrect echoes and missing cookies from established cookie peers refuse the
+response. Only the authority can verify its server-cookie MAC; the resolver
+checks response correlation, the connected peer, echo and length. Later COOKIE
+options are ignored as specified by RFC 7873.
+
+The transport cache holds at most 4,096 address pairs and is memory only.
+Server cookies expire after one hour without renewal by an identical echo;
+changed cookies replace them. Client cookies rotate after a separately jittered
+14.4–24 hours, or on restart/eviction. A changed local address gets a separate
+pair. Authorities without cookies remain usable: probes stop for five minutes,
+then retry with a fresh client cookie, never the previously exposed value.
+
+A valid BADCOOKIE response permits one UDP retry with its new server cookie.
+A second BADCOOKIE falls back once to TCP; BADCOOKIE on TCP fails. Truncated
+UDP answers also use the existing TCP fallback. Each packet exchange, including
+cookie recovery and lowercase fallback, consumes the original query budget.
+The existing UDP and TCP timeouts and caller cancellation still apply. There
+are no settings or persisted cookie files. Cookies protect against off-path
+forgery; they do not authenticate an on-path observer or replace DNSSEC.
 
 ### Limits per client query
 
@@ -365,7 +455,13 @@ intercept port 53 break it.
 ## The response cache
 
 The cache stores packed answers in a sharded LRU (up to 256 shards, each with
-its own lock). The key is `(qname, qtype, qclass, DO, CD, ECS subnet sent
+its own lock). Both complete-publication reloads and legacy settings reloads
+resize this same storage owner. Capacity changes adjust the shard count under
+the cache publication lock, briefly pausing lookups and fills while moving
+existing entries without copying their payloads. The exact entry bound holds
+after each resize; shrinking evicts per-shard LRU entries. Growth preserves
+cache scopes, invalidation epochs, absolute TTL/security deadlines and refresh
+claims; it does not replace any captured request policy. The key is `(qname, qtype, qclass, DO, CD, ECS subnet sent
 upstream)`. Client identity and Policy are **not** in the key: blocking runs
 before the cache on the way in and inspects the answer again on the way out,
 so one cached answer can serve every client safely.
@@ -447,11 +543,27 @@ sequenceDiagram
     C->>L: final save (5 s limit)
 ```
 
-The cache is per node and so is a flush. `POST /api/v1/cache/flush` empties
-the whole cache, or one name across the common query types. Deleting a zone
-flushes its apex, approving an unblock request flushes the name, and any
-change under `upstreams.*` flushes everything, because a cached answer may
-have come from a server that is no longer configured.
+The cache is per node and so is a flush. In complete SQLite serving,
+`POST /api/v1/cache/flush` empties the whole cache or one exact name across all
+resolution scopes, types, classes, DO/CD flags and ECS subnets. A named flush
+preserves descendants and suffix lookalikes; an explicit `.` removes only the
+root name. Results report the canonical name and the actual number removed under
+the cache locks. Even a flush that finds no entry advances the invalidation
+generation, so an older detached fill cannot repopulate the cache afterward.
+New queries can fill it again after invalidation.
+
+The original HTTP proof must pass a current no-op transaction for cluster
+`cache.flush`, including final deadline and writer checks. Only then does the
+command invalidate the same cache used by DNS, outside transaction and dependency
+pins. This admission is primary-local: followers return 503 without forwarding
+to another node's cache. Local memory invalidation cannot be rolled back; a
+cancellation or writer loss after admission may return an error after entries
+were removed. Audit records retain that count. No configuration or durable
+generation changes, and no publication acknowledgment is required.
+
+The legacy Kubernetes route retains its existing common-type name invalidation.
+Zone deletion and settings changes have their own cache invalidation paths;
+unconverted SQLite unblock-request mutations remain unavailable.
 
 ## When the answer is an error
 
@@ -477,6 +589,25 @@ a new set of groups, swaps it in atomically, retires the old set after 30 s
 resolver is kept across the swap with its own cache; `upstreams.recursion.*`
 is applied to it in place. Cache settings
 reload in place; new limits apply to entries stored from then on.
+
+## Inspecting one cached response
+
+`GET /api/v1/cache/inspect?name=www.example.org&type=A` requires cluster
+`cache.read`. Optional `do` and `cd` select the raw DNS flags; `client` defaults
+to `127.0.0.1` and only derives the configured ECS partition. The response says
+whether the raw default route is cacheable and whether that exact entry exists,
+with positive/negative kind, fresh/stale state, age, original and remaining TTL,
+wire size and validation state. Missing, expired and mismatched entries return
+`found: false`; disabled caching and conditional routes return `cacheable: false`.
+
+The bounded single-key read uses the original HTTP request's resolver and cache
+incarnations. It does not query upstreams, refresh data, count a hit, change LRU
+order or adopt restored entries. A retained request can inspect its retained
+incarnation; a successor cannot read it after a settings replacement. Responses
+use `Cache-Control: no-store` and omit answer bodies, stored client subnets and
+upstream endpoints. This is raw cache metadata: authority, blocking and rewrites
+can still decide that a client should receive a different answer. It does not
+list clients or cached names, or inspect the separate recursive resolver cache.
 
 ## Metrics
 

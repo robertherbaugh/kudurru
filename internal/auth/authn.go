@@ -41,7 +41,7 @@ type Error struct {
 	// Hint is a string or a JSON-encodable object (403 carries
 	// {"missing":{"resource","verb","scope"}}).
 	Hint any
-	// RetryAfter sets the Retry-After header (429).
+	// RetryAfter sets the Retry-After header (429 and 503).
 	RetryAfter time.Duration
 	// Err is the internal cause; it is logged, never sent.
 	Err error
@@ -88,7 +88,7 @@ type errorDetail struct {
 
 // WriteError writes e as {error:{key,message,hint}, took_ms}. took_ms is
 // measured from the start recorded by Middleware (0 without it). 401
-// responses carry WWW-Authenticate, 429 responses Retry-After.
+// responses carry WWW-Authenticate, 429 and 503 responses Retry-After.
 func WriteError(w http.ResponseWriter, r *http.Request, e *Error) {
 	h := w.Header()
 	h.Set("Content-Type", "application/json")
@@ -96,7 +96,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, e *Error) {
 	switch e.Status {
 	case http.StatusUnauthorized:
 		h.Set("WWW-Authenticate", `Bearer realm="kudurru"`)
-	case http.StatusTooManyRequests:
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
 		secs := int64((e.RetryAfter + time.Second - 1) / time.Second)
 		h.Set("Retry-After", strconv.FormatInt(max(secs, 1), 10))
 	}

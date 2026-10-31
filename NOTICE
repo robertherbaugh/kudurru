@@ -22,6 +22,14 @@ This product includes software developed by third parties under their own
 licenses, which are not changed by the license above.
 Attributions are added to this file as the dependencies land:
 
+- Inter (https://github.com/rsms/inter), Copyright 2016 The Inter Project
+  Authors, and JetBrains Mono (https://github.com/JetBrains/JetBrainsMono),
+  Copyright 2020 The JetBrains Mono Project Authors: SIL Open Font License
+  1.1. The dashboard self-hosts unmodified Latin variable WOFF2 subsets from
+  @fontsource-variable/inter and @fontsource-variable/jetbrains-mono 5.3.0.
+  Provenance and checksums: dashboard/fonts/PROVENANCE.md. Full licenses are
+  embedded in the dashboard's third-party-licenses.txt.
+
 - HashiCorp raft v1.7.3 (https://github.com/hashicorp/raft) and
   raft-boltdb/v2 v2.3.1 (https://github.com/hashicorp/raft-boltdb), MPL-2.0,
   Copyright (c) 2013/2015 HashiCorp, Inc.: DHCP quorum consensus and durable log.
@@ -33,6 +41,10 @@ Attributions are added to this file as the dependencies land:
   Copyright (c) 2018 Andrea Barberio: DHCPv4 packet encoding and decoding.
   kudurru's lease allocation and server behavior are implemented from the
   DHCP specifications; no code from copyleft DHCP servers is used.
+- cloudflare-go/v7 (https://github.com/cloudflare/cloudflare-go), Apache-2.0,
+  Copyright 2026 Cloudflare: the official v7.12.0 SDK used by the enterprise
+  Cloudflare DNS publication adapter. Its JSON helpers gjson, sjson, match
+  and pretty (https://github.com/tidwall) are MIT licensed.
 - blocky (https://github.com/0xERR0R/blocky), Apache-2.0: matcher and list
   pipeline designs (string caches, suffix sets, list fetch/refresh strategy).
   internal/blocking/matcher adapts the design of blocky v0.35.0

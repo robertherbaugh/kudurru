@@ -94,7 +94,7 @@ func TestNodesAndCluster(t *testing.T) {
 	if nh.Ready || nh.Health["components"] == nil {
 		t.Fatalf("health %+v", nh)
 	}
-	h.do(http.MethodGet, "/api/v1/nodes/node-b/health", "admin", nil).want(http.StatusNotImplemented)
+	h.do(http.MethodGet, "/api/v1/nodes/node-b/health", "admin", nil).want(http.StatusServiceUnavailable)
 	h.do(http.MethodGet, "/api/v1/nodes/node-z/health", "admin", nil).want(http.StatusNotFound)
 	var ci ClusterInfo
 	h.do(http.MethodGet, "/api/v1/cluster", "admin", nil).want(http.StatusOK).json(&ci)

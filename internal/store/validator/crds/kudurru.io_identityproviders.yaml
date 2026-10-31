@@ -1,0 +1,324 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: identityproviders.kudurru.io
+spec:
+  group: kudurru.io
+  names:
+    kind: IdentityProvider
+    listKind: IdentityProviderList
+    plural: identityproviders
+    shortNames:
+    - idp
+    singular: identityprovider
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: IdentityProvider configures an OpenID Provider without storing
+          credentials.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              IdentityProviderSpec is one OpenID Provider (§8.2-8.4); the object name
+              is the provider id used in URLs.
+            properties:
+              allowedDomains:
+                description: |-
+                  AllowedDomains, when set, restricts logins to verified emails in
+                  these domains (reserved).
+                items:
+                  maxLength: 256
+                  type: string
+                maxItems: 64
+                type: array
+              audiences:
+                description: Audiences are extra aud values accepted for bearer ID
+                  tokens.
+                items:
+                  maxLength: 256
+                  type: string
+                maxItems: 64
+                type: array
+              claimMappings:
+                description: ClaimMappings turns claims into a username and groups
+                  (§8.4).
+                properties:
+                  displayName:
+                    description: ClaimRef maps a claim or string expression; empty
+                      selects the default claim.
+                    properties:
+                      claim:
+                        maxLength: 256
+                        minLength: 1
+                        type: string
+                      expression:
+                        maxLength: 4096
+                        minLength: 1
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: claim and expression are mutually exclusive
+                      rule: '!(has(self.claim) && has(self.expression))'
+                  email:
+                    description: ClaimRef maps a claim or string expression; empty
+                      selects the default claim.
+                    properties:
+                      claim:
+                        maxLength: 256
+                        minLength: 1
+                        type: string
+                      expression:
+                        maxLength: 4096
+                        minLength: 1
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: claim and expression are mutually exclusive
+                      rule: '!(has(self.claim) && has(self.expression))'
+                  groups:
+                    description: |-
+                      PrefixedClaim maps a claim or expression and prepends a prefix. An empty
+                      mapping selects the provider's default claim behavior.
+                    properties:
+                      claim:
+                        maxLength: 256
+                        minLength: 1
+                        type: string
+                      expression:
+                        maxLength: 4096
+                        minLength: 1
+                        type: string
+                      prefix:
+                        maxLength: 256
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: claim and expression are mutually exclusive
+                      rule: '!(has(self.claim) && has(self.expression))'
+                  username:
+                    description: |-
+                      PrefixedClaim maps a claim or expression and prepends a prefix. An empty
+                      mapping selects the provider's default claim behavior.
+                    properties:
+                      claim:
+                        maxLength: 256
+                        minLength: 1
+                        type: string
+                      expression:
+                        maxLength: 4096
+                        minLength: 1
+                        type: string
+                      prefix:
+                        maxLength: 256
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: claim and expression are mutually exclusive
+                      rule: '!(has(self.claim) && has(self.expression))'
+                type: object
+              claimValidationRules:
+                items:
+                  description: ClaimValidationRule requires scalar equality or a boolean
+                    CEL expression.
+                  properties:
+                    claim:
+                      maxLength: 256
+                      minLength: 1
+                      type: string
+                    expression:
+                      description: Expression evaluates signed claims and must produce
+                        a boolean.
+                      maxLength: 4096
+                      minLength: 1
+                      type: string
+                    requiredValue:
+                      description: RequiredValue defaults to the empty string for
+                        scalar equality.
+                      maxLength: 2048
+                      type: string
+                  type: object
+                  x-kubernetes-validations:
+                  - message: exactly one claim or expression is required
+                    rule: has(self.claim) != has(self.expression)
+                  - message: requiredValue belongs only to a claim rule
+                    rule: '!has(self.expression) || !has(self.requiredValue) || self.requiredValue.size()
+                      == 0'
+                maxItems: 64
+                type: array
+              cliClientID:
+                description: |-
+                  CLIClientID is the public client of `kudurru login` (v0.2); bearer
+                  ID tokens may carry it as their audience.
+                maxLength: 256
+                type: string
+              clientID:
+                maxLength: 256
+                minLength: 1
+                type: string
+              clientSecretRef:
+                description: ClientSecretRef selects an operator-granted credential
+                  capability.
+                properties:
+                  env:
+                    maxLength: 128
+                    pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+                    type: string
+                  file:
+                    maxLength: 4096
+                    minLength: 1
+                    type: string
+                  secretRef:
+                    description: |-
+                      CredentialSecretRef names a key in the operator's credential namespace.
+                      Namespace selection belongs to host configuration, never to this reference.
+                    properties:
+                      key:
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                      name:
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                    required:
+                    - key
+                    - name
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one credential reference is required
+                  rule: '[has(self.secretRef), has(self.file), has(self.env)].filter(x,
+                    x).size() == 1'
+              displayName:
+                maxLength: 256
+                type: string
+              issuer:
+                maxLength: 2048
+                minLength: 1
+                type: string
+              provisioning:
+                description: Provisioning is the first-login policy (§8.4).
+                properties:
+                  autoProvision:
+                    description: AutoProvision is mapped-only (default), always or
+                      never.
+                    enum:
+                    - mapped-only
+                    - always
+                    - never
+                    type: string
+                  defaultRole:
+                    maxLength: 63
+                    type: string
+                  syncGroups:
+                    type: boolean
+                type: object
+              redirectURL:
+                description: RedirectURL is the absolute callback URL registered at
+                  the IdP.
+                maxLength: 2048
+                type: string
+              scopes:
+                items:
+                  maxLength: 256
+                  type: string
+                maxItems: 64
+                type: array
+            required:
+            - clientID
+            - clientSecretRef
+            - issuer
+            type: object
+          status:
+            description: IdentityProviderStatus reports discovery.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                maxItems: 16
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

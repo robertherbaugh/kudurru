@@ -20,5 +20,10 @@ validator in Docker mode, enforce.
 | [DHCPScope](dhcpscope.md) | Cluster | `dhcpscope` | DHCPScope is a DHCPv4 address pool served by kudurru in Kubernetes. |
 | [DNSRecordSet](dnsrecordset.md) | Namespaced | `rrset` | DNSRecordSet is a set of records that belong to a DNSZone. |
 | [DNSZone](dnszone.md) | Cluster | `zone` | DNSZone is a recorded grant of authority over a name space: the stone kept in the temple. |
+| [IdentityProvider](identityprovider.md) | Cluster | `idp` | IdentityProvider configures an OpenID Provider without storing credentials. |
+| [Integration](integration.md) | Namespaced | `intg` | Integration configures background publication, inventory, or a webhook. |
+| [Kudurru](kudurru.md) | Cluster |  | Kudurru is the cluster settings singleton named default. |
 | [Policy](policy.md) | Namespaced | `pol` | Policy applies lists, schedules and resolver settings to client groups. |
+| [RoleBinding](rolebinding.md) | Namespaced | `krb` | RoleBinding grants a named role to the selected subjects and scope. |
+| [ServiceAccount](serviceaccount.md) | Namespaced | `ksa` | ServiceAccount is a public non-human principal. |
 | [UnblockRequest](unblockrequest.md) | Namespaced | `ubr` | UnblockRequest is a user's request, made on the block page, to allow a blocked name. |

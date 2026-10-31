@@ -123,6 +123,8 @@ export interface DNSZoneSpec {
     transferTSIGKeyRefs?: string[];
     notify?: NotifyMode;
     notifyTargets?: string[];
+    notifyTSIGKeyRef?: string;
+    notifySource?: string;
     update?: AccessMode;
   };
   forward?: { upstreamGroup?: string; dnssecValidation?: boolean };
@@ -195,6 +197,8 @@ export interface ListSource {
 }
 
 export interface BlockListSpec {
+  /** Restrict to captured winning groups in this list's namespace. */
+  clientGroupRefs?: string[];
   mode?: 'block' | 'allow';
   sources: ListSource[];
   refreshInterval?: string;
@@ -245,7 +249,7 @@ export interface ClientMatcher {
 
 export type ClientGroup = KObject<
   'ClientGroup',
-  { clients?: ClientMatcher[]; sources?: { integrationRef?: { name: string; namespace?: string } } },
+  { clients?: ClientMatcher[]; rateLimitExempt?: boolean; sources?: { integrationRef?: { name: string; namespace?: string } } },
   { observedGeneration?: number; members?: number; conditions?: Condition[] }
 >;
 
@@ -261,6 +265,7 @@ export interface PolicySpec {
   queryLog?: boolean;
   priority?: number;
   rewrites?: { name: string; type?: string; targets?: string[]; cname?: string }[];
+  response?: { dns64Prefix?: string; filterAAAA?: boolean };
   /** Catalogue service IDs (GET /catalogue/services) blocked like a list. */
   blockedServices?: string[];
   /** Catalogue category IDs (GET /catalogue/categories): every service in them, including ones added later. */
@@ -306,6 +311,10 @@ export type ZoneSummary = Omit<S['ZoneSummary'], 'type'> & {
   /** Transfer and NOTIFY state; not served yet, so the panel stays hidden. */
   transfer?: ZoneTransferStatus;
 };
+
+/** The responding node's secondary snapshot, independent of shared status. */
+export type SecondaryRuntime = S['SecondaryRuntime'];
+export type StubRuntime = S['StubRuntime'];
 
 export interface ZoneTransferStatus {
   zoneTransfer: AccessMode;
@@ -388,6 +397,7 @@ export interface TokenOwner {
   namespace?: string;
   id?: string;
   provider?: string;
+  uid?: string;
 }
 
 /** GET /auth/tokens row (stack TokenInfo); never the secret. */
@@ -418,12 +428,15 @@ export interface CreatedToken extends ApiToken {
 }
 
 /** Body of POST /auth/password (stack PasswordRequest). */
-export interface PasswordChangeRequest {
-  currentPassword: string;
-  newPassword: string;
-  /** Also revoke every API token of the user (a change alone keeps them). */
-  revokeTokens?: boolean;
-}
+export type PasswordChangeRequest = S['PasswordChangeRequest'];
+
+export type SessionRecordInfo = S['SessionRecordInfo'];
+
+export type TOTPStatus = S['TOTPStatus'];
+export type TOTPProofRequest = S['TOTPProofRequest'];
+export type TOTPConfirmRequest = S['TOTPConfirmRequest'];
+export type TOTPSetupResponse = S['TOTPSetupResponse'];
+export type TOTPRecoverRequest = S['TOTPRecoverRequest'];
 
 // ---------------------------------------------------------------------------
 // Runtime
@@ -656,6 +669,8 @@ export type SettingType = 'string' | 'int' | 'bool' | 'duration' | 'bytes' | 'st
 /** One row of GET /settings/_schema (internal/config.Key plus the effective value). */
 export type SettingKey = Omit<S['SettingKey'], 'type' | 'value'> & {
   type: SettingType;
+  /** This server cannot accept API writes for the key. */
+  readOnly?: boolean;
   /** The effective value ("<redacted>" for writeOnly keys). */
   value?: unknown;
 };
@@ -764,16 +779,7 @@ export type DoctorReport = S['DoctorReport'];
 // internal/auth/stack/iam.go and internal/auth/adminsock (see the header).
 
 /** A local user (adminsock User). */
-export interface IamUser {
-  name: string;
-  displayName?: string;
-  builtinAdmin: boolean;
-  disabled: boolean;
-  mustChangePassword: boolean;
-  groups?: string[];
-  lastLoginAt?: string;
-  passwordChangedAt?: string;
-}
+export type IamUser = S['IAMUser'];
 
 /** A kudurru service account (stack ServiceAccountInfo). */
 export interface IamServiceAccount {
@@ -987,6 +993,7 @@ export type DomainEntryList = S['DomainEntryList'];
 
 /** One logical allow or deny entry (namespace, action, type, value) across its lists. */
 export type DomainEntry = S['DomainEntry'];
+export type DomainRegexImpact = S['DomainRegexImpact'];
 
 /** One list behind the entries of GET /allowlist, /denylist or /domains. */
 export type DomainListInfo = S['DomainListInfo'];
@@ -1027,3 +1034,6 @@ export type MigrationResult = S['MigrationResult'];
 export type MigrationRun = S['MigrationRun'];
 export type MigrationCutoverPlan = S['MigrationCutoverPlan'];
 export type MigrationAuthorityChange = S['MigrationAuthorityChange'];
+
+/** Public Enterprise presentation; no license or account details. */
+export type BrandingInfo = S['BrandingInfo'];

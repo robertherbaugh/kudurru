@@ -7,6 +7,7 @@ import { Code } from '@astryxdesign/core/Code';
 import { DateTimeInput, type ISODateTimeString } from '@astryxdesign/core/DateTimeInput';
 import { Grid } from '@astryxdesign/core/Grid';
 import { HStack } from '@astryxdesign/core/HStack';
+import { Link } from '@astryxdesign/core/Link';
 import { Switch } from '@astryxdesign/core/Switch';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
@@ -164,6 +165,7 @@ export default function QueryLogPage() {
         actions={
           <>
             <ScopeSelector allLabel="All" response={live ? tailScope : first} />
+            {can('querylog', 'read') ? <Link href={api.queries.exportURL(scope, filters)} download="kudurru-queries.json" hasUnderline>Export up to 1,000 queries</Link> : null}
             <Switch
               label="Live tail"
               description={

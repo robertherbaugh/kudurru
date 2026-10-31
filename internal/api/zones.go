@@ -9,13 +9,17 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
+	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 )
 
@@ -49,6 +53,169 @@ type ZoneSummary struct {
 	// managed by a file, an integration, Kubernetes or the system; empty
 	// when the zone can be deleted.
 	DeleteRefusal string `json:"deleteRefusal,omitempty" enum:"default_zone,managed_by"`
+	// SecondaryRuntime is this responding node's state, independent of shared status.
+	SecondaryRuntime *SecondaryRuntime `json:"secondaryRuntime,omitempty"`
+	// StubRuntime describes only this node's discovered routes.
+	StubRuntime *StubRuntime `json:"stubRuntime,omitempty"`
+}
+
+// SecondaryRuntime describes the last published copy on one node. Serial and
+// RecordCount are absent until a complete copy exists; serial zero is valid.
+type SecondaryRuntime struct {
+	Node            string     `json:"node"`
+	State           string     `json:"state" enum:"pending,serving,expired,unavailable"`
+	Serial          *uint32    `json:"serial,omitempty" format:"int64" minimum:"0" maximum:"4294967295"`
+	RecordCount     *int       `json:"recordCount,omitempty"`
+	Primary         string     `json:"primary,omitempty"`
+	LastConfirmedAt *time.Time `json:"lastConfirmedAt,omitempty"`
+	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
+	NextAttemptAt   *time.Time `json:"nextAttemptAt,omitempty"`
+	Reason          string     `json:"reason,omitempty"`
+	Message         string     `json:"message,omitempty"`
+}
+
+func secondaryRuntime(node string, st secondary.Status, found bool) *SecondaryRuntime {
+	out := &SecondaryRuntime{Node: node, State: "pending", Reason: "TransferPending", Message: "Waiting for this node's first complete transfer."}
+	if !found {
+		return out
+	}
+	out.Primary = st.Primary
+	if !st.NextRefresh.IsZero() {
+		out.NextAttemptAt = &st.NextRefresh
+	}
+	if !st.ConfirmedAt.IsZero() {
+		out.Serial, out.RecordCount = &st.Serial, &st.RecordCount
+		out.LastConfirmedAt, out.ExpiresAt = &st.ConfirmedAt, &st.ExpiresAt
+		out.State, out.Reason, out.Message = "expired", "SecondaryExpired", "The last copy has expired; this node answers SERVFAIL for this zone."
+		if st.Available {
+			out.State, out.Reason, out.Message = "serving", "", ""
+		}
+	}
+	if st.Error != "" {
+		if out.State == "pending" {
+			out.State = "unavailable"
+		}
+		out.Reason = "SecondaryTransfer"
+		out.Message = st.Error
+	}
+	if st.ConfigurationError != "" {
+		out.State, out.Reason, out.Message = "unavailable", "ConfigurationUnavailable", st.ConfigurationError
+	}
+	return out
+}
+
+func (s *Server) localZoneSummary(z *v1alpha1.DNSZone, recordSets, managedSets int) ZoneSummary {
+	out := zoneSummary(z, recordSets, managedSets)
+	if z.Spec.Type == v1alpha1.ZoneTypeSecondary {
+		var st secondary.Status
+		var found bool
+		if s.opts.Secondaries != nil {
+			st, found = s.opts.Secondaries.StatusFor(z)
+		}
+		out.SecondaryRuntime = secondaryRuntime(s.opts.NodeName, st, found)
+		// Legacy leader-computed serials must not imply a replica is serving.
+		out.Serial, out.RecordCount, out.Ready = 0, 0, false
+		out.Reason, out.Message = "PerNodeTransfer", "Transfer availability is reported per node in secondaryRuntime."
+	}
+	if z.Spec.Type == v1alpha1.ZoneTypeStub {
+		var st stub.Status
+		var found bool
+		if s.opts.Stubs != nil {
+			st, found = s.opts.Stubs.StatusFor(z)
+		}
+		out.StubRuntime = stubRuntime(s.opts.NodeName, st, found)
+		out.Serial, out.RecordCount, out.Ready = 0, 0, false
+		out.Reason, out.Message = "PerNodeDiscovery", "Routing availability is reported per node in stubRuntime."
+	}
+	return out
+}
+
+func capturedZoneError(err error) error {
+	if errors.Is(err, store.ErrNotFound) {
+		return errNotFound("zone")
+	}
+	return errUnavailable("committed zone read: %v", err)
+}
+
+func (s *Server) capturedZoneSummary(ctx context.Context, z *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet) (ZoneSummary, error) {
+	out := zoneSummary(z, len(sets), len(managedRecordSets(sets)))
+	// Desired management/status fields are independent from this node's actual
+	// serving readiness and committed scalars, which may advance after UPDATE.
+	out.Serial, out.RecordCount, out.Ready = 0, 0, false
+	out.Reason, out.Message = "ServingUnavailable", "This node has no available committed copy for this zone."
+	if o, found, err := s.opts.ZoneReads.PrimaryStatus(ctx, z.Name); err != nil {
+		return ZoneSummary{}, capturedZoneError(err)
+	} else if found {
+		out.Serial, out.RecordCount = o.Serial, o.RecordCount
+	}
+	model, err := s.opts.ZoneReads.ReadZone(ctx, z.Name)
+	if err != nil && !errors.Is(err, serving.ErrPending) {
+		return ZoneSummary{}, capturedZoneError(err)
+	}
+	readAvailable := err == nil
+	metadata := model
+	if z.Spec.Type == v1alpha1.ZoneTypeSecondary || z.Spec.Type == v1alpha1.ZoneTypeStub {
+		if reads, ok := s.opts.ZoneReads.(ZoneRuntimeReadSource); ok {
+			metadata, err = reads.ReadTransferredMetadata(ctx, z.Name)
+			if err != nil && !errors.Is(err, serving.ErrPending) {
+				return ZoneSummary{}, capturedZoneError(err)
+			}
+		}
+	}
+	now := s.opts.Now()
+	available := readAvailable && model != nil && model.RoutingAvailableAt(now)
+	if available {
+		out.Serial, out.RecordCount, out.Ready = model.Serial(), model.RecordCount(), true
+		out.Reason, out.Message = "", ""
+	}
+	switch z.Spec.Type {
+	case v1alpha1.ZoneTypeSecondary:
+		out.SecondaryRuntime = &SecondaryRuntime{Node: s.opts.NodeName, State: "unavailable", Reason: out.Reason, Message: out.Message}
+		if metadata != nil {
+			serial, count, expiry := metadata.Serial(), metadata.RecordCount(), metadata.NextExpiry()
+			out.SecondaryRuntime.Serial, out.SecondaryRuntime.RecordCount, out.SecondaryRuntime.ExpiresAt = &serial, &count, &expiry
+			if available {
+				out.SecondaryRuntime.State, out.SecondaryRuntime.Reason, out.SecondaryRuntime.Message = "serving", "", ""
+			} else if !expiry.IsZero() && !now.Before(expiry) {
+				out.SecondaryRuntime.State, out.SecondaryRuntime.Reason, out.SecondaryRuntime.Message = "expired", "SecondaryExpired", "The last copy has expired; this node answers SERVFAIL for this zone."
+			}
+		}
+	case v1alpha1.ZoneTypeStub:
+		out.StubRuntime = &StubRuntime{Node: s.opts.NodeName, State: "unavailable", Authorities: []StubAuthority{}, Reason: out.Reason, Message: out.Message}
+		if metadata != nil {
+			serial, expiry := metadata.Serial(), metadata.NextExpiry()
+			out.StubRuntime.Serial, out.StubRuntime.ExpiresAt = &serial, &expiry
+			for _, server := range metadata.StubServers() {
+				out.StubRuntime.Authorities = append(out.StubRuntime.Authorities, StubAuthority{Name: server.Name, Address: server.Address.String(), Protocol: server.Protocol})
+			}
+			if available {
+				out.StubRuntime.State, out.StubRuntime.Reason, out.StubRuntime.Message = "routing", "", ""
+			} else if !expiry.IsZero() && !now.Before(expiry) {
+				out.StubRuntime.State, out.StubRuntime.Reason, out.StubRuntime.Message = "expired", "StubExpired", "The discovered route has expired; this node answers SERVFAIL for this zone."
+			}
+		}
+	}
+	return out, nil
+}
+
+func (s *Server) listCapturedZones(ctx context.Context) (*zoneListOutput, error) {
+	objects, err := s.opts.ZoneReads.ZoneObjects(ctx)
+	if err != nil {
+		return nil, capturedZoneError(err)
+	}
+	st := stateFrom(ctx)
+	items := make([]ZoneSummary, 0, len(objects.Zones()))
+	for _, z := range objects.Zones() {
+		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {
+			continue
+		}
+		summary, err := s.capturedZoneSummary(ctx, z, objects.RecordSetsForZone(z.Name))
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, summary)
+	}
+	return &zoneListOutput{Body: newList(items, "")}, nil
 }
 
 // ZoneDeleteResult is DELETE /zones/{zone}: what was deleted with the
@@ -89,9 +256,10 @@ type ZoneDetail struct {
 	Took
 }
 
-// ZoneRecord is one endpoint of a zone, flattened across record sets.
+// ZoneRecord is a desired endpoint, or one served RRset in complete mode.
 type ZoneRecord struct {
-	// RecordSet is "<namespace>/<name>" of the DNSRecordSet holding it.
+	// RecordSet is "<namespace>/<name>" of the DNSRecordSet holding it, empty
+	// when the actual served RRset has no proven mutable desired owner.
 	RecordSet     string                `json:"recordSet"`
 	ManagedBy     string                `json:"managedBy,omitempty"`
 	DNSName       string                `json:"dnsName"`
@@ -287,6 +455,9 @@ func (s *Server) listAll(ctx context.Context, kind store.Kind, namespace string,
 }
 
 func (s *Server) listZones(ctx context.Context, _ *struct{}) (*zoneListOutput, error) {
+	if s.opts.ZoneReads != nil {
+		return s.listCapturedZones(ctx)
+	}
 	zones, err := s.allZones(ctx)
 	if err != nil {
 		return nil, err
@@ -308,7 +479,7 @@ func (s *Server) listZones(ctx context.Context, _ *struct{}) (*zoneListOutput, e
 		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {
 			continue
 		}
-		items = append(items, zoneSummary(z, counts[z.Name], managed[z.Name]))
+		items = append(items, s.localZoneSummary(z, counts[z.Name], managed[z.Name]))
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return &zoneListOutput{Body: newList(items, "")}, nil
@@ -348,6 +519,26 @@ func (s *Server) zoneRecordSets(ctx context.Context, zoneName string) ([]*v1alph
 }
 
 func (s *Server) getZone(ctx context.Context, in *zonePathInput) (*zoneDetailOutput, error) {
+	if s.opts.ZoneReads != nil {
+		objects, err := s.opts.ZoneReads.ZoneObjects(ctx)
+		if err != nil {
+			return nil, capturedZoneError(err)
+		}
+		z, found := objects.Zone(in.Zone)
+		if !found {
+			return nil, errNotFound("zone " + in.Zone)
+		}
+		summary, err := s.capturedZoneSummary(ctx, z, objects.RecordSetsForZone(z.Name))
+		if err != nil {
+			return nil, err
+		}
+		k, _ := kindByPlural("dnszones")
+		m, err := objectMap(k, z)
+		if err != nil {
+			return nil, err
+		}
+		return &zoneDetailOutput{ETag: z.ResourceVersion, Body: &ZoneDetail{ZoneSummary: summary, Object: m}}, nil
+	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err
@@ -361,7 +552,7 @@ func (s *Server) getZone(ctx context.Context, in *zonePathInput) (*zoneDetailOut
 	if err != nil {
 		return nil, err
 	}
-	return &zoneDetailOutput{ETag: z.ResourceVersion, Body: &ZoneDetail{ZoneSummary: zoneSummary(z, len(sets), len(managedRecordSets(sets))), Object: m}}, nil
+	return &zoneDetailOutput{ETag: z.ResourceVersion, Body: &ZoneDetail{ZoneSummary: s.localZoneSummary(z, len(sets), len(managedRecordSets(sets))), Object: m}}, nil
 }
 
 // isRootZone reports whether z is the root zone ".": the bootstrap
@@ -437,6 +628,9 @@ func (s *Server) zoneAloneDeletable(ctx context.Context, z *v1alpha1.DNSZone) er
 // set that references it, all or nothing where the store has
 // transactions, record sets first and the zone last where it does not.
 func (s *Server) deleteZone(ctx context.Context, in *deleteZoneInput) (*deleteZoneOutput, error) {
+	if s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil {
+		return s.commandDeleteZone(ctx, in)
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}
@@ -530,6 +724,42 @@ func recordOf(rs *v1alpha1.DNSRecordSet, ep v1alpha1.Endpoint) ZoneRecord {
 }
 
 func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneRecordsOutput, error) {
+	if s.opts.ZoneReads != nil {
+		model, err := s.opts.ZoneReads.ReadZone(ctx, in.Zone)
+		if err != nil {
+			return nil, capturedZoneError(err)
+		}
+		if model == nil || !model.RoutingAvailableAt(s.opts.Now()) {
+			return nil, errUnavailable("zone contents are unavailable")
+		}
+		if model.SOA() == nil {
+			return nil, errConflict("zone has no complete record image", "inspect its routing configuration")
+		}
+		var items []ZoneRecord
+		var invalid bool
+		model.RRsets(func(set *zone.RRset) bool {
+			row := ZoneRecord{DNSName: strings.TrimSuffix(set.Name, "."), RecordType: set.TypeString(), RecordTTL: int64(set.TTL), Targets: make([]string, 0, len(set.RRs))}
+			if set.Name == "." {
+				row.DNSName = "@"
+			}
+			for _, rr := range set.RRs {
+				parts := strings.SplitN(rr.String(), "\t", 5)
+				if len(parts) != 5 {
+					invalid = true
+					return false
+				}
+				row.Targets = append(row.Targets, parts[4])
+			}
+			// An actual RR is not proof of its desired mutable RecordSet owner.
+			// Keep unproven references empty; desired objects retain ownership.
+			items = append(items, row)
+			return ctx.Err() == nil
+		})
+		if invalid || ctx.Err() != nil {
+			return nil, errUnavailable("zone contents could not be read")
+		}
+		return &zoneRecordsOutput{Body: newList(items, "")}, nil
+	}
 	if _, err := s.zoneObject(ctx, in.Zone); err != nil {
 		return nil, err
 	}
@@ -579,9 +809,15 @@ func (s *Server) splitRef(ref, defNS string) (string, string) {
 }
 
 func (s *Server) upsertZoneRecord(ctx context.Context, in *upsertRecordInput) (*recordOutput, error) {
+	if s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil {
+		return s.commandUpsertZoneRecord(ctx, in)
+	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err
+	}
+	if z.Spec.Type != v1alpha1.ZoneTypePrimary {
+		return nil, errConflict("only primary zones accept record edits", "edit the records on the zone's primary")
 	}
 	ep := in.Body
 	if ep.DNSName == "" || ep.RecordType == "" {
@@ -685,6 +921,9 @@ func (s *Server) upsertRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, k ki
 }
 
 func (s *Server) deleteZoneRecord(ctx context.Context, in *deleteRecordInput) (*emptyOutput, error) {
+	if s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil {
+		return s.commandDeleteZoneRecord(ctx, in)
+	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err
@@ -763,6 +1002,9 @@ func (s *Server) deleteRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, in *
 }
 
 func (s *Server) importZone(ctx context.Context, in *importInput) (*importOutput, error) {
+	if s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil {
+		return s.commandImportZone(ctx, in)
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}
@@ -785,6 +1027,9 @@ func (s *Server) importZone(ctx context.Context, in *importInput) (*importOutput
 	}
 	origin := in.Origin
 	if z != nil {
+		if z.Spec.Type != v1alpha1.ZoneTypePrimary {
+			return nil, errConflict("only primary zones accept record imports", "edit the records on the zone's primary")
+		}
 		origin = z.Spec.ZoneName
 	}
 	im, err := zone.ImportBIND(bytes.NewReader(in.RawBody), origin)
@@ -863,6 +1108,12 @@ func chunkEndpoints(eps []v1alpha1.Endpoint, n int) [][]v1alpha1.Endpoint {
 // buildZone compiles the zone the way replicas serve it (the same
 // selection the controller hashes) from the store.
 func (s *Server) buildZone(ctx context.Context, z *v1alpha1.DNSZone) (*zone.Zone, error) {
+	if z.Spec.Type == v1alpha1.ZoneTypeSecondary {
+		return nil, errConflict("secondary contents are transferred from their primary", "local secondary export is not available yet")
+	}
+	if z.Spec.Type == v1alpha1.ZoneTypeStub {
+		return nil, errConflict("stub zones hold discovered routes, not a complete zone", "inspect stubRuntime for this node's authorities and expiry")
+	}
 	sets, err := s.zoneRecordSets(ctx, z.Name)
 	if err != nil {
 		return nil, err
@@ -875,6 +1126,27 @@ func (s *Server) buildZone(ctx context.Context, z *v1alpha1.DNSZone) (*zone.Zone
 }
 
 func (s *Server) exportZone(ctx context.Context, in *zonePathInput) (*exportOutput, error) {
+	if s.opts.ZoneReads != nil {
+		built, err := s.opts.ZoneReads.ReadZone(ctx, in.Zone)
+		if err != nil {
+			return nil, capturedZoneError(err)
+		}
+		if built == nil || !built.RoutingAvailableAt(s.opts.Now()) {
+			return nil, errUnavailable("zone contents are unavailable")
+		}
+		if built.Type() != v1alpha1.ZoneTypePrimary || built.SOA() == nil {
+			return nil, errConflict("only complete primary zones have records to export", "inspect the zone's runtime state")
+		}
+		var buf bytes.Buffer
+		if err := zone.ExportBIND(&buf, built); err != nil {
+			return nil, errUnavailable("zone export: %v", err)
+		}
+		if ctx.Err() != nil {
+			return nil, errUnavailable("zone export interrupted")
+		}
+		return &exportOutput{ContentType: "text/dns; charset=utf-8",
+			ContentDisposition: `attachment; filename="` + strings.TrimSuffix(built.Name(), ".") + `.zone"`, Body: buf.Bytes()}, nil
+	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err
@@ -895,6 +1167,9 @@ func (s *Server) exportZone(ctx context.Context, in *zonePathInput) (*exportOutp
 }
 
 func (s *Server) notifyZone(ctx context.Context, in *zonePathInput) (*notifyOutput, error) {
+	if s.opts.ZoneNotifyCommand != nil || s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil || s.opts.ZoneReads != nil {
+		return s.notifyZoneCommand(ctx, in)
+	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err
@@ -903,6 +1178,9 @@ func (s *Server) notifyZone(ctx context.Context, in *zonePathInput) (*notifyOutp
 		return nil, newError(http.StatusUnprocessableEntity, KeyUnprocessable,
 			"NOTIFY is unavailable for zones with missing-name fallback",
 			"ordinary secondaries cannot reproduce this zone's fallback behavior")
+	}
+	if z.Spec.Type != v1alpha1.ZoneTypePrimary {
+		return nil, errConflict("manual NOTIFY is available for primary zones", "secondary zones refresh independently on every node")
 	}
 	if s.opts.Notifier == nil {
 		return nil, errNotImplemented("NOTIFY")

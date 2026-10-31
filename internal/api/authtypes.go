@@ -32,6 +32,7 @@ type (
 	LoginRequest struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		TOTPCode string `json:"totpCode,omitempty" doc:"The enrolled authenticator code, when required."`
 	}
 	// SessionInfo is the answer of POST /auth/login and POST
 	// /auth/password (stack.MeResponse): the new session's principal,
@@ -65,6 +66,17 @@ type (
 		CurrentPassword string `json:"currentPassword" doc:"The current password."`
 		NewPassword     string `json:"newPassword" doc:"The new password (at least 12 characters, different from the current one)."`
 		RevokeTokens    bool   `json:"revokeTokens,omitempty" doc:"Also revoke every API token of the user; a password change alone revokes sessions, not tokens."`
+		TOTPCode        string `json:"totpCode,omitempty" doc:"The enrolled authenticator code, when required."`
+	}
+	// SessionRecordInfo is an enrollment belonging to the current account UID.
+	// It never includes cookie secrets, CSRF hashes or authentication evidence.
+	SessionRecordInfo struct {
+		ID            string    `json:"id"`
+		IssuedAt      time.Time `json:"issuedAt"`
+		ExpiresAt     time.Time `json:"expiresAt"`
+		IdleExpiresAt time.Time `json:"idleExpiresAt"`
+		Current       bool      `json:"current"`
+		Revoked       bool      `json:"revoked"`
 	}
 
 	// CreateTokenRequest is the body of POST /auth/tokens.
@@ -91,6 +103,7 @@ type (
 		Namespace string `json:"namespace,omitempty" doc:"The service account's namespace."`
 		ID        string `json:"id,omitempty" doc:"The owner's principal id (local:alice, oidc:...)."`
 		Provider  string `json:"provider,omitempty" doc:"local, or the identity provider id."`
+		UID       string `json:"uid,omitempty" doc:"Immutable account identity for local users and service accounts."`
 	}
 	// CreatedToken is the answer of POST /auth/tokens; Token, the kdr_
 	// secret, is shown this once.
@@ -102,6 +115,8 @@ type (
 	// IAMUser is one local user of GET /iam/users (adminsock.User).
 	IAMUser struct {
 		Name               string     `json:"name"`
+		UID                string     `json:"uid" doc:"Immutable account identity required for administrator recovery and password reset."`
+		ResourceVersion    string     `json:"resourceVersion,omitempty" doc:"Opaque version required for administrator password-reset compare-and-swap."`
 		DisplayName        string     `json:"displayName,omitempty"`
 		BuiltinAdmin       bool       `json:"builtinAdmin"`
 		Disabled           bool       `json:"disabled"`

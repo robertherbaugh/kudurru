@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
 
 func TestResultOf(t *testing.T) {
@@ -31,6 +32,54 @@ func TestResultOf(t *testing.T) {
 		if got := resultOf(tt.err); got != tt.want {
 			t.Errorf("resultOf(%v) = %q, want %q", tt.err, got, tt.want)
 		}
+	}
+}
+
+func assertFencedMetric(t *testing.T, m *Metrics, want float64) {
+	t.Helper()
+	if got := testutil.ToFloat64(m.ClusterFenced); got != want {
+		t.Fatalf("kudurru_cluster_fenced = %v, want %v", got, want)
+	}
+}
+
+func TestClusterFencedMetricsTransitions(t *testing.T) {
+	ctx := context.Background()
+	reg := prometheus.NewRegistry()
+	m := NewMetrics(reg)
+	p := openTemp(t)
+	s := openTemp(t, func(o *Options) { o.InitialMode = replication.Follower; o.Metrics = m })
+	assertFencedMetric(t, m, 0) // Unenrolled is not an authority fence.
+	if err := s.Enroll(ctx, p.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	first := imageOf(t, p)
+	install(t, s, first)
+	assertFencedMetric(t, m, 0)
+	if _, err := s.Promote(ctx, replication.PromoteRequest{ExpectedTerm: first.Term, ExpectedInstalled: first.Generation(), RequestID: "metrics-promotion"}); err != nil {
+		t.Fatal(err)
+	}
+	assertFencedMetric(t, m, 0)
+	winner := *first
+	winner.Term.Epoch = s.Authority().Term.Epoch + 1
+	winner.Term.PrimaryID, winner.Term.PromotionID = "winner", "winning-promotion"
+	winner.Parent = nil
+	if err := replication.Seal(&winner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ObserveAuthority(ctx, winner.Term); err != nil {
+		t.Fatal(err)
+	}
+	assertFencedMetric(t, m, 1)
+	if err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`# HELP kudurru_cluster_fenced Whether the SQLite member is fenced by replication authority or a failed durable fence (1 fenced, 0 otherwise); not DNS or write readiness.
+# TYPE kudurru_cluster_fenced gauge
+kudurru_cluster_fenced 1
+`), "kudurru_cluster_fenced"); err != nil {
+		t.Fatal(err)
+	}
+	install(t, s, &winner)
+	assertFencedMetric(t, m, 0)
+	if s.Authority().Writable() {
+		t.Fatal("following the new primary must remain read only")
 	}
 }
 

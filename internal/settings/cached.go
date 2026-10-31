@@ -18,6 +18,10 @@ import (
 type CachedBackend struct {
 	Backend Backend
 	Path    string
+	// AllowOffline optionally narrows which backend errors permit fallback.
+	// In particular, an HTTP URL wrapper must not turn an identity refusal
+	// into an availability failure merely by implementing net.Error.
+	AllowOffline func(error) bool
 }
 
 func (b CachedBackend) Read(ctx context.Context) (Document, string, error) {
@@ -72,6 +76,9 @@ func (b CachedBackend) ReadStartup(ctx context.Context) (Document, string, error
 	d, rev, err := b.Read(ctx)
 	if err == nil {
 		return d, rev, nil
+	}
+	if b.AllowOffline != nil && !b.AllowOffline(err) {
+		return d, rev, err
 	}
 	var network net.Error
 	if !errors.As(err, &network) && !errors.Is(err, context.DeadlineExceeded) && !apierrors.IsServiceUnavailable(err) && !apierrors.IsTimeout(err) && !apierrors.IsServerTimeout(err) && !apierrors.IsTooManyRequests(err) {

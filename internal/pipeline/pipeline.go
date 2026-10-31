@@ -21,16 +21,16 @@ import (
 // Order is the fixed stage order. "log" is implemented as an Observer
 // because it must see the final response; it is listed for documentation.
 var Order = []string{
-	"ingress", "identify", "control", "local", "authoritative", "blocking",
-	"rewrite", "cache", "dnssec", "upstream", "postprocess", "log",
+	"ingress", "identify", "control", "postprocess", "local", "authoritative", "blocking",
+	"rewrite", "cache", "dnssec", "upstream", "log",
 }
 
 // ErrNoAnswer is returned when every stage called next and nothing answered.
 var ErrNoAnswer = errors.New("pipeline: no stage produced an answer")
 
-// ErrDrop is returned (with a nil Response) by a stage that decided the
-// query must not be answered at all: the control stage drops malformed
-// queries this way. Observers record such queries as StatusDropped.
+// ErrDrop is returned by a stage that decided the query must not be answered
+// at all. A metadata-only Response may retain its policy status, list, rule
+// and cleanup ownership. With no Response, observers use StatusDropped.
 // Transports should send nothing for UDP and DoQ and close the TCP, DoT,
 // DoH or DoH3 exchange; a transport that does not check for ErrDrop
 // answers SERVFAIL as it does for any error.
@@ -75,6 +75,16 @@ type Client struct {
 	ProxiedFrom netip.Addr
 	ClientID    string
 	MACs        []string
+	// Names and Tags are captured from the same immutable inventory snapshot
+	// as MACs. Names are normalized DNS names; tags are provider labels, not
+	// policy GroupIDs. Slices are shared and read-only.
+	Names, Tags []string
+	// IdentityCaptured also marks a known-empty inventory result so policy
+	// matching never consults a newer mutable hostname source mid-query.
+	IdentityCaptured bool
+	// InventorySource binds private policy contributions to the same immutable
+	// winning observation as MACs. It is never accepted from a client transport.
+	InventorySource string
 	// GroupIDs are the client's ClientGroups ("namespace/name", sorted),
 	// set by the identify stage. The slice is shared with the policy
 	// index: read it, never modify it.
@@ -98,6 +108,9 @@ type Request struct {
 	Client   Client
 	Received time.Time
 	Deadline time.Time
+	// Serving holds one immutable owner cut. Synchronous subqueries borrow it;
+	// work that outlives the caller must Clone and release its own lease.
+	Serving ServingLease
 	// Zone is set by the authoritative stage when a zone matched. It is an
 	// opaque handle here to keep miekg types out of the zone model; the
 	// authoritative stage stores a *zone.Zone.
@@ -119,6 +132,30 @@ type Request struct {
 	// internal/policy depends on this package. The value is shared and
 	// immutable: stages must not modify it.
 	Policy any
+	// Resolution pins the immutable resolver/validator plan for this question.
+	// It is separate from any serving-configuration bundle held by a caller.
+	Resolution any
+	// ResponseSettings is the immutable response-processing plan captured by
+	// postprocess before entering answering stages. Subqueries inherit it.
+	ResponseSettings any
+	// DNSSECValidation overrides the resolver default for a forward zone.
+	// Nil inherits the global default. Earlier stages must not mutate it.
+	DNSSECValidation *bool
+	// CollectExclusions enables bounded question-rule diagnostics for HTTP dig.
+	// Evidence belongs to this request, never a cached response. A copied
+	// subquery replaces its own fields without mutating its parent's evidence.
+	CollectExclusions   bool
+	Exclusions          []RuleExclusion
+	ExclusionsTruncated bool
+}
+
+// RuleExclusion identifies a disabled matching rule in the captured policy.
+// It does not imply that the list or final answer is allowed.
+type RuleExclusion struct {
+	List   string
+	Source int
+	Rule   string
+	Effect string
 }
 
 // Question returns the first question or a zero value.
@@ -131,12 +168,16 @@ func (r *Request) Question() dns.Question {
 
 // Response is what a stage produces.
 type Response struct {
-	Msg       *dns.Msg
-	Status    Status
-	Upstream  string // dictionary name, never a raw IP
-	List      string // matched list for the UI "why" row
-	Rule      string // matched rule text
-	Cacheable bool
+	Msg        *dns.Msg
+	Status     Status
+	Upstream   string // dictionary name, never a raw IP
+	List       string // matched list for the UI "why" row
+	Rule       string // matched rule text
+	Cacheable  bool
+	Origin     ResponseOrigin
+	Security   Security
+	Modified   bool
+	CacheScope CacheScope
 	// DNSSEC is the validation state of the answer: set by recursive
 	// upstream groups (and kept by the cache); unknown for everything
 	// kudurru did not validate.
@@ -147,6 +188,7 @@ type Response struct {
 	// them, kept for observers and for transports that cannot stream.
 	// Stages set it only for requests that arrived over TCP or DoT.
 	Transfer iter.Seq[*dns.Msg]
+	cleanup  *responseCleanup
 }
 
 // DNSSEC is the validation state of an answer (RFC 4033 §5). The values
@@ -181,6 +223,7 @@ type Observer interface {
 type Chain struct {
 	stages    []Stage
 	observers []Observer
+	capture   Capture
 }
 
 // New validates that stages follow Order (subset, same relative order) and
@@ -228,18 +271,47 @@ func (c *Chain) Stages() []string {
 }
 
 // Serve runs the request through the chain and notifies observers.
-func (c *Chain) Serve(req *Request) (*Response, error) {
+func (c *Chain) Serve(req *Request) (resp *Response, err error) {
 	if req.Received.IsZero() {
 		req.Received = time.Now()
 	}
 	if req.Ctx == nil {
 		req.Ctx = context.Background()
 	}
-	resp, err := c.serveFrom(0, req)
+	var owned ServingLease
+	completed := false
+	defer func() {
+		if !completed {
+			resp.Close() // an observer panic must not strand response ownership
+		}
+		if owned != nil {
+			owned.Release()
+			req.Serving = nil
+		}
+	}()
+	if req.Serving == nil && c.capture != nil {
+		owned, err = c.capture(req)
+		if err == nil && owned == nil {
+			err = ErrServingCapture
+		}
+		if err == nil {
+			req.Serving = owned
+		}
+	}
+	if err == nil {
+		resp, err = c.serveFrom(0, req)
+	}
 	latency := time.Since(req.Received)
 	for _, o := range c.observers {
 		o.Observe(req, resp, err, latency)
 	}
+	if err != nil {
+		resp.Close()
+	} else if resp != nil && resp.Transfer != nil && owned != nil {
+		resp.AddCleanup(owned.Release)
+		owned = nil // the transport now owns stream cleanup
+	}
+	completed = true
 	return resp, err
 }
 

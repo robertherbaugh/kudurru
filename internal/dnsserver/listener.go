@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"context"
 	"errors"
 	"fmt"
@@ -99,14 +101,25 @@ type Spec struct {
 	Path string
 	// CertFile and KeyFile are required for TLS protocols. Listeners that
 	// name the same pair share one tlsreload.Reloader.
-	CertFile string
-	KeyFile  string
+	CertFile       string
+	KeyFile        string
+	ClientIDDomain string
+	ClientIDs      bool
 }
 
 // Name identifies the listener in readiness output, e.g. "doq:0.0.0.0:853".
 func (s Spec) Name() string { return string(s.Protocol) + ":" + s.Address }
 
 func (s Spec) validate() error {
+	if s.ClientIDDomain != "" && ((s.Protocol != ProtoDoT && s.Protocol != ProtoDoQ) || !clientid.Domain(s.ClientIDDomain)) {
+		return fmt.Errorf("dnsserver: clientIDDomain requires a valid DoT/DoQ DNS suffix")
+	}
+	if s.ClientIDs && s.Protocol != ProtoDoH && s.Protocol != ProtoDoH3 {
+		return fmt.Errorf("dnsserver: clientIDs requires a DoH/DoH3 listener")
+	}
+	if s.ClientIDs && strings.HasSuffix(s.Path, "/") {
+		return fmt.Errorf("dnsserver: client ID base path must not end with /")
+	}
 	if _, ok := factories[s.Protocol]; !ok {
 		return fmt.Errorf("dnsserver: unknown protocol %q (want one of %v)", s.Protocol, Protocols())
 	}
@@ -245,14 +258,15 @@ type Options struct {
 	// listeners. Nil or disabled means headers are not inspected.
 	Proxy  *proxyproto.Policy
 	Limits Limits
-	// TSIG verifies signed requests and signs their replies on the udp,
-	// tcp and dot listeners (RFC 8945, tsig.go). Nil knows no key: every
+	// TSIG verifies signed requests and signs replies on every listener
+	// (RFC 8945, tsig.go). Encrypted listeners require *StaticKeyring to
+	// pin the original installed credentials. Nil knows no key: every
 	// signed request is answered NOTAUTH/BADKEY.
 	TSIG TSIGKeyring
 	// OnTSIGFailure, if set, is called with TSIGBadKey, TSIGBadSig or
 	// TSIGBadTime for every request rejected for its TSIG (metrics).
 	OnTSIGFailure func(reason string)
-	// Sockets is how many SO_REUSEPORT sockets every udp and tcp listener
+	// Sockets is how many SO_REUSEPORT sockets every UDP, TCP and DoT listener
 	// binds, each with its own read loop (listeners.sockets). Zero means
 	// runtime.GOMAXPROCS(0) and 1 a single plain socket; platforms other
 	// than Linux always bind one. See SocketCount.
@@ -266,7 +280,7 @@ type env struct {
 	certs   *tlsreload.Store
 	proxy   *proxyproto.Policy
 	limits  Limits
-	// tsig verifies and signs TSIG on the miekg transports; nil means a
+	// tsig verifies and signs TSIG on all transports; nil means a
 	// provider that knows no key.
 	tsig          dns.TsigProvider
 	onTSIGFailure func(reason string)
@@ -419,6 +433,7 @@ func (r *Registry) Bind() error {
 			return fmt.Errorf("dnsserver: bind %s: %w", l.Spec().Name(), err)
 		}
 	}
+	r.connectHTTP3Alternatives()
 	r.bound = true
 	return nil
 }

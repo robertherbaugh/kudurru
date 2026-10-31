@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -151,7 +152,17 @@ func eventually(t *testing.T, timeout time.Duration, fn func() bool, description
 }
 func (c *testCluster) consistent() {
 	c.t.Helper()
-	eventually(c.t, 8*time.Second, func() bool {
+	c.consistentWithin(8 * time.Second)
+}
+
+func (c *testCluster) consistentWithin(timeout time.Duration) {
+	c.t.Helper()
+	defer func() {
+		if c.t.Failed() {
+			c.logCatchupDiagnostics()
+		}
+	}()
+	eventually(c.t, timeout, func() bool {
 		var expected any
 		for i, s := range c.stores {
 			if s == nil {
@@ -178,6 +189,45 @@ func (c *testCluster) consistent() {
 		return true
 	}, "identical committed lease/configuration/claim state on replicas")
 }
+
+// logCatchupDiagnostics intentionally reports only progress and equality, never
+// lease identities, claim contents, configuration values, or setup tokens.
+func (c *testCluster) logCatchupDiagnostics() {
+	c.t.Helper()
+	var expected map[string]any
+	for i, s := range c.stores {
+		if s == nil || c.nodes[i] == nil {
+			continue
+		}
+		n := c.nodes[i]
+		first, firstErr := n.disk.FirstIndex()
+		last, lastErr := n.disk.LastIndex()
+		contact := n.raft.LastContact()
+		c.t.Logf("catchup diagnostics: replica=%d role=%s initialized=%t failed=%t commit=%d fsm_applied=%d store_applied=%d first=%d last=%d disk_error=%t recent_contact=%t", i, n.raft.State(), n.fsm.initialized.Load(), n.fsm.failed.Load() != nil, n.raft.CommitIndex(), n.fsm.appliedIndex.Load(), s.ReplicaAppliedIndex(), first, last, firstErr != nil || lastErr != nil, !contact.IsZero() && time.Since(contact) < time.Second)
+		b, err := s.CaptureReplica(context.Background())
+		var v map[string]any
+		if err != nil || json.Unmarshal(b, &v) != nil {
+			c.t.Logf("catchup diagnostics: replica=%d capture_failed=true", i)
+			continue
+		}
+		cfg := v["config"].(map[string]any)
+		delete(cfg, "Interface")
+		delete(cfg, "ServerIP")
+		if expected == nil {
+			expected = v
+			continue
+		}
+		var different []string
+		for key := range expected {
+			if !reflect.DeepEqual(expected[key], v[key]) {
+				different = append(different, key)
+			}
+		}
+		sort.Strings(different)
+		c.t.Logf("catchup diagnostics: replica=%d different_fields=%v lease_count=%d", i, different, len(v["leases"].([]any)))
+	}
+}
+
 func client(i int) dhcp.Client {
 	return dhcp.Client{MAC: fmt.Sprintf("02:00:00:00:00:%02x", i), Hostname: fmt.Sprintf("client%d", i)}
 }
@@ -363,7 +413,13 @@ func TestSnapshotCatchupForOfflineVoter(t *testing.T) {
 		t.Fatalf("test did not compact its log: %d %v", first, err)
 	}
 	c.start(offline)
-	c.consistent()
+	// Raft v1.7.3 retries failed log replication with a maximum 10.24s
+	// backoff (10ms, scale 12). Slower durable writes while this voter is
+	// offline can reach that backoff, which heartbeats do not reset. Allow
+	// one backoff plus the ordinary 8s convergence budget for snapshot
+	// transfer/restore; ordinary replication checks keep their 8s deadline.
+	const maxReplicationBackoff = 10240 * time.Millisecond
+	c.consistentWithin(maxReplicationBackoff + 8*time.Second)
 }
 
 func TestUnsafeBootstrapAndForeignOwnershipRejected(t *testing.T) {

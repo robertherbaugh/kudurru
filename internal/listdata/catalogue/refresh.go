@@ -1,20 +1,18 @@
 package catalogue
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster"
+	"github.com/robertherbaugh/kudurru/internal/downloadpolicy"
 	"github.com/robertherbaugh/kudurru/internal/version"
 )
 
@@ -34,10 +32,8 @@ const (
 
 // Files under RefresherOptions.Dir.
 const (
-	fileDocument = "catalogue.json"
-	fileSource   = "catalogue.source"
-	fileAdGuard  = "adguard-services.json"
-	fileAdGuardS = "adguard-services.source"
+	fileReceipt       = "catalogue.receipt.json"
+	fileImportReceipt = "adguard-services.receipt.json"
 )
 
 // What a Refresher's URL serves (RefresherOptions.Kind).
@@ -74,6 +70,9 @@ type RefresherOptions struct {
 	// Client downloads URL; default a plain client with a 1 m timeout.
 	// The wiring passes the list fetcher's guarded client.
 	Client *http.Client
+	// HTTPSOnly restricts new external downloads, including redirects.
+	// Persisted data and authenticated peer pulls keep their existing semantics.
+	HTTPSOnly bool
 	// FallbackAfter; default DefaultFallbackAfter.
 	FallbackAfter time.Duration
 	Logger        *slog.Logger
@@ -121,6 +120,8 @@ func NewRefresher(opts RefresherOptions) (*Refresher, error) {
 	switch {
 	case opts.URL == "":
 		return nil, errors.New("catalogue: RefresherOptions.URL is required")
+	case len(opts.URL) > maxSourceBytes:
+		return nil, errors.New("catalogue: source URL exceeds bound")
 	case !strings.HasPrefix(opts.URL, "https://") && !strings.HasPrefix(opts.URL, "http://"):
 		return nil, fmt.Errorf("catalogue: blocking.catalogue.url %q is not an http or https URL", opts.URL)
 	case opts.Holder == nil:
@@ -142,6 +143,9 @@ func NewRefresher(opts RefresherOptions) (*Refresher, error) {
 	}
 	if opts.Client == nil {
 		opts.Client = &http.Client{Timeout: httpTimeout}
+	}
+	if opts.HTTPSOnly {
+		opts.Client = downloadpolicy.HTTPSOnly(opts.Client)
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -189,13 +193,12 @@ func (r *Refresher) Refresh(ctx context.Context) time.Duration {
 	case err == nil && r.opts.Pull != nil && leader.Address != "":
 		body, source, perr := r.opts.Pull(ctx, leader.Address)
 		if perr == nil {
+			perr = r.apply(body, source)
+		}
+		if perr == nil {
 			r.mu.Lock()
 			r.leaderSince = time.Time{}
 			r.mu.Unlock()
-			if aerr := r.apply(body, source); aerr != nil {
-				r.failed(now, fmt.Errorf("from the leader %s: %w", leader.Name, aerr))
-				return retryAfter
-			}
 			r.succeeded(now)
 			return min(r.opts.RefreshInterval, replicaPoll)
 		}
@@ -247,6 +250,9 @@ func (r *Refresher) fetch(ctx context.Context) error {
 	r.mu.Unlock()
 	resp, err := r.opts.Client.Do(req)
 	if err != nil {
+		if errors.Is(err, downloadpolicy.ErrHTTPSRequired) {
+			return downloadpolicy.ErrHTTPSRequired
+		}
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -279,6 +285,11 @@ func (r *Refresher) maxBytes() int {
 
 // apply validates body and serves it; an unchanged document is a no-op.
 func (r *Refresher) apply(body []byte, source string) error {
+	// Validate provenance before the digest no-op, including identical bodies
+	// sent by a leader still configured for an older source.
+	if source != r.opts.URL || len(body) > r.maxBytes() {
+		return errors.New("catalogue: source mismatch or document bound")
+	}
 	if r.opts.Kind == KindAdGuard {
 		return r.applyImport(body, source)
 	}
@@ -317,14 +328,6 @@ func (r *Refresher) applyImport(body []byte, source string) error {
 	return nil
 }
 
-// files are the names of the kept document and its source under Dir.
-func (r *Refresher) files() (doc, src string) {
-	if r.opts.Kind == KindAdGuard {
-		return fileAdGuard, fileAdGuardS
-	}
-	return fileDocument, fileSource
-}
-
 func (r *Refresher) failed(now time.Time, err error) {
 	r.mu.Lock()
 	r.status.LastAttempt, r.status.LastError = now, err.Error()
@@ -346,69 +349,4 @@ func (r *Refresher) succeeded(now time.Time) {
 	r.mu.Lock()
 	r.status.LastAttempt, r.status.LastSuccess, r.status.LastError = now, now, ""
 	r.mu.Unlock()
-}
-
-// persist keeps a downloaded document for the next start; the embedded
-// one is in the binary already.
-func (r *Refresher) persist(raw []byte, origin string) {
-	if r.opts.Dir == "" || origin == OriginEmbedded {
-		return
-	}
-	docName, srcName := r.files()
-	if err := os.MkdirAll(r.opts.Dir, 0o750); err != nil {
-		r.log.Warn("catalogue: cannot keep the download", "dir", r.opts.Dir, "err", err)
-		return
-	}
-	for _, f := range []struct {
-		name string
-		data []byte
-	}{{docName, raw}, {srcName, []byte(origin + "\n")}} {
-		tmp := filepath.Join(r.opts.Dir, "."+f.name+".tmp")
-		if err := os.WriteFile(tmp, f.data, 0o600); err != nil {
-			r.log.Warn("catalogue: cannot keep the download", "err", err)
-			return
-		}
-		if err := os.Rename(tmp, filepath.Join(r.opts.Dir, f.name)); err != nil {
-			r.log.Warn("catalogue: cannot keep the download", "err", err)
-			return
-		}
-	}
-}
-
-// loadPersisted serves the last good download of the same URL.
-func (r *Refresher) loadPersisted() {
-	if r.opts.Dir == "" {
-		return
-	}
-	docName, srcName := r.files()
-	src, err := os.ReadFile(filepath.Join(r.opts.Dir, srcName)) //nolint:gosec // G304: the data directory and a fixed file name
-	if err != nil {
-		return
-	}
-	if string(bytes.TrimSpace(src)) != r.opts.URL {
-		return // downloaded from a URL no longer configured
-	}
-	body, err := os.ReadFile(filepath.Join(r.opts.Dir, docName)) //nolint:gosec // G304: the data directory and a fixed file name
-	if err != nil {
-		return
-	}
-	if r.opts.Kind == KindAdGuard {
-		imp, err := ParseAdGuard(body, r.opts.URL)
-		if err != nil {
-			r.log.Warn("catalogue: ignoring the kept AdGuard services download", "err", err)
-			return
-		}
-		if r.opts.Holder.SetImport(imp) {
-			r.log.Info("AdGuard services loaded from the last download", "source", r.opts.URL, "services", len(imp.Services))
-		}
-		return
-	}
-	c, err := Parse(body, r.opts.URL)
-	if err != nil {
-		r.log.Warn("catalogue: ignoring the kept download", "err", err)
-		return
-	}
-	if r.opts.Holder.Set(c) {
-		r.log.Info("catalogue loaded from the last download", "version", c.Version, "source", r.opts.URL)
-	}
 }
