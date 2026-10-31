@@ -143,7 +143,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | Item | Source | Target |
 |---|---|---|
 | `--context` selecting a kubeconfig so CRD verbs go straight to the apiserver (§3.5); a context is always a kudurru API endpoint today | dev-docs/milestones/m3/cli.md | v0.2 (moved from M4: a context is a kudurru API endpoint in v0.1) |
-| Remaining §3.5 verbs: `cluster status\|promote\|join-token`, `integrations …`, zone option writes (`PUT/PATCH /zones/{zone}`) (`lameduck` landed in dev-docs/milestones/m5/burndown-server.md, `health --vrrp` in e8b36b4; live Pi-hole and Technitium API migrations in D169; offline AdGuard/Blocky subsets in `32f9e81`/`f01d4db`) | dev-docs/milestones/m3/cli.md | v0.2 (merged rows) |
+| Remaining §3.5 verbs: `cluster status\|promote\|join-token`, `integrations …`, zone options now use reviewed `zones options get/set` through existing object PUT (F60d) (`lameduck` landed in dev-docs/milestones/m5/burndown-server.md, `health --vrrp` in e8b36b4; live Pi-hole and Technitium API migrations in D169; offline AdGuard/Blocky subsets in `32f9e81`/`f01d4db`) | dev-docs/milestones/m3/cli.md | v0.2 (merged rows) |
 | Browser (loopback + PKCE) and device-code `kudurru login` (§8.3) | dev-docs/milestones/m3/cli.md | v0.2 |
 | CLI conformance test against the real `internal/api` router instead of the fake in `cmd/kudurru/fakeapi_test.go`; document `ApplyResult.errorKey/hint`, the wrapped settings body and the SSE event name in design-record.md §10 | dev-docs/milestones/m3/cli.md | v0.2 (moved from M3: test-only) |
 

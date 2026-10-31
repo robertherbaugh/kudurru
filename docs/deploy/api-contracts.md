@@ -1,7 +1,7 @@
 # API contracts for scripts and CLI clients
 
 Public routes use `/api/v1`. The served `/api/v1/openapi.json` describes JSON
-fields and permissions. These examples explain three contracts clients must
+fields and permissions. These examples explain contracts clients must
 preserve. They omit optional fields and use illustrative timing values.
 
 ## Applying multiple objects
@@ -28,6 +28,32 @@ HTTP 200 does not mean every document succeeded. The CLI prints all outcomes
 and exits unsuccessfully if any document failed. Earlier successful documents
 are not rolled back when another document fails. Do not automatically replay
 the batch after a refusal or an uncertain transport outcome.
+
+## Reviewing and replacing zone options
+
+Review the complete specification before changing it:
+
+```sh
+kudurru zones options get home -o yaml > home-options.yaml
+# Edit spec in home-options.yaml, preserving resourceVersion.
+kudurru zones options set home -f home-options.yaml
+```
+
+The document contains only `resourceVersion` and `spec`. `set` replaces the
+entire specification; omitted fields revert to their normal omitted/default
+behavior. It accepts one YAML or JSON document of at most 1 MiB, including
+stdin with `-f -`. Unknown or duplicate fields are rejected before a request.
+Use `-o json` or `-o yaml` for a document; the default table is for reading.
+
+The CLI reads the current object to preserve metadata and status, substitutes
+the reviewed specification and resource version, and sends one
+`PUT /objects/dnszones/<name>` with the reviewed `If-Match`. A newer revision
+returns HTTP 412. The existing route enforces zone-write permission, ownership,
+validation and, on complete SQLite serving, original credential and writer
+authority through the final transaction check. Even unchanged options pass
+through this authorization. The command cannot take over another manager's
+zone and never retries a refused write. Review the current options explicitly
+before submitting another change.
 
 ## Reading and changing settings
 

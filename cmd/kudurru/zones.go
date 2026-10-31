@@ -106,7 +106,7 @@ func zoneTable(zs []zoneSummary) *cli.Table {
 	return t
 }
 
-// newZonesCmd is `kudurru zones list|get|import|export|notify|delete`.
+// newZonesCmd is `kudurru zones list|get|options|import|export|notify|delete`.
 func newZonesCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "zones", Aliases: []string{"zone"}, Short: "List, import, export, notify and delete zones"}
 	list := &cobra.Command{
@@ -145,7 +145,7 @@ func newZonesCmd(o *cliOpts) *cobra.Command {
 			return o.render(cmd, raw, func(bool) (*cli.Table, error) { return zoneTable([]zoneSummary{z}), nil })
 		},
 	}
-	cmd.AddCommand(list, get, newZoneImportCmd(o, "import <zone> -f file.zone"), newZoneExportCmd(o), newZoneNotifyCmd(o), newZoneDeleteCmd(o))
+	cmd.AddCommand(list, get, newZoneOptionsCmd(o), newZoneImportCmd(o, "import <zone> -f file.zone"), newZoneExportCmd(o), newZoneNotifyCmd(o), newZoneDeleteCmd(o))
 	return cmd
 }
 

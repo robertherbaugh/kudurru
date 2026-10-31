@@ -1700,3 +1700,29 @@ Send NOTIFY for a zone to its secondaries.
 kudurru zones notify <zone>
 ```
 
+### kudurru zones options
+
+Review and replace zone options with a resource-version check.
+
+#### kudurru zones options get
+
+Show the zone specification and its reviewed resource version.
+
+```text
+kudurru zones options get <zone>
+```
+
+#### kudurru zones options set
+
+Replace the complete spec using the resourceVersion emitted by zones options get. Metadata and status are preserved. A concurrent change, missing permission or another manager's ownership is refused; this command never retries the write. Use zones options get -o yaml, edit spec, then pass that document with -f.
+
+```text
+kudurru zones options set <zone> -f options.yaml [flags]
+```
+
+Flags:
+
+```text
+  -f, --file string   reviewed YAML/JSON options document, or - for stdin
+```
+

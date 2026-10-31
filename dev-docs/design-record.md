@@ -1154,7 +1154,7 @@ Kubernetes-shaped objects remain re-applicable and use `Server-Timing`;
 errors `{error:{key,message,hint}}`; 201+Location; 204 on delete;
 `If-Match` on `resourceVersion`; `scope=node|cluster&node=<name>` on stats/log calls):
 
-Three concrete [client wire contracts](../docs/deploy/api-contracts.md) apply:
+Concrete [client wire contracts](../docs/deploy/api-contracts.md) apply:
 
 - `POST /apply` returns `{items:[ApplyResult],took_ms}` in document order.
   Each result has `kind`, optional `namespace`, `name` and `result`
@@ -1169,6 +1169,11 @@ Three concrete [client wire contracts](../docs/deploy/api-contracts.md) apply:
   merge patch, not this wrapper. False persistence means restart loses the
   override; missing persistence is not an affirmative claim. Complete SQLite
   publication can follow the durable commit asynchronously.
+- `kudurru zones options get|set` reviews `{resourceVersion,spec}` and replaces
+  the complete spec through one existing `PUT /objects/dnszones/<name>`.
+  The reviewed `If-Match` protects concurrent changes; metadata/status are
+  preserved from a current read. Ownership, permission and original credential/
+  writer checks also apply to unchanged options. Refusals never trigger replay.
 - `/queries/stream` emits named `query` SSE events whose JSON data is one
   `sqlitelog.QueryRow` (`StreamRow`), with nested client/reply and string
   protocol/type/rcode fields. Node IDs are decimal; cluster IDs are opaque

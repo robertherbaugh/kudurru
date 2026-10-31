@@ -23,6 +23,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- CLI: reviewed zone-option get/set commands with resource-version checks,
+  complete-spec replacement and the existing server ownership/authority checks.
 - Audit: dedicated authenticated SQLite authorization/request/client columns
   and shared credential-field redaction before new document persistence.
   Legacy audit bytes and verification remain compatible through schema 6.
