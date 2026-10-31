@@ -87,8 +87,10 @@ type Config struct {
 
 // Node identifies this instance.
 type Node struct {
-	Name    string `koanf:"name" json:"name"`
-	DataDir string `koanf:"dataDir" json:"dataDir"`
+	QuerylogDir string `koanf:"querylogDir" json:"querylogDir"`
+	LocalDir    string `koanf:"localDir" json:"localDir"`
+	Name        string `koanf:"name" json:"name"`
+	DataDir     string `koanf:"dataDir" json:"dataDir"`
 	// Lameduck is how long readiness stays 503 after SIGTERM before the
 	// listeners close, so load balancers and dnsdist drain the node.
 	Lameduck Duration `koanf:"lameduck" json:"lameduck"`
@@ -639,6 +641,9 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 // *FieldError.
 func (c *Config) Validate() error {
 	errs := c.validateSchema()
+	if err := c.ValidateStorageDirs(); err != nil {
+		errs = append(errs, err)
+	}
 	if id := c.Store.Kube.ExpectedClusterID; len(id) > 128 || strings.IndexFunc(id, func(r rune) bool {
 		allowed := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.'
 		return !allowed

@@ -157,6 +157,9 @@ func newLoggerAt(cfg config.Log, level *slog.LevelVar) *slog.Logger {
 // with the public and internal kudurru.io kinds. The rest config is non-nil
 // only for the kube driver.
 func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, reg prometheus.Registerer, logger *slog.Logger) (store.Store, *localdb.SnapshotStore, *rest.Config, error) {
+	if err := prepareStoragePaths(cfg); err != nil {
+		return nil, nil, nil, err
+	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		return nil, nil, nil, err
@@ -220,7 +223,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 	default:
 		return nil, nil, nil, fmt.Errorf("store.driver %q is not supported", cfg.Store.Driver)
 	}
-	db, err := localdb.OpenSnapshotStore(ctx, filepath.Join(cfg.Node.DataDir, localdb.FileName))
+	db, err := localdb.OpenSnapshotStore(ctx, filepath.Join(cfg.LocalDataDir(), localdb.FileName))
 	if err != nil {
 		_ = st.Close()
 		if errors.Is(err, localdb.ErrSchemaTooNew) {
@@ -239,8 +242,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	info := version.Get()
 	logger.Info("kudurru starting", "version", info.Version, "commit", info.Commit, "node", cfg.Node.Name, "config", cfg.Source, "store", cfg.Store.Driver)
 
-	if err := os.MkdirAll(cfg.Node.DataDir, 0o750); err != nil {
-		return fmt.Errorf("node.dataDir: %w", err)
+	if err := prepareStoragePaths(cfg); err != nil {
+		return err
 	}
 	cfg, dhcpSetup, dhcpServer, dhcpSetupError, closeDHCP, err := prepareDHCP(cfg, logger)
 	if err != nil {
@@ -694,7 +697,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		var firstID uint64
 		switch cfg.Querylog.Sink {
 		case "sqlite":
-			opts, err := sqlitelog.OptionsFrom(cfg.Querylog, cfg.Node.DataDir, cfg.Node.Name)
+			opts, err := sqlitelog.OptionsFrom(cfg.Querylog, cfg.QuerylogDataDir(), cfg.Node.Name)
 			if err != nil {
 				return err
 			}
