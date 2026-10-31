@@ -112,3 +112,41 @@ hidden retries and redirects; actual requests enter the host fence and shared
 budget. Provider outages preserve DNS serving snapshots and original inventory
 expiry. Review pending/uncertain effects before another explicit operation;
 remote side effects are not rolled back by local transaction refusal.
+
+### external-dns webhook sidecar
+
+Run `kudurru externaldns-webhook` in the external-dns pod when its webhook client
+cannot send your upstream bearer header. The command relays the four existing
+webhook operations; the Kudurru server still reconciles records and enforces its
+namespace, zone selector, licensing and write authority.
+
+```sh
+kudurru externaldns-webhook \
+  --listen 127.0.0.1:8888 \
+  --upstream https://dns.example.com/external-dns \
+  --upstream-token-file /run/secrets/external-dns-token \
+  --upstream-ca-file /run/secrets/webhook-ca.pem
+```
+
+Point external-dns at `http://127.0.0.1:8888` with `--provider=webhook` and
+`--webhook-provider-url=http://127.0.0.1:8888`. Only literal loopback listeners
+are accepted, so the two containers must share a pod network namespace. The
+upstream's fixed path prefix is preserved. The embedded Kudurru webhook serves
+HTTP: for a remote upstream, provide a verified HTTPS frontend that routes this
+prefix to that listener. Plain HTTP is allowed only to literal loopback endpoints
+for development or colocated containers. The optional CA file adds trust to the
+system roots; there is no TLS-verification bypass.
+
+The upstream token file is required for remote servers. It must be a regular
+file of at most 4 KiB containing a bearer token of at least 16 characters.
+Both the token and CA are captured at startup; restart after rotation. Caller
+cookies, authorization and forwarding headers are never forwarded. The relay
+reads no saved CLI credentials and opens no database or Kubernetes client.
+
+Requests retain their original cancellation, with a 15-second operation deadline,
+32 MiB request/response limits, 16 KiB headers and at most two concurrent requests.
+The relay refuses redirects and never automatically retries an operation. A lost
+response can leave the upstream outcome unknown; inspect the existing records
+before manually replaying a write. A canceled process stops its listener and
+joins shutdown within a bounded grace period. Direct `DNSEndpoint` reconciliation
+is separate from this command.

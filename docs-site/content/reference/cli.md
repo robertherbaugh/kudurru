@@ -665,6 +665,26 @@ Flags:
       --safe              redact credentials embedded in URLs
 ```
 
+## kudurru externaldns-webhook
+
+Run beside external-dns and relay its four webhook operations to an existing Kudurru webhook. The upstream server retains licensing, namespace, zone selection, ownership and write admission. Only literal loopback listeners are accepted. Upstream TLS and token files are captured at startup; restart after rotation. No redirect or failed operation is automatically replayed.
+
+```text
+kudurru externaldns-webhook [flags]
+```
+
+Flags:
+
+```text
+      --listen string                pod-local literal loopback listener (default "127.0.0.1:8888")
+      --upstream string              fixed existing webhook HTTPS URL, including any
+                                     configured prefix
+      --upstream-ca-file string      optional PEM CA bundle for upstream HTTPS, added to
+                                     system trust
+      --upstream-token-file string   regular file holding the upstream webhook bearer token
+                                     (required for remote servers)
+```
+
 ## kudurru get
 
 List or show objects. Kinds and their aliases:

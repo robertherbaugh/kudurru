@@ -360,3 +360,20 @@ Service, Gateway and CRD sources supported by that client. This option adds no
 Kubernetes watch or direct `DNSEndpoint` source to kudurru. The webhook continues
 to receive external-dns's computed endpoints, including its TXT registry records,
 and preserves its existing record ownership rules.
+
+### Pod-local webhook relay
+
+`kudurru externaldns-webhook` is an explicit transport sidecar (D288). It accepts
+only the four webhook method/path pairs on literal loopback, forwards to one
+operator-configured upstream and injects the captured upstream token. It has no
+store, local reconciliation, election or authority-writing capability. The
+upstream remains the owner of records, namespaces, licensing and admission.
+
+Each operation has its original request context and a bounded deadline, body,
+headers and concurrency slot. A fresh HTTP/1 transport has no reused connection
+or replayable body, proxies are disabled, and redirects refuse. CA/token files
+are bounded startup inputs and cannot be supplied by request data. Cookies and
+forwarding headers are discarded. A response is bounded before downstream
+headers commit; uncertain responses remain errors and are never retried by the
+relay. Remote upstreams require verified HTTPS; local development HTTP requires
+a literal loopback destination.

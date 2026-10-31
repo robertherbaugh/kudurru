@@ -121,7 +121,7 @@ runners. Unit tests cannot substitute for those results.
 | F33 | Remote `GET /nodes/{name}/health` | Operations and UI | Integrated; final gates open |
 | F34 | `/auth/me` exposes zone-scoped permissions | IAM and access | Implemented; final gates open |
 | F35a | Read external-dns `DNSEndpoint` CRs directly | Zones and AD | Queued: missing |
-| F35b | `kudurru externaldns-webhook` sidecar subcommand | Zones and AD | Queued: missing |
+| F35b | `kudurru externaldns-webhook` sidecar subcommand | Zones and AD | Implemented D288 loopback relay to existing webhook; actual TLS/router and Kubernetes-backed CLI CRUD/ownership, cancellation/refusal races and lint pass |
 | F35c | external-dns webhook authentication | Zones and AD | Integrated; final gates open |
 | F36 | Serve object lists from live snapshot instead of store | Operations and UI | Implemented; final gates open |
 | F37 | Adopt generated OpenAPI Go client underneath CLI client | Operations and UI | Integrated a106708 plus generated 156-operation dispatch; complete adapter/generator and selected actual-router CLI races pass |

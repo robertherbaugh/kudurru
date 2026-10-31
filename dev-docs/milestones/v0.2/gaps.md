@@ -1918,3 +1918,26 @@ Hosted GitHub docs 41220103686 caught three missing generated logout endpoint
 rows. Both API schemas and clients were current; the endpoint Markdown reference
 was not. `make docs-gen` regenerated it and the CLI reference, and the CLI drift
 check passes. Local Hugo success alone had not checked reference equality.
+
+
+### F35b explicit external-dns sidecar
+
+D288 adds `kudurru externaldns-webhook`, a loopback-only transport relay to an
+existing Kudurru webhook. The upstream retains licensing, reconciliation,
+namespace, record ownership and current mutation admission. Remote connections
+require verified HTTPS and a captured startup token; the embedded HTTP webhook
+therefore needs an HTTPS frontend for remote use. The relay strips caller
+authority, accepts only four protocol operations, bounds I/O/concurrency, joins
+cancellation and never follows redirects or replays uncertain writes. This
+implements the dedicated sidecar command; F35a direct DNSEndpoint reconciliation
+remains open.
+
+Final frozen-source `go test -p 2 -race ./ee/integration/externaldns ./cmd/kudurru
+-run 'TestRelay|TestExternalDNSWebhookCLI|TestCLIReferenceDrift' -count=1 -json`
+with GOMAXPROCS=2 passes both packages (2.546s/7.105s), eight test results and no
+skips. Actual local TLS/router and disposable Kubernetes API tests cover CRUD,
+manager ownership, startup credential retention, wrong token/CA, original write
+refusal, redirect/lost-ack single attempts, body bounds and joined cancellation.
+Scoped final lint passes with zero issues. Initial lint findings were fixed
+before these final commands. Generated CLI reference drift passes. No full
+repository, deployed external-dns client or direct CR watcher claim is made.
