@@ -256,8 +256,8 @@ func newStatsCmd(o *cliOpts) *cobra.Command {
 }
 
 // logRow is one query, decoded from either the GET /queries row shape
-// (sqlitelog.QueryRow) or the live tail's event shape (querylog.Event),
-// since the contract does not fix the SSE payload.
+// (sqlitelog.QueryRow, also the named query SSE payload) or a legacy raw
+// querylog.Event shape. Current wire contracts are in docs/deploy/api-contracts.md.
 type logRow struct {
 	ID          uint64
 	TS          time.Time
@@ -547,9 +547,9 @@ func newLogsCmd(o *cliOpts) *cobra.Command {
 				opts.LastEventID = strconv.FormatUint(lastID, 10)
 			}
 			return c.Subscribe(ctx, "/queries/stream", q, opts, func(ev apiclient.Event) error {
-				// The contract does not name the event type; anything that
-				// decodes to a row with a domain is a query, the rest
-				// (notices, lag reports) is skipped.
+				// Current query events carry QueryRow. Keep legacy row
+				// compatibility; scope/availability notices have no domain
+				// and are skipped.
 				var r logRow
 				if err := json.Unmarshal(ev.Data, &r); err != nil || r.Domain == "" {
 					return nil //nolint:nilerr // not a query row

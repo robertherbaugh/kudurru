@@ -1149,7 +1149,32 @@ Windows qualification remains open.
 
 Stack (D69): Bun toolchain, React 19.2 + TypeScript, Astryx components and theming (prebuilt CSS, themes as CSS custom properties, `swizzle` for deep customisation), TanStack Query (+ Table/Virtual for the query log), uPlot for live series and ECharts for pies/top lists until `@astryxdesign/charts` is stable; generated TypeScript client from the huma OpenAPI; SSE via `EventSource`; strict CSP; no CDN; `go:embed`ded; path-prefix aware. Breaking API changes are versioned (`/api/v1`) and deprecated routes survive one major [pihole §17.6].
 
-API surface (`/api/v1`; every body carries `took_ms`; errors `{error:{key,message,hint}}`; 201+Location; 204 on delete; `If-Match` on `resourceVersion`; `scope=node|cluster&node=<name>` on stats/log calls):
+API surface (`/api/v1`; ordinary non-object JSON envelopes carry `took_ms`;
+Kubernetes-shaped objects remain re-applicable and use `Server-Timing`;
+errors `{error:{key,message,hint}}`; 201+Location; 204 on delete;
+`If-Match` on `resourceVersion`; `scope=node|cluster&node=<name>` on stats/log calls):
+
+Three concrete [client wire contracts](../docs/deploy/api-contracts.md) apply:
+
+- `POST /apply` returns `{items:[ApplyResult],took_ms}` in document order.
+  Each result has `kind`, optional `namespace`, `name` and `result`
+  (`created|updated|unchanged|error`). Success includes `resourceVersion`;
+  failure includes `error`, `errorKey` and optional `hint` (the owner for
+  `managed_by`). HTTP 200 can contain failed documents; successful earlier
+  documents remain committed. The CLI fails its exit status for any failed
+  document and must not automatically replay refused mutations.
+- `GET|PATCH /settings` and `/node/config` return
+  `{scope,node,settings,took_ms}`, with optional ownership `sections`/`conflicts`
+  and PATCH `changed`, `restartRequired`, `persisted`. PATCH input is the bare
+  merge patch, not this wrapper. False persistence means restart loses the
+  override; missing persistence is not an affirmative claim. Complete SQLite
+  publication can follow the durable commit asynchronously.
+- `/queries/stream` emits named `query` SSE events whose JSON data is one
+  `sqlitelog.QueryRow` (`StreamRow`), with nested client/reply and string
+  protocol/type/rcode fields. Node IDs are decimal; cluster IDs are opaque
+  per-node, filter-bound resume cursors. `Last-Event-ID` resumes the retained
+  tail. Remote/cluster `scope` events report availability; comments are
+  heartbeats. SSE rows are not JSON list envelopes and carry no `took_ms`.
 
 ```
 auth:      GET /auth/status · POST /auth/login · GET /auth/oidc/{idp}/start|callback · POST /auth/logout · GET /auth/me · POST /auth/password
