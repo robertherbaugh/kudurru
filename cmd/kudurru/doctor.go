@@ -47,8 +47,10 @@ func (r *doctorReport) fail(check, format string, args ...any) {
 
 func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
 	var (
-		skipAPI, skipPorts bool
-		vipRunDir, kaConf  string
+		skipAPI, skipPorts      bool
+		vipRunDir, kaConf       string
+		selfNotify              bool
+		notifyTarget, notifyKey string
 	)
 	cmd := &cobra.Command{
 		Use:   "doctor",
@@ -66,6 +68,8 @@ func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
   database   with database.dsn set: the central database answers, runs
              PostgreSQL 16 or newer and has a schema this binary can use;
              warns about sslmode=disable to another host
+  notify     with --notify: authenticated UDP self-NOTIFY to the DNS health
+             listener; reports the source address observed by that listener
   vrrp       warns when ` + "`kudurru vip run --legacy`" + ` renders keepalived without
              auth_hmac (unauthenticated VRRP adverts); silent on nodes
              without keepalived
@@ -101,6 +105,9 @@ Exits non-zero when a check fails.`,
 			checkDataDir(rep, cfg.Node.DataDir)
 			checkDatabase(c.Context(), rep, cfg)
 			checkVRRP(rep, vipRunDir, kaConf)
+			if selfNotify || notifyTarget != "" || notifyKey != "" {
+				checkSelfNotify(c.Context(), rep, cfg, notifyTarget, notifyKey)
+			}
 
 			var serverUp bool
 			if !skipAPI {
@@ -116,6 +123,9 @@ Exits non-zero when a check fails.`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&selfNotify, "notify", false, "perform an authenticated self-NOTIFY using local tsigKeys and notify.source")
+	cmd.Flags().StringVar(&notifyTarget, "notify-target", "", "UDP host:port reachable from this node (defaults to its first UDP DNS listener)")
+	cmd.Flags().StringVar(&notifyKey, "notify-key", "", "configured tsigKeys name for self-NOTIFY (defaults to the first entry; no key fallback)")
 	cmd.Flags().BoolVar(&skipAPI, "skip-api", false, "do not contact the API server")
 	cmd.Flags().BoolVar(&skipPorts, "skip-ports", false, "do not test whether listener ports can be bound")
 	cmd.Flags().StringVar(&vipRunDir, "vip-run-dir", keepalived.DefaultRunDir, "run directory shared with `kudurru vip run` (legacy-mode marker)")

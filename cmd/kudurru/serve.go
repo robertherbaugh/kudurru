@@ -1042,7 +1042,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 		}()
 		auth.Update = complete.primary.Update
-		auth.Notify = servingbuild.CapturedNotify(notifyReceiver, time.Now)
+		auth.Notify = complete.primary.doctorNotify(servingbuild.CapturedNotify(notifyReceiver, time.Now))
 		if err := servingbuild.BindDNS(complete.publisher, servingbuild.DNSStages{Chain: chain, Control: controlStage, Identify: idStage, Authority: auth, Blocking: bs, Cache: cs, Response: post, Resolution: fwd}, time.Now); err != nil {
 			return err
 		}

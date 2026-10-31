@@ -52,10 +52,11 @@ type primaryNetworkFixture struct {
 	chain           *pipeline.Chain
 	listeners       *dnsserver.Registry
 	pause           atomic.Bool
+	pauseNotify     atomic.Bool
 	entered, resume chan struct{}
 }
 
-func newPrimaryNetworkFixture(t *testing.T) *primaryNetworkFixture {
+func newPrimaryNetworkFixture(t *testing.T, notify ...func(*primaryRuntime) pipeline.Next) *primaryNetworkFixture {
 	t.Helper()
 	f := &primaryNetworkFixture{entered: make(chan struct{}, 1), resume: make(chan struct{}, 1)}
 	scheme, err := runtimekinds.NewScheme()
@@ -157,6 +158,9 @@ func newPrimaryNetworkFixture(t *testing.T) *primaryNetworkFixture {
 	})
 	i, a, u := identify.New(nil, nil), authoritative.New(nil), upstream.NewStage(nil)
 	a.Update = f.runtime.Update
+	if len(notify) != 0 {
+		a.Notify = notify[0](f.runtime)
+	}
 	b, err := blocking.New(blocking.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +178,7 @@ func newPrimaryNetworkFixture(t *testing.T) *primaryNetworkFixture {
 	capture := servingdns.Capture(f.publisher)
 	f.chain.SetCapture(func(req *pipeline.Request) (pipeline.ServingLease, error) {
 		lease, err := capture(req)
-		if err == nil && req.Msg.Opcode == dns.OpcodeUpdate && f.pause.CompareAndSwap(true, false) {
+		if err == nil && ((req.Msg.Opcode == dns.OpcodeUpdate && f.pause.CompareAndSwap(true, false)) || (req.Msg.Opcode == dns.OpcodeNotify && f.pauseNotify.CompareAndSwap(true, false))) {
 			f.entered <- struct{}{}
 			select {
 			case <-f.resume:
