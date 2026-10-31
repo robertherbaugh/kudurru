@@ -952,6 +952,17 @@ spec:
   - { kind: ServiceAccount, name: external-dns, namespace: kube-system }   # k8s SA via projected token
 ```
 
+**ServiceAccount subject compatibility (D254).** A subject's exact
+`namespace/name` matches both authenticated Kudurru and Kubernetes service
+accounts. The schema has no provider discriminator; this is intentional v0.2
+compatibility, not provider isolation. Use distinct names/namespaces for
+different grants and control account creation in the Kubernetes namespace.
+Account UID and credential validation remain provider-specific, and API-token
+scopes only narrow permissions. Disabling one provider's account does not
+disable the other. Kubernetes SAR can grant independently of Kudurru bindings;
+revocation must consider both paths. The [operator contract](../docs/deploy/kubernetes-service-account-auth.md#service-account-binding-names)
+includes same-name recreation and retirement guidance.
+
 ### 8.6 API tokens and service accounts
 
 Grafana-style service accounts owning N tokens; wire format `kdr_<12-char id>_<43-char secret>`; store `sha256(secret)` only; constant-time compare on the full hash, never prefix lookups (Technitium v15.6 oracle); unknown id and wrong secret return the same 401; optional expiry (`auth.tokens.maxLifetime`), `lastUsedAt/IP`, revocation, audit [auth §4.5]. Personal tokens inherit the owner's bindings ∩ optional scopes and die with the user. Integration credentials (Cloudflare token, UniFi key, dnsdist API key) are outbound secrets, not principals: `secretRef`/file/env only; fingerprints in status.
@@ -1840,6 +1851,7 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 | D249 | Authenticated audit attribution and persisted redaction | SQLite schema 6 adds dedicated authorization/request/client columns with a v2 domain-separated chain; preserve exact legacy v1 hashes and enforce a durable version boundary in one verification snapshot. Redact new documents before capping/hashing through one private-kind-aware leaf policy across recorders. | Attribution must remain machine-readable and covered by integrity checks; credentials must not enter new persisted diffs. Preserve historical source evidence and safe exact-number document bytes; structural redaction does not inspect arbitrary free text or retroactively rewrite history. | Guessing metadata from reason strings; hash-format fallback; rewriting historical chains; truncating secrets before redaction; separate inconsistent recorder policies |
 | D250 | Independent SQLite data paths and volumes | Add host-only restart-required node.querylogDir/node.localDir, empty by default. Validate the complete named layout before initialization; fixed filenames and explicit offline migration. Helm split volumes are additive and preserve the original data claim selection/mount; Compose overrides are independent. | Isolate query and snapshot IO without losing node keys/settings or changing default durability. Preserve directory modes, per-pod ownership and existing claims; initialize fresh image mount targets for UID65532. | Live moves or implicit fallback; removing original data persistence on split; shared-write SQLite claims; changing existing permissions; claiming cross-volume atomicity or hostile-host race protection |
 | D251 | HTTPS-only external filtering downloads | Add opt-in host-only restart-required blocking.httpsOnly. A private HTTP client copy checks the initial request and each redirect at the transport boundary, retaining TLS roots, proxy/local-address guards and deadlines; policy errors contain no URL and receive no immediate retry. | Every external fetcher, including both catalog formats and replica direct fallback, needs the same policy. Cached data and authenticated peer copies retain availability; the option does not retroactively certify historical transport. | Global default changes; insecure TLS; only checking the original URL; mutating shared client transports; silently purging existing filtering data |
+| D254 | Service-account binding provider overlap | Preserve exact namespace/name matching for authenticated Kudurru and Kubernetes service accounts in v0.2; explicitly document the shared authorization name, provider-specific lifecycle, token-scope narrowing and independent SAR path. | F50 permits documenting the existing overlap. Preserve current grants without a schema migration while making account creation/recreation and retirement implications explicit. | Silently changing existing bindings to one provider; claiming provider isolation from principal Kind; treating token scopes as grants or one account disable as cross-provider revocation |
 
 ---
 

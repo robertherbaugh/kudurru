@@ -719,6 +719,13 @@ Browser and device-code sign-in for the CLI remain planned for v0.2.
 
 ## Authorization
 
+Kudurru `ServiceAccount` binding subjects share one exact namespace/name across
+Kudurru and Kubernetes identities (D254). They do not select a provider.
+Authentication, account UIDs and disable/revocation lifecycles remain distinct;
+API-token scopes narrow both authorization paths. Use different names or
+namespaces for different grants and review account-creation rights and both
+binding/SAR paths. See the [service-account binding contract](../deploy/kubernetes-service-account-auth.md#service-account-binding-names).
+
 ```mermaid
 flowchart TD
     R(["route permission"]) --> PUB{"public?"}

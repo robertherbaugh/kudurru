@@ -7,6 +7,33 @@ Existing SubjectAccessReview and kudurru role bindings still govern permissions;
 a valid token alone grants no role. The server's Kubernetes identity needs the
 existing issuer-discovery and `system:auth-delegator` permissions.
 
+## Service-account binding names
+
+In v0.2, a Kudurru `RoleBinding` subject of kind `ServiceAccount` matches
+**both** providers by the exact namespace/name pair (D254). For example,
+`{kind: ServiceAccount, namespace: dns, name: automation}` grants the binding's
+role and scope to an authenticated Kubernetes `dns/automation` account and an
+authenticated Kudurru `dns/automation` account. There is no provider selector
+in this subject schema. A different namespace or name does not match.
+
+Treat the pair as a shared authorization name when designing automation.
+Use distinct names or namespaces when the two accounts should have different
+access, and control who can create service accounts in those Kubernetes
+namespaces. Recreating a same-name account can match a name-based binding;
+review the binding when retiring or repurposing an account. Credentials and
+account UIDs remain provider-specific: a name match does not authenticate a
+token, and disabling a Kudurru account does not disable its Kubernetes namesake.
+
+Kudurru API-token scopes can only narrow a granted role. A `viewer`-scoped token
+cannot write records even when the account's binding grants `zone-admin`;
+an `admin`-scoped token cannot add a role the account does not have. Kubernetes
+SubjectAccessReview is an independent granting path: removing a Kudurru binding
+does not remove permissions granted by Kubernetes RBAC. Review both paths when
+revoking Kubernetes access. This documented compatibility contract does not
+provide provider-isolated subjects or immediate Kubernetes token revocation.
+
+## Projecting and rotating short-lived tokens
+
 Incoming tokens must have an original lifetime of **at most ten minutes**. This
 intentionally rejects opaque legacy tokens, ordinary one-hour projections and
 cluster-extended lifetimes. Request a dedicated token with exactly

@@ -119,7 +119,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 
 | Item | Source | Target |
 |---|---|---|
-| A `ServiceAccount` binding subject matches a kudurru service account and a Kubernetes ServiceAccount of the same namespace/name; consider a subject field (`provider: kubernetes|kudurru`) or documenting the overlap in §8.5 | dev-docs/milestones/m5/security.md | v0.2 |
+| ServiceAccount provider overlap is explicitly documented in §8.5 and the Kubernetes token guide (D254/F50): exact namespace/name across both providers, provider-specific lifecycle and narrowing token scopes; provider isolation is not claimed | dev-docs/milestones/m5/security.md | v0.2 |
 
 ## Security (dev-docs/milestones/m5/security-v0.1-round.md)
 
