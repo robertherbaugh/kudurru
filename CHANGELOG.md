@@ -23,6 +23,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Query log: download a filtered JSON page of up to 1,000 retained queries,
+  preserving privacy, source, continuation and partial-node metadata.
+
 - Kubernetes audit: independent persisted signing and retained verification
   keys, explicit rotation/revocation and trust-aware verification caching.
   Existing AuditLog deployments require the documented key-provisioning and

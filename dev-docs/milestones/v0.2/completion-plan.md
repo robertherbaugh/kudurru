@@ -154,7 +154,7 @@ runners. Unit tests cannot substitute for those results.
 | F56 | Self-host Inter/JetBrains Mono in Kudurru theme | Operations and UI | Integrated 13c0c9e; 7 browser/9 theme tests and 480.5 KiB entry payload pass |
 | F57 | Nested Shape help for list/map elements/keys | Operations and UI | Integrated; final gates open |
 | F58a | Astryx record-delete AlertDialog | Operations and UI | Implemented; final gates open |
-| F58b | `/queries/export` API and query-log link | Operations and UI | Queued: missing |
+| F58b | `/queries/export` API and query-log link | Operations and UI | Implemented; filtered bounded download, API/privacy races, 20 UI cases and actual mounted DNS/history export pass |
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Queued: missing |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
 | F60b | `cluster status` / `promote` / `join-token` | Store and HA | Queued: missing |

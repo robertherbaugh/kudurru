@@ -1658,6 +1658,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/queries/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download one filtered query-log page as JSON (up to 1000 rows)
+         * @description Uses the same filters, scope, privacy and cursor as GET /queries. Defaults to 1000 rows. The JSON retains source, node errors, partial results and cursor_next; it is not an unbounded or cross-page snapshot export. Output is capped at 16 MiB and the read at 15 seconds. No attachment is sent on error or cancellation.
+         */
+        get: operations["exportQueries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/queries/stream": {
         parameters: {
             query?: never;
@@ -15871,6 +15891,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueriesBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportQueries: {
+        parameters: {
+            query?: {
+                /** @description IP, CIDR or client name (* wildcards). */
+                client?: string;
+                /** @description Exact name or * wildcard. */
+                domain?: string;
+                /** @description Comma-separated statuses (blocked_list,forwarded). */
+                status?: string;
+                status_class?: "permitted" | "cached" | "blocked" | "error" | "";
+                qtype?: string;
+                upstream?: string;
+                list?: string;
+                zone?: string;
+                /** @description Deciding policy, namespace/name. */
+                policy?: string;
+                /** @description RFC 3339, inclusive. */
+                since?: string;
+                /** @description RFC 3339, exclusive. */
+                until?: string;
+                cursor?: string;
+                limit?: number;
+                scope?: string;
+                node?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    "Content-Disposition"?: string;
+                    "Content-Type"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
                 };
             };
             /** @description Bad Request */

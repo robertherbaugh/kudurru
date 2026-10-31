@@ -246,6 +246,7 @@ export function endpoints(c: ApiClient) {
       suggestions: (field: SuggestionField, prefix: string, signal?: AbortSignal) =>
         c.get<Suggestions>('/queries/suggestions', { field, prefix }, signal),
       streamURL: (s: ScopeParams, f: QueryFilter) => c.url('/queries/stream', { ...scopeQuery(s), ...(f as Query) }),
+      exportURL: (s: ScopeParams, f: QueryFilter) => c.url('/queries/export', { ...scopeQuery(s), ...(f as Query), limit: 1000 }),
       purge: (before?: string) => c.delete<PurgeResult>('/querylog', before ? { before } : undefined),
       status: () => c.get<QuerylogStatus>('/querylog/status'),
     },

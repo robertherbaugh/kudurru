@@ -1139,3 +1139,24 @@ and local audit spooling continue. No replacement trust is silently generated.
 Full auditkeys/auditlog races with real Kubernetes envtest pass in 4.919s/15.684s;
 composed API/configuration/actual mounted startup and reload races pass in
 2.142s/1.199s/53.535s. CRDs and configuration/CLI reference are regenerated.
+
+
+### F58b bounded query-log download and control capture fixture
+
+F58b (D258) adds an authorized `/queries/export` attachment and dashboard link
+using the current scope/filters. The existing history reader preserves retained
+privacy, node/source/partial metadata and continuation; no separate data path
+or peer fallback is introduced. Default/maximum 1000 rows, 16 MiB output and a
+15-second operation budget are explicit. Errors/cancellation yield no attachment.
+It is a page export, not a cross-page snapshot or unbounded download.
+
+Composed export and control-capture race checks pass in 3.522s/1.968s. Actual
+runServe acceptance passes in 21.137s, including login, native DNS recording and
+filtered download. All 20 QueryLogPage cases pass in 29.57s, plus frontend
+lint/typecheck and scoped API/command/servingdns Go lint (zero issues). OpenAPI
+and both clients are regenerated. These checks do not substitute for hosted CI.
+
+The hosted control-capture failure was reproduced at its original 3s startup
+bound: its complete fixture omitted the newly required control component.
+Explicitly including the empty control view fixes initialization without changing
+production admission, expectations or deadlines.

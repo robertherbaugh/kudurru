@@ -1742,6 +1742,33 @@ func (e ListQueriesParamsStatusClass) Valid() bool {
 	}
 }
 
+// Defines values for ExportQueriesParamsStatusClass.
+const (
+	ExportQueriesParamsStatusClassBlocked   ExportQueriesParamsStatusClass = "blocked"
+	ExportQueriesParamsStatusClassCached    ExportQueriesParamsStatusClass = "cached"
+	ExportQueriesParamsStatusClassEmpty     ExportQueriesParamsStatusClass = ""
+	ExportQueriesParamsStatusClassError     ExportQueriesParamsStatusClass = "error"
+	ExportQueriesParamsStatusClassPermitted ExportQueriesParamsStatusClass = "permitted"
+)
+
+// Valid indicates whether the value is a known member of the ExportQueriesParamsStatusClass enum.
+func (e ExportQueriesParamsStatusClass) Valid() bool {
+	switch e {
+	case ExportQueriesParamsStatusClassBlocked:
+		return true
+	case ExportQueriesParamsStatusClassCached:
+		return true
+	case ExportQueriesParamsStatusClassEmpty:
+		return true
+	case ExportQueriesParamsStatusClassError:
+		return true
+	case ExportQueriesParamsStatusClassPermitted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueryStreamParamsStatusClass.
 const (
 	QueryStreamParamsStatusClassBlocked   QueryStreamParamsStatusClass = "blocked"
@@ -5537,6 +5564,39 @@ type ListQueriesParams struct {
 // ListQueriesParamsStatusClass defines parameters for ListQueries.
 type ListQueriesParamsStatusClass string
 
+// ExportQueriesParams defines parameters for ExportQueries.
+type ExportQueriesParams struct {
+	// Client IP, CIDR or client name (* wildcards).
+	Client *string `form:"client,omitempty" json:"client,omitempty"`
+
+	// Domain Exact name or * wildcard.
+	Domain *string `form:"domain,omitempty" json:"domain,omitempty"`
+
+	// Status Comma-separated statuses (blocked_list,forwarded).
+	Status      *string                         `form:"status,omitempty" json:"status,omitempty"`
+	StatusClass *ExportQueriesParamsStatusClass `form:"status_class,omitempty" json:"status_class,omitempty"`
+	Qtype       *string                         `form:"qtype,omitempty" json:"qtype,omitempty"`
+	Upstream    *string                         `form:"upstream,omitempty" json:"upstream,omitempty"`
+	List        *string                         `form:"list,omitempty" json:"list,omitempty"`
+	Zone        *string                         `form:"zone,omitempty" json:"zone,omitempty"`
+
+	// Policy Deciding policy, namespace/name.
+	Policy *string `form:"policy,omitempty" json:"policy,omitempty"`
+
+	// Since RFC 3339, inclusive.
+	Since *string `form:"since,omitempty" json:"since,omitempty"`
+
+	// Until RFC 3339, exclusive.
+	Until  *string `form:"until,omitempty" json:"until,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Scope  *string `form:"scope,omitempty" json:"scope,omitempty"`
+	Node   *string `form:"node,omitempty" json:"node,omitempty"`
+}
+
+// ExportQueriesParamsStatusClass defines parameters for ExportQueries.
+type ExportQueriesParamsStatusClass string
+
 // QueryStreamParams defines parameters for QueryStream.
 type QueryStreamParams struct {
 	// Client IP, CIDR or client name (* wildcards).
@@ -7118,6 +7178,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /queries (the `ListQueries` operationId).
 	ListQueries(ctx context.Context, params *ListQueriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportQueries Download one filtered query-log page as JSON (up to 1000 rows)
+	//
+	// Uses the same filters, scope, privacy and cursor as GET /queries. Defaults to 1000 rows. The JSON retains source, node errors, partial results and cursor_next; it is not an unbounded or cross-page snapshot export. Output is capped at 16 MiB and the read at 15 seconds. No attachment is sent on error or cancellation.
+	//
+	// Corresponds with GET /queries/export (the `ExportQueries` operationId).
+	ExportQueries(ctx context.Context, params *ExportQueriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// QueryStream Live query tail (Server-Sent Events)
 	//
@@ -10119,6 +10186,23 @@ func (c *Client) BatchDeletePolicies(ctx context.Context, body BatchDeletePolici
 // Corresponds with GET /queries (the `ListQueries` operationId).
 func (c *Client) ListQueries(ctx context.Context, params *ListQueriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListQueriesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportQueries Download one filtered query-log page as JSON (up to 1000 rows)
+//
+// Uses the same filters, scope, privacy and cursor as GET /queries. Defaults to 1000 rows. The JSON retains source, node errors, partial results and cursor_next; it is not an unbounded or cross-page snapshot export. Output is capped at 16 MiB and the read at 15 seconds. No attachment is sent on error or cancellation.
+//
+// Corresponds with GET /queries/export (the `ExportQueries` operationId).
+func (c *Client) ExportQueries(ctx context.Context, params *ExportQueriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportQueriesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -16776,6 +16860,228 @@ func NewListQueriesRequest(server string, params *ListQueriesParams) (*http.Requ
 	return req, nil
 }
 
+// NewExportQueriesRequest constructs an http.Request for the ExportQueries method
+func NewExportQueriesRequest(server string, params *ExportQueriesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/queries/export")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Client != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "client", *params.Client, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Domain != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "domain", *params.Domain, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.StatusClass != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "status_class", *params.StatusClass, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Qtype != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "qtype", *params.Qtype, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Upstream != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "upstream", *params.Upstream, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.List != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "list", *params.List, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Zone != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "zone", *params.Zone, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Policy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "policy", *params.Policy, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Since != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "since", *params.Since, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Until != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "until", *params.Until, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Node != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "node", *params.Node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewQueryStreamRequest constructs an http.Request for the QueryStream method
 func NewQueryStreamRequest(server string, params *QueryStreamParams) (*http.Request, error) {
 	var err error
@@ -20198,6 +20504,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /queries (the `ListQueries` operationId).
 	ListQueriesWithResponse(ctx context.Context, params *ListQueriesParams, reqEditors ...RequestEditorFn) (*ListQueriesResponse, error)
+
+	// ExportQueriesWithResponse Download one filtered query-log page as JSON (up to 1000 rows)
+	//
+	// Uses the same filters, scope, privacy and cursor as GET /queries. Defaults to 1000 rows. The JSON retains source, node errors, partial results and cursor_next; it is not an unbounded or cross-page snapshot export. Output is capped at 16 MiB and the read at 15 seconds. No attachment is sent on error or cancellation.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /queries/export (the `ExportQueries` operationId).
+	ExportQueriesWithResponse(ctx context.Context, params *ExportQueriesParams, reqEditors ...RequestEditorFn) (*ExportQueriesResponse, error)
 
 	// QueryStreamWithResponse Live query tail (Server-Sent Events)
 	//
@@ -31682,6 +31997,105 @@ func (r ListQueriesResponse) ContentType() string {
 	return ""
 }
 
+// ExportQueriesResponse200Headers the declared response headers of an HTTP 200 response for ExportQueries
+type ExportQueriesResponse200Headers struct {
+	CacheControl       *string
+	ContentDisposition *string
+	ContentType        *string
+}
+
+type ExportQueriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *string
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ExportQueriesResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExportQueriesResponse) GetJSON200() *string {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ExportQueriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ExportQueriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ExportQueriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ExportQueriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ExportQueriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ExportQueriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ExportQueriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportQueriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportQueriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportQueriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportQueriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type QueryStreamResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -36789,6 +37203,21 @@ func (c *ClientWithResponses) ListQueriesWithResponse(ctx context.Context, param
 		return nil, err
 	}
 	return ParseListQueriesResponse(rsp)
+}
+
+// ExportQueriesWithResponse Download one filtered query-log page as JSON (up to 1000 rows)
+//
+// Uses the same filters, scope, privacy and cursor as GET /queries. Defaults to 1000 rows. The JSON retains source, node errors, partial results and cursor_next; it is not an unbounded or cross-page snapshot export. Output is capped at 16 MiB and the read at 15 seconds. No attachment is sent on error or cancellation.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /queries/export (the `ExportQueries` operationId).
+func (c *ClientWithResponses) ExportQueriesWithResponse(ctx context.Context, params *ExportQueriesParams, reqEditors ...RequestEditorFn) (*ExportQueriesResponse, error) {
+	rsp, err := c.ExportQueries(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportQueriesResponse(rsp)
 }
 
 // QueryStreamWithResponse Live query tail (Server-Sent Events)
@@ -47080,6 +47509,108 @@ func ParseListQueriesResponse(rsp *http.Response) (*ListQueriesResponse, error) 
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseExportQueriesResponse parses an HTTP response from a ExportQueriesWithResponse call
+func ParseExportQueriesResponse(rsp *http.Response) (*ExportQueriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportQueriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest string
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ExportQueriesResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		if values := rsp.Header.Values("Content-Disposition"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Disposition", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentDisposition = &value
+		}
+		if values := rsp.Header.Values("Content-Type"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Type", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentType = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

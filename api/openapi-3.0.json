@@ -23432,6 +23432,265 @@
         }
       }
     },
+    "/queries/export": {
+      "get": {
+        "description": "Uses the same filters, scope, privacy and cursor as GET /queries. Defaults to 1000 rows. The JSON retains source, node errors, partial results and cursor_next; it is not an unbounded or cross-page snapshot export. Output is capped at 16 MiB and the read at 15 seconds. No attachment is sent on error or cancellation.",
+        "operationId": "exportQueries",
+        "parameters": [
+          {
+            "description": "IP, CIDR or client name (* wildcards).",
+            "explode": false,
+            "in": "query",
+            "name": "client",
+            "schema": {
+              "description": "IP, CIDR or client name (* wildcards).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact name or * wildcard.",
+            "explode": false,
+            "in": "query",
+            "name": "domain",
+            "schema": {
+              "description": "Exact name or * wildcard.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated statuses (blocked_list,forwarded).",
+            "explode": false,
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "description": "Comma-separated statuses (blocked_list,forwarded).",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "status_class",
+            "schema": {
+              "enum": [
+                "permitted",
+                "cached",
+                "blocked",
+                "error",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "qtype",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "upstream",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "list",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "zone",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deciding policy, namespace/name.",
+            "explode": false,
+            "in": "query",
+            "name": "policy",
+            "schema": {
+              "description": "Deciding policy, namespace/name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339, inclusive.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "RFC 3339, inclusive.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339, exclusive.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "RFC 3339, exclusive.",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "format": "base64",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Download one filtered query-log page as JSON (up to 1000 rows)",
+        "tags": [
+          "querylog"
+        ],
+        "x-kudurru-permission": {
+          "resource": "querylog",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/queries/stream": {
       "get": {
         "description": "text/event-stream of query rows: `id:` is the query id, `event: query`, `data:` one JSON row shaped like GET /queries items. Reconnects send Last-Event-ID and receive the rows after it from the in-memory ring first. A comment line is sent every 15 s.",

@@ -99,8 +99,17 @@ flowchart LR
     COL --> BATCH["batch: 1000 events or 1 s"]
     BATCH --> DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups, one transaction")]
     TAIL --> API["dashboard: live tail,<br/>block page reasons"]
-    DB --> API2["dashboard: query log,<br/>stats, top lists"]
+    DB --> API2["dashboard: query log,<br/>stats, top lists,<br/>bounded JSON export"]
 ```
+
+`GET /queries/export` delegates to the same scoped history reader as
+`GET /queries`, with `querylog.read` permission and the existing privacy,
+filter and cursor semantics. It buffers one page (default/max 1,000 rows,
+16 MiB output, 15-second operation context) before sending a JSON attachment
+with `Cache-Control: no-store`. Cancellation or encoding/size failure sends
+no partial attachment. Counts, continuation cursor, source and per-node partial
+errors remain in the file. It does not read the live tail, unredacted events,
+or automatically combine pages into a snapshot.
 
 The answer never waits for the log: when the channel is full, the event is
 dropped and counted. The health name and the dashboard's built-in dig are
