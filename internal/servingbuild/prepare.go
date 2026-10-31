@@ -100,6 +100,10 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		return serving.Prepared{}, err
 	}
 	inventory, err := prepareInventory(candidate.Image, now)
+	var groups []*public.ClientGroup
+	if err == nil && opts.PrepareIntegrations != nil {
+		inventory, groups, err = opts.PrepareIntegrations(ctx, candidate.Image, primary, now)
+	}
 	if err != nil {
 		return serving.Prepared{}, fmt.Errorf("servingbuild: inventory image: %w", err)
 	}
@@ -124,7 +128,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	// resource capture cannot omit a configured provider to reveal an object
 	// with the same ID; absent or mismatched resources remain unavailable.
 	deps.Auth.ConfigProviders = registry.ConfigSources()
-	owners, err = prepareSemantic(ctx, candidate, opts, deps, now)
+	owners, err = prepareSemantic(ctx, candidate, opts, deps, now, integrationOverlay{groups: groups, grants: inventory.MACGrants})
 	if err != nil {
 		owners = nil // prepareSemantic already retired its partial resources.
 		return serving.Prepared{}, err

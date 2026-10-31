@@ -4,10 +4,12 @@ import (
 	"context"
 	"time"
 
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/rpz"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -53,4 +55,8 @@ type Options struct {
 	Upstreams  upstream.Options
 	ZoneLimits zonestate.Limits
 	MaxZones   int
+	// PrepareIntegrations is a pure root-owned complete-image adapter. It may
+	// suppress ineligible source claims and overlay granted private MAC members;
+	// it must never acquire resources, perform I/O or confer write authority.
+	PrepareIntegrations func(context.Context, *replication.Image, *primaryruntime.PreparedImage, time.Time) (*InventoryOwner, []*public.ClientGroup, error)
 }

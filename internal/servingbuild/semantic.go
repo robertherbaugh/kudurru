@@ -64,7 +64,17 @@ func (s *semanticOwners) release() {
 	}
 }
 
-func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Options, deps Dependencies, now time.Time) (_ *semanticOwners, err error) {
+type integrationOverlay struct {
+	groups []*public.ClientGroup
+	grants []policy.MACGrant
+}
+
+func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Options, deps Dependencies, now time.Time, overlays ...integrationOverlay) (_ *semanticOwners, err error) {
+	var overlay integrationOverlay
+	if len(overlays) > 0 {
+		overlay = overlays[0]
+	}
+	groups := overlay.groups
 	owners := &semanticOwners{}
 	defer func() {
 		if err != nil {
@@ -103,6 +113,7 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	kinds := zonecache.DefaultKinds()
 	var objects []store.Object
 	var lists []*public.BlockList
+	var policyGroups []*public.ClientGroup
 	for _, raw := range candidate.Image.Payload.Objects {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -116,6 +127,17 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 		}
 		if request, ok := object.(*public.UnblockRequest); ok {
 			owners.unblockRequests = append(owners.unblockRequests, request)
+		}
+		if group, ok := object.(*public.ClientGroup); ok {
+			policyGroups = append(policyGroups, group)
+		}
+		if group, ok := object.(*public.ClientGroup); ok && groups != nil {
+			for _, replacement := range groups {
+				if replacement.Name == group.Name && replacement.Namespace == group.Namespace {
+					object = replacement
+					break
+				}
+			}
 		}
 		if slices.Contains(kinds, store.KindOf(object)) {
 			objects = append(objects, object)
@@ -134,7 +156,7 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 		return nil, err
 	}
 	set := owners.objects.Objects
-	owners.policy = policy.Build(policy.Input{ClientGroups: set.ClientGroups(), Policies: set.Policies(), BlockLists: set.BlockLists(), Lists: compiled.Snapshot, Generation: candidate.Image.Revision}, policy.Options{DefaultNamespace: opts.Namespace, Services: deps.Catalog.Catalogue, Inventory: true})
+	owners.policy = policy.Build(policy.Input{ClientGroups: policyGroups, MACGrants: overlay.grants, Policies: set.Policies(), BlockLists: set.BlockLists(), Lists: compiled.Snapshot, Generation: candidate.Image.Revision}, policy.Options{DefaultNamespace: opts.Namespace, Services: deps.Catalog.Catalogue, Inventory: true})
 	// A complete publication owns its recursive resolver as well as its routes.
 	// Reusing the legacy mutable resolver would ignore captured recursion settings
 	// and let a reload change an older request's trust and root-hint configuration.
