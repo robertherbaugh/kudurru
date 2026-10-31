@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -221,6 +222,14 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 				}
 				if delay, retry := h.retryDelay(a.err, failures); retry {
 					timer.Reset(delay)
+				} else if _, source := provider.(Observer); source && errors.Is(a.err, ErrFenced) && ctx.Err() == nil && j.ctx.Err() == nil {
+					if _, outbound := provider.(Publisher); !outbound {
+						// A refused acquisition stays refused. Keep the next
+						// periodic read: execute captures its own original frame,
+						// lease and request, independently of this failed poll.
+						// Replaced jobs still cancel/join before any new provider.
+						timer.Reset(interval)
+					}
 				}
 			}
 		}
