@@ -312,6 +312,8 @@ jobs:
         run: make e2e
       - name: OIDC login end to end against dex
         run: make test-auth-e2e
+      - name: Blocking conformance against pinned AdGuard Home
+        run: make test-adguard
   # Stock-client DHCP interoperability, entirely inside a disconnected outer
   # network namespace. Installing dhcpcd-base does not enable a host DHCP daemon.
   dhcp-acceptance:

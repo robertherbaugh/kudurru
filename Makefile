@@ -45,6 +45,11 @@ ad-dns-check:
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/kudurru
 
+.PHONY: test-adguard
+# Pinned external executable; first-party corpus, no vendored copyleft data.
+test-adguard:
+	bash hack/test-adguard.sh
+
 ## size: build the stripped CGO_ENABLED=0 release binary and fail when it is
 ## larger than SIZE_BUDGET bytes (D75, D138). History: 46,575,776 at the end
 ## of M1, 53,862,560 at the end of M4, 54,874,272 for v0.1.0-rc.1 (budget
