@@ -8,10 +8,10 @@ const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
 it('keeps canceled native fetches and subsequent one-shot reads inside MSW', async () => {
   let realConnections = 0;
   const sink = createServer((socket) => { realConnections++; socket.destroy(); });
-  await new Promise<void>((resolve) => sink.listen(0, resolve));
+  await new Promise<void>((resolve) => sink.listen(0, '127.0.0.1', resolve));
   const address = sink.address();
   if (!address || typeof address === 'string') throw new Error('Missing fixture listener');
-  const origin = `http://localhost:${address.port}`;
+  const origin = `http://127.0.0.1:${address.port}`;
   let reads = 0;
   try {
     for (let phase = 0; phase < 6; phase++) {
