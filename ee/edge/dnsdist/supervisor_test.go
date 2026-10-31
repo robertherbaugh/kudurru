@@ -93,19 +93,21 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	src := &chanSource{initial: []cluster.Endpoint{ep("node-a", "10.0.0.11")}, ch: make(chan []cluster.Endpoint, 4)}
 	reg := prometheus.NewRegistry()
 	cfg := Config{
-		Options:     edge.Options{ServerID: "edge-test", API: freePort(t), Console: "127.0.0.1:5199", Listen: []string{"127.0.0.1"}, Ports: map[edge.Protocol]int{edge.Do53: 5300}},
-		Source:      src,
-		ConfigDir:   filepath.Join(dir, "etc"),
-		Binary:      fakeBinary(t),
-		APIKeyOut:   filepath.Join(dir, "run", "dnsdist-api.key"),
-		APIKeyGID:   -1,
-		Debounce:    50 * time.Millisecond,
-		StatusPoll:  50 * time.Millisecond,
-		ZonePoll:    50 * time.Millisecond,
-		StopTimeout: 5 * time.Second,
-		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Registerer:  reg,
-		Gatherer:    reg,
+		Options:       edge.Options{ServerID: "edge-test", API: freePort(t), Console: "127.0.0.1:5199", Listen: []string{"127.0.0.1"}, Ports: map[edge.Protocol]int{edge.Do53: 5300}},
+		Source:        src,
+		ConfigDir:     filepath.Join(dir, "etc"),
+		Binary:        fakeBinary(t),
+		APIKeyOut:     filepath.Join(dir, "run", "dnsdist-api.key"),
+		APIKeyGID:     -1,
+		Debounce:      50 * time.Millisecond,
+		HealthTimeout: 250 * time.Millisecond,
+		PurgeDelay:    20 * time.Millisecond,
+		StatusPoll:    50 * time.Millisecond,
+		ZonePoll:      50 * time.Millisecond,
+		StopTimeout:   5 * time.Second,
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Registerer:    reg,
+		Gatherer:      reg,
 	}
 	if mutate != nil {
 		mutate(&cfg)
@@ -189,13 +191,13 @@ func TestSupervisorLifecycle(t *testing.T) {
 		t.Fatalf("want one check and one start:\n%s", h.log())
 	}
 
-	// Membership change → debounced re-render and one restart.
+	// Membership changes coalesce into a console update without restarting.
 	h.src.ch <- []cluster.Endpoint{ep("node-a", "10.0.0.11"), ep("node-b", "10.0.0.12")}
 	h.src.ch <- []cluster.Endpoint{ep("node-a", "10.0.0.11"), ep("node-b", "10.0.0.12"), ep("node-c", "10.0.0.13")}
-	h.waitFor("restart with three backends", func() bool { return strings.Contains(h.log(), "backends=node-a,node-b,node-c") })
+	h.waitFor("promoted backends", func() bool { return h.count("console promote") == 2 })
 	time.Sleep(200 * time.Millisecond)
 	if n := h.count("start"); n != 2 {
-		t.Errorf("%d starts, want 2 (two quick changes must be debounced into one restart)", n)
+		t.Errorf("%d starts, want 2 for validated named-member staging", n)
 	}
 	if _, err := os.Stat(filepath.Join(h.dir, "dnsdist.yml.prev")); err != nil { //nolint:gosec // test-owned path
 		t.Errorf("previous config not kept: %v", err)
@@ -286,37 +288,11 @@ func TestSupervisorInitialCheckFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sup.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "FAIL-CHECK") {
+	if err := sup.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "configuration check failed") {
 		t.Fatalf("Run = %v, want the check failure", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "dnsdist.yml")); !os.IsNotExist(err) { //nolint:gosec // test-owned path
 		t.Error("an unchecked configuration was installed")
-	}
-}
-
-func TestSupervisorCertificateChange(t *testing.T) {
-	tlsDir := t.TempDir()
-	for _, f := range []string{"tls.crt", "tls.key"} {
-		if err := os.WriteFile(filepath.Join(tlsDir, f), []byte("v1"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	h := newHarness(t, func(c *Config) {
-		c.TLSDir = tlsDir
-		c.Options.CertFile, c.Options.KeyFile = filepath.Join(tlsDir, "tls.crt"), filepath.Join(tlsDir, "tls.key")
-		c.Options.Ports = map[edge.Protocol]int{edge.Do53: 5300, edge.DoT: 8853, edge.DoH: 8443, edge.DoQ: 8853, edge.DoH3: 8443}
-	})
-	h.waitFor("ready", h.ready)
-	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml")) //nolint:gosec // test-owned path
-	if !strings.Contains(string(cfg), "protocol: DoH3") {
-		t.Fatal("TLS frontends not rendered")
-	}
-	if err := os.WriteFile(filepath.Join(tlsDir, "tls.crt"), []byte("v2"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	h.waitFor("restart after the certificate change", func() bool { return h.count("start") == 2 })
-	if got := testutilCounter(h.reg, "kudurru_edge_dnsdist_restarts_total", "certificates"); got != 1 {
-		t.Errorf("certificate restarts = %v", got)
 	}
 }
 

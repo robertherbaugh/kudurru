@@ -26,11 +26,20 @@ func (YAMLRenderer) Main() string { return "dnsdist.yml" }
 
 // Render implements Renderer.
 func (r YAMLRenderer) Render(in *edge.Topology) ([]File, error) {
+	return r.render(in, nil)
+}
+
+func (r YAMLRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]File, error) {
 	t, err := prepare(in)
 	if err != nil {
 		return nil, err
 	}
 	cfg := buildYAML(t)
+	for i := range cfg.Backends {
+		if initialDown[cfg.Backends[i].ID] {
+			cfg.Backends[i].HealthChecks.Mode = "down"
+		}
+	}
 	var buf bytes.Buffer
 	buf.WriteString("# " + header + "\n")
 	enc := yaml.NewEncoder(&buf)

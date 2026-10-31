@@ -59,8 +59,12 @@ type Config struct {
 	// APIKeyGID, when >= 0, is the group the key file is chowned to (the
 	// keepalived_script group of the keepalived image).
 	APIKeyGID int
-	// TLSDir is watched for certificate changes (restart); empty disables.
+	// TLSDir is watched for certificate changes; empty disables watching.
 	TLSDir string
+	// ConsoleTimeout bounds one upstream console client; UpdateTimeout bounds
+	// a membership mutation, HealthTimeout its automatic health qualification.
+	// PurgeDelay retains down backends for in-flight queries before removal.
+	ConsoleTimeout, UpdateTimeout, HealthTimeout, PurgeDelay time.Duration
 	// Debounce delays re-rendering after membership and certificate
 	// changes; default 5 s.
 	Debounce time.Duration
@@ -88,7 +92,7 @@ type Config struct {
 
 // Supervisor is `kudurru edge run`: render → `dnsdist --check-config` →
 // atomic swap → run dnsdist as a child, and on membership, zone or
-// certificate changes re-render and restart (v0.1, D17).
+// certificate changes use bounded console updates with validated restart recovery.
 type Supervisor struct {
 	cfg   Config
 	log   *slog.Logger
@@ -103,14 +107,17 @@ type Supervisor struct {
 	rendered  prometheus.Gauge
 	gatherer  prometheus.Gatherer
 
-	mu         sync.Mutex
-	status     *ServerStatus
-	statusAt   time.Time
-	statusErr  error
-	restarting bool
-	current    []File
-	endpoints  []cluster.Endpoint
-	zones      []string
+	mu          sync.Mutex
+	status      *ServerStatus
+	statusAt    time.Time
+	statusErr   error
+	restarting  bool
+	current     []File
+	endpoints   []cluster.Endpoint
+	zones       []string
+	updateError string
+	statusEpoch uint64
+	tlsState    *certificateState // Run owns snapshots; never contains source credentials in status
 }
 
 // New validates cfg and returns a Supervisor.
@@ -141,6 +148,18 @@ func New(cfg Config) (*Supervisor, error) {
 	}
 	if cfg.StatusPoll <= 0 {
 		cfg.StatusPoll = time.Second
+	}
+	if cfg.ConsoleTimeout <= 0 {
+		cfg.ConsoleTimeout = 3 * time.Second
+	}
+	if cfg.UpdateTimeout <= 0 {
+		cfg.UpdateTimeout = 30 * time.Second
+	}
+	if cfg.HealthTimeout <= 0 {
+		cfg.HealthTimeout = 15 * time.Second
+	}
+	if cfg.PurgeDelay <= 0 {
+		cfg.PurgeDelay = 5 * time.Second
 	}
 	if cfg.NewCredentials == nil {
 		cfg.NewCredentials = edge.NewCredentials
@@ -215,6 +234,10 @@ func candidateName(name string) string {
 // topology builds the topology for the given endpoints and zones.
 func (s *Supervisor) topology(eps []cluster.Endpoint, zones []string) (*edge.Topology, error) {
 	o := s.cfg.Options
+	if s.tlsState != nil {
+		o.CertFile = filepath.Join(s.tlsState.root, "current", "cert.pem")
+		o.KeyFile = filepath.Join(s.tlsState.root, "current", "key.pem")
+	}
 	o.AuthoritativeZones = append(slices.Clone(o.AuthoritativeZones), zones...)
 	bes := make([]edge.Backend, 0, len(eps))
 	for _, e := range eps {
@@ -223,72 +246,103 @@ func (s *Supervisor) topology(eps []cluster.Endpoint, zones []string) (*edge.Top
 	return edge.Build(o, bes, s.creds)
 }
 
-// render renders, writes candidates, validates them with dnsdist and
-// swaps them in. It reports whether the files changed.
-func (s *Supervisor) render(ctx context.Context, eps []cluster.Endpoint, zones []string) (bool, error) {
+// prepare validates candidates without changing the accepted restart target.
+func (s *Supervisor) prepare(ctx context.Context, eps []cluster.Endpoint, zones []string) ([]File, bool, error) {
 	top, err := s.topology(eps, zones)
 	if err != nil {
 		s.renders.WithLabelValues("invalid").Inc()
-		return false, err
+		return nil, false, err
 	}
 	files, err := s.cfg.Renderer.Render(top)
 	if err != nil {
 		s.renders.WithLabelValues("invalid").Inc()
-		return false, err
+		return nil, false, err
 	}
 	s.mu.Lock()
 	same := equalFiles(files, s.current)
 	s.mu.Unlock()
 	if same {
 		s.renders.WithLabelValues("unchanged").Inc()
-		return false, nil
+		return files, false, nil
 	}
 	if err := os.MkdirAll(s.cfg.ConfigDir, 0o750); err != nil {
-		return false, err
+		return nil, false, err
 	}
 	var main string
 	for _, f := range files {
-		p := filepath.Join(s.cfg.ConfigDir, candidateName(f.Name))
-		if err := edge.WriteFileAtomic(p, f.Data, 0o600); err != nil {
-			return false, err
+		path := filepath.Join(s.cfg.ConfigDir, candidateName(f.Name))
+		if err := edge.WriteFileAtomic(path, f.Data, 0o600); err != nil {
+			return nil, false, err
 		}
 		if f.Name == s.cfg.Renderer.Main() {
-			main = p
+			main = path
 		}
 	}
-	if out, err := edge.Check(ctx, s.cfg.Binary, "--check-config", "-C", main); err != nil {
+	if err := s.check(ctx, main); err != nil {
 		s.renders.WithLabelValues("check_failed").Inc()
-		return false, err
-	} else if out != "" {
-		s.log.Debug("dnsdist --check-config", "output", out)
+		return nil, false, err
 	}
-	// Siblings first, the main file last: a crash in between leaves the
-	// old main file, which never references a function that is missing.
+	return files, true, nil
+}
+
+func (s *Supervisor) ordered(files []File) []File {
 	order := slices.Clone(files)
 	slices.SortStableFunc(order, func(a, b File) int {
-		switch {
-		case a.Name == s.cfg.Renderer.Main():
+		if a.Name == s.cfg.Renderer.Main() {
 			return 1
-		case b.Name == s.cfg.Renderer.Main():
+		}
+		if b.Name == s.cfg.Renderer.Main() {
 			return -1
 		}
 		return 0
 	})
-	for _, f := range order {
-		if err := edge.SwapFile(filepath.Join(s.cfg.ConfigDir, candidateName(f.Name)), filepath.Join(s.cfg.ConfigDir, f.Name)); err != nil {
-			return false, err
+	return order
+}
+
+func (s *Supervisor) install(files []File, eps []cluster.Endpoint, zones []string) error {
+	s.mu.Lock()
+	old := slices.Clone(s.current)
+	oldEps, oldZones := s.endpoints, s.zones
+	s.mu.Unlock()
+	for _, f := range s.ordered(files) {
+		data := f.Data
+		// Keep the old validators until the main-file rename. Either main can
+		// then load its functions even if the supervisor stops between renames.
+		if f.Name == "dnsdist.lua" {
+			for _, prev := range old {
+				if prev.Name == f.Name {
+					data = append(slices.Clone(prev.Data), data...)
+				}
+			}
+		}
+		path := filepath.Join(s.cfg.ConfigDir, candidateName(f.Name))
+		if err := edge.WriteFileAtomic(path, data, 0o600); err != nil {
+			if restoreErr := s.restore(old, oldEps, oldZones); restoreErr != nil {
+				return restoreErr
+			}
+			return err
+		}
+		if err := edge.SwapFile(path, filepath.Join(s.cfg.ConfigDir, f.Name)); err != nil {
+			if restoreErr := s.restore(old, oldEps, oldZones); restoreErr != nil {
+				return restoreErr
+			}
+			return err
 		}
 	}
 	s.mu.Lock()
-	s.current = files
-	s.endpoints = eps
-	s.zones = zones
+	s.current, s.endpoints, s.zones = files, eps, zones
 	s.mu.Unlock()
-	s.rendered.Set(float64(len(top.Backends)))
+	s.rendered.Set(float64(len(eps)))
 	s.renders.WithLabelValues("ok").Inc()
-	s.log.Info("rendered dnsdist configuration", "file", s.MainPath(), "renderer", s.cfg.Renderer.Name(),
-		"backends", len(top.Backends), "authoritative_zones", len(top.Rules.AuthoritativeZones))
-	return true, nil
+	return nil
+}
+
+func (s *Supervisor) render(ctx context.Context, eps []cluster.Endpoint, zones []string) (bool, error) {
+	files, changed, err := s.prepare(ctx, eps, zones)
+	if err != nil || !changed {
+		return changed, err
+	}
+	return true, s.install(files, eps, zones)
 }
 
 func equalFiles(a, b []File) bool {
@@ -330,6 +384,7 @@ func (s *Supervisor) startChild() error {
 	s.mu.Lock()
 	s.child = c
 	s.status, s.statusErr = nil, nil
+	s.statusEpoch++
 	s.mu.Unlock()
 	s.log.Info("started dnsdist", "pid", c.Pid(), "cmd", s.cfg.Binary+" "+strings.Join(s.Args(), " "))
 	return nil
@@ -352,7 +407,7 @@ func errString(err error) string {
 	return err.Error()
 }
 
-// restart drains, stops and starts dnsdist (v0.1 membership change path).
+// restart drains, stops and starts dnsdist from the accepted configuration.
 func (s *Supervisor) restart(ctx context.Context, reason string) error {
 	s.mu.Lock()
 	s.restarting = true
@@ -401,6 +456,10 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		return fmt.Errorf("dnsdist: initial membership from %s: %w", s.cfg.Source.Name(), err)
 	}
 	eps = cluster.FilterServing(eps)
+	if err := s.initCertificates(); err != nil {
+		return err
+	}
+	defer s.closeCertificates()
 	if _, err := s.render(ctx, eps, nil); err != nil {
 		return err
 	}
@@ -443,6 +502,8 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	}
 	wg.Go(func() { s.pollStatus(ctx) })
 
+	certPoll := time.NewTicker(5 * time.Second)
+	defer certPoll.Stop()
 	var (
 		pendingEps   []cluster.Endpoint
 		pendingZones []string
@@ -475,49 +536,89 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		case z := <-zones:
 			pendingZones, haveZones = z, true
 			arm()
+		case <-certPoll.C:
+			if s.tlsState != nil {
+				pendingCert = true
+				arm()
+			}
 		case <-certs:
 			pendingCert = true
 			arm()
 		case <-timerC:
 			timer, timerC = nil, nil
 			s.mu.Lock()
-			nextEps, nextZones := s.endpoints, curZones
+			oldEps, oldZones := s.endpoints, s.zones
+			oldFiles := slices.Clone(s.current)
 			s.mu.Unlock()
+			nextEps, nextZones := oldEps, curZones
 			if haveEps {
 				nextEps = pendingEps
 			}
 			if haveZones {
 				nextZones = pendingZones
 			}
-			reason := "membership"
-			if haveZones && !haveEps {
-				reason = "zones"
-			}
 			haveEps, haveZones = false, false
-			changed, err := s.render(ctx, nextEps, nextZones)
+			files, changed, err := s.prepare(ctx, nextEps, nextZones)
 			if err != nil {
-				s.log.Error("re-render failed; dnsdist keeps the previous configuration", "err", err)
-				continue
-			}
-			curZones = nextZones
-			if !changed && !pendingCert {
-				continue
-			}
-			if !changed {
-				reason = "certificates"
-				// Certificates are read at start; check the unchanged
-				// file against the new pair before restarting.
-				if _, err := edge.Check(ctx, s.cfg.Binary, "--check-config", "-C", s.MainPath()); err != nil {
-					s.log.Error("certificate change failed --check-config; not restarting", "err", err)
-					pendingCert = false
-					continue
+				s.setUpdateError("configuration validation failed; retaining accepted configuration")
+			} else if changed {
+				oldTop, oldErr := s.topology(oldEps, oldZones)
+				nextTop, nextErr := s.topology(nextEps, nextZones)
+				applyErr := errRestartRequired
+				qualified := false
+				if oldErr == nil && nextErr == nil {
+					qualified, applyErr = s.applyMembership(ctx, oldTop, nextTop, func() error {
+						return s.install(files, nextEps, nextZones)
+					})
+				}
+				if errors.Is(applyErr, errValidatorRestart) {
+					qualified, applyErr = s.stageNamedMembership(ctx, oldTop, nextTop, oldEps, oldZones, func() error { return s.install(files, nextEps, nextZones) })
+				}
+				switch {
+				case applyErr == nil:
+					curZones = nextZones
+					s.invalidateStatus()
+					s.setUpdateError("")
+				case errors.Is(applyErr, errRestartRequired):
+					s.markUncertain()
+					if err := s.install(files, nextEps, nextZones); err != nil {
+						return err
+					}
+					curZones = nextZones
+					if err := s.restart(ctx, "configuration"); err != nil {
+						return err
+					}
+					s.setUpdateError("")
+				default:
+					s.markUncertain()
+					s.setUpdateError("membership console update failed; reconciling accepted configuration")
+					if qualified {
+						curZones = nextZones
+					} else {
+						if err := s.restore(oldFiles, oldEps, oldZones); err != nil {
+							return err
+						}
+						pendingEps, pendingZones, haveEps, haveZones = nextEps, nextZones, true, true
+						// Rejected health checks retry at a bounded rate, including tests
+						// with a short debounce. There is only one coalesced pending target.
+						timer = time.NewTimer(max(s.cfg.Debounce, 5*time.Second))
+						timerC = timer.C
+					}
+					if err := s.restart(ctx, "membership"); err != nil {
+						return err
+					}
 				}
 			}
-			pendingCert = false
-			s.log.Info("restarting dnsdist", "reason", reason)
-			if err := s.restart(ctx, reason); err != nil {
-				s.log.Error("restart failed", "err", err)
+			if pendingCert {
+				pendingCert = false
+				if err := s.reloadCertificates(ctx); err != nil {
+					if errors.Is(err, errCertificateRecovery) {
+						return err
+					}
+					s.setUpdateError("certificate update rejected; retaining accepted certificate")
+				}
 			}
+
 		case <-childDone:
 			s.log.Error("dnsdist exited unexpectedly; restarting", "exit", errString(s.child.Err()), "backoff", backoff)
 			select {
@@ -584,17 +685,24 @@ func (s *Supervisor) pollStatus(ctx context.Context) {
 	t := time.NewTicker(s.cfg.StatusPoll)
 	defer t.Stop()
 	for {
+		s.mu.Lock()
+		epoch := s.statusEpoch
+		s.mu.Unlock()
 		rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		st, err := s.api.Status(rctx)
 		cancel()
 		s.mu.Lock()
+		if epoch != s.statusEpoch {
+			s.mu.Unlock()
+			continue
+		}
 		s.status, s.statusErr, s.statusAt = st, err, time.Now()
 		s.mu.Unlock()
 		s.backendUp.Reset()
 		if st != nil {
 			for _, b := range st.Servers {
 				v := 0.0
-				if b.Up() {
+				if b.Up() && b.Routed() {
 					v = 1
 				}
 				s.backendUp.WithLabelValues(b.Name).Set(v)
@@ -735,7 +843,7 @@ func (s *Supervisor) Handler() http.Handler {
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		ready, message := s.Ready()
 		s.mu.Lock()
-		body := map[string]any{"ready": ready, "message": message, "endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath()}
+		body := map[string]any{"ready": ready, "message": message, "endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath(), "updateError": s.updateError}
 		if s.status != nil {
 			body["dnsdist"] = s.status
 		}
@@ -764,4 +872,46 @@ func (s *Supervisor) Serve(ctx context.Context, addr string) error {
 		return err
 	}
 	return nil
+}
+
+// restore reinstalls the accepted files after a rejected/uncertain staged
+// update. This never reconstructs credentials or guesses runtime mutations.
+func (s *Supervisor) restore(files []File, eps []cluster.Endpoint, zones []string) error {
+	s.mu.Lock()
+	previous := slices.Clone(s.current)
+	s.mu.Unlock()
+	for _, f := range s.ordered(files) {
+		data := f.Data
+		if f.Name == "dnsdist.lua" {
+			for _, prev := range previous {
+				if prev.Name == f.Name {
+					data = append(slices.Clone(prev.Data), data...)
+				}
+			}
+		}
+		if err := edge.WriteFileAtomic(filepath.Join(s.cfg.ConfigDir, f.Name), data, 0o600); err != nil {
+			return fmt.Errorf("dnsdist: restore accepted configuration: %w", err)
+		}
+	}
+	s.mu.Lock()
+	s.current = files
+	s.endpoints = eps
+	s.zones = zones
+	s.mu.Unlock()
+	s.rendered.Set(float64(len(eps)))
+	return nil
+}
+
+func (s *Supervisor) setUpdateError(message string) {
+	s.mu.Lock()
+	s.updateError = message
+	s.mu.Unlock()
+}
+func (s *Supervisor) invalidateStatus() { s.mu.Lock(); s.status = nil; s.statusEpoch++; s.mu.Unlock() }
+func (s *Supervisor) markUncertain() {
+	s.mu.Lock()
+	s.restarting = true
+	s.status = nil
+	s.statusEpoch++
+	s.mu.Unlock()
 }

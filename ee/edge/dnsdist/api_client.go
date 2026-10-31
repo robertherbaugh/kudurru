@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -39,8 +40,18 @@ type BackendStatus struct {
 	Latency     float64  `json:"latency"`
 }
 
-// Up reports whether dnsdist considers the backend usable: "up" (health
-// checked) or "UP" (forced).
+// Routed excludes backends being qualified in a private staging pool.
+// Empty pools are accepted for compatibility with older status fixtures.
+func (b BackendStatus) Routed() bool {
+	for _, pool := range b.Pools {
+		if strings.HasPrefix(pool, "kudurru-pending-") {
+			return false
+		}
+	}
+	return len(b.Pools) == 0 || slices.Contains(b.Pools, "resolver") || slices.Contains(b.Pools, "authoritative")
+}
+
+// Up reports whether dnsdist considers the backend usable: health checked or forced.
 func (b BackendStatus) Up() bool { return strings.EqualFold(b.State, "up") }
 
 // PoolStatus is one entry of pools[].
@@ -66,7 +77,7 @@ type ServerStatus struct {
 func (s *ServerStatus) UpCount() int {
 	n := 0
 	for _, b := range s.Servers {
-		if b.Up() {
+		if b.Up() && b.Routed() {
 			n++
 		}
 	}
