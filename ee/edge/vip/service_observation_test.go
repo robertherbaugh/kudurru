@@ -56,6 +56,7 @@ func observationFixture(t *testing.T, kind string, now *time.Time) (*ServiceObse
 	status.SetOwnerReferences([]metav1.OwnerReference{{APIVersion: "v1", Kind: "Pod", Name: pod.GetName(), UID: pod.GetUID()}})
 	objects["status"] = status
 	nodeLease := evidenceObject("Lease", "node-a", "kube-node-lease", now.Add(-time.Hour))
+	nodeLease.SetOwnerReferences([]metav1.OwnerReference{{APIVersion: "v1", Kind: "Node", Name: node.GetName(), UID: node.GetUID()}})
 	nodeLease.Object["spec"] = map[string]any{"holderIdentity": "node-a", "leaseDurationSeconds": int64(40), "renewTime": now.Add(-time.Second).Format(time.RFC3339Nano)}
 	objects["nodeLease"] = nodeLease
 	items := []runtime.Object{}
@@ -163,6 +164,11 @@ func TestServiceObserverRefusesInsufficientEvidence(t *testing.T) {
 			},
 		}
 		if kind == "metallb" {
+			cases["replacement Node UID"] = func(o map[string]*unstructured.Unstructured) { o["node"].SetUID("replacement-node") }
+			cases["unbound node heartbeat"] = func(o map[string]*unstructured.Unstructured) { o["nodeLease"].SetOwnerReferences(nil) }
+			cases["ambiguous node heartbeat"] = func(o map[string]*unstructured.Unstructured) {
+				o["nodeLease"].SetOwnerReferences(append(o["nodeLease"].GetOwnerReferences(), metav1.OwnerReference{APIVersion: "v1", Kind: "Node", Name: "node-a", UID: "old-node"}))
+			}
 			cases["replacement speaker UID"] = func(o map[string]*unstructured.Unstructured) { o["pod"].SetUID("new-speaker") }
 			cases["speaker unready"] = func(o map[string]*unstructured.Unstructured) {
 				o["pod"].Object["status"] = map[string]any{"phase": "Running"}
@@ -285,5 +291,35 @@ func TestServiceObserverClockRollbackAndOriginalLease(t *testing.T) {
 	observer.Refresh(context.Background())
 	if _, ok := observer.Owner("dns"); ok {
 		t.Fatal("reread renewed an expired provider lease")
+	}
+}
+
+func TestServiceObserverNodeHeartbeatHeadChanges(t *testing.T) {
+	for _, resource := range []string{"nodes", "leases"} {
+		t.Run(resource, func(t *testing.T) {
+			now := time.Now().UTC()
+			observer, client, objects := observationFixture(t, "metallb", &now)
+			reads := 0
+			client.PrependReactor("get", resource, func(action ktesting.Action) (bool, runtime.Object, error) {
+				get := action.(ktesting.GetAction)
+				if get.GetName() != "node-a" {
+					return false, nil, nil
+				}
+				key := "node"
+				if resource == "leases" {
+					key = "nodeLease"
+				}
+				cloned := objects[key].DeepCopy()
+				reads++
+				if reads > 1 {
+					cloned.SetResourceVersion("replacement-head")
+				}
+				return true, cloned, nil
+			})
+			observer.Refresh(t.Context())
+			if item := observer.Snapshot().VIPs[0]; item.Known || item.Reason != "source_changed" {
+				t.Fatal("changed node/heartbeat head established ownership")
+			}
+		})
 	}
 }

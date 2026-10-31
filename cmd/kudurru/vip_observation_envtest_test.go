@@ -107,7 +107,11 @@ func TestVIPObservationActualKubernetesAndMountedAPI(t *testing.T) {
 	// fractional digits; RFC3339Nano can emit nine (or none).
 	renew := time.Now().UTC().Add(-time.Second).Format(metav1.RFC3339Micro)
 	for _, binding := range [][2]string{{"apps", "kubevip-dns"}, {"kube-node-lease", "node-a"}} {
-		create(leases, binding[0], map[string]any{"apiVersion": "coordination.k8s.io/v1", "kind": "Lease", "metadata": map[string]any{"name": binding[1]}, "spec": map[string]any{"holderIdentity": "node-a", "leaseDurationSeconds": int64(40), "renewTime": renew}})
+		metadata := map[string]any{"name": binding[1]}
+		if binding[0] == "kube-node-lease" {
+			metadata["ownerReferences"] = []any{map[string]any{"apiVersion": "v1", "kind": "Node", "name": "node-a", "uid": string(node.GetUID())}}
+		}
+		create(leases, binding[0], map[string]any{"apiVersion": "coordination.k8s.io/v1", "kind": "Lease", "metadata": metadata, "spec": map[string]any{"holderIdentity": "node-a", "leaseDurationSeconds": int64(40), "renewTime": renew}})
 	}
 	status := create(statuses, "metallb-system", map[string]any{"apiVersion": "metallb.io/v1beta1", "kind": "ServiceL2Status", "metadata": map[string]any{"name": "l2-dns", "ownerReferences": []any{map[string]any{"apiVersion": "v1", "kind": "Pod", "name": "speaker-a", "uid": string(pod.GetUID())}}}})
 	status.Object["status"] = map[string]any{"node": "node-a", "serviceName": "dns", "serviceNamespace": "apps", "interfaces": []any{map[string]any{"name": "eth0"}}}
@@ -217,6 +221,40 @@ func TestVIPObservationActualKubernetesAndMountedAPI(t *testing.T) {
 			var expiredInfo api.EdgeInfo
 			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &expiredInfo) != nil || expiredInfo.Observation == nil || expiredInfo.Observation.VIPs[0].Known || expiredInfo.Observation.VIPs[0].Owner != "" || expiredInfo.Observation.VIPs[0].Reason != "stale" {
 				t.Fatal("actual source expiry retained an owner in mounted API")
+			}
+			if kind == "metallb" {
+				// Keep the original Lease and speaker, but replace the Node
+				// under the same name. A fresh heartbeat timestamp and matching
+				// holder name cannot repair the old Node UID owner reference.
+				if err := admin.Resource(nodes).Delete(ctx, "node-a", metav1.DeleteOptions{}); err != nil {
+					t.Fatal("could not replace Node fixture")
+				}
+				replacement := create(nodes, "", map[string]any{"apiVersion": "v1", "kind": "Node", "metadata": map[string]any{"name": "node-a"}})
+				if replacement.GetUID() == node.GetUID() {
+					t.Fatal("replacement Node did not change incarnation")
+				}
+				replacement.Object["status"] = map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}
+				if _, err := admin.Resource(nodes).UpdateStatus(ctx, replacement, metav1.UpdateOptions{}); err != nil {
+					t.Fatal("could not set replacement Node readiness")
+				}
+				lease, err = admin.Resource(leases).Namespace(leaseNamespace).Get(ctx, leaseName, metav1.GetOptions{})
+				if err != nil {
+					t.Fatal("could not read retained old Node Lease")
+				}
+				if err := unstructured.SetNestedField(lease.Object, time.Now().UTC().Add(-time.Second).Format(metav1.RFC3339Micro), "spec", "renewTime"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := admin.Resource(leases).Namespace(leaseNamespace).Update(ctx, lease, metav1.UpdateOptions{}); err != nil {
+					t.Fatal("could not renew old Node Lease fixture")
+				}
+				deadline = time.Now().Add(4 * time.Second)
+				for read().VIPs[0].Reason != "announcer_unavailable" && time.Now().Before(deadline) {
+					time.Sleep(20 * time.Millisecond)
+				}
+				item := read().VIPs[0]
+				if item.Known || item.Owner != "" || item.Reason != "announcer_unavailable" {
+					t.Fatal("old Node Lease established ownership for replacement Node")
+				}
 			}
 			// A denied source cannot use admin fallback even though fixtures were
 			// provisioned with a separate admin client.

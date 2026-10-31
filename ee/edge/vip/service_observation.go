@@ -339,7 +339,7 @@ func (o *ServiceObserver) metalLB(ctx context.Context, binding ServiceBinding, s
 		return
 	}
 	nodeLease, err := o.get(ctx, leaseGVR, "kube-node-lease", node)
-	if err != nil || text(nodeLease, "spec", "holderIdentity") != node {
+	if err != nil || text(nodeLease, "spec", "holderIdentity") != node || !leaseForNode(nodeLease, currentNode) {
 		item.Reason = "announcer_unavailable"
 		return
 	}
@@ -355,9 +355,35 @@ func (o *ServiceObserver) metalLB(ctx context.Context, binding ServiceBinding, s
 		item.Reason = "source_changed"
 		return
 	}
+	leaseHead, err := o.get(ctx, leaseGVR, "kube-node-lease", node)
+	if err != nil || leaseHead.GetUID() != nodeLease.GetUID() || leaseHead.GetResourceVersion() != nodeLease.GetResourceVersion() {
+		item.Reason = "source_changed"
+		return
+	}
+	nodeHead, err := o.get(ctx, nodeGVR, "", node)
+	if err != nil || nodeHead.GetUID() != currentNode.GetUID() || nodeHead.GetResourceVersion() != currentNode.GetResourceVersion() {
+		item.Reason = "source_changed"
+		return
+	}
 	item.Known, item.Owner, item.Reason = true, node, ""
 	item.Evidence = &AnnouncerEvidence{Kind: "metallb-l2-status", UID: string(status.GetUID()), ResourceVersion: status.GetResourceVersion(), CreatedAt: created.Time, LivenessAt: &renewed}
 	if expires.Before(item.ExpiresAt) {
 		item.ExpiresAt = expires
 	}
+}
+
+// A node name and holderIdentity survive Node recreation. Kubernetes binds a
+// node heartbeat Lease to the exact Node incarnation with its ownerReference.
+func leaseForNode(lease, node *unstructured.Unstructured) bool {
+	matched := false
+	for _, ref := range lease.GetOwnerReferences() {
+		if ref.Kind != "Node" {
+			continue
+		}
+		if matched || ref.APIVersion != "v1" || ref.Name != node.GetName() || ref.UID != node.GetUID() {
+			return false
+		}
+		matched = true
+	}
+	return matched
 }
