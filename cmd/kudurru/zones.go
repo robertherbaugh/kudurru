@@ -18,6 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/apiclient/openapi"
 	"github.com/robertherbaugh/kudurru/internal/cli"
+	"github.com/robertherbaugh/kudurru/internal/importers"
 )
 
 // zoneSummary is one item of GET /zones (and the body of GET
@@ -520,6 +521,7 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 func newImportCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "import", Short: "Import data from other DNS servers"}
 	cmd.AddCommand(newZoneImportCmd(o, "bind <zone> -f file.zone"))
+	cmd.AddCommand(newOfflineMigrationCmd(o, "adguard", importers.PreviewAdGuard))
 	cmd.AddCommand(newMigrationCmd(o, "pihole"), newMigrationCmd(o, "technitium"), newMigrationRunsCmd(o), newMigrationDecommissionCmd(o), newMigrationTrackCmd(o))
 	return cmd
 }
