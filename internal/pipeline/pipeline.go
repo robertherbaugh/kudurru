@@ -82,6 +82,9 @@ type Client struct {
 	// IdentityCaptured also marks a known-empty inventory result so policy
 	// matching never consults a newer mutable hostname source mid-query.
 	IdentityCaptured bool
+	// InventorySource binds private policy contributions to the same immutable
+	// winning observation as MACs. It is never accepted from a client transport.
+	InventorySource string
 	// GroupIDs are the client's ClientGroups ("namespace/name", sorted),
 	// set by the identify stage. The slice is shared with the policy
 	// index: read it, never modify it.

@@ -107,9 +107,27 @@ func EffectiveServices(spec *v1alpha1.PolicySpec, cat ServiceCatalogue) (ids, un
 	return ids, unknown
 }
 
+// MaxMACGrants bounds private captured source contributions independently of
+// public matchers. Exceeding it closes these contributions, never truncates them.
+const MaxMACGrants = 100000
+
+// MACGrant is a private, source-bound contribution to an existing public group.
+// It is compiled from one complete image, never persisted as a public matcher.
+// The original exclusive expiry is evaluated at the request's captured time.
+type MACGrant struct {
+	Group, GroupUID, MAC, Source string
+	ExpiresAt                    time.Time
+}
+type sourceMACGrant struct {
+	source     string
+	expires    time.Time
+	membership *Membership
+}
+
 // Input is the object set an Index is built from.
 type Input struct {
 	ClientGroups []*v1alpha1.ClientGroup
+	MACGrants    []MACGrant
 	Policies     []*v1alpha1.Policy
 	BlockLists   []*v1alpha1.BlockList
 	// Lists are the compiled lists; nil means none compiled yet.
@@ -220,15 +238,16 @@ type Index struct {
 	groupIDs   []string // sorted; index = group number
 	groupSets  []*policySet
 
-	ip       map[netip.Addr]*Membership
-	mac      map[string]*Membership
-	v4, v6   cidrTable
-	hostname map[string][]int
-	globs    []globMatcher
-	clientID map[string]*Membership
-	catch4   *Membership
-	catch6   *Membership
-	def      *Membership
+	ip        map[netip.Addr]*Membership
+	mac       map[string]*Membership
+	macGrants map[string][]sourceMACGrant
+	v4, v6    cidrTable
+	hostname  map[string][]int
+	globs     []globMatcher
+	clientID  map[string]*Membership
+	catch4    *Membership
+	catch6    *Membership
+	def       *Membership
 
 	hostnames HostnameResolver
 	hostOne   []*Membership // per group: hostname-tier membership of that group alone
@@ -354,6 +373,7 @@ func Build(in Input, opts Options) *Index {
 		generation: in.Generation,
 		ip:         map[netip.Addr]*Membership{},
 		mac:        map[string]*Membership{},
+		macGrants:  map[string][]sourceMACGrant{},
 		v4:         cidrTable{m: map[netip.Prefix]*Membership{}},
 		v6:         cidrTable{m: map[netip.Prefix]*Membership{}},
 		hostname:   map[string][]int{},
@@ -398,6 +418,19 @@ func Build(in Input, opts Options) *Index {
 		b.compileGroup(i, g)
 	}
 	b.intern()
+	if len(in.MACGrants) > MaxMACGrants {
+		b.diag("ClientGroup", "", ReasonInvalidMatcher, "private inventory MAC grant capacity exceeded")
+	} else {
+		for _, grant := range in.MACGrants {
+			n, present := b.groupNum[grant.Group]
+			mac, valid := normalizeMAC(grant.MAC)
+			if !opts.Inventory || !present || !valid || grant.Source == "" || len(grant.Source) > 256 || grant.ExpiresAt.IsZero() || string(groups[n].UID) != grant.GroupUID || grant.GroupUID == "" {
+				b.diag("ClientGroup", grant.Group, ReasonInvalidMatcher, "private inventory MAC grant is invalid or unavailable")
+				continue
+			}
+			ix.macGrants[mac] = append(ix.macGrants[mac], sourceMACGrant{source: grant.Source, expires: grant.ExpiresAt, membership: b.membership([]int{n}, TierMAC)})
+		}
+	}
 	if len(b.needHosts) > 0 && opts.Hostnames == nil && !opts.Inventory {
 		for _, id := range b.needHosts {
 			b.diag("ClientGroup", id, ReasonUnsupported, "hostname and nameGlob matchers need a hostname source; none is configured, so they never match")
@@ -895,7 +928,11 @@ func (ix *Index) NotLoaded() []string { return slices.Clone(ix.notLoaded) }
 // Identify finds the client's groups. It never returns nil and does not
 // allocate except for a hostname-tier match that joins several groups for
 // the first time.
-func (ix *Index) Identify(c pipeline.Client) *Membership {
+func (ix *Index) Identify(c pipeline.Client) *Membership { return ix.IdentifyAt(c, time.Now()) }
+
+// IdentifyAt evaluates private inventory grants against the ORIGINAL request
+// time and captured inventory source. No live holder or clock is consulted.
+func (ix *Index) IdentifyAt(c pipeline.Client, at time.Time) *Membership {
 	a := c.Addr.Addr()
 	valid := a.IsValid()
 	if valid {
@@ -904,8 +941,8 @@ func (ix *Index) Identify(c pipeline.Client) *Membership {
 			return m
 		}
 	}
-	if len(ix.mac) > 0 {
-		if m := ix.byMACs(c.MACs); m != nil {
+	if len(ix.mac) > 0 || len(ix.macGrants) > 0 {
+		if m := ix.byMACs(c, at); m != nil {
 			return m
 		}
 	}
@@ -943,22 +980,16 @@ func (ix *Index) Identify(c pipeline.Client) *Membership {
 	return ix.def
 }
 
-func (ix *Index) byMACs(macs []string) *Membership {
+func (ix *Index) byMACs(c pipeline.Client, at time.Time) *Membership {
 	var first *Membership
 	var groups []int
-	for _, raw := range macs {
-		m := ix.mac[raw]
-		if m == nil {
-			if n, ok := normalizeMAC(raw); ok {
-				m = ix.mac[n]
-			}
-		}
+	add := func(m *Membership) {
 		if m == nil || m == first {
-			continue
+			return
 		}
 		if first == nil {
 			first = m
-			continue
+			return
 		}
 		if groups == nil {
 			for _, id := range first.GroupIDs {
@@ -970,6 +1001,20 @@ func (ix *Index) byMACs(macs []string) *Membership {
 		for _, id := range m.GroupIDs {
 			if n, ok := slices.BinarySearch(ix.groupIDs, id); ok && !slices.Contains(groups, n) {
 				groups = append(groups, n)
+			}
+		}
+	}
+	for _, raw := range c.MACs {
+		mac, valid := normalizeMAC(raw)
+		if !valid {
+			continue
+		}
+		add(ix.mac[mac])
+		if c.IdentityCaptured && c.InventorySource != "" && !at.IsZero() {
+			for _, grant := range ix.macGrants[mac] {
+				if grant.source == c.InventorySource && at.Before(grant.expires) {
+					add(grant.membership)
+				}
 			}
 		}
 	}

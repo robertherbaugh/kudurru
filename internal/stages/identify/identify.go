@@ -78,8 +78,10 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		}
 		req.Client.IdentityCaptured = true
 		req.Client.MACs, req.Client.Names, req.Client.Tags = nil, nil, nil
+		req.Client.InventorySource = ""
 		if c := snapshot.Lookup(req.Client.Addr.Addr(), at); c != nil {
 			req.Client.MACs, req.Client.Names, req.Client.Tags = c.MACs, c.Names(), c.Tags
+			req.Client.InventorySource = c.Source
 		}
 		if s.Hostnames != nil {
 			names := append([]string(nil), req.Client.Names...)
@@ -104,7 +106,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		}
 		return next(req)
 	}
-	m := ix.Identify(req.Client)
+	m := ix.IdentifyAt(req.Client, at)
 	req.Client.GroupIDs = m.GroupIDs
 	req.Policy = ix.Select(m, at)
 	return next(req)
