@@ -251,6 +251,11 @@ tracking. This adds a run for their current state without reimporting records;
 the original import time and source URL are unknown. It only offers
 API-managed zones whose names match the API importer's stable naming format.
 File-managed and Kubernetes-managed objects must be edited at their source.
+On SQLite, tracking a selection is atomic: every selected zone must still match
+its reviewed UID, version and authority, and you need write access to every
+zone. A stale or denied zone leaves the entire selection untracked. Refresh
+and review the selection again before submitting another attempt. Saved CLI
+previews must retain each zone's `uid` and `resourceVersion`.
 
 CLI users can save and review a versioned cutover plan. A preview without
 nameserver options uses the destination context hostname or IP. Use explicit

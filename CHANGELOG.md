@@ -33,6 +33,15 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- SQLite administration: restore current domain, Allowlist, Denylist, query-log
+  actions and unblock decisions with atomic list/policy effects and final
+  credential and license checks. Domain and unblock reads retain one captured
+  publication, including compiled lists, settings and finite entitlements.
+- Migrations: restore apply, background import and authority cutover; tracking
+  previous imports now atomically checks every reviewed zone UID and version.
+  Selected settings commit with their durable import result, preserve map
+  deletion/reset semantics and report restart requirements.
+
 - CNAME/DNAME chasing rechecks the most specific local zone before following
   a target, so parent wildcard data cannot bypass a child zone's data or expiry.
 - Current SQLite commands recheck verified credential expiry at final admission,

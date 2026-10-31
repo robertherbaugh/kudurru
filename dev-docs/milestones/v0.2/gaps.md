@@ -41,9 +41,9 @@ final expiry checks; removing the unavailable-route gate alone is not a fix.
 | ID | Baseline gap and evidence | Work | Required acceptance | Status |
 |---|---|---|---|---|
 | G01 | Confirmed: allowlist, denylist, domain and query-log convenience mutations lack current command admission; eight browser scenarios fail | Plan bounded list/policy edits in the concrete current transaction; authorize the complete operation, including no-ops; mount only supported routes | Existing domain API behavior; owner/permission/expiry/rollback/follower tests; real SQLite HTTP and DNS publication; `dashboard/e2e/allowlist.spec.ts` | Implemented in `4db982a`; local command, DNS/restart and browser acceptance pass |
-| G02 | Confirmed: migration apply/start/adopt/decommission remain gated; three migration browser scenarios fail | Carry original current authority through migration writes, durable reports and background work; preserve explicit partial-success semantics without unchecked retries | Preview/apply consistency, managed ownership, privilege revocation, cancellation/restart and journal integrity; `dashboard/e2e/migration.spec.ts` | Partial implementation in `1e2c2d0`; adoption and imported settings remain open |
+| G02 | Confirmed: migration apply/start/adopt/decommission remain gated; three migration browser scenarios fail | Carry original current authority through migration writes, durable reports and background work; preserve explicit partial-success semantics without unchecked retries | Preview/apply consistency, managed ownership, privilege revocation, cancellation/restart and journal integrity; `dashboard/e2e/migration.spec.ts` | Implemented across both batches: atomic reviewed adoption and canonical imported settings now extend `1e2c2d0`; composed validation is recorded below |
 | G03 | Confirmed: unblock approval/denial is gated; block-page approval browser scenario fails | Admit request decisions and their list/policy effects as a complete current command; preserve decision-only permission and time-limited approval ownership | Approve/deny/revoke/expiry/no-op behavior, atomic failure, original credentials, restart and real DNS; `dashboard/e2e/requests.spec.ts` | Implemented in `63f2e53`; local command, DNS/restart and browser acceptance pass |
-| G04 | Confirmed: full CI is not green | Review and compose the three fixes, rerun existing browser acceptance and relevant Go/race checks, then inspect CI on the pushed commit | All existing checks pass without skipping failing scenarios or loosening admission | Integrated in `608e2f0`; final hosted CI still required |
+| G04 | Confirmed: full CI is not green | Review and compose the three fixes, rerun existing browser acceptance and relevant Go/race checks, then inspect CI on the pushed commit | All existing checks pass without skipping failing scenarios or loosening admission | First batch green on `629146f` (CI `41170330357`, security `41170330451`); rerun required for this batch |
 
 ## Remaining feature packages
 
@@ -83,13 +83,13 @@ the production binary and deliberately refuses every UPDATE.
 | ID | Gate | Closure rule |
 |---|---|---|
 | G20 | Reconcile the follow-up ledger | Classify every v0.2 row as implemented with evidence, still required, or explicitly retargeted with rationale. Historical deferrals must not override working code or silently reduce agreed scope. |
-| G21 | Production wiring and public contracts | Every feature has its required API/CLI/UI, captured reads/current writes, generated schemas/clients, permission rules, operator docs and architecture updates. No unexplained 501/503 remains in supported workflows. |
+| G21 | Production wiring and public contracts | Domain and unblock captured GETs are completed in `1f3b0a4`; the broader gate remains open. Every feature has its required API/CLI/UI, captured reads/current writes, generated schemas/clients, permission rules, operator docs and architecture updates. No unexplained 501/503 remains in supported workflows. |
 | G22 | Upgrade and failure acceptance | Run supported-driver upgrades, mixed-version compatibility/rejection, outage startup, durable restart, promotion and partition/rejoin against the final built artifacts. |
 | G23 | Interoperability and performance | Record real BIND/Knot/AdGuard/dnsdist/Windows results where required, bounded memory/queues and performance budgets; fixture-only evidence is labeled as such. |
 | G24 | Deployment and release qualification | Complete the applicable [release checklist](../../release-checklist.md), including Compose/Kubernetes, two-VM keepalived failover, licensing and artifact validation. Do not publish or promote release branches merely to close this ledger. |
 | G25 | Status and evidence consistency | Update this ledger, current roadmap progress, changelog and PR description with exact implementation commits, commands, outcomes and remaining limits. All 11 packages require explicit acceptance before claiming feature completion. |
 
-## Completed work in this pass
+## First batch implementation and validation
 
 Three isolated subagents produced separate signed-off commits, reviewed and
 composed on the existing PR branch:
@@ -138,3 +138,84 @@ Combined validation on the implementation commits:
   G04. Check the PR's current commit for the final rerun.
 
 These checks do not close the remaining feature packages or release gates.
+
+## Second batch: remaining migration flows and captured reads
+
+Three isolated subagents supplied separate signed-off commits:
+
+- `f4e3416`: selected imported settings merge against current canonical state
+  and commit with the final durable outcome. Ordinary PATCH shares validation
+  and persistence without merging resolved map values twice. Null resets, map
+  deletion, host/node/env restrictions, original branding entitlement, no-ops
+  and final credential checks remain enforced. Object failures leave settings
+  `not_applied`; validation errors remain durable and settings stay unchanged.
+  Background reports retain restart requirements in Settings item hints.
+- `1f3b0a4`: domain, Allowlist, Denylist and list-exception GETs project original
+  objects and compiled lists; unblock GET/list uses captured workflow rows,
+  canonical pending expiry and the original finite entitlement. Cursors bind
+  the complete publication and normalized query/page size. Missing capabilities,
+  expired authority and stale cursors never fall back to live state.
+- `d702f96`: one bounded current adoption command validates every selected prior
+  API import's UID, resourceVersion, manager and authority, then authenticates
+  once for settings and every zone scope. All run annotations and the completed
+  journal commit together. Records, specs and authority remain unchanged.
+  The existing-import listing now includes UID; generated clients and saved
+  review payloads carry it through adoption.
+
+D224 records these decisions. Operator guidance and the roadmap now describe
+the resulting behavior; this batch does not close the eleven feature packages,
+AD replacement, or release qualification. G21 also remains open beyond these
+convenience routes.
+
+Captured domain projections retain the existing 10,000-object/32 MiB bounds.
+Old external list bodies may be evicted before a held request opens them,
+returning unavailable. Pagination must restart after publication changes.
+Adoption accepts at most 1,000 zones and preserves the 1 MiB journal limit.
+Interrupted background imports retain the last admitted report until their
+existing interruption deadline; they do not automatically replay refused work.
+
+Validation recorded during second-batch integration:
+
+- The final first-batch commit `629146f` passes all hosted CI jobs in
+  [41170330357](https://github.com/robertherbaugh/kudurru/actions/runs/41170330357)
+  and all applicable security scans in
+  [41170330451](https://github.com/robertherbaugh/kudurru/actions/runs/41170330451).
+- Full `internal/servingbuild` race tests pass in 131.736 seconds
+  (`GOMAXPROCS=2 go test -race -p 2 ./internal/servingbuild -count=1`).
+- The new settings-only browser scenario passes against the rebuilt binary,
+  including durable report reload, persisted readback and restart hints. An
+  earlier run stopped at fixture login with a 503 before entering the workflow;
+  no handler failure was retried or assertion weakened.
+
+- Both new browser scenarios pass on the integrated binary (2/2, 14.7 seconds):
+  historical import adoption, record/spec/UID preservation and real DNS authority
+  cutover; settings-only background completion, saved-value readback, restart
+  hints and report reload. The previous binary failed both workflows as expected.
+- Regenerated OpenAPI 3.0/3.1, Go and TypeScript clients add only the optional
+  migration UID. Dashboard typecheck, scoped ESLint and all 10 migration/history
+  component tests pass. The dashboard bundle is 301.1 KiB gzip on the entry
+  path (600 KiB budget), and the CGO-disabled embedded binary is 73,724,064 bytes
+  (100,000,000-byte budget). Tracked build output is restored.
+
+- Composed runtime races pass in 97.116 seconds with `licensetest`, covering
+  `TestServing(ImportSettings|Migration|AdoptionActualHTTPPreservesDataRestartAndCutover|CanonicalSettings|BrandingFinalClock|MutationRoutes|Domain|Unblock)`.
+  Agent adoption races also pass all mounted adoption/gate cases in 122.202
+  seconds, including simultaneous requests, restart/promotion/cutover, final
+  expiry and complete authorization. Its fixture waits for actual primary
+  admission/publication; no refused mutation is replayed.
+- Scoped vet and CGO-disabled compilation pass for API, servingauth,
+  servingbuild and cmd/kudurru. Scoped golangci-lint reports zero issues.
+  Generated reference/client tests and dashboard embedding tests pass.
+
+- Full `internal/api` and `internal/servingauth` race suites pass in 154.112
+  and 32.085 seconds respectively (`GOMAXPROCS=3 go test -race -p 2
+  ./internal/api ./internal/servingauth -count=1`), including OpenAPI drift
+  and the composed public read/write contracts.
+
+- Full expanded browser acceptance passes: **149/149** in 3.5 minutes, with
+  two Chrome workers against the integrated SQLite binary. Existing assertions
+  and production admission checks remain intact.
+- A separate bounded static review of production changes `629146f..16ccdee`
+  found no actionable defects across adoption, settings and captured-read
+  interactions. Hosted CI/security must still validate each pushed head; see
+  PR #54 for the current result.

@@ -205,6 +205,9 @@ durable Settings item hints retain restart requirements for background imports.
 Branding retains the original complete view's Enterprise entitlement through
 final commit. Kubernetes retains the preceding legacy behavior.
 
+For apply/start, the current program follows this flow; adoption uses the
+single atomic step described above.
+
 ```mermaid
 flowchart LR
     Plan["Copied bounded reviewed program"] --> Init["Original HTTP lease: create journal"]

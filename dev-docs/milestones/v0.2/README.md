@@ -40,8 +40,11 @@ does not bump versions or change the release workflow.
 ## Implementation progress
 
 The current [implementation and validation gap ledger](gaps.md) tracks
-remaining work, the first repair batch, and the evidence needed to close each
-gap. Its dated baseline supersedes historical CI and version status below.
+remaining work, the completed administration repair batches, and the evidence
+needed to close each gap. Its dated baseline supersedes historical CI and
+version status below. Current migration adoption and imported settings, plus
+captured domain and unblock reads, are described in D224; full package and
+release qualification remain open.
 
 The recommended first secondary slice is implemented in `internal/secondary`,
 with raw immutable zone data, TCP/TLS AXFR and IXFR with TSIG, independent
@@ -55,10 +58,9 @@ configuration identity changes, bounded scheduling, CNAME zone boundaries,
 real BIND transfers and the browser create/edit/expiry workflow.
 
 The full 11-package release is being implemented in a single
-[draft PR #54](https://github.com/robertherbaugh/kudurru/pull/54), with small
-commits and periodic rebases on main, currently `e6df232` including the merged
-supervisor/VIP work. AXFR/IXFR, verified TLS, inbound NOTIFY
-and stub discovery/routing are implemented with API/CLI/dashboard diagnostics.
+[PR #54](https://github.com/robertherbaugh/kudurru/pull/54), with small
+commits and merges from `main`, including the supervisor/VIP work. AXFR/IXFR,
+verified TLS, inbound NOTIFY and stub discovery/routing are implemented with API/CLI/dashboard diagnostics.
 Stub acceptance covers native BIND UDP/TCP discovery, restart, expiry and the
 browser create/edit flow. Signed-secondary response assembly supports NSEC/NSEC3 and opt-out, with
 native BIND listener acceptance and durable manager acquire/restart coverage.
