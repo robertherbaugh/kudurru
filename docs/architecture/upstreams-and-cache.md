@@ -356,6 +356,38 @@ forwarder such as 1.1.1.1 included, is logged as `dnssec_bogus` instead of
 answer with the cached copy (for a recursive group, one that was validated
 when it was stored).
 
+### Authority DNS Cookies
+
+The native resolver automatically negotiates DNS Cookies with authoritative
+servers (RFC 7873 and RFC 9018). These are outbound transport credentials,
+separate from cookies in an incoming client query or a forwarded response.
+They never establish DNSSEC security or AD, and never enter DNS answer caches
+or client replies. The resolver still validates the original answer under its
+captured DNSSEC and recursive NTA settings.
+
+The connected socket determines the actual local IP and authority IP/port.
+A random 64-bit client cookie and the authority's opaque server cookie are
+scoped to that address pair. Echoes must match exactly; malformed cookies,
+incorrect echoes and missing cookies from established cookie peers refuse the
+response. Only the authority can verify its server-cookie MAC; the resolver
+checks response correlation, the connected peer, echo and length. Later COOKIE
+options are ignored as specified by RFC 7873.
+
+The transport cache holds at most 4,096 address pairs and is memory only.
+Server cookies expire after one hour without renewal by an identical echo;
+changed cookies replace them. Client cookies rotate after a separately jittered
+14.4–24 hours, or on restart/eviction. A changed local address gets a separate
+pair. Authorities without cookies remain usable: probes stop for five minutes,
+then retry with a fresh client cookie, never the previously exposed value.
+
+A valid BADCOOKIE response permits one UDP retry with its new server cookie.
+A second BADCOOKIE falls back once to TCP; BADCOOKIE on TCP fails. Truncated
+UDP answers also use the existing TCP fallback. Each packet exchange, including
+cookie recovery and lowercase fallback, consumes the original query budget.
+The existing UDP and TCP timeouts and caller cancellation still apply. There
+are no settings or persisted cookie files. Cookies protect against off-path
+forgery; they do not authenticate an on-path observer or replace DNSSEC.
+
 ### Limits per client query
 
 | Limit | Value |

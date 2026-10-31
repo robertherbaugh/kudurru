@@ -22,15 +22,52 @@ type Exchanger interface {
 	Exchange(ctx context.Context, m *dns.Msg, server netip.AddrPort, tcp bool) (*dns.Msg, error)
 }
 
-type netExchanger struct{}
+type netExchanger struct{ cookies *cookieJar }
 
-func (netExchanger) Exchange(ctx context.Context, m *dns.Msg, server netip.AddrPort, tcp bool) (*dns.Msg, error) {
+func (n netExchanger) Exchange(ctx context.Context, m *dns.Msg, server netip.AddrPort, tcp bool) (*dns.Msg, error) {
 	c := &dns.Client{Net: "udp", UDPSize: ednsSize}
 	if tcp {
 		c.Net = "tcp"
 	}
-	r, _, err := c.ExchangeContext(ctx, m, server.String())
-	return r, err
+	co, err := c.DialContext(ctx, server.String())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = co.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = co.Close() })
+	defer stop()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	local, err := netip.ParseAddrPort(co.LocalAddr().String())
+	if err != nil {
+		return nil, errMismatch
+	}
+	remote, err := netip.ParseAddrPort(co.RemoteAddr().String())
+	if err != nil {
+		return nil, errMismatch
+	}
+	remote = netip.AddrPortFrom(remote.Addr().Unmap(), remote.Port())
+	if remote != netip.AddrPortFrom(server.Addr().Unmap(), server.Port()) {
+		return nil, errMismatch
+	}
+	wire := m.Copy()
+	ticket := n.cookies.prepare(wire, cookiePeer{local: local.Addr().Unmap(), server: remote})
+	r, _, err := c.ExchangeWithConnContext(ctx, wire, co)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := matchResponse(r, wire); err != nil {
+		return nil, err
+	}
+	if err := n.cookies.accept(r, ticket); err != nil {
+		return nil, err
+	}
+	stripCookies(r)
+	return r, nil
 }
 
 var (
@@ -40,20 +77,22 @@ var (
 )
 
 // send asks server for name/qtype once: UDP, then TCP when the answer is
-// truncated. The answer must echo the question, including the random
-// letter case; a server that does not is retried once in lower case and,
+// truncated or repeated BADCOOKIE requires transport recovery. Each wire
+// attempt consumes the shared query budget. The answer must echo the
+// question, including the random letter case; a server that does not is retried once in lower case and,
 // after a few such answers, asked without 0x20.
 func (q *query) send(server netip.AddrPort, name string, qtype uint16) (*dns.Msg, error) {
-	q.st.budget--
-	if q.st.budget < 0 {
-		return nil, errBudget
-	}
 	r := q.r
 	use0x20 := r.infra.supports0x20(server.Addr())
-	resp, rtt, err := q.exchangeOnce(server, name, qtype, use0x20)
+	retry := &transportRetry{}
+	resp, rtt, err := q.exchangeOnce(server, name, qtype, use0x20, retry)
 	if errors.Is(err, errCase) {
 		r.infra.caseMismatch(server.Addr())
-		resp, rtt, err = q.exchangeOnce(server, name, qtype, false)
+		resp, rtt, err = q.exchangeOnce(server, name, qtype, false, retry)
+	}
+	if errors.Is(err, errBudget) {
+		// Local work exhaustion is not evidence that this authority failed.
+		return nil, err
 	}
 	if err != nil {
 		timeout := isTimeout(err)
@@ -80,7 +119,9 @@ func cryptoUint64() uint64 {
 	return binary.LittleEndian.Uint64(b[:])
 }
 
-func (q *query) exchangeOnce(server netip.AddrPort, name string, qtype uint16, use0x20 bool) (*dns.Msg, time.Duration, error) {
+type transportRetry struct{ tcp, badCookie bool }
+
+func (q *query) exchangeOnce(server netip.AddrPort, name string, qtype uint16, use0x20 bool, retry *transportRetry) (*dns.Msg, time.Duration, error) {
 	r := q.r
 	qname := name
 	if use0x20 && q.s.cfg.CaseRandomization {
@@ -93,27 +134,61 @@ func (q *query) exchangeOnce(server netip.AddrPort, name string, qtype uint16, u
 	ctx, cancel := context.WithTimeout(q.ctx, r.infra.rto(server.Addr()))
 	defer cancel()
 	start := time.Now()
-	resp, err := r.ex.Exchange(ctx, m, server, false)
-	if err == nil && resp != nil && resp.Truncated {
-		tctx, tcancel := context.WithTimeout(q.ctx, maxRTO)
-		resp, err = r.ex.Exchange(tctx, m, server, true)
-		tcancel()
+	for {
+		wireCtx := ctx
+		if retry.tcp {
+			var tcancel context.CancelFunc
+			wireCtx, tcancel = context.WithTimeout(q.ctx, maxRTO)
+			defer tcancel()
+		}
+		if err := wireCtx.Err(); err != nil {
+			return nil, time.Since(start), err
+		}
+		q.st.budget--
+		if q.st.budget < 0 {
+			return nil, time.Since(start), errBudget
+		}
+		resp, err := r.ex.Exchange(wireCtx, m, server, retry.tcp)
+		if err == nil {
+			err = matchResponse(resp, m)
+		}
+		if err != nil {
+			return nil, time.Since(start), err
+		}
+		if resp.Rcode == dns.RcodeBadCookie {
+			if retry.tcp {
+				return nil, time.Since(start), errCookie
+			}
+			if !retry.badCookie {
+				retry.badCookie = true
+			} else {
+				retry.tcp = true
+			}
+			continue
+		}
+		if resp.Truncated {
+			if retry.tcp {
+				return nil, time.Since(start), errMismatch
+			}
+			retry.tcp = true
+			continue
+		}
+		return resp, time.Since(start), nil
 	}
-	rtt := time.Since(start)
-	if err != nil {
-		return nil, rtt, err
+}
+
+func matchResponse(resp, req *dns.Msg) error {
+	if resp == nil || !resp.Response || resp.Id != req.Id || resp.Opcode != dns.OpcodeQuery || len(resp.Question) != 1 {
+		return errMismatch
 	}
-	if resp == nil || !resp.Response || resp.Id != m.Id || resp.Opcode != dns.OpcodeQuery || len(resp.Question) != 1 {
-		return nil, rtt, errMismatch
+	rq, qq := resp.Question[0], req.Question[0]
+	if rq.Qtype != qq.Qtype || rq.Qclass != dns.ClassINET || !equalName(rq.Name, qq.Name) {
+		return errMismatch
 	}
-	rq := resp.Question[0]
-	if rq.Qtype != qtype || rq.Qclass != dns.ClassINET || !equalName(rq.Name, qname) {
-		return nil, rtt, errMismatch
+	if rq.Name != qq.Name {
+		return errCase
 	}
-	if rq.Name != qname {
-		return nil, rtt, errCase
-	}
-	return resp, rtt, nil
+	return nil
 }
 
 func isTimeout(err error) bool {

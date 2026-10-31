@@ -246,14 +246,14 @@ func New(cfg Config, opts Options) (*Resolver, error) {
 		now:           opts.Now,
 		allowLoopback: opts.AllowLoopback,
 	}
-	if r.ex == nil {
-		r.ex = netExchanger{}
-	}
 	if r.logger == nil {
 		r.logger = slog.Default()
 	}
 	if r.now == nil {
 		r.now = time.Now
+	}
+	if r.ex == nil {
+		r.ex = netExchanger{cookies: newCookieJar(r.now)}
 	}
 	r.infra = newInfra(r.now)
 	size := cfg.CacheSize

@@ -113,6 +113,23 @@ the deadline. Expired entries may remain in settings, but are inactive.
 These exceptions do not implement aggressive NSEC caching or automatic
 trust-anchor rollover.
 
+## Cookies on recursive authority requests
+
+Recursive groups automatically use DNS Cookies when asking authoritative
+servers. No configuration or shared secret is needed. Incoming client cookies
+are not forwarded. A server that does not implement cookies remains usable;
+the resolver waits five minutes before probing again with a fresh cookie.
+An established cookie peer must return the correct echo. Malformed, missing or
+incorrect cookies can cause that authority's answer to be refused and another
+eligible authority to be tried under the existing work limit.
+
+BADCOOKIE recovery has one UDP retry followed by one TCP fallback. Ensure
+outbound UDP and TCP DNS are both allowed, as for other recursive traffic.
+Cookie negotiation neither bypasses DNSSEC/NTA checks nor sets AD. State stays
+in memory, is bounded and expires; restart starts fresh. See
+[authority DNS Cookies](../architecture/upstreams-and-cache.md#authority-dns-cookies)
+for exact lifetime and transport rules. Cookie contents are not logged.
+
 ## Cache and failures
 
 The shared response cache stores raw answers with their route, validation
