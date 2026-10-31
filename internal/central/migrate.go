@@ -19,8 +19,8 @@ import (
 // SchemaVersion. Additive migrations keep CompatVersion; a migration
 // that older binaries cannot work with raises it to its own version.
 const (
-	SchemaVersion = 3
-	CompatVersion = 1
+	SchemaVersion = 4
+	CompatVersion = 4
 )
 
 //go:embed migrations/*.sql
