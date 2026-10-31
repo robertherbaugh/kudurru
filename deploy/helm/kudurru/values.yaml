@@ -241,6 +241,16 @@ vip:
     hmacSecret: ""
     # -- Existing Secret with the key vrrp-hmac.
     existingSecret: ""
+    # -- Explicit per-VRID Secret references (release namespace, at most 255).
+    # Nonempty requires EXACT coverage of every VIP VRID and forbids shared
+    # existingSecret/hmacSecret. Only selected keys are mounted, never values.
+    # Key material must be 1-4096 bytes; keepalived validates its syntax.
+    # Changes require coordinated restart, not seamless live key rotation.
+    hmacKeySecrets: []
+    # Example (create these Secrets separately):
+    # hmacKeySecrets:
+    #   - {vrid: 53, secretName: vrrp-a, key: hmac}
+    #   - {vrid: 54, secretName: vrrp-b, key: hmac}
     resources:
       requests:
         cpu: 10m
