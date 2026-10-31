@@ -1886,3 +1886,15 @@ recovery repetitions pass in 22.5s. An intermediate injected run correctly faile
 because Chromium supplied the HTTP/1 reason phrase; the matcher now recognizes
 only the exact empty or Service Unavailable phrase, still requiring the verified
 response. The API and production refusal/retry behavior are unchanged.
+
+
+### F18c independent periodic inventory scheduling fix
+
+`d7e98d8` integrates the narrow D284 scheduling fix: a refused automatic
+inventory-only poll cannot permanently disable future observations while its
+job/lease remain live. Each future timer event uses its own original frame and
+normal admission; outbound Publishers and explicit commands are unchanged.
+Controlled fencing, replacement and cancellation coverage and three full agent
+host race repetitions pass (20.238s); parent complete host race passes (7.797s).
+Full UniFi mounted hostname/native/edge acceptance remains in progress and has
+not been marked complete.

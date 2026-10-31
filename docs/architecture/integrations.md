@@ -160,6 +160,13 @@ inventory; ordinary per-object CAS plus a Lease is insufficient. These remain
 explicit dependencies, not completed capabilities. See the
 [operator guide](../deploy/integrations.md).
 
+Automatic inventory-only polling retains its configured future schedule after an
+original-frame fence while both the job and lease remain active. The refused
+acquisition stays refused; the next timer event captures and authorizes its own
+frame. A changed source still cancels and joins the old job before replacement.
+This scheduling rule does not apply to outbound Publishers, explicit commands,
+canceled jobs or permanent provider errors (D284).
+
 ## Cloudflare adapter
 
 `ee/integration/cloudflare` uses the official Cloudflare Go v7 SDK. A provider
