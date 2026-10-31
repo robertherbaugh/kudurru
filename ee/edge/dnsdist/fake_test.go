@@ -136,6 +136,12 @@ func fakeDNSDist(args []string) int {
 		case "stderr-overflow":
 			fmt.Fprint(os.Stderr, strings.Repeat("x", maxConsoleOutput+1))
 			fmt.Print(marker)
+		case "preamble":
+			fmt.Print("local configuration-only diagnostic\n" + marker)
+		case "trailing":
+			fmt.Print(marker + "\ncommand failed")
+		case "echo":
+			fmt.Print(command)
 		case "unacknowledged":
 			fmt.Print("sensitive test material")
 		case "failed":

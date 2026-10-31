@@ -12,13 +12,14 @@ import (
 
 	"github.com/robertherbaugh/kudurru/ee/edge"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
+	"github.com/robertherbaugh/kudurru/internal/nodehealth"
 )
 
 var errRestartRequired = errors.New("dnsdist: configuration requires a validated restart")
 var errValidatorRestart = errors.New("dnsdist: new node validator requires a staged restart")
 
-// newBackend is used only when the original topology has no node validator.
-// Named members install their original validator through staged configuration.
+// newBackend uses either the original anonymous check or a positively qualified
+// node-targeted check. Generic named validators use staged configuration.
 func newBackend(t *edge.Topology, b edge.Backend) string {
 	hc := t.HealthCheck
 	private := "kudurru-pending-" + b.ID
@@ -72,16 +73,44 @@ func (s *Supervisor) applyMembership(ctx context.Context, old, next *edge.Topolo
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.UpdateTimeout)
 	defer cancel()
-	// dnsdist2.1.3 explicitly forbids installing a response validator at
-	// runtime. Named nodes need a staged validated restart that installs the
-	// original validator before activating automatic health.
+	// A runtime constructor cannot install a response validator. Current
+	// first-party nodes enforce the expected owner in the versioned question;
+	// proven generic-only nodes retain the original staged-validator fallback.
+	checks := map[string]string{}
+	legacy := false
 	for _, be := range added {
-		if validatorName(next, be) != "" {
-			return false, errValidatorRestart
+		if validatorName(next, be) == "" {
+			continue
+		}
+		classify := s.classifyBackend
+		if classify == nil {
+			classify = s.classifyHealth
+		}
+		capability, err := classify(ctx, be)
+		if err != nil {
+			return false, err
+		}
+		if capability == healthTargetV1 {
+			checks[be.ID] = nodehealth.Target(be.Name)
+		} else {
+			legacy = true
 		}
 	}
+	if legacy {
+		s.mu.Lock()
+		s.membershipMode = "legacy-validator-restart"
+		s.mu.Unlock()
+		return false, errValidatorRestart
+	}
+	s.mu.Lock()
+	s.membershipMode = "console"
+	if len(checks) > 0 {
+		s.membershipMode = "node-target-v1"
+	}
+	s.mu.Unlock()
+
 	for _, be := range added {
-		if err := s.console(ctx, newBackend(next, be)); err != nil {
+		if err := s.console(ctx, backendWithCheck(next, be, checks[be.ID])); err != nil {
 			return false, err
 		}
 	}
@@ -210,4 +239,13 @@ func (s *Supervisor) stageNamedMembership(ctx context.Context, old, next *edge.T
 		}
 	}
 	return s.finishMembership(ctx, added, removed, publish)
+}
+
+func backendWithCheck(top *edge.Topology, backend edge.Backend, name string) string {
+	if name == "" {
+		return newBackend(top, backend)
+	}
+	targeted := *top
+	targeted.HealthCheck.QName = name
+	return newBackend(&targeted, backend)
 }

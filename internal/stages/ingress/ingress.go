@@ -10,6 +10,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/robertherbaugh/kudurru/internal/nodehealth"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
@@ -48,7 +49,7 @@ func (l *RateLimiter) requestExempt(req *pipeline.Request) bool {
 		return true
 	}
 	m := req.Msg
-	return m != nil && len(m.Question) == 1 && strings.EqualFold(m.Question[0].Name, HealthName)
+	return m != nil && len(m.Question) == 1 && nodehealth.IsName(m.Question[0].Name)
 }
 
 // Check returns the limiter's verdict for req: UDP queries only, never for
@@ -108,6 +109,21 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return r, nil
 	}
 	q := m.Question[0]
+	if nodehealth.Reserved(q.Name) {
+		if q.Qclass == dns.ClassINET && s.Lameduck != nil && s.Lameduck() {
+			return pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusSpecialDomain), nil
+		}
+		if m.Opcode != dns.OpcodeQuery || q.Qclass != dns.ClassINET || q.Qtype != dns.TypeTXT || !nodehealth.Matches(q.Name, s.NodeID) {
+			response := pipeline.Reply(req, dns.RcodeRefused, pipeline.StatusSpecialDomain)
+			response.Msg.Authoritative = true
+			return response, nil
+		}
+		var epoch uint64
+		if s.Epoch != nil {
+			epoch = s.Epoch()
+		}
+		return s.txt(req, q, fmt.Sprintf("%s %d", s.NodeID, epoch)), nil
+	}
 	// Protocol operations must reach authoritative's dedicated handlers.
 	// Their SOA zone section is not a CHAOS/health/ANY query.
 	if m.Opcode != dns.OpcodeQuery {

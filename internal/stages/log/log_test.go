@@ -9,6 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/robertherbaugh/kudurru/internal/nodehealth"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
@@ -174,7 +175,9 @@ func TestObserverReplyTypes(t *testing.T) {
 func TestObserverSkipsHealthName(t *testing.T) {
 	rec := &recorder{}
 	o := &Observer{Node: "n", Collector: rec}
-	o.Observe(request(ingress.HealthName, dns.TypeTXT), nil, nil, time.Millisecond)
+	for _, name := range []string{ingress.HealthName, nodehealth.Target("n"), nodehealth.Target("wrong-owner"), "malformed." + nodehealth.Namespace, "x.v2." + nodehealth.Namespace} {
+		o.Observe(request(name, dns.TypeTXT), nil, nil, time.Millisecond)
+	}
 	if len(rec.events) != 0 {
 		t.Error("health probe was logged")
 	}

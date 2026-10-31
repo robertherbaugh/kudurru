@@ -14,10 +14,10 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/metrics"
+	"github.com/robertherbaugh/kudurru/internal/nodehealth"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
-	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 )
 
 // RcodeNone is the rcode label of kudurru_dns_responses_total for queries
@@ -81,7 +81,7 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 	} else if req.Serving != nil {
 		return
 	}
-	if collector == nil || req.Client.Synthetic || strings.EqualFold(q.Name, ingress.HealthName) {
+	if collector == nil || req.Client.Synthetic || nodehealth.IsName(q.Name) {
 		return
 	}
 	ev := &querylog.Event{

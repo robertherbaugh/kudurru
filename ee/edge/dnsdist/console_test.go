@@ -14,7 +14,7 @@ import (
 )
 
 func TestConsoleBoundsAndAcknowledgment(t *testing.T) {
-	for _, mode := range []string{"ack", "unacknowledged", "failed", "overflow", "stderr-overflow", "sleep"} {
+	for _, mode := range []string{"ack", "preamble", "trailing", "echo", "unacknowledged", "failed", "overflow", "stderr-overflow", "sleep"} {
 		t.Run(mode, func(t *testing.T) {
 			s, err := New(Config{Source: &cluster.StaticSource{}, Binary: fakeBinary(t), ConfigDir: t.TempDir(), ConsoleTimeout: 500 * time.Millisecond, ChildEnv: []string{"KUDURRU_FAKE_CONSOLE_MODE=" + mode}})
 			if err != nil {
@@ -22,7 +22,7 @@ func TestConsoleBoundsAndAcknowledgment(t *testing.T) {
 			}
 			start := time.Now()
 			err = s.console(t.Context(), "do end")
-			if mode == "ack" {
+			if mode == "ack" || mode == "preamble" {
 				if err != nil {
 					t.Fatal(err)
 				}

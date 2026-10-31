@@ -107,17 +107,20 @@ type Supervisor struct {
 	rendered  prometheus.Gauge
 	gatherer  prometheus.Gatherer
 
-	mu          sync.Mutex
-	status      *ServerStatus
-	statusAt    time.Time
-	statusErr   error
-	restarting  bool
-	current     []File
-	endpoints   []cluster.Endpoint
-	zones       []string
-	updateError string
-	statusEpoch uint64
-	tlsState    *certificateState // Run owns snapshots; never contains source credentials in status
+	mu                                sync.Mutex
+	status                            *ServerStatus
+	statusAt                          time.Time
+	statusErr                         error
+	restarting                        bool
+	current                           []File
+	endpoints                         []cluster.Endpoint
+	zones                             []string
+	updateError                       string
+	membershipError, certificateError string
+	statusEpoch                       uint64
+	membershipMode                    string
+	classifyBackend                   func(context.Context, edge.Backend) (healthCapability, error) // unit fixture seam; nil uses authenticated direct probes
+	tlsState                          *certificateState                                             // Run owns snapshots; never contains source credentials in status
 }
 
 // New validates cfg and returns a Supervisor.
@@ -557,10 +560,11 @@ func (s *Supervisor) Run(ctx context.Context) error {
 			if haveZones {
 				nextZones = pendingZones
 			}
+			membershipEvent := haveEps || haveZones
 			haveEps, haveZones = false, false
 			files, changed, err := s.prepare(ctx, nextEps, nextZones)
 			if err != nil {
-				s.setUpdateError("configuration validation failed; retaining accepted configuration")
+				s.setMembershipError("configuration validation failed; retaining accepted configuration")
 			} else if changed {
 				oldTop, oldErr := s.topology(oldEps, oldZones)
 				nextTop, nextErr := s.topology(nextEps, nextZones)
@@ -578,8 +582,18 @@ func (s *Supervisor) Run(ctx context.Context) error {
 				case applyErr == nil:
 					curZones = nextZones
 					s.invalidateStatus()
-					s.setUpdateError("")
+					s.setMembershipError("")
+				case errors.Is(applyErr, errHealthProof):
+					// Classification precedes every runtime mutation. An ownership or
+					// capability proof failure leaves the accepted child untouched.
+					s.setMembershipError("membership node health proof failed; retaining accepted membership")
+					pendingEps, pendingZones, haveEps, haveZones = nextEps, nextZones, true, true
+					timer = time.NewTimer(max(s.cfg.Debounce, 5*time.Second))
+					timerC = timer.C
 				case errors.Is(applyErr, errRestartRequired):
+					s.mu.Lock()
+					s.membershipMode = "validated-restart"
+					s.mu.Unlock()
 					s.markUncertain()
 					if err := s.install(files, nextEps, nextZones); err != nil {
 						return err
@@ -588,10 +602,10 @@ func (s *Supervisor) Run(ctx context.Context) error {
 					if err := s.restart(ctx, "configuration"); err != nil {
 						return err
 					}
-					s.setUpdateError("")
+					s.setMembershipError("")
 				default:
 					s.markUncertain()
-					s.setUpdateError("membership console update failed; reconciling accepted configuration")
+					s.setMembershipError("membership console update failed; reconciling accepted configuration")
 					if qualified {
 						curZones = nextZones
 					} else {
@@ -609,13 +623,16 @@ func (s *Supervisor) Run(ctx context.Context) error {
 					}
 				}
 			}
+			if err == nil && !changed && membershipEvent {
+				s.setMembershipError("")
+			}
 			if pendingCert {
 				pendingCert = false
 				if err := s.reloadCertificates(ctx); err != nil {
 					if errors.Is(err, errCertificateRecovery) {
 						return err
 					}
-					s.setUpdateError("certificate update rejected; retaining accepted certificate")
+					s.setCertificateError("certificate update rejected; retaining accepted certificate")
 				}
 			}
 
@@ -843,7 +860,7 @@ func (s *Supervisor) Handler() http.Handler {
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		ready, message := s.Ready()
 		s.mu.Lock()
-		body := map[string]any{"ready": ready, "message": message, "endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath(), "updateError": s.updateError}
+		body := map[string]any{"ready": ready, "message": message, "endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath(), "updateError": s.updateError, "membershipUpdateMode": s.membershipMode, "membershipError": s.membershipError, "certificateError": s.certificateError}
 		if s.status != nil {
 			body["dnsdist"] = s.status
 		}
@@ -902,9 +919,19 @@ func (s *Supervisor) restore(files []File, eps []cluster.Endpoint, zones []strin
 	return nil
 }
 
-func (s *Supervisor) setUpdateError(message string) {
+func (s *Supervisor) refreshUpdateError() {
+	s.updateError = strings.Join(slices.DeleteFunc([]string{s.membershipError, s.certificateError}, func(v string) bool { return v == "" }), "; ")
+}
+func (s *Supervisor) setMembershipError(message string) {
 	s.mu.Lock()
-	s.updateError = message
+	s.membershipError = message
+	s.refreshUpdateError()
+	s.mu.Unlock()
+}
+func (s *Supervisor) setCertificateError(message string) {
+	s.mu.Lock()
+	s.certificateError = message
+	s.refreshUpdateError()
 	s.mu.Unlock()
 }
 func (s *Supervisor) invalidateStatus() { s.mu.Lock(); s.status = nil; s.statusEpoch++; s.mu.Unlock() }

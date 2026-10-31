@@ -121,6 +121,9 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This fake exercises lifecycle/console failures as a generic-only old
+	// backend. Real protocol ownership is qualified by mounted live listeners.
+	sup.classifyBackend = func(context.Context, edge.Backend) (healthCapability, error) { return healthLegacy, nil }
 	ctx, cancel := context.WithCancel(context.Background())
 	h := &harness{t: t, sup: sup, dir: cfg.ConfigDir, src: src, cancel: cancel, done: make(chan error, 1), reg: reg}
 	go func() { h.done <- sup.Run(ctx) }()

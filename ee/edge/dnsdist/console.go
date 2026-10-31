@@ -52,7 +52,7 @@ func (s *Supervisor) console(ctx context.Context, statement string) error {
 	cmd.WaitDelay = 250 * time.Millisecond
 	var out, stderr cappedOutput
 	cmd.Stdout, cmd.Stderr = &out, &stderr
-	if err := cmd.Run(); err != nil || out.overflow || stderr.overflow || strings.TrimSpace(string(out.data)) != marker {
+	if err := cmd.Run(); err != nil || out.overflow || stderr.overflow || !finalAcknowledgment(out.data, marker) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -78,4 +78,21 @@ func (s *Supervisor) check(ctx context.Context, path string) error {
 		return errors.New("dnsdist: configuration check failed")
 	}
 	return nil
+}
+
+// Lua configuration clients can emit local configuration-only diagnostics
+// before the server's response. Only one exact final line is acknowledgment;
+// a marker embedded in a diagnostic/echo or followed by an error is not.
+func finalAcknowledgment(output []byte, marker string) bool {
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if strings.TrimSpace(lines[len(lines)-1]) != marker {
+		return false
+	}
+	count := 0
+	for _, line := range lines {
+		if strings.TrimSpace(line) == marker {
+			count++
+		}
+	}
+	return count == 1
 }

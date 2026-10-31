@@ -22,7 +22,12 @@ common = ["--network", "host", "--user", f"{os.getuid()}:{os.getgid()}",
           "--label", "io.kudurru.f43=" + name,
           "--mount", f"type=bind,src={root},dst={root},readonly", "--entrypoint", "dnsdist"]
 if "--supervised" in args:
+    if "--uid" in args:
+        # Initial root TLS loading needs its ordinary DAC capability before
+        # dnsdist drops to the configured UID; the dropped child owns snapshots.
+        common += ["--cap-add", "SETUID", "--cap-add", "SETGID", "--cap-add", "DAC_OVERRIDE"]
     with (root / "child.private.log").open("ab") as output:
+        os.chmod(output.name, 0o600)
         child = subprocess.Popen(docker + ["run", "--rm", "--name", name] + common +
                                  [config["image"]] + args, stdout=output, stderr=output)
         def stop(_signum, _frame):

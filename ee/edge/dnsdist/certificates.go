@@ -296,6 +296,7 @@ func (s *Supervisor) reloadCertificates(ctx context.Context) error {
 		return err
 	}
 	if pair.digest == state.digest {
+		s.setCertificateError("")
 		return nil
 	}
 	parentCtx := ctx
@@ -331,7 +332,7 @@ func (s *Supervisor) reloadCertificates(ctx context.Context) error {
 		s.restarting = false
 		s.mu.Unlock()
 		s.invalidateStatus()
-		s.setUpdateError("")
+		s.setCertificateError("")
 		return nil
 	}
 	// A console timeout can happen after execution. Restore and verify every
