@@ -272,6 +272,63 @@ func TestPrimaryPublicationExpiryAndAuthorityLossCannotAcknowledge(t *testing.T)
 	}
 }
 
+func TestPrimaryPublicationStopsWaitingForChangedDesiredSource(t *testing.T) {
+	for _, change := range []string{"nameservers", "status", "delete", "replacement"} {
+		t.Run(change, func(t *testing.T) {
+			f := newFixture(t)
+			r, p, ctx := primaryFixture(t, f)
+			z, lifecycle := beginPrimary(ctx, t, f, r)
+			if _, err := r.Reconcile(ctx, lifecycle.Spec.Zone); err != nil {
+				t.Fatal(err)
+			}
+			member, _ := r.Capture(f.now).Member(z.Spec.ZoneName)
+			writer, _ := pr.PublicationFenceFrom(ctx)
+			switch change {
+			case "nameservers":
+				z.Spec.Nameservers = []string{"new.example."}
+				if _, err := f.store.Apply(ctx, z, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+					t.Fatal(err)
+				}
+			case "status":
+				z.Status.ObservedGeneration = z.Generation
+				if err := f.store.UpdateStatus(ctx, z); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				if err := f.store.Delete(ctx, store.KeyOf(z), store.DeleteOptions{Manager: store.ManagerSystem}); err != nil {
+					t.Fatal(err)
+				}
+				if change == "replacement" {
+					replacement := &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: z.Name}, Spec: z.Spec}
+					if _, err := f.store.Apply(ctx, replacement, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			f.waitCurrent(t)
+			// The durable member is unchanged, but its desired-source receipt is
+			// stale. Waiting cannot repair it: the same serial driver must return
+			// to reconciliation/retirement before this zone can serve again.
+			bounded, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+			if err := p.Wait(bounded, writer, member); !errors.Is(err, serving.ErrSuperseded) {
+				t.Fatalf("obsolete source blocked reconciliation: %v", err)
+			}
+			if query(t, f.chain, nil, z.Spec.ZoneName).Msg.Rcode != dns.RcodeServerFailure {
+				t.Fatal("obsolete source became available")
+			}
+			if change == "nameservers" || change == "status" {
+				if _, err := r.Reconcile(ctx, lifecycle.Spec.Zone); err != nil {
+					t.Fatal("fresh reconciliation did not restore publication", err)
+				}
+				if query(t, f.chain, nil, z.Spec.ZoneName).Msg.Rcode != dns.RcodeSuccess {
+					t.Fatal("reconciled source remains unavailable")
+				}
+			}
+		})
+	}
+}
+
 func TestPrimaryPublicationCurrentAcknowledgmentDoesNotRestartPreparation(t *testing.T) {
 	f := newFixture(t)
 	r, p, ctx := primaryFixture(t, f)

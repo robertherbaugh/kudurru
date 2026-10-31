@@ -42,6 +42,7 @@ type PreparedImage struct {
 	admissionDeadlines map[string]time.Time
 	coordinated        map[string]bool
 	durable            map[zk.ZoneID]*entry
+	sourceCurrent      map[zk.ZoneID]bool
 	status             map[string]PrimaryStatusObservation
 }
 
@@ -100,6 +101,14 @@ func (p *PreparedImage) DurableMember(id zk.ZoneID) (Member, bool) {
 	return m, true
 }
 
+// SourceMatchesDesired reports whether the exact durable lifecycle source and
+// its frozen primary configuration still match this image's desired source.
+// False requires fresh reconciliation, not waiting for the old member to serve.
+// This is not an admission check: ancestry, expiry and publication still apply.
+func (p *PreparedImage) SourceMatchesDesired(id zk.ZoneID) bool {
+	return p != nil && p.sourceCurrent[id]
+}
+
 // Versions returns detached durable primary heads, including unavailable or
 // retiring members. Desired-only placeholders do not produce version entries.
 func (p *PreparedImage) Versions() map[string]zonestate.Version {
@@ -150,6 +159,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	current := make(map[string]bool)
 	coordinated := make(map[string]bool, len(roster.ledgers))
 	durable := make(map[zk.ZoneID]*entry, len(roster.ledgers))
+	sourceCurrent := make(map[zk.ZoneID]bool, len(roster.ledgers))
 	status := make(map[string]PrimaryStatusObservation, len(roster.ledgers))
 	for _, l := range roster.ledgers {
 		coordinated[l.Spec.Zone.ObjectName] = true
@@ -177,12 +187,14 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		durable[l.Spec.Zone] = e
 		status[l.Spec.Zone.ObjectName] = imageStatus(e, z, raw)
 		current[l.Spec.Zone.Apex] = imageCurrentSource(l, z)
+		sourceCurrent[l.Spec.Zone] = current[l.Spec.Zone.Apex]
 		if l.Spec.Type != public.ZoneTypePrimary {
 			continue // Other owners supply nonprimary data, never this builder.
 		}
 		// Lifecycle source CAS precedes head compilation. Only a head with the
 		// current frozen zone config/receipt can grant serving readiness.
 		current[l.Spec.Zone.Apex] = current[l.Spec.Zone.Apex] && status[l.Spec.Zone.ObjectName].ConfigMatchesDesired
+		sourceCurrent[l.Spec.Zone] = current[l.Spec.Zone.Apex]
 		if !current[l.Spec.Zone.Apex] {
 			e.model = e.coverage
 			if z != nil && z.Spec.Type == public.ZoneTypePrimary && canonical(z.Spec.ZoneName) == l.Spec.Zone.Apex {
@@ -293,7 +305,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		return nil, err
 	}
 	imageStatusDeadlines(status)
-	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated, durable: durable, status: status}, nil
+	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated, durable: durable, sourceCurrent: sourceCurrent, status: status}, nil
 }
 
 func imageAncestors(apex string) []string {

@@ -549,6 +549,12 @@ unavailable or removed coverage; a new desired placeholder cannot substitute for
 the old persisted member. Authority and dependency changes invalidate eligibility,
 and waiting retains no database, provider or runtime locks. Failed publication
 does not repeat or roll back a durable commit.
+If the same complete image shows that an active member's desired source or
+frozen configuration has changed, acknowledgment returns superseded immediately.
+The serial driver can then reconcile or retire that source instead of waiting
+until its operation deadline for a member that cannot become available. Source
+changes never grant acknowledgment, and pending preparation and absolute expiry
+retain their existing checks.
 
 `internal/servingzones` combines that primary part with the same candidate's
 public DNS objects and captured secondary, stub and RPZ snapshots. Acquired

@@ -123,6 +123,13 @@ func publishedMember(lease *serving.Lease, want primaryruntime.Member, now time.
 	exact := route != nil && route.Name() == want.Zone.Apex
 	switch want.Phase {
 	case zk.PhaseActive:
+		// A newer desired source can leave this exact durable member in the
+		// image while making it unavailable. The serial driver must reconcile
+		// that source before it can serve; waiting here would stall that work
+		// until the operation deadline. Never acknowledge the obsolete member.
+		if !runtime.primary.SourceMatchesDesired(want.Zone) {
+			return serving.ErrSuperseded
+		}
 		if !runtime.primary.Admitted(want.Zone.Apex, now) || !exact {
 			return serving.ErrPending
 		}
