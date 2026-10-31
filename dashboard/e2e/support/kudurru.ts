@@ -126,6 +126,8 @@ export interface ServerOptions {
   upstream: string;
   /** The admin password; undefined lets kudurru generate one (must change at first login). */
   adminPassword?: string;
+  /** Optional API/dashboard path prefix, without a trailing slash. */
+  pathPrefix?: string;
   /** Node name. */
   node?: string;
   /**
@@ -202,7 +204,7 @@ async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server
     store: { driver: 'sqlite' },
     listeners: {
       dns: [{ address: ports.dns, protocols: ['udp', 'tcp'] }],
-      api: { address: ports.api },
+      api: { address: ports.api, pathPrefix: opts.pathPrefix },
       ops: { address: ports.ops },
       metrics: { address: ports.metrics },
       internal: { address: ports.internal },
@@ -288,7 +290,7 @@ async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server
     }
     adminPassword = m[1];
   }
-  return { node, dir, url: `https://${ports.api}`, blockPage: `http://${ports.blockPage}`, dns: ports.dns, ops: ports.ops, adminPassword, log: () => out, stop };
+  return { node, dir, url: `https://${ports.api}${opts.pathPrefix ?? ''}`, blockPage: `http://${ports.blockPage}`, dns: ports.dns, ops: ports.ops, adminPassword, log: () => out, stop };
 }
 
 export function sleep(ms: number): Promise<void> {
