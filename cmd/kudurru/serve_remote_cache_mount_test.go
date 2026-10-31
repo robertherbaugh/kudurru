@@ -288,6 +288,26 @@ func TestRunServeRemoteEdgeRegexAndLateFill(t *testing.T) {
 		m, e := exchange("probe.example.")
 		return e == nil && len(m.Answer) == 1 && m.Answer[0].(*dns.A).A.String() == "192.0.2.99"
 	})
+	// An allow regex must override the already-warm deny, and its removal
+	// must restore that original deny without reusing the former cache.
+	_, oldKey = status()
+	var allow api.DomainWriteResult
+	controlMountedRequest(t, client, base, http.MethodPost, "/allowlist", login.CSRF, api.DomainEntriesCreate{Type: "regex", Values: []string{`^(probe|held\.regex)\.example$`}}, http.StatusOK, &allow)
+	wait("regex allow override invalidation", func() bool {
+		mode, key := status()
+		return mode == "qualified" && key != "" && key != oldKey && answers("192.0.2.80")
+	})
+	want("probe.example.", "192.0.2.80")
+	if len(allow.Items) != 1 {
+		t.Fatal("missing exact regex allow receipt")
+	}
+	_, oldKey = status()
+	controlMountedRequest(t, client, base, http.MethodDelete, "/allowlist/"+allow.Items[0].ID, login.CSRF, nil, http.StatusNoContent, nil)
+	wait("regex allow removal restores deny", func() bool {
+		mode, key := status()
+		return mode == "qualified" && key != "" && key != oldKey && answers("192.0.2.99")
+	})
+	want("probe.example.", "192.0.2.99")
 	_, oldKey = status()
 	var blocking api.BlockingState
 	// Leave room for the original bounded pull and external console command
@@ -321,7 +341,7 @@ func TestRunServeRemoteEdgeRegexAndLateFill(t *testing.T) {
 	if pid() != originalPID {
 		t.Fatal("resolver invalidation restarted actual daemon")
 	}
-	t.Logf("PASS regex removal/ABA, absolute blocking expiry during stalled pull, actual token refusal/reconnect, PID preserved; backend queries=%d", calls.Load())
+	t.Logf("PASS regex allow/deny removal/ABA, absolute blocking expiry during stalled pull, actual token refusal/reconnect, PID preserved; backend queries=%d", calls.Load())
 	// The wrapper loses ONLY the response, after the real daemon executed the
 	// next cache mutation. Production must retire this uncertain child rather
 	// than keep its unacknowledged cache serving while retries continue.
