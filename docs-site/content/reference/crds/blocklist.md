@@ -37,7 +37,7 @@ Validation: RPZ sources require block mode (`!has(self.mode) || self.mode != 'al
 | `spec.customIP.v4` | `string` |  |
 | `spec.customIP.v6` | `string` |  |
 | `spec.mode` | `string` | ListMode says whether entries block or allow.<br>Default: `block`<br>One of: `block`, `allow` |
-| `spec.refreshInterval` | `string` | Default: `24h` |
+| `spec.refreshInterval` | `string` | RefreshInterval overrides blocking.refreshInterval for this list. When omitted, the current cluster default applies, including hot reloads. |
 | `spec.response` | `string` | BlockResponse is how a blocked query is answered: nxdomain, zeroIP (0.0.0.0 / ::), refused, customIP (the customIP addresses) or blockPage (the addresses of the block page listener, blockPage.ipv4/ipv6, so browsers show why the name is blocked).<br>One of: `nxdomain`, `zeroIP`, `refused`, `customIP`, `blockPage` |
 | `spec.sources` | `[]object` | **Required.**<br>Items: 1 to 256 |
 | `spec.sources[].configMapRef` | `object` | ObjectRef points at another kudurru object. Namespace is omitted for cluster-scoped kinds and for same-namespace references. |

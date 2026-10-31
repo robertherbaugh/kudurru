@@ -28,6 +28,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Blocking: refresh interval and degraded readiness reload without restarting
+  in-flight downloads. New lists inherit the cluster refresh default unless
+  they specify an interval; existing stored durations remain overrides.
+- Interoperability: pinned Knot DNS 3.6.2 acceptance for ordinary primary-zone
+  RFC 9432 catalog data, automatic member replacement and transfer refusals.
+
 - Doctor: opt-in authenticated self-NOTIFY reports the listener-observed UDP
   source address on the complete SQLite path, with bounded work and explicit
   loopback limitations.

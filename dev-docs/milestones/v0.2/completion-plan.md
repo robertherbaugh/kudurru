@@ -108,7 +108,7 @@ runners. Unit tests cannot substitute for those results.
 | F25b | Multi-socket DoQ/DoH3 with connection-ID-aware routing | DNS and resolver | Queued: missing |
 | F26a | Privacy reload preserves daily pseudonym identity | DNS and resolver | Implemented; lifecycle/concurrency/production reload races pass |
 | F26b | Cache growth retains initial shard count | DNS and resolver | Integrated 62990dd; safe resharding, mounted reload, races and local growth benchmarks pass |
-| F26c | Blocking refresh/degraded settings hot reload | DNS and resolver | Queued: partial |
+| F26c | Blocking refresh/degraded settings hot reload | DNS and resolver | Integrated 38153fa; real download/publication and scheduler/readiness races pass; generated inheritance schema included |
 | F26d | Querylog enabled/sink hot reload | DNS and resolver | Queued: missing |
 | F26e | `auth.*` hot reload | DNS and resolver | Queued: partial |
 | F27 | RFC 8198 aggressive NSEC/NSEC3 cached synthesis | DNS and resolver | Queued: missing |
@@ -173,7 +173,7 @@ runners. Unit tests cannot substitute for those results.
 | F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Integrated b3f6986/5048c61; actual restart, chart/Compose and volume ownership checks pass |
 | F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Queued: partial |
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
-| F68b | Knot catalog consumer interoperability | Zones and AD | Queued: missing |
+| F68b | Knot catalog consumer interoperability | Zones and AD | Integrated 6aa58ed; actual pinned Knot 3.6.2 catalog/NOTIFY/TSIG acceptance and repeated races pass |
 | F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; original VM qualification remains external |
 | F69 | Central reads for retired node via scope=node&node=other | Observability and release | Integrated a4e38ce; actual PostgreSQL isolation and mounted history/export races pass |
 | F70 | Prune unreferenced central dictionaries | Observability and release | Integrated eef61bd/b1a29e8/a7304d8; actual PostgreSQL 17 races and lint pass |

@@ -1287,3 +1287,35 @@ changing the object; final Kubernetes/embedded-schema races pass in
 14.176s/1.560s. The invalid-value fixture uses a real update to exercise CRD
 admission (SSA's earlier type-check reports a distinct non-admission error).
 Kustomize, Helm, embedded schema and public references are regenerated.
+
+
+### F68b actual Knot catalog consumer
+
+`6aa58ed` adds a pinned Knot DNS 3.6.2 container qualification and
+`hack/test-knot-catalog.sh`, using the explicitly selected private Docker daemon,
+an isolated internal network, no published host ports and a fresh checkout
+binary. It qualifies ordinary primary-zone RFC 9432 records, not future native
+catalog configuration types. All eight subtests pass: catalog NOTAUTH, signed
+AXFR, unsigned REFUSED, wrong-secret BADSIG, unknown-key BADKEY, policy refusal,
+exact-source ACL signed refusal and mounted doctor's non-loopback source.
+Automatic catalog membership replacement converges before the 3600-second
+refresh interval. Agent full acceptance passes in 11.788s and two repeated
+races in 24.822s; parent integrated acceptance passes in 38.670s. Scoped lint
+and shell syntax checks pass. Raw logs and generated credentials remain private.
+
+### F26c blocking operational hot reload
+
+`38153fa` updates the existing fetcher/resolver loops and readiness consumers
+only after settings acceptance. Original source, credentials, deadline,
+conditional request, cooldown and cancellation/join remain unchanged. Refresh
+shortening/lengthening uses last-success anchors; explicit per-list settings
+remain authoritative. Removing the BlockList CRD's injected 24h default enables
+new omitted fields to inherit the hot cluster value; historical stored values
+are never guessed or rewritten. The default cluster interval remains 24h.
+Agent full listfetcher/blocking/config/validator races pass in
+4.498s/1.374s/7.551s/8.471s; mounted actual HTTP download, authenticated settings,
+complete publication and UDP/TCP DNS races pass in 13.745s. Scoped lint reports
+zero issues. Parent regenerates Kustomize/Helm/embedded schemas and references.
+
+Parent composed mounted/published-settings/scheduler/readiness/config/schema
+races pass in 8.957s/1.093s/1.093s/1.272s/1.310s.

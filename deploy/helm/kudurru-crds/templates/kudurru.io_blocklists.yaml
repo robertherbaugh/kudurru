@@ -72,7 +72,9 @@ spec:
                 - allow
                 type: string
               refreshInterval:
-                default: 24h
+                description: |-
+                  RefreshInterval overrides blocking.refreshInterval for this list. When
+                  omitted, the current cluster default applies, including hot reloads.
                 type: string
               response:
                 description: |-
