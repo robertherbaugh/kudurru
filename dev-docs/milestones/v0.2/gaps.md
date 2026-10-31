@@ -1160,3 +1160,68 @@ The hosted control-capture failure was reproduced at its original 3s startup
 bound: its complete fixture omitted the newly required control component.
 Explicitly including the empty control view fixes initialization without changing
 production admission, expectations or deadlines.
+
+
+### F26b cache growth, F25a DoT and F69 retired-node history
+
+F26b `62990dd` (D259) adjusts the cache topology on Resize/Reconfigure while
+preserving original scope, generation and absolute entry/security deadlines.
+Exact per-shard capacities sum to the configured bound; migration bounds the
+new maps during shrink. Agent cache/stage/persistence races and actual mounted
+64-to-1,000,000 reload/current-command regressions pass. Local grown/fresh lookup
+medians differ by 6.0% at 200k and 0.9% at 1m, all zero allocations; moving
+6,000 resident entries takes a median 1.636 ms. Migration is synchronous,
+O(resident entries), and temporarily retains old/new indexes. These shared-VM
+measurements do not establish a fleet latency bound.
+
+F25a `eeb68c2` enables configured Linux DoT sockets using the existing TLS,
+PROXYv2, deadline and shutdown wrappers. Full DNS/config races and scoped lint
+pass. Four real sockets pass verified TLS/ALPN queries before/after rotation,
+existing-connection survival, per-connection query/idle limits, invalid TLS
+refusal and shutdown/rebind checks. Local 1-vs-2 socket median throughput rises
+17.6% for persistent connections and 33.2% for connection churn, with no failed
+replies in 20 samples. This is local evidence, not a universal speedup or new
+aggregate TCP admission limit. F25b QUIC remains distinct and open.
+
+F69 `a4e38ce` (D256) adds immutable exact-node central readers. Every relevant
+fact/rollup/count/page/dictionary query is scoped before aggregation or limits;
+metadata shares the data transaction. Retired/replaced/renamed nodes do not
+require membership. Unknown history is 404 and central failure is redacted 503
+without fallback; self stays local and live tails retain their peer transport.
+Agent real PostgreSQL races cover all readers and source epochs, raw expiration,
+dictionaries, concurrency and actual router/current-command behavior. Parent
+retired-node PostgreSQL races pass in 5.596s; 19 composed API/export/schema cases
+pass in 4.750s. OpenAPI and clients are regenerated. F71 remains open: legacy
+node-only cells can lose source provenance, so automatic attribution or late
+replacement would invent history. Independent safe implementation continues.
+
+### Hosted regression fixes and current artifact evidence
+
+Hosted security run 41208468848 passes every applicable job on `7ed9e3b`.
+That head's CI run 41208468704 exposed missing control fixture composition and
+production template reachability. `72586d7` repairs the fixture; `5594ba8`
+removes the UniFi SDK root and its gofakeit initialization while retaining the
+bounded official wire reads and original host-loan checks. Full UniFi races
+pass in 6.847s, actual HTTPS acquisition in 10.285s, unchanged template guard
+in 10.396s, and scoped lint reports zero issues.
+
+BIND NOTIFY baseline `45864f8`, controlled source-gap regression `b0eaf3d` and
+readiness fixture `ce033d6` preserve all production refusals and original time
+bounds. Two old signed-AXFR diagnostic commands each failed once in 20 runs;
+actual status/source traces prove that refusal was correct. Fixed full BIND
+acceptance passes all four subcases 20 times, and six controlled status tests
+pass ten times. Parent real BIND acceptance passes in 25.650s after integration.
+
+The built-dashboard CGO-free stripped Linux/amd64 artifact at `eeb68c2` is
+77,074,592 bytes against the unchanged 100,000,000-byte budget. The dashboard
+entry transfer remains 480.5 KiB against 600 KiB; typecheck and generation pass.
+Later commits and the final pushed head still require their own hosted checks.
+
+
+Cache persistence follow-up `3e5eaea` acquires a separate topology lock before
+publication exclusion; a stalled dump can delay resizing while ordinary reads,
+fills and flush commands continue. The parent regression explicitly observes
+the queued resize before challenging those operations. Composed cache/persist/
+stage races pass in 3.650s/1.534s/1.549s. Combined DoT/control-capture/signed-AXFR/
+actual mounted cache growth races pass in 1.851s/1.525s/2.883s/11.034s. Integrated
+API/cache/servingbuild/dnsserver/interop scoped lint reports zero issues.

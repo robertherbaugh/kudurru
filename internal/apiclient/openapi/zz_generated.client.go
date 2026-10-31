@@ -5342,7 +5342,7 @@ type ListClientsParams struct {
 	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *ListClientsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
+	// Node Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -5636,6 +5636,8 @@ type QueryStreamParamsStatusClass string
 
 // QuerySuggestionsParams defines parameters for QuerySuggestions.
 type QuerySuggestionsParams struct {
+	Scope  *string                     `form:"scope,omitempty" json:"scope,omitempty"`
+	Node   *string                     `form:"node,omitempty" json:"node,omitempty"`
 	Field  QuerySuggestionsParamsField `form:"field" json:"field"`
 	Prefix *string                     `form:"prefix,omitempty" json:"prefix,omitempty"`
 	N      *int64                      `form:"n,omitempty" json:"n,omitempty"`
@@ -5646,6 +5648,9 @@ type QuerySuggestionsParamsField string
 
 // QueryActionParams defines parameters for QueryAction.
 type QueryActionParams struct {
+	// Node Exact historical node for a central row ID; valid only with node scope.
+	Node *string `form:"node,omitempty" json:"node,omitempty"`
+
 	// Scope cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database).
 	Scope *QueryActionParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 }
@@ -5657,6 +5662,12 @@ type QueryActionParamsScope string
 type PurgeQuerylogParams struct {
 	// Before Delete rows older than this instant (RFC 3339); absent deletes every row.
 	Before *string `form:"before,omitempty" json:"before,omitempty"`
+}
+
+// QuerylogStatusParams defines parameters for QuerylogStatus.
+type QuerylogStatusParams struct {
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+	Node  *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
 // PatchSettingsJSONBody defines parameters for PatchSettings.
@@ -5682,7 +5693,7 @@ type StatsClientTimeseriesParams struct {
 	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsClientTimeseriesParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
+	// Node Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 	Step *string `form:"step,omitempty" json:"step,omitempty"`
 	N    *int64  `form:"n,omitempty" json:"n,omitempty"`
@@ -5712,7 +5723,7 @@ type StatsSummaryParams struct {
 	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsSummaryParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
+	// Node Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -5733,7 +5744,7 @@ type StatsTimeseriesParams struct {
 	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsTimeseriesParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
+	// Node Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 
 	// Step Bucket width (Go duration) or auto (default).
@@ -5757,7 +5768,7 @@ type StatsTopParams struct {
 	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsTopParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
+	// Node Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.
 	Node    *string           `form:"node,omitempty" json:"node,omitempty"`
 	Dim     StatsTopParamsDim `form:"dim" json:"dim"`
 	N       *int64            `form:"n,omitempty" json:"n,omitempty"`
@@ -5784,7 +5795,7 @@ type StatsUpstreamsParams struct {
 	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsUpstreamsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
+	// Node Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -7220,7 +7231,7 @@ type ClientInterface interface {
 	// QuerylogStatus Query-log size, retention and writer state
 	//
 	// Corresponds with GET /querylog/status (the `QuerylogStatus` operationId).
-	QuerylogStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	QuerylogStatus(ctx context.Context, params *QuerylogStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSettings Cluster-scope settings (redacted)
 	//
@@ -10297,8 +10308,8 @@ func (c *Client) PurgeQuerylog(ctx context.Context, params *PurgeQuerylogParams,
 // QuerylogStatus Query-log size, retention and writer state
 //
 // Corresponds with GET /querylog/status (the `QuerylogStatus` operationId).
-func (c *Client) QuerylogStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewQuerylogStatusRequest(c.Server)
+func (c *Client) QuerylogStatus(ctx context.Context, params *QuerylogStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQuerylogStatusRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -17359,6 +17370,30 @@ func NewQuerySuggestionsRequest(server string, params *QuerySuggestionsParams) (
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Node != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "node", *params.Node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "field", params.Field, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 			return nil, err
 		} else {
@@ -17451,6 +17486,18 @@ func NewQueryActionRequestWithBody(server string, id int64, params *QueryActionP
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
+		if params.Node != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "node", *params.Node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Scope != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -17534,7 +17581,7 @@ func NewPurgeQuerylogRequest(server string, params *PurgeQuerylogParams) (*http.
 }
 
 // NewQuerylogStatusRequest constructs an http.Request for the QuerylogStatus method
-func NewQuerylogStatusRequest(server string) (*http.Request, error) {
+func NewQuerylogStatusRequest(server string, params *QuerylogStatusParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -17550,6 +17597,45 @@ func NewQuerylogStatusRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Node != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "node", *params.Node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -20556,7 +20642,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /querylog/status (the `QuerylogStatus` operationId).
-	QuerylogStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*QuerylogStatusResponse, error)
+	QuerylogStatusWithResponse(ctx context.Context, params *QuerylogStatusParams, reqEditors ...RequestEditorFn) (*QuerylogStatusResponse, error)
 
 	// GetSettingsWithResponse Cluster-scope settings (redacted)
 	//
@@ -32483,6 +32569,8 @@ type QuerylogStatusResponse struct {
 	JSON403 *Error
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *Error
 	// JSON503 the response for an HTTP 503 `application/json` response
@@ -32512,6 +32600,11 @@ func (r QuerylogStatusResponse) GetJSON403() *Error {
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r QuerylogStatusResponse) GetJSON404() *Error {
 	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r QuerylogStatusResponse) GetJSON422() *Error {
+	return r.JSON422
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -37292,8 +37385,8 @@ func (c *ClientWithResponses) PurgeQuerylogWithResponse(ctx context.Context, par
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /querylog/status (the `QuerylogStatus` operationId).
-func (c *ClientWithResponses) QuerylogStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*QuerylogStatusResponse, error) {
-	rsp, err := c.QuerylogStatus(ctx, reqEditors...)
+func (c *ClientWithResponses) QuerylogStatusWithResponse(ctx context.Context, params *QuerylogStatusParams, reqEditors ...RequestEditorFn) (*QuerylogStatusResponse, error) {
+	rsp, err := c.QuerylogStatus(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -47978,6 +48071,13 @@ func ParseQuerylogStatusResponse(rsp *http.Response) (*QuerylogStatusResponse, e
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

@@ -15075,12 +15075,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           }
@@ -23956,6 +23956,22 @@
           {
             "explode": false,
             "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
             "name": "field",
             "required": true,
             "schema": {
@@ -24087,6 +24103,16 @@
       "post": {
         "operationId": "queryAction",
         "parameters": [
+          {
+            "description": "Exact historical node for a central row ID; valid only with node scope.",
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "description": "Exact historical node for a central row ID; valid only with node scope.",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "id",
@@ -24357,6 +24383,24 @@
     "/querylog/status": {
       "get": {
         "operationId": "querylogStatus",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -24407,6 +24451,16 @@
               }
             },
             "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
           },
           "500": {
             "content": {
@@ -25048,12 +25102,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           },
@@ -25345,12 +25399,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           }
@@ -25498,12 +25552,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           },
@@ -25661,12 +25715,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           },
@@ -25849,12 +25903,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+            "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
+              "description": "Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener.",
               "type": "string"
             }
           }

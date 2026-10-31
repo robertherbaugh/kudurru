@@ -18,7 +18,8 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F73, F69/F71 and a hosted BIND NOTIFY failure; the parent
+agents currently own stopped-source rollups, doctor/Knot acceptance and
+client-group rate-limit exemptions; the parent
 has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
 disposable Samba/VIP labs. Freed agents take
 the next independent package, retaining original proofs, ownership, current
@@ -103,10 +104,10 @@ runners. Unit tests cannot substitute for those results.
 | F23 | Separate public blocked-services/safe-search data repo (D120) | DNS and resolver | External acceptance/decision open |
 | F24a | Rate-limit slip metric | DNS and resolver | Integrated; final gates open |
 | F24b | Per-ClientGroup rate-limit exemptions | DNS and resolver | Queued: missing |
-| F25a | Multi-socket DoT | DNS and resolver | Queued: missing |
+| F25a | Multi-socket DoT | DNS and resolver | Integrated eeb68c2; real TLS/rotation/limits/shutdown and local socket benchmarks pass |
 | F25b | Multi-socket DoQ/DoH3 with connection-ID-aware routing | DNS and resolver | Queued: missing |
 | F26a | Privacy reload preserves daily pseudonym identity | DNS and resolver | Implemented; lifecycle/concurrency/production reload races pass |
-| F26b | Cache growth retains initial shard count | DNS and resolver | Queued: partial |
+| F26b | Cache growth retains initial shard count | DNS and resolver | Integrated 62990dd; safe resharding, mounted reload, races and local growth benchmarks pass |
 | F26c | Blocking refresh/degraded settings hot reload | DNS and resolver | Queued: partial |
 | F26d | Querylog enabled/sink hot reload | DNS and resolver | Queued: missing |
 | F26e | `auth.*` hot reload | DNS and resolver | Queued: partial |
@@ -174,9 +175,9 @@ runners. Unit tests cannot substitute for those results.
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
 | F68b | Knot catalog consumer interoperability | Zones and AD | Queued: missing |
 | F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; original VM qualification remains external |
-| F69 | Central reads for retired node via scope=node&node=other | Observability and release | Active: central history agent, D256 design pending |
+| F69 | Central reads for retired node via scope=node&node=other | Observability and release | Integrated a4e38ce; actual PostgreSQL isolation and mounted history/export races pass |
 | F70 | Prune unreferenced central dictionaries | Observability and release | Integrated eef61bd/b1a29e8/a7304d8; actual PostgreSQL 17 races and lint pass |
-| F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Active: central history agent, D256 design pending |
+| F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Active: source-owned rollup implementation; legacy provenance ambiguity must remain explicit |
 | F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Integrated e77d025; bounded real-envtest and composed auth races pass |
 | F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Integrated e77d025; actual router/CLI and composed races pass |
 | F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Integrated d3604c1; independent trust, historical retention, real envtest and mounted races pass; explicit upgrade provisioning required |

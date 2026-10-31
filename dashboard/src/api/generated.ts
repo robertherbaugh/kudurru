@@ -9685,7 +9685,7 @@ export interface operations {
                 to?: string;
                 /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
+                /** @description Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener. */
                 node?: string;
             };
             header?: never;
@@ -16178,6 +16178,8 @@ export interface operations {
     querySuggestions: {
         parameters: {
             query: {
+                scope?: string;
+                node?: string;
                 field: "domain" | "client" | "upstream" | "list" | "zone" | "policy";
                 prefix?: string;
                 n?: number;
@@ -16265,6 +16267,8 @@ export interface operations {
     queryAction: {
         parameters: {
             query?: {
+                /** @description Exact historical node for a central row ID; valid only with node scope. */
+                node?: string;
                 /** @description cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database). */
                 scope?: "node" | "cluster" | "";
             };
@@ -16469,7 +16473,10 @@ export interface operations {
     };
     querylogStatus: {
         parameters: {
-            query?: never;
+            query?: {
+                scope?: string;
+                node?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16514,6 +16521,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16998,7 +17014,7 @@ export interface operations {
                 to?: string;
                 /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
+                /** @description Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener. */
                 node?: string;
                 step?: string;
                 n?: number;
@@ -17181,7 +17197,7 @@ export interface operations {
                 to?: string;
                 /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
+                /** @description Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener. */
                 node?: string;
             };
             header?: never;
@@ -17275,7 +17291,7 @@ export interface operations {
                 to?: string;
                 /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
+                /** @description Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener. */
                 node?: string;
                 /** @description Bucket width (Go duration) or auto (default). */
                 step?: string;
@@ -17371,7 +17387,7 @@ export interface operations {
                 to?: string;
                 /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
+                /** @description Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener. */
                 node?: string;
                 dim: "domains" | "clients" | "upstreams" | "lists" | "zones";
                 n?: number;
@@ -17468,7 +17484,7 @@ export interface operations {
                 to?: string;
                 /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
+                /** @description Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener. */
                 node?: string;
             };
             header?: never;

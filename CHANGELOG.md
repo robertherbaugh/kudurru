@@ -15,6 +15,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Cache capacity reload now adjusts shard topology with bounded migration and
+  preserves entry scope, security metadata and absolute deadlines.
+- Remove UniFi SDK initialization of fake-data templates from production,
+  restoring linker dead-method elimination without changing request checks.
+
 - Docker: the compose files and the `docker run` examples now pass `serve`.
   The 0.1.0 image has no default command, so as shipped the container
   printed the CLI help, exited and restarted in a loop.
@@ -22,6 +27,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 ## [0.2.0] - unreleased
 
 ### Added
+
+- Central history: read retained data for retired nodes without live peer
+  membership, with exact-node statistics, dictionaries and export.
+- DNS over TLS: use configured Linux listener sockets, retaining TLS rotation
+  and existing connection limits.
 
 - Query log: download a filtered JSON page of up to 1,000 retained queries,
   preserving privacy, source, continuation and partial-node metadata.

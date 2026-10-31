@@ -98,7 +98,7 @@ func TestCentralHistoricalNodeMounted(t *testing.T) {
 		o.License = licenseManager(t, 0)
 	})
 	selector := "scope=node&node=retired"
-	paths := []string{"/queries", "/stats/summary", "/stats/timeseries", "/stats/top?dim=domains", "/stats/top?dim=clients", "/stats/top?dim=lists&blocked=true", "/stats/top?dim=zones", "/stats/upstreams", "/stats/clients/timeseries", "/stats/recent_blocked", "/clients", "/queries/suggestions?field=domain", "/querylog/status"}
+	paths := []string{"/queries", "/queries/export", "/stats/summary", "/stats/timeseries", "/stats/top?dim=domains", "/stats/top?dim=clients", "/stats/top?dim=lists&blocked=true", "/stats/top?dim=zones", "/stats/upstreams", "/stats/clients/timeseries", "/stats/recent_blocked", "/clients", "/queries/suggestions?field=domain", "/querylog/status"}
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
 			sep := "?"
