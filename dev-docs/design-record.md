@@ -1100,6 +1100,33 @@ What kudurru does with it: networks → `Network` inventory → auto-created rev
 
 `kudurru serve --externaldns-webhook :8888` (or the `externalDNS.webhook` chart values) serves the four routes over the zone store; `external-dns --provider=webhook --webhook-provider-url=http://localhost:8888` makes Ingress/Service/Gateway hostnames flow into kudurru zones with zero kudurru-side Kubernetes code. In v0.1 because it is a thin HTTP façade over the record model and proves the `Endpoint` superset early.
 
+### 9.7 Active Directory DNS replacement (v0.2, D222)
+
+The AD integration discovers and imports Windows DNS zones, then hands
+authority to kudurru. The initial scope is an existing single-domain forest,
+including multiple DCs/sites, the forest locator zone, reverse zones, and
+Windows DHCP registrations. Completion means Windows DNS can remain stopped
+on every DC, with no DNS forwarding or update proxy back to them for migrated
+zones. AD DS continues to provide directory services, Kerberos, LDAP, GPO,
+and replication of the directory itself.
+
+Ongoing compatibility requires native authoritative service and secure
+RFC 2136 updates with a server-side Kerberos/GSS-TSIG acceptor, principal-based
+ownership rules, DHCP interoperability, aging/scavenging, durable replicated
+updates, and tested cutover/rollback. The existing shared-key `UpdatePolicy`
+schema is insufficient. Import is an integration responsibility; ongoing
+answers and registrations are DNS server responsibilities. The
+[functional outline and acceptance gates](active-directory-dns.md) identify
+the required work and unresolved designs. This is planned scope, not current
+Windows interoperability support.
+
+Implementation starts with the isolated [GSS-TSIG feasibility
+probe](spikes/ad-dns/README.md). Its separate Go module keeps experimental
+Kerberos dependencies out of the product build. MIT Kerberos and `nsupdate`
+exercise TKEY, authenticated requests and signed refusals; all writes remain
+refused until authorization and atomic/durable storage are implemented.
+Windows qualification remains open.
+
 ---
 
 ## 10. Dashboard / UI plan and API surface
@@ -1445,6 +1472,14 @@ and dark logos, browser favicon and accent color on the dashboard, sign-in and
 block page. Saved values survive license downgrade; effective rendering returns
 to the built-in brand. See [custom branding](../docs/deploy/custom-branding.md).
 
+Added 2026-10-15 (D222): [complete AD DNS replacement for a single-domain
+forest](active-directory-dns.md), including migration, server-side GSS-TSIG
+updates and principal-based permissions beyond the shared-key policies above,
+DHCP, record lifecycle, and Windows qualification. This expands the original
+scope; the historical estimate above has not been reassessed. Secure-update
+interoperability and atomic/durable storage per deployment mode are required
+feasibility gates.
+
 ### 13.3 v1.0 — "temple" (~16-20 weeks)
 
 DNSSEC **signing** on the leader (ECDSAP256SHA256 CSK default, Ed25519 opt-in, NSEC or NSEC3 with RFC 9276 params, CoreDNS `sign` timers/jitter, RFC 7583 key state machine, KSK activation gated on observed parent DS with manual override, ZSK `rolloverDays`, CDS/CDNSKEY, BIND-format key import, keys encrypted in the store, `ldns-verify-zone`/`delv` in CI, leader takeover without re-sign); **catalog zones** (RFC 9432) produced and consumed; **RPZ publishing**: a compiled `BlockList` served as a transferable RPZ zone with NOTIFY to subscribing resolvers (D61); **raft** `Store` driver (hashicorp/raft, SQLite FSM, single-voter bootstrap, learner join via single-permission token, snapshot before membership change, never fork on join failure, `MinVersion` migrations) replacing follower mode; native ACME DNS-01 via certmagic (leader); ClickHouse-backed exact cluster top-N; `clientgroup:` RBAC scope; back-channel logout; Pi-hole v6-compatible façade module; `/api/v1` freeze + deprecation policy; CRD `v1beta1`; third-party security review; published dnsperf numbers per profile; OLM bundle after `v1` CRDs.
@@ -1743,6 +1778,7 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 | D219 | Shared provider entitlement continuity | Bind one complete authority inventory to the actual cluster, verified management-policy profile and primary-admitted random activation. Reset with UID floors on startup, writer turnover and observed license replacement; a pending nonce grants nothing. Historical restarted or tainted followers await a new primary activation | Equal license bytes or local installation IDs cannot prove uninterrupted shared security authority. Policy equivalence deliberately omits signed issue/not-before and key identity; current verification still applies | Per-node durable entitlement IDs; implicit regrant of unchanged receipts; treating a random string as admitted authority; erasing follower taint on restart |
 | D220 | Captured local runtime installations | Pin exact secondary, stub, RPZ and catalog installations through complete publication and current command commit. Broadcast actual changes; identical polling preserves installations. Persist catalog body/source/kind in one bounded atomic receipt | Independently changing acquisitions cannot race final admission, and a torn two-file cache cannot prove original source provenance | Fresh-pin repair of stale candidates; pointer checks without replacement exclusion; per-capture subscription accumulation; relabeling old data with a requested URL |
 | D221 | Committed primary status | Project serial/hash/count from the exact durable head in a protected whole lease; compare original public/lifecycle/head tokens and frozen source evidence through the final status transaction. Defer while publication is pending, retain desired conflict diagnostics, and allocate no serial | Dynamic UPDATE data is absent from desired record sets; status writes must neither overwrite committed truth nor create an RV/readiness feedback loop | Recompiling desired records for status; lifecycle source alone as head provenance; status mutation while protected publication is pending |
+| D222 | Replace Windows DNS for a single-domain forest | Target complete AD DNS replacement in v0.2: discover/import zones, transfer authority, maintain secure Windows registrations and record lifecycle, and qualify operation with Windows DNS stopped on every DC. The integration handles migration; the DNS server handles ongoing answers and updates. See the [functional outline](active-directory-dns.md); libraries, schemas, permission translation, Windows versions, and deployment durability remain to be designed and tested | Project owner on 2026-10-15: start with a single-domain forest, outline all DNS functions, and completely replace the DCs' DNS role while retaining AD DS | Outbound publishing only; read-only import as completion; permanent forwarding or update proxying to Windows DNS for migrated zones |
 
 ---
 
