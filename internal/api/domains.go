@@ -58,7 +58,7 @@ type DomainEntry struct {
 	Request   string            `json:"request,omitempty" doc:"The UnblockRequest (ns/name) whose approval added the entry."`
 	// Overrides are, for an allow entry, the block lists that contain the
 	// name (allow wins over them); for a deny entry, the allow lists that
-	// win over it. Empty for regex entries.
+	// win over it. Empty for regex entries; the impact route tests a concrete name.
 	Overrides []DomainOverride `json:"overrides" nullable:"false"`
 	// StillMatchedBy, for an exception, are the other lists that still
 	// match the name (block lists for an Allowlist exception, allow lists
@@ -212,6 +212,7 @@ func (s *Server) registerDomainLists() {
 		})
 	})
 	for _, a := range []domainlist.Action{domainlist.Allow, domainlist.Deny} {
+		s.registerDomainImpact(a)
 		path := "/" + string(a) + "list"
 		title := "Allowlist"
 		what := "Allowed names are never blocked: an allow entry wins over every block list of the policies it applies through."

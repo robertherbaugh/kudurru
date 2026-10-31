@@ -49,6 +49,17 @@ func (s *Snapshot) List(name string) *List { return s.byName[name] }
 // Lists returns all lists sorted by name.
 func (s *Snapshot) Lists() []*List { return slices.Clone(s.lists) }
 
+// ListNamesBounded returns a detached sorted prefix for bounded diagnostics.
+// incomplete reports that some lists were omitted.
+func (s *Snapshot) ListNamesBounded(limit int) (names []string, incomplete bool) {
+	n := min(max(limit, 0), len(s.lists))
+	names = make([]string, n)
+	for i := range n {
+		names[i] = s.lists[i].name
+	}
+	return names, n < len(s.lists)
+}
+
 // Entries returns the number of compiled entries over all lists.
 func (s *Snapshot) Entries() int {
 	n := 0

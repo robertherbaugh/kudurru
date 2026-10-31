@@ -1,6 +1,7 @@
 // One typed function per /api/v1 route the dashboard uses. Pages call these
 // through the hooks in ./hooks; tests and mocks share the paths.
 import type { ApiClient, Query } from './client';
+import type { DomainRegexImpact } from './types';
 import { dhcpEndpoints } from './dhcp';
 import type {
   BrandingInfo,
@@ -204,6 +205,7 @@ export function endpoints(c: ApiClient) {
       list: (action: DomainAction | undefined, q: DomainEntriesQuery = {}) =>
         c.get<DomainEntriesPage>(action ? `/${action}list` : '/domains', { ...q }),
       get: (action: DomainAction, id: string) => c.get<DomainEntry>(`/${action}list/${enc(id)}`),
+      impact: (action: DomainAction, id: string, name: string) => c.get<DomainRegexImpact>(`/${action}list/${enc(id)}/impact`, { name }),
       create: (action: DomainAction, body: DomainEntriesCreate) => c.post<DomainWriteResult>(`/${action}list`, body),
       patch: (action: DomainAction, id: string, body: DomainEntryPatch) => c.patch<DomainWriteResult>(`/${action}list/${enc(id)}`, body, 'application/json'),
       delete: (action: DomainAction, id: string) => c.delete(`/${action}list/${enc(id)}`),

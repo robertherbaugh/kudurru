@@ -1352,3 +1352,21 @@ Its fixture omitted the now-required independent trust Secret. `bededd6`
 provisions a fresh cluster/namespace-bound key with the built image before
 replicas start. It changes neither audit refusal rules nor the 90-second test
 bound. Shell syntax passes; fresh hosted kind qualification remains pending.
+
+### F54a concrete-name regex impact
+
+D268 adds read-only impact routes and the shared Domains/Allowlist/Denylist
+**Test a domain** dialog. Original captured entry and compiled lists remain
+paired while a later publication changes opposing rules. Production case
+semantics, explicit disabled/group scope, 256-list/64-match/128-KiB bounds and
+partial reporting avoid asserting exhaustive regex overlap or final client
+policy behavior. No DNS request, mutation or browser-side regex evaluator.
+
+API and actual SQLite/publisher/authenticated HTTP races pass in 1.686s/1.998s,
+including held-old versus fresh publication, permissions, invalid names,
+original-identity failure and bounded output. All 32 domain UI cases pass,
+including read-only inspection, disabled/group/partial evidence, nonmatch/error
+clearing and late-response isolation across dialog reopen. Typecheck and scoped
+UI lint pass; scoped API/servingbuild/blocking lint reports zero issues.
+OpenAPI, Go and TypeScript clients include both routes. F54b cache/remote-edge
+publication acceptance remains a separate open requirement.

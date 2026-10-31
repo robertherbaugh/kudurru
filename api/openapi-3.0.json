@@ -3096,6 +3096,63 @@
         ],
         "type": "object"
       },
+      "DomainRegexImpact": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "everyone": {
+            "type": "boolean"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "incomplete": {
+            "description": "Some lists or matches exceeded the diagnostic work/output bounds.",
+            "type": "boolean"
+          },
+          "matches": {
+            "description": "The selected expression matches this normalized name using the production regex engine.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overlaps": {
+            "description": "Opposing per-list rules for an A/IN question without client identity. This is not a final client policy decision.",
+            "items": {
+              "$ref": "#/components/schemas/DomainOverride"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "action",
+          "expression",
+          "matches",
+          "enabled",
+          "everyone",
+          "groups",
+          "overlaps",
+          "incomplete"
+        ],
+        "type": "object"
+      },
       "DomainUnattached": {
         "additionalProperties": false,
         "properties": {
@@ -9603,6 +9660,131 @@
         }
       }
     },
+    "/allowlist/{id}/impact": {
+      "get": {
+        "description": "Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.",
+        "operationId": "explainAllowRegex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainRegexImpact"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Test a regex entry against one domain and opposing lists",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/allowlist:batch": {
       "post": {
         "operationId": "batchAllowlistEntries",
@@ -15914,6 +16096,131 @@
           "resource": "blocklists",
           "scope": "cluster",
           "verb": "write"
+        }
+      }
+    },
+    "/denylist/{id}/impact": {
+      "get": {
+        "description": "Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.",
+        "operationId": "explainDenyRegex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainRegexImpact"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Test a regex entry against one domain and opposing lists",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },

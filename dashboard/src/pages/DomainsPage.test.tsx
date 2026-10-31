@@ -6,6 +6,8 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { AddEntryDialog } from '../components/domains/DomainEntryDialogs';
+import { RegexImpactDialog } from '../components/domains/RegexImpactDialog';
+import type { DomainRegexImpact } from '../api/types';
 import { collectEntries } from '../mocks/domains';
 import { mockDB } from '../mocks/handlers';
 import { findSelector, getSelector, optionLabels, pick } from '../test/controls';
@@ -34,6 +36,81 @@ async function openAdd(name: RegExp | string): Promise<HTMLElement> {
   fireEvent.click(btn);
   return screen.findByRole('dialog');
 }
+
+describe('Regex impact', () => {
+  const expression = '^ads?[0-9]*\\.';
+  const impact = (overrides: Partial<DomainRegexImpact> = {}): DomainRegexImpact => ({
+    action: 'deny', name: 'ads.example.', expression, matches: true, enabled: true,
+    everyone: true, groups: [], overlaps: [{ list: 'default/ui-allow', rule: 'ads.example' }], incomplete: false,
+    ...overrides,
+  });
+  async function inspect(name = 'ads.example') {
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Domain' }), { target: { value: name } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Check domain' }));
+    return dialog;
+  }
+
+  it('offers a read-only concrete regex check with opposing list evidence', async () => {
+    let requested = '';
+    server.use(http.get(`${API}/denylist/:id/impact`, ({ request }) => {
+      requested = new URL(request.url).searchParams.get('name') ?? '';
+      return HttpResponse.json(impact());
+    }));
+    renderWithApp(<DenylistPage />, { route: '/denylist' });
+    fireEvent.click(within(await row(expression)).getByRole('button', { name: 'Test a domain' }));
+    const dialog = await inspect();
+    expect(await within(dialog).findByText('ads.example. matches this expression.')).toBeInTheDocument();
+    expect(requested).toBe('ads.example');
+    expect(within(dialog).getByText(/Matching allow lists/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: /^ui-allow/ })).toHaveAttribute('href', '/lists/default/ui-allow');
+    expect(within(dialog).getByText(/Policies, schedules, modifiers/)).toBeInTheDocument();
+  });
+
+  it('explains disabled, group-scoped and partial allow matches without promising a DNS outcome', async () => {
+    server.use(http.get(`${API}/allowlist/:id/impact`, () => HttpResponse.json(impact({ action: 'allow', enabled: false, everyone: false, groups: ['default/kids'], incomplete: true }))));
+    const e = entry('deny', expression)!;
+    renderWithApp(<RegexImpactDialog entry={{ ...e, action: 'allow', readOnly: true }} onClose={() => {}} />);
+    const dialog = await inspect();
+    expect(await within(dialog).findByText('This entry is disabled and has no effect.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Scope: kids.')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Matching block lists/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Partial results:/)).toBeInTheDocument();
+  });
+
+  it('clears old evidence on edits and shows a refusal or nonmatch', async () => {
+    server.use(http.get(`${API}/denylist/:id/impact`, ({ request }) => new URL(request.url).searchParams.get('name') === '*'
+      ? HttpResponse.json({ error: { key: 'invalid', message: 'name must be one concrete DNS domain' } }, { status: 400 })
+      : HttpResponse.json(impact({ name: 'other.example.', matches: false, overlaps: [] }))));
+    renderWithApp(<RegexImpactDialog entry={entry('deny', expression)!} onClose={() => {}} />);
+    const dialog = await inspect('other.example');
+    expect(await within(dialog).findByText('other.example. does not match this expression.')).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByRole('textbox', { name: 'Domain' })).not.toBeDisabled());
+    await inspect('*');
+    expect(await within(dialog).findByText('name must be one concrete DNS domain')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/does not match this expression/)).toBeNull();
+  });
+
+  it('ignores an old response after closing and reopening the inspector', async () => {
+    let release: (() => void) | undefined;
+    server.use(http.get(`${API}/denylist/:id/impact`, async ({ request }) => {
+      const name = new URL(request.url).searchParams.get('name');
+      if (name === 'old.example') await new Promise<void>((resolve) => { release = resolve; });
+      return HttpResponse.json(impact({ name: `${name}.`, matches: false, overlaps: [] }));
+    }));
+    renderWithApp(<DenylistPage />, { route: '/denylist' });
+    const open = within(await row(expression)).getByRole('button', { name: 'Test a domain' });
+    fireEvent.click(open);
+    const old = await inspect('old.example');
+    await waitFor(() => expect(release).toBeDefined());
+    fireEvent.click(within(old).getByRole('button', { name: 'Done' }));
+    fireEvent.click(open);
+    const current = await inspect('new.example');
+    expect(await within(current).findByText('new.example. does not match this expression.')).toBeInTheDocument();
+    release!();
+    await waitFor(() => expect(within(current).queryByText(/old.example/)).toBeNull());
+  });
+});
 
 describe('AllowlistPage', () => {
   it.each([undefined, 'dns'])('lets the server default the namespace unless %s was chosen', async (namespace) => {

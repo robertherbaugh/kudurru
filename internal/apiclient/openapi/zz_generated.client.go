@@ -587,6 +587,24 @@ func (e DomainListInfoAction) Valid() bool {
 	}
 }
 
+// Defines values for DomainRegexImpactAction.
+const (
+	DomainRegexImpactActionAllow DomainRegexImpactAction = "allow"
+	DomainRegexImpactActionDeny  DomainRegexImpactAction = "deny"
+)
+
+// Valid indicates whether the value is a known member of the DomainRegexImpactAction enum.
+func (e DomainRegexImpactAction) Valid() bool {
+	switch e {
+	case DomainRegexImpactActionAllow:
+		return true
+	case DomainRegexImpactActionDeny:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IdentityProviderInfoSource.
 const (
 	IdentityProviderInfoSourceConfig IdentityProviderInfoSource = "config"
@@ -3103,6 +3121,28 @@ type DomainOverride struct {
 	Rule string `json:"rule"`
 }
 
+// DomainRegexImpact defines model for DomainRegexImpact.
+type DomainRegexImpact struct {
+	Action     DomainRegexImpactAction `json:"action"`
+	Enabled    bool                    `json:"enabled"`
+	Everyone   bool                    `json:"everyone"`
+	Expression string                  `json:"expression"`
+	Groups     []string                `json:"groups"`
+
+	// Incomplete Some lists or matches exceeded the diagnostic work/output bounds.
+	Incomplete bool `json:"incomplete"`
+
+	// Matches The selected expression matches this normalized name using the production regex engine.
+	Matches bool   `json:"matches"`
+	Name    string `json:"name"`
+
+	// Overlaps Opposing per-list rules for an A/IN question without client identity. This is not a final client policy decision.
+	Overlaps []DomainOverride `json:"overlaps"`
+}
+
+// DomainRegexImpactAction defines model for DomainRegexImpact.Action.
+type DomainRegexImpactAction string
+
 // DomainUnattached defines model for DomainUnattached.
 type DomainUnattached struct {
 	List      string `json:"list"`
@@ -5158,6 +5198,11 @@ type ListAllowlistParamsType string
 // ListAllowlistParamsEnabled defines parameters for ListAllowlist.
 type ListAllowlistParamsEnabled string
 
+// ExplainAllowRegexParams defines parameters for ExplainAllowRegex.
+type ExplainAllowRegexParams struct {
+	Name string `form:"name" json:"name"`
+}
+
 // ApplyJSONBody defines parameters for Apply.
 type ApplyJSONBody = []map[string]interface{}
 
@@ -5378,6 +5423,11 @@ type ListDenylistParamsType string
 
 // ListDenylistParamsEnabled defines parameters for ListDenylist.
 type ListDenylistParamsEnabled string
+
+// ExplainDenyRegexParams defines parameters for ExplainDenyRegex.
+type ExplainDenyRegexParams struct {
+	Name string `form:"name" json:"name"`
+}
 
 // ListDomainEntriesParams defines parameters for ListDomainEntries.
 type ListDomainEntriesParams struct {
@@ -6138,6 +6188,13 @@ type ClientInterface interface {
 	// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
 	PatchAllowlistEntry(ctx context.Context, id string, body PatchAllowlistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ExplainAllowRegex Test a regex entry against one domain and opposing lists
+	//
+	// Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.
+	//
+	// Corresponds with GET /allowlist/{id}/impact (the `ExplainAllowRegex` operationId).
+	ExplainAllowRegex(ctx context.Context, id string, params *ExplainAllowRegexParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// BatchAllowlistEntriesWithBody Switch on, off or delete several Allowlist entries
 	//
 	// Takes any type of body and a specified content type.
@@ -6611,6 +6668,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
 	PatchDenylistEntry(ctx context.Context, id string, body PatchDenylistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExplainDenyRegex Test a regex entry against one domain and opposing lists
+	//
+	// Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.
+	//
+	// Corresponds with GET /denylist/{id}/impact (the `ExplainDenyRegex` operationId).
+	ExplainDenyRegex(ctx context.Context, id string, params *ExplainDenyRegexParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BatchDenylistEntriesWithBody Switch on, off or delete several Denylist entries
 	//
@@ -7545,6 +7609,23 @@ func (c *Client) PatchAllowlistEntryWithBody(ctx context.Context, id string, con
 // Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
 func (c *Client) PatchAllowlistEntry(ctx context.Context, id string, body PatchAllowlistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPatchAllowlistEntryRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExplainAllowRegex Test a regex entry against one domain and opposing lists
+//
+// Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.
+//
+// Corresponds with GET /allowlist/{id}/impact (the `ExplainAllowRegex` operationId).
+func (c *Client) ExplainAllowRegex(ctx context.Context, id string, params *ExplainAllowRegexParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExplainAllowRegexRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -8739,6 +8820,23 @@ func (c *Client) PatchDenylistEntryWithBody(ctx context.Context, id string, cont
 // Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
 func (c *Client) PatchDenylistEntry(ctx context.Context, id string, body PatchDenylistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPatchDenylistEntryRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExplainDenyRegex Test a regex entry against one domain and opposing lists
+//
+// Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.
+//
+// Corresponds with GET /denylist/{id}/impact (the `ExplainDenyRegex` operationId).
+func (c *Client) ExplainDenyRegex(ctx context.Context, id string, params *ExplainDenyRegexParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExplainDenyRegexRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -11125,6 +11223,63 @@ func NewPatchAllowlistEntryRequestWithBody(server string, id string, contentType
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExplainAllowRegexRequest constructs an http.Request for the ExplainAllowRegex method
+func NewExplainAllowRegexRequest(server string, id string, params *ExplainAllowRegexParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/allowlist/%s/impact", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "name", params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -13880,6 +14035,63 @@ func NewPatchDenylistEntryRequestWithBody(server string, id string, contentType 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExplainDenyRegexRequest constructs an http.Request for the ExplainDenyRegex method
+func NewExplainDenyRegexRequest(server string, id string, params *ExplainDenyRegexParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/denylist/%s/impact", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "name", params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -19399,6 +19611,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
 	PatchAllowlistEntryWithResponse(ctx context.Context, id string, body PatchAllowlistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchAllowlistEntryResponse, error)
 
+	// ExplainAllowRegexWithResponse Test a regex entry against one domain and opposing lists
+	//
+	// Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /allowlist/{id}/impact (the `ExplainAllowRegex` operationId).
+	ExplainAllowRegexWithResponse(ctx context.Context, id string, params *ExplainAllowRegexParams, reqEditors ...RequestEditorFn) (*ExplainAllowRegexResponse, error)
+
 	// BatchAllowlistEntriesWithBodyWithResponse Switch on, off or delete several Allowlist entries
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -19944,6 +20165,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
 	PatchDenylistEntryWithResponse(ctx context.Context, id string, body PatchDenylistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDenylistEntryResponse, error)
+
+	// ExplainDenyRegexWithResponse Test a regex entry against one domain and opposing lists
+	//
+	// Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /denylist/{id}/impact (the `ExplainDenyRegex` operationId).
+	ExplainDenyRegexWithResponse(ctx context.Context, id string, params *ExplainDenyRegexParams, reqEditors ...RequestEditorFn) (*ExplainDenyRegexResponse, error)
 
 	// BatchDenylistEntriesWithBodyWithResponse Switch on, off or delete several Denylist entries
 	//
@@ -21344,6 +21574,103 @@ func (r PatchAllowlistEntryResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PatchAllowlistEntryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExplainAllowRegexResponse200Headers the declared response headers of an HTTP 200 response for ExplainAllowRegex
+type ExplainAllowRegexResponse200Headers struct {
+	CacheControl *string
+}
+
+type ExplainAllowRegexResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainRegexImpact
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ExplainAllowRegexResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExplainAllowRegexResponse) GetJSON200() *DomainRegexImpact {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ExplainAllowRegexResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ExplainAllowRegexResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ExplainAllowRegexResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ExplainAllowRegexResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ExplainAllowRegexResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ExplainAllowRegexResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ExplainAllowRegexResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ExplainAllowRegexResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExplainAllowRegexResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExplainAllowRegexResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExplainAllowRegexResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -26275,6 +26602,103 @@ func (r PatchDenylistEntryResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PatchDenylistEntryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExplainDenyRegexResponse200Headers the declared response headers of an HTTP 200 response for ExplainDenyRegex
+type ExplainDenyRegexResponse200Headers struct {
+	CacheControl *string
+}
+
+type ExplainDenyRegexResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainRegexImpact
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ExplainDenyRegexResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExplainDenyRegexResponse) GetJSON200() *DomainRegexImpact {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ExplainDenyRegexResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ExplainDenyRegexResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ExplainDenyRegexResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ExplainDenyRegexResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ExplainDenyRegexResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ExplainDenyRegexResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ExplainDenyRegexResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ExplainDenyRegexResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExplainDenyRegexResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExplainDenyRegexResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExplainDenyRegexResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -35146,6 +35570,21 @@ func (c *ClientWithResponses) PatchAllowlistEntryWithResponse(ctx context.Contex
 	return ParsePatchAllowlistEntryResponse(rsp)
 }
 
+// ExplainAllowRegexWithResponse Test a regex entry against one domain and opposing lists
+//
+// Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /allowlist/{id}/impact (the `ExplainAllowRegex` operationId).
+func (c *ClientWithResponses) ExplainAllowRegexWithResponse(ctx context.Context, id string, params *ExplainAllowRegexParams, reqEditors ...RequestEditorFn) (*ExplainAllowRegexResponse, error) {
+	rsp, err := c.ExplainAllowRegex(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExplainAllowRegexResponse(rsp)
+}
+
 // BatchAllowlistEntriesWithBodyWithResponse Switch on, off or delete several Allowlist entries
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -36122,6 +36561,21 @@ func (c *ClientWithResponses) PatchDenylistEntryWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParsePatchDenylistEntryResponse(rsp)
+}
+
+// ExplainDenyRegexWithResponse Test a regex entry against one domain and opposing lists
+//
+// Bounded name-overlap evidence from the same captured entry and compiled lists. Uses an A/IN question without client identity; selected policies, schedules, modifiers and other rules still determine actual blocking. Does not issue a DNS query or change data.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /denylist/{id}/impact (the `ExplainDenyRegex` operationId).
+func (c *ClientWithResponses) ExplainDenyRegexWithResponse(ctx context.Context, id string, params *ExplainDenyRegexParams, reqEditors ...RequestEditorFn) (*ExplainDenyRegexResponse, error) {
+	rsp, err := c.ExplainDenyRegex(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExplainDenyRegexResponse(rsp)
 }
 
 // BatchDenylistEntriesWithBodyWithResponse Switch on, off or delete several Denylist entries
@@ -38213,6 +38667,94 @@ func ParsePatchAllowlistEntryResponse(rsp *http.Response) (*PatchAllowlistEntryR
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseExplainAllowRegexResponse parses an HTTP response from a ExplainAllowRegexWithResponse call
+func ParseExplainAllowRegexResponse(rsp *http.Response) (*ExplainAllowRegexResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExplainAllowRegexResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainRegexImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ExplainAllowRegexResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil
@@ -42529,6 +43071,94 @@ func ParsePatchDenylistEntryResponse(rsp *http.Response) (*PatchDenylistEntryRes
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseExplainDenyRegexResponse parses an HTTP response from a ExplainDenyRegexWithResponse call
+func ParseExplainDenyRegexResponse(rsp *http.Response) (*ExplainDenyRegexResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExplainDenyRegexResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainRegexImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ExplainDenyRegexResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

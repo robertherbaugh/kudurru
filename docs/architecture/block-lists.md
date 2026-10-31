@@ -311,3 +311,21 @@ isolation, bounded CNAME resolution, expiry and response cleanup. Production
 capture/publication, node diagnostics, transport observation, edge isolation
 and dashboard integration remain in progress. The adapter is not yet wired
 into the server.
+
+### Regex impact inspection
+
+The Domains, Allowlist and Denylist pages offer **Test a domain** for regex
+entries, including entries managed elsewhere. The read-only
+`GET /allowlist/{id}/impact?name=...` and denylist equivalent require
+`blocklists.read`. They evaluate one concrete name with the production regex
+engine and report opposing compiled list/rule matches from the same captured
+publication. They never issue a DNS query or change an entry.
+
+The result includes enabled state, client-group scope and an explicit partial
+flag. Inspection is limited to 256 lists, 64 matches and 128 KiB of match data,
+with a two-second context and a 1024-byte expression limit. It uses an A/IN
+question without client identity: selected policy, schedules, modifiers and
+other rules still determine actual blocking. A disabled expression may match
+mathematically but has no effect. This is concrete-name evidence, not exhaustive
+regex-language overlap or a final client decision. Responses use `no-store`;
+closing a dialog isolates any late response from its next opening.

@@ -28,6 +28,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Domains: read-only concrete-name regex inspection with opposing list/rule
+  evidence, scope, disabled state and explicit partial-result limits.
+
 - Source-entry browsing: bounded digest/parser indexes avoid repeated parsing
   of large downloaded lists while preserving exact exclusions, line numbers,
   original-publication cursors and body verification.

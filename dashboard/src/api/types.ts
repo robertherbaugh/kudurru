@@ -989,6 +989,7 @@ export type DomainEntryList = S['DomainEntryList'];
 
 /** One logical allow or deny entry (namespace, action, type, value) across its lists. */
 export type DomainEntry = S['DomainEntry'];
+export type DomainRegexImpact = S['DomainRegexImpact'];
 
 /** One list behind the entries of GET /allowlist, /denylist or /domains. */
 export type DomainListInfo = S['DomainListInfo'];
