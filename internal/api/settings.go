@@ -367,46 +367,17 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	if ifMatch != "" && slices.ContainsFunc(paths, func(path string) bool { return strings.HasPrefix(path, "upstreams.") }) && strings.Trim(ifMatch, "\"") != expected {
 		return nil, ownershipError(settings.ErrConflict)
 	}
-	var restart []string
-	for _, p := range paths {
-		k, _ := config.Lookup(p)
-		if strings.HasPrefix(p, "branding.") && !canonical && (s.opts.License == nil || !s.opts.License.Status().Allows(license.FeatureBranding)) {
-			return nil, brandingLicenseRequired()
-		}
-		switch {
-		case k.HostOnly:
-			return nil, newError(http.StatusBadRequest, KeyHostOnly, p+" is hostOnly and can only be set in the config file or environment on the host",
-				"edit kudurru.yaml or KUDURRU_* on the node")
-		case k.Scope != scope && scope == config.ScopeCluster:
-			return nil, errInvalid("%s: a node-scope key; use PATCH /api/v1/node/config", p)
-		case k.Scope != scope:
-			return nil, errInvalid("%s: a cluster-scope key; use PATCH /api/v1/settings", p)
-		case slices.Contains(cur.EnvLocked, p):
-			return nil, newError(http.StatusConflict, KeyEnvLocked, p+" is set by the environment and read-only here", "unset KUDURRU_* for it on the node")
-		}
-		if k.RestartRequired {
-			restart = append(restart, p)
-		}
-	}
-	flat := flatSettings(cur)
-	for p, v := range changes {
-		k, _ := config.Lookup(p)
-		switch {
-		case v == nil:
-			v = k.Default
-		case k.Type == config.TypeMap:
-			// JSON merge patch (RFC 7386) inside map-valued keys.
-			if pm, ok := v.(map[string]any); ok {
-				v = mergePatch(flat[p], pm)
+	if !canonical {
+		for _, path := range paths {
+			if strings.HasPrefix(path, "branding.") && (s.opts.License == nil || !s.opts.License.Status().Allows(license.FeatureBranding)) {
+				return nil, brandingLicenseRequired()
 			}
 		}
-		flat[p] = v
 	}
-	next, err := decodeSettings(flat)
+	next, restart, err := prepareSettingsValues(cur, scope, changes, paths, canonical)
 	if err != nil {
 		return nil, err
 	}
-	next.EnvLocked, next.Source = cur.EnvLocked, cur.Source
 	if scope == config.ScopeNode && s.opts.NodeConfigCommand != nil {
 		receipt, err := s.opts.NodeConfigCommand(ctx, next, paths)
 		if err != nil {
@@ -483,6 +454,59 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	out := s.settingsBody(next, scope, paths, restart)
 	out.Body.Persisted = &persisted
 	return out, nil
+}
+
+// prepareSettingsValues is shared by ordinary patches and transaction-local
+// imports so scope, locks, resets, map merges, and value validation stay identical.
+func prepareSettingsValues(cur *config.Config, scope config.Scope, changes map[string]any, paths []string, canonical bool) (*config.Config, []string, error) {
+	restart, err := validateSettingsPaths(cur, scope, paths, canonical)
+	if err != nil {
+		return nil, nil, err
+	}
+	flat := flatSettings(cur)
+	for p, v := range changes {
+		k, _ := config.Lookup(p)
+		switch {
+		case v == nil:
+			v = k.Default
+		case k.Type == config.TypeMap:
+			// JSON merge patch (RFC 7386) inside map-valued keys.
+			if pm, ok := v.(map[string]any); ok {
+				v = mergePatch(flat[p], pm)
+			}
+		}
+		flat[p] = v
+	}
+	next, err := decodeSettings(flat)
+	if err != nil {
+		return nil, nil, err
+	}
+	next.EnvLocked, next.Source = cur.EnvLocked, cur.Source
+	return next, restart, nil
+}
+
+func validateSettingsPaths(cur *config.Config, scope config.Scope, paths []string, canonical bool) ([]string, error) {
+	var restart []string
+	for _, p := range paths {
+		k, _ := config.Lookup(p)
+		switch {
+		case k.HostOnly:
+			return nil, newError(http.StatusBadRequest, KeyHostOnly, p+" is hostOnly and can only be set in the config file or environment on the host",
+				"edit kudurru.yaml or KUDURRU_* on the node")
+		case k.Scope != scope && scope == config.ScopeCluster:
+			return nil, errInvalid("%s: a node-scope key; use PATCH /api/v1/node/config", p)
+		case k.Scope != scope:
+			return nil, errInvalid("%s: a cluster-scope key; use PATCH /api/v1/settings", p)
+		case canonical && !config.PublicClusterKey(k):
+			return nil, errInvalid("%s: not a public cluster settings key", p)
+		case slices.Contains(cur.EnvLocked, p):
+			return nil, newError(http.StatusConflict, KeyEnvLocked, p+" is set by the environment and read-only here", "unset KUDURRU_* for it on the node")
+		}
+		if k.RestartRequired {
+			restart = append(restart, p)
+		}
+	}
+	return restart, nil
 }
 
 // decodeSettings decodes a flat key map into a validated Config.

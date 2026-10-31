@@ -35,7 +35,7 @@ func migrationServingAPI(t *testing.T, f *servingCommandFixture, command api.Mig
 	if command == nil {
 		command = f.s.MigrationCommand
 	}
-	s, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config, ObjectCommand: f.s.ObjectCommand, ZoneCommand: f.s.ZoneCommand, MigrationCommand: command, MigrationReads: servingbuild.NewMigrationReads(), ObjectReads: servingbuild.NewObjectReads(), Authenticate: f.http.Middleware, Authorizer: f.http, Logger: slog.New(slog.DiscardHandler)})
+	s, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config, ObjectCommand: f.s.ObjectCommand, ZoneCommand: f.s.ZoneCommand, MigrationCommand: command, CanonicalSettings: f.s, MigrationReads: servingbuild.NewMigrationReads(), ObjectReads: servingbuild.NewObjectReads(), Authenticate: f.http.Middleware, Authorizer: f.http, Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)
 	}

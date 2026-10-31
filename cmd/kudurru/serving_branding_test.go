@@ -415,7 +415,7 @@ func (f *brandingHTTPFixture) now() time.Time {
 			frame, more := frames.Next()
 			// Only the settings entitlement predicate consumes this script;
 			// background preparation and raw-auth clocks remain real inputs.
-			if strings.Contains(frame.Function, ".(*servingRuntime).WriteSettings.func1.1") {
+			if strings.Contains(frame.Function, ".(*servingRuntime).checkSettingsBranding.func1") {
 				if script.calls.Add(1) >= 2 {
 					return script.at
 				}

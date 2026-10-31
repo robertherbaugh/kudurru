@@ -178,11 +178,16 @@ unresolved items, without inventing a successful terminal report.
 
 History and previews read private journals and public objects from the same
 original complete serving image. They do not use live Store fallback. In this
-mode adoption remains explicitly unavailable. Selected settings are not yet
-admitted in a transaction-local migration planner: object failure leaves them
-`not_applied`; otherwise the durable report includes an explicit unavailable
-settings error. Operators can apply reviewed settings through the existing
-current settings route. Kubernetes retains the preceding legacy behavior.
+mode adoption remains explicitly unavailable. Selected settings merge with the
+current canonical singleton in the completion transaction, sharing validation
+and persistence with ordinary canonical PATCH. A selected object failure leaves
+settings `not_applied`; invalid, host-only, node-scope, or environment-locked
+settings produce durable error items without a settings mutation. Successful
+settings and their journal outcome commit together, including no-ops. The response
+reports persistence and restart-required paths; durable Settings item hints retain
+restart requirements for background imports. Branding retains the original
+complete view's Enterprise entitlement through final commit. Kubernetes retains
+the preceding legacy behavior.
 
 ```mermaid
 flowchart LR
@@ -792,8 +797,9 @@ original list UID/resourceVersion in the current transaction. No-op, deduplicate
 missing-result and item-error-only responses retain final proof expiry and writer
 checks. Cache invalidation and aggregate audit run after the transaction commits.
 
-SQLite still refuses migration adoption and imported settings without complete
-current admission. Generic object commands remain available.
+SQLite still refuses migration adoption without complete current admission.
+Imported settings use the transaction-local canonical planner described above.
+Generic object commands remain available.
 These gates prevent legacy helpers from writing outside current authorization or
 returning an unchecked no-op; they are explicit remaining integration work.
 Generic apply/batch-delete retains its independent per-item result contract. All

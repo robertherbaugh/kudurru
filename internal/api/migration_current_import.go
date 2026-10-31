@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	internal "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/importers"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -185,24 +187,57 @@ func (s *Server) currentImportProgram(ctx context.Context, input *importers.Plan
 				failed = true
 			}
 		}
-		// Settings need a transaction-local canonical planner; never nest the live
-		// SettingsWriter inside this command. Preserve explicit failure semantics.
-		settingsError := ""
+		var settingsPlan *CanonicalSettingsPlan
+		var settingsErr error
 		if !failed && len(settings) > 0 {
-			settingsError = "Current migration settings command unavailable; apply the reviewed settings separately."
+			planner, ok := s.opts.CanonicalSettings.(CanonicalSettingsPlanner)
+			if !ok {
+				return nil, errUnavailable("current migration settings planner unavailable")
+			}
+			settingsPlan, settingsErr = planner.PrepareSettings(ctx, tx, settings)
+			// Only known validation/entitlement refusals can become durable
+			// errors. Unexpected dependency or store failures stop the step.
+			if settingsErr != nil {
+				var e *Error
+				if !errors.As(settingsErr, &e) || (e.Body.Key != KeyInvalid && e.Body.Key != KeyHostOnly && e.Body.Key != KeyEnvLocked && e.Body.Key != KeyLicense) {
+					return nil, settingsErr
+				}
+			}
+		}
+		settingsError := ""
+		if settingsErr != nil {
+			settingsError = migrationFailure(ApplyResult{}, settingsErr).Error
 		}
 		for i := len(plan.Objects); i < len(current.Spec.Items); i++ {
 			item := &current.Spec.Items[i]
 			if item.Result == "skipped" {
 				continue
 			}
-			item.Result = "not_applied"
-			item.Hint = "Settings were not changed because a selected object failed or the import stopped."
-			if settingsError != "" {
-				item.Result = ResultError
-				item.Error = settingsError
-				item.ErrorKey = KeyUnavailable
+			switch {
+			case failed:
+				item.Result = "not_applied"
+				item.Hint = "Settings were not changed because a selected object failed or the import stopped."
+			case settingsErr != nil:
+				*item = migrationItem(migrationFailure(ApplyResult{Kind: item.Kind, Name: item.Name}, settingsErr))
+			default:
+				item.Result = ResultUpdated
+				var restart []string
+				for _, path := range settingsPlan.restart {
+					if strings.HasPrefix(path, item.Name+".") || path == item.Name {
+						restart = append(restart, path)
+					}
+				}
+				if len(restart) > 0 {
+					item.Hint = truncateMigrationError("Restart required for: " + strings.Join(restart, ", "))
+				}
 			}
+		}
+		var settingsBody *SettingsBody
+		if settingsPlan != nil {
+			persisted := true
+			current.Spec.SettingsPersisted = &persisted
+			settingsBody = s.settingsBody(settingsPlan.next, config.ScopeCluster, settingsPlan.paths, settingsPlan.restart).Body
+			settingsBody.Persisted = &persisted
 		}
 		current.Spec.Status = "completed"
 		if failed || settingsError != "" {
@@ -211,7 +246,14 @@ func (s *Server) currentImportProgram(ctx context.Context, input *importers.Plan
 		now := metav1.NewTime(s.opts.Now())
 		current.Spec.FinishedAt = &now
 		current.Spec.SettingsError = settingsError
-		return migrationPlanFor(tx, []rbac.Attributes{migrationSettingsRequirement()}, func(ctx context.Context, tx *sqlite.CommandTx) error { return saveCurrentMigration(ctx, tx, current) }, func() { run = current; result.SettingsError = settingsError }), nil
+		return migrationPlanFor(tx, []rbac.Attributes{migrationSettingsRequirement()}, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			if settingsPlan != nil {
+				if err := settingsPlan.Apply(ctx, tx); err != nil {
+					return err
+				}
+			}
+			return saveCurrentMigration(ctx, tx, current)
+		}, func() { run = current; result.SettingsError = settingsError; result.Settings = settingsBody }), nil
 	})
 	return program, &run, result, nil
 }
