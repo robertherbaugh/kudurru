@@ -202,16 +202,22 @@ func (s *Server) buildMigrationRun(ctx context.Context, plan *importers.Plan, so
 	deadline := metav1.NewTime(s.opts.Now().Add(migrationTimeout))
 	r.Spec.Deadline = &deadline
 	if plan.Source != nil {
-		if plan.Source.Type != "pihole" && plan.Source.Type != "technitium" {
+		r.Spec.Source = plan.Source.Type
+		switch plan.Source.Type {
+		case "adguard", "blocky":
+			if plan.Source.URL != "" {
+				return nil, errInvalid("offline migration source must not include a URL or file path")
+			}
+		case "pihole", "technitium":
+			// Persist only the origin. Paths and queries may contain credentials.
+			u, err := url.Parse(plan.Source.URL)
+			if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+				return nil, errInvalid("invalid source URL")
+			}
+			r.Spec.SourceURL = (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
+		default:
 			return nil, errInvalid("unknown migration source")
 		}
-		r.Spec.Source = plan.Source.Type
-		// Persist only the origin. Paths and queries may contain credentials.
-		u, err := url.Parse(plan.Source.URL)
-		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return nil, errInvalid("invalid source URL")
-		}
-		r.Spec.SourceURL = (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
 	}
 	seen := map[string]bool{}
 	for _, doc := range plan.Objects {
