@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -284,7 +285,7 @@ func TestQUICConnectionLimit(t *testing.T) {
 	f := startFixture(t, fixtureOpts{
 		specs:  []Spec{{Protocol: ProtoDoQ}},
 		stages: []pipeline.Stage{localAnswer{}},
-		limits: Limits{QUICMaxConns: 1},
+		limits: configuredLimits(t, "quicMaxConns", "1"),
 	})
 	pool := &tlsPool{f.cert}
 	first, err := doqDial(t, f.addr(ProtoDoQ), pool)
@@ -479,7 +480,7 @@ func TestDoTALPNAndPlainTLSClient(t *testing.T) {
 // it.
 func TestLongLivedStreamConnections(t *testing.T) {
 	for _, limit := range []int{0, 10} {
-		f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: ProtoTCP}, {Protocol: ProtoDoT}}, stages: []pipeline.Stage{localAnswer{}}, limits: Limits{MaxTCPQueries: limit}})
+		f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: ProtoTCP}, {Protocol: ProtoDoT}}, stages: []pipeline.Stage{localAnswer{}}, limits: configuredLimits(t, "maxTCPQueries", strconv.Itoa(limit))})
 		for _, p := range []Protocol{ProtoTCP, ProtoDoT} {
 			c := &dns.Client{Net: "tcp", Timeout: 2 * time.Second}
 			if p == ProtoDoT {

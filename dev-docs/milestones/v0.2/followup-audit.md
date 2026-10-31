@@ -348,6 +348,29 @@ committed table-only races pass in 4.859/20.092 seconds without envtest skips;
 scoped lint reports zero issues. This closes F04's named conformance requirement,
 not deployed admission-webhook qualification or all supported-driver gates.
 
+## F22a configured native listener limits
+
+`listeners.limits.maxTCPQueries`, `quicMaxConns`, `idleTimeout` and
+`quicIdleTimeout` now map from typed validated host configuration into the actual
+registry limits. They are node-scoped, host-only and restart-required. Count
+zero remains unlimited; duration zero selects the existing 10s/30s defaults.
+Negative/overflow/invalid values are rejected. These settings apply to native
+listeners; separate dnsdist settings remain separate work.
+
+Configuration and actual transport races pass in 1.238/2.598 seconds, including
+unlimited/bounded TCP and DoT connections, DoQ/DoH3 connection refusal and idle
+closure on TCP, DoT, DoH, DoQ and DoH3. The initial new QUIC tests assumed peer
+closure observations matched server lifetime and always carried an HTTP/3
+application code. Pinned quic-go clamps remote idle advertisement to five seconds;
+RFC 9000 section 10.2.3 uses a transport application error for early rejection.
+The final tests observe actual server-side DoQ idle expiration and accept only
+the exact corresponding remote refusal codes, with no production timeout change.
+A new mounted fixture originally asked the health name for A (which is not its
+local TXT response); after correcting the fixture, real runServe TCP-count
+acceptance passes in 7.133 seconds. Existing assertions were not weakened.
+Scoped config/DNS/CLI lint reports zero issues; generated configuration and CLI
+references are synchronized. F22b/c remain independent missing requirements.
+
 ## Prioritized bounded implementation queue
 
 “Owner” is a proposed workstream, not an assignment or authorization to change

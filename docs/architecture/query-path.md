@@ -41,6 +41,24 @@ Every transport ends in one handler that stamps `Received` and a 5 s
 deadline, runs the chain and writes the reply. DoH, DoQ and DoH3 give the
 pipeline a fresh message ID, because their clients send ID 0.
 
+Native listeners share host-only `listeners.limits` settings, applied separately
+to each connection or listener at startup:
+
+| Key | Default | Applies to |
+|---|---|---|
+| `maxTCPQueries` | `0` (unlimited) | Queries on one TCP or DoT connection |
+| `quicMaxConns` | `0` (unlimited) | Concurrent connections per DoQ or DoH3 listener |
+| `idleTimeout` | `10s` | Idle TCP, DoT and DoH connections |
+| `quicIdleTimeout` | `30s` | Idle DoQ and DoH3 connections |
+
+Zero durations select these defaults; negative values are rejected. Restart
+to apply changes. For example, `listeners: {limits: {maxTCPQueries: 1000,
+quicMaxConns: 256, idleTimeout: 30s, quicIdleTimeout: 1m}}` limits native
+listeners without changing a separate dnsdist edge. A connection cap refuses
+excess QUIC connections; HTTP/3 rejection during the handshake appears as the
+QUIC application error rather than an HTTP response. QUIC peers may detect an
+idle close later than the server, according to their timeout implementation.
+
 ### Built-in HTTP query
 
 On SQLite, `POST /dns/query` clones the complete lease already retained by HTTP

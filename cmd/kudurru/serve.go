@@ -868,6 +868,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		TSIG:          keyring,
 		OnTSIGFailure: func(reason string) { tsigFailures.WithLabelValues(reason).Inc() },
 		Sockets:       cfg.Listeners.Sockets,
+		Limits:        dnsserver.LimitsFromConfig(cfg.Listeners),
 	})
 	if err != nil {
 		return err

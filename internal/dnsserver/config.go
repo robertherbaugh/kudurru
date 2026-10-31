@@ -5,6 +5,18 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 )
 
+// LimitsFromConfig applies the native DNS limits to every listener in a
+// registry. Zero counts remain unlimited and zero durations take the registry
+// defaults. Configuration validation rejects negative values before startup.
+func LimitsFromConfig(l config.Listeners) Limits {
+	return Limits{
+		MaxTCPQueries:   l.Limits.MaxTCPQueries,
+		QUICMaxConns:    l.Limits.QUICMaxConns,
+		IdleTimeout:     l.Limits.IdleTimeout.Std(),
+		QUICIdleTimeout: l.Limits.QUICIdleTimeout.Std(),
+	}
+}
+
 // SpecsFromConfig turns the listeners section of kudurru.yaml into registry
 // specs: one Spec per protocol of every dns entry (udp and tcp when the
 // list is empty) and one per dot, doh, doq and doh3 entry.

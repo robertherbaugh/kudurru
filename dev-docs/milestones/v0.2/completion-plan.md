@@ -93,7 +93,7 @@ runners. Unit tests cannot substitute for those results.
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Queued: missing |
 | F21b | Response-cache inspect REST | DNS and resolver | Queued: missing |
 | F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |
-| F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Queued: missing |
+| F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Implemented; actual transport/config/mounted races pass |
 | F22b | DoH `Alt-Svc` | DNS and resolver | Queued: missing |
 | F22c | RFC 8467 response padding | DNS and resolver | Queued: missing |
 | F22d | DoH path client IDs | DNS and resolver | Implemented; final gates open |

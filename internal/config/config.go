@@ -110,10 +110,20 @@ type Listeners struct {
 	// Sockets is how many SO_REUSEPORT sockets each udp and tcp listener
 	// binds (Linux; one elsewhere); 0 means GOMAXPROCS.
 	Sockets int `koanf:"sockets" json:"sockets"`
+	// Limits are shared resource limits applied separately to each DNS listener.
+	Limits ListenerLimits `koanf:"limits" json:"limits"`
 	// Internal is the node-to-node listener (§3.1, D47).
 	Internal InternalListener `koanf:"internal" json:"internal"`
 	// BlockPage is the block page listener (blockPage.enabled).
 	BlockPage BlockPageListener `koanf:"blockPage" json:"blockPage"`
+}
+
+// ListenerLimits controls native DNS transports. Changes require restart.
+type ListenerLimits struct {
+	MaxTCPQueries   int      `koanf:"maxTCPQueries" json:"maxTCPQueries"`
+	QUICMaxConns    int      `koanf:"quicMaxConns" json:"quicMaxConns"`
+	IdleTimeout     Duration `koanf:"idleTimeout" json:"idleTimeout"`
+	QUICIdleTimeout Duration `koanf:"quicIdleTimeout" json:"quicIdleTimeout"`
 }
 
 // InternalListener is the node-to-node listener (:8082). It is always
@@ -619,6 +629,14 @@ func (c *Config) Validate() error {
 	}
 	errs = append(errs, c.Listeners.validateTLS()...)
 	errs = append(errs, c.Listeners.validateProxyProtocol()...)
+	for path, value := range map[string]Duration{
+		"listeners.limits.idleTimeout":     c.Listeners.Limits.IdleTimeout,
+		"listeners.limits.quicIdleTimeout": c.Listeners.Limits.QUICIdleTimeout,
+	} {
+		if value < 0 {
+			errs = append(errs, fmt.Errorf("%s: must not be negative", path))
+		}
+	}
 	if _, ok := c.Upstreams.Groups["default"]; !ok {
 		errs = append(errs, errors.New("upstreams.groups.default is required"))
 	}

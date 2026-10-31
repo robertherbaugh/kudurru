@@ -23,6 +23,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Native DNS listeners: host-only, restart-required TCP query-count, QUIC
+  connection-count and TCP/HTTP/QUIC idle-timeout settings. Existing unlimited
+  count defaults and idle durations are preserved.
+
 - Store conformance: shared invalid-input checks on SQLite and Kubernetes;
   invalid forced Kubernetes updates are admitted in dry-run before ownership
   changes, with consistent structured validation errors.
