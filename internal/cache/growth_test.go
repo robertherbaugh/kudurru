@@ -152,3 +152,51 @@ func TestGrowthMovesResidentEntriesWithoutCopyingOrRefreshing(t *testing.T) {
 		t.Fatal("resharded LRU cannot round trip", n, err)
 	}
 }
+
+type blockedDumpWriter struct {
+	started, finish chan struct{}
+}
+
+func (w blockedDumpWriter) Write(b []byte) (int, error) {
+	close(w.started)
+	<-w.finish
+	return len(b), nil
+}
+
+func TestGrowthWaitingForDumpDoesNotBlockQueriesOrCurrentFlush(t *testing.T) {
+	c := New(Options{MaxEntries: 64})
+	k := key("during-dump.example.")
+	c.Set(k, []byte{1}, Positive, time.Minute)
+	writer := blockedDumpWriter{started: make(chan struct{}), finish: make(chan struct{})}
+	dumpDone, resizeDone := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(dumpDone)
+		if err := c.Dump(writer); err != nil {
+			t.Error(err)
+		}
+	}()
+	<-writer.started
+	var once sync.Once
+	release := func() { once.Do(func() { close(writer.finish) }) }
+	defer func() { release(); <-dumpDone; <-resizeDone }()
+	go func() { defer close(resizeDone); c.Resize(1_000_000) }()
+	commands := make(chan struct{})
+	go func() {
+		defer close(commands)
+		if removed := c.FlushCount(); removed != 1 {
+			t.Error("current flush did not complete during dump", removed)
+		}
+		c.Set(k, []byte{2}, Positive, time.Minute)
+		if l, ok := c.Get(k); !ok || !bytes.Equal(l.Wire, []byte{2}) {
+			t.Error("query failed while resize waits for dump")
+		}
+	}()
+	select {
+	case <-commands:
+	case <-time.After(time.Second):
+		release()
+		<-commands
+		t.Fatal("persistence I/O blocked queries or current commands")
+	}
+	release()
+}

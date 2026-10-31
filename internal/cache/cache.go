@@ -87,6 +87,10 @@ type Lookup struct {
 // accounting and in-flight coalescing. It stores packed messages as bytes
 // and knows nothing about DNS beyond the key.
 type Cache struct {
+	// topology lets persistence keep a stable shard slice across writer I/O.
+	// Resize takes it before publication, so a blocked dump never queues a
+	// publication writer that would stop new queries or current commands.
+	topology sync.RWMutex
 	// publication protects the shard topology and invalidation epoch. Acquire
 	// it before shard locks; insert and shard require it to be held.
 	publication sync.RWMutex
@@ -200,6 +204,8 @@ func (c *Cache) Resize(maxEntries int) {
 	if maxEntries <= 0 {
 		return
 	}
+	c.topology.Lock()
+	defer c.topology.Unlock()
 	c.publication.Lock()
 	defer c.publication.Unlock()
 	n := shardCount(maxEntries)

@@ -37,8 +37,8 @@ func (c *Cache) Dump(w io.Writer) error {
 
 // WriteDump is Dump that also returns how many entries it wrote.
 func (c *Cache) WriteDump(w io.Writer) (int, error) {
-	c.publication.RLock()
-	defer c.publication.RUnlock()
+	c.topology.RLock()
+	defer c.topology.RUnlock()
 	bw := bufio.NewWriter(w)
 	if _, err := bw.WriteString(dumpMagic); err != nil {
 		return 0, err
