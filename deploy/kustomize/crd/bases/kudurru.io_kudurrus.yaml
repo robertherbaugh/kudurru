@@ -905,6 +905,39 @@ spec:
                             - "off"
                             maxLength: 8192
                             type: string
+                          negativeTrustAnchors:
+                            description: Temporary validation exceptions for recursive
+                              groups only (RFC 7646); independent of dnssec.negativeTrustAnchors
+                              for forwarders. At most 128 domains, each with a reason
+                              and absolute expiry no more than seven days away. Covers
+                              descendants, never sets AD, and expires on cache hits
+                              without reload. Restart or restore never renews it.
+                            items:
+                              properties:
+                                domain:
+                                  description: Domain and descendants allowed to resolve
+                                    without DNSSEC authentication; aliases outside
+                                    it still validate.
+                                  maxLength: 8192
+                                  type: string
+                                expiresAt:
+                                  description: Absolute RFC3339 timestamp in UTC,
+                                    for example 2026-10-31T12:00:00Z. Choose the actual
+                                    incident deadline.
+                                  maxLength: 8192
+                                  type: string
+                                reason:
+                                  description: Why this exception is needed and where
+                                    repair is tracked; from 1 to 256 bytes.
+                                  maxLength: 8192
+                                  type: string
+                              required:
+                              - domain
+                              - reason
+                              - expiresAt
+                              type: object
+                            maxItems: 10000
+                            type: array
                           qnameMinimization:
                             description: 'Send each name server only as much of the
                               name as it needs (QNAME minimization, RFC 9156): the
