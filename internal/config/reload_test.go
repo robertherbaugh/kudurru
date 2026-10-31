@@ -234,7 +234,7 @@ func TestRestartRequired(t *testing.T) {
 		"response.dns64.prefix", "response.dns64.excludeDomains", "response.dns64.excludeIPv4", "response.filterAAAA", "response.bogusNXDOMAIN", "response.nxdomainIPv4", "response.nxdomainIPv6", "response.ttl", "response.rebinding.enabled", "response.rebinding.privateDomains", "response.rebinding.bypassNetworks",
 		"dnssec.enabled", "dnssec.useBuiltinAnchors", "dnssec.trustAnchors", "dnssec.negativeTrustAnchors",
 		"upstreams.groups", "upstreams.bootstrap", "upstreams.conditional", "upstreams.ecs.mode", "upstreams.ecs.ipv4Prefix", "upstreams.ecs.ipv6Prefix",
-		"upstreams.recursion.dnssec", "upstreams.recursion.qnameMinimization", "upstreams.recursion.ipv6", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints",
+		"upstreams.recursion.dnssec", "upstreams.recursion.qnameMinimization", "upstreams.recursion.ipv6", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints", "upstreams.recursion.negativeTrustAnchors",
 		"cache.maxEntries", "cache.minTTL", "cache.maxTTL", "cache.negativeTTL", "cache.prefetch.threshold", "cache.prefetch.window",
 		"cache.serveStale.ttl", "cache.serveStale.answerTTL", "cache.serveStale.maxWait",
 		"blocking.enabled", "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP.v4", "blocking.customIP.v6",

@@ -60,11 +60,11 @@ func RootAnchors() []dns.RR {
 
 // Validator validates with a fixed set of trust anchors and temporary exceptions.
 type Validator struct {
-	anchors map[string][]dns.RR
-	ntas    []NTA
-	limits  Limits
-	now     func() time.Time
-	id      [32]byte
+	anchors    map[string][]dns.RR
+	exceptions *Exceptions
+	limits     Limits
+	now        func() time.Time
+	id         [32]byte
 }
 
 // New validates configuration and takes private copies of trust material.
@@ -131,30 +131,17 @@ func New(opts Options) (*Validator, error) {
 		v.anchors[name] = append(v.anchors[name], c)
 		identity = append(identity, c.String())
 	}
-	seenNTAs := map[string]bool{}
-	for _, nta := range opts.NTAs {
-		if nta.Domain == "" || strings.IndexFunc(nta.Domain, unicode.IsSpace) >= 0 {
-			return nil, fmt.Errorf("dnssec: NTA domain is required")
-		}
-		nta.Domain = dns.CanonicalName(nta.Domain)
-		if _, ok := dns.IsDomainName(nta.Domain); !ok || strings.TrimSpace(nta.Reason) == "" || len(nta.Reason) > 256 || nta.ExpiresAt.IsZero() || nta.ExpiresAt.After(v.now().Add(7*24*time.Hour)) || seenNTAs[nta.Domain] {
-			return nil, fmt.Errorf("dnssec: NTA requires a domain, reason, and expiry within 7 days")
-		}
-		seenNTAs[nta.Domain] = true
-		v.ntas = append(v.ntas, nta)
+	var err error
+	v.exceptions, err = NewExceptions(opts.NTAs, v.now())
+	if err != nil {
+		return nil, err
 	}
 	sort.Strings(identity)
-	sort.Slice(v.ntas, func(i, j int) bool {
-		if v.ntas[i].Domain != v.ntas[j].Domain {
-			return v.ntas[i].Domain < v.ntas[j].Domain
-		}
-		return v.ntas[i].ExpiresAt.Before(v.ntas[j].ExpiresAt)
-	})
 	b, _ := json.Marshal(struct {
 		Anchors []string
 		NTAs    []NTA
 		Limits  Limits
-	}{identity, v.ntas, l})
+	}{identity, v.exceptions.ntas, l})
 	v.id = sha256.Sum256(b)
 	return v, nil
 }
@@ -261,30 +248,12 @@ func validPublicKey(k *dns.DNSKEY) bool {
 func (v *Validator) Now() time.Time { return v.now() }
 
 func (v *Validator) exception(name string, now time.Time) (time.Time, bool) {
-	var until time.Time
-	best := -1
-	for _, n := range v.ntas {
-		if now.Before(n.ExpiresAt) && dns.IsSubDomain(n.Domain, name) {
-			labels := dns.CountLabel(n.Domain)
-			if labels > best || (labels == best && (until.IsZero() || n.ExpiresAt.Before(until))) {
-				until, best = n.ExpiresAt, labels
-			}
-		}
-	}
-	return until, best >= 0
+	return v.exceptions.Match(name, now)
 }
 
 // ActiveContextID includes time-dependent exception activation, so an NTA
 // expiry cannot reuse a bypass cache entry even before a background tick.
 func (v *Validator) ActiveContextID() [32]byte {
-	var b strings.Builder
-	b.Write(v.id[:])
-	now := v.now()
-	for _, n := range v.ntas {
-		if now.Before(n.ExpiresAt) {
-			b.WriteString(n.Domain)
-			b.WriteByte(0)
-		}
-	}
-	return sha256.Sum256([]byte(b.String()))
+	id, _ := v.exceptions.context(v.id, v.now())
+	return id
 }

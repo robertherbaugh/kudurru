@@ -1,7 +1,7 @@
 # DNSSEC validation
 
-DNSSEC validation is opt-in. Enable `dnssec.enabled` in the configuration
-file, Settings → Expert → DNSSEC, or with:
+Forwarded DNSSEC validation is opt-in. Enable `dnssec.enabled` in the
+configuration file, Settings → Expert → DNSSEC, or with:
 
 ```sh
 kudurru settings set dnssec.enabled=true
@@ -80,6 +80,38 @@ UTC. Expired entries can remain in configuration but no longer bypass
 validation. Cache hits, reload and restart respect the same absolute expiry.
 Exceptions never establish secure status or AD. Remove the exception after
 repair and verify the domain validates normally.
+
+### Recursive exceptions
+
+Recursive groups use `upstreams.recursion.dnssec` (enabled by default), their
+own trust anchors, and their own exception list. The `dnssec.*` settings
+above apply to forwarding and do not bypass native recursive validation.
+For a recursive incident, configure the separate list:
+
+```yaml
+upstreams:
+  recursion:
+    negativeTrustAnchors:
+      - domain: broken.example.
+        reason: "Signer repair tracked by the zone owner"
+        expiresAt: "2026-10-31T12:00:00Z"
+```
+
+Replace the example date with the actual incident deadline, at most seven
+days away. The timestamp is absolute, not a duration. The same domain,
+reason and count limits apply as for forwarded exceptions. A recursive NTA
+covers descendants, including trust-chain failures, but an alias leaving
+that scope still needs normal validation. Responses are insecure and never
+set AD. DO controls returned proofs; CD retains its explicit validation
+bypass in a separate cache partition. Remove the exception after repair.
+
+Expiry is enforced on native caches, raw response-cache hits and detached
+fills, including stale serving. Conservatively, all recursive response
+reuse is bounded by the next recursive NTA expiry, even for unrelated names.
+Reload, restart, settings restore and response-cache dump/load never renew
+the deadline. Expired entries may remain in settings, but are inactive.
+These exceptions do not implement aggressive NSEC caching or automatic
+trust-anchor rollover.
 
 ## Cache and failures
 

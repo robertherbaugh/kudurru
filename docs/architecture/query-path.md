@@ -345,7 +345,13 @@ Recursive groups retain the native resolver's validation result through the raw
 cache and final response flags. The forwarded-answer validator does not replace
 recursive trust settings. Cache reuse is bounded by the returned TTLs and
 signature deadlines. Each complete SQLite publication owns its recursive
-resolver, so held requests keep their original root hints and validation settings.
+resolver, so held requests keep their original root hints, validation settings
+and recursive negative trust anchors. Recursive exceptions are configured at
+`upstreams.recursion.negativeTrustAnchors`; they share bounded matching rules
+with forwarded exceptions but have independent authority. Their absolute expiry
+changes native and raw-cache scope and fences late fills without a reload.
+Every recursive cached answer is conservatively bounded by the next active
+recursive exception expiry, including after durable cache restore.
 
 Validation defaults off; a forward zone can override the global setting.
 The validator uses shipped IANA root anchors and explicit operator anchors,

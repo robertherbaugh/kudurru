@@ -213,7 +213,7 @@ func recursiveSecurity(res *upstream.Result, plan *upstream.QueryPlan, cd bool, 
 	for _, section := range [][]dns.RR{res.Msg.Answer, res.Msg.Ns} {
 		for _, rr := range section {
 			until := now.Add(time.Duration(rr.Header().Ttl) * time.Second)
-			if sig, ok := rr.(*dns.RRSIG); ok {
+			if sig, ok := rr.(*dns.RRSIG); ok && !res.NativeValidation.Excepts(sig) {
 				expires := time.Unix(int64(sig.Expiration), 0)
 				if expires.Before(until) {
 					until = expires
@@ -226,6 +226,9 @@ func recursiveSecurity(res *upstream.Result, plan *upstream.QueryPlan, cd bool, 
 	}
 	if sec.ValidUntil.IsZero() {
 		sec.ValidUntil = now
+	}
+	if until := plan.RecursiveExpiry(); !until.IsZero() && until.Before(sec.ValidUntil) {
+		sec.ValidUntil = until
 	}
 	return sec
 }

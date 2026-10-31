@@ -21,6 +21,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	"github.com/robertherbaugh/kudurru/internal/clientid"
+	"github.com/robertherbaugh/kudurru/internal/dnssec"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 )
 
@@ -210,6 +211,14 @@ type Upstreams struct {
 	Recursion   Recursion                `koanf:"recursion" json:"recursion"`
 }
 
+// RecursiveNegativeTrustAnchor has an absolute expiry, decoded from RFC3339.
+// It is independent of the forwarded DNSSEC exception setting.
+type RecursiveNegativeTrustAnchor struct {
+	Domain    string    `koanf:"domain" json:"domain"`
+	Reason    string    `koanf:"reason" json:"reason"`
+	ExpiresAt time.Time `koanf:"expiresAt" json:"expiresAt"`
+}
+
 // Recursion configures the built-in recursive resolver that upstream
 // groups with mode recursive use (internal/recursor, D170).
 type Recursion struct {
@@ -222,7 +231,8 @@ type Recursion struct {
 	// route), on or off.
 	IPv6 string `koanf:"ipv6" json:"ipv6"`
 	// TrustAnchors replace the built-in root DS records; empty keeps them.
-	TrustAnchors []string `koanf:"trustAnchors" json:"trustAnchors"`
+	TrustAnchors         []string                       `koanf:"trustAnchors" json:"trustAnchors"`
+	NegativeTrustAnchors []RecursiveNegativeTrustAnchor `koanf:"negativeTrustAnchors" json:"negativeTrustAnchors"`
 	// RootHints replace the built-in root server addresses; empty keeps
 	// them.
 	RootHints []string `koanf:"rootHints" json:"rootHints"`
@@ -900,6 +910,9 @@ func (u Upstreams) validate() []error {
 				errs = append(errs, &FieldError{Path: "upstreams.groups[" + n + "].servers", Message: msgRequired})
 			}
 		}
+	}
+	if _, err := dnssec.NewExceptions(u.Recursion.NTAs(), time.Now()); err != nil {
+		errs = append(errs, fmt.Errorf("upstreams.recursion.negativeTrustAnchors: %w", err))
 	}
 	if len(u.Recursion.TrustAnchors) > 0 {
 		if _, err := recursor.ParseTrustAnchors(u.Recursion.TrustAnchors); err != nil {

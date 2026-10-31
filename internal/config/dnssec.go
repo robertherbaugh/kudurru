@@ -65,3 +65,12 @@ func (c DNSSEC) Validator(now func() time.Time) (*dnssec.Validator, error) {
 	}
 	return dnssec.New(dnssec.Options{Anchors: anchors, NTAs: ntas, Now: now})
 }
+
+// NTAs returns private, typed native-recursion exception settings.
+func (c Recursion) NTAs() []dnssec.NTA {
+	out := make([]dnssec.NTA, 0, len(c.NegativeTrustAnchors))
+	for _, n := range c.NegativeTrustAnchors {
+		out = append(out, dnssec.NTA{Domain: n.Domain, Reason: n.Reason, ExpiresAt: n.ExpiresAt})
+	}
+	return out
+}

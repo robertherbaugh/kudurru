@@ -43,6 +43,10 @@ func supportedDigest(t uint8) bool {
 // validateRRset checks rrset (from the servers of zone) against sigs.
 func (q *query) validateRRset(rrset []dns.RR, sigs []*dns.RRSIG, zone string) vres {
 	owner := rrset[0].Header().Name
+	if q.exception(owner) {
+		q.exceptRRset(owner, rrset[0].Header().Rrtype)
+		return vres{sec: SecInsecure}
+	}
 	if len(sigs) == 0 {
 		sec, ede, why := q.unsignedSecurity(owner, zone)
 		return vres{sec: sec, ede: ede, why: why}
@@ -159,6 +163,9 @@ func (q *query) unsignedSecurity(owner, zone string) (Security, uint16, string) 
 // trust from the root as needed.
 func (q *query) keys(zone string) *keyState {
 	zone = canon(zone)
+	if q.exception(zone) {
+		return &keyState{sec: SecInsecure}
+	}
 	now := q.now()
 	if v, ok := q.r.cache.get(q.key(kKeys, zone), now); ok {
 		return v.(*keyState)
@@ -372,6 +379,14 @@ func (q *query) validateRRsetAbove(rrset []dns.RR, sigs []*dns.RRSIG, zone, name
 
 // validateNegative validates an NXDOMAIN or NODATA answer for name/qtype.
 func (q *query) validateNegative(res *response, name string, qtype uint16) (Security, uint16, string) {
+	if q.exception(name) {
+		for _, rr := range res.msg.Ns {
+			if sig, ok := rr.(*dns.RRSIG); ok {
+				q.exceptRRset(sig.Hdr.Name, sig.TypeCovered)
+			}
+		}
+		return SecInsecure, 0, ""
+	}
 	sec, _, ede, why := q.proveDenial(res.msg, res.zone, name, qtype, "")
 	if sec == SecSecure {
 		return SecSecure, 0, ""
@@ -587,4 +602,21 @@ func (q *query) proveWildcard(owner, ce, signer string, ns []dns.RR, zone string
 		}
 	}
 	return nil, false
+}
+
+// exception records the authorization deadline on the whole alias/proof walk.
+// Each RRset/target is matched independently, so aliases cannot escape scope.
+func (q *query) exception(name string) bool {
+	until, ok := q.s.exceptions.Match(name, q.now())
+	if ok && (q.st.exceptionUntil.IsZero() || until.Before(q.st.exceptionUntil)) {
+		q.st.exceptionUntil = until
+	}
+	return ok
+}
+
+func (q *query) exceptRRset(name string, typ uint16) {
+	if q.st.excepted == nil {
+		q.st.excepted = make(map[RRset]struct{})
+	}
+	q.st.excepted[RRset{Name: canon(name), Type: typ}] = struct{}{}
 }

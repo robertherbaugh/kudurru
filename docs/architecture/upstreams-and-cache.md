@@ -188,6 +188,7 @@ upstreams:
     qnameMinimization: true                    # RFC 9156 (default)
     ipv6: auto                                 # auto | on | off: ask name servers over IPv6
     trustAnchors: []                           # empty: built-in root KSK-2017 (20326) and KSK-2024 (38696)
+    negativeTrustAnchors: []                   # temporary domain/reason/absolute expiresAt exceptions
     rootHints: []                              # empty: built-in IANA root server addresses
 ```
 
@@ -198,7 +199,9 @@ routing, server health, metrics, the query log and the response cache work
 as for any other group. Any group can be recursive: a Policy, a forward
 zone or a conditional rule can send some clients or names to recursion and
 the rest to forwarders. The resolver outlives settings reloads; it drops
-its cache only when `trustAnchors`, `rootHints` or `dnssec` change.
+its cache when `trustAnchors`, `rootHints`, `dnssec` or
+`negativeTrustAnchors` change. Native cache keys also include active exception
+state, so an expiry immediately prevents reuse without a reload.
 Forwarding to 1.1.1.1 and 9.9.9.9 stays the default for new installs
 (D170).
 
@@ -282,7 +285,9 @@ forwarding group that holds the router.
 flowchart TD
     A(["answer from the authoritative server"]) --> ON{"upstreams.recursion.dnssec?"}
     ON -- "false" --> UNK["state unknown<br/>answer returned"]
-    ON -- "true" --> SIGNED{"zone in a chain of<br/>trust from the root?"}
+    ON -- "true" --> NTA{"active recursive NTA<br/>covers this RRset or zone?"}
+    NTA -- "yes" --> INS
+    NTA -- "no" --> SIGNED{"zone in a chain of<br/>trust from the root?"}
     SIGNED -- "a delegation without DS is proven,<br/>or only unsupported algorithms" --> INS["insecure<br/>answer returned, no AD"]
     SIGNED -- "yes" --> OK{"signatures and denial<br/>proofs check out?"}
     OK -- "yes" --> SEC["secure<br/>AD for clients that sent DO or AD"]
@@ -299,6 +304,31 @@ parent. Positive answers, wildcard expansions, NXDOMAIN and NODATA (NSEC,
 and NSEC3 with opt-out) are proven. Unsigned data below a signed zone is
 insecure only when the delegation without DS is proven, otherwise it is
 bogus.
+
+`upstreams.recursion.negativeTrustAnchors` supplies temporary recursive
+exceptions with typed absolute RFC3339 `expiresAt`, `domain` and `reason`.
+It is independent of forwarded `dnssec.negativeTrustAnchors`. Both use the
+same bounded exception compiler: at most 128 canonical domains, reasons up
+to 256 bytes, expiry no more than seven days away. Expired entries are valid
+configuration but inactive. A match treats covered data or a zone's trust
+chain as insecure, never secure; aliases outside the domain still validate.
+CD and DO retain their normal meanings. An exception cannot set AD. Native
+validation records exactly which RRsets used the exception, so raw expired
+signatures for those RRsets can remain available to DO clients without
+relaxing authenticated proof deadlines for an outside alias target. Forwarded
+responses cannot supply this native provenance; restored raw answers must
+match their original recursive context and absolute deadlines.
+
+The native delegation/key/address cache and the raw response cache both
+include active recursive exception state. For conservative isolation, any
+recursive exception expiry changes the native cache context and bounds all
+recursive response reuse, including unrelated names, at the next expiry.
+Minimum TTLs and stale windows cannot extend that absolute deadline.
+Expired in-flight exception work is refused without retrying it. Reload,
+complete SQLite publications, settings restore and cache dump/load retain
+the original instant; none turns it into a fresh duration. Each complete
+publication keeps its own resolver and exception plan. See the
+[exception runbook](../deploy/dnssec-validation.md#recursive-exceptions).
 
 Algorithms: RSASHA1, RSASHA1-NSEC3-SHA1, RSASHA256, RSASHA512,
 ECDSAP256SHA256, ECDSAP384SHA384 and ED25519; DS digests SHA-1, SHA-256 and

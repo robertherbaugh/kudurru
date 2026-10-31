@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"net/netip"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/internal/dnssec"
@@ -14,17 +15,19 @@ import (
 // QueryPlan pins raw resolution and validation semantics. It is immutable;
 // derivations retain the same resolver/validator even during a reload.
 type QueryPlan struct {
-	set            *Set
-	validator      *dnssec.Validator
-	validate       bool
-	client         netip.Addr
-	group          string
-	conditional    bool
-	scope          pipeline.CacheScope
-	active         [32]byte
-	current        func() bool
-	defaultEnabled bool
-	raw            bool
+	set             *Set
+	validator       *dnssec.Validator
+	validate        bool
+	client          netip.Addr
+	group           string
+	conditional     bool
+	scope           pipeline.CacheScope
+	active          [32]byte
+	recursiveActive [32]byte
+	recursiveUntil  time.Time
+	current         func() bool
+	defaultEnabled  bool
+	raw             bool
 }
 
 // Identity returns the immutable resolver configuration fingerprint.
@@ -36,6 +39,9 @@ func (s *Set) Plan(req *pipeline.Request, v *dnssec.Validator, enabled bool, epo
 	p := &QueryPlan{set: s, validator: v, defaultEnabled: enabled, client: req.Client.Addr.Addr(), current: current}
 	if v != nil {
 		p.active = v.ActiveContextID()
+	}
+	if s.rec != nil {
+		p.recursiveActive, p.recursiveUntil = s.rec.TrustContext()
 	}
 	p.scope.Epoch = epoch
 	return p.Derive(req)
@@ -61,6 +67,9 @@ func (p *QueryPlan) Derive(req *pipeline.Request) (*QueryPlan, error) {
 	b := append([]byte(nil), p.set.identity[:]...)
 	b = append(b, group...)
 	b = append(b, 0)
+	if n.Recursive() {
+		b = append(b, p.recursiveActive[:]...)
+	}
 	if n.validate {
 		b = append(b, 1)
 		b = append(b, p.active[:]...)
@@ -105,7 +114,14 @@ func (p *QueryPlan) Recursive() bool {
 
 // Current checks the captured publication and validator context before cache insertion.
 func (p *QueryPlan) Current() bool {
-	return (p.current == nil || p.current()) && (p.validator == nil || p.active == p.validator.ActiveContextID())
+	if p.current != nil && !p.current() {
+		return false
+	}
+	if p.Recursive() {
+		active, _ := p.set.rec.TrustContext()
+		return active == p.recursiveActive
+	}
+	return !p.validate || p.validator == nil || p.active == p.validator.ActiveContextID()
 }
 
 // ECSSubnet derives the subnet using the captured client address.
@@ -151,3 +167,7 @@ func ScopeBytes(s pipeline.CacheScope) []byte {
 	binary.BigEndian.PutUint64(b[32:], s.Epoch)
 	return b
 }
+
+// RecursiveExpiry is the next exception deadline in the captured native plan.
+// All recursive response reuse is conservatively bounded by this instant.
+func (p *QueryPlan) RecursiveExpiry() time.Time { return p.recursiveUntil }
