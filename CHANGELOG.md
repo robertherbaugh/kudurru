@@ -30,6 +30,17 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - Secondary configuration in the zone wizard/settings and node-specific
   serial, availability, expiry and failure reporting in the API, dashboard
   and metrics. Transferred records remain read-only.
+- Authenticated health queries for remote cluster members, with bounded
+  requests and explicit unavailable or incompatible-peer errors.
+- Offline AdGuard Home and Blocky CLI import previews, selection and tracked
+  application, with bounded YAML input and explicit conversion-loss reports.
+- `kudurru audit verify`, including structured results and nonzero exit status
+  for integrity failures, unavailable verification or denied access.
+- Accessible help for nested settings list items, map keys and values.
+- Optional file-backed bearer authentication for the external-dns webhook,
+  with bounded startup loading and restart-required rotation.
+- A rate-limit slip counter and Grafana panels for central database
+  availability, query shipping lag and audit spool drops.
 
 ### Fixed
 
@@ -41,6 +52,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   previous imports now atomically checks every reviewed zone UID and version.
   Selected settings commit with their durable import result, preserve map
   deletion/reset semantics and report restart requirements.
+- Primary publication stops waiting for an obsolete desired source, allowing
+  reconciliation after authority changes without serving stale data.
 
 - CNAME/DNAME chasing rechecks the most specific local zone before following
   a target, so parent wildcard data cannot bypass a child zone's data or expiry.

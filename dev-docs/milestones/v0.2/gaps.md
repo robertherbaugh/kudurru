@@ -60,9 +60,9 @@ entire package. Split large rows into smaller commits when their work starts.
 | G10 / V2-IDENTITY | Immutable inventory, MAC/hostname matching, encrypted-transport IDs and authenticated PROXYv2 propagation | Recorded: complete provider fill, inventory UI and edge rendering. Validate stale/ambiguous assignments, collision stability, CIDR precedence and equivalent decisions across native and edge transports. |
 | G11 / V2-HA | Complete replication images, atomic installation, authority fencing, authenticated transport and promotion primitives | Recorded: peer transition exclusion, join tokens/wizard/CLI, write forwarding and multi-process partition/rejoin acceptance. Prove deletes, wrong-cluster/schema rejection, conflicting promotions, primary loss and restart while DNS continues from valid local data. |
 | G12 / V2-IAM | UID-bound credentials, IAM schemas, migration primitives, durable sessions/TOTP, browser OIDC/CEL and local account commands | Confirmed CLI supports local password/token login, not browser/device login. Recorded: remaining administrative writers, provisioning/group synchronization, RP logout and opt-in Kubernetes impersonation. Validate migration, revocation, scoped grants, restart and follower promotion for every supported route. |
-| G13 / V2-OBS | Local query/audit storage, central shipping and sink interfaces | Recorded: bounded dnstap emit/listen, OTel/TRACEPARENT, ClickHouse/Loki exporters, privacy/loop protection, drop/error reporting and central retention follow-ups. Confirmed remote node-health route still returns 501. Demonstrate slow exporters cannot block DNS, local persistence or live tails. |
+| G13 / V2-OBS | Local query/audit storage, central shipping and sink interfaces | Recorded: bounded dnstap emit/listen, OTel/TRACEPARENT, ClickHouse/Loki exporters, privacy/loop protection, drop/error reporting and central retention follow-ups. Remote node health is implemented in `49f9e8b`; other observability and final deployment acceptance remain open. Demonstrate slow exporters cannot block DNS, local persistence or live tails. |
 | G14 / V2-EDGE | Existing supervisors, rendered topology, local invalidation and VIP deployment | Recorded: console diff-apply, certificate reload, dynblock push, remote invalidation, host settings and VIP/provider event/ownership reporting. Reconcile already merged supervisor work before adding it again; validate with real dnsdist and VIP failover. |
-| G15 / V2-OPS | Current object/settings/zone/source/cache commands, captured reads and Enterprise branding | G01–G03 restore existing workflows. Recorded: remaining route adoption, offline importers and loss reports, direct kubeconfig context, generated client adoption, CLI conformance, node-setting persistence/help and operational follow-ups. Validate retained branding settings and license fallback against final artifacts. |
+| G15 / V2-OPS | Current object/settings/zone/source/cache commands, captured reads and Enterprise branding | G01–G03 restore existing workflows. Offline AdGuard/Blocky converters and loss reports plus audit verification CLI are implemented in this pass. Remaining: route adoption, direct kubeconfig context, generated client adoption, broader CLI conformance, node-setting persistence/help and operational follow-ups; use the item-level audit for current closure evidence. Validate retained branding settings and license fallback against final artifacts. |
 
 ## Active Directory DNS replacement
 
@@ -82,7 +82,7 @@ the production binary and deliberately refuses every UPDATE.
 
 | ID | Gate | Closure rule |
 |---|---|---|
-| G20 | Reconcile the follow-up ledger | Classify every v0.2 row as implemented with evidence, still required, or explicitly retargeted with rationale. Historical deferrals must not override working code or silently reduce agreed scope. |
+| G20 | Reconcile the follow-up ledger | Completed by `b6f8d6e`: [75 original targeted rows, 130 subrequirements](followup-audit.md), with evidence and remaining acceptance; subsequent closures are tracked separately. No requirement was silently retargeted. |
 | G21 | Production wiring and public contracts | Domain and unblock captured GETs are completed in `1f3b0a4`; the broader gate remains open. Every feature has its required API/CLI/UI, captured reads/current writes, generated schemas/clients, permission rules, operator docs and architecture updates. No unexplained 501/503 remains in supported workflows. |
 | G22 | Upgrade and failure acceptance | Run supported-driver upgrades, mixed-version compatibility/rejection, outage startup, durable restart, promotion and partition/rejoin against the final built artifacts. |
 | G23 | Interoperability and performance | Record real BIND/Knot/AdGuard/dnsdist/Windows results where required, bounded memory/queues and performance budgets; fixture-only evidence is labeled as such. |
@@ -219,3 +219,111 @@ Validation recorded during second-batch integration:
   found no actionable defects across adoption, settings and captured-read
   interactions. Hosted CI/security must still validate each pushed head; see
   PR #54 for the current result.
+
+
+## Third pass: reconcile the entire original review
+
+The previous five-commit batch covered three remaining migration/read gaps,
+plus tests and documentation; it did not complete the original feature review.
+`b6f8d6e` adds the [full follow-up audit](followup-audit.md). At its `b42fa24`
+baseline, 130 subrequirements were classified as 18 implemented, 25 partial,
+76 missing and 11 external/decision. These are baseline counts, not current
+release totals. Duplicate source rows share completion evidence. AD replacement
+and all G21–G24 gates remain in scope.
+
+| Item | Separate implementation commits | Completion and limits |
+|---|---|---|
+| G04: obsolete mounted route assertion | `7a28a44` | Adoption now reaches request-body validation. Focused actual serve/restart race passes. |
+| G04: authority-cutover publication stall | `f5624e7` | An active member whose original desired source/frozen configuration is obsolete returns superseded, allowing the serial worker to reconcile. Never acknowledges old data or retries a refused HTTP write. |
+| F33 / G13: remote node health | `49f9e8b` | Membership-only authenticated peer health, two-second total deadline, 1 MiB cap, strict peer identity and redacted failures. Older peers return explicit unsupported errors. |
+| F60a / G15: offline import commands | `48b11dd`, `32f9e81`, `f01d4db`, `54fcf48`, `01f35ed`, `39b13dc` | Shared reviewed plan machinery, separate AdGuard Home and Blocky adapters. Bounded YAML, no source fetching, deterministic selection and explicit losses. Supported subsets are intentional, not full source-product migration parity. |
+| F75b / G13/G15: audit verification CLI | `a097836` | Existing verifier endpoint with human/JSON output and nonzero tamper/unavailable/denied results. Real-router SQLite tamper, permission/license and cancellation tests pass. |
+| F24a / G07/G13: slip metric | `661174c` | Counts UDP truncated-response decisions separately from drops, survives reconfiguration, no client labels. Native UDP/TCP race acceptance passes. Group exemptions remain F24b. |
+| F74 / G13: central Grafana panels | `60a3af1` | Central availability, query shipping lag and audit spool drops; source/Helm JSON agree and existing dashboard/metrics/alerts tests pass. Missing central series are not reported as failures. |
+| F20b/F68a / G07/G23: AdGuard conformance execution | `f5d5316` | CI runs the existing first-party corpus against the checksum-pinned official v0.107.79 executable. Actual race comparator passes; two known deviations stay explicit. No copyleft source/data/executable is vendored. Full corpus/scale qualification is separate. |
+| F35c/F49 / G09/G12: webhook authentication | `5fc97d7` | Optional host-only bearer token file, bounded startup read, constant-time check before dispatch and restart-required rotation. Actual listener, configured startup failure and existing write-gate races pass. Default disabled; upstream v0.23.0 requires a trusted proxy to inject the header. |
+| F57 / G15: nested settings help | `d37f4ad` | Recursive schema help for list items, map keys/values and nested objects, preserving explicit field help. Accessible rendering passes 59 focused UI tests; Go metadata/serialization and existing rejection cases pass. |
+| F20c / G15: benchmark gate location | `a2bb3bf` | Unchanged gate moved to `hack/benchgate`; existing races and baseline self-check pass. Historical measured outputs are preserved; no new performance claim. |
+
+Validation of the publication fix:
+
+- Hosted CI `41171975087` on `b42fa24` failed the stale adoption assertion and
+  the new cutover browser case (148/149 passed). Its trace shows a successful
+  cutover response followed by repeated `SERVFAIL / servfail_unsynced`.
+- The old binary reproduces the browser failure in 1 of 10 repeated scenarios.
+  Four deterministic Go cases reproduce waiting on a changed nameserver source,
+  status update, deletion and UID replacement before the fix.
+- After the fix, all publication races pass, the full primaryruntime race
+  passes with actual Kubernetes envtest in 55.305 seconds, the driver race
+  passes in 17.713 seconds and the full servingbuild race passes in 141.841
+  seconds. The first primary run lacked envtest binaries; `make envtest`
+  installed the pinned assets and the complete package was rerun successfully.
+- Rebuilt-binary migration browser acceptance passes **10/10** with two workers
+  and five repetitions. Assertions, 10-second expectations and 30-second test
+  deadlines remain unchanged. Source publication lint reports zero issues.
+- `make test-adguard` executes the external comparator successfully under the
+  race detector. Benchgate relocation passes its race suite and unchanged
+  captured baseline self-comparison. Dashboard JSON generation/metric existence
+  and Prometheus rule checks pass.
+
+The final combined checks and hosted results for this pass are recorded below.
+The separate Cloudflare docs check is understood and excluded from this pass
+at the user's direction. `origin/main` was fetched and remains fully merged.
+
+
+Combined validation in this pass:
+
+- Generated OpenAPI 3.0/3.1, Go/TypeScript clients and CLI/settings references
+  are synchronized in `26fa782`; contract/reference drift checks pass.
+- Dashboard typecheck, full ESLint/theme checks and all 59 focused field/settings
+  tests pass. The rebuilt dashboard entry is 301.1 KiB gzip against the 600 KiB
+  budget. The local Hugo build passes for the changed migration/operator docs;
+  this does not resolve or claim a result for the excluded Cloudflare check.
+- Composed Go lint over CLI/API/config/importers, cluster health, primary runtime,
+  serving builder, ingress/DNS listeners, external-dns and benchgate reports zero
+  issues.
+- A separate static review found two concrete converter defects: forward-mode
+  omission when merging over recursive destination groups, and Blocky inline
+  regex entries exceeding the destination schema bound. `01f35ed` explicitly
+  emits forward mode, with actual canonical migration over existing recursive
+  groups; `39b13dc` applies the schema character bound, with ASCII and Unicode
+  1,024/1,025-character preview and actual-admission tests. Unrelated groups
+  and valid entries are preserved; incomplete filtering groups remain detached.
+
+- Full browser acceptance passes **149/149 in 4.4 minutes** against the rebuilt
+  SQLite binary after `5fc97d7`, including migration cutover, settings, access,
+  secondary/stub expiration and real DNS answers. Assertions, timeouts and
+  retries are unchanged. The first launch lacked the required KUDURRU_BIN and
+  was stopped at fixture setup; the complete rerun supplies the absolute binary
+  path. The embedded CGO-disabled test-license binary is 73,875,616 bytes,
+  below the 100,000,000-byte limit; tracked build output is restored.
+
+- The new webhook listener test reproduced a client-cleanup race (15/50 old
+  runs timed out during shutdown). `ce07354` drains response bodies and closes
+  its dedicated transport before server cancellation. It passes 200 listener
+  race repetitions and 20 shuffled full package runs. Production shutdown
+  deadlines, authentication and dispatch are unchanged.
+
+- Offline CLI races initially exhausted the existing three report-read attempts
+  while complete generations continued to publish (installed/served 9/8,
+  13/9, 17/15); the accepted job converged without replay 597 ms later.
+  A separate DNS assertion observed the legitimately served earlier primary
+  head before the imported RecordSet receipt. `c12dd3e` observes terminal
+  durable work, exact publication/primary acknowledgment and the committed
+  RecordSet UID/version/intent before one-shot CLI readback and DNS assertions.
+  It preserves selected/settings `--wait`, actual partial/nonzero outcomes,
+  cancellation and bounded-poll/no-replay coverage. Production code and
+  deadlines are unchanged. Five repeated full/current/cancellation races pass
+  in 125.274 seconds; the final partial `--wait` case passes ten repetitions
+  in 46.260 seconds; final scoped offline/CLI races pass in 43.501 seconds.
+- Both static-review fixes pass importer/API races; the integrated importer/API
+  selection passes in 1.159/3.673 seconds. Tests use the actual canonical
+  migration and embedded schema, including the distinct Unicode character
+  bound for direct object imports.
+
+- Final composed CLI/webhook races on the integrated converters and fixtures
+  pass (49.234/1.327 seconds): offline AdGuard/Blocky conversion/application,
+  selected/settings/partial completion, cancellation, no replay, audit verify,
+  webhook authentication and actual invalid-startup coverage. The final embedded
+  binary rebuild passes and remains 73,875,616 bytes. Hosted CI/security on the
+  pushed head remains the authoritative final runner result.

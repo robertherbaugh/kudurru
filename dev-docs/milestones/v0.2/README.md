@@ -46,6 +46,15 @@ version status below. Current migration adoption and imported settings, plus
 captured domain and unblock reads, are described in D224; full package and
 release qualification remain open.
 
+The [follow-up audit](followup-audit.md) now maps every original v0.2-targeted
+row to implementation evidence and remaining acceptance, splitting 75 rows
+into 130 subrequirements. Its baseline counts are historical; the integration
+update and gap ledger record subsequent closures by item and commit. Remote
+health, offline imports, audit verification CLI, slip metrics, central Grafana
+panels, nested settings help, optional external-dns webhook authentication
+and mandatory pinned AdGuard grammar conformance
+extend this pass.
+
 The recommended first secondary slice is implemented in `internal/secondary`,
 with raw immutable zone data, TCP/TLS AXFR and IXFR with TSIG, independent
 per-node SOA timers,
@@ -65,7 +74,8 @@ Stub acceptance covers native BIND UDP/TCP discovery, restart, expiry and the
 browser create/edit flow. Signed-secondary response assembly supports NSEC/NSEC3 and opt-out, with
 native BIND listener acceptance and durable manager acquire/restart coverage.
 
-Local DNSSEC validation, explicit trust/negative-trust anchors, raw cache
+Local DNSSEC validation, explicit trust/negative-trust anchors for forwarded
+answers, raw cache
 provenance and isolation, and final AD/CD/DO handling are implemented. Real
 BIND NSEC/NSEC3 listener and cache tests cover positive, alias, wildcard,
 negative and tampered data. Response processing adds configured policy
@@ -73,7 +83,10 @@ rewrites, DNS64, AAAA filtering, NXDOMAIN handling and rebinding protection,
 with nullable client-policy overrides, live settings, CLI metadata and dashboard
 editors. Native UDP/TCP and browser acceptance pass; see the
 [response-processing guide](../../../docs/deploy/response-processing.md). The modifier
-compiler and real edge packet-cache isolation acceptance remain in progress.
+compiler includes `$important` and `$badfilter`; the first-party AdGuard corpus
+now runs against a pinned official executable in CI. Native-recursive NTAs,
+remaining resolver follow-ups, scale and real edge packet-cache isolation
+still require the acceptance identified in the follow-up audit.
 
 The HA foundation includes complete versioned replication images, atomic
 replacement, persisted authority fencing, local follower reads, authenticated

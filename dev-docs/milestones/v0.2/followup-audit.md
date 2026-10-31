@@ -246,21 +246,27 @@ security/aging replication and rollback retaining new writes remain required.
 | F73 | AuditLog verification-key lifecycle independent of session rotations | Missing | `cmd/kudurru/auditlog.go: auditSealKeys` derives only current/previous encryption keys; `internal/audit/auditlog/verify.go` verifies with supplied ring. `auditlog_test.go` covers those keys, not durable retained-key lifecycle. | Independent persisted key ring/retention/compromise policy and multi-rotation retained-batch verification, backup/restore, bounded error reporting; G12, G13, G22. |
 | F74 | Central availability/shipping lag/audit-spool Grafana panels | Missing | `deploy/grafana/kudurru-overview.json` lacks the three metrics; alerts already exist in `deploy/prometheus/rules.yaml`; metric definitions in `internal/central/metrics.go` and `internal/audit/spool/`. | Panels using actual labels/stream dimensions, meaningful no-central-data behavior, valid JSON and synchronized chart copy; G13, G24. |
 | F75a | `GET /audit/verify` using existing verifiers | Implemented | `internal/api/authroutes.go` registers route; `auditverify.go`, `auditverify_test.go`, `audit_test.go`; `3df864c`. Permission/license gate, integrity/unavailable distinction, bounded shared scan and cache exist; underlying readers implement Verifier. | Retain final driver/live mounted acceptance; no second verification endpoint required; G13, G21. |
-| F75b | `kudurru audit verify` | Missing | No audit command family in `cmd/kudurru/cli.go` / `runtime.go`; existing `cmd/kudurru/auditlog.go` assembles server storage, not a CLI command. | Use F75a route; fail on tampered/unavailable, human/JSON output, permission/license/cancel and real-router CLI tests; G13, G15, G21. |
+| F75b | `kudurru audit verify` | Missing | `cmd/kudurru/observe.go: newAuditCmd` lists events but registers no verification subcommand at baseline; `cmd/kudurru/auditlog.go` assembles server storage. | Use F75a route; fail on tampered/unavailable, human/JSON output, permission/license/cancel and real-router CLI tests; G13, G15, G21. |
 
 ## Integration update after the audited baseline
 
-The parent reported the following while this audit was being prepared. Their
-commit objects and changed-file lists were inspected with `git show --stat`;
-they are **not in this detached baseline**. Execution outcomes below are
-attributed to the parent; this agent did not rerun them.
+These changes are integrated on PR #54 after the baseline above. Exact
+commands and execution results are recorded in [the gap ledger](gaps.md).
+Baseline statuses remain visible to preserve the original review; this table
+records their subsequent closure without counting duplicate rows twice.
 
-| Rows | Later evidence | Effect on remaining work |
+| Rows | Implementation and validation | Remaining scope |
 |---|---|---|
-| F24a | `661174c` adds the slip counter through `internal/stages/ingress/ratelimit.go` and serve, with native UDP/TCP proxy-attribution/TC tests in `internal/dnsserver/ratelimit_test.go`. Parent reports those tests pass. | Slip metric implemented; remove from implementation queue after integration. F24b group exemptions remain separate and missing. |
-| F74 | `60a3af1` adds central availability, query-shipping-lag and audit-drop panels, synchronized Helm data and `deploy/dashboard_test.go` checks. Parent reports existing validation passes. | Panels implemented; final deployment qualification still applies. No central-retention feature is implied. |
-| F20b, F68a | `f5d5316` adds `hack/test-adguard.sh`, `make test-adguard` and CI e2e invocation, pinned to official AdGuard Home **v0.107.79**. Parent reports the actual race-enabled comparator passes. | Missing CI wiring is implemented and an actual external-program run is reported. Retain corpus/scale limits and final hosted-run qualification; a binary harness now replaces the originally proposed container mechanism without copying copyleft source/data. |
-| G21–G23 context | Parent reports the separate desired-zone publication-starvation fix and deterministic regression test are committed; 10/10 repeated migration browser scenarios pass without assertion/timeout changes. Full primaryruntime race with envtest, driver race and servingbuild race also pass. | Keep these fixes/validation with parent. This report has no commit/command transcript for them and does not certify every row or AD/release gate. |
+| F33 | `49f9e8b`: authenticated remote member health, two-second total deadline, 1 MiB response limit, strict identity and redacted errors. Actual TLS peer/public-route races pass. | Older peers report unsupported; final multi-node deployment qualification remains. |
+| F60a | `48b11dd`, `32f9e81`, `f01d4db`, `54fcf48`, `01f35ed`, `39b13dc`: shared reviewed offline plan machinery and separate AdGuard Home/Blocky adapters. Explicit forward mode replaces recursive destination collisions, and structured Blocky entries respect the schema character bound. Previews never fetch source URLs or files; supported subsets and omitted semantics have explicit loss reports. | Conversion is intentionally partial; final combined CLI/current-API acceptance and generated contracts are recorded below in the ledger. Other F60 commands remain open. |
+| F75b | `a097836`: audit verification CLI reuses the existing permissioned/licensed route. Real-router tests cover actual SQLite tampering, unavailable verification, human/JSON output, denied access, cancellation and request deadlines. | Existing 30-second server cache remains; verification cannot prove deleted history never existed. |
+| F24a | `661174c`: cumulative slip counter, distinct from drops and retained across reconfiguration. Native UDP/TCP proxy-attribution/TC race tests pass. | F24b group exemptions remain separate and missing. |
+| F74 | `60a3af1`: central availability, query-shipping-lag and audit-drop panels, synchronized Helm data and existing dashboard/metric checks pass. | Missing central series are not treated as outages; final deployment qualification remains. No central-retention feature is implied. |
+| F20b, F68a | `f5d5316`: mandatory CI invocation of the first-party corpus against checksum-pinned official AdGuard Home **v0.107.79**. The actual race-enabled comparator passes. | Retain corpus/scale limits and final hosted-run qualification; the separate executable replaces the proposed container mechanism without copying copyleft source/data. |
+| F35c, F49 | `5fc97d7`: optional host-only file-backed webhook bearer authentication, bounded startup read, constant-time pre-dispatch check and restart-required rotation. Config, actual listener, runServe invalid-startup and preserved write-gate races pass. | Default disabled; upstream external-dns v0.23.0 needs a trusted proxy to inject Authorization. Transport authentication does not grant current mutation authority or implement direct Kubernetes watches. |
+| F57 | `d37f4ad`: recursive schema help with field override/fallback, populated real nested examples and accessible UI rendering. Metadata/serialization checks and 59 focused UI tests pass. | Generated contracts and final composed checks follow below; validation/write semantics remain unchanged. |
+| F20c | `a2bb3bf`: move the unchanged regression gate to `hack/benchgate`, update callers and documentation. Gate race tests and baseline-against-itself checks pass. | Historical measurements retain their original package path. This is not a fresh performance qualification; F20d remains missing. |
+| G04, G21–G23 | `7a28a44` corrects the obsolete mounted adoption gate assertion. `f5624e7` stops obsolete-source publication waits without acknowledging stale data. Four deterministic regressions fail before the fix; publication races, full primaryruntime/driver/servingbuild races and 10/10 repeated migration browser cases pass afterward. | Existing assertion/deadline strength is preserved. Final hosted CI and all wider AD/release gates remain separate. |
 
 ## Original review crosswalk
 
@@ -284,7 +290,7 @@ in the original review without a v0.2 follow-up row are still required.
 | G17 / AD3–AD7 | F11, F12, F15; production authority/security/ownership and actual Windows evidence. |
 | G18 / AD8–AD11 | F12d, F14, F15; DHCP/name protection, aging/security persistence and administration. |
 | G19 / AD12 | F13b, F15; final cutover, lossless rollback and tested supported Windows matrix. |
-| G20 / inventory | All 75 targeted source rows mapped to 130 explicit subrequirements here. No original row deleted or retargeted. |
+| G20 / inventory | All 75 targeted source rows mapped to 130 explicit subrequirements here. Original identities remain here when completed source rows are removed; no requirement is retargeted. |
 | G21 / production contracts | Applies to every row; model/helper/test existence does not mount a feature. API/CLI/UI/schema/permissions/docs must agree. |
 | G22 / upgrade/failure | All supported-driver migrations, durable restarts, fences and multi-process partition/rejoin remain final-artifact gates. |
 | G23 / interoperability/performance | F05, F11, F15–F31, F39, F43, F55, F61, F63, F68; tests with optional external-program skips require unskipped results. |
@@ -293,26 +299,23 @@ in the original review without a v0.2 follow-up row are still required.
 ## Prioritized bounded implementation queue
 
 “Owner” is a proposed workstream, not an assignment or authorization to change
-production. Each item should be its own reviewable commit. Parent owns global
-gap/design/changelog/generated artifacts and composed checks. Completed
-F24a/F74 and the AdGuard CI wiring are removed from this queue. Active remote
-health (F33), offline imports (F60a), desired-zone publication starvation and
-the two hosted CI corrections are reserved for their current owners.
+production. Each item should be its own reviewable commit, with synchronized
+gap/design/changelog/generated artifacts and combined checks. Completed
+remote health (F33), offline import subsets (F60a), audit verification CLI
+(F75b), slip metrics (F24a), panels (F74), AdGuard CI wiring and benchgate
+relocation (F20b/F20c), nested settings help (F57) and webhook authentication
+(F35c/F49) are recorded above and removed from this queue.
 
 | Priority / IDs | Proposed owner / dependencies | Concrete next change and exact acceptance |
 |---|---|---|
 | P0 / F47 | IAM; owner decision on lifetime/review/outage policy | Bound offline SA lifetime or periodically TokenReview. Reject malformed/future issuance and overlong tokens; test deleted SA/pod, cache expiry and API outage, retaining original proof deadlines. |
-| P0 / F49 = F35c | Integrations/security; existing webhook seam | Optional file-backed shared header checked before parsing/handling. Missing/wrong token refuses without exposing it; disabled mode stays compatible; define rotation semantics; test actual listener and update docs. This does not remove current-command gates. |
 | P0 / F01 | Store/startup; explicit config/upgrade compatibility policy | Independent expected cluster identity during API outage. Test wrong/missing identity, old saved state and valid current-cluster recovery; never accept a successor/live source to repair a captured read. |
-| P1 / F57 | This worktree, assigned after audit commit; API metadata + dashboard recursive renderer | Add Shape Help and serialized nested help, populate real keys/items/values; accessible recursive rendering with existing field/option help compatibility; focused Go/UI tests. Parent regenerates clients/schema refs. No validation/current-command changes. |
-| P1 / F75b | CLI/observability; existing F75a endpoint | Add `audit verify` using existing route; correct human/JSON output and nonzero tamper/unavailable status; actual-router permission/license/cancellation tests. |
 | P1 / F04 | Store test stream; scoped kube envtest | Shared invalid-input table on sqlite/kube with same structured rejection and no stored mutation; include schema/unknown-field/size/transition cases. Existing CRUD conformance is not duplicated. |
 | P1 / F72a → F72b | Observability/API, then CLI; bounded kube discovery/count | Add AuditLog missing/forbidden/unavailable/over-50k diagnostic; actual Diagnosis response/UI first, doctor reuses it; tests protect permission boundaries and timeout bounds. |
 | P1 / F64a | HA/observability; persisted serving authority | Export actual fenced gauge; tests drive fencing/restart/promotion and prove transitions; parent synchronizes alert/panel artifacts. DNS-only last-good behavior must not report writable readiness. |
 | P1 / F29b | Resolver; explicit recursive NTA config contract | Bounded absolute-expiry recursive NTA model and cache scope; tests cover expiry/reload/restore, forwarded/recursive isolation and AD/CD/DO semantics. Existing forwarded NTAs stay intact. |
 | P2 / F22a | Listener/config; existing Limits options | Expose typed TCP/QUIC/idle knobs, wire limits, document restart behavior; actual listeners prove each bound and invalid/default/zero handling. |
 | P2 / F06a → F06b | Zone/transport; public type/schema and final current keyring proof | Separate NOTIFY key and source in small steps. Prove configured key/rotation refusal and actual source address; preserve original elected writer/publication/NOTIFY ack requirements. |
-| P2 / F20c | Build tools; no behavior dependency | Move benchgate to hack and update Makefile; focused existing benchgate tests plus unchanged gate result on a small fixture. Do not regenerate machine benchmarks. |
 | P2 / F70 | Central DB; reference/pruning transaction design | Add dictionary pruning bounded against all retained facts/rollups and concurrent shipping. PostgreSQL tests prove no dangling references/data loss and stable retry/restart. |
 
 AD F11–F15, core HA wiring, RFC 8198/5011, console diff-apply and external
@@ -331,8 +334,7 @@ F20/F68a, F35c/F49 and F65/F67 must share their eventual implementation and
 acceptance evidence rather than be counted as independent feature delivery.
 F64c retains its original explicit v1.0 subtarget inside a bundled v0.2 row.
 
-Validation for this document: enumerate Target cells containing v0.2, compare
+Validation at the `b42fa24` baseline: enumerate Target cells containing v0.2, compare
 F01–F75 coverage and suffix uniqueness, count status cells, verify referenced
 concrete repository paths, and run `git diff --check`. Product tests were not
-run. All remaining G21–G24 acceptance is retained; subsequent F57 implementation
-and its test results belong in a separate commit and result note.
+run. All remaining G21–G24 acceptance is retained; subsequent implementation and test results are attributed separately above.
