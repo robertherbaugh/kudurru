@@ -174,6 +174,7 @@ type SnapshotVerifier interface {
 // VerifierFunc adapts a captured verification operation.
 type VerifierFunc func(context.Context) error
 
+// Verify calls the wrapped verification function with the original context.
 func (f VerifierFunc) Verify(ctx context.Context) error { return f(ctx) }
 
 // ErrTampered identifies changed contents, invalid seals or broken audit links.
