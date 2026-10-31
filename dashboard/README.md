@@ -5,6 +5,8 @@ app embedded into the binary with `go:embed` and served by `web.Handler`.
 
 - **Toolchain:** Bun (package manager, script runner) with Vite 8 (rolldown)
   for the dev server and production build, Vitest + Testing Library for tests.
+  Unit and browser tests use Node 24, including its built-in SQLite support
+  for the browser startup fixture's read-only checks.
 - **UI:** React 19 + TypeScript (strict) with [Astryx](https://github.com/facebook/astryx)
   (`@astryxdesign/core` and the neutral/stone/y2k themes, MIT, consumed as
   prebuilt CSS and JS, pinned exactly while Astryx is in Beta).
@@ -33,12 +35,21 @@ make dashboard-lint      # eslint (zero warnings) + built themes current + tsc -
 make dashboard-build     # production bundle into dashboard/dist + license file + size budget + precompression
 ```
 
-`make dashboard-e2e` builds the real binary and runs Playwright with four
-workers. Each worker owns a temporary SQLite node, upstream, and admin session;
+`make dashboard-e2e` requires Node 24 (also used in CI), builds the real binary,
+and runs Playwright with four workers. Each worker owns a temporary SQLite node,
+upstream, and admin session;
 concurrent tests never change another worker’s canonical generation or policies.
 Writes and credential submissions remain single-shot. Safe read observations
-wait for publication. Worker teardown stops the node and removes its session
-file; `KUDURRU_E2E_KEEP=1` retains temporary node data for local diagnosis.
+wait for publication. Before login, fresh-node fixtures use read-only SQLite
+metadata, DNS answers and ops readiness to wait for seeded zone and record
+status, lifecycle receipts and NOTIFY acknowledgment. These observations do not
+guarantee admission after an independent change; a handler refusal remains a
+test failure. The metadata helper is specific to fresh fixture databases and
+does not read credential or session rows. Worker teardown stops the node and
+removes its session file; `KUDURRU_E2E_KEEP=1` retains temporary node data for
+local diagnosis.
+Each server writes a separate log file so parallel instances cannot overwrite
+one another's failure evidence.
 
 Inside `dashboard/`: `bun run dev` proxies `/api` to `KUDURRU_API`
 (default `http://127.0.0.1:8080`) for work against a real server;

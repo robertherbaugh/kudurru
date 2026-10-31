@@ -508,3 +508,89 @@ skips (`internal/api`: 10.347 seconds; `cmd/kudurru`: 166.190 seconds, with
 100,000,000-byte limit; dashboard entry gzip is 301.1 KiB against 600 KiB.
 The local documentation build and whitespace checks pass. This closes the
 local cutover regression, not the remaining feature packages or release gates.
+
+### Browser startup login follow-up
+
+[Security 41180620042](https://github.com/robertherbaugh/kudurru/actions/runs/41180620042)
+passes all applicable checks on `2048b1b`. Its
+[CI run](https://github.com/robertherbaugh/kudurru/actions/runs/41180619994)
+passes every migration browser scenario but exposes two distinct login/setup
+failures (147/149 browser scenarios pass). Shared worker setup receives a 503
+outside the permitted pre-handler `generation_pending` category, before the
+branding test body starts. The community policy-limit test's single login
+returns `503 unavailable`, current writable serving generation unavailable.
+Neither refused login is replayed. The retained community server log belongs
+to a parallel sibling: their identical filenames allowed the later teardown
+to overwrite the failing server's evidence.
+
+Ten controlled local starts all log in successfully, so they do not reproduce
+the hosted refusal. However, six return from the old ops-ready check without
+current zone status, and eight have subsequent zone/lifecycle metadata writes.
+Independent review also identifies the seeded record set's status queue as a
+separate startup writer. The hosted artifacts lack the exact writer and
+publication state, so no particular write is attributed to the hosted failure.
+
+`49a501d` changes the fixture completion check to observe only fresh-database zone, record,
+lifecycle and head metadata, then verifies expected DNS and normal ops
+readiness before returning the server for login. It waits for current-generation
+Ready status, matching lifecycle UID/version receipts and cleared NOTIFY intent
+within the original 60-second startup budget. It does not read credentials or
+sessions, retry handler refusals, weaken license assertions, or change production
+admission. Unique per-instance log files preserve parallel failure evidence.
+The helper uses Node 24's read-only SQLite support, matching CI. These observations
+settle known fixture startup work; they cannot promise admission after an
+independent future change and do not generalize to restored/replaced databases.
+
+All ten controlled starts after the change return settled metadata, then
+complete exactly one successful login without subsequent changes to the
+observed route/record/lifecycle/head metadata. The post-login diagnostic wait
+is observation only, not part of the startup predicate. All 21 SQLite helper
+unit cases pass, including stale/missing record status and read-only behavior.
+Typecheck and scoped ESLint pass. Two repetitions of the branding and community
+license cases pass all six scenarios in 1.7 minutes, preserving real license
+withdrawal and exact 402/default-policy assertions. `93e568d` pins the regular
+dashboard test job to Node 24 as well, so both test jobs support the helper's
+built-in SQLite API explicitly.
+
+After integration, all **149 browser scenarios pass with four workers** in
+2.7 minutes, matching hosted concurrency. The product binary is unchanged from
+the validated cutover build. Local docs and whitespace checks also pass.
+
+The same hosted run's final Go shard also exposes two separate dry-run fixture
+failures: `TestServingZoneCommandFinalExpiryIncludesEmptyAndDryRun` and
+`TestServingZoneCommandReauthenticatesCurrentRawProofAndAllScopes` receive 503
+before their expected 401/final-expiry and 403/current-scope decisions. Both
+create a forward zone and wait only for `ProtectedReady` before the challenged
+request. The exact final-clock, raw-proof reauthentication, prepared-callback
+and unchanged durable-generation assertions remain required. All other CI jobs
+and separate GitHub workflows pass on `2048b1b`; its overall CI result remains
+failed until the browser and dry-run fixture follow-ups are validated.
+
+Twenty local dry-run baseline repetitions pass without reproducing the hosted
+503. A separate diagnostic run records 20 old readiness observations with a
+current writer, matching installed/served generation and active lifecycle, but
+without the driver's publication acknowledgment. This demonstrates an
+incomplete fixture boundary; it does not identify the unrecorded hosted
+transition. These Go fixtures run no controller, so their pending work differs
+from the browser's status queues.
+
+`e8685a8` adds a forward-zone wait that requires the same complete durable,
+installed and served generation; the exact desired UID/version and active
+admitted lifecycle member; matching installed/published driver acknowledgment;
+and the current writer term/incarnation through the final lease check.
+It runs before the scripted clock or single challenged request, retaining the
+existing 15-second fixture budget. No production command, refusal handling,
+credential/scope assertion or durable-generation equality check changes.
+
+The final helper passes twenty two-CPU dry-run race repetitions (40 subtest
+executions, 64.743 seconds), and ten one-CPU repetitions of all five expiry
+and all three raw-proof scope modes (80 subtest executions, 162.706 seconds).
+Scoped CLI-package lint reports zero issues. A broader zone-command race
+selection was canceled after including unrelated expensive multi-chunk import
+tests; it had no completed result and is not counted as passing validation.
+
+The full dashboard unit suite passes **854 tests across 66 files** on Node 24
+in 181.30 seconds, including the 21 startup helper checks. Combined with the
+149-scenario four-worker browser pass, this validates the local composition.
+The next pushed head's hosted results remain separate and are recorded on
+PR #54; no feature-package or release-completion claim follows from these fixes.
