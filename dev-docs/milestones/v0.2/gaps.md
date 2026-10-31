@@ -1,6 +1,6 @@
 # v0.2.0 implementation and validation gaps
 
-Draft baseline: 2026-10-31, PR [#54](https://github.com/robertherbaugh/kudurru/pull/54),
+Baseline: 2026-10-31, PR [#54](https://github.com/robertherbaugh/kudurru/pull/54),
 commit `8c63961`. This is a working completion ledger, not release approval.
 The [feature packages](README.md#feature-packages-and-acceptance-criteria),
 [design record](../../design-record.md#132-v020--clay-copies-12-weeks),
@@ -13,7 +13,7 @@ reconcile it with code and tests before implementing it again. Existing unit
 coverage does not by itself close production wiring, interoperability, UI,
 upgrade, or failure-recovery acceptance.
 
-## Current evidence
+## Baseline evidence
 
 - Security workflow [41166682393](https://github.com/robertherbaugh/kudurru/actions/runs/41166682393)
   passes, including Semgrep, Go reachability analysis, checkout scanning, and
@@ -27,23 +27,23 @@ upgrade, or failure-recovery acceptance.
   requests return `503 current_command_unavailable`. The production gate in
   [serving_routes.go](../../../cmd/kudurru/serving_routes.go) deliberately
   refuses these writes until they have complete current command admission.
-- `VERSION` is `0.2.0`. Some historical planning text and the PR description
-  still name `0.1.0` or older base commits; those statements are not evidence
-  of current release readiness.
+- `VERSION` is `0.2.0`. At baseline, historical planning text and the PR
+  description still named `0.1.0` or older base commits; those statements are
+  not evidence of current release readiness.
 
 ## First implementation batch
 
-These are regressions in existing public workflows and take priority over
+These were regressions in existing public workflows and take priority over
 new feature breadth. Each row gets a separate implementation commit. Keep
 the original raw credential, writer fencing, transactional ownership and
 final expiry checks; removing the unavailable-route gate alone is not a fix.
 
-| ID | Gap and evidence | Work | Required acceptance | Status |
+| ID | Baseline gap and evidence | Work | Required acceptance | Status |
 |---|---|---|---|---|
-| G01 | Confirmed: allowlist, denylist, domain and query-log convenience mutations lack current command admission; eight browser scenarios fail | Plan bounded list/policy edits in the concrete current transaction; authorize the complete operation, including no-ops; mount only supported routes | Existing domain API behavior; owner/permission/expiry/rollback/follower tests; real SQLite HTTP and DNS publication; `dashboard/e2e/allowlist.spec.ts` | Assigned: domain-command agent |
-| G02 | Confirmed: migration apply/start/adopt/decommission remain gated; three migration browser scenarios fail | Carry original current authority through migration writes, durable reports and background work; preserve explicit partial-success semantics without unchecked retries | Preview/apply consistency, managed ownership, privilege revocation, cancellation/restart and journal integrity; `dashboard/e2e/migration.spec.ts` | Assigned: migration-command agent |
-| G03 | Confirmed: unblock approval/denial is gated; block-page approval browser scenario fails | Admit request decisions and their list/policy effects as a complete current command; preserve decision-only permission and time-limited approval ownership | Approve/deny/revoke/expiry/no-op behavior, atomic failure, original credentials, restart and real DNS; `dashboard/e2e/requests.spec.ts` | Assigned: unblock-command agent |
-| G04 | Confirmed: full CI is not green | Review and compose the three fixes, rerun existing browser acceptance and relevant Go/race checks, then inspect CI on the pushed commit | All existing checks pass without skipping failing scenarios or loosening admission | Pending integration |
+| G01 | Confirmed: allowlist, denylist, domain and query-log convenience mutations lack current command admission; eight browser scenarios fail | Plan bounded list/policy edits in the concrete current transaction; authorize the complete operation, including no-ops; mount only supported routes | Existing domain API behavior; owner/permission/expiry/rollback/follower tests; real SQLite HTTP and DNS publication; `dashboard/e2e/allowlist.spec.ts` | Implemented in `4db982a`; local command, DNS/restart and browser acceptance pass |
+| G02 | Confirmed: migration apply/start/adopt/decommission remain gated; three migration browser scenarios fail | Carry original current authority through migration writes, durable reports and background work; preserve explicit partial-success semantics without unchecked retries | Preview/apply consistency, managed ownership, privilege revocation, cancellation/restart and journal integrity; `dashboard/e2e/migration.spec.ts` | Partial implementation in `1e2c2d0`; adoption and imported settings remain open |
+| G03 | Confirmed: unblock approval/denial is gated; block-page approval browser scenario fails | Admit request decisions and their list/policy effects as a complete current command; preserve decision-only permission and time-limited approval ownership | Approve/deny/revoke/expiry/no-op behavior, atomic failure, original credentials, restart and real DNS; `dashboard/e2e/requests.spec.ts` | Implemented in `63f2e53`; local command, DNS/restart and browser acceptance pass |
+| G04 | Confirmed: full CI is not green | Review and compose the three fixes, rerun existing browser acceptance and relevant Go/race checks, then inspect CI on the pushed commit | All existing checks pass without skipping failing scenarios or loosening admission | Integrated in `608e2f0`; final hosted CI still required |
 
 ## Remaining feature packages
 
@@ -91,6 +91,50 @@ the production binary and deliberately refuses every UPDATE.
 
 ## Completed work in this pass
 
-Implementation commits and validation results will be recorded here as the
-first batch is reviewed and integrated. A failed or unrun check stays visible;
-an agent's completion report alone is not acceptance evidence.
+Three isolated subagents produced separate signed-off commits, reviewed and
+composed on the existing PR branch:
+
+- `1e2c2d0`: current migration apply/start and authority cutover; each destination
+  step and durable outcome commit together. History uses the original complete
+  image. Object steps support DNSZone, DNSRecordSet, BlockList, ClientGroup and
+  Policy. Adoption remains gated. Imported settings after successful object
+  steps produce an explicit durable unavailable error; after object failures
+  they remain `not_applied`. Revocation, cancellation and writer loss preserve
+  the last authorized journal state and never trigger privileged cleanup or
+  automatic replay.
+- `63f2e53`: atomic unblock approval, denial, deletion and elected cleanup;
+  original credential and license deadlines, shared-entry ownership, canonical
+  retention settings, and cache invalidation across every scope.
+- `4db982a`: current domain/allowlist/denylist/query actions and list exceptions;
+  bounded detached plans preserve delegated permissions, managed ownership,
+  batch item isolation and original source-body receipts. Existing domain GET
+  projection work is unchanged and remains part of G21.
+- `608e2f0`: composed route acceptance and design decision D223.
+- `ffde215`: lint cleanup for the new adapters and removal of the obsolete
+  cache query-type list.
+
+Combined validation on the implementation commits:
+
+- All 13 existing `allowlist.spec.ts`, `migration.spec.ts` and `requests.spec.ts`
+  scenarios pass against the rebuilt SQLite binary (1.1 minutes), including
+  every previously failing scenario. No browser assertions were changed.
+- Full affected-package races pass for `internal/api`, `internal/domainlist`,
+  `internal/unblock`, `internal/servinghttp` and `internal/servingbuild`
+  (`GOMAXPROCS=3 go test -race -p 2`, fresh run). The scoped current-command and
+  mounted DNS/restart runtime races pass in 123.317 seconds with `licensetest`.
+- Scoped `go vet` and CGO-disabled compilation pass for those packages and
+  `cmd/kudurru`. The dashboard build and CGO-disabled test-license binary build
+  pass; the binary is 73,568,416 bytes against the 100,000,000-byte budget.
+  The tracked dashboard placeholder was restored.
+- After `ffde215`, scoped golangci-lint reports zero issues and the route test
+  passes. The final mounted unblock DNS/restart race also passes (8.610 seconds).
+- Security [41169879571](https://github.com/robertherbaugh/kudurru/actions/runs/41169879571)
+  passes all applicable PR jobs on integrated commit `608e2f0`, including
+  SAST, Go vulnerability reachability, filesystem and both image scans.
+- Full existing browser acceptance passes: **147/147** in 3.9 minutes with two
+  Chrome workers. The hosted dashboard browser job also passes in
+  [CI 41169879456](https://github.com/robertherbaugh/kudurru/actions/runs/41169879456).
+  That run predates lint cleanup `ffde215`; the final hosted CI result remains
+  G04. Check the PR's current commit for the final rerun.
+
+These checks do not close the remaining feature packages or release gates.
