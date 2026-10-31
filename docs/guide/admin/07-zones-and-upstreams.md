@@ -528,3 +528,34 @@ Click **Delete** to remove a group that is not in use.
 | Export a zone | `kudurru zones export <zone>` |
 | Send NOTIFY | `kudurru zones notify <zone>` |
 | Change the upstreams | `kudurru settings set upstreams.bootstrap=9.9.9.9,1.1.1.1` |
+
+
+### Select an outbound NOTIFY key and source
+
+For primary zones, the creation wizard and **Zone settings** expose **NOTIFY
+TSIG key** and **NOTIFY source address**. Enter only a configured key name,
+never its secret. Clearing the key uses the first transfer key, or unsigned
+NOTIFY if neither is configured. A missing selected key fails delivery rather
+than sending unsigned traffic. These options apply when the zone's existing
+NOTIFY mode enables delivery; they do not enable NOTIFY or change which keys
+may request a transfer.
+
+The source is a literal local IPv4 or IPv6 unicast address. Clearing it inherits
+the global `notify.source`, then system selection. Hostnames, ports, scoped or
+IPv4-mapped IPv6 addresses are rejected. A valid address that cannot bind or
+reach a target's address family fails without an alternate source. NAT can
+still change the address observed by the secondary.
+
+The same optional fields are available through zone YAML and the object API:
+
+```yaml
+spec:
+  policy:
+    notify: specified
+    notifyTargets: [192.0.2.20]
+    notifyTSIGKeyRef: notify-key.example.
+    notifySource: 192.0.2.10
+```
+
+Both selected key and source belong to the captured zone policy. Rotation or a
+policy change during delivery cannot acknowledge the obsolete pending intent.

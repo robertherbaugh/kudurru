@@ -18,7 +18,7 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F29b, F09b and F06; the parent integrates F72/F22b. Freed agents take
+agents currently own F31, F09b and F05; the parent integrates F29b/F06/F56. Freed agents take
 the next independent package, retaining original proofs, ownership, current
 transactions and final credential/license checks. No refused mutation replay.
 
@@ -34,9 +34,10 @@ transactions and final credential/license checks. No refused mutation replay.
    interoperability and bounded-work evidence; retain all transport/cache and
    client-policy isolation requirements.
 5. Complete AD discovery, principal/record permissions, aging, migration and
-   rollback, followed by real Windows/DC/member/DHCP acceptance. A pending
-   request asks for disposable Windows and two-VM keepalived lab hostnames and
-   roles. Lab scope is not inferred from silence or existing production access.
+   rollback, followed by real Windows/DC/member/DHCP acceptance. The owner has no Windows or two-VM lab and authorized disposable Docker
+   acceptance instead. Implement isolated container keepalived/AD protocol
+   checks and provide a concrete Windows lab prompt. Samba cannot certify
+   Windows DC/member/DHCP behavior; retain that exact external gate.
 6. Finish all public contracts, upgrade/failure, performance/interoperability
    and deployment/release gates on the final artifacts. Publishing a release,
    changing release branches or deploying to production is not part of this work.
@@ -57,9 +58,9 @@ runners. Unit tests cannot substitute for those results.
 | F02d | `InternalKinds` once internal kinds exist | Store and HA | Implemented; final gates open |
 | F03 | `WatchOptions.ResourceVersion`: replay-as-Added vs true resume | Store and HA | External acceptance/decision open |
 | F04 | Shared sqlite/kube table rejecting the same inputs | Store and HA | Integrated d4075f5; scoped real-driver races pass |
-| F05 | Cache parsed endpoints per record-set object | Zones and AD | Queued: partial |
-| F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Active: NOTIFY agent |
-| F06b | Per-zone `notifySource` | Zones and AD | Active: NOTIFY agent |
+| F05 | Cache parsed endpoints per record-set object | Zones and AD | Active: record-cache agent |
+| F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Integrated c80c6f2/46d7641; actual sender and composed SQLite/Kubernetes schema races pass |
+| F06b | Per-zone `notifySource` | Zones and AD | Integrated c80c6f2/46d7641; actual source/refusal races and UI unit tests pass |
 | F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Queued: missing |
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Queued: missing |
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Queued: missing |
@@ -110,9 +111,9 @@ runners. Unit tests cannot substitute for those results.
 | F27 | RFC 8198 aggressive NSEC/NSEC3 cached synthesis | DNS and resolver | Queued: missing |
 | F28 | RFC 5011 automatic trust-anchor updates | DNS and resolver | Queued: missing |
 | F29a | Expiring negative trust anchors for forwarded validation | DNS and resolver | Implemented; final gates open |
-| F29b | Negative trust anchors for recursive groups | DNS and resolver | Active: recursive NTA agent |
+| F29b | Negative trust anchors for recursive groups | DNS and resolver | Integrated ddc5f2d; native/socket, captured-publication and actual Kubernetes schema races pass |
 | F30 | DNSSEC validation of forwarded answers | DNS and resolver | Implemented; final gates open |
-| F31 | DNS cookies to authoritative servers | DNS and resolver | Queued: missing |
+| F31 | DNS cookies to authoritative servers | DNS and resolver | Active: recursive-cookie agent |
 | F32 | Persist node-scope API changes or remove write half | Operations and UI | Queued: partial |
 | F33 | Remote `GET /nodes/{name}/health` | Operations and UI | Integrated; final gates open |
 | F34 | `/auth/me` exposes zone-scoped permissions | IAM and access | Implemented; final gates open |
@@ -148,7 +149,7 @@ runners. Unit tests cannot substitute for those results.
 | F54a | Regex “overrides block list” explanation | Operations and UI | Queued: missing |
 | F54b | Regex allow/deny cache invalidation | Operations and UI | Queued: partial |
 | F55 | Per-digest index for paginated URL entries | Operations and UI | Queued: missing |
-| F56 | Self-host Inter/JetBrains Mono in Kudurru theme | Operations and UI | Queued: missing |
+| F56 | Self-host Inter/JetBrains Mono in Kudurru theme | Operations and UI | Integrated 13c0c9e; 7 browser/9 theme tests and 480.5 KiB entry payload pass |
 | F57 | Nested Shape help for list/map elements/keys | Operations and UI | Integrated; final gates open |
 | F58a | Astryx record-delete AlertDialog | Operations and UI | Implemented; final gates open |
 | F58b | `/queries/export` API and query-log link | Operations and UI | Queued: missing |

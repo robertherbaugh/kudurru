@@ -676,7 +676,7 @@ ready; a real verifying HTTP/3 client follows it with the same selector.
 Plaintext, proxy headers, different public ports and nonmatching/missing/stopped
 listeners do not advertise. Focused races pass in 1.299s and the full dnsserver
 race suite in 30.461s. Reverse proxies and external UDP reachability remain
-explicit deployment responsibilities. Response padding is F22c, still open.
+explicit deployment responsibilities. Response padding is recorded in the subsequent F22c closure.
 
 ### F22c negotiated encrypted response padding
 
@@ -690,3 +690,75 @@ after the verification library had modified ARCOUNT; it now verifies a copy and
 keeps exact original bytes for unchanged record/signature assertions. Final
 focused races pass in 1.255s, full transport races in 30.498s, lint zero issues.
 No external interoperability or final artifact qualification is inferred.
+
+
+### F56 self-hosted dashboard fonts
+
+`13c0c9e` pins both OFL font packages, includes their full license texts in the
+embedded bundle and records source checksums. Kudurru theme tokens select
+Inter/JetBrains Mono; unmodified Latin normal/italic variable faces cover all
+four UI weights, with system fallbacks for unavailable fonts and other scripts.
+The CSS uses relative hashed assets under the unchanged CSP. The budget now
+counts CSS dependencies and raw WOFF2 bytes: **480.5 KiB** entry transfer against
+600 KiB, with all four faces counted even if the first page does not use them.
+
+A newly rebuilt CGO-disabled test binary passes **7 browser scenarios in
+20.1 seconds**: real embedded root/prefixed assets with external requests
+blocked, every normal/italic weight, actual Inter heading painting, shipped
+license text, download-failure navigation and light/dark hover contrast. Nine
+existing theme tests pass; typecheck, scoped ESLint, theme-generation check and
+embedded-handler races pass. The final handler run occurs after the final
+bundle build completes. This binary/test subset does not replace the pending
+complete final artifact/browser/release gates.
+
+### F06 independent NOTIFY key and source
+
+`c80c6f2` and `46d7641` integrate separate backend and dashboard controls. The
+explicit key is independent of transfer authorization; empty retains the old
+first-transfer-key/unsigned behavior. The per-zone literal source overrides
+host `notify.source`; empty preserves global/system selection. Missing keys,
+rotation/revocation, unavailable/wrong-family source and current policy changes
+refuse without alternate identity/source or obsolete intent acknowledgment.
+Full normalized transfer policy and original elected writer/publication/final
+checks remain intact. The primary-zone wizard/settings editor supports creation,
+editing, clearing, validation/help and exact If-Match conflict refusal.
+
+Regenerated manifests, Helm CRDs and embedded schemas retain the new public
+fields. OpenAPI/Go/TypeScript generation runs without a wire-file change because
+object schemas are generic; generated CRD/operator references change. Actual
+IPv4/IPv6 UDP, distinct-key signing and current-command races pass. Combined
+unoverlaid parent races: zone 1.334s, notifier 2.012s, validator 1.594s,
+primaryruntime/network 43.225s, API 3.441s, cmd 37.878s, servingbuild 8.042s. This
+includes F29 publication/reload checks and existing mounted NOTIFY regressions.
+Integrated dashboard unit tests pass 86/86 in 7.11s with typecheck.
+
+### F29b recursive exceptions and actual installed schema
+
+`ddc5f2d` uses a separate bounded recursive NTA list with absolute expiry and
+shared immutable matching. Active exception identity scopes native caches and
+raw answers; cache restore/removal cannot renew the exception. Native provenance
+marks only excepted RRsets, so expired exceptional signatures remain data while
+outside alias proofs retain their own deadline and can refuse the answer.
+Agent final seven-package races and ten repeats of real-socket NTA cases pass;
+only the pre-existing optional live-Internet test skips. Parent regeneration
+removes the temporary agent schema overlay, and the complete-publication/reload
+races above pass using ordinary embedded artifacts.
+
+Actual Kubernetes envtest contract races pass in 5.877s: the installed CRDs preserve
+NOTIFY choices and the original recursive exception timestamp; direct API
+updates reject invalid keys/sources/exception shapes without changing stored
+resource versions. The first new fixture marshaled a whole zero-valued upstream
+config, correctly rejected by existing enums; it now submits only its intended
+partial settings, preserving all admission assertions. D238/D241 record the
+policies. External DNS interoperability and complete release gates remain open.
+
+
+F06 browser composition in `94869e5` passes with the newly rebuilt integrated
+binary (11.3s): the real zone editor persists and clears both choices while
+preserving transfer policy and metadata, with one PUT per action. The initial
+fixture captured an ETag before first controller completion and correctly got
+412. The final fixture observes Ready/current generation before opening the
+editor. Existing temporary record-read 503s during policy publication are
+recognized only on this test's exact record route; eventual 200, visible recovered
+page and persisted values remain required. No mutation is replayed. Final
+combined Go lint reports zero issues; browser typecheck and ESLint pass.

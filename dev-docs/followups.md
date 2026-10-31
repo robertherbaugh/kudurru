@@ -33,7 +33,7 @@ The evidence audit preserves their original requirements and limits.
 | Item | Source | Target |
 |---|---|---|
 | Controller zone builds parse every record per zone reconcile (paced Apply → status p50 0.4 ms → 2-3 ms at 1,000 record sets); cache parsed endpoints per record-set object and copy RRs into each build | dev-docs/milestones/m2/xfr.md | v0.2 (moved from M3: performance only; status writes stay in the low milliseconds at 1,000 record sets) |
-| A NOTIFY key field in `ZonePolicy` (NOTIFY is signed with the first `transferTSIGKeyRefs` key today) and a `notifySource` per zone | dev-docs/milestones/m2/xfr.md | v0.2 |
+| Per-zone NOTIFY signing key and source shipped in the v0.2 review (F06): separate `notifyTSIGKeyRef`, `notifySource`, compatible empty defaults, current-policy/key refusal and primary-zone wizard/settings controls | dev-docs/milestones/m2/xfr.md | v0.2 |
 | Store-backed internal `TSIGKey` kind behind `dnsserver.TSIGKeyring` (encrypted at rest, §4.1); TSIG on DoH/DoQ/DoH3 (signed requests are treated as unsigned there) | dev-docs/milestones/m2/xfr.md | v0.2 (moved from M3 / v0.2: the node-config `tsigKeys` keyring covers v0.1) |
 | `kudurru doctor` self-NOTIFY round trip reporting the egress address (§4.6) | dev-docs/milestones/m2/xfr.md | v0.2 (moved from M4: a diagnostic, NOTIFY itself works) |
 | DS at a delegation point where parent and child are both local routes to the child; needs a DS special case | zone report | v1.0 (DNSSEC) |
@@ -136,7 +136,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | Allowlist/Denylist: a group list applies through the group's policies, so a policy covering several groups applies it to all of them; a query-time group scope in the policy engine would make the scope exact | allowlist stream (D143) | v0.2 |
 | Regex allow/deny entries get no "overrides block list" information and no response-cache flush (there is no single name to look up or flush) | allowlist stream | v0.2 |
 | Entries browser re-parses the whole cached body for every page of a URL source; add a per-digest index if multi-million-line lists are slow (concurrent parses are capped at 4 per node since dev-docs/milestones/m5/security-v0.1-round.md V15) | allowlist stream | v0.2 |
-| Self-host the brand fonts (Inter, JetBrains Mono; branding) in the Kudurru theme instead of the system fallback stack | UX round 3 (D140) | v0.2 |
+| Self-hosted Inter/JetBrains Mono shipped in the Kudurru theme (F56), with pinned OFL packages, variable normal/italic Latin faces, local prefix-safe assets and system fallbacks | UX round 3 (D140) | v0.2 |
 | Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | v0.2 (moved from M4: the API has no `GET /queries/export` route yet) |
 ## CLI
 

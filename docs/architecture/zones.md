@@ -188,7 +188,7 @@ sequenceDiagram
     S-->>Z: watch events (record set, then zone status)
     Z->>Z: rebuild, swap the snapshot (new SOA serial)
     Z-->>N: published
-    N->>X: NOTIFY (TSIG with the first transferTSIGKeyRefs key)
+    N->>X: NOTIFY (selected NOTIFY key, else first transfer key)
     X->>Z: SOA? then IXFR/AXFR over TCP
     Z-->>X: the zone at the new serial
 ```
@@ -209,9 +209,19 @@ and on gaining leadership it notifies every zone once.
   resolved through in-zone glue or the resolver.
 - Each target gets up to 5 attempts with backoff from 2 s to 1 minute; a
   newer serial replaces a round in progress.
-- The source address is `notify.source`. In Kubernetes, NOTIFY leaves from
-  the leader pod and is usually SNAT'ed, so the secondary must allow the
-  node or egress address, not the Service address.
+- `spec.policy.notifyTSIGKeyRef` selects a separate outbound signing key.
+  Empty preserves the first `transferTSIGKeyRefs` key, or unsigned delivery
+  only when neither selects a key. An unavailable selected key refuses
+  delivery; transfer authorization remains independent.
+- `spec.policy.notifySource` selects a literal local unicast IPv4/IPv6 address.
+  Empty inherits `notify.source`, then system selection. Invalid, unavailable
+  or wrong-family sources fail without choosing another address. In Kubernetes,
+  NOTIFY leaves from the leader pod and is usually SNAT'ed, so the secondary
+  must allow the node or egress address, not the Service address.
+- The complete SQLite sender retains the captured key identity, source,
+  transfer policy, writer and durable intent through current admission and
+  acknowledgment. Key rotation/revocation or desired key/source replacement
+  refuses acknowledgment and leaves the original pending intent intact.
 
 ## Transfers out
 

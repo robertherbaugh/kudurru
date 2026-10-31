@@ -23,6 +23,16 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Zones: select a separate NOTIFY TSIG key and local source address through
+  zone policy and primary-zone wizard/settings controls. Missing keys and bind
+  failures refuse delivery without switching identity or source.
+- Recursive DNS: expiring negative trust anchors with independent configuration,
+  absolute cache deadlines and preserved validation of alias targets outside
+  the exception. Reload and restore do not extend authority.
+- Dashboard: self-hosted Inter and JetBrains Mono with normal/italic variable
+  weights, bundled license notices and system fallbacks. Font payloads count
+  toward the unchanged initial-load size budget.
+
 - Encrypted DNS: negotiated RFC 8467 response padding on DoT, DoH, DoQ and
   DoH3, bounded by the client's payload limit and preserving TSIG signatures
   and transfer chains. Shared cache entries remain independent of padding.

@@ -490,6 +490,64 @@ Focused padding races pass in 1.255s, full transport races in 30.498s, and scope
 lint reports zero issues. D242 records the policy; external interoperability and
 fixed-class performance remain under their original final gates.
 
+## F56 integration: local brand fonts
+
+`13c0c9e` closes the missing font implementation with pinned OFL assets and
+provenance, relative hashed URLs under the unchanged CSP, normal/italic variable
+weights and system fallbacks. All four Latin faces are included in the budget
+at their actual transfer size, producing **480.5 KiB** against 600 KiB. Other
+scripts retain system glyph fallback; other dashboard themes keep their own
+font stacks. Package licenses are embedded in `third-party-licenses.txt`.
+
+Seven real browser scenarios pass in 20.1s with a newly built CGO-disabled test
+binary, including root and nested prefix, external-network denial, actual
+heading font painting, all four UI weights/styles, notice delivery, failed-font
+fallback and both color-scheme contrast checks. Nine existing theme tests,
+TypeScript, scoped ESLint, generated theme check and Go handler races pass.
+D243 records the delivery policy. Final full browser/artifact gates remain open.
+
+
+## F06 independent NOTIFY key and source
+
+`c80c6f2` and `46d7641` integrate separate backend and dashboard controls. The
+explicit key is independent of transfer authorization; empty retains the old
+first-transfer-key/unsigned behavior. The per-zone literal source overrides
+host `notify.source`; empty preserves global/system selection. Missing keys,
+rotation/revocation, unavailable/wrong-family source and current policy changes
+refuse without alternate identity/source or obsolete intent acknowledgment.
+Full normalized transfer policy and original elected writer/publication/final
+checks remain intact. The primary-zone wizard/settings editor supports creation,
+editing, clearing, validation/help and exact If-Match conflict refusal.
+
+Regenerated manifests, Helm CRDs and embedded schemas retain the new public
+fields. OpenAPI/Go/TypeScript generation runs without a wire-file change because
+object schemas are generic; generated CRD/operator references change. Actual
+IPv4/IPv6 UDP, distinct-key signing and current-command races pass. Combined
+unoverlaid parent races: zone 1.334s, notifier 2.012s, validator 1.594s,
+primaryruntime/network 43.225s, API 3.441s, cmd 37.878s, servingbuild 8.042s. This
+includes F29 publication/reload checks and existing mounted NOTIFY regressions.
+Integrated dashboard unit tests pass 86/86 in 7.11s with typecheck.
+
+## F29b recursive exceptions and actual installed schema
+
+`ddc5f2d` uses a separate bounded recursive NTA list with absolute expiry and
+shared immutable matching. Active exception identity scopes native caches and
+raw answers; cache restore/removal cannot renew the exception. Native provenance
+marks only excepted RRsets, so expired exceptional signatures remain data while
+outside alias proofs retain their own deadline and can refuse the answer.
+Agent final seven-package races and ten repeats of real-socket NTA cases pass;
+only the pre-existing optional live-Internet test skips. Parent regeneration
+removes the temporary agent schema overlay, and the complete-publication/reload
+races above pass using ordinary embedded artifacts.
+
+Actual Kubernetes envtest contract races pass in 5.877s: the installed CRDs preserve
+NOTIFY choices and the original recursive exception timestamp; direct API
+updates reject invalid keys/sources/exception shapes without changing stored
+resource versions. The first new fixture marshaled a whole zero-valued upstream
+config, correctly rejected by existing enums; it now submits only its intended
+partial settings, preserving all admission assertions. D238/D241 record the
+policies. External DNS interoperability and complete release gates remain open.
+
 ## Prioritized bounded implementation queue
 
 “Owner” is a proposed workstream, not an assignment or authorization to change
@@ -500,17 +558,13 @@ remote health (F33), offline import subsets (F60a), audit verification CLI
 relocation (F20b/F20c), nested settings help (F57) and webhook authentication
 (F35c/F49) are recorded above and removed from this queue.
 
-| Priority / IDs | Proposed owner / dependencies | Concrete next change and exact acceptance |
+| Priority / IDs | Current owner / dependencies | Concrete next change and exact acceptance |
 |---|---|---|
-| P0 / F47 | IAM; owner decision on lifetime/review/outage policy | Bound offline SA lifetime or periodically TokenReview. Reject malformed/future issuance and overlong tokens; test deleted SA/pod, cache expiry and API outage, retaining original proof deadlines. |
-| P0 / F01 | Store/startup; explicit config/upgrade compatibility policy | Independent expected cluster identity during API outage. Test wrong/missing identity, old saved state and valid current-cluster recovery; never accept a successor/live source to repair a captured read. |
-| P1 / F04 | Store test stream; scoped kube envtest | Shared invalid-input table on sqlite/kube with same structured rejection and no stored mutation; include schema/unknown-field/size/transition cases. Existing CRUD conformance is not duplicated. |
-| P1 / F72a → F72b | Observability/API, then CLI; bounded kube discovery/count | Add AuditLog missing/forbidden/unavailable/over-50k diagnostic; actual Diagnosis response/UI first, doctor reuses it; tests protect permission boundaries and timeout bounds. |
-| P1 / F64a | HA/observability; persisted serving authority | Export actual fenced gauge; tests drive fencing/restart/promotion and prove transitions; parent synchronizes alert/panel artifacts. DNS-only last-good behavior must not report writable readiness. |
-| P1 / F29b | Resolver; explicit recursive NTA config contract | Bounded absolute-expiry recursive NTA model and cache scope; tests cover expiry/reload/restore, forwarded/recursive isolation and AD/CD/DO semantics. Existing forwarded NTAs stay intact. |
-| P2 / F22a | Listener/config; existing Limits options | Expose typed TCP/QUIC/idle knobs, wire limits, document restart behavior; actual listeners prove each bound and invalid/default/zero handling. |
-| P2 / F06a → F06b | Zone/transport; public type/schema and final current keyring proof | Separate NOTIFY key and source in small steps. Prove configured key/rotation refusal and actual source address; preserve original elected writer/publication/NOTIFY ack requirements. |
-| P2 / F70 | Central DB; reference/pruning transaction design | Add dictionary pruning bounded against all retained facts/rollups and concurrent shipping. PostgreSQL tests prove no dangling references/data loss and stable retry/restart. |
+| P1 / F09b | Integration host agent; SQLite atomic sources, then Kubernetes equivalents | Mount providers with original elected writer/credential/license proof, atomic ownership/inventory and receipt-qualified publication; qualify failover and finish Delete/Kubernetes dependencies. |
+| P1 / F05 | Record-cache agent | Reuse per-object parsed RRs with detached copies, identity/TTL/expiry invalidation and separate changed-record reconciliation benchmarks. |
+| P1 / F31 | Recursive-cookie agent | Bound outgoing authority cookies, address identity, BADCOOKIE recovery and work budgets with real UDP/TCP acceptance. |
+| P2 / F18a | Parent; immutable serving configuration | Wire global network/type controls through captured publications and legacy reload without live fallback. |
+| P2 / F70 | Central DB; reference/pruning transaction design | Prune bounded dictionaries against retained facts/rollups and concurrent shipping; prove no dangling references/data loss and stable retry/restart. |
 
 AD F11–F15, core HA wiring, RFC 8198/5011, console diff-apply and external
 qualification are critical remaining scope, but are not misrepresented as
@@ -532,3 +586,14 @@ Validation at the `b42fa24` baseline: enumerate Target cells containing v0.2, co
 F01–F75 coverage and suffix uniqueness, count status cells, verify referenced
 concrete repository paths, and run `git diff --check`. Product tests were not
 run. All remaining G21–G24 acceptance is retained; subsequent implementation and test results are attributed separately above.
+
+
+F06 browser composition in `94869e5` passes with the newly rebuilt integrated
+binary (11.3s): the real zone editor persists and clears both choices while
+preserving transfer policy and metadata, with one PUT per action. The initial
+fixture captured an ETag before first controller completion and correctly got
+412. The final fixture observes Ready/current generation before opening the
+editor. Existing temporary record-read 503s during policy publication are
+recognized only on this test's exact record route; eventual 200, visible recovered
+page and persisted values remain required. No mutation is replayed. Final
+combined Go lint reports zero issues; browser typecheck and ESLint pass.

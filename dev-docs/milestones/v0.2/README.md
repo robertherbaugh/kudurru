@@ -53,7 +53,12 @@ update and gap ledger record subsequent closures by item and commit. Remote
 health, offline imports, audit verification CLI, slip metrics, central Grafana
 panels, nested settings help, optional external-dns webhook authentication
 and mandatory pinned AdGuard grammar conformance
-extend this pass.
+extend this pass. The continuing [completion plan](completion-plan.md) retains
+all original subrequirements and final gates. Recent integrations add bounded
+Kubernetes identity/credential recovery, AuditLog diagnostics, encrypted transport
+discovery/padding, per-zone NOTIFY choices, recursive validation exceptions and
+self-hosted dashboard fonts. Each has separate scoped evidence; the overall
+v0.2 feature and deployment qualification remains open.
 
 The recommended first secondary slice is implemented in `internal/secondary`,
 with raw immutable zone data, TCP/TLS AXFR and IXFR with TSIG, independent
