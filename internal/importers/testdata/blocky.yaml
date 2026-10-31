@@ -1,0 +1,35 @@
+# Original synthetic configuration; no upstream project data.
+upstreams:
+  groups:
+    default: [192.0.2.53, tcp-tls:resolver.example.test:853]
+    192.0.2.20: [192.0.2.54]
+  strategy: strict
+  timeout: 3s
+conditional:
+  mapping:
+    corp.example.test: 192.0.2.55,192.0.2.56
+blocking:
+  denylists:
+    ads:
+      - |
+        ads.example.test
+        *.tracking.example.test
+        /^banner[0-9]+\./
+  allowlists:
+    trusted:
+      - |
+        allowed.example.test
+  clientGroupsBlock:
+    default: [ads, trusted]
+    192.0.2.20: [trusted]
+  blockType: nxDomain
+  blockTTL: 1m
+customDNS:
+  customTTL: 7m
+  filterUnmappedTypes: true
+  mapping:
+    printer.home.arpa: 192.0.2.20,2001:db8::20
+ports:
+  dns: 53
+certFile: /secret-cert-marker
+keyFile: /secret-key-marker

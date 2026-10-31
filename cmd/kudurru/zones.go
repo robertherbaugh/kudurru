@@ -521,7 +521,7 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 func newImportCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "import", Short: "Import data from other DNS servers"}
 	cmd.AddCommand(newZoneImportCmd(o, "bind <zone> -f file.zone"))
-	cmd.AddCommand(newOfflineMigrationCmd(o, "adguard", importers.PreviewAdGuard))
+	cmd.AddCommand(newOfflineMigrationCmd(o, "adguard", importers.PreviewAdGuard), newOfflineMigrationCmd(o, "blocky", importers.PreviewBlocky))
 	cmd.AddCommand(newMigrationCmd(o, "pihole"), newMigrationCmd(o, "technitium"), newMigrationRunsCmd(o), newMigrationDecommissionCmd(o), newMigrationTrackCmd(o))
 	return cmd
 }
