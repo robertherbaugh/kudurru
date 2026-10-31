@@ -43,7 +43,7 @@ final expiry checks; removing the unavailable-route gate alone is not a fix.
 | G01 | Confirmed: allowlist, denylist, domain and query-log convenience mutations lack current command admission; eight browser scenarios fail | Plan bounded list/policy edits in the concrete current transaction; authorize the complete operation, including no-ops; mount only supported routes | Existing domain API behavior; owner/permission/expiry/rollback/follower tests; real SQLite HTTP and DNS publication; `dashboard/e2e/allowlist.spec.ts` | Implemented in `4db982a`; local command, DNS/restart and browser acceptance pass |
 | G02 | Confirmed: migration apply/start/adopt/decommission remain gated; three migration browser scenarios fail | Carry original current authority through migration writes, durable reports and background work; preserve explicit partial-success semantics without unchecked retries | Preview/apply consistency, managed ownership, privilege revocation, cancellation/restart and journal integrity; `dashboard/e2e/migration.spec.ts` | Implemented across both batches: atomic reviewed adoption and canonical imported settings now extend `1e2c2d0`; composed validation is recorded below |
 | G03 | Confirmed: unblock approval/denial is gated; block-page approval browser scenario fails | Admit request decisions and their list/policy effects as a complete current command; preserve decision-only permission and time-limited approval ownership | Approve/deny/revoke/expiry/no-op behavior, atomic failure, original credentials, restart and real DNS; `dashboard/e2e/requests.spec.ts` | Implemented in `63f2e53`; local command, DNS/restart and browser acceptance pass |
-| G04 | Confirmed: full CI is not green | Review and compose the three fixes, rerun existing browser acceptance and relevant Go/race checks, then inspect CI on the pushed commit | All existing checks pass without skipping failing scenarios or loosening admission | First batch green on `629146f` (CI `41170330357`, security `41170330451`); rerun required for this batch |
+| G04 | Confirmed: full CI is not green | Review and compose the three fixes, rerun existing browser acceptance and relevant Go/race checks, then inspect CI on the pushed commit | All existing checks pass without skipping failing scenarios or loosening admission | First batch green on `629146f`; later CI `41174991520` fails three readiness-sensitive Go tests, corrected in separate commits below. Current-head hosted validation remains the closure gate |
 
 ## Remaining feature packages
 
@@ -327,3 +327,71 @@ Combined validation in this pass:
   webhook authentication and actual invalid-startup coverage. The final embedded
   binary rebuild passes and remains 73,875,616 bytes. Hosted CI/security on the
   pushed head remains the authoritative final runner result.
+
+### Hosted validation and readiness corrections
+
+On `9e754cb`, all applicable [security jobs](https://github.com/robertherbaugh/kudurru/actions/runs/41174991522)
+pass, including SAST, Go vulnerability reachability, filesystem and both image
+scans. [CI 41174991520](https://github.com/robertherbaugh/kudurru/actions/runs/41174991520)
+passes browser acceptance, BIND/Dex interoperability, the mandatory AdGuard
+comparator, lint/vet, build, licenses, Helm, PostgreSQL 16/18, DHCP and all seven
+fuzz shards. Go shard 2 passes. Go shard 1 fails three tests; this is not a green
+CI result:
+
+- `TestPrimaryRuntimeHeldNativeRequestCannotAdoptNewKeyring`: the fresh UPDATE
+  after restoring the original keys receives SERVFAIL.
+- `TestServingAdoptionActualHTTPPreservesDataRestartAndCutover`: the single
+  decommission POST receives 503, current writable serving generation unavailable.
+- `TestServingZoneNotifyRejectsFallbackWithoutIntent`: the fallback POST
+  receives 503 before the expected semantic rejection, 422.
+
+The adoption reproduction observes a current elected writer and committed
+records, but a pending native NOTIFY acknowledgment at the old helper's exact
+successful readiness boundary. Even with no targets, acknowledging intent
+commits later metadata and can supersede a captured HTTP request. Fallback
+configuration also changes the content hash and queues this acknowledgment.
+Restore readiness alone does not establish completion of this background work.
+These observations do not justify weakening the original request proof or
+replaying a refused mutation.
+
+`532c2b8` waits for the exact fallback source, admitted route, head without
+pending intent and matching driver acknowledgment before the single POST. It
+retains the 15-second fixture deadline, expects exactly 422 and verifies no
+durable write. Twenty race repetitions pass in 62.531 seconds; focused normal
+execution and scoped lint pass. The original hosted fallback failure did not
+naturally reproduce in 30 local baseline/diagnostic repetitions, so this is
+source/acknowledgment evidence rather than a claimed local before/after failure.
+
+`da54ede` settles adoption and offline-import fixtures against the same complete
+image: current live primary membership, committed RecordSet UID/intent, cleared
+notification intent, exact driver head acknowledgment and current elected
+writer. The existing 100 ms interval now tracks the full publication identity;
+the two-minute fixture bound and one-shot requests remain unchanged. Historical
+or orphaned heads and records outside current membership do not create false
+waits. All adoption and offline CLI consumers pass under races in 149.523
+seconds; scoped lint reports zero issues. The focused restart/cutover case also
+passes ten repetitions before the final historical-head scoping refinement.
+
+`994f655` fixes a distinct native-keyring fixture boundary. Two of 30 diagnostic
+race attempts reproduce the fresh UPDATE refusal while the restored transport
+keys are current but the same image's durable UPDATE policy still references
+the intervening keyring. No NOTIFY intent is pending in those samples. The
+fixture now verifies the exact published member/head and digest-verified policy
+chunks from one matching complete image, then checks the original writer lease
+before its single fresh UPDATE. The held request and stale-listener proof still
+fail, and the held record must remain absent. All 30 repeated one/two-CPU race
+attempts pass in 60.776 seconds; scoped lint passes. Failure output now contains
+only numeric response codes and transport-error presence, not DNS/TSIG messages.
+No production admission code, retry behavior or deadline is changed.
+
+After composing all three fixes, the combined primary-runtime, adoption,
+offline CLI and zone-NOTIFY race selection passes in 172.369 seconds (62 test
+and subtest results, zero failures or skips). Composed CLI-package lint reports
+zero issues, and `git diff --check` passes. This confirms local composition;
+the PR's current-head hosted run remains the final CI result. No extra browser
+or artifact rebuild is required for these test-only changes.
+
+Compose, Edge, kind/MetalLB, GitHub docs, development image, license server,
+website and the isolated AD probe workflows also pass on `9e754cb`. The probe
+does not certify production AD support. The excluded Cloudflare check remains
+separate.
