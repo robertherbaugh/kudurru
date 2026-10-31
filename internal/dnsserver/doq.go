@@ -249,6 +249,7 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 
 	client := clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ)
 	client.ClientID = clientid.FromSNI(conn.ConnectionState().TLS.ServerName, l.spec.ClientIDDomain)
+	padding := paddingFor(req, client.Proto)
 	resp := l.env.handler.resolveFreshID(st.Context(), req, client)
 	if resp == nil {
 		// A pipeline drop: reset the stream without a response.
@@ -256,11 +257,13 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 		st.CancelWrite(DoQRequestCancelled)
 		return
 	}
+	resp = padding.apply(resp)
 	out, err := resp.Pack()
 	if err != nil {
 		fail := new(dns.Msg)
 		fail.SetRcode(req, dns.RcodeServerFailure)
 		fail.Id = 0
+		fail = padding.apply(fail)
 		if out, err = fail.Pack(); err != nil {
 			st.CancelWrite(DoQInternalError)
 			return

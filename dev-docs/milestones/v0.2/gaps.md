@@ -677,3 +677,16 @@ Plaintext, proxy headers, different public ports and nonmatching/missing/stopped
 listeners do not advertise. Focused races pass in 1.299s and the full dnsserver
 race suite in 30.461s. Reverse proxies and external UDP reachability remain
 explicit deployment responsibilities. Response padding is F22c, still open.
+
+### F22c negotiated encrypted response padding
+
+The native write boundary captures the original EDNS padding offer, pads detached
+responses to 468-byte blocks within peer/message bounds, and accounts for final
+TSIG trailers without counting transport prefixes. Actual wire tests cover every
+transport, both supported TSIG algorithms, chained signed DoT transfers, rejected
+signatures, inherited padding removal, EDE/AD/DO preservation and maximum-size
+answers without space for an option. A transfer test initially parsed the buffer
+after the verification library had modified ARCOUNT; it now verifies a copy and
+keeps exact original bytes for unchanged record/signature assertions. Final
+focused races pass in 1.255s, full transport races in 30.498s, lint zero issues.
+No external interoperability or final artifact qualification is inferred.

@@ -289,6 +289,7 @@ func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 // (other queries pipelined on it are abandoned, as a client that is being
 // dropped deserves).
 func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg, clientIDDomain ...string) {
+	padding := paddingFor(r, proto)
 	client := clientFrom(w.RemoteAddr(), proto)
 	if client.ClientID == "" && proto == pipeline.ProtoDoT && len(clientIDDomain) > 0 {
 		if cs, ok := w.(dns.ConnectionStater); ok {
@@ -314,7 +315,7 @@ func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, 
 		return
 	}
 	if stream != nil && proto != pipeline.ProtoUDP {
-		writeStream(h, w, stream, sig)
+		writeStream(h, w, stream, sig, padding)
 		return
 	}
 	if proto == pipeline.ProtoUDP {
@@ -328,6 +329,7 @@ func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, 
 		m.Truncate(size)
 	}
 	sig.sign(m)
+	m = padding.apply(m)
 	if err := w.WriteMsg(m); err != nil {
 		h.logger().Debug("write failed", "err", err, "proto", proto.String())
 	}

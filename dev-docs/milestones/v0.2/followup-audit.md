@@ -467,7 +467,28 @@ different-port/path/policy/certificate alternatives, plaintext/proxy requests,
 IPv6 authority parsing and stopped listeners. Focused transport races pass in
 1.299s; the complete native DNS transport race suite passes in 30.461s. D240
 and query-path deployment guidance describe the conservative matching contract.
-F22c response padding remains separate work.
+F22c response padding is recorded in the following closure.
+
+## F22c encrypted response padding closure
+
+Capture EDNS version-zero PADDING negotiation before pipeline adaptation and
+apply zero-filled padding to a detached response at the native transport write
+boundary. DoT/DoH/DoQ/DoH3 target 468-byte DNS-message blocks, counting final
+TSIG bytes but excluding transport length prefixes. The peer's payload limit
+and 65,535-byte ceiling constrain the result; a partial block fills the remaining
+budget when necessary, and an option that cannot fit is omitted without changing
+records. Padding is last; other options, AD/DO flags, original proof and cached
+answers remain intact. Plaintext and nonoffering peers get no generated padding.
+
+Actual wire tests cover all six transports, no-EDNS/no-offer negotiation, small
+payloads, maximum message size, detached reusable responses, both supported
+TSIG MAC sizes, a chained signed DoT transfer and BADSIG refusal before pipeline
+execution. The verifier mutates its byte input while stripping TSIG; the transfer
+fixture now verifies a copy and keeps exact received bytes for record assertions.
+No production signature or refusal behavior was changed to satisfy the test.
+Focused padding races pass in 1.255s, full transport races in 30.498s, and scoped
+lint reports zero issues. D242 records the policy; external interoperability and
+fixed-class performance remain under their original final gates.
 
 ## Prioritized bounded implementation queue
 

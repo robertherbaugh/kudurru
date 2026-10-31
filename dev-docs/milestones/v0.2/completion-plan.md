@@ -95,7 +95,7 @@ runners. Unit tests cannot substitute for those results.
 | F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |
 | F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Implemented; actual transport/config/mounted races pass |
 | F22b | DoH `Alt-Svc` | DNS and resolver | Implemented; actual HTTPS/HTTP3 and full transport races pass |
-| F22c | RFC 8467 response padding | DNS and resolver | Queued: missing |
+| F22c | RFC 8467 response padding | DNS and resolver | Implemented; actual encrypted/plaintext/TSIG and full transport races pass |
 | F22d | DoH path client IDs | DNS and resolver | Implemented; final gates open |
 | F23 | Separate public blocked-services/safe-search data repo (D120) | DNS and resolver | External acceptance/decision open |
 | F24a | Rate-limit slip metric | DNS and resolver | Integrated; final gates open |

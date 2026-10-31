@@ -23,6 +23,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Encrypted DNS: negotiated RFC 8467 response padding on DoT, DoH, DoQ and
+  DoH3, bounded by the client's payload limit and preserving TSIG signatures
+  and transfer chains. Shared cache entries remain independent of padding.
+
 - Diagnosis and doctor: bounded AuditLog API availability and namespace batch
   counts, gated by audit permission and license. Incomplete scans remain explicit;
   healthy informational diagnoses no longer make doctor report a warning.

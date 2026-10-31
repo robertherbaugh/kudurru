@@ -309,6 +309,7 @@ func verifyTSIG(h *Handler, e *env, w dns.ResponseWriter, r *dns.Msg, client *pi
 	m.Extra = append(m.Extra, rr)
 	// BADKEY and BADSIG replies are unsigned (RFC 8945 §5.3.2); miekg's
 	// writer leaves the MAC empty for them and signs BADTIME.
+	m = paddingFor(r, client.Proto).apply(m)
 	if err := w.WriteMsg(m); err != nil {
 		h.logger().Debug("write failed", "err", err)
 	}
@@ -321,10 +322,11 @@ func verifyTSIG(h *Handler, e *env, w dns.ResponseWriter, r *dns.Msg, client *pi
 // each chained to the previous MAC (RFC 8945 §5.3.1). At the first write
 // error (the client went away, or stopped reading past the per-message
 // write deadline) it closes the connection: the stream is cut mid-answer.
-func writeStream(h *Handler, w dns.ResponseWriter, msgs iter.Seq[*dns.Msg], sig signer) {
+func writeStream(h *Handler, w dns.ResponseWriter, msgs iter.Seq[*dns.Msg], sig signer, padding responsePadding) {
 	first := true
 	for m := range msgs {
 		sig.sign(m)
+		m = padding.apply(m)
 		if err := w.WriteMsg(m); err != nil {
 			h.logger().Debug("transfer write failed", "err", err)
 			_ = w.Close()

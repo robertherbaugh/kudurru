@@ -78,6 +78,25 @@ replace backend Alt-Svc and advertise only their externally reachable endpoint.
 This is especially necessary for proxies that omit forwarding headers while
 preserving the backend port. No public route is inferred from proxy headers.
 
+### Encrypted response padding
+
+A DoT, DoH, DoQ or DoH3 request with EDNS version 0 and a PADDING option
+receives zero-filled response padding following RFC 7830 and RFC 8467. The
+transport captures negotiation before the pipeline changes EDNS, then pads a
+detached reply immediately before writing. PADDING is the last EDNS option;
+other options and DNSSEC flags remain intact. It never enters the shared cache
+or changes the original request or signed credential evidence.
+
+Replies target multiples of 468 DNS-message bytes, excluding TCP/QUIC length
+prefixes and including any final TSIG trailer and MAC. If the next full block
+exceeds the client's advertised payload limit, padding uses only the remaining
+budget. If even the option cannot fit, the answer is retained without padding;
+records are never truncated to make room. Advertised sizes below 512 mean 512,
+and the DNS message ceiling remains 65,535 bytes. Signed DoT transfers keep
+chained signatures, and signature refusals remain refusals. Plaintext UDP/TCP
+and requests without a padding offer do not receive generated padding; inherited
+padding is stripped from their unsigned response copies.
+
 ### Built-in HTTP query
 
 On SQLite, `POST /dns/query` clones the complete lease already retained by HTTP
