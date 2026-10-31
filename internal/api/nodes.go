@@ -112,6 +112,7 @@ type DiagnosisMessage struct {
 type messagesOutput struct{ Body *List[DiagnosisMessage] }
 
 func (s *Server) registerNodes() {
+	s.registerVIPEvents()
 	cl := perm{resource: "cluster", verb: "read"}
 	register(s, operation(http.MethodGet, "/nodes", "listNodes", "Nodes of the cluster", "cluster"), cl, s.listNodes)
 	register(s, operation(http.MethodGet, "/nodes/{name}/health", "nodeHealth", "Readiness detail of one node", "cluster"), cl, s.nodeHealth)

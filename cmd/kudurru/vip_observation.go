@@ -19,7 +19,7 @@ import (
 // impersonation and transport wrappers. No supervisor or writer is started.
 func serviceVIPObservation(cfg *config.Config, installed *rest.Config) (func() api.VIPObservationSnapshot, func(context.Context) error, error) {
 	settings := cfg.VIP.Observation
-	if settings.Provider == "none" || settings.Provider == "" {
+	if settings.Provider == "none" || settings.Provider == "" || settings.Provider == "keepalived" {
 		return nil, nil, nil
 	}
 	unavailable := func() api.VIPObservationSnapshot {

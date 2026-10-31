@@ -295,6 +295,9 @@ type Options struct {
 	// VIPObservation is a host-mounted read-only evidence snapshot. It cannot
 	// allocate VIPs, control supervisors, or grant cluster write admission.
 	VIPObservation func() VIPObservationSnapshot
+	// VIPEvents is an optional bounded local notification source, never a
+	// provider/writer or replay history. The route still requires edge.read.
+	VIPEvents *VIPEventHub
 	// InternalClient fetches peer status over the authenticated internal listener.
 	InternalClient *internalapi.Client
 	// Lists is the list resolver; Refresher and Notifier are optional

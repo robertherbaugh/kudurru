@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -213,6 +214,9 @@ func (c *Config) validateSupervisors() []error {
 		}
 	}
 	errs = append(errs, c.VIP.Observation.validate()...)
+	if c.VIP.Observation.Provider == "keepalived" && (len(c.VIP.VIPs) == 0 || len(c.VIP.VIPs) > 32) {
+		errs = append(errs, fmt.Errorf("vip.observation: keepalived requires 1-32 host vip.vips mappings"))
+	}
 	return errs
 }
 
@@ -230,6 +234,7 @@ func supervisorRendererName(name string) string {
 // a supervisor or permits weight, Service, allocation or cluster writes.
 type VIPObservation struct {
 	Provider           string              `koanf:"provider" json:"provider"`
+	RunDir             string              `koanf:"runDir" json:"runDir"`
 	Services           []VIPServiceBinding `koanf:"services" json:"services"`
 	AnnouncerNamespace string              `koanf:"announcerNamespace" json:"announcerNamespace"`
 	Interval           Duration            `koanf:"interval" json:"interval"`
@@ -273,7 +278,10 @@ func (v VIPObservation) validate() []error {
 	if v.Provider == "none" || v.Provider == "" {
 		return errs
 	}
-	if len(v.Services) == 0 {
+	if v.Provider == "keepalived" && !filepath.IsAbs(v.RunDir) {
+		errs = append(errs, fmt.Errorf("vip.observation.runDir: absolute local directory required"))
+	}
+	if v.Provider != "keepalived" && len(v.Services) == 0 {
 		errs = append(errs, fmt.Errorf("vip.observation.services: at least one binding required"))
 	}
 	if v.Interval.Std() < time.Second || v.Interval.Std() > time.Minute || v.Timeout.Std() < 100*time.Millisecond || v.Timeout.Std() > 5*time.Second || v.MaxAge.Std() < v.Interval.Std()+v.Timeout.Std() || v.MaxAge.Std() > time.Minute {
