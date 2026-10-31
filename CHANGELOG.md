@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Blocking: exact captured ClientGroup scope for allow/deny lists, including
+  shared policies and legacy group-list names. General lists can declare bounded
+  namespace-local `clientGroupRefs`; conflicting reserved-name scopes are refused.
+
 - Supervisor configuration: typed host-only `edge.*` and `vip.*` settings feed
   existing render/run commands with file/environment/explicit-flag precedence.
   Remote settings writes and resets remain refused.

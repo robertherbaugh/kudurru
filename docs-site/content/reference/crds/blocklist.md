@@ -33,6 +33,7 @@ Validation: RPZ sources require block mode (`!has(self.mode) || self.mode != 'al
 
 | Field | Type | Description |
 |---|---|---|
+| `spec.clientGroupRefs` | `[]string` | ClientGroupRefs restricts this list to clients whose captured winning membership includes at least one of these namespace-local groups. It does not attach policies or grant identity. Omitted means unrestricted, except ui-allow-&lt;group&gt;/ui-deny-&lt;group&gt; retain their legacy group scope.<br>Items: at most 64<br>List type: `set` |
 | `spec.customIP` | `object` | CustomIP is the answer for BlockResponse customIP. |
 | `spec.customIP.v4` | `string` |  |
 | `spec.customIP.v6` | `string` |  |

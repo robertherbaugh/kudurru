@@ -55,6 +55,20 @@ spec:
             description: BlockListSpec defines a set of sources compiled into one
               matcher chain.
             properties:
+              clientGroupRefs:
+                description: |-
+                  ClientGroupRefs restricts this list to clients whose captured winning
+                  membership includes at least one of these namespace-local groups. It
+                  does not attach policies or grant identity. Omitted means unrestricted,
+                  except ui-allow-<group>/ui-deny-<group> retain their legacy group scope.
+                items:
+                  maxLength: 253
+                  minLength: 1
+                  pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*$
+                  type: string
+                maxItems: 64
+                type: array
+                x-kubernetes-list-type: set
               customIP:
                 description: CustomIP is the answer for BlockResponse customIP.
                 properties:
@@ -416,6 +430,13 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: reserved UI list names must retain their original group scope
+          rule: '!has(self.spec.clientGroupRefs) || self.spec.clientGroupRefs.size()
+            == 0 || (!(self.metadata.name in [''ui-allow'', ''ui-deny'']) && !self.metadata.name.startsWith(''ui-allow-'')
+            && !self.metadata.name.startsWith(''ui-deny-'')) || (self.spec.clientGroupRefs.size()
+            == 1 && (self.metadata.name == ''ui-allow-'' + self.spec.clientGroupRefs[0]
+            || self.metadata.name == ''ui-deny-'' + self.spec.clientGroupRefs[0]))'
     served: true
     storage: true
     subresources:

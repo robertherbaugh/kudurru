@@ -195,7 +195,8 @@ describe('ListDetailPage', () => {
     expect(within(browser).queryByRole('textbox', { name: /^Add entries/ })).toBeNull();
   });
 
-  it('saves the list settings with typed fields', async () => {
+  it('saves the list settings with typed fields and preserves group scope', async () => {
+    family()!.spec.clientGroupRefs = ['kids'];
     renderList('family');
     const response = await findSelector(/^Block response/);
     expect(valueOf(response)).toBe('nxdomain');
@@ -208,6 +209,7 @@ describe('ListDetailPage', () => {
     await waitFor(() => expect(family()?.spec.response).toBe('customIP'));
     expect(family()?.spec.customIP).toEqual({ v4: '192.0.2.80' });
     expect(family()?.spec.refreshInterval).toBe('168h');
+    expect(family()?.spec.clientGroupRefs).toEqual(['kids']);
     expect(family()?.metadata.annotations?.['kudurru.io/comment']).toBe('Kids and guests');
   });
 

@@ -18,7 +18,7 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own exact ClientGroup list scope, dnsdist console updates
+agents currently own durable node settings, dnsdist console updates
 and VIP ownership observation; the parent
 has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
 disposable Samba/VIP labs. Freed agents take
@@ -148,7 +148,7 @@ runners. Unit tests cannot substitute for those results.
 | F50 | Separate Kubernetes vs Kudurru SA binding subject or document overlap | IAM and access | D254 documents shared namespace/name compatibility; actual binding engine/token-scope races pass |
 | F51 | Optional HTTPS-only catalogue and BlockList downloads | Operations and UI | Integrated a15480e; HTTP/TLS, redirect, real startup and API refusal races pass |
 | F52 | Dig answer reports matched exclusion, avoiding second request | Operations and UI | Integrated 8879459; original selected-rule evidence, mounted/API races and 28 domain UI cases pass |
-| F53 | Query-time exact ClientGroup scope for allow/deny lists (D143) | Operations and UI | Queued: partial |
+| F53 | Query-time exact ClientGroup scope for allow/deny lists (D143) | Operations and UI | Integrated 926b2a3; reproduced shared-policy leak fixed, mounted native/cache/publication races and actual Kubernetes admission pass |
 | F54a | Regex “overrides block list” explanation | Operations and UI | Implemented; original-publication API/SQLite races and 32 domain UI cases pass; concrete-name limits explicit |
 | F54b | Regex allow/deny cache invalidation | Operations and UI | Queued: partial |
 | F55 | Per-digest index for paginated URL entries | Operations and UI | Implemented; bounded parsed indexes, original-source/eviction races and two-million-rule local benchmark pass |

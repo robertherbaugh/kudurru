@@ -1586,3 +1586,30 @@ Correct independent commands above pass; no timeout or assertion was weakened.
 Hosted security 41214453550 and GitHub docs 41214453575 pass on 8bdb218.
 CI 41214453524 has only Go shard 1/2 still running at this checkpoint, with other
 jobs passed. Newer local commits are not yet qualified by that hosted run.
+
+### F53 exact ClientGroup allow/deny scope
+
+`926b2a3` implements D273. The baseline reproduction leaked both allow and deny
+rules to adult traffic sharing a Policy with kids, across exact/wildcard/regex
+entries. Private copied winning membership now filters list references before
+immutable Selection construction, including fallback policies. Optional bounded
+BlockList `clientGroupRefs` uses namespace-local groups. Reserved UI group names
+retain their original scope before migration; convenience/current approval
+writes materialize it. No request diagnostic GroupIDs, lower-tier memberships,
+newer publication or query-path store read can widen scope.
+
+Agent repeated full policy/domainlist/unblock/validator races pass in
+1.618s/4.182s/26.177s/18.466s; repeated mounted/current-command races pass in
+60.127s, API in 5.269s and scoped lint reports zero issues. Parent composed
+mounted UDP/TCP, raw-cache, held-publication and current-command races pass in
+29.461s. A separate actual Kubernetes API-server test passes in 18.112s,
+proving deployed CRD rejection of contradictory reserved scope, duplicates,
+invalid names and over-limit sets, and exact accepted readback without pruning.
+It bypasses the store validator, so an embedded-only schema cannot mask drift.
+
+Deepcopy and all three deployed/embedded BlockList CRDs are regenerated;
+reference/schema drift passes in 0.029s/0.010s. Dashboard types include scope,
+and saving list settings preserves it (all 20 list-detail cases pass, plus
+typecheck and scoped lint). Original credentials, current-command final fences,
+request Received/Deadline and compiled content ownership remain unchanged.
+F54b remote-edge invalidation and other topology gates are still separate.

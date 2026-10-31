@@ -197,6 +197,8 @@ export interface ListSource {
 }
 
 export interface BlockListSpec {
+  /** Restrict to captured winning groups in this list's namespace. */
+  clientGroupRefs?: string[];
   mode?: 'block' | 'allow';
   sources: ListSource[];
   refreshInterval?: string;
