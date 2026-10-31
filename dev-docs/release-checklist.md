@@ -235,7 +235,12 @@ On the owner's hardware:
       dns` moves the VIP within the `fall`/down timer; (3) powering off the
       MASTER moves the VIP; record failover times. `kudurru doctor` reports
       `vrrp: OK` (no `--legacy`).
-- [ ] dnsdist spikes (a) console directives under YAML and (b) PROXYv2 +
+- [x] dnsdist spike (a), console directives under YAML: dnsdist 2.1.3 passes
+      the disposable [capability runner](../hack/labs/dnsdist-console/README.md),
+      including live DNS, certificate rotation/refusal and unchanged PID.
+      Existing DoT backend-selection limitations are recorded; production
+      supervisor acceptance remains separate.
+- [ ] dnsdist spike (b), PROXYv2 +
       chashed against a real dnsdist, with `kdig +quic/+tls/+https` through
       the edge.
 - [ ] **Recursive groups against the real root servers** (D170):
