@@ -81,7 +81,15 @@ func TestConfiguredIdleTimeouts(t *testing.T) {
 	}
 	for _, proto := range []Protocol{ProtoDoQ, ProtoDoH3} {
 		t.Run(string(proto), func(t *testing.T) {
-			f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: proto}}, stages: []pipeline.Stage{localAnswer{}}, limits: configuredLimits(t, "quicIdleTimeout", "200ms")})
+			accepted := make(chan *quic.Conn, 1)
+			f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: proto}}, stages: []pipeline.Stage{localAnswer{}}, limits: configuredLimits(t, "quicIdleTimeout", "200ms"), beforeRun: func(reg *Registry) {
+				if proto == ProtoDoH3 {
+					reg.Listeners()[0].(*doh3Listener).srv.ConnContext = func(ctx context.Context, conn *quic.Conn) context.Context {
+						accepted <- conn
+						return ctx
+					}
+				}
+			}})
 			alpn := "doq"
 			if proto == ProtoDoH3 {
 				alpn = "h3"
@@ -112,10 +120,23 @@ func TestConfiguredIdleTimeouts(t *testing.T) {
 				if observed == conn {
 					t.Fatal("server connection not admitted")
 				}
+			} else {
+				// The transport can close silently before HTTP/3's idle
+				// handler sends a close frame. As with DoQ, observe resource
+				// retirement at the server rather than the client's longer
+				// minimum peer-timeout detection window.
+				select {
+				case observed = <-accepted:
+				case <-ctx.Done():
+					t.Fatal("HTTP/3 server connection not admitted")
+				}
 			}
 			select {
 			case <-observed.Context().Done():
-				if proto == ProtoDoQ && !errors.As(context.Cause(observed.Context()), new(*quic.IdleTimeoutError)) {
+				cause := context.Cause(observed.Context())
+				var application *quic.ApplicationError
+				httpIdleClose := proto == ProtoDoH3 && errors.As(cause, &application) && !application.Remote && application.ErrorCode == quic.ApplicationErrorCode(http3.ErrCodeNoError)
+				if !errors.As(cause, new(*quic.IdleTimeoutError)) && !httpIdleClose {
 					t.Fatal("server closed for a reason other than idle timeout")
 				}
 			case <-ctx.Done():
