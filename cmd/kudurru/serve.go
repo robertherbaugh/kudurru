@@ -755,7 +755,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			dnsMetrics.Dropped.WithLabelValues(ingress.DropReason).Inc()
 		}
 	})
-	reg.MustRegister(limiter.Collector())
+	reg.MustRegister(limiter.Collector(), limiter.SlipCollector())
 
 	// Policies and blocking (§7.1 steps 3, 4, 7).
 	polSrc := policy.Source{Cache: zc}
