@@ -134,6 +134,7 @@ OAPI_CODEGEN ?= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@
 client-go: openapi
 	$(OAPI_CODEGEN) -config internal/apiclient/openapi/oapi-codegen.yaml api/openapi-3.0.json
 	gofmt -s -w internal/apiclient/openapi
+	go run ./hack/clientdispatch
 
 tidy:
 	go mod tidy
