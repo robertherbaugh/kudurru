@@ -131,6 +131,14 @@ func dashboardRows() []row {
 			ts("Query log rows", "short", target{`max by (instance) (kudurru_querylog_rows{` + sel + `})`, "{{instance}}"}),
 			ts("Query log write p95", "s", target{`histogram_quantile(0.95, sum by (le) (rate(kudurru_querylog_write_duration_seconds_bucket{` + sel + `}` + rate + `)))`, "p95"}),
 		}},
+		{"Central database and audit", []panel{
+			note("Central database metrics", "Central availability and shipping panels have no data on nodes without database.dsn. A zero availability value means a configured database is unreachable or incompatible; DNS continues locally. Query shipping lag is sampled when a batch ships and may have no data before the first shipment or when facts are disabled. Audit spool drops mean older events were discarded at the local cap."),
+			{title: "Central database available", kind: "timeseries", unit: "short", w: 8, h: 8, min: f(0), max: f(1),
+				desc:    "1 means reachable and migrated; 0 means unavailable. Missing series are not treated as database failures.",
+				targets: []target{{`min by (instance) (kudurru_central_up{` + sel + `})`, "{{instance}}"}}},
+			ts("Query shipping lag", "s", target{`max by (instance) (kudurru_central_ship_lag_seconds{` + sel + `,stream="query"})`, "{{instance}}"}),
+			ts("Audit spool drops", "ops", target{`sum by (instance) (rate(kudurru_audit_spool_dropped_total{` + sel + `}` + rate + `))`, "{{instance}}"}),
+		}},
 		{"Cluster and store", []panel{
 			ts("Leader", "short", target{`max by (instance, role) (kudurru_leader{` + sel + `})`, "{{instance}} {{role}}"}),
 			ts("Active runnables", "short", target{`sum by (instance) (kudurru_role_active{` + sel + `})`, "{{instance}}"}),

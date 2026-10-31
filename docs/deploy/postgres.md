@@ -109,6 +109,18 @@ tail streams from the replicas, so it is off in the central view; choose a
 node to follow it. Purging the query log deletes this node's rows and every
 node's rows in the database; other nodes keep their own copies.
 
+## Grafana monitoring
+
+The shipped overview dashboard includes a **Central database and audit** row:
+database availability per node, query shipping lag, and local audit spool drops.
+Nodes without `database.dsn` have no central availability or shipping series;
+missing data does not mean a database outage. Availability zero means the
+configured database is unreachable or incompatible. Query lag is sampled when
+a batch ships, so it can retain the last value during an outage; use it together
+with availability and the existing central-database alerts. Audit spool drops
+count events discarded at the local cap and can occur with either shipping
+destination.
+
 ## Upgrades and mixed versions
 
 The database records `schema_version` and `compat_version` in
