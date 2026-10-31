@@ -263,8 +263,9 @@ type Options struct {
 	// error. Complete mounts require it; nil preserves legacy query capture.
 	DNSQueryCapture pipeline.Capture
 	// Config is the effective configuration (settings routes, listener);
-	// Settings persists PATCH /settings (cluster scope; PATCH /node/config
-	// changes stay in memory). Reload, when set, is the live configuration:
+	// Settings persists PATCH /settings (cluster scope). Node PATCH requires
+	// the separate durable NodeConfigCommand; otherwise it is read-only.
+	// Reload, when set, is the live configuration:
 	// reads use Reload.Current() and PATCHes are applied with Reload.Set,
 	// which notifies the hot-reload subscribers; Config is then ignored.
 	Config            *config.Config
@@ -277,7 +278,8 @@ type Options struct {
 	// BrandingReads projects public branding from the original serving cut.
 	BrandingReads BrandingReadSource
 	// NodeConfigCommand admits local node PATCHes separately from cluster
-	// settings. It must own the SAME Reload document used for local GETs.
+	// settings. It must durably own preferences and the SAME Reload document
+	// used for local GETs. Nil makes local node writes read-only.
 	NodeConfigCommand NodeConfigCommand
 	// CacheFlushCommand admits invalidation of the SAME cache used by DNS.
 	CacheFlushCommand CacheFlushCommand

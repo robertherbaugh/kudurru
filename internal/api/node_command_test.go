@@ -94,6 +94,9 @@ func TestNodeConfigCommandFailuresNeverFallBack(t *testing.T) {
 			})
 			original := reload.Current()
 			want := http.StatusServiceUnavailable
+			if kind == "missing-command" {
+				want = http.StatusNotImplemented
+			}
 			if kind == "401" {
 				want = http.StatusUnauthorized
 			}
@@ -143,5 +146,32 @@ func TestNodeConfigCommandKeepsValidationAndClusterPath(t *testing.T) {
 	h.do(http.MethodPatch, "/api/v1/settings", "admin", map[string]any{"cache": map[string]any{"maxEntries": 42}}).want(http.StatusOK)
 	if calls != 1 || reload.Current().Cache.MaxEntries != 42 {
 		t.Fatal("node capability replaced cluster path")
+	}
+}
+
+func TestNodeConfigDurableCapabilityAndClusterScopeRoute(t *testing.T) {
+	calls := 0
+	h := newHarness(t, func(o *Options) {
+		o.Reload = config.NewReloadable(o.Config)
+		o.NodeConfigCommand = func(context.Context, *config.Config, []string, ...string) (NodeConfigReceipt, error) {
+			calls++
+			return NodeConfigReceipt{}, errUnavailable("fixture not admitted")
+		}
+	})
+	var schema struct {
+		Items []SettingKey `json:"items"`
+	}
+	h.do(http.MethodGet, "/api/v1/settings/_schema", "viewer", nil).want(http.StatusOK).json(&schema)
+	for _, key := range schema.Items {
+		if key.ReadOnly {
+			t.Fatal("installed durable capability reported read-only", key.Path)
+		}
+	}
+	for _, patch := range []map[string]any{{"log": map[string]any{"level": "debug"}}, {"log": map[string]any{"level": nil}}, {"cache": map[string]any{"maxEntries": 1}}} {
+		h.do(http.MethodPatch, "/api/v1/settings?scope=node", "admin", patch).want(http.StatusBadRequest)
+	}
+	h.do(http.MethodPatch, "/api/v1/settings?scope=invalid", "admin", map[string]any{"cache": map[string]any{"maxEntries": 1}}).want(http.StatusBadRequest)
+	if calls != 0 || h.srv.config().Cache.MaxEntries == 1 {
+		t.Fatal("cluster scope query became an unqualified write alias")
 	}
 }

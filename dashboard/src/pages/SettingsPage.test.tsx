@@ -26,6 +26,22 @@ function list(ks: SettingKey[], cluster: Record<string, unknown>, onSave = vi.fn
 }
 
 describe('SettingsList', () => {
+  it('keeps node values visible without save or reset when this server reports read-only', () => {
+    const log = settingKey({ path: 'log.level', type: 'string', scope: 'node', default: 'info', readOnly: true });
+    const onSave = vi.fn();
+    const cluster = keys.filter((key) => key.path === 'cache.maxEntries');
+    renderWithApp(<SettingsList keys={[log, ...cluster]} cluster={{ cache: { maxEntries: 42 } }} node={{ log: { level: 'warn' } }} canWriteCluster canWriteNode onSave={onSave} />, { user: null });
+    const local = row('log.level');
+    expect(local).toHaveAttribute('data-locked', 'true');
+    expect(within(local).getByRole('textbox')).toHaveValue('warn');
+    expect(within(local).getByTestId('lock-log.level')).toHaveTextContent('Read-only on this server: change the node configuration file or environment.');
+    expect(within(local).queryByRole('button', { name: 'Save' })).toBeNull();
+    expect(within(local).queryByRole('button', { name: /Reset/ })).toBeNull();
+    expect(row('cache.maxEntries')).toHaveAttribute('data-locked', 'false');
+    expect(within(row('cache.maxEntries')).getByRole('button', { name: /Reset/ })).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('renders host-only keys read-only with the reason and no save', () => {
     renderWithApp(
       <SettingsList keys={keys} cluster={{ cache: { maxEntries: 50000 }, querylog: { enabled: true } }} node={{ node: { dataDir: '/data' }, log: { level: 'debug' } }} canWriteCluster canWriteNode onSave={vi.fn()} />,

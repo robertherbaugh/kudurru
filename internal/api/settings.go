@@ -33,6 +33,9 @@ type SettingKey struct {
 	EnvLocked       bool   `json:"envLocked"`
 	RestartRequired bool   `json:"restartRequired"`
 	WriteOnly       bool   `json:"writeOnly"`
+	// ReadOnly reports that this server has no supported durable writer for
+	// the key's scope, independently of the caller's permissions.
+	ReadOnly bool `json:"readOnly,omitempty"`
 	// Label is the human name ("Default block response"); Group the UI
 	// section ("Blocking").
 	Label string `json:"label,omitempty"`
@@ -139,6 +142,7 @@ type SettingsBody struct {
 type settingsOutput struct{ Body *SettingsBody }
 
 type patchSettingsInput struct {
+	Scope   string `query:"scope" doc:"Cluster settings only. Node settings use PATCH /node/config and require a supported durable node writer."`
 	IfMatch string `header:"If-Match" doc:"Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams."`
 	Body    map[string]any
 }
@@ -162,7 +166,17 @@ func (s *Server) registerSettings() {
 		})
 	register(s, operation(http.MethodPatch, "/settings", "patchSettings", "Change cluster-scope settings (JSON merge patch)", "settings"),
 		perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *patchSettingsInput) (*settingsOutput, error) {
-			return s.patchSettingsExpected(ctx, config.ScopeCluster, in.Body, in.IfMatch)
+			switch in.Scope {
+			case "", string(config.ScopeCluster):
+				return s.patchSettingsExpected(ctx, config.ScopeCluster, in.Body, in.IfMatch)
+			case string(config.ScopeNode):
+				if s.opts.NodeConfigCommand == nil {
+					return nil, nodeConfigReadOnly()
+				}
+				return nil, errInvalid("node-scope settings use PATCH /api/v1/node/config")
+			default:
+				return nil, errInvalid("scope: must be cluster; node settings use PATCH /api/v1/node/config")
+			}
 		})
 	register(s, operation(http.MethodGet, "/node/config", "getNodeConfig", "This node's host-local settings (redacted)", "settings"),
 		perm{resource: "settings", verb: "read"}, func(context.Context, *struct{}) (*settingsOutput, error) {
@@ -281,6 +295,7 @@ func (s *Server) settingsSchema(ctx context.Context, _ *struct{}) (*schemaOutput
 		items = append(items, SettingKey{
 			Path: k.Path, Type: string(k.Type), Scope: string(k.Scope), Default: k.Default, Help: k.Help,
 			HostOnly: k.HostOnly, EnvLocked: slices.Contains(cfg.EnvLocked, k.Path), RestartRequired: k.RestartRequired,
+			ReadOnly:  k.Scope == config.ScopeNode && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil),
 			WriteOnly: k.WriteOnly, Label: k.Label, Group: k.Group, SettingConstraints: settingConstraints(k.Shape()), Value: v,
 		})
 	}
@@ -332,14 +347,14 @@ func hasSchemaPrefix(prefix string) bool {
 // patchSettings applies a JSON merge patch over the keys of one scope:
 // unknown keys and keys of the other scope are 400 invalid, hostOnly keys
 // 400 host_only, env-locked keys 409 env_locked; the result is decoded and
-// validated like the file (400 invalid with the key), then persisted by
-// the SettingsWriter and served from memory.
+// validated like the file (400 invalid with the key). Node writes require
+// the durable NodeConfigCommand; cluster writes use their settings writer.
 func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch map[string]any) (*settingsOutput, error) {
 	return s.patchSettingsExpected(ctx, scope, patch, "")
 }
 
 func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, patch map[string]any, ifMatch string) (*settingsOutput, error) {
-	if scope == config.ScopeNode && (s.opts.NodeConfigCommand != nil || s.opts.CanonicalSettings != nil || s.opts.ObjectReads != nil) && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil) {
+	if scope == config.ScopeNode && s.opts.NodeConfigCommand != nil && s.opts.Reload == nil {
 		return nil, errUnavailable("current local node command unavailable")
 	}
 	if len(patch) == 0 {
@@ -391,7 +406,12 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	if err != nil {
 		return nil, err
 	}
-	if scope == config.ScopeNode && s.opts.NodeConfigCommand != nil {
+	if scope == config.ScopeNode && s.opts.NodeConfigCommand == nil {
+		err := nodeConfigReadOnly()
+		s.recordAction(ctx, "node.config", audit.Resource{Kind: "settings", Name: string(scope)}, err, nil, nil)
+		return nil, err
+	}
+	if scope == config.ScopeNode {
 		receipt, err := s.opts.NodeConfigCommand(ctx, next, paths, nodeReset...)
 		if err != nil {
 			s.recordAction(ctx, "node.config", audit.Resource{Kind: "settings", Name: string(scope)}, err, nil, nil)
@@ -444,11 +464,7 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		}
 		persisted = true
 	}
-	if !canonical && !managed && s.opts.SettingsOwnership != nil {
-		if err := s.opts.SettingsOwnership.SetNode(next, paths); err != nil {
-			return nil, ownershipError(err)
-		}
-	} else if !canonical && !managed && s.opts.Reload != nil {
+	if !canonical && !managed && s.opts.Reload != nil {
 		next.SettingsFile = cur.SettingsFile
 		next.Node.Name = cur.Node.Name
 		s.opts.Reload.Set(next)
@@ -457,16 +473,16 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		s.cfg = next
 		s.cfgMu.Unlock()
 	}
-	action := "settings.write"
-	if scope == config.ScopeNode {
-		action = "node.config"
-	}
 	if !managed {
-		s.recordAction(ctx, action, audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
+		s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
 	}
 	out := s.settingsBody(next, scope, paths, restart)
 	out.Body.Persisted = &persisted
 	return out, nil
+}
+
+func nodeConfigReadOnly() *Error {
+	return newError(http.StatusNotImplemented, KeyReadOnly, "node configuration is read-only on this server", "change the node configuration file or environment")
 }
 
 // prepareSettingsValues is shared by ordinary patches and transaction-local

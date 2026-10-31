@@ -191,5 +191,6 @@ func TestRunServeKubeBootstrapAfterRecovery(t *testing.T) {
 	if response2.StatusCode != http.StatusOK {
 		t.Fatalf("recovered bootstrap token: %d", response2.StatusCode)
 	}
+	assertMountedNodeReadOnly(t, hc, "http://"+cfg.Listeners.API.Address+"/api/v1", "", wire)
 	t.Log("actual DNS starts during outage; default objects, admin login, bootstrap token and readiness recover against real kube without restart")
 }

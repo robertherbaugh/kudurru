@@ -101,10 +101,11 @@ func TestSettingsPatch(t *testing.T) {
 			t.Errorf("PATCH %s %v: %d %s, want %d %s (%s)", tc.path, tc.patch, r.Code, r.errKey(), tc.code, tc.key, r.Body.String())
 		}
 	}
-	h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"level": "debug"}}).want(http.StatusOK).json(&body)
-	if body.Settings["log"].(map[string]any)["level"] != "debug" {
-		t.Fatalf("node config after patch %v", body.Settings["log"])
+	r := h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"level": "debug"}}).want(http.StatusNotImplemented)
+	if r.errKey() != KeyReadOnly {
+		t.Fatal("legacy node write retained memory-only acceptance")
 	}
+
 	// Changes are audited with before/after.
 	var seen bool
 	for _, ev := range h.audit.Events() {

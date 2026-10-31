@@ -669,6 +669,8 @@ export type SettingType = 'string' | 'int' | 'bool' | 'duration' | 'bytes' | 'st
 /** One row of GET /settings/_schema (internal/config.Key plus the effective value). */
 export type SettingKey = Omit<S['SettingKey'], 'type' | 'value'> & {
   type: SettingType;
+  /** This server cannot accept API writes for the key. */
+  readOnly?: boolean;
   /** The effective value ("<redacted>" for writeOnly keys). */
   value?: unknown;
 };

@@ -21,5 +21,5 @@ type NodeConfigReceipt struct {
 // restart-required format is desired until restart. reset lists original PATCH
 // nulls: remove their local overlay rather than persist a default. Persisted
 // acknowledges durable local commit only; no cluster replication is implied.
-// Nil preserves legacy behavior.
+// A nil command makes node PATCH read-only; it never enables memory-only writes.
 type NodeConfigCommand func(ctx context.Context, next *config.Config, changed []string, reset ...string) (NodeConfigReceipt, error)

@@ -61,10 +61,12 @@ func TestSettingsPatchThroughReloadable(t *testing.T) {
 	if !*body.Persisted || reload.Current().RateLimit.Slip != 10 || !slices.Equal(seen, []string{"ratelimit.slip"}) {
 		t.Fatalf("persisted %v slip %d subscribers saw %v", *body.Persisted, reload.Current().RateLimit.Slip, seen)
 	}
-	h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"level": "warn"}}).want(http.StatusOK).json(&body)
-	if *body.Persisted || reload.Current().Log.Level != "warn" || len(writes) != 1 {
-		t.Fatalf("node config: persisted %v level %q writes %v", *body.Persisted, reload.Current().Log.Level, writes)
+	before := reload.Current()
+	h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"level": "warn"}}).want(http.StatusNotImplemented)
+	if reload.Current() != before || len(writes) != 1 || !slices.Equal(seen, []string{"ratelimit.slip"}) {
+		t.Fatal("unsupported node write reached reload/subscribers/writer")
 	}
+
 	// A reload from elsewhere (the settings file) is what GET serves.
 	next := *reload.Current()
 	next.Cache.MaxEntries = 77
@@ -88,6 +90,9 @@ func TestSettingsManagedByKubernetes(t *testing.T) {
 	if h.srv.config().Cache.MaxEntries == 10 {
 		t.Fatal("a refused write must not change the in-memory settings")
 	}
-	// Node config is not the writer's business.
-	h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"level": "warn"}}).want(http.StatusOK)
+	// A cluster settings writer never qualifies memory-only node writes.
+	r = h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"level": "warn"}}).want(http.StatusNotImplemented)
+	if r.errKey() != KeyReadOnly {
+		t.Fatal("unsupported Kubernetes node write lacks capability refusal")
+	}
 }
