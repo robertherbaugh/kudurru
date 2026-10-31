@@ -165,6 +165,19 @@ func (s *Server) applyCurrentCutover(ctx context.Context, id string, input *Migr
 					last.Items = append(last.Items, migrationItem(*addressItem))
 				}
 				last.Items = append(last.Items, migrationItem(item))
+				if i == len(reviewed.Zones)-1 {
+					// The final outcome and terminal report share this commit.
+					// A later publication must not leave all effects durable
+					// while a separate completion command can still be refused.
+					last.Status = "completed"
+					now := metav1.NewTime(s.opts.Now())
+					last.FinishedAt = &now
+					for _, item := range last.Items {
+						if item.Result == ResultError {
+							last.Status = "partial"
+						}
+					}
+				}
 				return saveCurrentMigration(ctx, tx, r)
 			}, func() {
 				run = r
@@ -175,22 +188,7 @@ func (s *Server) applyCurrentCutover(ctx context.Context, id string, input *Migr
 			}), nil
 		})
 	}
-	program.steps = append(program.steps, func(ctx context.Context, tx *sqlite.CommandTx) (*MigrationCommandPlan, error) {
-		r, err := currentMigration(ctx, tx, run)
-		if err != nil {
-			return nil, err
-		}
-		last := &r.Spec.Cutovers[len(r.Spec.Cutovers)-1]
-		last.Status = "completed"
-		now := metav1.NewTime(s.opts.Now())
-		last.FinishedAt = &now
-		for _, item := range last.Items {
-			if item.Result == ResultError {
-				last.Status = "partial"
-			}
-		}
-		return migrationPlanFor(tx, []rbac.Attributes{migrationSettingsRequirement()}, func(ctx context.Context, tx *sqlite.CommandTx) error { return saveCurrentMigration(ctx, tx, r) }, func() { run = r }), nil
-	})
+
 	next, err := s.admitMigration(ctx, program)
 	if err != nil {
 		return nil, err
