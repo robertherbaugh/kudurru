@@ -59,6 +59,25 @@ excess QUIC connections; HTTP/3 rejection during the handshake appears as the
 QUIC application error rather than an HTTP response. QUIC peers may detect an
 idle close later than the server, according to their timeout implementation.
 
+### HTTP/3 discovery
+
+Native DoH responses advertise `Alt-Svc: h3=":443"; ma=60` (using the actual
+bound port) only while a matching DoH3 listener is running. Both listeners must
+bind the same address and port, use the same certificate/key files, and share
+the request path and client-ID policy. An alternative never changes the HTTPS
+origin, path or client selector. Different ports, interfaces, certificates or
+paths are not automatically advertised. Plaintext requests and requests carrying
+forwarding headers receive no native advertisement; neither does a request whose
+HTTPS authority port differs from the bound port.
+
+For direct service, configure matching `listeners.doh` and `listeners.doh3`
+entries and expose that port on both TCP and UDP. A bound listener cannot prove
+reachability through a firewall or NAT; deployers must make both transports
+reachable. Reverse proxies own their public HTTP/3 advertisement: strip or
+replace backend Alt-Svc and advertise only their externally reachable endpoint.
+This is especially necessary for proxies that omit forwarding headers while
+preserving the backend port. No public route is inferred from proxy headers.
+
 ### Built-in HTTP query
 
 On SQLite, `POST /dns/query` clones the complete lease already retained by HTTP

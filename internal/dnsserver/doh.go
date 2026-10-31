@@ -34,6 +34,8 @@ type dohHandler struct {
 	proto     pipeline.Proto
 	maxBody   int
 	clientIDs bool
+	// altSvc is fixed at registry bind and observes the matching H3 listener.
+	altSvc func(*http.Request) string
 }
 
 func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +106,11 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hdr := w.Header()
+	if d.altSvc != nil {
+		if alternate := d.altSvc(r); alternate != "" {
+			hdr.Set("Alt-Svc", alternate)
+		}
+	}
 	hdr.Set("Content-Type", dohMIME)
 	// Every reply can depend on client policy, even without an explicit ID.
 	// Shared HTTP caches must never reuse one client's answer for another.

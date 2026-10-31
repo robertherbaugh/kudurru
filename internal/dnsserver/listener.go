@@ -432,6 +432,7 @@ func (r *Registry) Bind() error {
 			return fmt.Errorf("dnsserver: bind %s: %w", l.Spec().Name(), err)
 		}
 	}
+	r.connectHTTP3Alternatives()
 	r.bound = true
 	return nil
 }

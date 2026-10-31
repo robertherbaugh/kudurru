@@ -124,6 +124,7 @@ func (l *doh3Listener) Serve(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
+		l.ready.Store(false)
 		sctx, cancel := context.WithTimeout(context.Background(), l.env.limits.ShutdownTimeout)
 		defer cancel()
 		_ = l.srv.Shutdown(sctx)
