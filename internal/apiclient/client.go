@@ -1,9 +1,7 @@
-// Package apiclient is the hand-written Go client for the kudurru REST API
-// (/api/v1, dev-docs/design-record.md §10). It is the transport the CLI uses.
+// Package apiclient adapts the generated OpenAPI Go client for the CLI
+// (/api/v1, dev-docs/design-record.md §10).
 //
-// The surface is deliberately small so that a client generated from
-// /api/v1/openapi.json can replace the transport underneath without the
-// CLI changing: one request primitive (Do, Raw), the error type (*Error),
+// The stable surface retains one request primitive (Do, Raw), the error type (*Error),
 // list pagination (ListAll, Pages), the SSE subscription (Subscribe) and a
 // handful of typed helpers for the auth flow (see auth.go).
 //
@@ -29,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/robertherbaugh/kudurru/internal/apiclient/openapi"
 )
 
 // BasePath is the API prefix every relative path is joined to.
@@ -45,6 +45,8 @@ type Client struct {
 	base      *url.URL
 	http      *http.Client
 	userAgent string
+	generated *openapi.Client
+	apiPath   string
 
 	mu    sync.RWMutex
 	token string
@@ -128,7 +130,17 @@ func New(server string, opts Options) (*Client, error) {
 	if ua == "" {
 		ua = "kudurru-cli"
 	}
-	return &Client{base: u, http: hc, userAgent: ua, token: opts.Token}, nil
+	c := &Client{base: u, http: hc, userAgent: ua, token: opts.Token}
+	c.generated, err = openapi.NewClient(c.URL("/", nil), openapi.WithHTTPClient(hc))
+	if err != nil {
+		return nil, err
+	}
+	apiURL, err := url.Parse(c.generated.Server)
+	if err != nil {
+		return nil, err
+	}
+	c.apiPath = apiURL.EscapedPath()
+	return c, nil
 }
 
 // Server returns the server URL the client was built for.
@@ -266,7 +278,7 @@ func (c *Client) raw(ctx context.Context, req Request, singleUse bool) (*http.Re
 		hr.Header.Del("Idempotency-Key")
 		hr.Header.Del("X-Idempotency-Key")
 	}
-	return hc.Do(hr)
+	return c.send(ctx, hc, hr)
 }
 
 func mutating(method string) bool {
