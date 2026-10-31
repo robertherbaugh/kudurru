@@ -141,10 +141,12 @@ current authority and target names. Apply recomputes those changes from stored
 run data, claims the run using its revision, and writes through normal zone
 validation, ownership and authorization with each reviewed resourceVersion.
 The run annotation, UID and expected authority fence old runs from newer
-imports, recreated zones and manual authority changes. Cutovers are partial,
-retryable operations; after ten minutes an interrupted attempt can be recovered,
-including a write committed just before its journal update. Work is bounded to
-two minutes; all write races still use optimistic versions. A retry records the
+imports, recreated zones and manual authority changes. Cutovers preserve earlier
+successful zones when a later step fails. After ten minutes an interrupted
+attempt can be reviewed and retried. The legacy Kubernetes path also reconciles
+writes committed before their separate journal updates; SQLite commits each
+zone effect and outcome together. Work is bounded to two minutes; all write
+races still use optimistic versions. A retry records the
 abandoned attempt as partial. Address cutovers use per-zone generated record
 sets scoped to the run and addresses: each preview or apply request loads all
 record sets once, groups them by zone, and reuses that snapshot for conflict
@@ -169,8 +171,9 @@ for the latter two writes.
 
 ### Current SQLite migration commands
 
-SQLite apply/start and decommission execute an immutable, copied program of at
-most 1,000 object or zone steps plus initialization and completion. Initialization
+SQLite apply/start execute an immutable, copied program of at most 1,000 object
+steps plus initialization and completion. Decommission uses initialization and
+at most 1,000 zone steps; the last zone step also completes its attempt. Initialization
 uses the original HTTP lease. Each subsequent command captures its initial whole
 lease, reauthenticates the original raw request credential against transaction-local
 IAM, and retains the original elected writer episode and all current dependency
@@ -182,11 +185,15 @@ stop further steps. Plans are never replayed after restart.
 Every successful object write and its journal outcome share one concrete SQLite
 transaction. Schema and manager failures are prepared before mutation and become
 error items without attempting a rejected write. VIP address records, NS/SOA
-changes and their outcomes commit together for each zone. An unexpected mutation
-or final-admission failure rolls back the entire step, preserving previous
-committed outcomes. Completion uses current authorization too. If it cannot run,
-the durable deadline eventually exposes the unfinished run as interrupted with
-unresolved items, without inventing a successful terminal report.
+changes and their outcomes commit together for each zone. The last cutover zone
+also records the attempt's completed/partial status and finish time in that same
+transaction, under the same settings, zone and record permissions and final
+credential/license checks. A later publication cannot leave a fully applied
+cutover waiting for a separate completion write. An unexpected mutation or
+final-admission failure rolls back the entire step, preserving previous
+committed outcomes. Import completion remains a separate current command for
+selected settings. If a required command cannot run, the durable deadline
+eventually exposes unfinished work without inventing a successful terminal report.
 
 Reviewed SQLite adoption uses one immutable program step for the entire selection.
 It bounds the selection to 1,000 unique zones and 64 MiB of reviewed candidate
@@ -227,6 +234,17 @@ flowchart LR
     Commit --> Step
     Auth --> Stop["Rejection: stop; retain prior durable outcomes"]
     Commit --> Read["Same-image history and previews"]
+```
+
+Current SQLite decommission completes with its last zone outcome:
+
+```mermaid
+flowchart LR
+    Init["Original HTTP lease: claim cutover attempt"] --> Zone["Zone command: original proof and writer, current permissions"]
+    Zone -->|Earlier zone| Commit["Zone + VIP records + outcome: one commit"]
+    Commit --> Zone
+    Zone -->|Last zone| Finish["Zone + VIP records + outcome + terminal report: one commit"]
+    Zone -->|Refused| Stop["Roll back current step; retain earlier committed outcomes"]
 ```
 
 The following sequence describes the legacy Kubernetes path; SQLite uses the

@@ -51,7 +51,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - Migrations: restore apply, background import and authority cutover; tracking
   previous imports now atomically checks every reviewed zone UID and version.
   Selected settings commit with their durable import result, preserve map
-  deletion/reset semantics and report restart requirements.
+  deletion/reset semantics and report restart requirements. SQLite authority
+  cutover completes its report in the final zone transaction, preventing a
+  fully applied cutover from retaining an unfinished report.
 - Primary publication stops waiting for an obsolete desired source, allowing
   reconciliation after authority changes without serving stale data.
 

@@ -456,3 +456,55 @@ requirements; they are absent from the committed patch. The final browser and
 DHCP changes touch separate test files and compose without conflicts. Latest
 `origin/main` (`d281123`) remains fully merged. Current-head hosted results are
 recorded on the PR after this push.
+
+### Atomic cutover completion
+
+[Security 41179171856](https://github.com/robertherbaugh/kudurru/actions/runs/41179171856)
+passes all applicable checks on `d313092`. The same head's
+[CI run](https://github.com/robertherbaugh/kudurru/actions/runs/41179172005)
+exposes a distinct failure in the explicit-nameserver migration-history browser
+case. Its single decommission request returns HTTP 200 with a committed zone
+update and an explicit journal error: the separate terminal report command was
+refused because the current writable serving generation was unavailable. This
+establishes the completion boundary failure; the trace does not identify which
+publication advanced or show that the refusal itself was incorrect.
+
+`f17473e` (D229) moves cutover completion into the last selected zone's existing SQLite
+transaction. The zone, generated VIP records, outcome and completed/partial
+status now commit together. Earlier zones retain their committed outcomes when
+a later command fails. The same settings/zone/record authorization, original
+request proof, elected writer and final credential/license checks remain.
+Import finalization and the general current-command protocol are unchanged.
+
+The new regression reads the durable journal after every commit. Before the
+fix, all six single/multi-zone, earlier/last-error, unchanged and VIP cases
+deterministically expose all zone outcomes while the report remains running
+without a finish time. Refused commands, final commit-check failure and journal
+failure must roll back the last zone, generated records and report together,
+preserving earlier outcomes and never replaying the refused command. A mounted
+runtime regression also expires the original credential at the final commit
+check for the last zone, covering both VIP writes and unchanged authority.
+
+Focused API cutover races pass in 9.752 seconds. Three repetitions of the
+mounted final-expiry races pass in 40.339 seconds, including the original
+initialization-expiry case. Scoped API/CLI lint reports zero issues. Against
+the rebuilt embedded application, the formerly failing history scenario passes
+ten repetitions in 52.0 seconds, and all three migration-file browser scenarios
+pass in 15.8 seconds. Assertions, deadlines and one-shot mutation behavior are
+unchanged. An earlier browser launch stopped at fixture setup because the
+binary embedded the placeholder dashboard; it did not exercise cutover.
+
+Both hosted Go shards, including DHCP snapshot catch-up, pass on `d313092`.
+Its only failing CI test job is the browser case corrected here. All separate
+GitHub workflows pass, including security, kind, Compose and Edge. The excluded
+Cloudflare check remains separate. Current-head combined and hosted results
+follow in the PR validation record.
+
+Final local composition on `f17473e` passes all **149 browser scenarios** in
+3.9 minutes against the rebuilt application. Combined current-cutover,
+migration and adoption races pass 61 test/subtest results with zero failures or
+skips (`internal/api`: 10.347 seconds; `cmd/kudurru`: 166.190 seconds, with
+`licensetest`). The CGO-disabled embedded binary is 73,785,504 bytes against the
+100,000,000-byte limit; dashboard entry gzip is 301.1 KiB against 600 KiB.
+The local documentation build and whitespace checks pass. This closes the
+local cutover regression, not the remaining feature packages or release gates.
