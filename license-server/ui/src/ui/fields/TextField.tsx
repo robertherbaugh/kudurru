@@ -1,5 +1,6 @@
 // Copied from dashboard/src/components/fields/TextField.tsx at dd3dcb0; keep in step by hand.
-// Changes: none.
+// Changes: Astryx 0.7 inputs take controlClassName, not className (the
+// dashboard is still on 0.6).
 // Text, multi-line text, switch and checkbox fields: the Astryx control
 // with its own label and the help under it (FieldHelp.tsx). Every other
 // prop passes through to the Astryx component. `mono` sets the control in
@@ -19,20 +20,20 @@ export type TextFieldProps = Omit<TextInputProps, Own> &
     fieldWidth?: string | number | undefined;
   };
 
-export function TextField({ help, error, warning, mono, fieldWidth, className, ...rest }: TextFieldProps) {
+export function TextField({ help, error, warning, mono, fieldWidth, controlClassName, ...rest }: TextFieldProps) {
   return (
     <FieldShell help={help} error={error} warning={warning} width={fieldWidth}>
-      {(status) => <TextInput {...rest} className={[mono ? 'k-mono' : '', className ?? ''].join(' ').trim() || undefined} status={status} />}
+      {(status) => <TextInput {...rest} controlClassName={[mono ? 'k-mono' : '', controlClassName ?? ''].join(' ').trim() || undefined} status={status} />}
     </FieldShell>
   );
 }
 
 export type TextAreaFieldProps = Omit<TextAreaProps, Own> & HelpParts & { mono?: boolean | undefined };
 
-export function TextAreaField({ help, error, warning, mono, className, ...rest }: TextAreaFieldProps) {
+export function TextAreaField({ help, error, warning, mono, controlClassName, ...rest }: TextAreaFieldProps) {
   return (
     <FieldShell help={help} error={error} warning={warning}>
-      {(status) => <TextArea {...rest} className={[mono ? 'k-mono' : '', className ?? ''].join(' ').trim() || undefined} status={status} />}
+      {(status) => <TextArea {...rest} controlClassName={[mono ? 'k-mono' : '', controlClassName ?? ''].join(' ').trim() || undefined} status={status} />}
     </FieldShell>
   );
 }
