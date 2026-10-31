@@ -106,12 +106,29 @@ namespace is `default`.
 | Remove the cache | `kudurru cache flush` |
 | Show the nodes | `kudurru nodes` |
 | Show the audit log | `kudurru audit --since 24h` |
+| Verify the retained audit trail | `kudurru audit verify` |
 | Show the settings | `kudurru settings get` |
 | Change a setting | `kudurru settings set cache.maxEntries=200000` |
 | Set a setting to its default | `kudurru settings set log.level-` |
 
 You cannot change a setting with the label `host only` with
 `settings set`. Change it in `kudurru.yaml`.
+
+### Verify the audit trail
+
+Run `kudurru audit verify` to check the server's complete retained audit chain
+and available batch seals. It requires `audit.read` and the audit license.
+The command prints whether verification passed and when it was checked, plus
+an explanation if an integrity check failed. The server shares scans and
+caches results for 30 seconds, so `checkedAt` can precede the command.
+
+Use `kudurru audit verify -o json` for scripts. A completed integrity check
+prints a result in either format, including `verified: false` on failure.
+The exit status is nonzero when integrity fails, verification is unavailable,
+access is denied, or the request times out or is canceled. Request failures
+print an error to standard error without a verification result. The usual
+`--context`, `--server` and `--request-timeout` flags apply. This command
+checks the retained trail; it cannot prove that deleted history never existed.
 
 ## Work with objects
 

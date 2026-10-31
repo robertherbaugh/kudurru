@@ -807,5 +807,6 @@ func newAuditCmd(o *cliOpts) *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "object name")
 	cmd.Flags().StringVar(&actor, "actor", "", "principal name")
 	cmd.Flags().IntVar(&limit, "limit", 100, "maximum entries")
+	cmd.AddCommand(newAuditVerifyCmd(o))
 	return cmd
 }
