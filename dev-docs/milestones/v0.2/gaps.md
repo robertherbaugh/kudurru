@@ -807,3 +807,55 @@ the isolated 25-test file or the complete **880/880** dashboard tests (165.28s,
 two workers). That hosted failure remains recorded pending the next run.
 Security workflow `41203722606` passes all applicable jobs. The understood
 Cloudflare docs check remains excluded by the owner's instruction.
+
+### F09b SQLite production integration mount
+
+`cb3af01`, `f03d968` and `687371f` compose the existing background host with
+actual SQLite serving lifetime and complete inventory preparation. Each
+instance retains its original credential/root/source inputs and carried elected
+writer token. Equivalent background captures update future requests only;
+changed authority cancels and joins the old instance. Fenced or unclassified
+failures no longer receive automatic provider retries.
+
+Inbound observations stage source-owned desired objects, permanent allocations,
+source head/chunks and global inventory in one concrete transaction. Original
+UID/RV, ownership, target/group grants and final writer/license checks remain
+mandatory. Publication waits for exact primary receipts, including withdrawal
+of older source-owned data. Private MAC grants retain source identity and
+exclusive expiry. Actual UniFi HTTPS acquisition, omission, ownership rollback,
+independent replacement, replica promotion/stale observations and final-license
+rollback are covered. Outbound root tests use a bounded provider double through
+real ledger/budget/receipt transactions; separate Cloudflare SDK tests use
+actual local HTTP servers.
+
+Parent composed races pass: cmd 54.585s, servingbuild 9.262s, host 1.319s, after
+the earlier full integration-library races. Agent final mounted races pass
+35.274s and host races 7.866s; scoped lint reports zero issues. This implements
+the SQLite mount. Kubernetes needs a true atomic source/admission root, and
+`Delete` needs a cleanup/finalizer protocol; both remain explicit F09b work.
+
+### Disposable AD protocol validation and Windows prerequisite
+
+`5319c85` supplies a reusable first-party Docker runner, mandatory AD workflow
+step, sanitized result artifact and a concrete
+[Windows provisioning/acceptance prompt](../../labs/windows-ad-acceptance-prompt.md).
+Microsoft's Windows Server container image needs a Windows host, and Microsoft
+does not support AD DS inside a container. This Linux VM also has no `/dev/kvm`.
+Those constraints do not prevent isolated Samba protocol checks.
+
+On the committed source, `python3 hack/test-ad-samba.py --docker-host
+unix:///tmp/kudurru-lab-docker.sock` passes three cases in 7.669s with Samba
+4.22.11 and BIND 9.20.30: actual GSS-TSIG authentication plus client-verified
+signed REFUSED replies over TCP and UDP, and unsigned UPDATE refusal without
+authenticated observation. The result records the exact commit/image/probe and
+helper hashes, `lab_or_probe_modified: false`, and successful owned cleanup.
+An intentionally incompatible image fails with nonzero status and also cleans
+up its container/network. Python compilation and workflow actionlint pass.
+
+Only separate unmodified external executables are used. Realm credentials and
+keytabs remain in private container tmpfs; no host ports, host realm, extra
+capabilities or Docker runtime logs are used. The probe remains outside the
+production binary and refuses every UPDATE. These results do not close Windows
+DC/member/DHCP acceptance, production AD writes/ownership/aging/cutover, or the
+original two-VM keepalived gate. The container VIP runner remains active and has
+identified a real dnsdist cached-health-failure defect for a separate fix.

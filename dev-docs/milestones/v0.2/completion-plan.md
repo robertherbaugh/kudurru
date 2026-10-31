@@ -18,7 +18,7 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F18a, F09b and F68c container acceptance; the parent has
+agents currently own F18a, F70 and F68c container acceptance; the parent has
 integrated F05/F31 and added a Samba AD protocol lab. Freed agents take
 the next independent package, retaining original proofs, ownership, current
 transactions and final credential/license checks. No refused mutation replay.
@@ -66,7 +66,7 @@ runners. Unit tests cannot substitute for those results.
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Queued: missing |
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Queued: missing |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |
-| F09b | Production integration-host wiring and failover | Zones and AD | Active: integration-host agent |
+| F09b | Production integration-host wiring and failover | Zones and AD | SQLite mount integrated 687371f; Kubernetes atomic-source and Delete dependencies remain |
 | F10a | Reload inline objects without restart | Zones and AD | Queued: missing |
 | F10b | `Policy/default` as explicit fallback | Zones and AD | Implemented; final gates open |
 | F11a | Server-side Kerberos/GSS-TSIG/TKEY feasibility implementation | Zones and AD | Queued: partial |
@@ -174,7 +174,7 @@ runners. Unit tests cannot substitute for those results.
 | F68b | Knot catalog consumer interoperability | Zones and AD | Queued: missing |
 | F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative active; original VM qualification remains external |
 | F69 | Central reads for retired node via scope=node&node=other | Observability and release | Queued: missing |
-| F70 | Prune unreferenced central dictionaries | Observability and release | Queued: missing |
+| F70 | Prune unreferenced central dictionaries | Observability and release | Active: central retention agent |
 | F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Queued: missing |
 | F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Integrated e77d025; bounded real-envtest and composed auth races pass |
 | F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Integrated e77d025; actual router/CLI and composed races pass |

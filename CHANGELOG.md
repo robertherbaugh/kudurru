@@ -23,6 +23,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- SQLite integrations: mount licensed Cloudflare and UniFi background execution
+  with per-instance election, original credential/writer fencing, atomic source
+  inventory and publication-qualified DNS/group updates. Retain is supported;
+  Kubernetes atomic-source execution and Delete cleanup remain pending.
+
 - Recursive DNS: negotiate per-authority DNS cookies with bounded peer state,
   address-bound random client cookies, rotation and budgeted BADCOOKIE recovery.
   Cookies stay out of shared response caches and client answers.
