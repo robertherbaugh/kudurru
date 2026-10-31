@@ -154,7 +154,7 @@ func TestServingZoneCommandFinalExpiryIncludesEmptyAndDryRun(t *testing.T) {
 				if _, err := f.s.opts.Store.Apply(t.Context(), z, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
 					t.Fatal(err)
 				}
-				awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+				awaitServingZoneCommandForward(t, f, z.Name)
 			}
 			var clockCalls atomic.Int32
 			f.s.opts.Now = func() time.Time {
@@ -285,7 +285,7 @@ func TestServingZoneCommandReauthenticatesCurrentRawProofAndAllScopes(t *testing
 				if _, err := f.s.opts.Store.Apply(t.Context(), z, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
 					t.Fatal(err)
 				}
-				awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+				awaitServingZoneCommandForward(t, f, z.Name)
 			}
 			id, ok := tokens.Parse(f.token)
 			if !ok {
