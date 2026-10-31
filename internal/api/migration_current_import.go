@@ -125,7 +125,7 @@ func (s *Server) currentImportProgram(ctx context.Context, input *importers.Plan
 	_, settings, _ := plan.Selected()
 	result := &MigrationResult{RunID: run.Name, Items: []ApplyResult{}}
 	program := &MigrationProgram{}
-	program.steps = append(program.steps, func(ctx context.Context, tx *sqlite.CommandTx) (*MigrationCommandPlan, error) {
+	program.steps = append(program.steps, func(_ context.Context, tx *sqlite.CommandTx) (*MigrationCommandPlan, error) {
 		candidate := run.DeepCopy()
 		return migrationPlanFor(tx, []rbac.Attributes{migrationSettingsRequirement()}, func(ctx context.Context, tx *sqlite.CommandTx) error { return saveCurrentMigration(ctx, tx, candidate) }, func() { run = candidate }), nil
 	})

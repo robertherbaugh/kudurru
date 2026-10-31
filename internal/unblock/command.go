@@ -21,6 +21,7 @@ import (
 // system operation; it never borrows an HTTP credential or decision grant.
 type Action string
 
+// Supported request decisions; system expiry uses a separate command.
 const (
 	Approve Action = "approve"
 	Deny    Action = "deny"
@@ -33,6 +34,7 @@ type Target struct {
 	Action          Action
 }
 
+// Valid checks the bounded request identity and supported action.
 func (t Target) Valid() bool {
 	return t.Namespace != "" && len(t.Namespace) <= 63 && t.Name != "" && len(t.Name) <= 253 && (t.Action == Approve || t.Action == Deny || t.Action == Delete)
 }

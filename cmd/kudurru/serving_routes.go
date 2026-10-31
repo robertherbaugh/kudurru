@@ -46,7 +46,14 @@ func servingUnconvertedMutation(method, requestPath string) bool {
 			return true
 		}
 	case "unblockrequests":
-		return !(method == http.MethodDelete && len(parts) == 3 || method == http.MethodPost && len(parts) == 4 && (parts[3] == "approve" || parts[3] == "deny"))
+		switch method {
+		case http.MethodDelete:
+			return len(parts) != 3
+		case http.MethodPost:
+			return len(parts) != 4 || parts[3] != "approve" && parts[3] != "deny"
+		default:
+			return true
+		}
 	case "imports":
 		// Apply/start and cutover use bounded current programs. Adoption
 		// remains unavailable until its reviewed ownership command is mounted.

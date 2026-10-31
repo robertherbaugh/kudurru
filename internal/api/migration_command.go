@@ -12,6 +12,8 @@ import (
 // bounded program. Each call to the returned step executes exactly its next
 // operation; a failed step terminates the program, without retry or replay.
 type MigrationCommand func(context.Context, *MigrationProgram) (MigrationNext, error)
+
+// MigrationNext executes the next fixed step; any failure terminates the program.
 type MigrationNext func(context.Context) error
 
 // MigrationProgram is constructed only by the migration handlers. Clients
@@ -20,12 +22,15 @@ type MigrationProgram struct {
 	steps []func(context.Context, *sqlite.CommandTx) (*MigrationCommandPlan, error)
 }
 
+// Len reports the number of steps fixed before admission.
 func (p *MigrationProgram) Len() int {
 	if p == nil {
 		return 0
 	}
 	return len(p.steps)
 }
+
+// Prepare seals one step against its concrete current transaction.
 func (p *MigrationProgram) Prepare(ctx context.Context, tx *sqlite.CommandTx, index int) (*MigrationCommandPlan, error) {
 	if p == nil || index < 0 || index >= len(p.steps) || tx == nil {
 		return nil, errUnavailable("current migration program unavailable")
@@ -46,26 +51,36 @@ type MigrationCommandPlan struct {
 func migrationPlanFor(tx *sqlite.CommandTx, attrs []rbac.Attributes, apply func(context.Context, *sqlite.CommandTx) error, accept func()) *MigrationCommandPlan {
 	return &MigrationCommandPlan{tx: tx, attrs: append([]rbac.Attributes(nil), attrs...), apply: apply, accept: accept}
 }
+
+// PreparedFor verifies that the unconsumed plan belongs to this transaction.
 func (p *MigrationCommandPlan) PreparedFor(tx *sqlite.CommandTx) bool {
 	return p != nil && p.tx == tx && tx != nil && p.apply != nil && p.state.Load() == 0
 }
+
+// Requirements returns a copy of the complete step permissions.
 func (p *MigrationCommandPlan) Requirements() []rbac.Attributes {
 	if p == nil {
 		return nil
 	}
 	return append([]rbac.Attributes(nil), p.attrs...)
 }
+
+// Apply stages the step and its journal outcome once in the original transaction.
 func (p *MigrationCommandPlan) Apply(ctx context.Context, tx *sqlite.CommandTx) error {
 	if !p.PreparedFor(tx) || !p.state.CompareAndSwap(0, 1) {
 		return errUnavailable("current migration plan unavailable")
 	}
 	return p.apply(ctx, tx)
 }
+
+// Committed exposes results only after the caller confirms a successful commit.
 func (p *MigrationCommandPlan) Committed() {
 	if p != nil && p.state.CompareAndSwap(1, 2) && p.accept != nil {
 		p.accept()
 	}
 }
+
+// Release permanently invalidates the plan and its result callback.
 func (p *MigrationCommandPlan) Release() {
 	if p != nil {
 		p.state.Store(3)

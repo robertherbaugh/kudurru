@@ -34,6 +34,7 @@ type Change struct {
 	Original, Desired store.Object
 }
 
+// NewPlan copies an inventory into an isolated editor without retaining live objects.
 func NewPlan(objects []store.Object) *Plan {
 	p := &Plan{original: map[store.Key]store.Object{}, current: map[store.Key]store.Object{}, changed: map[store.Key]bool{}}
 	for _, o := range objects {
@@ -44,6 +45,7 @@ func NewPlan(objects []store.Object) *Plan {
 	return p
 }
 
+// Get copies a current planned object into the supplied destination.
 func (p *Plan) Get(ctx context.Context, key store.Key, into store.Object) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -60,6 +62,7 @@ func (p *Plan) Get(ctx context.Context, key store.Key, into store.Object) error 
 	return nil
 }
 
+// List returns detached planned objects in stable namespace/name order.
 func (p *Plan) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
 	if err := ctx.Err(); err != nil {
 		return store.ObjectList{}, err
@@ -116,6 +119,7 @@ func (p *Plan) List(ctx context.Context, kind store.Kind, opts store.ListOptions
 	return out, nil
 }
 
+// Apply records a detached edit, preserving ownership and version preconditions.
 func (p *Plan) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -136,6 +140,7 @@ func (p *Plan) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpti
 	return next.DeepCopyObject().(store.Object), nil
 }
 
+// Delete records removal from the plan after checking managed ownership.
 func (p *Plan) Delete(ctx context.Context, key store.Key, opts store.DeleteOptions) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -166,6 +171,7 @@ func (p *Plan) Checkpoint() func() {
 	return func() { p.current, p.changed = current, changed }
 }
 
+// Changes returns final edits in stable order for current validation and staging.
 func (p *Plan) Changes() []Change {
 	out := make([]Change, 0, len(p.changed))
 	for key := range p.changed {

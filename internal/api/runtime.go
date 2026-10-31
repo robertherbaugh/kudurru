@@ -212,12 +212,6 @@ func (s *Server) setBlocking(ctx context.Context, in *setBlockingInput) (*blocki
 	return &blockingOutput{Body: after}, nil
 }
 
-// flushTypes are the query types a by-name flush removes.
-var flushTypes = []uint16{
-	dns.TypeA, dns.TypeAAAA, dns.TypeCNAME, dns.TypeMX, dns.TypeTXT, dns.TypeNS, dns.TypeSOA, dns.TypePTR,
-	dns.TypeSRV, dns.TypeHTTPS, dns.TypeSVCB, dns.TypeCAA, dns.TypeDS, dns.TypeDNSKEY, dns.TypeANY, dns.TypeNAPTR,
-}
-
 func (s *Server) flushCache(ctx context.Context, in *flushInput) (*flushOutput, error) {
 	if s.opts.CacheFlushCommand != nil {
 		name := in.Name

@@ -27,7 +27,11 @@ type DomainCommandTarget struct {
 	Action    domainlist.Action
 	Operation string
 }
+
+// DomainCommandPrepare constructs a sealed plan from the supplied current transaction.
 type DomainCommandPrepare func(context.Context, *sqlite.CommandTx) (*DomainCommandPlan, error)
+
+// DomainCommand authorizes and commits one complete domain convenience operation.
 type DomainCommand func(context.Context, DomainCommandTarget, DomainCommandPrepare) error
 
 // DomainCommandPlan seals a bounded edit to its original transaction. Only the
@@ -39,15 +43,20 @@ type DomainCommandPlan struct {
 	state  atomic.Uint32
 }
 
+// PreparedFor verifies that the unconsumed plan belongs to this transaction and target.
 func (p *DomainCommandPlan) PreparedFor(tx *sqlite.CommandTx, target DomainCommandTarget) bool {
 	return p != nil && tx != nil && p.tx == tx && p.target == target && p.apply != nil && p.state.Load() == 0
 }
+
+// Requirements returns the delegated permission for the complete operation.
 func (p *DomainCommandPlan) Requirements() []rbac.Attributes {
 	if p == nil || p.state.Load() == 2 {
 		return nil
 	}
 	return []rbac.Attributes{{Resource: "blocklists", Verb: "write", Scope: clusterScope}}
 }
+
+// Apply stages the sealed effects once in the original transaction.
 func (p *DomainCommandPlan) Apply(ctx context.Context, tx *sqlite.CommandTx) error {
 	if p == nil || ctx == nil || tx == nil || tx != p.tx || p.apply == nil || !p.state.CompareAndSwap(0, 1) {
 		return errUnavailable("current domain plan unavailable")
@@ -58,6 +67,8 @@ func (p *DomainCommandPlan) Apply(ctx context.Context, tx *sqlite.CommandTx) err
 	}
 	return p.apply(ctx, tx)
 }
+
+// Release permanently invalidates the plan.
 func (p *DomainCommandPlan) Release() {
 	if p != nil {
 		p.state.Store(2)
