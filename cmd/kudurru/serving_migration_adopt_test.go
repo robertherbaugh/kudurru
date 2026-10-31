@@ -25,6 +25,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
+	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -62,7 +63,8 @@ func adoptionHTTP(t *testing.T, f *servingCommandFixture, server *httptest.Serve
 
 func adoptionWait(t *testing.T, f *servingCommandFixture) {
 	t.Helper()
-	var stable replication.Generation
+	var stable serving.Identity
+	var stableWriter *primaryWriterTerm
 	var since time.Time
 	settled := func() bool {
 		image, err := f.s.opts.Store.ReadGeneration(t.Context())
@@ -71,7 +73,7 @@ func adoptionWait(t *testing.T, f *servingCommandFixture) {
 		}
 		status := f.s.publisher.Status()
 		current := image.Generation()
-		if !status.ProtectedReady || !status.Installed.Same(current) || !status.Served.Base.Same(current) {
+		if !status.ProtectedReady || status.Preparing || !status.Installed.Same(current) || !status.Served.Base.Same(current) {
 			since = time.Time{}
 			return false
 		}
@@ -90,9 +92,18 @@ func adoptionWait(t *testing.T, f *servingCommandFixture) {
 			since = time.Time{}
 			return false
 		}
+		driver := f.s.primary.driver.Status()
+		writer := f.s.primary.writer.active.Load()
+		if !driver.Running || !driver.Ready || !f.s.primary.writer.current(writer) ||
+			!driver.Writer.Term.Same(writer.fence.Term) || driver.Writer.Incarnation != writer.fence.Incarnation {
+			since = time.Time{}
+			return false
+		}
 		acknowledged := map[string]bool{}
-		for _, z := range f.s.primary.driver.Status().Zones {
-			acknowledged[z.ObjectName] = z.Installed && z.Acknowledged && z.Published
+		for _, z := range driver.Zones {
+			observed, ok := owner.Primary().CommittedPrimaryStatus(z.ObjectName)
+			acknowledged[z.ObjectName] = ok && z.Installed && z.Acknowledged && z.Published &&
+				z.Version == observed.Member.Version && z.Incarnation == observed.Member.Incarnation && z.Sequence == observed.Member.Sequence
 		}
 		for _, raw := range image.Payload.Objects {
 			var header metav1.TypeMeta
@@ -111,8 +122,20 @@ func adoptionWait(t *testing.T, f *servingCommandFixture) {
 				return false
 			}
 		}
-		if since.IsZero() || !stable.Same(current) {
-			stable, since = current, time.Now()
+		// Zone admission alone permits an older committed head while desired
+		// records are pending. Native NOTIFY acknowledgment is also a later
+		// metadata command, even when this fixture has no notification targets.
+		// Neither may be left to invalidate the next one-shot HTTP request.
+		records, notifications := adoptionPendingPrimary(t, image, owner)
+		target := serving.TermActivation{Term: driver.Writer.Term, Incarnation: driver.Writer.Incarnation}
+		if records != 0 || notifications != 0 || !f.s.primary.writer.current(writer) ||
+			f.s.publisher.CheckWriterLease(t.Context(), lease, target) != nil {
+			since = time.Time{}
+			return false
+		}
+		identity := lease.Bundle().Identity()
+		if since.IsZero() || stable != identity || stableWriter != writer {
+			stable, stableWriter, since = identity, writer, time.Now()
 			return false
 		}
 		return time.Since(since) >= 100*time.Millisecond
