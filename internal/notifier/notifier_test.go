@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"slices"
@@ -409,5 +410,54 @@ func TestNewValidates(t *testing.T) {
 	}
 	if n.opts.Attempts != DefaultAttempts || n.opts.Timeout != DefaultTimeout || n.opts.Backoff != DefaultBackoff {
 		t.Fatalf("defaults %+v", n.opts)
+	}
+}
+
+func TestNotifyExplicitKeyAndSourceOptions(t *testing.T) {
+	for _, explicit := range []bool{true, false} {
+		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
+			sec := startSecondary(t, 0)
+			z := testZone(t, 100, func(dz *v1alpha1.DNSZone) {
+				specified(sec.addr, keyName)(dz)
+				if explicit {
+					// This transfer key is deliberately unavailable. Explicit NOTIFY
+					// selection must use the independent key instead.
+					dz.Spec.Policy.TransferTSIGKeyRefs = []string{"transfer-only."}
+					dz.Spec.Policy.NotifyTSIGKeyRef = keyName
+					dz.Spec.Policy.NotifySource = "127.0.0.2"
+				}
+			})
+			fs := &fakeSend{}
+			n := newNotifier(t, Options{Source: holder(t, zone.GateOpen, z), Keyring: keyring(t), SourceAddr: netip.MustParseAddr("127.0.0.1"), send: fs.send})
+			n.notifyZone(t.Context(), z)
+			got := fs.all()
+			want := "127.0.0.1"
+			if explicit {
+				want = "127.0.0.2"
+			}
+			if len(got) != 1 || got[0].KeyName != keyName || got[0].Source != netip.MustParseAddr(want) {
+				t.Fatal("legacy notifier did not wire independent key/source with compatibility fallback")
+			}
+			// Exercise the actual legacy sender, not only its injectable wire seam.
+			n = newNotifier(t, Options{Source: holder(t, zone.GateOpen, z), Keyring: keyring(t), SourceAddr: netip.MustParseAddr("127.0.0.1")})
+			n.notifyZone(t.Context(), z)
+			gotWire := sec.received()
+			if len(gotWire) != 1 || !gotWire[0].tsig || gotWire[0].status != nil || count(n, ResultSuccess) != 1 {
+				t.Fatal("legacy selected key did not sign actual NOTIFY")
+			}
+		})
+	}
+}
+
+func TestNotifyUnavailableExplicitKeyDoesNotUseTransferKey(t *testing.T) {
+	sec := startSecondary(t, 0)
+	z := testZone(t, 100, func(dz *v1alpha1.DNSZone) {
+		specified(sec.addr, keyName)(dz)
+		dz.Spec.Policy.NotifyTSIGKeyRef = "missing."
+	})
+	n := newNotifier(t, Options{Source: holder(t, zone.GateOpen, z), Keyring: keyring(t)})
+	n.notifyZone(t.Context(), z)
+	if len(sec.received()) != 0 || count(n, ResultNoKey) != 1 {
+		t.Fatal("missing explicit key used transfer-key fallback")
 	}
 }

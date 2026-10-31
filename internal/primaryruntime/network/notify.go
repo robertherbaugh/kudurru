@@ -157,9 +157,9 @@ func (s *Sender) Bind(ctx context.Context, m pr.Member, z *zone.Zone) (context.C
 		return nil, nil, pr.ErrUnavailable
 	}
 	a := &attempt{owner: s, ctx: ctx, cut: cut, fence: f, member: m, model: z, policy: p, soa: soa, serial: z.Serial(), names: names}
-	if len(p.keys) != 0 && p.mode != public.NotifyNone {
+	if p.key != "" && p.mode != public.NotifyNone {
 		var found bool
-		a.key, found = cut.Keys.Identity(p.keys[0])
+		a.key, found = cut.Keys.Identity(p.key)
 		if !found {
 			release()
 			return nil, nil, pr.ErrUnavailable
@@ -264,12 +264,17 @@ func (s *Sender) Validator(identity string, keys *dnsserver.StaticKeyring) sqlit
 type notifyPolicy struct {
 	mode    public.NotifyMode
 	targets []netip.AddrPort
-	keys    []string
+	key     string
+	keys    []string // Retain transfer-policy equality as well as the effective key.
+	source  netip.Addr
 }
 
 func (s *Sender) modelPolicy(z *zone.Zone) (notifyPolicy, error) {
-	p := notifyPolicy{mode: z.NotifyMode(), targets: z.NotifyTargets(), keys: z.TransferKeys()}
-	if len(p.targets) > s.options.MaxTargets || len(p.keys) > 64 {
+	p := notifyPolicy{mode: z.NotifyMode(), targets: z.NotifyTargets(), key: z.NotifyKey(), keys: z.TransferKeys(), source: z.NotifySource()}
+	if !p.source.IsValid() {
+		p.source = s.options.SourceAddr
+	}
+	if len(p.targets) > s.options.MaxTargets || len(z.TransferKeys()) > 64 {
 		return p, pr.ErrCapacity
 	}
 	p.targets = normalizedTargets(p.targets)
@@ -277,7 +282,7 @@ func (s *Sender) modelPolicy(z *zone.Zone) (notifyPolicy, error) {
 }
 
 func (s *Sender) sourcePolicy(p public.ZonePolicy) (notifyPolicy, error) {
-	out := notifyPolicy{mode: p.Notify}
+	out := notifyPolicy{mode: p.Notify, source: s.options.SourceAddr}
 	if out.mode == "" {
 		out.mode = public.NotifyNone
 	}
@@ -297,7 +302,21 @@ func (s *Sender) sourcePolicy(p public.ZonePolicy) (notifyPolicy, error) {
 		out.targets = append(out.targets, ap)
 	}
 	out.targets = normalizedTargets(out.targets)
-	for _, ref := range p.TransferTSIGKeyRefs {
+	if p.NotifySource != "" {
+		var err error
+		out.source, err = zone.ParseNotifySource(p.NotifySource)
+		if err != nil {
+			return out, pr.ErrInvalid
+		}
+	}
+	if p.NotifyTSIGKeyRef != "" {
+		var err error
+		out.key, err = zone.ParseNotifyKeyRef(p.NotifyTSIGKeyRef)
+		if err != nil {
+			return out, pr.ErrInvalid
+		}
+	}
+	for i, ref := range p.TransferTSIGKeyRefs {
 		key := zone.KeyName(ref)
 		if len(ref) > 255 || strings.TrimSpace(ref) == "" || key == "." {
 			return out, pr.ErrInvalid
@@ -307,6 +326,9 @@ func (s *Sender) sourcePolicy(p public.ZonePolicy) (notifyPolicy, error) {
 		}
 		if !slices.Contains(out.keys, key) {
 			out.keys = append(out.keys, key)
+		}
+		if i == 0 && p.NotifyTSIGKeyRef == "" {
+			out.key = key
 		}
 	}
 	return out, nil

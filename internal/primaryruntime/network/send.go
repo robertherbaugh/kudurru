@@ -48,7 +48,7 @@ func (s *Sender) Send(ctx context.Context, m pr.Member, z *zone.Zone) error {
 					mu.Unlock()
 					return
 				}
-				err := zone.SendNotify(ctx, zone.Notify{Zone: m.Zone.Apex, Serial: a.serial, SOA: a.soa, Target: target, Source: s.options.SourceAddr, Timeout: 3 * time.Second, KeyName: a.key.Key, Algorithm: a.key.Algorithm, TSIG: dnsserver.TSIGProvider(a.cut.Keys)})
+				err := zone.SendNotify(ctx, zone.Notify{Zone: m.Zone.Apex, Serial: a.serial, SOA: a.soa, Target: target, Source: a.policy.source, Timeout: 3 * time.Second, KeyName: a.key.Key, Algorithm: a.key.Algorithm, TSIG: dnsserver.TSIGProvider(a.cut.Keys)})
 				if err != nil {
 					mu.Lock()
 					failures = append(failures, err)

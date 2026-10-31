@@ -32,27 +32,43 @@ type notifyPeer struct {
 	calls  atomic.Int64
 	bad    atomic.Bool
 	hook   atomic.Pointer[func()]
+	source atomic.Pointer[netip.Addr]
 }
 
 func (p *notifyPeer) setHook(fn func()) { p.hook.Store(&fn) }
 func peer(t *testing.T, signed bool) *notifyPeer {
 	t.Helper()
-	packet, err := net.ListenPacket("udp", "127.0.0.1:0")
+	key := ""
+	if signed {
+		key = "key."
+	}
+	return notifyPeerAt(t, "127.0.0.1:0", key, ring(t, "test-original-secret"))
+}
+
+func notifyPeerAt(t *testing.T, address, key string, keys *dnsserver.StaticKeyring) *notifyPeer {
+	t.Helper()
+	packet, err := net.ListenPacket("udp", address)
 	check(t, err)
 	p := &notifyPeer{target: netip.MustParseAddrPort(packet.LocalAddr().String())}
 	started := make(chan struct{})
-	server := &dns.Server{PacketConn: packet, TsigProvider: dnsserver.TSIGProvider(ring(t, "test-original-secret")), NotifyStartedFunc: func() { close(started) }, Handler: dns.HandlerFunc(func(w dns.ResponseWriter, m *dns.Msg) {
-		if m.Opcode != dns.OpcodeNotify || len(m.Answer) != 1 || (signed && (m.IsTsig() == nil || w.TsigStatus() != nil)) {
+	server := &dns.Server{PacketConn: packet, TsigProvider: dnsserver.TSIGProvider(keys), NotifyStartedFunc: func() { close(started) }, Handler: dns.HandlerFunc(func(w dns.ResponseWriter, m *dns.Msg) {
+		if m.Opcode != dns.OpcodeNotify || len(m.Answer) != 1 || (key != "" && (m.IsTsig() == nil || w.TsigStatus() != nil || m.IsTsig().Hdr.Name != key)) || (key == "" && m.IsTsig() != nil) {
 			p.bad.Store(true)
 		}
+		remote, err := netip.ParseAddrPort(w.RemoteAddr().String())
+		if err != nil {
+			p.bad.Store(true)
+		}
+		source := remote.Addr().Unmap()
+		p.source.Store(&source)
 		p.calls.Add(1)
 		if hook := p.hook.Load(); hook != nil {
 			(*hook)()
 		}
 		r := new(dns.Msg)
 		r.SetReply(m)
-		if signed {
-			r.SetTsig("key.", dns.HmacSHA256, 300, time.Now().Unix())
+		if key != "" {
+			r.SetTsig(key, dns.HmacSHA256, 300, time.Now().Unix())
 		}
 		if err := w.WriteMsg(r); err != nil {
 			p.bad.Store(true)

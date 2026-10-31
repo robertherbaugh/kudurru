@@ -89,6 +89,23 @@ type ZonePolicy struct {
 	Notify NotifyMode `json:"notify,omitempty"`
 	// +optional
 	NotifyTargets []string `json:"notifyTargets,omitempty"`
+	// NotifyTSIGKeyRef selects the key for outbound NOTIFY independently of
+	// transfer authorization. Empty uses the first transferTSIGKeyRefs key;
+	// with neither configured NOTIFY is unsigned. A selected unavailable key
+	// fails delivery, without falling back to another key or unsigned traffic.
+	// +kubebuilder:validation:MaxLength=254
+	// +kubebuilder:validation:XValidation:rule="self.endsWith('.') || size(self) <= 253",message="must fit a DNS key name of 253 characters plus an optional trailing dot"
+	// +kubebuilder:validation:Pattern=`^$|^([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)*[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.?$`
+	// +optional
+	NotifyTSIGKeyRef string `json:"notifyTSIGKeyRef,omitempty"`
+	// NotifySource is the local unicast IPv4/IPv6 address for outbound NOTIFY.
+	// Empty inherits notify.source, then the system-selected source if unset.
+	// No hostnames, ports, scoped or IPv4-mapped IPv6 addresses are accepted.
+	// Bind or address-family failure never falls back to another source.
+	// +kubebuilder:validation:MaxLength=45
+	// +kubebuilder:validation:XValidation:rule="self == '' || (isIP(self) && (ip(self).isGlobalUnicast() || ip(self).isLoopback() || ip(self).isLinkLocalUnicast()))",message="must be empty or an unscoped unicast IPv4 or IPv6 address"
+	// +optional
+	NotifySource string `json:"notifySource,omitempty"`
 	// Update controls RFC 2136 dynamic updates (v0.2).
 	// +kubebuilder:default=deny
 	// +optional

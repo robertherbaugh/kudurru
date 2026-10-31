@@ -136,10 +136,14 @@ func buildSecondaryRaw(dz *v1alpha1.DNSZone, records []dns.RR, expiresAt time.Ti
 		transfer = accessPolicy{mode: v1alpha1.AccessDeny}
 	}
 	notify, targets, _ := compileNotify(dz.Spec.Policy, path)
+	notifyKey, notifySource, noerrs := compileNotifyOptions(dz.Spec.Policy, path)
+	if len(noerrs) > 0 {
+		notify = v1alpha1.NotifyNone
+	}
 	z := &Zone{
 		name: nameFromKey(key), key: key, typ: v1alpha1.ZoneTypeSecondary,
 		access: access, transfer: transfer, transferKeys: keys,
-		notify: notify, notifyTo: targets, generation: dz.Generation,
+		notify: notify, notifyTo: targets, notifyKey: notifyKey, notifySource: notifySource, generation: dz.Generation,
 		secondaryIdentity: SecondaryIdentity(dz),
 	}
 	z.apex = z.tree.upsert(key, z.name)

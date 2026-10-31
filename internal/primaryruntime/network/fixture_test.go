@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/netip"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -77,6 +78,11 @@ type fixture struct {
 
 func newFixture(t *testing.T, policy public.ZonePolicy) *fixture {
 	t.Helper()
+	return newNotifyFixture(t, policy, ring(t, "test-original-secret"), netip.Addr{})
+}
+
+func newNotifyFixture(t *testing.T, policy public.ZonePolicy, keys *dnsserver.StaticKeyring, notifySource netip.Addr) *fixture {
+	t.Helper()
 	f := &fixture{t: t, path: filepath.Join(t.TempDir(), "state.db")}
 	scheme, err := runtimekinds.NewScheme()
 	check(t, err)
@@ -103,7 +109,7 @@ func newFixture(t *testing.T, policy public.ZonePolicy) *fixture {
 	check(t, err)
 	cache, err := listfetcher.OpenDiskCache(t.TempDir(), nil)
 	check(t, err)
-	f.keys, err = servingbuild.NewKeyringOwner(ring(t, "test-original-secret"))
+	f.keys, err = servingbuild.NewKeyringOwner(keys)
 	check(t, err)
 	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: cache, Authority: f.s.ServingAuthority, Capture: func(context.Context, *replication.Image) (servingbuild.Dependencies, error) {
 		cut := f.keys.Capture()
@@ -131,7 +137,7 @@ func newFixture(t *testing.T, policy public.ZonePolicy) *fixture {
 	}
 	f.publication, err = servingbuild.NewPrimaryPublication(f.pub, nil)
 	check(t, err)
-	f.sender, err = network.NewNotify(network.NotifyOptions{Capture: f.captureNotify})
+	f.sender, err = network.NewNotify(network.NotifyOptions{Capture: f.captureNotify, SourceAddr: notifySource})
 	check(t, err)
 	basePin := f.keys.PrimaryPin(f.pub)
 	guard, err := currentguard.New(currentguard.Options{Pin: func(ctx context.Context, w pr.PublicationFence, fn func(currentguard.Pinned) error) error {

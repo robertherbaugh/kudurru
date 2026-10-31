@@ -44,6 +44,8 @@ type Zone struct {
 	transferKeys []string
 	notify       v1alpha1.NotifyMode
 	notifyTo     []netip.AddrPort
+	notifyKey    string
+	notifySource netip.Addr
 
 	tree tree
 	// index maps every key in tree to its node. The tree gives canonical
@@ -184,6 +186,22 @@ func (z *Zone) NotifyMode() v1alpha1.NotifyMode { return z.notify }
 // port defaulted to 53.
 func (z *Zone) NotifyTargets() []netip.AddrPort { return slices.Clone(z.notifyTo) }
 
+// NotifyKey returns the explicit NOTIFY key, or the first transfer key for
+// compatibility. Empty means unsigned only when neither selects a key.
+func (z *Zone) NotifyKey() string {
+	if z.notifyKey != "" {
+		return z.notifyKey
+	}
+	if len(z.transferKeys) != 0 {
+		return z.transferKeys[0]
+	}
+	return ""
+}
+
+// NotifySource returns the zone's explicit source. An invalid address means
+// inherit the host's notify.source, then system selection when that is unset.
+func (z *Zone) NotifySource() netip.Addr { return z.notifySource }
+
 // NameServer is one apex NS host and the in-zone addresses (glue) the zone
 // itself publishes for it.
 type NameServer struct {
@@ -315,6 +333,12 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	transfer, terrs := compileTransfer(spec.Policy, policyPath)
 	keys, kerrs := compileKeyRefs(spec.Policy.TransferTSIGKeyRefs, policyPath.Child("transferTSIGKeyRefs"))
 	notify, targets, nerrs := compileNotify(spec.Policy, policyPath)
+	notifyKey, notifySource, noerrs := compileNotifyOptions(spec.Policy, policyPath)
+	if len(noerrs) > 0 {
+		// Never turn an invalid explicit choice into compatibility fallback.
+		notify = v1alpha1.NotifyNone
+	}
+	nerrs = append(nerrs, noerrs...)
 	var policyErrs field.ErrorList
 	if len(terrs) > 0 || len(kerrs) > 0 {
 		// Fail closed: a transfer policy that does not compile allows
@@ -360,6 +384,8 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		transferKeys: keys,
 		notify:       notify,
 		notifyTo:     targets,
+		notifyKey:    notifyKey,
+		notifySource: notifySource,
 		generation:   dz.Generation,
 	}
 	if spec.Fallback != nil {
