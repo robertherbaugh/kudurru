@@ -3471,6 +3471,7 @@ type MigrationAuthorityChange struct {
 	Primary           string        `json:"primary"`
 	ResourceVersion   string        `json:"resourceVersion"`
 	TargetNameservers *[]string     `json:"targetNameservers,omitempty"`
+	Uid               *string       `json:"uid,omitempty"`
 	ZoneName          string        `json:"zoneName"`
 }
 

@@ -3508,6 +3508,7 @@ export interface components {
             primary: string;
             resourceVersion: string;
             targetNameservers?: string[] | null;
+            uid?: string;
             zoneName: string;
         };
         MigrationCutover: {

@@ -4410,6 +4410,9 @@
               "null"
             ]
           },
+          "uid": {
+            "type": "string"
+          },
           "zoneName": {
             "type": "string"
           }

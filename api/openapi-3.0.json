@@ -4316,6 +4316,9 @@
             "nullable": true,
             "type": "array"
           },
+          "uid": {
+            "type": "string"
+          },
           "zoneName": {
             "type": "string"
           }
