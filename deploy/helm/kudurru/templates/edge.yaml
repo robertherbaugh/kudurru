@@ -115,7 +115,7 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
-              add: [NET_ADMIN, NET_RAW, NET_BROADCAST]
+              add: [NET_ADMIN, NET_RAW, NET_BROADCAST, SETUID, SETGID]
           resources:
             {{- toYaml $k.resources | nindent 12 }}
           volumeMounts:
