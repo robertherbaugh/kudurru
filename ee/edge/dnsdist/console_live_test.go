@@ -252,7 +252,7 @@ func TestConsoleLiveSupervisor(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "fixture.json"), fixture, 0o600); err != nil { //nolint:gosec // fresh directory under explicitly configured test scratch parent
 		t.Fatal(err)
 	}
-	wrapper, err := os.ReadFile("testdata/console-lab/client.py")
+	wrapper, err := os.ReadFile("testdata/console-client.py")
 	if err != nil {
 		t.Fatal(err)
 	}
