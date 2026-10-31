@@ -175,11 +175,7 @@ func (b *RegexBuilder) Add(src string, tag uint8) error {
 		b.dropped++
 		return ErrRegexCap
 	}
-	expr := src
-	if hasUpperASCII(src) {
-		expr = "(?i)" + src
-	}
-	re, err := regexp.Compile(expr)
+	re, err := CompileRegex(src)
 	if err != nil {
 		return fmt.Errorf("matcher: invalid regex %q: %w", src, err)
 	}
@@ -188,8 +184,17 @@ func (b *RegexBuilder) Add(src string, tag uint8) error {
 	}
 	src = strings.Clone(src) // the caller's string may alias a read buffer
 	b.seen[src] = struct{}{}
-	b.entries = append(b.entries, regexEntry{re: re, src: src, lit: RequiredLiteral(expr), tag: tag})
+	b.entries = append(b.entries, regexEntry{re: re, src: src, lit: RequiredLiteral(re.String()), tag: tag})
 	return nil
+}
+
+// CompileRegex uses the list engine's case behavior for a normalized DNS name.
+// Diagnostic matchers use it too so an excluded rule retains identical meaning.
+func CompileRegex(src string) (*regexp.Regexp, error) {
+	if hasUpperASCII(src) {
+		src = "(?i)" + src
+	}
+	return regexp.Compile(src)
 }
 
 // Len returns the number of expressions added so far.

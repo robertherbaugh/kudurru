@@ -208,6 +208,7 @@ type List struct {
 	slowIndex   *matcher.PatternIndex
 	hasRewrites bool
 	badfilters  map[string]bool
+	exclusions  exclusionSet
 }
 
 // Name returns the list name.
@@ -323,8 +324,8 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 	l := &List{name: spec.Name, mode: spec.Mode, fingerprint: fp}
 	var errs []error
 	ok := 0
-	for _, src := range spec.Sources {
-		st, err := c.source(src)
+	for source, src := range spec.Sources {
+		st, err := c.source(src, source)
 		l.sources = append(l.sources, st)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("blocking: list %q source %q: %w", spec.Name, src.Name, err))
@@ -427,6 +428,7 @@ type compiler struct {
 	badfilters                               map[string]bool
 	slowRegex, slowAdded                     int
 	slowSeen                                 map[string]bool
+	exclusions                               exclusionSet
 }
 
 func newCompiler(mode Mode, regexCap int) *compiler {
@@ -437,7 +439,7 @@ func newCompiler(mode Mode, regexCap int) *compiler {
 	return c
 }
 
-func (c *compiler) source(src Source) (SourceStats, error) {
+func (c *compiler) source(src Source, source int) (SourceStats, error) {
 	st := SourceStats{Name: src.Name}
 	rc, err := src.Open()
 	if err != nil {
@@ -450,6 +452,7 @@ func (c *compiler) source(src Source) (SourceStats, error) {
 	if ex != nil {
 		emit = func(r parser.Rule) error {
 			if ex.excluded(r) {
+				c.exclusions.addBasic(source, r)
 				return nil
 			}
 			return c.add(r)
@@ -458,6 +461,7 @@ func (c *compiler) source(src Source) (SourceStats, error) {
 	res, err := parser.Parse(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains, EmitSlow: func(u parser.UnsupportedRule) error {
 		if ex != nil {
 			if _, ok := ex.rules[u.Text]; ok {
+				c.exclusions.addSlow(source, u)
 				ex.rules[u.Text] = true
 				ex.count++
 				if u.Exception {
@@ -568,6 +572,8 @@ func (c *compiler) build(l *List) {
 	l.primary = c.primary.build(false)
 	l.except = c.except.build(true)
 	l.slow, l.badfilters = c.slow, c.badfilters
+	c.exclusions.seen = nil // compile-only duplicate tracking
+	l.exclusions = c.exclusions
 	var patterns []*matcher.Pattern
 	slowExceptions, slowUnindexed := 0, 0
 	for _, r := range l.slow {
@@ -600,6 +606,7 @@ func (c *compiler) build(l *List) {
 	for _, r := range l.slow {
 		l.stats.Bytes += len(r.text) + len(r.key) + 2048
 	}
+	l.stats.Bytes += 2*l.exclusions.bytes + len(l.exclusions.rules)*128 + l.exclusions.patterns*2048
 	l.unsupported = c.unsupportedRules
 	if l.stats.Regexes > matcher.RegexWarnThreshold {
 		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules (more than %d); %d of them have no indexable literal", l.stats.Regexes, matcher.RegexWarnThreshold, l.stats.RegexUnindexed))

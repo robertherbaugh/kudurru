@@ -314,6 +314,30 @@ func (e DNSQueryRequestProto) Valid() bool {
 	}
 }
 
+// Defines values for DNSRuleExclusionEffect.
+const (
+	DNSRuleExclusionEffectAllow     DNSRuleExclusionEffect = "allow"
+	DNSRuleExclusionEffectBlock     DNSRuleExclusionEffect = "block"
+	DNSRuleExclusionEffectException DNSRuleExclusionEffect = "exception"
+	DNSRuleExclusionEffectRewrite   DNSRuleExclusionEffect = "rewrite"
+)
+
+// Valid indicates whether the value is a known member of the DNSRuleExclusionEffect enum.
+func (e DNSRuleExclusionEffect) Valid() bool {
+	switch e {
+	case DNSRuleExclusionEffectAllow:
+		return true
+	case DNSRuleExclusionEffectBlock:
+		return true
+	case DNSRuleExclusionEffectException:
+		return true
+	case DNSRuleExclusionEffectRewrite:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DiagnosisMessageSeverity.
 const (
 	DiagnosisMessageSeverityError   DiagnosisMessageSeverity = "error"
@@ -2767,20 +2791,24 @@ type DNSQueryRequestProto string
 
 // DNSQueryResult defines model for DNSQueryResult.
 type DNSQueryResult struct {
-	Additional  []string `json:"additional"`
-	Answer      []string `json:"answer"`
-	Authority   []string `json:"authority"`
-	Client      string   `json:"client"`
-	Error       *string  `json:"error,omitempty"`
-	Flags       DNSFlags `json:"flags"`
-	LatencyMs   float64  `json:"latency_ms"`
-	List        *string  `json:"list,omitempty"`
-	Name        string   `json:"name"`
-	Node        string   `json:"node"`
-	Rcode       string   `json:"rcode"`
-	Rule        *string  `json:"rule,omitempty"`
-	Status      string   `json:"status"`
-	StatusClass string   `json:"status_class"`
+	Additional []string            `json:"additional"`
+	Answer     []string            `json:"answer"`
+	Authority  []string            `json:"authority"`
+	Client     string              `json:"client"`
+	Error      *string             `json:"error,omitempty"`
+	Exclusions *[]DNSRuleExclusion `json:"exclusions,omitempty"`
+
+	// ExclusionsTruncated Question exclusion evidence exceeded a compile or query diagnostic bound.
+	ExclusionsTruncated *bool    `json:"exclusionsTruncated,omitempty"`
+	Flags               DNSFlags `json:"flags"`
+	LatencyMs           float64  `json:"latency_ms"`
+	List                *string  `json:"list,omitempty"`
+	Name                string   `json:"name"`
+	Node                string   `json:"node"`
+	Rcode               string   `json:"rcode"`
+	Rule                *string  `json:"rule,omitempty"`
+	Status              string   `json:"status"`
+	StatusClass         string   `json:"status_class"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs   float64 `json:"took_ms"`
@@ -2810,6 +2838,19 @@ type DNSRecordSetStatus struct {
 	ObservedGeneration *int64              `json:"observedGeneration,omitempty"`
 	Publications       *[]PublicationState `json:"publications,omitempty"`
 }
+
+// DNSRuleExclusion defines model for DNSRuleExclusion.
+type DNSRuleExclusion struct {
+	Effect DNSRuleExclusionEffect `json:"effect"`
+	List   string                 `json:"list"`
+	Rule   string                 `json:"rule"`
+
+	// Source Zero-based compiled source index, excluding RPZ sources; never a source URL.
+	Source int64 `json:"source"`
+}
+
+// DNSRuleExclusionEffect defines model for DNSRuleExclusion.Effect.
+type DNSRuleExclusionEffect string
 
 // DhcpReservationInputBody defines model for DhcpReservationInputBody.
 type DhcpReservationInputBody struct {

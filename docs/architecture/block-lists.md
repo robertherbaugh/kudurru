@@ -17,6 +17,15 @@ Code: `internal/listfetcher` (the leader's fetcher, the disk cache, every
 node's resolver), `internal/blocking` (parsing, the compiled list, the
 snapshot) and `internal/blocking/matcher`.
 
+The compiler also retains bounded evidence of actual source rules removed by
+exclusions. Explicit HTTP dig diagnostics evaluate these witnesses against the
+original selected policies and client/question context. Evidence stays on the
+request and never enters response caches; ordinary DNS requests skip the scan.
+The dashboard consumes the same answer, without a later list read or browser
+regex evaluation. See [disabled-rule diagnostics](../deploy/allowlist.md#checking-disabled-rules)
+for permissions, bounds and the distinction between a disabled rule and the
+final verdict (D255).
+
 ## The object
 
 ```yaml

@@ -2878,6 +2878,9 @@ export interface components {
             authority: string[];
             client: string;
             error?: string;
+            exclusions?: components["schemas"]["DNSRuleExclusion"][] | null;
+            /** @description Question exclusion evidence exceeded a compile or query diagnostic bound. */
+            exclusionsTruncated?: boolean;
             flags: components["schemas"]["DNSFlags"];
             /** Format: double */
             latency_ms: number;
@@ -2914,6 +2917,17 @@ export interface components {
             /** Format: int64 */
             observedGeneration?: number;
             publications?: components["schemas"]["PublicationState"][] | null;
+        };
+        DNSRuleExclusion: {
+            /** @enum {string} */
+            effect: "block" | "allow" | "exception" | "rewrite";
+            list: string;
+            rule: string;
+            /**
+             * Format: int64
+             * @description Zero-based compiled source index, excluding RPZ sources; never a source URL.
+             */
+            source: number;
         };
         DhcpReservationInputBody: {
             hostname?: string;

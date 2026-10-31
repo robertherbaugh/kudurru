@@ -431,12 +431,28 @@ describe('list exceptions on the Allowlist', () => {
     expect(collectEntries(mockDB(), 'allow').some((e) => e.kind === 'exception' && e.value === 'pixel.unified.example')).toBe(true);
   });
 
-  it('explains a name that matches an exception in the check box', async () => {
+  it('uses the query exclusion evidence without a second list read', async () => {
+    let secondaryReads = 0;
+    server.use(
+      http.get(`${API}/domains`, () => {
+        secondaryReads++;
+        return HttpResponse.json({ items: [] });
+      }),
+      http.post(`${API}/dns/query`, () => HttpResponse.json({
+        name: 'ads.unified.example.', status: 'blocked_list', status_class: 'blocked',
+        list: 'default/another-list', rule: '||unified.example^',
+        exclusions: [{ list: 'default/stevenblack', source: 0, rule: 'ads.unified.example', effect: 'block' }],
+        exclusionsTruncated: true,
+      })),
+    );
     renderWithApp(<AllowlistPage />, { route: '/allowlist' });
     const panel = await screen.findByRole('region', { name: 'Is it allowed?' });
     fireEvent.change(within(panel).getByRole('textbox', { name: /^Name/ }), { target: { value: 'ads.unified.example' } });
     fireEvent.click(within(panel).getByRole('button', { name: 'Check' }));
     const why = await within(panel).findByTestId('domain-check-exceptions');
-    expect(why).toHaveTextContent('ads.unified.example is switched off in stevenblack (a list exception): that list does not block it.');
+    expect(why).toHaveTextContent('Rule ads.unified.example is switched off in stevenblack. Other rules can still decide the answer.');
+    expect(within(panel).getByTestId('domain-check-result')).toHaveTextContent('blocked');
+    expect(within(panel).getByText('Some matching disabled rules may be omitted.')).toBeInTheDocument();
+    expect(secondaryReads).toBe(0);
   });
 });

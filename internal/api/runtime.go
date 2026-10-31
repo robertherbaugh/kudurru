@@ -87,24 +87,36 @@ type DNSQueryRequest struct {
 
 // DNSQueryResult is the answer of POST /dns/query.
 type DNSQueryResult struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	Client      string   `json:"client"`
-	Rcode       string   `json:"rcode"`
-	Status      string   `json:"status"`
-	StatusClass string   `json:"status_class"`
-	Upstream    string   `json:"upstream,omitempty"`
-	List        string   `json:"list,omitempty"`
-	Rule        string   `json:"rule,omitempty"`
-	Answer      []string `json:"answer" nullable:"false"`
-	Authority   []string `json:"authority" nullable:"false"`
-	Additional  []string `json:"additional" nullable:"false"`
-	Flags       DNSFlags `json:"flags"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Client      string `json:"client"`
+	Rcode       string `json:"rcode"`
+	Status      string `json:"status"`
+	StatusClass string `json:"status_class"`
+	Upstream    string `json:"upstream,omitempty"`
+	List        string `json:"list,omitempty"`
+	Rule        string `json:"rule,omitempty"`
+	// Exclusions are matching disabled rules from the original query's selected
+	// lists. They do not assert that the final answer or whole list is allowed.
+	Exclusions          []DNSRuleExclusion `json:"exclusions,omitempty"`
+	ExclusionsTruncated bool               `json:"exclusionsTruncated,omitempty" doc:"Question exclusion evidence exceeded a compile or query diagnostic bound."`
+	Answer              []string           `json:"answer" nullable:"false"`
+	Authority           []string           `json:"authority" nullable:"false"`
+	Additional          []string           `json:"additional" nullable:"false"`
+	Flags               DNSFlags           `json:"flags"`
 	// LatencyMS is the pipeline latency.
 	LatencyMS float64 `json:"latency_ms"`
 	Error     string  `json:"error,omitempty"`
 	Node      string  `json:"node"`
 	Took
+}
+
+// DNSRuleExclusion is one disabled rule from the captured filtering selection.
+type DNSRuleExclusion struct {
+	List   string `json:"list"`
+	Source int    `json:"source" doc:"Zero-based compiled source index, excluding RPZ sources; never a source URL."`
+	Rule   string `json:"rule"`
+	Effect string `json:"effect" enum:"block,allow,exception,rewrite"`
 }
 
 // DNSFlags are the header flags of the answer.
@@ -309,6 +321,7 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 	start := time.Now()
 	preq := &pipeline.Request{
 		Ctx: qctx, Msg: m, Received: start, Deadline: start.Add(5 * time.Second),
+		CollectExclusions: s.allowed(ctx, "blocklists", "read", clusterScope),
 		// Synthetic: the caller chooses the client address, so the log
 		// stage must not record this as that client's traffic.
 		Client: pipeline.Client{Addr: netip.AddrPortFrom(client, 0), Proto: proto, ClientID: "api-dig", Synthetic: true},
@@ -329,6 +342,12 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 		Name: name, Type: dns.TypeToString[qtype], Client: client.String(), Node: s.opts.NodeName,
 		Answer: []string{}, Authority: []string{}, Additional: []string{},
 		LatencyMS: float64(time.Since(start).Microseconds()) / 1000,
+	}
+	if preq.CollectExclusions {
+		for _, match := range preq.Exclusions {
+			out.Exclusions = append(out.Exclusions, DNSRuleExclusion{List: match.List, Source: match.Source, Rule: match.Rule, Effect: match.Effect})
+		}
+		out.ExclusionsTruncated = preq.ExclusionsTruncated
 	}
 	if err != nil {
 		out.Rcode = dns.RcodeToString[dns.RcodeServerFailure]

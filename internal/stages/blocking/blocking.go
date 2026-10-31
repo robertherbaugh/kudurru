@@ -295,6 +295,14 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	}
 	q := req.Msg.Question[0]
 	ctx := s.ruleContext(req)
+	if req.CollectExclusions {
+		matches, truncated := d.Selection.ExcludedQuestionRules(req.Ctx, ctx)
+		req.Exclusions = make([]pipeline.RuleExclusion, len(matches))
+		for i, match := range matches {
+			req.Exclusions[i] = pipeline.RuleExclusion{List: match.List, Source: match.Source, Rule: match.Rule, Effect: match.Effect}
+		}
+		req.ExclusionsTruncated = truncated
+	}
 	if req.Msg.RecursionDesired && s.opts.RPZ != nil {
 		selected, err := s.pinRPZ(req)
 		if err != nil {

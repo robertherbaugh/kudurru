@@ -2390,6 +2390,17 @@
           "error": {
             "type": "string"
           },
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/DNSRuleExclusion"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "exclusionsTruncated": {
+            "description": "Question exclusion evidence exceeded a compile or query diagnostic bound.",
+            "type": "boolean"
+          },
           "flags": {
             "$ref": "#/components/schemas/DNSFlags"
           },
@@ -2517,6 +2528,38 @@
             "type": "array"
           }
         },
+        "type": "object"
+      },
+      "DNSRuleExclusion": {
+        "additionalProperties": false,
+        "properties": {
+          "effect": {
+            "enum": [
+              "block",
+              "allow",
+              "exception",
+              "rewrite"
+            ],
+            "type": "string"
+          },
+          "list": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "source": {
+            "description": "Zero-based compiled source index, excluding RPZ sources; never a source URL.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "list",
+          "source",
+          "rule",
+          "effect"
+        ],
         "type": "object"
       },
       "DhcpReservationInputBody": {

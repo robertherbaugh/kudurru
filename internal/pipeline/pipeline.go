@@ -141,6 +141,21 @@ type Request struct {
 	// DNSSECValidation overrides the resolver default for a forward zone.
 	// Nil inherits the global default. Earlier stages must not mutate it.
 	DNSSECValidation *bool
+	// CollectExclusions enables bounded question-rule diagnostics for HTTP dig.
+	// Evidence belongs to this request, never a cached response. A copied
+	// subquery replaces its own fields without mutating its parent's evidence.
+	CollectExclusions   bool
+	Exclusions          []RuleExclusion
+	ExclusionsTruncated bool
+}
+
+// RuleExclusion identifies a disabled matching rule in the captured policy.
+// It does not imply that the list or final answer is allowed.
+type RuleExclusion struct {
+	List   string
+	Source int
+	Rule   string
+	Effect string
 }
 
 // Question returns the first question or a zero value.
