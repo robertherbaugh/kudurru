@@ -119,7 +119,7 @@ func New(opts Options) (*Authenticator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("k8s: http client: %w", err)
 	}
-	reviews, err := authenticationv1client.NewForConfigAndClient(opts.Config, hc)
+	reviews, err := authenticationv1client.NewForConfigAndClient(clientConfig, hc)
 	if err != nil {
 		return nil, fmt.Errorf("k8s: authentication client: %w", err)
 	}
@@ -322,6 +322,10 @@ func (a *Authenticator) verifyJWKS(ctx context.Context, v *gooidc.IDTokenVerifie
 }
 
 func (a *Authenticator) tokenReview(ctx context.Context, raw string) (auth.Principal, time.Time, error) {
+	// client-go throttles before installing its REST request timeout. Bound
+	// that wait too, preserving any shorter caller or client deadline.
+	ctx, cancel := context.WithTimeout(ctx, a.hc.Timeout)
+	defer cancel()
 	tr, err := a.reviews.TokenReviews().Create(ctx, &authenticationv1.TokenReview{
 		Spec: authenticationv1.TokenReviewSpec{Token: raw, Audiences: []string{a.opts.Audience}},
 	}, metav1.CreateOptions{})

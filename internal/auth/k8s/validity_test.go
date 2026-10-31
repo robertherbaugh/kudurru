@@ -2,11 +2,13 @@ package k8s_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -527,5 +529,140 @@ func TestProjectedCachedVerificationRechecksOriginalExpiry(t *testing.T) {
 	armed.Store(true)
 	if _, err := a.VerifyJWT(t.Context(), raw); err == nil {
 		t.Fatal("cache hit skipped original final expiry check")
+	}
+}
+
+// reviewDeadlineLimiter exposes the context at the rate-limiter boundary,
+// which client-go reaches before its REST request timeout is installed.
+type reviewDeadlineLimiter struct {
+	started chan time.Time
+}
+
+func (*reviewDeadlineLimiter) TryAccept() bool { return false }
+func (*reviewDeadlineLimiter) Accept()         {}
+func (*reviewDeadlineLimiter) Stop()           {}
+func (*reviewDeadlineLimiter) QPS() float32    { return 1 }
+func (l *reviewDeadlineLimiter) Wait(ctx context.Context) error {
+	deadline, _ := ctx.Deadline()
+	l.started <- deadline
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestProjectedTokenReviewBoundsRateLimitAndCancellation(t *testing.T) {
+	for _, tc := range []struct {
+		name                         string
+		clientTimeout, callerTimeout time.Duration
+	}{
+		{name: "default"},
+		{name: "clamped-client", clientTimeout: time.Hour},
+		{name: "shorter-client", clientTimeout: 50 * time.Millisecond},
+		{name: "shorter-caller", callerTimeout: 50 * time.Millisecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clientTimeout := tc.clientTimeout
+			f := newProjectedAPI(t)
+			cfg := f.cfg()
+			cfg.Timeout = clientTimeout
+			limiter := &reviewDeadlineLimiter{started: make(chan time.Time, 1)}
+			cfg.RateLimiter = limiter
+			a, err := k8s.New(k8s.Options{Config: cfg, DisableJWKS: true, Now: f.now})
+			if err != nil {
+				t.Fatal("create bounded authenticator")
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			if tc.callerTimeout > 0 {
+				cancel()
+				ctx, cancel = context.WithTimeout(t.Context(), tc.callerTimeout)
+			}
+			defer cancel()
+			raw := f.sign(t, f.claims())
+			done := make(chan error, 1)
+			began := time.Now()
+			go func() { _, err := a.VerifyJWT(ctx, raw); done <- err }()
+			var deadline time.Time
+			select {
+			case deadline = <-limiter.started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("review did not reach rate limiter")
+			}
+			bound := 10 * time.Second
+			if clientTimeout > 0 && clientTimeout < bound {
+				bound = clientTimeout
+			}
+			if tc.callerTimeout > 0 && tc.callerTimeout < bound {
+				bound = tc.callerTimeout
+			}
+			if deadline.IsZero() || deadline.After(time.Now().Add(bound)) || deadline.Before(began) {
+				t.Error("review throttle did not receive the bounded original context")
+			}
+			// The shorter configured deadline must expire by itself. The other
+			// cases prove caller cancellation beats the ten-second upper bound.
+			if clientTimeout != 50*time.Millisecond && tc.callerTimeout == 0 {
+				cancel()
+			}
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Error("canceled/throttled review authenticated")
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("review ignored cancellation/deadline while throttled")
+			}
+			if f.reviews.Load() != 0 {
+				t.Fatal("throttled review unexpectedly reached API")
+			}
+		})
+	}
+}
+
+func TestProjectedTokenReviewHTTPCancellation(t *testing.T) {
+	for _, callerCancel := range []bool{false, true} {
+		t.Run(fmt.Sprint(callerCancel), func(t *testing.T) {
+			f := newProjectedAPI(t)
+			started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				close(started)
+				select {
+				case <-r.Context().Done():
+					close(canceled)
+				case <-release:
+				}
+			}))
+			t.Cleanup(func() { close(release); server.Close() })
+			cfg := f.cfg()
+			cfg.Host, cfg.Timeout = server.URL, 2*time.Second
+			a, err := k8s.New(k8s.Options{Config: cfg, DisableJWKS: true, Now: f.now})
+			if err != nil {
+				t.Fatal("create authenticator")
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			raw := f.sign(t, f.claims())
+			done := make(chan error, 1)
+			go func() { _, err := a.VerifyJWT(ctx, raw); done <- err }()
+			select {
+			case <-started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("review did not reach HTTP handler")
+			}
+			if callerCancel {
+				cancel()
+			}
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Error("unfinished review authenticated")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("HTTP review ignored original client/caller bound")
+			}
+			select {
+			case <-canceled:
+			case <-time.After(time.Second):
+				t.Fatal("review request context was not canceled")
+			}
+		})
 	}
 }
