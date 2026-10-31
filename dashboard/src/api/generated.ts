@@ -4333,6 +4333,7 @@ export interface components {
             fields?: components["schemas"]["SettingField"][] | null;
             /** @enum {string} */
             format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email" | "date-time";
+            help?: string;
             items?: components["schemas"]["SettingShape"];
             keys?: components["schemas"]["SettingShape"];
             /** Format: int64 */
@@ -4458,8 +4459,8 @@ export interface components {
         };
         SourceInfo: {
             /** @enum {string} */
-            type: "pihole" | "technitium";
-            url: string;
+            type: "pihole" | "technitium" | "adguard" | "blocky";
+            url?: string;
         };
         Stats: {
             /** Format: int64 */

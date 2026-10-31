@@ -158,6 +158,16 @@ Flags:
       --since string   RFC 3339 time or a duration back from now (24h)
 ```
 
+### kudurru audit verify
+
+Ask the server to verify the complete retained audit trail and available batch seals. Requires audit.read and an audit license. The server caches verification results for 30 seconds; checkedAt identifies the scan.
+
+Use -o json for a structured result. Exits nonzero for an integrity failure, unavailable verification, or denied access.
+
+```text
+kudurru audit verify
+```
+
 ## kudurru backup
 
 Save every object (zones, record sets, lists, client groups, policies) as a multi-document YAML file. Status and server-set metadata are dropped so the file re-applies cleanly with `kudurru restore -f`. --safe redacts credentials embedded in URLs (user:password@ and token/key/secret query parameters) so the file can be shared; such a backup needs the secrets filled in before restore.
@@ -717,6 +727,34 @@ kudurru iam migrate status
 
 Import data from other DNS servers.
 
+### kudurru import adguard
+
+Convert a single YAML file (at most 4 MiB) without reading referenced files or fetching network sources. Use --file - for stdin. The default prints a partial conversion and a bounded loss report without contacting kudurru. Review unsupported semantics before --apply, which starts the existing tracked migration with normal validation, ownership and license checks. --wait requires --apply and returns the final result; without it, success means only that the job was accepted. Select objects and settings explicitly to limit application. Destination-derived targets (--use-vips or --update-nameservers) explicitly opt into destination access. No source credentials or file paths enter the plan or migration journal.
+
+```text
+kudurru import adguard --file PATH [flags]
+```
+
+Flags:
+
+```text
+      --apply                        start a tracked background migration of the reviewed
+                                     conversion
+      --dry-run                      preview only (the default)
+  -f, --file string                  source YAML file; - reads stdin (maximum 4 MiB)
+      --local-zone strings           explicit local suffixes to make authoritative for exact
+                                     IP/CNAME rewrites
+      --nameserver strings           replace imported authority with these DNS names
+      --nameserver-address strings   generate authority from these serving IPs or VIPs
+      --select-object strings        import only these Kind/[namespace/]name objects (repeatable)
+      --select-setting strings       import only these top-level settings sections (repeatable)
+      --skip-settings                leave settings unchanged
+      --update-nameservers           derive authority from the destination context hostname or IP
+      --use-vips                     use discovered destination VIPs (explicit destination API
+                                     access)
+      --wait                         wait for final migration results (requires --apply)
+```
+
 ### kudurru import bind
 
 Import a BIND zone file into a zone's record sets.
@@ -730,6 +768,32 @@ Flags:
 ```text
   -f, --filename string   zone file in BIND presentation format, or - for stdin
       --origin string     zone apex, to create the DNSZone when it does not exist yet
+```
+
+### kudurru import blocky
+
+Convert a single YAML file (at most 4 MiB) without reading referenced files or fetching network sources. Use --file - for stdin. The default prints a partial conversion and a bounded loss report without contacting kudurru. Review unsupported semantics before --apply, which starts the existing tracked migration with normal validation, ownership and license checks. --wait requires --apply and returns the final result; without it, success means only that the job was accepted. Select objects and settings explicitly to limit application. Destination-derived targets (--use-vips or --update-nameservers) explicitly opt into destination access. No source credentials or file paths enter the plan or migration journal.
+
+```text
+kudurru import blocky --file PATH [flags]
+```
+
+Flags:
+
+```text
+      --apply                        start a tracked background migration of the reviewed
+                                     conversion
+      --dry-run                      preview only (the default)
+  -f, --file string                  source YAML file; - reads stdin (maximum 4 MiB)
+      --nameserver strings           replace imported authority with these DNS names
+      --nameserver-address strings   generate authority from these serving IPs or VIPs
+      --select-object strings        import only these Kind/[namespace/]name objects (repeatable)
+      --select-setting strings       import only these top-level settings sections (repeatable)
+      --skip-settings                leave settings unchanged
+      --update-nameservers           derive authority from the destination context hostname or IP
+      --use-vips                     use discovered destination VIPs (explicit destination API
+                                     access)
+      --wait                         wait for final migration results (requires --apply)
 ```
 
 ### kudurru import decommission

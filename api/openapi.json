@@ -7139,6 +7139,9 @@
             ],
             "type": "string"
           },
+          "help": {
+            "type": "string"
+          },
           "items": {
             "$ref": "#/components/schemas/SettingShape"
           },
@@ -7501,7 +7504,9 @@
           "type": {
             "enum": [
               "pihole",
-              "technitium"
+              "technitium",
+              "adguard",
+              "blocky"
             ],
             "type": "string"
           },
@@ -7510,8 +7515,7 @@
           }
         },
         "required": [
-          "type",
-          "url"
+          "type"
         ],
         "type": "object"
       },

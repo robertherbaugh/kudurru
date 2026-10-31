@@ -1114,6 +1114,8 @@ func (e SourceEntriesKind) Valid() bool {
 
 // Defines values for SourceInfoType.
 const (
+	SourceInfoTypeAdguard    SourceInfoType = "adguard"
+	SourceInfoTypeBlocky     SourceInfoType = "blocky"
 	SourceInfoTypePihole     SourceInfoType = "pihole"
 	SourceInfoTypeTechnitium SourceInfoType = "technitium"
 )
@@ -1121,6 +1123,10 @@ const (
 // Valid indicates whether the value is a known member of the SourceInfoType enum.
 func (e SourceInfoType) Valid() bool {
 	switch e {
+	case SourceInfoTypeAdguard:
+		return true
+	case SourceInfoTypeBlocky:
+		return true
 	case SourceInfoTypePihole:
 		return true
 	case SourceInfoTypeTechnitium:
@@ -4386,6 +4392,7 @@ type SettingShape struct {
 	Enum    *[]SettingOption    `json:"enum,omitempty"`
 	Fields  *[]SettingField     `json:"fields,omitempty"`
 	Format  *SettingShapeFormat `json:"format,omitempty"`
+	Help    *string             `json:"help,omitempty"`
 	Items   *SettingShape       `json:"items,omitempty"`
 	Keys    *SettingShape       `json:"keys,omitempty"`
 	Max     *int64              `json:"max,omitempty"`
@@ -4517,7 +4524,7 @@ type SourceEntry struct {
 // SourceInfo defines model for SourceInfo.
 type SourceInfo struct {
 	Type SourceInfoType `json:"type"`
-	Url  string         `json:"url"`
+	Url  *string        `json:"url,omitempty"`
 }
 
 // SourceInfoType defines model for SourceInfo.Type.
