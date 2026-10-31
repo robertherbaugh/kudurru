@@ -335,12 +335,11 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 		blocked.call(http.MethodPost, "/domains/allow/exact", nil, http.StatusBadRequest, nil)
 		// Source-entry PATCH has an admitted command; its actual edits and
 		// restart behavior are covered by TestRunServeSQLiteSourceEntriesRestart.
-		// Current import/cutover commands reach required-body validation;
-		// adoption still has no complete current command.
-		for _, route := range []string{"/imports/apply", "/imports/start", "/imports/runs/mounted/decommission"} {
+		// Current import, adoption and cutover commands reach required-body
+		// validation. Their admitted mutation paths have separate acceptance tests.
+		for _, route := range []string{"/imports/apply", "/imports/start", "/imports/adopt", "/imports/runs/mounted/decommission"} {
 			blocked.call(http.MethodPost, route, nil, http.StatusBadRequest, nil)
 		}
-		blocked.call(http.MethodPost, "/imports/adopt", nil, http.StatusServiceUnavailable, nil)
 		// Unblock decisions have a current command; this unlicensed node still
 		// rejects the workflow through its entitlement gate.
 		blocked.call(http.MethodPost, "/unblockrequests/default/request/approve", api.UnblockApproval{}, http.StatusPaymentRequired, nil)
