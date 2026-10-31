@@ -1866,3 +1866,23 @@ API drift/permission checks pass (0.479s), both logout UI files/20 tests and
 dashboard typecheck pass. Initial composed attempts failed compilation before
 execution due to the naming collision; they are not reproduction evidence for
 the separate control-settings CI failure.
+
+
+### Migration browser publication gate qualification
+
+Hosted CI 41219077122 on 2a2971f passed security, but its dashboard VIP cutover
+test treated a documented middleware refusal as an unexpected console exception.
+The retained trace shows a successful cutover POST, followed by GET of the exact
+report returning 503 with `generation_pending`, then a successful report GET.
+This is not a failed or retried mutation.
+
+The browser fixture now accepts that exact refusal only for an explicitly
+declared same-origin GET path after verifying the bounded error body and absence
+of cookies/redirect. Handler errors, unrelated paths, mutations and malformed
+errors still fail. The VIP test deliberately injects one such response, requires
+the real completed journal afterward and asserts exactly one cutover POST.
+Three real browser repetitions passed before injection; two final injected
+recovery repetitions pass in 22.5s. An intermediate injected run correctly failed
+because Chromium supplied the HTTP/1 reason phrase; the matcher now recognizes
+only the exact empty or Service Unavailable phrase, still requiring the verified
+response. The API and production refusal/retry behavior are unchanged.

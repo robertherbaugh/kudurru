@@ -46,7 +46,7 @@ test('migration history cuts over served NS and SOA through the dashboard', asyn
 });
 
 
-test('VIP cutover creates and serves generated nameserver addresses', async ({ page }) => {
+test('VIP cutover creates and serves generated nameserver addresses', async ({ page, pendingReadPaths }) => {
   const api = await adminApi(page);
   const name = `migration-vip-${suffix()}`;
   const domain = `${name}.test.`;
@@ -74,9 +74,30 @@ test('VIP cutover creates and serves generated nameserver addresses', async ({ p
     await expect(dialog.getByRole('table', { name: 'Generated nameserver addresses' })).toContainText(ns);
     await expect(dialog.getByRole('table', { name: 'Generated nameserver addresses' })).toContainText('A 192.0.2.53');
     await page.screenshot({ path: path.resolve('..', '.context', 'migration-vip-cutover.png') });
+    // Cutover commits before the complete serving publication. A subsequent
+    // read can receive the explicit pre-handler generation_pending refusal.
+    // The UI must recover by reading the committed report; never replay cutover.
+    pendingReadPaths.add(`/api/v1/imports/runs/${result.runID}`);
+    let pendingInjected = false;
+    await page.route(new URL(`/api/v1/imports/runs/${result.runID}`, page.url()).href, async (route) => {
+      if (route.request().method() !== 'GET' || pendingInjected) return route.continue();
+      pendingInjected = true;
+      // Deterministically exercise the same pre-handler refusal seen in CI;
+      // every subsequent read reaches the real server and its committed journal.
+      await route.fulfill({ status: 503, contentType: 'application/json', headers: { 'Retry-After': '1' }, json: {
+        error: { key: 'generation_pending', message: 'complete serving generation unavailable' }, took_ms: 0,
+      } });
+    });
+    let cutoverRequests = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === `/api/v1/imports/runs/${result.runID}/decommission`) cutoverRequests++;
+    });
     await dialog.getByRole('checkbox', { name: 'I reviewed the nameserver changes' }).check();
     await dialog.getByRole('button', { name: 'Update nameservers' }).click();
     await expect(page.getByText('Nameservers updated', { exact: true })).toBeVisible();
+    await expect(page.getByText('Cutover 1: completed', { exact: true })).toBeVisible();
+    expect(pendingInjected, 'exercise publication refusal before report recovery').toBe(true);
+    expect(cutoverRequests, 'the committed cutover must never be replayed').toBe(1);
     for (const [record, type, target] of [[domain, 'NS', ns], [domain, 'SOA', ns], [ns, 'A', '192.0.2.53'], [`ns-20010db8000000000000000000000053.${domain}`, 'AAAA', '2001:db8::53']]) {
       await expect.poll(async () => {
         const dns = await api.post<{ answer: string[] }>('/dns/query', { name: record, type });
