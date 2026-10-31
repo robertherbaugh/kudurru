@@ -18,9 +18,10 @@ import (
 )
 
 // dnsListener serves Do53 over UDP or TCP, or DoT (tcp-tls), on miekg/dns
-// servers. A udp or tcp listener binds env.sockets sockets with
-// SO_REUSEPORT (socket.go), one miekg server and read loop each; DoT binds
-// one. With an enabled PROXYv2 policy every socket is wrapped so
+// servers. Each listener binds env.sockets sockets with SO_REUSEPORT
+// (socket.go), one miekg server and read loop each. Each DoT socket wraps its
+// own TCP listener with the shared reloadable TLS configuration. With an
+// enabled PROXYv2 policy every socket is wrapped so
 // authenticated headers are stripped and forged ones dropped before miekg
 // sees the bytes.
 type dnsListener struct {
@@ -69,7 +70,7 @@ func (l *dnsListener) Sockets() int {
 
 // socketCount is the number of sockets this listener binds.
 func (l *dnsListener) socketCount() int {
-	if l.spec.Protocol == ProtoDoT || l.env.sockets < 1 {
+	if l.env.sockets < 1 {
 		return 1
 	}
 	return l.env.sockets

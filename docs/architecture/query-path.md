@@ -32,10 +32,18 @@ client policy before response blocking and rebinding checks.
 |---|---|---|---|
 | Do53 UDP | miekg/dns, one `SO_REUSEPORT` socket per CPU | yes | yes |
 | Do53 TCP | miekg/dns, one socket per CPU | yes | yes |
-| DoT | miekg/dns `tcp-tls`, ALPN `dot` | yes | yes |
+| DoT | miekg/dns `tcp-tls`, one socket per CPU, ALPN `dot` | yes | yes |
 | DoH (HTTP/1.1, HTTP/2) | `net/http`, GET `?dns=` or POST | no | no |
 | DoQ | quic-go, ALPN `doq` | no | no |
 | DoH3 | quic-go HTTP/3 | no | no |
+
+On Linux, `listeners.sockets` controls UDP, TCP and DoT reuse-port groups
+(default: one socket per `GOMAXPROCS` CPU). Each DoT socket has its own accept
+loop and uses the same reloadable TLS certificate owner. TLS/PROXYv2 wrapping,
+per-connection query and idle limits, and shutdown apply on every socket.
+Other platforms bind one socket. QUIC listeners still bind independently;
+this TCP connection distribution does not supply connection-ID-aware routing
+for DoQ or DoH3.
 
 Every transport ends in one handler that stamps `Received` and a 5 s
 deadline, runs the chain and writes the reply. DoH, DoQ and DoH3 give the
