@@ -371,6 +371,21 @@ acceptance passes in 7.133 seconds. Existing assertions were not weakened.
 Scoped config/DNS/CLI lint reports zero issues; generated configuration and CLI
 references are synchronized. F22b/c remain independent missing requirements.
 
+## F26a daily pseudonym reload continuity
+
+Query-log privacy replacements now share one private process-local key state
+when the anonymizing transform is unchanged. Exclusion changes take effect
+without changing that day's pseudonym. Old held filters and the replacement
+share UTC-midnight rotation. A mode or anonymization-method change starts a new
+lifecycle, including reuse of a previously prepared filter; new collectors and
+process restarts do not inherit prior keys. Keys remain unexported and unpersisted.
+
+Final lifecycle/concurrency races pass (`internal/querylog`, 1.032 seconds),
+including exclusion application, ingestion/lookup equality, midnight, detached
+caller objects, mode changes and a fresh collector. The production reload
+subscription test passes under races (`cmd/kudurru`, 1.146 seconds). Scoped
+querylog/CLI lint reports zero issues. Other F26 reload requirements remain open.
+
 ## Prioritized bounded implementation queue
 
 “Owner” is a proposed workstream, not an assignment or authorization to change

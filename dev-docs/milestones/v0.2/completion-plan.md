@@ -102,7 +102,7 @@ runners. Unit tests cannot substitute for those results.
 | F24b | Per-ClientGroup rate-limit exemptions | DNS and resolver | Queued: missing |
 | F25a | Multi-socket DoT | DNS and resolver | Queued: missing |
 | F25b | Multi-socket DoQ/DoH3 with connection-ID-aware routing | DNS and resolver | Queued: missing |
-| F26a | Privacy reload preserves daily pseudonym identity | DNS and resolver | Queued: partial |
+| F26a | Privacy reload preserves daily pseudonym identity | DNS and resolver | Implemented; lifecycle/concurrency/production reload races pass |
 | F26b | Cache growth retains initial shard count | DNS and resolver | Queued: partial |
 | F26c | Blocking refresh/degraded settings hot reload | DNS and resolver | Queued: partial |
 | F26d | Querylog enabled/sink hot reload | DNS and resolver | Queued: missing |

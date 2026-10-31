@@ -23,6 +23,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Query-log privacy: exclusion-only reloads preserve daily client pseudonyms,
+  including across midnight; privacy mode/method changes and restart keep their
+  separate key lifecycles.
+
 - Native DNS listeners: host-only, restart-required TCP query-count, QUIC
   connection-count and TCP/HTTP/QUIC idle-timeout settings. Existing unlimited
   count defaults and idle durations are preserved.

@@ -123,7 +123,29 @@ func (a *Async) Enqueue(ev *Event) bool {
 // (querylog.privacy, anonymize and exclude.* hot reload); nil logs
 // everything unchanged. Events already queued keep the old transform only
 // if admitted before the swap.
-func (a *Async) SetPrivacy(p *Privacy) { a.privacy.Store(p) }
+func (a *Async) SetPrivacy(p *Privacy) {
+	for {
+		previous := a.privacy.Load()
+		next := p
+		if p != nil && previous != nil && p.mode == PrivacyAnonymizeClient && previous.mode == p.mode && p.pseudonym && previous.pseudonym {
+			// Exclusion-only changes keep one daily identity, including an
+			// Apply/Pseudonym already holding the previous filter. Copy the
+			// immutable filter; never modify the caller's published instance.
+			updated := *p
+			updated.keys = previous.keys
+			next = &updated
+		} else if p != nil && previous != nil {
+			// Reusing a previously prepared filter after a mode change must
+			// not restore the old pseudonym lifecycle either.
+			updated := *p
+			updated.keys = &pseudonymKeys{clock: p.keys.clock}
+			next = &updated
+		}
+		if a.privacy.CompareAndSwap(previous, next) {
+			return
+		}
+	}
+}
 
 // Pseudonym is the current filter's Pseudonym of addr: the client name its
 // queries are logged under, "" when clients are not pseudonymised.

@@ -87,7 +87,12 @@ never logged.
 shown: `full`, `anonymize_client` (a /24 or /48 prefix, or a daily
 pseudonym), `hide_domains`, `hide_domains_clients`, or `nothing` (only the
 per-minute totals). Changing the mode does not rewrite queries already
-logged.
+logged. Daily pseudonyms keep the same process-local key when a reload only
+changes exclusions or preserves the same anonymizing transform. The old filter
+and its replacement share midnight rotation, so an in-flight lookup agrees
+with ingestion. Changing the privacy mode or anonymization method starts a new
+key lifecycle; restarting the process also changes pseudonyms. Keys are never
+persisted, exported or derived from database values.
 
 ### What one event holds
 
