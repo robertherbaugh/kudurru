@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/blocking/parser"
@@ -474,6 +475,12 @@ func blockyInline(value string) ([]public.ListEntry, bool) {
 			v = "*." + v
 		case parser.KindRegex:
 			typ = public.EntryRegex
+		}
+		// ListEntry.value is bounded more tightly than parser input. Match
+		// the destination schema's character count, excluding regex slashes.
+		if utf8.RuneCountInString(v) > 1024 {
+			complete = false
+			return nil
 		}
 		key := string(typ) + "/" + v
 		if !seen[key] {

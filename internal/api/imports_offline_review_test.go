@@ -2,14 +2,19 @@ package api
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/importers"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
 
 func TestOfflineUpstreamsReplaceRecursiveGroups(t *testing.T) {
@@ -93,5 +98,102 @@ conditional:
 				t.Fatal("import changed unrelated upstream groups")
 			}
 		})
+	}
+}
+
+func TestOfflineBlockyRegexDestinationBounds(t *testing.T) {
+	for _, alphabet := range []struct{ name, char string }{{"ascii", "a"}, {"unicode", "é"}} {
+		for _, length := range []int{1024, 1025} {
+			t.Run(fmt.Sprintf("%s/%d", alphabet.name, length), func(t *testing.T) {
+				pattern := strings.Repeat(alphabet.char, length)
+				allowed := length == 1024
+				wantRefs := 0
+				if allowed {
+					wantRefs = 1
+				}
+				// Check the actual destination schema, including its Unicode length
+				// semantics, independently of the converter before applying its plan.
+				candidate := &public.BlockList{ObjectMeta: objectMeta("default", "regex-bound"), Spec: public.BlockListSpec{Sources: []public.ListSource{{Name: "inline", Entries: []public.ListEntry{{Type: public.EntryRegex, Value: pattern}}}}}}
+				err := testValidator(t).Validate(t.Context(), candidate, nil)
+				if allowed {
+					if err != nil {
+						t.Fatalf("schema rejected boundary regex: %v", err)
+					}
+				} else {
+					var validationErr *validator.Error
+					if !errors.As(err, &validationErr) || !slices.ContainsFunc(validationErr.Causes, func(c validator.Cause) bool {
+						return c.Field == "spec.sources[0].entries[0].value" && c.Type == "FieldValueTooLong"
+					}) {
+						t.Fatalf("expected destination value-length rejection, got %v", err)
+					}
+				}
+				input := "upstreams: {groups: {default: [192.0.2.53]}}\nblocking:\n  denylists:\n    bounded:\n      - |\n        /" + pattern + "/\n        retained.example\n  clientGroupsBlock: {default: [bounded]}\n"
+				plan, err := importers.PreviewBlocky(t.Context(), importers.OfflineRequest{}, strings.NewReader(input))
+				if err != nil {
+					t.Fatal(err)
+				}
+				s, st, host := migrationSettingsFixture(t)
+				program, run, result, err := s.currentImportProgram(t.Context(), plan)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for i := 0; i < program.Len(); i++ {
+					if err := migrationSettingsStep(t.Context(), st, program, i, nil); err != nil {
+						t.Fatal(err)
+					}
+				}
+				for _, item := range result.Items {
+					if item.Result == ResultError {
+						t.Fatalf("converted %s rejected at apply: %s", item.Kind, item.ErrorKey)
+					}
+				}
+				if (*run).Spec.Status != "completed" || result.JournalError != "" || result.SettingsError != "" || result.Settings == nil || result.Settings.Persisted == nil || !*result.Settings.Persisted {
+					t.Fatalf("boundary import did not complete: status %s, settings error %s", (*run).Spec.Status, result.SettingsError)
+				}
+				_, cfg := migrationSettingsRead(t, st, host)
+				if !slices.Equal(cfg.Upstreams.Groups["default"].Servers, []string{"192.0.2.53"}) {
+					t.Fatal("converted settings not persisted after object admission")
+				}
+				entries, lists := 0, 0
+				foundRegex, foundRetained := false, false
+				for _, item := range result.Items {
+					if item.Kind != "BlockList" {
+						continue
+					}
+					lists++
+					var list public.BlockList
+					if err := st.Get(t.Context(), store.Key{Kind: "BlockList", Namespace: item.Namespace, Name: item.Name}, &list); err != nil {
+						t.Fatal(err)
+					}
+					for _, source := range list.Spec.Sources {
+						for _, entry := range source.Entries {
+							entries++
+							switch {
+							case entry.Type == public.EntryRegex && entry.Value == pattern:
+								foundRegex = true
+							case entry.Type == public.EntryExact && entry.Value == "retained.example":
+								foundRetained = true
+							default:
+								t.Fatal("unexpected or altered persisted entry")
+							}
+						}
+					}
+				}
+				wantEntries := 1
+				if allowed {
+					wantEntries++
+				}
+				if lists != 1 || entries != wantEntries || !foundRetained || foundRegex != allowed {
+					t.Fatalf("persisted boundary entries: lists=%d entries=%d regex=%t retained=%t", lists, entries, foundRegex, foundRetained)
+				}
+				var policy public.Policy
+				if err := st.Get(t.Context(), store.Key{Kind: "Policy", Namespace: "default", Name: "default"}, &policy); err != nil {
+					t.Fatal(err)
+				}
+				if len(policy.Spec.BlockListRefs) != wantRefs || len(policy.Spec.AllowListRefs) != 0 {
+					t.Fatal("persisted filtering attachment does not reflect complete conversion")
+				}
+			})
+		}
 	}
 }

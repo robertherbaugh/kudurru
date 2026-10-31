@@ -2,9 +2,12 @@ package importers
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 )
 
 func TestBlockyOfflineFixture(t *testing.T) {
@@ -163,6 +166,89 @@ customDNS:
 					t.Fatal("numeric minutes not preserved")
 				}
 			}
+		}
+	}
+}
+
+func TestBlockyOfflineRegexLength(t *testing.T) {
+	for _, alphabet := range []struct{ name, char string }{{"ascii", "a"}, {"unicode", "é"}} {
+		for _, length := range []int{1024, 1025} {
+			t.Run(fmt.Sprintf("%s/%d", alphabet.name, length), func(t *testing.T) {
+				pattern := strings.Repeat(alphabet.char, length)
+				input := "blocking:\n  denylists:\n    bounded:\n      - |\n        /" + pattern + "/\n        retained.example\n  clientGroupsBlock: {default: [bounded]}\n"
+				p, err := PreviewBlocky(t.Context(), OfflineRequest{}, strings.NewReader(input))
+				if err != nil {
+					t.Fatal(err)
+				}
+				allowed := length == 1024
+				wantRefs := 0
+				if allowed {
+					wantRefs = 1
+				}
+				entries, policies, lists := 0, 0, 0
+				foundRegex, foundRetained := false, false
+				for _, doc := range p.Objects {
+					raw, err := json.Marshal(doc)
+					if err != nil {
+						t.Fatal(err)
+					}
+					switch doc["kind"] {
+					case "BlockList":
+						lists++
+						var list public.BlockList
+						if err := json.Unmarshal(raw, &list); err != nil {
+							t.Fatal(err)
+						}
+						for _, source := range list.Spec.Sources {
+							for _, entry := range source.Entries {
+								entries++
+								switch {
+								case entry.Type == public.EntryRegex && entry.Value == pattern:
+									foundRegex = true
+								case entry.Type == public.EntryExact && entry.Value == "retained.example":
+									foundRetained = true
+								default:
+									t.Fatal("unexpected or altered entry")
+								}
+								if entry.Origin != public.OriginMigrated {
+									t.Fatal("entry provenance lost")
+								}
+							}
+						}
+					case "Policy":
+						policies++
+						var policy public.Policy
+						if err := json.Unmarshal(raw, &policy); err != nil {
+							t.Fatal(err)
+						}
+						if policy.Name != "default" || len(policy.Spec.BlockListRefs) != wantRefs || len(policy.Spec.AllowListRefs) != 0 {
+							t.Error("filtering attachment does not reflect complete conversion")
+						}
+					}
+				}
+				wantEntries := 1
+				if allowed {
+					wantEntries++
+				}
+				if lists != 1 || policies != 1 || entries != wantEntries || !foundRetained || foundRegex != allowed {
+					t.Errorf("boundary conversion: lists=%d policies=%d entries=%d regex=%t retained=%t", lists, policies, entries, foundRegex, foundRetained)
+				}
+				warnings := strings.Join(p.Warnings, " ")
+				for _, loss := range []string{"unsupported inline rules omitted (values redacted)", "policy filtering omitted because a selected group has skipped sources"} {
+					if strings.Contains(warnings, loss) == allowed {
+						t.Errorf("unexpected loss reporting for %q", loss)
+					}
+				}
+				if !allowed {
+					raw, err := json.Marshal(p)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if strings.Contains(string(raw), pattern) {
+						t.Error("omitted regex leaked into the preview or warnings")
+					}
+				}
+			})
 		}
 	}
 }
