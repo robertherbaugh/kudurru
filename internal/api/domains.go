@@ -251,6 +251,9 @@ func (s *Server) registerDomainLists() {
 		del := operation(http.MethodDelete, path+"/{id}", "delete"+title+"Entry", "Delete a "+title+" entry", tag)
 		del.Description = "Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again."
 		register(s, withStatus(del, http.StatusNoContent), perm{resource: "blocklists", verb: "write"}, func(ctx context.Context, in *domainIDInput) (*emptyOutput, error) {
+			if s.useDomainCommand() {
+				return s.commandDeleteDomainEntry(ctx, a, in.ID)
+			}
 			if _, _, _, _, ok := domainlist.ParseExceptionID(in.ID); ok {
 				if _, err := s.setException(ctx, a, in.ID, false); err != nil {
 					return nil, err
@@ -584,6 +587,9 @@ func (s *Server) writeResult(ctx context.Context, a domainlist.Action, ns string
 }
 
 func (s *Server) createDomainEntries(ctx context.Context, a domainlist.Action, in *DomainEntriesCreate) (*domainWriteOutput, error) {
+	if s.useDomainCommand() {
+		return s.commandCreateDomainEntries(ctx, a, in)
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}
@@ -626,6 +632,9 @@ func (s *Server) createDomainEntries(ctx context.Context, a domainlist.Action, i
 }
 
 func (s *Server) patchDomainEntry(ctx context.Context, a domainlist.Action, id string, in *DomainEntryPatch) (*domainWriteOutput, error) {
+	if s.useDomainCommand() {
+		return s.commandPatchDomainEntry(ctx, a, id, in)
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}
@@ -678,6 +687,9 @@ func (s *Server) patchDomainEntry(ctx context.Context, a domainlist.Action, id s
 }
 
 func (s *Server) batchDomainEntries(ctx context.Context, a domainlist.Action, in *DomainEntriesBatch) (*domainWriteOutput, error) {
+	if s.useDomainCommand() {
+		return s.commandBatchDomainEntries(ctx, a, in)
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}

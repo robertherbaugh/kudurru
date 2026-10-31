@@ -270,6 +270,9 @@ func inlineMatches(entry, domain string) bool {
 // api. A list name other than the ui lists gets the entries too and is
 // referenced from the default policy.
 func (s *Server) addDomains(ctx context.Context, in *domainsInput) (*processedOutput, error) {
+	if s.useDomainCommand() {
+		return s.commandAddDomains(ctx, in)
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}

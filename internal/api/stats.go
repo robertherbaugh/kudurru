@@ -663,6 +663,9 @@ func (s *Server) purgeQuerylog(ctx context.Context, in *purgeInput) (*purgeOutpu
 }
 
 func (s *Server) queryAction(ctx context.Context, in *queryActionInput) (*processedOutput, error) {
+	if s.useDomainCommand() {
+		return s.commandQueryAction(ctx, in)
+	}
 	// A row of the central database's log has the database's id (D161).
 	r := s.opts.CentralQuerylog
 	if in.Scope != sqlitelog.ScopeCluster || r == nil {

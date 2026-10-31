@@ -325,6 +325,8 @@ type Options struct {
 	ZoneCommand ZoneCommand
 	// UnblockCommand admits closed decisions and their derived effects.
 	UnblockCommand unblock.Command
+	// DomainCommand admits complete current domain convenience mutations.
+	DomainCommand DomainCommand
 	// ZoneNotifyCommand admits durable manual NOTIFY under current authority.
 	ZoneNotifyCommand ZoneNotifyCommand
 	// CrossOrigin shares the host's existing same-origin policy. Nil creates

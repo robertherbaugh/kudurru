@@ -230,8 +230,11 @@ func (s *Server) sourceRules(ctx context.Context, bl *v1alpha1.BlockList, idx in
 			return ctx.Err()
 		}
 		if keys[r.Pattern] {
-			if v := r.String(); !slices.Contains(out[r.Pattern], v) {
-				out[r.Pattern] = append(out[r.Pattern], v)
+			// The parser borrows Pattern from its read buffer; retained map
+			// keys must survive the next rule callback.
+			pattern := strings.Clone(r.Pattern)
+			if v := r.String(); !slices.Contains(out[pattern], v) {
+				out[pattern] = append(out[pattern], v)
 			}
 		}
 		return nil

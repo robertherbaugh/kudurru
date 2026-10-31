@@ -781,9 +781,19 @@ releases entries, transfers shared ownership, expires statuses or prunes
 requests. Cleanup still runs after license loss. It rebuilds from durable rows
 on restart and performs no network work or precommit index/cache effects.
 
-SQLite temporarily returns 503 for unsafe convenience writes without complete
-current admission: domain/allowlist/denylist mutations, query-log allow/deny
-actions. Generic object commands remain available.
+SQLite domain, Allowlist, Denylist and query-log allow/deny commands plan their
+complete list and policy edits from one bounded current transaction inventory.
+The sealed plan retains the existing cluster `blocklists.write` delegation for
+policy references and empty-list cleanup. All candidates pass manager and schema
+checks before any staging; a failed batch item discards its detached edits.
+File/integration policies remain skipped. List exception discovery opens only the
+original captured body receipt before transaction/owner pins, then checks the
+original list UID/resourceVersion in the current transaction. No-op, deduplicated,
+missing-result and item-error-only responses retain final proof expiry and writer
+checks. Cache invalidation and aggregate audit run after the transaction commits.
+
+SQLite still refuses migration adoption and imported settings without complete
+current admission. Generic object commands remain available.
 These gates prevent legacy helpers from writing outside current authorization or
 returning an unchecked no-op; they are explicit remaining integration work.
 Generic apply/batch-delete retains its independent per-item result contract. All

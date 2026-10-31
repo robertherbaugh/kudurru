@@ -329,11 +329,10 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 		// legacy live-Store writers because other commands are mounted.
 		blocked := *client
 		blocked.http = &http.Client{Jar: jar, Timeout: 5 * time.Second}
-		// These legacy aliases can write several lists/policies or return an
-		// unchecked no-op. They need their own admitted command adapters.
-		blocked.call(http.MethodPost, "/allowlist", map[string]any{"values": []string{"escape.example"}}, 503, nil)
-		blocked.call(http.MethodPost, "/denylist:batch", nil, 503, nil)
-		blocked.call(http.MethodPost, "/domains/allow/exact", nil, 503, nil)
+		// Domain convenience commands are mounted; malformed requests now
+		// reach their schema validation. Full behavior has a dedicated mount test.
+		blocked.call(http.MethodPost, "/denylist:batch", nil, http.StatusBadRequest, nil)
+		blocked.call(http.MethodPost, "/domains/allow/exact", nil, http.StatusBadRequest, nil)
 		// Source-entry PATCH has an admitted command; its actual edits and
 		// restart behavior are covered by TestRunServeSQLiteSourceEntriesRestart.
 		for _, route := range []string{"/imports/apply", "/imports/start", "/imports/adopt", "/imports/runs/mounted/decommission"} {

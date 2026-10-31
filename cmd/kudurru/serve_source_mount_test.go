@@ -74,7 +74,15 @@ func TestRunServeSQLiteSourceEntriesRestart(t *testing.T) {
 		if page.Total != 3 || page.Excluded != 1 || len(page.Items) != 3 || page.Items[1].Value != "beta.example" || page.Items[1].Enabled || page.Items[2].Value != "gamma.example" {
 			t.Fatal("source edit/exclusion did not survive publication and restart")
 		}
-		mountedFactorRequest(t, client, base, http.MethodPost, "/queries/42/actions", login.CSRF, map[string]string{"action": "allow"}, http.StatusServiceUnavailable, nil)
+		// This fixture disables query history. The admitted domain command
+		// returns that semantic error, never the obsolete mutation-route gate.
+		var unavailable struct {
+			Error api.ErrorBody `json:"error"`
+		}
+		mountedFactorRequest(t, client, base, http.MethodPost, "/queries/42/actions", login.CSRF, map[string]string{"action": "allow"}, http.StatusServiceUnavailable, &unavailable)
+		if unavailable.Error.Key != api.KeyUnavailable || unavailable.Error.Message != "the query log is not stored on this node" {
+			t.Fatal("query action did not reach current semantic admission", unavailable.Error)
+		}
 		stop()
 	}
 }

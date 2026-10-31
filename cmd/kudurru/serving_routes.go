@@ -45,17 +45,12 @@ func servingUnconvertedMutation(method, requestPath string) bool {
 		default:
 			return true
 		}
-	case "domains", "allowlist", "denylist", "allowlist:batch", "denylist:batch":
-		return true
 	case "unblockrequests":
 		return !(method == http.MethodDelete && len(parts) == 3 || method == http.MethodPost && len(parts) == 4 && (parts[3] == "approve" || parts[3] == "deny"))
 	case "imports":
 		// Apply/start and cutover use bounded current programs. Adoption
 		// remains unavailable until its reviewed ownership command is mounted.
 		return method == http.MethodPost && len(parts) == 2 && parts[1] == "adopt"
-	case "queries":
-		// Query actions delegate to the same legacy domain-list mutator.
-		return method == http.MethodPost && len(parts) == 3 && parts[2] == "actions"
 	case "blocklists":
 		return method != http.MethodPatch && len(parts) == 6 && parts[3] == "sources" && parts[5] == "entries"
 	default:
