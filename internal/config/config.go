@@ -33,6 +33,10 @@ const EnvPrefix = "KUDURRU_"
 // Config is the typed view of kudurru.yaml. Node-scoped sections are host
 // local; cluster-scoped sections are the Kudurru singleton.
 type Config struct {
+	Edge                 Edge `koanf:"edge" json:"edge"`
+	VIP                  VIP  `koanf:"vip" json:"vip"`
+	supervisorConfigured map[string]bool
+
 	Node      Node               `koanf:"node" json:"node"`
 	Listeners Listeners          `koanf:"listeners" json:"listeners"`
 	Store     StoreConfig        `koanf:"store" json:"store"`
@@ -517,8 +521,26 @@ type SectionLoader func(*Config) (map[string]any, error)
 // LoadWithSections reads the normal layers, then replaces owned sections before
 // decoding and validating. This also permits startup with stale Git declarations.
 func LoadWithSections(path string, environ []string, owned SectionLoader) (*Config, error) {
+	return load(path, environ, owned, nil)
+}
+
+// LoadSupervisors loads the normal layers, followed by explicitly supplied
+// render/run flag overrides. Only known host-local supervisor keys are allowed.
+// This does not grant settings writers access to host-only keys.
+func LoadSupervisors(path string, environ []string, final map[string]any) (*Config, error) {
+	for path := range final {
+		key, ok := Lookup(path)
+		if !ok || !supervisorKey(path) || key.Scope != ScopeNode || !key.HostOnly {
+			return nil, fmt.Errorf("config: %s is not a host supervisor setting", path)
+		}
+	}
+	return load(path, environ, nil, final)
+}
+
+func load(path string, environ []string, owned SectionLoader, final map[string]any) (*Config, error) {
 	k := koanf.New(".")
 	declared := map[string]bool{}
+	configured := map[string]bool{}
 	defaultUpstreamDeclared := false
 	if path != "" {
 		b, err := os.ReadFile(path) //nolint:gosec // operator-selected node configuration file
@@ -530,6 +552,13 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
 		defaultUpstreamDeclared = declaresDefaultUpstream(raw)
+		for _, section := range []string{"edge", "vip"} {
+			if values, ok := subMap(raw, section); ok {
+				for name := range values {
+					configured[section+"."+name] = true
+				}
+			}
+		}
 		for section := range raw {
 			declared[section] = true
 		}
@@ -542,7 +571,7 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
 	}
-	overrides, locked, err := envOverrides(environ)
+	overrides, locked, err := envOverrides(environ, final)
 	if err != nil {
 		return nil, err
 	}
@@ -622,14 +651,30 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 	if err := k.Load(confmap.Provider(map[string]any{"upstreams.importFile": importPath}, "."), nil); err != nil {
 		return nil, err
 	}
+	// Supervisor collections replace whole lower values, including maps. Delete
+	// before merging so an explicit empty map or list also clears the lower layer.
+	for key := range overrides {
+		if supervisorKey(key) {
+			k.Delete(key)
+			configured[key] = true
+		}
+	}
 	if err := k.Load(confmap.Provider(overrides, "."), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)
+	}
+	for key := range final {
+		k.Delete(key)
+		configured[key] = true
+	}
+	if err := k.Load(confmap.Provider(final, "."), nil); err != nil {
+		return nil, fmt.Errorf("config: supervisor flags: %w", err)
 	}
 
 	var cfg Config
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("config: decode: %w", err)
 	}
+	cfg.supervisorConfigured = configured
 	cfg.Upstreams.normalize()
 	cfg.EnvLocked = locked
 	cfg.Source = path
@@ -699,6 +744,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.validateAudit()...)
 	errs = append(errs, c.Database.validate()...)
 	errs = append(errs, c.validateDHCP()...)
+	errs = append(errs, c.validateSupervisors()...)
 	if t := c.Listeners.Internal.TLS; (t.CertFile == "") != (t.KeyFile == "") {
 		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))
 	}
@@ -815,7 +861,7 @@ func (l *Listeners) validateProxyProtocol() []error {
 }
 
 // envOverrides maps KUDURRU_<SECTION>__<KEY>[_FILE]=value onto schema paths.
-func envOverrides(environ []string) (map[string]any, []string, error) {
+func envOverrides(environ []string, final map[string]any) (map[string]any, []string, error) {
 	paths := lowerPaths()
 	out := map[string]any{}
 	var locked []string
@@ -835,6 +881,11 @@ func envOverrides(environ []string) (map[string]any, []string, error) {
 		if !known {
 			return nil, nil, fmt.Errorf("config: environment variable %s does not match a settings key", name)
 		}
+		// Only a validated, explicitly supplied supervisor override may skip
+		// parsing its lower environment value, including an overridden _FILE read.
+		if _, replaced := final[path]; replaced && supervisorKey(path) {
+			continue
+		}
 		if fromFile {
 			b, err := os.ReadFile(value) //nolint:gosec // the operator names the file on purpose (KUDURRU_*_FILE)
 			if err != nil {
@@ -843,7 +894,7 @@ func envOverrides(environ []string) (map[string]any, []string, error) {
 			value = strings.TrimSpace(string(b))
 		}
 		key, _ := Lookup(path)
-		typed, err := coerce(key.Type, value)
+		typed, err := coerceSupervisor(key, value)
 		if err != nil {
 			return nil, nil, fmt.Errorf("config: %s: %w", name, err)
 		}
