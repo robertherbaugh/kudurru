@@ -83,9 +83,9 @@ A node keeps the queries it has not sent yet, even past
 | `database.querylog.facts` | on | send each query; off sends only the statistics (charts, totals, top lists) |
 | `database.querylog.retention.raw` | 168h | keep queries in the database for 7 days; whole days are dropped |
 
-Sizing: a query takes about 250 to 300 bytes in the database with its
-indexes, so about 2.5 GB a day at 100 queries per second and 25 GB a day at
-1000. Statistics are small: per minute for 35 days, per hour for 400 days,
+Sizing depends on query content and index overhead. The former estimate of
+250 to 300 bytes per query excludes schema 4's additional reference indexes;
+allow more space and measure your workload. Statistics are small: per minute for 35 days, per hour for 400 days,
 per day forever, like on the nodes. At high rates set
 `database.querylog.facts: false` or a short `retention.raw`.
 
@@ -93,8 +93,27 @@ The query table is partitioned by day; the leader creates the partitions a
 few days ahead and drops expired ones whole, so retention never deletes
 rows one by one.
 
+After raw and rollup retention, the leader also sweeps the seven query-log
+dictionaries at startup and hourly. Each pass selects at most 256 entries per
+dictionary, with a two-second overall deadline and a 100 ms lock timeout.
+A durable ID cursor with a fixed sweep boundary resumes after restart and
+revisits entries skipped because a shipper held them. Large backlogs take
+multiple hourly passes. An entry is deleted only when **no retained fact or
+rollup in this schema, from any source**, references it. Daily rollups remain
+forever and can therefore protect dictionary entries forever. `last_seen`
+alone never authorizes deletion. Retained IDs and string identities do not
+change; an unreferenced string shipped again receives a new ID.
+
+Shippers validate cached IDs and hold row locks in the same transaction as
+their facts/rollups and cursor. Foreign keys guard every dictionary reference.
+There is no global ingestion lock; a failed or timed-out sweep rolls back
+both removals and cursor advancement and is not reported as successful.
+Central readers use read-only repeatable-read transactions, so a reader that
+captured data before retention keeps its matching dictionary rows through
+that read. Reclamation does not cross database/schema isolation boundaries.
+
 Statistics of a node that stops for good during an hour that it has not
-summarised yet lose that part hour; the individual queries are kept.
+summarized yet lose that part hour; the individual queries are kept.
 
 ## The dashboard's All nodes view
 
@@ -131,3 +150,19 @@ nodes cannot work with, those nodes stop using the database
 (`CentralIncompatible` on the Diagnosis page) and keep their data locally
 until they are upgraded. A node never refuses to start because of the
 database.
+
+Schema 4 makes dictionary reclamation an explicit compatibility boundary
+(`compat_version=4`). Upgrade all central shippers. Migration adds and
+validates dictionary foreign keys and builds reference indexes in the existing
+atomic migration transaction; on a large database, plan for migration locks,
+index storage and validation time. Startup connection/migration attempts have
+a 30-second deadline and a default 15-second statement timeout. An upgrade
+that exceeds these bounds rolls back and keeps central data unavailable;
+retries do not retain partially built indexes. Such a database needs a
+maintenance migration before rollout. Existing dangling references also fail
+the migration atomically; migration never deletes or silently repairs them.
+Existing IDs and sequences are preserved. A previously connected old node
+might not discover incompatibility until reconnecting; foreign keys refuse
+its stale cached-ID batch, rolling back its rows and watermark together.
+Its local queue remains subject to the existing local size cap during an
+extended upgrade/outage.

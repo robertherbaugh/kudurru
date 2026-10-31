@@ -150,7 +150,8 @@ there, and **All nodes** reads the database instead
 flowchart LR
     QL[("querylog.db<br/>(written first)")] --> SH["query-log shipper<br/>facts by id every 1 s,<br/>rollups every 30 s"]
     SH -- "rows + cursor,<br/>one transaction" --> PG[("PostgreSQL<br/>same tables, every node,<br/>query partitioned by day")]
-    PG --> CR["central reader<br/>(the node reader's code,<br/>PostgreSQL dialect)"]
+    JAN["leader retention<br/>raw, rollups, bounded dictionary sweep"] --> PG
+    PG --> CR["central reader<br/>(read-only repeatable-read,<br/>PostgreSQL dialect)"]
     CR --> API["GET /stats/*, /queries<br/>scope=cluster"]
     API --> HISTORY["dashboard history<br/>(central IDs)"]
     TAIL["active replicas' live tails"] --> STREAM["GET /queries/stream<br/>scope=cluster, SSE fan-out"]
@@ -159,7 +160,16 @@ flowchart LR
 
 A node keeps the rows it has not shipped, even past its own retention, so
 an outage of the database delays the cluster view but loses nothing the
-node still holds.
+node still holds. Dictionary hints are revalidated under row locks inside
+the shipping transaction; every fact and rollup dictionary reference also has
+a foreign key. After raw/rollup retention, the leader selects at most 256 IDs
+per dictionary per hourly pass and deletes only entries with no retained
+reference, including daily rollups from retired sources. Durable bounded
+keyset sweeps wrap and resume after restart. The two-second pass deadline
+bounds lock ownership; failed passes roll back deletions and sweep progress.
+Read-only repeatable-read snapshots retain matching dictionary data while a
+concurrent sweep commits. See the PostgreSQL guide for the schema 4 upgrade
+boundary and migration cost.
 
 The live tail follows the active replicas directly, even with a central
 database. While enabled, the dashboard shows only incoming queries; it
