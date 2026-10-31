@@ -29,3 +29,20 @@ func (s *Selection) Summary(now time.Time) (rules int, available bool) {
 	}
 	return rules, available
 }
+
+// CacheUntil exposes the original absolute source boundary, without renewing
+// an unavailable/expired copy. An empty selection has no time boundary.
+func (s *Selection) CacheUntil(now time.Time) (until time.Time, available bool) {
+	if s == nil || now.IsZero() || len(s.zones) > maxSummarySources {
+		return time.Time{}, false
+	}
+	for _, z := range s.zones {
+		if !z.AvailableAt(now) {
+			return time.Time{}, false
+		}
+		if until.IsZero() || z.spec.ExpiresAt.Before(until) {
+			until = z.spec.ExpiresAt
+		}
+	}
+	return until, true
+}

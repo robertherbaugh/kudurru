@@ -63,14 +63,46 @@ func TestSelectionSummaryBoundAcquiredMissingAndRotatedSources(t *testing.T) {
 	if n, ok := bound.Select([]*public.BlockList{list}, true).Summary(fx.clock.now()); n != 1 || !ok {
 		t.Fatal("acquired summary", n, ok)
 	}
+	if until, ok := bound.Select([]*public.BlockList{list}, true).CacheUntil(fx.clock.now()); !ok || !until.Equal(z.spec.ExpiresAt) {
+		t.Fatal("cache proof did not retain original acquired expiry")
+	}
 	changed := list.DeepCopy()
 	changed.Spec.Sources[0].RPZ.TSIGKeyRef = "rpz-key."
 	if b, err := snapshot.Bind([]*public.BlockList{changed}, keys); err != nil {
 		t.Fatal(err)
 	} else if n, ok := b.Select([]*public.BlockList{changed}, true).Summary(fx.clock.now()); n != 0 || ok {
 		t.Fatal("source/key change borrowed old acquisition", n, ok)
+	} else if _, ok := b.Select([]*public.BlockList{changed}, true).CacheUntil(fx.clock.now()); ok {
+		t.Fatal("cache proof borrowed rotated source acquisition")
 	}
 	if n, ok := bound.Select([]*public.BlockList{list}, true).Summary(z.spec.ExpiresAt); n != 1 || ok {
 		t.Fatal("summary renewed actual durable expiry", n, ok)
+	}
+	if _, ok := bound.Select([]*public.BlockList{list}, true).CacheUntil(z.spec.ExpiresAt); ok {
+		t.Fatal("cache proof renewed exact durable expiry")
+	}
+}
+
+func TestSelectionCacheUntilOriginalBounds(t *testing.T) {
+	a := fixtureZone(t, "a.policy.test. 30 IN CNAME .")
+	b := fixtureZone(t, "b.policy.test. 30 IN CNAME .")
+	b.spec.ExpiresAt = testNow.Add(2 * time.Minute)
+	a.confirmedAt = testNow
+	for _, s := range []*Selection{nil, NewSelection(nil), NewSelection(&Zone{}), NewSelection(a, nil)} {
+		if _, ok := s.CacheUntil(testNow); ok {
+			t.Fatal("missing or placeholder original enabled packet caching")
+		}
+	}
+	if until, ok := NewSelection().CacheUntil(testNow); !ok || !until.IsZero() {
+		t.Fatal("empty selection fabricated expiry")
+	}
+	s := NewSelection(a, b)
+	if until, ok := s.CacheUntil(testNow); !ok || !until.Equal(a.spec.ExpiresAt) {
+		t.Fatal("cache proof missed earliest original boundary")
+	}
+	for _, at := range []time.Time{{}, testNow.Add(-time.Nanosecond), a.spec.ExpiresAt} {
+		if _, ok := s.CacheUntil(at); ok {
+			t.Fatal("cache proof extended source lifetime")
+		}
 	}
 }

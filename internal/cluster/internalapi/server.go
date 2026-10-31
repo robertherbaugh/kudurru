@@ -111,6 +111,9 @@ type ServerOptions struct {
 	// this node serves with their serials); nil answers 404, which
 	// Client.Zones reports as ErrZonesUnsupported.
 	Zones func(ctx context.Context) ZoneList
+	// ServingZones projects zones and resolver metadata from one protected cut.
+	// Errors return 503; nil results explicitly select the legacy Zones path.
+	ServingZones func(context.Context) (*ZoneList, error)
 	// Catalogue serves GET /internal/catalogue (the blocked-services and
 	// safe-search catalogue in service); nil answers 404.
 	Catalogue func() CatalogueBody
@@ -204,7 +207,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		mux.HandleFunc("GET "+PathHealth, s.handleHealth)
 	}
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
-	if opts.Zones != nil {
+	if opts.Zones != nil || opts.ServingZones != nil {
 		mux.HandleFunc("GET "+PathZones, s.handleZones)
 	}
 	if opts.Catalogue != nil {
@@ -384,7 +387,33 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleZones(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(statusWriteTimeout))
-	zl := s.opts.Zones(r.Context())
+	nonce := r.URL.Query().Get("resolverNonce")
+	if nonce != "" && !ValidDigest(nonce) {
+		http.Error(w, "invalid resolver challenge", http.StatusBadRequest)
+		return
+	}
+	var projected *ZoneList
+	if s.opts.ServingZones != nil {
+		var err error
+		projected, err = s.opts.ServingZones(r.Context())
+		if err != nil || r.Context().Err() != nil {
+			http.Error(w, "complete serving publication unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	var zl ZoneList
+	if projected != nil {
+		zl = *projected
+	} else if s.opts.Zones != nil {
+		zl = s.opts.Zones(r.Context())
+	}
+	if zl.Resolver != nil {
+		if zl.Resolver.Node != zl.Node {
+			http.Error(w, "serving source mismatch", http.StatusServiceUnavailable)
+			return
+		}
+		zl.ResolverNonce = nonce
+	}
 	if zl.Zones == nil {
 		zl.Zones = []Zone{}
 	}

@@ -2,21 +2,40 @@ package internalapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"time"
 )
 
 // PathZones is GET /internal/zones: the authoritative zones a node serves
 // with their current serials, polled every 5 s by edge supervisors to
 // flush dnsdist's authoritative packet cache on serial change and to route
 // zone names to the authoritative pool (dev-docs/design-record.md §3.6 step 5).
-//
-// Only the client side exists so far; the route lands on the server with
-// the zone status work (dev-docs/followups.md). Until then Client.Zones
-// returns ErrZonesUnsupported.
 const PathZones = "/internal/zones"
+
+// ResolverLease bounds remote packet-cache eligibility without a successful pull.
+const ResolverLease = 15 * time.Second
+
+// ResolverState is an observation of ONE original complete serving publication.
+// It grants no cache command authority. Missing metadata denotes an older peer;
+// Available=false explicitly denies packet caching for this observation.
+type ResolverState struct {
+	Version         int       `json:"version"`
+	Node            string    `json:"node"`
+	Instance        string    `json:"instance"`
+	Publication     uint64    `json:"publication,string"`
+	Identity        string    `json:"identity"`
+	Phase           string    `json:"phase"`
+	ObservedAt      time.Time `json:"observedAt"`
+	ValidUntil      time.Time `json:"validUntil"`
+	BlockingEnabled bool      `json:"blockingEnabled"`
+	DisabledUntil   time.Time `json:"disabledUntil,omitzero"`
+	Available       bool      `json:"available"`
+}
 
 // ErrZonesUnsupported is returned by Client.Zones when the peer has no
 // /internal/zones route (a 404 from an older node).
@@ -34,13 +53,20 @@ type Zone struct {
 
 // ZoneList is the body of GET /internal/zones.
 type ZoneList struct {
-	Node  string `json:"node"`
-	Zones []Zone `json:"zones"`
+	Node          string         `json:"node"`
+	Zones         []Zone         `json:"zones"`
+	Resolver      *ResolverState `json:"resolver,omitempty"`
+	ResolverNonce string         `json:"resolverNonce,omitempty"`
 }
 
 // Zones fetches GET /internal/zones from addr (host:port).
 func (c *Client) Zones(ctx context.Context, addr string) (ZoneList, error) {
-	resp, err := c.get(ctx, addr, PathZones)
+	var nonce [32]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return ZoneList{}, err
+	}
+	challenge := hex.EncodeToString(nonce[:])
+	resp, err := c.get(ctx, addr, PathZones+"?resolverNonce="+challenge)
 	if errors.Is(err, ErrListNotFound) {
 		return ZoneList{}, ErrZonesUnsupported
 	}
@@ -48,9 +74,19 @@ func (c *Client) Zones(ctx context.Context, addr string) (ZoneList, error) {
 		return ZoneList{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
+	if err != nil {
+		return ZoneList{}, err
+	}
+	if len(data) > 4<<20 {
+		return ZoneList{}, ErrTooLarge
+	}
 	var zl ZoneList
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&zl); err != nil {
+	if err := json.Unmarshal(data, &zl); err != nil {
 		return ZoneList{}, fmt.Errorf("internalapi: decode zones from %s: %w", addr, err)
+	}
+	if zl.Resolver != nil && zl.ResolverNonce != challenge {
+		return ZoneList{}, errors.New("internalapi: resolver observation challenge mismatch")
 	}
 	return zl, nil
 }

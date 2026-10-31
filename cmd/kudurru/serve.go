@@ -326,6 +326,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	sql, _ := st.(*sqlite.Store)
 	bootstrapWritable := sql == nil || sql.Authority().Writable()
 	var complete *servingRuntime
+	var remoteCache *servingbuild.EdgeCache
 	var zoneReads *servingbuild.Diagnostics
 	var capturedZoneReads api.ZoneReadSource
 
@@ -637,6 +638,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 				return internalapi.LocalHealth(ctx, cfg.Node.Name, checker.Handler())
 			},
 			// Zones and serials for the edge supervisors (§3.6 step 5).
+			ServingZones: func(ctx context.Context) (*internalapi.ZoneList, error) {
+				if remoteCache == nil {
+					// Legacy Kubernetes projection has no complete resolver proof.
+					return nil, nil
+				}
+				return remoteCache.Zones(ctx)
+			},
 			Zones: func(ctx context.Context) internalapi.ZoneList {
 				zl := internalapi.ZoneList{Node: cfg.Node.Name}
 				if zoneReads != nil {
@@ -1024,6 +1032,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 		}()
 		auth.Update = complete.primary.Update
+		remoteCache, err = servingbuild.NewEdgeCache(complete.publisher, cfg.Node.Name, time.Now)
+		if err != nil {
+			return err
+		}
 		auth.Notify = complete.primary.doctorNotify(servingbuild.CapturedNotify(notifyReceiver, time.Now))
 		if err := servingbuild.BindDNS(complete.publisher, servingbuild.DNSStages{Chain: chain, Control: controlStage, Identify: idStage, Authority: auth, Blocking: bs, Cache: cs, Response: post, Resolution: fwd}, time.Now); err != nil {
 			return err

@@ -358,6 +358,22 @@ func (p *Publisher) CaptureHTTP(ctx context.Context) (*Lease, error) {
 	return lease, nil
 }
 
+// CheckReadLease refuses a superseded original protected read. It does not
+// capture a successor or confer mutation authority. No I/O or owner work runs.
+func (p *Publisher) CheckReadLease(ctx context.Context, lease *Lease) error {
+	if ctx == nil || p == nil || lease == nil || lease.Bundle() == nil {
+		return ErrReleased
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	a, blocked := p.opts.Source.ServingAuthority()
+	if p.closed.Load() || p.current.Load() != lease.bundle || !eligible(lease.bundle, a, blocked) {
+		return ErrPending
+	}
+	return nil
+}
+
 // Pin is a real publication barrier compatible with replica.ServingPin. It
 // holds the serving pointer stable through eligibility/SQLite promotion CAS.
 // Release before waiting for new-term publication. DNS never takes this lock.

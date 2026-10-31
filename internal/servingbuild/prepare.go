@@ -165,6 +165,11 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	// to the captured host dependency revision and canonical image identity.
 	parts[6].Identity = componentIdentity(base, deps.Identity, "blocking:"+owners.lists)
 	parts[8].Identity = owners.auth.DependencyIdentity()
+	timeline, err := newCacheTimeline(owners, inventory, zones)
+	if err != nil {
+		return serving.Prepared{}, err
+	}
+	parts = append(parts, component("edge-cache", timeline, nil))
 	transferred = true
 	return serving.Prepared{Components: parts, Current: deps.Current}, nil
 }
