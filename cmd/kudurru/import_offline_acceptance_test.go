@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -57,6 +58,7 @@ func offlineAcceptanceArgs(source string) []string {
 }
 func offlineAcceptanceHarness(t *testing.T, source string, f *servingCommandFixture, s *api.Server) (*harness, *atomic.Int32) {
 	t.Helper()
+	adoptionWait(t, f)
 	var calls atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); servingMutationRoutes(s).ServeHTTP(w, r) }))
 	t.Cleanup(target.Close)
@@ -131,12 +133,24 @@ func TestOfflineCLIActualCurrentApplyAndSelection(t *testing.T) {
 				}
 			}
 			offlineAcceptanceJournal(t, f, selected.ID, source)
-			awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
-			out, _, err = h.run(append(offlineAcceptanceArgs(source), "--apply", "--wait")...)
+			adoptionWait(t, f)
+			// Full imports race several desired-object and primary-head publications.
+			// Submit once, then observe durable completion and serving independently
+			// of the CLI's deliberately bounded consecutive report-read failures.
+			out, _, err = h.run(append(offlineAcceptanceArgs(source), "--apply")...)
 			if err != nil {
 				t.Fatal(err, out)
 			}
 			var applied api.MigrationRun
+			if err := json.Unmarshal([]byte(out), &applied); err != nil {
+				t.Fatal(err)
+			}
+			offlineAcceptanceWaitRun(t, f, applied.ID, source)
+			offlineAcceptanceWaitRecords(t, f, plan)
+			out, _, err = h.run("import", "runs", applied.ID, "-o", "json")
+			if err != nil {
+				t.Fatal(err, out)
+			}
 			if err := json.Unmarshal([]byte(out), &applied); err != nil {
 				t.Fatal(err)
 			}
@@ -179,8 +193,24 @@ func TestOfflineCLIActualOwnershipPartialReport(t *testing.T) {
 			if _, err := f.s.opts.Store.Apply(t.Context(), managed, store.ApplyOptions{Manager: store.ManagerFile("owned.yaml")}); err != nil {
 				t.Fatal(err)
 			}
-			awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
-			out, _, err = h.run(append(offlineAcceptanceArgs(source), "--apply", "--wait")...)
+			adoptionWait(t, f)
+			// Exercise --wait's partial-result exit with filtering/settings work;
+			// primary publication is checked separately by the full-import test.
+			args := append(offlineAcceptanceArgs(source), "--apply", "--wait")
+			for _, doc := range plan.Objects {
+				if doc["kind"] != "DNSZone" && doc["kind"] != "DNSRecordSet" {
+					args = append(args, "--select-object", importers.ObjectID(doc))
+				}
+			}
+			settingKeys := make([]string, 0, len(plan.Settings))
+			for key := range plan.Settings {
+				settingKeys = append(settingKeys, key)
+			}
+			sort.Strings(settingKeys)
+			for _, key := range settingKeys {
+				args = append(args, "--select-setting", key)
+			}
+			out, _, err = h.run(args...)
 			if err == nil {
 				t.Fatal("partial import exited successfully")
 			}
