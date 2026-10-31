@@ -119,12 +119,20 @@ func newServingBrowserFixture(t *testing.T) *servingBrowserFixture {
 		})
 	}
 	t.Cleanup(stop)
+	var providerCreatedAt time.Time
 	awaitServingHTTPView(t, s, func(v *servingauth.View) bool {
 		info, err := v.ProviderInfo("corp")
+		if err == nil {
+			providerCreatedAt = info.Descriptor.CreatedAt
+		}
 		return err == nil && info.Availability == servingauth.ProviderReady && s.primary.driver.Status().Ready
 	})
-	// Real OP numeric dates must be ACTUALLY later than the nanosecond floor
-	// raised at authority activation; never fabricate an iat or epsilon.
+	// Real OP numeric dates must be ACTUALLY later than the provider's
+	// nanosecond creation time, including first activation with no floor row.
+	// externalFloors rejects an iat before CreatedAt even without invalidation.
+	awaitServingRuntime(t, s, func() bool { return time.Now().Unix() > providerCreatedAt.Unix() })
+	// Also wait past any nanosecond floor raised at authority replacement;
+	// never fabricate an iat, retry a refused callback, or relax production gates.
 	image, err := s.opts.Store.ReadGeneration(t.Context())
 	if err != nil {
 		t.Fatal(err)
