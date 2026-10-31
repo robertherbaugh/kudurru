@@ -16,7 +16,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/servingzones"
 )
 
-// Builder prepares all ten real owners before a publisher can swap its pointer.
+// Builder prepares every required real owner before a publisher can swap its pointer.
 // It has no independent serving pointer and never substitutes old owner values.
 type Builder struct{ opts Options }
 
@@ -157,6 +157,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
 		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current, browser: deps.Browser}, deps.Release),
+		component("control", owners.control, nil),
 	}
 	// List content and pure auth policy have exact owner identities in addition
 	// to the captured host dependency revision and canonical image identity.

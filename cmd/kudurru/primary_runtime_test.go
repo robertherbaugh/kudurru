@@ -31,6 +31,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	"github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/stages/cache"
+	"github.com/robertherbaugh/kudurru/internal/stages/control"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	"github.com/robertherbaugh/kudurru/internal/stages/upstream"
@@ -162,11 +163,12 @@ func newPrimaryNetworkFixture(t *testing.T) *primaryNetworkFixture {
 	}
 	c := cache.New(cachedata.New(cachedata.Options{}), cache.Settings{}, u)
 	r := &postprocess.Stage{}
-	f.chain, err = pipeline.New(i, r, a, b, c, u)
+	ctl := control.New(control.Options{})
+	f.chain, err = pipeline.New(i, ctl, r, a, b, c, u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := servingbuild.BindDNS(f.publisher, servingbuild.DNSStages{Chain: f.chain, Identify: i, Authority: a, Blocking: b, Cache: c, Response: r, Resolution: u}, nil); err != nil {
+	if err := servingbuild.BindDNS(f.publisher, servingbuild.DNSStages{Chain: f.chain, Control: ctl, Identify: i, Authority: a, Blocking: b, Cache: c, Response: r, Resolution: u}, nil); err != nil {
 		t.Fatal(err)
 	}
 	capture := servingdns.Capture(f.publisher)

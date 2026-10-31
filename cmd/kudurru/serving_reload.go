@@ -26,7 +26,7 @@ func (s *servingRuntime) runServingReload(ctx context.Context, targets reloadTar
 				if responseCache != nil && config.ChangedUnder(paths, "cache.maxEntries") {
 					responseCache.Resize(next.Cache.MaxEntries)
 				}
-				if targets.edgeFlush != nil && config.ChangedUnder(paths, "blocking", "response", "upstreams", "dnssec", "blockPage.ipv4", "blockPage.ipv6") {
+				if targets.edgeFlush != nil && config.ChangedUnder(paths, "control", "blocking", "response", "upstreams", "dnssec", "blockPage.ipv4", "blockPage.ipv6") {
 					targets.edgeFlush.BlockResponsesChanged()
 				}
 				previous = next

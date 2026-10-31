@@ -38,6 +38,7 @@ type Config struct {
 	Store     StoreConfig        `koanf:"store" json:"store"`
 	DHCP      DHCP               `koanf:"dhcp" json:"dhcp"`
 	Upstreams Upstreams          `koanf:"upstreams" json:"upstreams"`
+	Control   Control            `koanf:"control" json:"control"`
 	DNSSEC    DNSSEC             `koanf:"dnssec" json:"dnssec"`
 	Response  ResponseProcessing `koanf:"response" json:"response"`
 	Cache     Cache              `koanf:"cache" json:"cache"`
@@ -688,6 +689,9 @@ func (c *Config) Validate() error {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))
 		}
+	}
+	if _, err := c.Control.Rules(); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	"github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/stages/cache"
+	"github.com/robertherbaugh/kudurru/internal/stages/control"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	"github.com/robertherbaugh/kudurru/internal/stages/upstream"
@@ -101,8 +102,9 @@ func queryCaptureChain(t *testing.T, f *fixture, now func() time.Time) (*pipelin
 	}
 	c := cache.New(cachedata.New(cachedata.Options{}), cache.Settings{}, u)
 	r := &postprocess.Stage{}
-	chain := pipeline.MustNew(queryIdentityStage{identities}, i, r, a, b, c, u)
-	if err := BindDNS(f.pub, DNSStages{Chain: chain, Identify: i, Authority: a, Blocking: b, Cache: c, Response: r, Resolution: u}, now); err != nil {
+	ctl := control.New(control.Options{})
+	chain := pipeline.MustNew(queryIdentityStage{identities}, i, ctl, r, a, b, c, u)
+	if err := BindDNS(f.pub, DNSStages{Chain: chain, Control: ctl, Identify: i, Authority: a, Blocking: b, Cache: c, Response: r, Resolution: u}, now); err != nil {
 		t.Fatal(err)
 	}
 	chain.SetCapture(func(*pipeline.Request) (pipeline.ServingLease, error) {

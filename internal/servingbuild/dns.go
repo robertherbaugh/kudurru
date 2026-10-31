@@ -14,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	"github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/stages/cache"
+	"github.com/robertherbaugh/kudurru/internal/stages/control"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	"github.com/robertherbaugh/kudurru/internal/stages/upstream"
@@ -24,6 +25,7 @@ import (
 // before starting any listeners. Synthetic subqueries reuse these same stages.
 type DNSStages struct {
 	Chain      *pipeline.Chain
+	Control    *control.Stage
 	Identify   *identify.Stage
 	Authority  *authoritative.Stage
 	Blocking   *blocking.Stage
@@ -35,13 +37,16 @@ type DNSStages struct {
 // BindDNS makes every serving stage use the outer request's complete lease.
 // No callback reads an independent config pointer, runtime manager or store.
 func BindDNS(publisher *serving.Publisher, stages DNSStages, now func() time.Time) error {
-	if publisher == nil || stages.Chain == nil || stages.Identify == nil || stages.Authority == nil || stages.Blocking == nil || stages.Cache == nil || stages.Response == nil || stages.Resolution == nil {
+	if publisher == nil || stages.Chain == nil || stages.Identify == nil || stages.Control == nil || stages.Authority == nil || stages.Blocking == nil || stages.Cache == nil || stages.Response == nil || stages.Resolution == nil {
 		return serving.ErrComponents
 	}
 	if now == nil {
 		now = time.Now
 	}
 	stages.Chain.SetCapture(servingdns.Capture(publisher))
+	stages.Control.Capture = func(req *pipeline.Request) (*control.View, error) {
+		return servingdns.Component[*control.View](req, "control")
+	}
 	stages.Identify.Capture = func(req *pipeline.Request) (*policy.Index, error) {
 		return servingdns.Component[*policy.Index](req, "policy")
 	}

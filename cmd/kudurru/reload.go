@@ -15,6 +15,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
+	"github.com/robertherbaugh/kudurru/internal/stages/control"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
@@ -36,6 +37,7 @@ type reloadTargets struct {
 	upOpts      upstream.Options
 	cache       *cache.Cache
 	cacheStg    *cachestage.Stage
+	control     *control.Stage
 	blocking    *blockingstage.Stage
 	blockPage   *blockpage.Server
 	postprocess *postprocess.Stage
@@ -69,6 +71,17 @@ func applyReload(ctx context.Context, t reloadTargets, next *config.Config, chan
 	}
 	if config.ChangedUnder(changed, "log.level") && t.level != nil {
 		t.level.Set(parseLevel(next.Log.Level))
+	}
+	if config.ChangedUnder(changed, "control") && t.control != nil {
+		view, err := control.ViewFromConfig(next.Control)
+		if err == nil {
+			err = t.control.Replace(view)
+		}
+		if err != nil {
+			log.Error("control settings not applied", "err", err)
+		} else if t.edgeFlush != nil {
+			t.edgeFlush.BlockResponsesChanged()
+		}
 	}
 	if config.ChangedUnder(changed, "upstreams", "dnssec") && t.upstreams != nil {
 		validation, err := next.DNSSEC.Validator(nil)

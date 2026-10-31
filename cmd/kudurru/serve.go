@@ -830,14 +830,22 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	idStage := identify.New(polSrc, nil)
 	idStage.Inventory = clientInventory
 	idStage.Hostnames = leaseDNS
+	controlView, err := control.ViewFromConfig(cfg.Control)
+	if err != nil {
+		return err
+	}
+	controlStage := control.New(control.Options{})
+	if err := controlStage.Replace(controlView); err != nil {
+		return err
+	}
 	stages := []pipeline.Stage{
 		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
 		idStage,
-		control.New(control.Options{}),
+		controlStage,
 		post,
 		auth,
 		bs,
-		&rewrite.Stage{},
+		&rewrite.Stage{GuardDependency: controlStage.Serve},
 	}
 	// The cache stage always exists; cache.maxEntries 0 makes it pass
 	// queries through, so the key can change at runtime.
@@ -852,7 +860,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// Rewrite dependencies keep the captured client/settings but enter normal
 	// authority and recursive policy dispatch for their own target name. This
 	// prevents CNAME rewrites from bypassing configured child-zone coverage.
-	dependencies, err := pipeline.New(auth, bs, &rewrite.Stage{}, cs, dnssecstage.New(fwd), fwd)
+	dependencies, err := pipeline.New(controlStage, auth, bs, &rewrite.Stage{GuardDependency: controlStage.Serve}, cs, dnssecstage.New(fwd), fwd)
 	if err != nil {
 		return err
 	}
@@ -1026,7 +1034,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}()
 		auth.Update = complete.primary.Update
 		auth.Notify = servingbuild.CapturedNotify(notifyReceiver, time.Now)
-		if err := servingbuild.BindDNS(complete.publisher, servingbuild.DNSStages{Chain: chain, Identify: idStage, Authority: auth, Blocking: bs, Cache: cs, Response: post, Resolution: fwd}, time.Now); err != nil {
+		if err := servingbuild.BindDNS(complete.publisher, servingbuild.DNSStages{Chain: chain, Control: controlStage, Identify: idStage, Authority: auth, Blocking: bs, Cache: cs, Response: post, Resolution: fwd}, time.Now); err != nil {
 			return err
 		}
 		checker.Register("serving", complete.ready)
@@ -1373,13 +1381,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	reloadConsumers := reloadTargets{
 		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
-		blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter, postprocess: post,
+		control: controlStage, blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter, postprocess: post,
 	}
 	if complete != nil {
 		// Complete requests use immutable settings and resource owners. Legacy
 		// reload callbacks must not replace or close their serving resources.
 		reloadConsumers.upstreams, reloadConsumers.cache, reloadConsumers.cacheStg = nil, nil, nil
-		reloadConsumers.blocking, reloadConsumers.postprocess = nil, nil
+		reloadConsumers.control, reloadConsumers.blocking, reloadConsumers.postprocess = nil, nil, nil
 		// The current node command owns local logger adoption. Cluster
 		// operational refreshes must not restore the startup log level.
 		reloadConsumers.level = nil

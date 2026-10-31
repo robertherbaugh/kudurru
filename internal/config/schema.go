@@ -93,6 +93,7 @@ const (
 	GroupListeners    = "Listeners"
 	GroupDHCP         = "DHCP"
 	GroupUpstreams    = "Upstreams"
+	GroupControl      = "DNS controls"
 	GroupDNSSEC       = "DNSSEC"
 	GroupResponse     = "Response processing"
 	GroupCache        = "Cache"
@@ -110,7 +111,7 @@ const (
 
 // Groups lists the UI sections in display order.
 var Groups = []string{
-	GroupNode, GroupListeners, GroupDHCP, GroupUpstreams, GroupDNSSEC, GroupResponse, GroupCache, GroupBlocking, GroupBlockPage, GroupBranding, GroupQuerylog, GroupDatabase,
+	GroupNode, GroupListeners, GroupDHCP, GroupUpstreams, GroupControl, GroupDNSSEC, GroupResponse, GroupCache, GroupBlocking, GroupBlockPage, GroupBranding, GroupQuerylog, GroupDatabase,
 	GroupRateLimit, GroupSecurity, GroupZones, GroupIntegrations, GroupLogging,
 }
 
@@ -264,6 +265,8 @@ var Schema = []Key{
 	{Path: "response.rebinding.enabled", Type: TypeBool, Scope: ScopeCluster, Default: false, Help: "Refuse forwarded or rewritten answers containing private, loopback, link-local, unspecified or multicast addresses, including service hints. Configure private-domain exceptions for internal forwarding. Owned authoritative answers and explicit block responses are exempt. An inspection budget overflow also refuses the response.", Label: "Protect against DNS rebinding", Group: GroupResponse},
 	{Path: "response.rebinding.privateDomains", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Domains allowed to return private addresses, including descendants. At most 256. Both the original question and the address record's owner must be in an allowed domain, so an alias cannot silently escape the exception.", Label: "Domains allowed private addresses", Group: GroupResponse, Items: &Shape{Type: TypeString, Format: FormatDomain}},
 	{Path: "response.rebinding.bypassNetworks", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Client networks exempt from rebinding protection. At most 256 canonical IPv4 or IPv6 CIDRs. Empty protects all clients; an explicit /0 disables protection for that address family.", Label: "Clients exempt from rebinding protection", Group: GroupResponse, Items: &Shape{Type: TypeString, Format: FormatCIDR}},
+	{Path: "control.allowedNetworks", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Client networks allowed to query DNS, for example 192.168.1.0/24 or fd00::/64. Empty allows all clients; loopback always passes this network check. Other clients receive REFUSED before local, cached or upstream answers. At most 1024 IPv4 or IPv6 CIDRs; changes take effect without restart.", Label: "Allowed client networks", Group: GroupControl, Items: &Shape{Type: TypeString, Format: FormatCIDR}},
+	{Path: "control.blockedQTypes", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "DNS query types refused for every client, including loopback, for example ANY or HINFO. Empty blocks none. At most 256 case-insensitive DNS mnemonics or explicit TYPE1 through TYPE65535 values; changes take effect before local, cached or upstream answers without restart. Malformed queries still drop silently.", Label: "Blocked query types", Group: GroupControl, Items: &Shape{Type: TypeString}},
 	{Path: "dnssec.enabled", Type: TypeBool, Scope: ScopeCluster, Default: false, Help: "Validate forwarded DNS answers against the configured trust anchors. Invalid or incomplete proofs return SERVFAIL with an extended DNS error; unsigned delegations still work. Off by default for compatibility. A forward zone can override this default with spec.forward.dnssecValidation.", Label: "Validate DNSSEC", Group: GroupDNSSEC},
 	{Path: "dnssec.useBuiltinAnchors", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Trust the IANA root DS records shipped with this version. Software upgrades or an operator change maintain these anchors; no keys are trusted automatically from upstream responses. Turn off only when dnssec.trustAnchors supplies all trust roots you need.", Label: "Use built-in root trust anchors", Group: GroupDNSSEC},
 	{Path: "dnssec.trustAnchors", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Additional trusted DS or DNSKEY records in DNS presentation format, e.g. a complete DS record for a private signed zone. At most 64. With useBuiltinAnchors off these replace the shipped root anchors, and at least one is required. Changes invalidate the old validation cache context immediately.", Label: "Additional trust anchors", Group: GroupDNSSEC, Items: &Shape{Type: TypeString}},

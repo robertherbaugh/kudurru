@@ -21,6 +21,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
+	"github.com/robertherbaugh/kudurru/internal/stages/control"
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -40,6 +41,7 @@ type semanticOwners struct {
 	objects    *zonecache.Snapshot
 	settings   *public.Kudurru
 	config     *config.Config
+	control    *control.View
 	policy     *policy.Index
 	resolution *upstreamstage.View
 	response   *responsepolicy.Settings
@@ -102,6 +104,10 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 		document[key] = value
 	}
 	owners.config, _, err = config.ApplyClusterDocument(deps.Host, document)
+	if err != nil {
+		return nil, err
+	}
+	owners.control, err = control.ViewFromConfig(owners.config.Control)
 	if err != nil {
 		return nil, err
 	}

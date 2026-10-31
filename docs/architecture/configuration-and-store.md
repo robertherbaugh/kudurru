@@ -579,7 +579,7 @@ Each key in the metadata table
 |---|---|---|
 | node, `hostOnly`, restart | `node.*`, `listeners.*`, `store.*`, `tsigKeys`, `auth.adminSocket.*` | file or environment, then restart; never through the API |
 | node, dedicated DHCP setup | enabled state and complete DHCP scope topology | DHCP setup API/dashboard, explicit file adoption, then restart; generic Settings remains host-only |
-| cluster, hot | `upstreams.*`, `cache.*`, `blocking.enabled/defaultResponse/blockTTL`, `ratelimit.*`, `querylog.privacy/retention` | API, dashboard, settings file; applied without a restart |
+| cluster, hot | `control.*`, `upstreams.*`, `cache.*`, `blocking.enabled/defaultResponse/blockTTL`, `ratelimit.*`, `querylog.privacy/retention` | API, dashboard, settings file; applied without a restart |
 | cluster, restart | `querylog.enabled`, `blocking.initStrategy`, `auth.session.*` | as above, applied at the next start |
 | cluster, `hostOnly` | `auth.identityProviders`, `rbac.bindings` | file or environment only |
 
@@ -657,8 +657,27 @@ sequenceDiagram
     W->>M: read both sources and ownership revision
     M->>M: replace UI-owned sections; report file conflicts
     M->>W: validated effective cluster settings
-    W->>R: log level, upstream groups (swap + cache flush),<br/>cache, blocking, block page, rate limiter,<br/>query log privacy, edge cache flush
+    W->>R: log level, upstream groups (swap + cache flush),<br/>control, cache, blocking, block page, rate limiter,<br/>query log privacy, edge cache flush
 ```
+
+### Global DNS controls
+
+`control.allowedNetworks` and `control.blockedQTypes` are cluster-scope hot
+settings. Validation compiles bounded CIDR/type lists before adoption. The
+complete SQLite publisher owns a detached immutable `control` component from
+its exact settings image; DNS captures it through `BindDNS`. Held requests and
+synchronous dependency queries retain that original component. A missing or
+wrong original owner is a capture error, never an invitation to consult the
+live configuration or a successor publication.
+
+Legacy Kubernetes/settings-file reload validates the entire replacement and
+atomically swaps one immutable view. Invalid reloads retain the previous view.
+The operational publication subscriber and legacy reload path invalidate the
+local edge resolver packet cache when controls change. Remote edge caches
+still need their own invalidation or TTL expiry. The core raw-answer cache
+remains behind the control stage, so a previously cached answer cannot bypass
+new rules. See [DNS controls](../deploy/dns-controls.md) for input limits,
+loopback compatibility and refusal behavior.
 
 ## Not built yet
 
@@ -923,8 +942,8 @@ stale; no successor capture or atomic-batch guarantee is implied.
 
 `internal/serving` prepares one whole immutable bundle from a complete SQLite
 replication image. The required component manifest includes objects, zones,
-policy, resolution, response processing, cache behavior, blocking, inventory,
-authentication and runtime data. Owner preparation must provide every component
+policy, global controls, resolution, response processing, cache behavior,
+blocking, inventory, authentication and runtime data. Owner preparation must provide every component
 with the same canonical generation and verified dependency identity. An error,
 panic, missing component, changed dependency or stale generation retains the
 entire previous bundle.
@@ -968,7 +987,8 @@ flowchart LR
 ```
 
 The DNS adapters capture one lease before identification and read typed policy,
-zone, inventory, resolver, response, cache and blocking views from that lease.
+zone, inventory, control, resolver, response, cache and blocking views from
+that lease.
 Missing owners fail closed. Alias and DNS64 subqueries inherit the capture;
 detached cache work clones its lease and fences late fills against retired
 resolver/cache incarnations, including A → B → A changes. Transfers hold the
@@ -977,7 +997,7 @@ iterated. UDP, TCP, DoT, DoH, DoH3, DoQ and the API query caller release cleanup
 The explicit transfer adapter reads the captured zone set; its legacy live-set
 entry point is rejected once capture is installed.
 
-`internal/servingbuild` now supplies all ten concrete owners. Its local schema
+`internal/servingbuild` now supplies all required concrete owners. Its local schema
 includes every registered public and private kind. Primary lifecycle and auth
 consume the complete image; the public DNS object projection includes only
 `zonecache.DefaultKinds`. It applies canonical settings against captured host
@@ -993,9 +1013,9 @@ flowchart TD
     Candidate --> Objects["Public DNS objects and canonical settings"]
     Local["Pinned keys, catalog, inventory and acquired runtimes"] --> Zones["Credential-bound serving zones"]
     Primary --> Zones
-    Objects --> Owners["Policy, exact lists, resolver, response and cache"]
+    Objects --> Owners["Policy, control, exact lists, resolver, response and cache"]
     Local --> Owners
-    Auth --> All["All ten real components"]
+    Auth --> All["All required real components"]
     Zones --> All
     Owners --> All
     All --> Publish["Whole-bundle publication barrier"]

@@ -13,6 +13,9 @@ import (
 type Stage struct {
 	// Capture is only needed when postprocess has not already pinned settings.
 	Capture func(*pipeline.Request) (*responsepolicy.Settings, error)
+	// GuardDependency applies global admission to synthetic DNS64 questions
+	// before the normal cache/validation suffix. It borrows the original lease.
+	GuardDependency func(*pipeline.Request, pipeline.Next) (*pipeline.Response, error)
 }
 
 // Name implements pipeline.Stage.
@@ -66,7 +69,12 @@ func (stage *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.
 	sub := *req
 	sub.Msg = req.Msg.Copy()
 	sub.Msg.Question[0].Qtype = dns.TypeA
-	a, err := next(&sub)
+	var a *pipeline.Response
+	if stage.GuardDependency != nil {
+		a, err = stage.GuardDependency(&sub, next)
+	} else {
+		a, err = next(&sub)
+	}
 	if err != nil {
 		r.Close()
 		if a != nil {
@@ -74,7 +82,7 @@ func (stage *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.
 		}
 		return nil, err
 	}
-	if a != nil && a.Msg != nil && a.Msg.Rcode == dns.RcodeServerFailure {
+	if a != nil && a.Msg != nil && (a.Msg.Rcode == dns.RcodeServerFailure || a.Msg.Rcode == dns.RcodeRefused) {
 		out := *a
 		out.AddCleanup(r.Close)
 		out.Msg = a.Msg.Copy()

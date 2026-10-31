@@ -33,6 +33,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	"github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/stages/cache"
+	"github.com/robertherbaugh/kudurru/internal/stages/control"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	"github.com/robertherbaugh/kudurru/internal/stages/upstream"
@@ -195,11 +196,12 @@ func newChain(t *testing.T, p *serving.Publisher) *pipeline.Chain {
 	}
 	c := cache.New(cachedata.New(cachedata.Options{}), cache.Settings{}, u)
 	r := &postprocess.Stage{}
-	chain, err := pipeline.New(i, r, a, b, c, u)
+	ctl := control.New(control.Options{})
+	chain, err := pipeline.New(i, ctl, r, a, b, c, u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := BindDNS(p, DNSStages{Chain: chain, Identify: i, Authority: a, Blocking: b, Cache: c, Response: r, Resolution: u}, nil); err != nil {
+	if err := BindDNS(p, DNSStages{Chain: chain, Control: ctl, Identify: i, Authority: a, Blocking: b, Cache: c, Response: r, Resolution: u}, nil); err != nil {
 		t.Fatal(err)
 	}
 	return chain

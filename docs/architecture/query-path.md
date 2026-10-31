@@ -151,7 +151,7 @@ NOTAUTH by the transport, also before the pipeline.
 |---|---|---|---|---|
 | 1 | `ingress` | Is this query sane, and is the client within its rate? | TC=1 or silence over the UDP rate limit; NOTIMP for opcodes other than QUERY, NOTIFY and UPDATE; FORMERR; BADVERS; REFUSED for `ANY`; CHAOS `id.server`/`version.bind`; the `health.kudurru.internal.` TXT | `blocked_rate_limit`, `dropped`, `refused_acl`, `special_domain` |
 | 2 | `identify` | Which client groups, which policy? | never answers; attaches `Client.GroupIDs` and the policy decision | none |
-| 3 | `control` | Is the message malformed? | nothing (a drop) | `dropped` |
+| 3 | `control` | Is the message malformed, the client outside allowed networks, or the query type blocked? | silence for malformed messages; REFUSED with EDNS EDE 18 for global admission rules | `dropped`, `refused_acl` |
 | 4 | `postprocess` | What may this client receive? | captures response settings; on response unwinding, checks rebinding and finalizes AD/CD/DO on a private copy | preserves the answering status |
 | 5 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced` |
 | 6 | `blocking` | Is the name blocked for this client? | a block answer, a safe-search CNAME; after the next stages return, it checks CNAME targets and IPs in the answer | `blocked_list`, `blocked_exact`, `blocked_regex`, `blocked_cname`, `blocked_safesearch` |
@@ -160,8 +160,9 @@ NOTAUTH by the transport, also before the pipeline.
 | 9 | `dnssec` | Is the raw forwarded answer authentic? | validates proofs when enabled; SERVFAIL and EDE for bogus or indeterminate data | `dnssec_bogus` |
 | 10 | `upstream` | Who knows the answer? | always answers (it is the last stage); recursive groups resolve from the root and validate DNSSEC | `forwarded`, `servfail_upstream`, `timeout_upstream`, `dnssec_bogus` |
 
-The order puts the cheap and the certain first. Authoritative answers come
-before blocking, so your own zones are never blocked. Blocking comes before
+The order puts the cheap and the certain first. Global [DNS controls](../deploy/dns-controls.md)
+run before local, cached and upstream answers. Authoritative answers come
+before ad blocking, so your own zones are exempt from ad blocking. Blocking comes before
 the cache, so a block is never cached and one raw cached answer can serve clients with the same resolution context; blocking also wraps the cache, so cached answers are still inspected
 on the way out.
 
@@ -379,8 +380,7 @@ reserved in `pipeline.Order`; client-group authoritative views remain subsequent
 work. [Response processing](../deploy/response-processing.md) implements
 configured rewrites, DNS64, AAAA filtering, NXDOMAIN handling and rebinding.
 Recursive upstream groups already answer RFC 6303 and special-use names and validate their answers. NSID is not implemented, and
-the `epoch` in the health TXT is always `0`. The control stage has no
-configuration keys yet, so it only drops malformed queries.
+the `epoch` in the health TXT is always `0`.
 
 ## DHCP lease records (v0.1.0)
 
