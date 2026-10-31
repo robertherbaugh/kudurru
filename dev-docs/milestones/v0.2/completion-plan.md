@@ -95,7 +95,7 @@ runners. Unit tests cannot substitute for those results.
 | F20c | Move benchgate to `hack/` | DNS and resolver | Integrated; final gates open |
 | F20d | Lazy-DFA regex engine | DNS and resolver | Queued: missing |
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Implemented; bounded canonical translation, refusal/ownership/restart and real mounted DNS routes pass |
-| F21b | Response-cache inspect REST | DNS and resolver | Queued: missing |
+| F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated contracts pending batch regeneration |
 | F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |
 | F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Implemented; actual transport/config/mounted races pass |
 | F22b | DoH `Alt-Svc` | DNS and resolver | Implemented; actual HTTPS/HTTP3 and full transport races pass |

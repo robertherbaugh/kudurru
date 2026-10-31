@@ -590,6 +590,25 @@ resolver is kept across the swap with its own cache; `upstreams.recursion.*`
 is applied to it in place. Cache settings
 reload in place; new limits apply to entries stored from then on.
 
+## Inspecting one cached response
+
+`GET /api/v1/cache/inspect?name=www.example.org&type=A` requires cluster
+`cache.read`. Optional `do` and `cd` select the raw DNS flags; `client` defaults
+to `127.0.0.1` and only derives the configured ECS partition. The response says
+whether the raw default route is cacheable and whether that exact entry exists,
+with positive/negative kind, fresh/stale state, age, original and remaining TTL,
+wire size and validation state. Missing, expired and mismatched entries return
+`found: false`; disabled caching and conditional routes return `cacheable: false`.
+
+The bounded single-key read uses the original HTTP request's resolver and cache
+incarnations. It does not query upstreams, refresh data, count a hit, change LRU
+order or adopt restored entries. A retained request can inspect its retained
+incarnation; a successor cannot read it after a settings replacement. Responses
+use `Cache-Control: no-store` and omit answer bodies, stored client subnets and
+upstream endpoints. This is raw cache metadata: authority, blocking and rewrites
+can still decide that a client should receive a different answer. It does not
+list clients or cached names, or inspect the separate recursive resolver cache.
+
 ## Metrics
 
 | Metric | Meaning |

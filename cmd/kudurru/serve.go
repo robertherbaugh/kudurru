@@ -1189,7 +1189,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
-		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, Chain: chain, DNSQueryCapture: dnsQueryCapture,
+		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, CacheInspect: newCacheInspector(cs, fwd, dnsQueryCapture), Chain: chain, DNSQueryCapture: dnsQueryCapture,
 		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
 		Lists: listResolver, Notifier: manualNotify,

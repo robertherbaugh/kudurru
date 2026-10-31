@@ -1613,3 +1613,22 @@ and saving list settings preserves it (all 20 list-detail cases pass, plus
 typecheck and scoped lint). Original credentials, current-command final fences,
 request Received/Deadline and compiled content ownership remain unchanged.
 F54b remote-edge invalidation and other topology gates are still separate.
+
+### F21b bounded response-cache inspection
+
+D280 implements `GET /cache/inspect` under cluster cache.read. An exact
+name/type/DO/CD/client-derived ECS key reads scalar raw-entry metadata through
+Peek. It never enumerates names, serializes stored answers/subnets/upstream
+endpoints, resolves misses, rebinds restored entries or affects hit/LRU/prefetch
+state. Original HTTP leases select the original resolver and existing cache
+incarnation; a newer request cannot adopt retired entries even after A→B→A.
+This inspects the raw default route, not the final policy/authority decision.
+
+Selected cache/API/real mounted DNS races pass in 1.037s/1.443s/14.162s.
+Additional final API and real SQLite held-HTTP/replacement/cancellation races
+pass in 1.716s/3.257s. The actual mounted test warms native DNS, reads metadata,
+checks DO/CD/miss isolation and anonymous refusal, and proves no upstream I/O.
+An initial test invocation exposed test setup errors (missing captured resolver,
+incorrect stale-window assumption and expected validation status); corrected
+commands pass without production gate or deadline changes. Generated OpenAPI,
+Go/TypeScript clients and references are part of the next integrated batch.

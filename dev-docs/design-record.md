@@ -1878,6 +1878,8 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 | D277 | Exact Kubernetes watch resume | Nonempty/nonzero cursors use retained API-server events over the original guarded client, including CRDs and labeled internal Secrets. Bounded delivery, original namespace, cancellation and terminal Err; expiration never silently relists. Empty cursor keeps informer semantics. | Honor explicit resume without losing historical deletion/modification events or changing zonecache's initial-list path. | Treating a fresh Added replay as event history; manufacturing a bookmark from a new list; silently restarting from current state after compaction |
 
 ---
+| D280 | Bounded raw cache inspection | GET /cache/inspect requires cache.read and an exact name/type/DO/CD/client-derived ECS key. Clone the original HTTP cut, bind its resolver plan and inspect only an existing cache scope with Peek; return detached scalar metadata with no-store. | Diagnose raw entries without network I/O, hit/LRU/prefetch changes, key enumeration, stored subnet disclosure or revival of retired incarnations. | Unbounded cache dumps; guessing encoded scope IDs; recapturing current owners; treating raw cache presence as a policy decision |
+
 
 ## 17. Glossary
 

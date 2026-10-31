@@ -88,6 +88,22 @@ func TestRunServeSQLiteCacheFlushNativeScopedAnswers(t *testing.T) {
 	if warmed != 2 || calls.Load() != warmed {
 		t.Fatal("complete DNS stage did not cache both controlled answers", warmed, calls.Load())
 	}
+	var inspection api.CacheInspection
+	mountedFactorRequest(t, client, base, http.MethodGet, "/cache/inspect?name="+target, login.CSRF, nil, http.StatusOK, &inspection)
+	if !inspection.Found || !inspection.Cacheable || inspection.Entry == nil || inspection.Entry.Kind != "positive" || inspection.Entry.WireBytes == 0 || inspection.Entry.TTLSeconds != 300 {
+		t.Fatal("mounted inspection missed real DNS entry", inspection)
+	}
+	for _, path := range []string{"/cache/inspect?name=never-queried.example.org", "/cache/inspect?name=" + target + "&do=true", "/cache/inspect?name=" + target + "&cd=true"} {
+		inspection = api.CacheInspection{}
+		mountedFactorRequest(t, client, base, http.MethodGet, path, login.CSRF, nil, http.StatusOK, &inspection)
+		if inspection.Found || inspection.Entry != nil {
+			t.Fatal("inspection crossed raw key", path)
+		}
+	}
+	if calls.Load() != warmed {
+		t.Fatal("inspection performed upstream I/O")
+	}
+	mountedFactorRequest(t, &http.Client{Timeout: time.Second}, base, http.MethodGet, "/cache/inspect?name="+target, "", nil, http.StatusUnauthorized, nil)
 	var result api.FlushResult
 	mountedFactorRequest(t, client, base, http.MethodPost, "/cache/flush", login.CSRF, map[string]string{"name": "CACHE-OPERATOR.example.org"}, http.StatusOK, &result)
 	if result.Flushed != 1 || result.Name != target {

@@ -138,6 +138,8 @@ type dnsQueryOutput struct {
 }
 
 func (s *Server) registerRuntime() {
+	register(s, operation(http.MethodGet, "/cache/inspect", "inspectCache", "Inspect one raw default-route cache entry without resolving", "runtime"),
+		perm{resource: "cache", verb: "read"}, s.inspectCache)
 	register(s, operation(http.MethodGet, "/dns/blocking", "getBlocking", "Blocking state of this node", "runtime"),
 		perm{resource: "blocking", verb: "read"}, s.getBlocking)
 	register(s, operation(http.MethodPost, "/dns/blocking", "setBlocking", "Enable blocking, or disable it for a while", "runtime"),

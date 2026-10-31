@@ -254,6 +254,8 @@ type Options struct {
 	// upstream stage when the set is swapped on settings reloads.
 	Upstreams     UpstreamStatus
 	ResponseCache *cache.Cache
+	// CacheInspect reads one raw response using the original captured owners.
+	CacheInspect CacheInspectRead
 	// Chain runs POST /dns/query in-process.
 	Chain *pipeline.Chain
 	// DNSQueryCapture clones the original HTTP request's complete cut for a

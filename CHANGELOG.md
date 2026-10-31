@@ -28,6 +28,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Cache: permissioned exact-key REST inspection reports TTL/state/size metadata
+  without resolving misses or exposing stored answer bodies and client subnets.
+
 - Blocking: exact captured ClientGroup scope for allow/deny lists, including
   shared policies and legacy group-list names. General lists can declare bounded
   namespace-local `clientGroupRefs`; conflicting reserved-name scopes are refused.
