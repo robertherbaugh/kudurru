@@ -23,6 +23,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Health: the human `/healthz` response includes the locally observed controller
+  leader and the age of the saved snapshot currently being served.
 - SQLite replication: `kudurru_cluster_fenced` reports durable and failed
   in-memory authority fences, with an immediate Prometheus alert and Grafana
   panel. Healthy read-only followers do not trigger the fencing alert.

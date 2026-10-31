@@ -311,6 +311,20 @@ metric references and rule checks pass; scoped SQLite/deployment lint reports
 zero issues. This closes F64a's instrument and shipped assets. F64b, F64c and
 final multi-process/deployment acceptance retain their separate requirements.
 
+## F64b human health details
+
+`/healthz` now returns `leader` from the local controller elector and
+`snapshotAge` from the snapshot currently being served. Unknown/expired self
+leadership and live/no-snapshot states produce empty strings. No membership
+lookup, network request or disk read is added to any probe. Detail observation
+does not change readiness or imply write authority.
+
+Real runServe HTTP and local state-transition races pass in 2.160 seconds;
+health and authenticated peer-health races pass in 1.040/3.338 seconds. Tests
+cover stale/fresh saved ages, live recovery, remote observation, old self terms
+and absence of detail acquisition on startup/live/ready probes. Composed
+Kubernetes offline assertions follow F01 integration.
+
 ## Prioritized bounded implementation queue
 
 “Owner” is a proposed workstream, not an assignment or authorization to change

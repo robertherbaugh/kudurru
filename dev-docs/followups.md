@@ -157,7 +157,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 
 | Item | Source | Target |
 |---|---|---|
-| Metrics the §11.6 dashboard and alerts still lack: `kudurru_dnssec_key_expiry_timestamp_seconds` (v1.0); `snapshotAge`/`leader` in the `/healthz` JSON (§5.2 human probe). The serial-divergence, edge and VIP panels and alerts shipped in the v0.1 fix round; SQLite fencing metric/panel/alert shipped in the v0.2 review (F64a) | deploy report | v0.2 (moved from M3-M5: each waits for its feature; merged rows) |
+| Metrics the §11.6 dashboard and alerts still lack: `kudurru_dnssec_key_expiry_timestamp_seconds` (v1.0). `snapshotAge`/`leader` in the `/healthz` JSON (§5.2 human probe) shipped in the v0.2 review (F64b). The serial-divergence, edge and VIP panels and alerts shipped in the v0.1 fix round; SQLite fencing metric/panel/alert shipped in the v0.2 review (F64a) | deploy report | v0.2 (moved from M3-M5: each waits for its feature; merged rows) |
 | Settings key `cluster.role: static`: the compose HA read-only mode cannot be expressed until it exists (the chart renders OIDC providers through `auth.oidc.providers`); lands with the `cluster.static` membership of E2E-2 | deploy report | v0.2 (compose HA) |
 | Separate path keys for `querylog.db` and `local.db` so `persistence.querylog` and `persistence.local` can be distinct volumes; today either switches `/var/lib/kudurru` to one per-pod claim | deploy report | v0.2 |
 

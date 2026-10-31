@@ -493,6 +493,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	var membership cluster.Membership = cluster.Self{Name: cfg.Node.Name}
+	registerHealthDetails(checker, st.Elector(cluster.ElectionController), cfg.Node.Name, zc.Snapshot)
 	if cfg.Store.Driver == "kube" {
 		headless := os.Getenv("KUDURRU_HEADLESS_SERVICE")
 		_, port, _ := net.SplitHostPort(cfg.Listeners.Internal.Address)

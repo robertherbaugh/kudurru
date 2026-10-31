@@ -24,6 +24,14 @@ while fenced. Kubernetes nodes do not export this SQLite authority signal.
 The Grafana cluster/store row and immediate `KudurruClusterFenced` alert use it;
 inspect authority and storage errors before attempting explicit recovery.
 
+The human `GET /healthz` response includes `leader` and `snapshotAge` strings.
+`leader` is the locally observed controller holder, empty when unknown or when
+an old self identity has no active term. It does not resolve peer addresses or
+verify a remote holder's present authority. `snapshotAge` is the rounded duration
+since the currently served `local.db` snapshot was written, including stale
+snapshots; it is empty while serving live data or when no saved image is served.
+Both fields are local observations and do not change readiness or liveness.
+
 The Nodes page also polls `GET /api/v1/edge` every ten seconds. In Helm,
 the server discovers every separate edge pod through the headless
 `<release>-edge-status` Service's EndpointSlices, then reads `/status` on
