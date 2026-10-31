@@ -180,6 +180,16 @@ func TestGrowthWaitingForDumpDoesNotBlockQueriesOrCurrentFlush(t *testing.T) {
 	release := func() { once.Do(func() { close(writer.finish) }) }
 	defer func() { release(); <-dumpDone; <-resizeDone }()
 	go func() { defer close(resizeDone); c.Resize(1_000_000) }()
+	// Observe the queued topology writer before challenging query admission.
+	// Otherwise the commands could win scheduling and miss the lock regression.
+	deadline := time.Now().Add(time.Second)
+	for c.topology.TryRLock() {
+		c.topology.RUnlock()
+		if time.Now().After(deadline) {
+			t.Fatal("resize did not reach topology exclusion")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	commands := make(chan struct{})
 	go func() {
 		defer close(commands)
