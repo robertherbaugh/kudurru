@@ -65,7 +65,7 @@ runners. Unit tests cannot substitute for those results.
 | F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Integrated c80c6f2/46d7641; actual sender and composed SQLite/Kubernetes schema races pass |
 | F06b | Per-zone `notifySource` | Zones and AD | Integrated c80c6f2/46d7641; actual source/refusal races and UI unit tests pass |
 | F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Queued: missing |
-| F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Queued: missing |
+| F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Integrated a6bf8e1; actual encrypted wire and native mutation-refusal races pass; immutable installed keyrings |
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Integrated c46f8c9; authenticated SQLite native/CLI races pass; Kubernetes qualification remains open |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |
 | F09b | Production integration-host wiring and failover | Zones and AD | SQLite mount integrated 687371f; Kubernetes atomic-source and Delete dependencies remain |
@@ -177,7 +177,7 @@ runners. Unit tests cannot substitute for those results.
 | F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; original VM qualification remains external |
 | F69 | Central reads for retired node via scope=node&node=other | Observability and release | Integrated a4e38ce; actual PostgreSQL isolation and mounted history/export races pass |
 | F70 | Prune unreferenced central dictionaries | Observability and release | Integrated eef61bd/b1a29e8/a7304d8; actual PostgreSQL 17 races and lint pass |
-| F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Active: source-owned rollup implementation; legacy provenance ambiguity must remain explicit |
+| F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Integrated 123148b/f8fbb85; source-owned recovery and real PostgreSQL races pass; ambiguous legacy input retains explicit provenance gate |
 | F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Integrated e77d025; bounded real-envtest and composed auth races pass |
 | F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Integrated e77d025; actual router/CLI and composed races pass |
 | F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Integrated d3604c1; independent trust, historical retention, real envtest and mounted races pass; explicit upgrade provisioning required |

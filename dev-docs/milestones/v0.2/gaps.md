@@ -1370,3 +1370,58 @@ clearing and late-response isolation across dialog reopen. Typecheck and scoped
 UI lint pass; scoped API/servingbuild/blocking lint reports zero issues.
 OpenAPI, Go and TypeScript clients include both routes. F54b cache/remote-edge
 publication acceptance remains a separate open requirement.
+
+### F07b encrypted DNS TSIG
+
+D265 / `a6bf8e1` verifies original wire on real DoH HTTP/1.1/HTTP/2 GET/POST,
+DoQ and DoH3, signs replies with the installed original provider/MAC and
+checks the original signature deadline through final response generation.
+Invalid/malformed/expired credentials never enter the pipeline. Held expiry
+returns signed NOTAUTH/BADTIME, signed HTTP is private/no-store, and encrypted
+UPDATE/NOTIFY remains signed REFUSED without native proof or durable mutation.
+The agent's full affected-package races pass in 37.923s/49.345s with zero lint
+issues. Parent composed actual encrypted/native-proof races pass in
+7.016s/1.920s. Tests independently verify response HMACs, key replacement,
+framing and original expiry. This qualifies immutable installed keyrings and
+replacement listeners; live store-backed key rotation remains F07a work.
+
+### F71 source-owned stopped-source recovery
+
+D271 / `75e3b81`, `123148b`, `f8fbb85` adds schema-5 source ownership across
+all 14 central rollup families, source-locked replacement, fact revisions and
+bounded stopped-source closed-hour/day work. Late facts and official returns
+preserve exact ownership/counts; raw/hourly retention gates prevent incomplete
+tails replacing a complete baseline. Scoped evidence/verification routes bind
+source/node/hour/head/revision, retained-input digest, expiry and current
+permission/license context. No raw DNS values or peer/local fallback.
+
+The agent's final real PostgreSQL regression has 8 central, 109 pgquerylog and
+58 SQLite test/subtest passes. Frozen focused races have 66 pgquerylog and 26
+mounted API passes; 11 production startup/current-command cases pass; scoped
+central/SQLite/API lint reports zero issues. Parent generated API/Go/TypeScript
+contracts include recovery status and routes; composed checks follow below.
+
+Schema-4 opaque node-only cells remain unchanged and visibly gated as
+`legacy_provenance_required`; independently reconstructable historical ownership
+is required for adoption. Expired raw input without a retained hourly baseline
+is `source_input_incomplete`. Neither is silently guessed or discarded, and no
+universal legacy-repair claim is made. These are documented in the architecture
+and PostgreSQL operator runbook.
+
+Parent composed real PostgreSQL source migration/recovery/late-retention/receipt
+races pass in 37.141s; mounted API recovery plus regex impact races pass in
+2.439s. The disposable fixture and its anonymous volume were removed after
+verification. OpenAPI drift/served-schema checks pass in 0.421s. The integrated
+dashboard builds at 480.6 KiB transferred entry payload (600 KiB budget).
+Four actual browser cases pass in 15.2s: concrete regex evidence/nonmatch and
+all zone-page settings/delete/root-protection tests. Typecheck/scoped E2E lint
+pass; the captured screenshot is local `.context/regex-impact.png`.
+
+Hosted `bededd6` security 41212199976 and kind/MetalLB 41212199942 pass.
+CI 41212199948 exposed one dashboard fixture race: a record POST immediately
+after zone creation received `503 current writable serving generation
+unavailable`. `4a57e4f` waits for captured Ready status at the desired generation
+before the dependent record command, preserving single-attempt mutations and
+all command fences. The browser cases above verify this fix; later hosted
+results still apply to their own heads. Latest fetched `origin/main` is already
+contained in this branch.

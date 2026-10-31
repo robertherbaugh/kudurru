@@ -33,9 +33,9 @@ client policy before response blocking and rebinding checks.
 | Do53 UDP | miekg/dns, one `SO_REUSEPORT` socket per CPU | yes | yes |
 | Do53 TCP | miekg/dns, one socket per CPU | yes | yes |
 | DoT | miekg/dns `tcp-tls`, one socket per CPU, ALPN `dot` | yes | yes |
-| DoH (HTTP/1.1, HTTP/2) | `net/http`, GET `?dns=` or POST | no | no |
-| DoQ | quic-go, ALPN `doq` | no | no |
-| DoH3 | quic-go HTTP/3 | no | no |
+| DoH (HTTP/1.1, HTTP/2) | `net/http`, GET `?dns=` or POST | no | yes |
+| DoQ | quic-go, ALPN `doq` | no | yes |
+| DoH3 | quic-go HTTP/3 | no | yes |
 
 On Linux, `listeners.sockets` controls UDP, TCP and DoT reuse-port groups
 (default: one socket per `GOMAXPROCS` CPU). Each DoT socket has its own accept
@@ -48,6 +48,21 @@ for DoQ or DoH3.
 Every transport ends in one handler that stamps `Received` and a 5 s
 deadline, runs the chain and writes the reply. DoH, DoQ and DoH3 give the
 pipeline a fresh message ID, because their clients send ID 0.
+
+DoH, DoQ and DoH3 verify TSIG against the original bounded wire before ID
+adaptation. A transport-local signer retains the installed immutable keyring,
+request MAC and original signature deadline. The pipeline receives verified key
+metadata and an unsigned private working message. Final replies are padded,
+signed with that original key/MAC, and checked again against the original
+deadline; signed HTTP exchanges use `private, no-store`. Malformed framing,
+unknown keys and invalid signatures are refused before pipeline entry. An
+expired held exchange returns authenticated NOTAUTH/BADTIME without answer data.
+
+This authentication does not issue native UPDATE/NOTIFY capabilities: encrypted
+mutation requests still receive signed REFUSED. Keyrings are fixed at listener
+installation; replacement-listener rotation is qualified, live TSIG key reload
+is a separate requirement. Opaque mutable lookup providers fail closed on these
+transports because they cannot pin an installed credential generation.
 
 Native listeners share host-only `listeners.limits` settings, applied separately
 to each connection or listener at startup:

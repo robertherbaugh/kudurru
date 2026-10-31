@@ -6203,6 +6203,9 @@
       "QuerylogStatusBody": {
         "additionalProperties": false,
         "properties": {
+          "backfill": {
+            "$ref": "#/components/schemas/RollupBackfillStatus"
+          },
           "db_bytes": {
             "format": "int64",
             "type": "integer"
@@ -6591,6 +6594,151 @@
           "role",
           "scope",
           "subjects"
+        ],
+        "type": "object"
+      },
+      "RollupBackfillDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "hour": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "legacy_before": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "resolution": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "state"
+        ],
+        "type": "object"
+      },
+      "RollupBackfillStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "capped": {
+            "type": "boolean"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/RollupBackfillDetail"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "legacy_cells": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pending_days": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pending_hours": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "legacy_cells",
+          "pending_days",
+          "pending_hours",
+          "details",
+          "capped",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "RollupEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_reason": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "head": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "hour": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "node": {
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeResult"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "node",
+          "hour",
+          "revision",
+          "head",
+          "digest",
+          "expires_at",
+          "scope",
+          "nodes",
+          "partial"
+        ],
+        "type": "object"
+      },
+      "RollupVerifyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
         ],
         "type": "object"
       },
@@ -24884,6 +25032,291 @@
           "resource": "querylog",
           "scope": "cluster",
           "verb": "purge"
+        }
+      }
+    },
+    "/querylog/rollup-evidence": {
+      "get": {
+        "operationId": "rollupEvidence",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Start of a closed UTC hour, Unix seconds.",
+            "explode": false,
+            "in": "query",
+            "name": "hour",
+            "required": true,
+            "schema": {
+              "description": "Start of a closed UTC hour, Unix seconds.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollupEvidence"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Capture bounded retained-input recovery evidence",
+        "tags": [
+          "querylog"
+        ],
+        "x-kudurru-permission": {
+          "resource": "querylog",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/querylog/rollup-evidence/verify": {
+      "post": {
+        "operationId": "verifyRollupEvidence",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollupEvidence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollupVerifyBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Verify recovery evidence without changing history",
+        "tags": [
+          "querylog"
+        ],
+        "x-kudurru-permission": {
+          "resource": "querylog",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },

@@ -4166,16 +4166,17 @@ type QueryRow struct {
 
 // QuerylogStatusBody defines model for QuerylogStatusBody.
 type QuerylogStatusBody struct {
-	DbBytes     int64         `json:"db_bytes"`
-	Nodes       *[]NodeResult `json:"nodes"`
-	OldestTs    *time.Time    `json:"oldest_ts,omitempty"`
-	Partial     bool          `json:"partial"`
-	Privacy     string        `json:"privacy"`
-	Retention   Retention     `json:"retention"`
-	Rows        int64         `json:"rows"`
-	Scope       string        `json:"scope"`
-	Source      *string       `json:"source,omitempty"`
-	Subscribers int64         `json:"subscribers"`
+	Backfill    *RollupBackfillStatus `json:"backfill,omitempty"`
+	DbBytes     int64                 `json:"db_bytes"`
+	Nodes       *[]NodeResult         `json:"nodes"`
+	OldestTs    *time.Time            `json:"oldest_ts,omitempty"`
+	Partial     bool                  `json:"partial"`
+	Privacy     string                `json:"privacy"`
+	Retention   Retention             `json:"retention"`
+	Rows        int64                 `json:"rows"`
+	Scope       string                `json:"scope"`
+	Source      *string               `json:"source,omitempty"`
+	Subscribers int64                 `json:"subscribers"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs   float64 `json:"took_ms"`
@@ -4287,6 +4288,46 @@ type RoleBindingInfo struct {
 
 // RoleBindingInfoSource defines model for RoleBindingInfo.Source.
 type RoleBindingInfoSource string
+
+// RollupBackfillDetail defines model for RollupBackfillDetail.
+type RollupBackfillDetail struct {
+	Hour         *int64 `json:"hour,omitempty"`
+	LegacyBefore *int64 `json:"legacy_before,omitempty"`
+	Resolution   *int64 `json:"resolution,omitempty"`
+	Source       string `json:"source"`
+	State        string `json:"state"`
+}
+
+// RollupBackfillStatus defines model for RollupBackfillStatus.
+type RollupBackfillStatus struct {
+	Capped       bool                    `json:"capped"`
+	Details      *[]RollupBackfillDetail `json:"details"`
+	LegacyCells  int64                   `json:"legacy_cells"`
+	PendingDays  int64                   `json:"pending_days"`
+	PendingHours int64                   `json:"pending_hours"`
+	Truncated    bool                    `json:"truncated"`
+}
+
+// RollupEvidence defines model for RollupEvidence.
+type RollupEvidence struct {
+	BlockedReason *string       `json:"blocked_reason,omitempty"`
+	Digest        string        `json:"digest"`
+	ExpiresAt     time.Time     `json:"expires_at"`
+	Head          int64         `json:"head"`
+	Hour          int64         `json:"hour"`
+	Node          string        `json:"node"`
+	Nodes         *[]NodeResult `json:"nodes"`
+	Partial       bool          `json:"partial"`
+	Revision      int64         `json:"revision"`
+	Scope         string        `json:"scope"`
+	Source        *string       `json:"source,omitempty"`
+	SourceId      string        `json:"source_id"`
+}
+
+// RollupVerifyBody defines model for RollupVerifyBody.
+type RollupVerifyBody struct {
+	Valid bool `json:"valid"`
+}
 
 // SafeSearchEngine defines model for SafeSearchEngine.
 type SafeSearchEngine struct {
@@ -5714,6 +5755,22 @@ type PurgeQuerylogParams struct {
 	Before *string `form:"before,omitempty" json:"before,omitempty"`
 }
 
+// RollupEvidenceParams defines parameters for RollupEvidence.
+type RollupEvidenceParams struct {
+	Scope  *string `form:"scope,omitempty" json:"scope,omitempty"`
+	Node   *string `form:"node,omitempty" json:"node,omitempty"`
+	Source string  `form:"source" json:"source"`
+
+	// Hour Start of a closed UTC hour, Unix seconds.
+	Hour int64 `form:"hour" json:"hour"`
+}
+
+// VerifyRollupEvidenceParams defines parameters for VerifyRollupEvidence.
+type VerifyRollupEvidenceParams struct {
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+	Node  *string `form:"node,omitempty" json:"node,omitempty"`
+}
+
 // QuerylogStatusParams defines parameters for QuerylogStatus.
 type QuerylogStatusParams struct {
 	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
@@ -6040,6 +6097,9 @@ type BatchDeletePoliciesJSONRequestBody = BatchDeleteInputBody
 
 // QueryActionJSONRequestBody defines body for QueryAction for application/json ContentType.
 type QueryActionJSONRequestBody = QueryActionInputBody
+
+// VerifyRollupEvidenceJSONRequestBody defines body for VerifyRollupEvidence for application/json ContentType.
+type VerifyRollupEvidenceJSONRequestBody = RollupEvidence
 
 // PatchSettingsJSONRequestBody defines body for PatchSettings for application/json ContentType.
 type PatchSettingsJSONRequestBody PatchSettingsJSONBody
@@ -7291,6 +7351,25 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /querylog (the `PurgeQuerylog` operationId).
 	PurgeQuerylog(ctx context.Context, params *PurgeQuerylogParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RollupEvidence Capture bounded retained-input recovery evidence
+	//
+	// Corresponds with GET /querylog/rollup-evidence (the `RollupEvidence` operationId).
+	RollupEvidence(ctx context.Context, params *RollupEvidenceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// VerifyRollupEvidenceWithBody Verify recovery evidence without changing history
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
+	VerifyRollupEvidenceWithBody(ctx context.Context, params *VerifyRollupEvidenceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// VerifyRollupEvidence Verify recovery evidence without changing history
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
+	VerifyRollupEvidence(ctx context.Context, params *VerifyRollupEvidenceParams, body VerifyRollupEvidenceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// QuerylogStatus Query-log size, retention and writer state
 	//
@@ -10393,6 +10472,55 @@ func (c *Client) QueryAction(ctx context.Context, id int64, params *QueryActionP
 // Corresponds with DELETE /querylog (the `PurgeQuerylog` operationId).
 func (c *Client) PurgeQuerylog(ctx context.Context, params *PurgeQuerylogParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPurgeQuerylogRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RollupEvidence Capture bounded retained-input recovery evidence
+//
+// Corresponds with GET /querylog/rollup-evidence (the `RollupEvidence` operationId).
+func (c *Client) RollupEvidence(ctx context.Context, params *RollupEvidenceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRollupEvidenceRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyRollupEvidenceWithBody Verify recovery evidence without changing history
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
+func (c *Client) VerifyRollupEvidenceWithBody(ctx context.Context, params *VerifyRollupEvidenceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyRollupEvidenceRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyRollupEvidence Verify recovery evidence without changing history
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
+func (c *Client) VerifyRollupEvidence(ctx context.Context, params *VerifyRollupEvidenceParams, body VerifyRollupEvidenceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyRollupEvidenceRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17792,6 +17920,167 @@ func NewPurgeQuerylogRequest(server string, params *PurgeQuerylogParams) (*http.
 	return req, nil
 }
 
+// NewRollupEvidenceRequest constructs an http.Request for the RollupEvidence method
+func NewRollupEvidenceRequest(server string, params *RollupEvidenceParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/querylog/rollup-evidence")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Node != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "node", *params.Node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "source", params.Source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "hour", params.Hour, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewVerifyRollupEvidenceRequest calls the generic VerifyRollupEvidence builder with application/json body
+func NewVerifyRollupEvidenceRequest(server string, params *VerifyRollupEvidenceParams, body VerifyRollupEvidenceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewVerifyRollupEvidenceRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewVerifyRollupEvidenceRequestWithBody constructs an http.Request for the VerifyRollupEvidence method, with any body, and a specified content type
+func NewVerifyRollupEvidenceRequestWithBody(server string, params *VerifyRollupEvidenceParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/querylog/rollup-evidence/verify")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Node != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "node", *params.Node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewQuerylogStatusRequest constructs an http.Request for the QuerylogStatus method
 func NewQuerylogStatusRequest(server string, params *QuerylogStatusParams) (*http.Request, error) {
 	var err error
@@ -20866,6 +21155,27 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /querylog (the `PurgeQuerylog` operationId).
 	PurgeQuerylogWithResponse(ctx context.Context, params *PurgeQuerylogParams, reqEditors ...RequestEditorFn) (*PurgeQuerylogResponse, error)
+
+	// RollupEvidenceWithResponse Capture bounded retained-input recovery evidence
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /querylog/rollup-evidence (the `RollupEvidence` operationId).
+	RollupEvidenceWithResponse(ctx context.Context, params *RollupEvidenceParams, reqEditors ...RequestEditorFn) (*RollupEvidenceResponse, error)
+
+	// VerifyRollupEvidenceWithBodyWithResponse Verify recovery evidence without changing history
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
+	VerifyRollupEvidenceWithBodyWithResponse(ctx context.Context, params *VerifyRollupEvidenceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*VerifyRollupEvidenceResponse, error)
+
+	// VerifyRollupEvidenceWithResponse Verify recovery evidence without changing history
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
+	VerifyRollupEvidenceWithResponse(ctx context.Context, params *VerifyRollupEvidenceParams, body VerifyRollupEvidenceJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyRollupEvidenceResponse, error)
 
 	// QuerylogStatusWithResponse Query-log size, retention and writer state
 	//
@@ -32980,6 +33290,207 @@ func (r PurgeQuerylogResponse) ContentType() string {
 	return ""
 }
 
+// RollupEvidenceResponse200Headers the declared response headers of an HTTP 200 response for RollupEvidence
+type RollupEvidenceResponse200Headers struct {
+	CacheControl *string
+}
+
+type RollupEvidenceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RollupEvidence
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *RollupEvidenceResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RollupEvidenceResponse) GetJSON200() *RollupEvidence {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RollupEvidenceResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RollupEvidenceResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RollupEvidenceResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RollupEvidenceResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r RollupEvidenceResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RollupEvidenceResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r RollupEvidenceResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r RollupEvidenceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RollupEvidenceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RollupEvidenceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RollupEvidenceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// VerifyRollupEvidenceResponse200Headers the declared response headers of an HTTP 200 response for VerifyRollupEvidence
+type VerifyRollupEvidenceResponse200Headers struct {
+	CacheControl *string
+}
+
+type VerifyRollupEvidenceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RollupVerifyBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *VerifyRollupEvidenceResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON200() *RollupVerifyBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r VerifyRollupEvidenceResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r VerifyRollupEvidenceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyRollupEvidenceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyRollupEvidenceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r VerifyRollupEvidenceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type QuerylogStatusResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -37832,6 +38343,45 @@ func (c *ClientWithResponses) PurgeQuerylogWithResponse(ctx context.Context, par
 		return nil, err
 	}
 	return ParsePurgeQuerylogResponse(rsp)
+}
+
+// RollupEvidenceWithResponse Capture bounded retained-input recovery evidence
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /querylog/rollup-evidence (the `RollupEvidence` operationId).
+func (c *ClientWithResponses) RollupEvidenceWithResponse(ctx context.Context, params *RollupEvidenceParams, reqEditors ...RequestEditorFn) (*RollupEvidenceResponse, error) {
+	rsp, err := c.RollupEvidence(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRollupEvidenceResponse(rsp)
+}
+
+// VerifyRollupEvidenceWithBodyWithResponse Verify recovery evidence without changing history
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
+func (c *ClientWithResponses) VerifyRollupEvidenceWithBodyWithResponse(ctx context.Context, params *VerifyRollupEvidenceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*VerifyRollupEvidenceResponse, error) {
+	rsp, err := c.VerifyRollupEvidenceWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyRollupEvidenceResponse(rsp)
+}
+
+// VerifyRollupEvidenceWithResponse Verify recovery evidence without changing history
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
+func (c *ClientWithResponses) VerifyRollupEvidenceWithResponse(ctx context.Context, params *VerifyRollupEvidenceParams, body VerifyRollupEvidenceJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyRollupEvidenceResponse, error) {
+	rsp, err := c.VerifyRollupEvidence(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyRollupEvidenceResponse(rsp)
 }
 
 // QuerylogStatusWithResponse Query-log size, retention and writer state
@@ -48648,6 +49198,189 @@ func ParsePurgeQuerylogResponse(rsp *http.Response) (*PurgeQuerylogResponse, err
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseRollupEvidenceResponse parses an HTTP response from a RollupEvidenceWithResponse call
+func ParseRollupEvidenceResponse(rsp *http.Response) (*RollupEvidenceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RollupEvidenceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RollupEvidence
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers RollupEvidenceResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseVerifyRollupEvidenceResponse parses an HTTP response from a VerifyRollupEvidenceWithResponse call
+func ParseVerifyRollupEvidenceResponse(rsp *http.Response) (*VerifyRollupEvidenceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyRollupEvidenceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RollupVerifyBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers VerifyRollupEvidenceResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

@@ -1789,6 +1789,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/querylog/rollup-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capture bounded retained-input recovery evidence */
+        get: operations["rollupEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/querylog/rollup-evidence/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify recovery evidence without changing history */
+        post: operations["verifyRollupEvidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/querylog/status": {
         parameters: {
             query?: never;
@@ -4116,6 +4150,7 @@ export interface components {
             zone?: string;
         };
         QuerylogStatusBody: {
+            backfill?: components["schemas"]["RollupBackfillStatus"];
             /** Format: int64 */
             db_bytes: number;
             nodes: components["schemas"]["NodeResult"][] | null;
@@ -4234,6 +4269,48 @@ export interface components {
             /** @enum {string} */
             source: "config" | "object";
             subjects: components["schemas"]["BindingSubject"][] | null;
+        };
+        RollupBackfillDetail: {
+            /** Format: int64 */
+            hour?: number;
+            /** Format: int64 */
+            legacy_before?: number;
+            /** Format: int64 */
+            resolution?: number;
+            source: string;
+            state: string;
+        };
+        RollupBackfillStatus: {
+            capped: boolean;
+            details: components["schemas"]["RollupBackfillDetail"][] | null;
+            /** Format: int64 */
+            legacy_cells: number;
+            /** Format: int64 */
+            pending_days: number;
+            /** Format: int64 */
+            pending_hours: number;
+            truncated: boolean;
+        };
+        RollupEvidence: {
+            blocked_reason?: string;
+            digest: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: int64 */
+            head: number;
+            /** Format: int64 */
+            hour: number;
+            node: string;
+            nodes: components["schemas"]["NodeResult"][] | null;
+            partial: boolean;
+            /** Format: int64 */
+            revision: number;
+            scope: string;
+            source?: string;
+            source_id: string;
+        };
+        RollupVerifyBody: {
+            valid: boolean;
         };
         SafeSearchEngine: {
             /** @description Addresses answered directly when the vendor documents an address instead of a host name. */
@@ -16666,6 +16743,196 @@ export interface operations {
             };
             /** @description Precondition Failed */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rollupEvidence: {
+        parameters: {
+            query: {
+                scope?: string;
+                node?: string;
+                source: string;
+                /** @description Start of a closed UTC hour, Unix seconds. */
+                hour: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollupEvidence"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    verifyRollupEvidence: {
+        parameters: {
+            query?: {
+                scope?: string;
+                node?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollupEvidence"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollupVerifyBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

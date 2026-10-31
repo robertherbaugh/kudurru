@@ -28,6 +28,14 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- DNS: TSIG verification and signed responses on DoH, DoQ and DoH3, with
+  original signature deadlines and no-store HTTP replies. Encrypted transports
+  still cannot authorize native UPDATE or NOTIFY mutations.
+- Central history: source-owned schema-5 rollups recover stopped sources from
+  bounded retained input, preserve late returns and expose scoped recovery
+  evidence. Legacy history without provable ownership remains intact with an
+  explicit provenance gate; older replace-upsert writers are refused.
+
 - Domains: read-only concrete-name regex inspection with opposing list/rule
   evidence, scope, disabled state and explicit partial-result limits.
 
