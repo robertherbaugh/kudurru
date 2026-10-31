@@ -292,7 +292,9 @@ networking are outside Baseline).
 
 `vip.provider=keepalived` runs dnsdist and keepalived in one hostNetwork
 DaemonSet on the nodes labelled `kudurru.io/vip=true`. keepalived needs
-`NET_ADMIN`, `NET_RAW` and `NET_BROADCAST` as root: label the namespace
+`NET_ADMIN`, `NET_RAW` and `NET_BROADCAST` as root, plus `SETUID` and
+`SETGID` to run its existing health scripts as UID/GID 953. All other
+capabilities remain dropped. Label the namespace
 `pod-security.kubernetes.io/enforce=privileged`.
 
 For two VIPs with separate VRRP and address interfaces:
@@ -338,6 +340,12 @@ interface, so loss of either link puts its instance into FAULT and
 withdraws the address. Gratuitous ARP stays on the VIP's interface.
 Before migration, withdraw each address from MetalLB or kube-vip; only one
 provider may advertise an address at a time.
+
+For explicit keys per VRID, use `vip.keepalived.hmacKeySecrets` with one
+`{vrid, secretName, key}` reference for every VIP. The empty list keeps the
+existing shared key; partial or mixed shared/per-VRID choices refuse render.
+See [VRRP HMAC key files](vrrp-keys.md) for private mounts, limits and the
+required coordinated restart procedure for migration and rotation.
 
 The Nodes page's Edge panel polls supervisor readiness, backend health,
 and each node's VIP states every ten seconds. Separate edge workloads

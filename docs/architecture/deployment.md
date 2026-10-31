@@ -147,6 +147,15 @@ VRRP interface and each VIP's address interface; loss of either link faults
 the instance and withdraws its address. Gratuitous ARP uses the address
 interface ([Helm guide](../deploy/helm.md)).
 
+The Helm chart selects either the original shared HMAC Secret or an exact
+VRID-to-Secret-key mapping (`vip.keepalived.hmacKeySecrets`). Only selected
+keys enter a bounded root init copy into private memory files, mode 0600, so
+the edge's fsGroup cannot make keepalived's runtime keys group-readable.
+The source projection is init-only; the private mount is keepalived-only.
+The existing `{vrid}` CLI substitution binds each instance to its selected
+file, with no shared-key fallback. Key changes require coordinated restart;
+see [key placement and rotation](../deploy/vrrp-keys.md).
+
 The supervisor renders `keepalived.conf` (VRRPv3 unicast, `state BACKUP`,
 `nopreempt`, `auth_hmac`, priority `200 - 10 × index`), checks it, and runs
 keepalived. keepalived itself calls two kudurru programs:
