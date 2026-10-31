@@ -165,6 +165,19 @@ matches what is served:
 A record set stays `Ready` while at least one of its endpoints is served;
 dropped endpoints raise `Degraded` with the reason.
 
+The controller, Kubernetes zone-view builder and current primary compiler each
+own a bounded per-record-set parse cache. An unchanged object can reuse its
+validated RRs when another object changes; complete zone assembly and its
+selection, conflict, ownership, hash and serial rules still run. Entries bind the
+complete record-set content and metadata, zone UID/origin and effective default
+TTL. Returned RRs and endpoint extensions are detached copies. Every assembly
+checks the original endpoint expiry at its build instant; reaching that deadline
+invalidates the parse entry without extending it. The cache retains at most
+4,096 objects and 16 MiB of estimated data, prunes absent objects from complete
+zone inputs and evicts least recently used entries. Invalid parses are not
+retained. This cache supplies neither authority nor a publication receipt;
+committed serving models still materialize verified raw records.
+
 ## Serials
 
 For primary zones, the leader's controller stamps the serial into the zone's

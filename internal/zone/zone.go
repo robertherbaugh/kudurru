@@ -253,6 +253,8 @@ func (z *Zone) RRsets(fn func(*RRset) bool) {
 
 // BuildOptions tune Build.
 type BuildOptions struct {
+	// Records optionally reuses per-object parsing; it never caches serving decisions.
+	Records *RecordCache
 	// Now is the instant expiresAt is compared with; zero means time.Now().
 	Now time.Time
 	// MergeUnion merges endpoints of the same name and type from different
@@ -266,11 +268,13 @@ type BuildOptions struct {
 // namespace/name) so that "Duplicated on the later object" is
 // deterministic.
 type Builder struct {
-	z       *Zone
-	spec    v1alpha1.DNSZoneSpec
-	now     time.Time
-	merge   bool
-	nsNames []string
+	records     *RecordCache
+	recordScope parseScope
+	z           *Zone
+	spec        v1alpha1.DNSZoneSpec
+	now         time.Time
+	merge       bool
+	nsNames     []string
 	// owners maps an endpoint identity to the source that claimed it
 	// first. Endpoints that are not served (disabled, expired, view-scoped)
 	// still claim their identity, so toggling one never moves ownership
@@ -405,7 +409,8 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	} else {
 		z.apex = z.tree.upsert(key, z.name)
 	}
-	return &Builder{z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames,
+	return &Builder{
+		records: opts.Records, recordScope: recordScope(dz), z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames,
 		owners: map[identity]string{}, nameSource: map[string]string{}, policyErrs: policyErrs}, nil
 }
 
@@ -484,6 +489,10 @@ func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) fi
 		return nil
 	}
 	rrs, errs := ParseEndpoint(b.z.name, b.defaultTTL(), ep, path)
+	return b.addParsed(source, path, ep, rrs, errs)
+}
+
+func (b *Builder) addParsed(source string, path *field.Path, ep *v1alpha1.Endpoint, rrs []dns.RR, errs field.ErrorList) field.ErrorList {
 	if len(errs) > 0 {
 		return errs
 	}
@@ -800,7 +809,16 @@ func Build(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, opts BuildOption
 	out.Policy = b.PolicyErrors()
 	for _, rs := range sets {
 		src := rs.Namespace + "/" + rs.Name
-		if errs := b.AddRecordSet(src, rs.Spec.Endpoints); len(errs) > 0 {
+		var recordErrs field.ErrorList
+		if opts.Records == nil {
+			recordErrs = b.AddRecordSet(src, rs.Spec.Endpoints)
+		} else {
+			parsed := b.ParseRecordSet(rs)
+			for i := range rs.Spec.Endpoints {
+				recordErrs = append(recordErrs, parsed.Add(src, i)...)
+			}
+		}
+		if errs := recordErrs; len(errs) > 0 {
 			if out.RecordSets == nil {
 				out.RecordSets = map[string]field.ErrorList{}
 			}

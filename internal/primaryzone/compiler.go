@@ -16,7 +16,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
 // CompilerOptions bounds desired metadata and removal receipts. Takeover is a
@@ -29,7 +28,10 @@ type CompilerOptions struct {
 }
 
 // Compiler preserves the production selector/oldest/setIdentifier builder rules.
-type Compiler struct{ options CompilerOptions }
+type Compiler struct {
+	options CompilerOptions
+	records *zone.RecordCache
+}
 
 // NewCompiler applies finite projection limits and a one-hour deletion receipt retention.
 func NewCompiler(o CompilerOptions) *Compiler {
@@ -43,7 +45,7 @@ func NewCompiler(o CompilerOptions) *Compiler {
 	if o.RemovedRetention <= 0 {
 		o.RemovedRetention = time.Hour
 	}
-	return &Compiler{options: o}
+	return &Compiler{options: o, records: &zone.RecordCache{}}
 }
 
 // Project compiles the complete static projection, then preserves dynamic data
@@ -112,7 +114,7 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 	} else if dz.Status.Serial == 0 {
 		dz.Status.Serial = dynamicupdate.AutoSerial(0, now)
 	}
-	builder, errs := zone.NewBuilder(dz, zone.BuildOptions{Now: now})
+	builder, errs := zone.NewBuilder(dz, zone.BuildOptions{Now: now, Records: c.records})
 	if len(errs) > 0 {
 		return nil, errs.ToAggregate()
 	}
@@ -120,7 +122,8 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 		return nil, builder.PolicyErrors().ToAggregate()
 	}
 	selector, _ := zone.NewRecordSetSelector(dz)
-	selected := zone.ServedRecordSets(dz, in.RecordSets)
+	c.records.Prune(dz, in.RecordSets)
+	selected := zone.ServedRecordSetsCached(dz, in.RecordSets, c.records, now)
 	owners := map[string]string{}
 	rawRecords := map[string]zonestate.Record{}
 	static := &zonestate.Aggregate{FormatVersion: zonekinds.FormatVersion, Zone: id, Policy: policy}
@@ -133,7 +136,7 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 			return nil, zonestate.ErrInvalid
 		}
 		key := store.KeyOf(rs).String()
-		if selector.Admits(rs) && !zone.RecordSetValid(rs) {
+		if selector.Admits(rs) && !c.records.RecordSetValid(dz, rs, now) {
 			return nil, fmt.Errorf("%w: malformed desired source %s", zonestate.ErrInvalid, key)
 		}
 		projections[key] = "withheld"
@@ -145,14 +148,14 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 		}
 		source := store.KeyOf(rs).String()
 		reasons[source] = "disabled, expired, view-scoped or outside zone"
+		parsedSet := builder.ParseRecordSet(rs)
 		for i := range rs.Spec.Endpoints {
 			ep := &rs.Spec.Endpoints[i]
-			path := field.NewPath("spec", "endpoints").Index(i)
-			parsed, parseErrs := zone.ParseEndpoint(id.Apex, defaultTTL(dz), ep, path)
+			parsed, parseErrs := parsedSet.Records(i)
 			if len(parseErrs) > 0 {
 				continue
 			} // valid in root origin, outside this zone
-			failures := builder.Add(source, path, ep)
+			failures := parsedSet.Add(source, i)
 			if len(failures) > 0 {
 				reason := zone.ErrorReason(failures[0])
 				if reason != public.ReasonDuplicated && reason != public.ReasonOccluded {
@@ -406,12 +409,6 @@ func sourceObjects(in *zonestate.DesiredInputs) []store.Object {
 		out = append(out, rs)
 	}
 	return out
-}
-func defaultTTL(z *public.DNSZone) uint32 {
-	if z.Spec.DefaultTTL > 0 {
-		return z.Spec.DefaultTTL
-	}
-	return zone.DefaultTTL
 }
 
 // BuildCommitted is the actual immutable primary materializer adapter. It

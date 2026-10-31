@@ -141,11 +141,17 @@ type zoneBuild struct {
 // buildZone builds zone from rrsets with the zone model. A nil zone has
 // an empty build.
 func buildZone(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet) *zoneBuild {
+	return buildZoneCached(zone, rrsets, nil)
+}
+
+func buildZoneCached(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, records *zonemodel.RecordCache) *zoneBuild {
 	b := &zoneBuild{}
 	if zone == nil {
 		return b
 	}
-	z, errs := ZoneContentHash(zone, rrsets, time.Time{})
+	now := time.Now()
+	records.Prune(zone, rrsets)
+	z, errs := zonemodel.Build(zone, zonemodel.ServedRecordSetsCached(zone, rrsets, records, now), zonemodel.BuildOptions{Now: now, Records: records})
 	if z != nil {
 		b.Hash, b.RecordCount, b.NextExpiry = z.ContentHash(), z.RecordCount(), z.NextExpiry()
 	} else {

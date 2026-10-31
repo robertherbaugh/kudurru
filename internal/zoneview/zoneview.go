@@ -34,6 +34,7 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 		logger = slog.Default()
 	}
 	var generation atomic.Uint64
+	records := &zone.RecordCache{}
 	return zonecache.NewBuilder(ViewName, func(objects zonecache.ObjectSet) (any, error) {
 		var zones []*zone.Zone
 		configured := objects.Zones()
@@ -70,8 +71,10 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 				zones = append(zones, z)
 				continue
 			}
-			sets := zone.ServedRecordSets(dz, objects.RecordSetsForZone(dz.Name))
-			z, errs := zone.Build(dz, sets, zone.BuildOptions{Now: objects.Now()})
+			all := objects.RecordSetsForZone(dz.Name)
+			records.Prune(dz, all)
+			sets := zone.ServedRecordSetsCached(dz, all, records, objects.Now())
+			z, errs := zone.Build(dz, sets, zone.BuildOptions{Now: objects.Now(), Records: records})
 			if z == nil {
 				logger.Warn("zone skipped", "zone", dz.Name, "errors", errs.Zone.ToAggregate())
 				continue
