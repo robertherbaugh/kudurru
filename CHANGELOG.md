@@ -23,6 +23,14 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Audit: dedicated authenticated SQLite authorization/request/client columns
+  and shared credential-field redaction before new document persistence.
+  Legacy audit bytes and verification remain compatible through schema 6.
+- Storage: independent query log and local snapshot directories with additive
+  Helm/Compose volumes, path preflight and explicit offline migration.
+- Downloads: opt-in host HTTPS-only policy for lists and catalogs, including
+  redirect downgrade refusal, without changing existing cached data.
+
 - Central query storage: bounded reference-safe dictionary pruning, guarded
   cached-ID reuse and transactional schema-4 upgrade constraints. Retained
   facts and rollups keep their dictionary entries.

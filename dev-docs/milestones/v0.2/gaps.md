@@ -955,3 +955,94 @@ Large upgrades can exceed existing startup migration limits and require a
 maintenance window; no deployment-scale migration performance is claimed.
 PostgreSQL 16/18 and final integrated-head checks remain separate. D248 records
 the design.
+
+
+### F02a/F02b/F38 audit storage and historical compatibility
+
+`aa3784c` adds SQLite schema 6 attribution columns, strict v1/v2 chain selection
+and a durable legacy boundary. The v2 hash includes all new request/client/authz
+fields. Migration and verification reject inconsistent formats instead of
+trying another hash. Legacy bytes and hashes survive upgrade, restart, mixed
+chains and pruning; the reason suffix remains for compatibility.
+
+One leaf redactor prepares new SQLite, spool and central-chain documents before
+capping and hashing. It uses the full private-kind manifest (the existing safe
+APIToken allowlist is the exception), removes structural credential carriers,
+and omits malformed, ambiguous or excessively nested input. Safe public bytes
+and exact numbers are preserved. Existing hashed source evidence is not rewritten.
+Structural redaction is not free-text DLP, and historical rows/backups retain
+their original protection/retention requirements. Unkeyed integrity chains do
+not prevent complete rewriting by a database administrator.
+
+Final agent auditdocument/audit/auditlog/spool/auditstore races pass in
+1.020s/4.316s/5.234s/22.033s/2.094s. Final targeted SQLite/API audit races pass in
+16.856s/4.454s; three actual mounted attribution repetitions pass in 43.704s.
+Scoped lint reports zero issues. One existing AuditLog metadata test lacked
+envtest in that agent run; it is not claimed as executed.
+
+Parent composition with F70 runs the entire central suite against disposable
+PostgreSQL 17.11 with required-backend mode: **67 tests pass**, with package
+elapsed times 2.097s/6.863s/22.190s. This includes source-hash preservation and
+new central redaction after the final source correction. The fixture was
+stopped and removed. Actual mounted F02/F51/F62 CLI/router races pass in 12.502s.
+
+### F51 optional HTTPS-only external downloads
+
+`a15480e` adds host-only, restart-required `blocking.httpsOnly`, false by default.
+A private client copy rejects HTTP initial requests and every redirect before
+contact, while retaining custom trusted CAs, proxy/local-address guards,
+timeouts and redirect callbacks. Permanent policy refusal is credential-free
+and does not trigger an immediate list retry. Both catalog formats and replica
+external fallback use the policy. Existing cached data and authenticated peer
+copies are retained; this is not retrospective transport certification.
+
+Complete list-fetcher/catalog races pass in 3.702s/4.394s. Focused config/API
+refusal races pass in 1.182s/2.378s. Actual startup proves both catalog constructors
+carry the policy and a BlockList publishes refusal without contacting HTTP or
+losing its exact last-good digest (3.058s). The initial fixture omitted that
+required digest and correctly could not publish a complete serving view; the
+final fixture seeds explicit historical cached data. No production readiness
+or publication rule was relaxed. Scoped lint and final mounted-file lint report
+zero issues. D251 and the operator download policy document the limits.
+
+### F66 independent storage and composed checks
+
+`b3f6986`/`5048c61` add independent host directory keys and opt-in Helm/Compose
+volumes while preserving empty/default paths and the original data claim.
+Preflight checks named path collisions, modes, symlinks and selected database
+hardlinks before initialization. Split mounts are additive; the operator moves
+files only in a stopped backup/copy window, including controlled recreation of
+immutable StatefulSet claim templates. Fresh named-volume targets are writable
+by UID65532 in the updated image sources.
+
+Agent actual default/split restart races pass in 16.661s, proving primary state,
+query rows and cache persistence across four serving lifetimes. Corrected chart/
+Compose races pass in 4.204s: 14 positive layouts, six refusals and 12 comparisons
+requiring unchanged original data claims. Actual Compose config checks pass
+15 combinations. The expanded volume probe fails on the exact old base image
+and passes for all new data/querylog/local targets, with owned cleanup. Scoped
+lint reports zero issues. No actual CSI provisioning, distinct physical disks,
+power-loss, NFS or cross-volume transaction/backup atomicity is claimed.
+
+Ordinary generate/docs-gen/deploy-assets succeed; host-only fields do not enter
+the cluster settings CRD. Parent composed config/API/actual-serving/deployment
+races pass in **1.472s/1.678s/20.328s/3.684s**, covering F02/F51/F66 together.
+The CGO-disabled release build with the built dashboard is **99,557,536 bytes**
+against the unchanged **100,000,000-byte** owner budget. Final image/artifact
+and hosted-head qualification remain distinct.
+
+### Hosted security recovery
+
+On pushed `7dda727`, [security 41206423248](https://github.com/robertherbaugh/kudurru/actions/runs/41206423248)
+passes every applicable job, including SAST, Trivy filesystem/images and
+vulnerability checks. Hosted binary build passes after `2d6e781` removes the
+Cloudflare SDK root helper imports and their unused service registrations;
+provider races pass in 9.101s. `77953ef` documents the necessary root runtime
+only for the isolated, unshipped Samba lab. The committed runner passes 3/3
+protocol checks in 8.244s with owned cleanup. Local pinned Semgrep reports zero
+findings and Trivy configuration scanning is clean.
+
+The hosted authenticator test still fails and is reproduced on Node 24.22.0;
+the native request fails before reaching the MSW handler. It remains open
+while the agent isolates the cause. Later source commits require their own
+hosted results. The understood Cloudflare docs check stays excluded.

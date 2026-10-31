@@ -18,8 +18,9 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F02a/F02b/F38, F66 and a hosted dashboard test failure;
-the parent has integrated F05/F31/F18a/F62/F70 and disposable Samba/VIP labs. Freed agents take
+agents currently own F73, F42 and a hosted dashboard test failure; the parent
+has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
+disposable Samba/VIP labs. Freed agents take
 the next independent package, retaining original proofs, ownership, current
 transactions and final credential/license checks. No refused mutation replay.
 
@@ -53,8 +54,8 @@ runners. Unit tests cannot substitute for those results.
 | ID | Requirement | Workstream | Current work state |
 |---|---|---|---|
 | F01 | Cold-start cluster-ID check when kube has never reached the API | Store and HA | Integrated 1bf8586; actual startup/identity/health races pass |
-| F02a | SQLite remaining §11.4 audit columns, including authz path | Store and HA | Active: audit storage agent, shared with F38 |
-| F02b | SQLite secret redaction in before/after | Store and HA | Active: audit storage agent |
+| F02a | SQLite remaining §11.4 audit columns, including authz path | Store and HA | Integrated aa3784c; schema-6 attribution and actual mounted races pass |
+| F02b | SQLite secret redaction in before/after | Store and HA | Integrated aa3784c; raw-row redaction, historical integrity and export races pass |
 | F02c | SQLite cluster epoch / primary fencing setters | Store and HA | Implemented; final gates open |
 | F02d | `InternalKinds` once internal kinds exist | Store and HA | Implemented; final gates open |
 | F03 | `WatchOptions.ResourceVersion`: replay-as-Added vs true resume | Store and HA | External acceptance/decision open |
@@ -123,14 +124,14 @@ runners. Unit tests cannot substitute for those results.
 | F35c | external-dns webhook authentication | Zones and AD | Integrated; final gates open |
 | F36 | Serve object lists from live snapshot instead of store | Operations and UI | Implemented; final gates open |
 | F37 | Adopt generated OpenAPI Go client underneath CLI client | Operations and UI | Queued: missing |
-| F38 | Dedicated SQLite authz path/request/client audit columns | Observability and release | Active: shared F02a audit storage migration |
+| F38 | Dedicated SQLite authz path/request/client audit columns | Observability and release | Integrated aa3784c; dedicated authenticated attribution columns |
 | F39a | Local edge resolver-cache invalidation | Edge and VIP | Implemented; final gates open |
 | F39b | Remote edge blocking-generation pull / resolver invalidation | Edge and VIP | Queued: missing |
 | F40a | Host-only `edge.*` / `vip.*` settings keys | Edge and VIP | Queued: missing |
 | F40b | Keepalived provider events to audit/SSE in serve | Edge and VIP | Queued: missing |
 | F41a | ServiceProvider current Owner | Edge and VIP | Queued: missing |
 | F41b | Chart provider annotations | Edge and VIP | Queued: partial |
-| F42 | Per-VRID `--hmac-key-file` in chart | Edge and VIP | Queued: missing |
+| F42 | Per-VRID `--hmac-key-file` in chart | Edge and VIP | Active: per-VRID chart HMAC agent, D253 reserved |
 | F43a | dnsdist console backend diff-apply | Edge and VIP | Queued: missing |
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Queued: missing |
 | F43c | Console spike (a) gates both changes | Edge and VIP | External acceptance/decision open |
@@ -144,7 +145,7 @@ runners. Unit tests cannot substitute for those results.
 | F48b | RP-initiated logout | IAM and access | Queued: missing |
 | F49 | Optional external-dns shared-secret header / tokenFile | IAM and access | Integrated; final gates open |
 | F50 | Separate Kubernetes vs Kudurru SA binding subject or document overlap | IAM and access | External acceptance/decision open |
-| F51 | Optional HTTPS-only catalogue and BlockList downloads | Operations and UI | Queued: missing |
+| F51 | Optional HTTPS-only catalogue and BlockList downloads | Operations and UI | Integrated a15480e; HTTP/TLS, redirect, real startup and API refusal races pass |
 | F52 | Dig answer reports matched exclusion, avoiding second request | Operations and UI | Queued: missing |
 | F53 | Query-time exact ClientGroup scope for allow/deny lists (D143) | Operations and UI | Queued: partial |
 | F54a | Regex “overrides block list” explanation | Operations and UI | Queued: missing |
@@ -168,7 +169,7 @@ runners. Unit tests cannot substitute for those results.
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
 | F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Queued: missing |
-| F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Active: storage paths agent, D250 design reviewed |
+| F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Integrated b3f6986/5048c61; actual restart, chart/Compose and volume ownership checks pass |
 | F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Queued: partial |
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
 | F68b | Knot catalog consumer interoperability | Zones and AD | Queued: missing |
@@ -178,7 +179,7 @@ runners. Unit tests cannot substitute for those results.
 | F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Queued: missing |
 | F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Integrated e77d025; bounded real-envtest and composed auth races pass |
 | F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Integrated e77d025; actual router/CLI and composed races pass |
-| F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Queued: missing |
+| F73 | AuditLog verification-key lifecycle independent of session rotations | Observability and release | Active: audit key lifecycle agent, D252 reserved |
 | F74 | Central availability/shipping lag/audit-spool Grafana panels | Observability and release | Integrated; final gates open |
 | F75a | `GET /audit/verify` using existing verifiers | Observability and release | Implemented; final gates open |
 | F75b | `kudurru audit verify` | Observability and release | Integrated; final gates open |

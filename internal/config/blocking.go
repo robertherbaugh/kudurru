@@ -31,7 +31,7 @@ type Blocking struct {
 	// (cloud metadata), unspecified and multicast addresses; off by default
 	// so a BlockList writer cannot use the node for SSRF.
 	AllowLocalListURLs bool `koanf:"allowLocalListURLs" json:"allowLocalListURLs"`
-	// HTTPSOnly restricts new external list/catalogue downloads, including
+	// HTTPSOnly restricts new external list/catalog downloads, including
 	// redirects. Existing cached data and internal peer transfers are unchanged.
 	HTTPSOnly bool `koanf:"httpsOnly" json:"httpsOnly"`
 	// Catalogue is the blocked-services and safe-search catalogue source.

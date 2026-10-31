@@ -24,7 +24,7 @@ The evidence audit preserves their original requirements and limits.
 | Item | Source | Target |
 |---|---|---|
 | Cold-start cluster identity now requires an independently provisioned host pin for offline admission, with guarded initial online verification; F01 closure and compatibility limits are in the v0.2 audit | hardening report | v0.2 |
-| sqlite: remaining §11.4 audit fields (incl. `auth.DecisionFrom(ctx).Path`) via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing; `InternalKinds` once internal kinds exist (the daily `PruneAudit` leader loop and `WithActor` from the API principal landed in dev-docs/milestones/m5/burndown-server.md) | store-sqlite report | v0.2 |
+| SQLite attribution/redaction shipped in aa3784c (F02a/b/F38): schema 6 authenticates dedicated request/client/authz fields and redacts new documents before cap/hash. Historical source evidence stays unchanged. Epoch fencing and private-kind registration are implemented separately; final gates remain in the audit | store-sqlite report; D249 | v0.2 |
 | `WatchOptions.ResourceVersion` semantics: replay-as-Added (documented) vs true resume | store-kube spike | v0.2 |
 | conformance: shared "rejects the same inputs" table run against sqlite and kube | validator spike | v0.2 (moved from M2: test-only, both drivers already pass the conformance suite) |
 
@@ -94,7 +94,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | external-dns: read `DNSEndpoint` CRs directly (§5.6) and a `kudurru externaldns-webhook` sidecar subcommand (optional webhook authentication landed in `5fc97d7`) | api report | v0.2 (moved from M4: the webhook provider covers external-dns in v0.1) |
 | Object list routes read the store (an apiserver round trip in kube mode); serve them from the zonecache snapshot when it is live | api report | v0.2 (moved from M4: performance only) |
 | CLI: switch from the hand-written `internal/apiclient` transport to the generated `internal/apiclient/openapi` client and put it under `apiclient.Client` (surface listed in dev-docs/milestones/m3/cli.md) | api report, dev-docs/milestones/m3/cli.md | v0.2 (moved from M3/M4: internal refactor, no user-visible change; merged rows) |
-| Audit: the sqlite recorder folds authz path, request id and client address into `reason` until audit migration 2 adds columns | api report | v0.2 (moved from M3: the reason field carries the values until migration 2) |
+| Audit: schema 6 stores and authenticates dedicated authz/request/client columns; the historical reason suffix remains compatible without becoming trusted parsed metadata (F38 closed) | api report; D249 | v0.2 |
 ## Edge and VIP
 
 | Item | Source | Target |
@@ -159,7 +159,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 |---|---|---|
 | Metrics the §11.6 dashboard and alerts still lack: `kudurru_dnssec_key_expiry_timestamp_seconds` (v1.0). `snapshotAge`/`leader` in the `/healthz` JSON (§5.2 human probe) shipped in the v0.2 review (F64b). The serial-divergence, edge and VIP panels and alerts shipped in the v0.1 fix round; SQLite fencing metric/panel/alert shipped in the v0.2 review (F64a) | deploy report | v0.2 (moved from M3-M5: each waits for its feature; merged rows) |
 | Settings key `cluster.role: static`: the compose HA read-only mode cannot be expressed until it exists (the chart renders OIDC providers through `auth.oidc.providers`); lands with the `cluster.static` membership of E2E-2 | deploy report | v0.2 (compose HA) |
-| Separate path keys for `querylog.db` and `local.db` so `persistence.querylog` and `persistence.local` can be distinct volumes; today either switches `/var/lib/kudurru` to one per-pod claim | deploy report | v0.2 |
+| Separate querylog/local directories and additive Helm/Compose volumes shipped (F66), preserving the original data claim; explicit offline migration and mounted restart/volume checks are documented | deploy report; D250 | v0.2 |
 
 ## Needs the project owner's hardware
 
@@ -181,7 +181,7 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 | Item | Source | Target |
 |---|---|---|
 | Read a retired node's data with `scope=node&node=<other>` from the central database (each reader query needs a node condition); live peers are routed over the internal listener in v0.1 | D161 | v0.2 |
-| Central dictionaries are never pruned (the nodes prune theirs by last_seen); prune entries no rollup or fact row references | D160 | v0.2 |
+| Reference-safe bounded central dictionary pruning shipped (F70), with schema-4 constraints, cached-ID locking and durable sweep progress; actual PostgreSQL concurrency/restart tests pass | D160; D248 | v0.2 |
 | Statistics of a node that stops for good inside an hour it has not summarised lose that part hour (its facts are kept); the leader could summarise the facts of sources gone for two hours | D160 | v0.2 |
 | AuditLog CRD availability and bounded namespace batch count diagnostics against the 50,000 recommendation now ship on Diagnosis and in `kudurru doctor` (F72a/b); incomplete scans remain explicit and late CRD availability needs restart to activate shipping | D157 | v0.2 |
 | Decouple AuditLog verification keys from session-key rotation or retain a verification key ring; today current/previous keys must cover all retained sealed batches before another rotation | docs/deploy/runbooks.md, PR #55 | v0.2 |

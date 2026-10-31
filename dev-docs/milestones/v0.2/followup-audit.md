@@ -646,3 +646,16 @@ real dnsdist/keepalived and four UDP/TCP streams, including whole-node recovery.
 It uses app source `b8fd96f`, and does not certify the later final artifact,
 independent VMs, Windows or replicated SQLite HA. Exact versions, transitions,
 observed packet failures and limits remain in [gaps.md](gaps.md).
+
+
+### F02/F38, F51 and F66 implementation closures
+
+`aa3784c` closes F02a/F02b/F38 with schema-6 authenticated attribution and shared
+pre-storage document redaction while preserving historical source chains.
+`a15480e` closes F51's opt-in transport policy, including HTTP initial/redirect
+refusal and existing trust/SSRF behavior. `b3f6986`/`5048c61` close F66 with
+independent paths and additive volumes that retain original data durability.
+Actual mounted composition, PostgreSQL acceptance, download, migration, chart,
+Compose and volume checks pass as detailed in [gaps.md](gaps.md). Their explicit
+historical-data, filesystem, physical-deployment and final-artifact limits remain.
+F73 key lifecycle and the hosted dashboard failure are still active work.
