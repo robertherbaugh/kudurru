@@ -192,7 +192,10 @@ type WatchOptions struct {
 	ResourceVersion string
 }
 
-// Watcher delivers events until Stop.
+// Watcher delivers events until Stop or its source stream ends. Drivers may
+// additionally implement interface{ Err() error } to report terminal stream
+// errors after ResultChan closes. Resume and compaction behavior is
+// documented by each driver.
 type Watcher interface {
 	ResultChan() <-chan Event
 	Stop()

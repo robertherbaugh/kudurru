@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Kubernetes store: explicit watch cursors resume retained server event history,
+  including deletions, with detectable expiration and bounded delivery. Initial
+  informer list/watch behavior is preserved.
+
 - Query statistics: exact retained-fact domain/hour indexes remove the current-hour
   100,000-name cliff. Local schema 3 and central schema/compatibility 6 include
   atomic migration and old-janitor guards; central upgrades require write locks

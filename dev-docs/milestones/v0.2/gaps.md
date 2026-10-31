@@ -1536,3 +1536,26 @@ The capability gate is satisfied without claiming that implementation complete.
 Hosted CI 41213309865 on 8ea7367 was superseded/canceled with Go shard 1/2
 unfinished; its aggregate ci-ok failed because of that cancellation. The newer
 8bdb218 CI remains running. No full old-head CI success is claimed.
+
+### F03 exact Kubernetes watch resume
+
+D277 replaces the previously ignored Kubernetes ResourceVersion with a direct
+server watch for explicit nonzero cursors. Actual retained modifications and
+deletions arrive in order without replaying current objects as Added. The
+original guarded client and namespace are retained; private kinds watch only
+labeled backing Secrets and filter decoded namespaces. Initial empty-cursor
+informer behavior stays intact. The 256-event channel applies backpressure;
+Stop, cancellation and driver Close terminate remote requests and blocked sends.
+
+Compaction or malformed events close the stream with a terminal Err accessor;
+opening errors return directly. There is no automatic relist or event/mutation
+retry. Cursor 0 is refused for exact resume. SQLite's coalesced feed/compaction
+relist remains its separately documented contract, not an exact-history claim.
+
+Final selected real envtest/private-kind/initial-watch and resume races pass in
+19.006s. They include replay of an already-deleted object's modification and
+deletion, exact resource versions, namespace/private-kind filtering, driver Close,
+cancellation under full result-buffer pressure, interrupted watch opening,
+malformed events and explicit expired-stream classification. Scoped kube lint
+reports zero issues. The earlier compile attempt used the wrong test-only
+subject type; it was corrected before the successful final run.

@@ -433,10 +433,29 @@ apart.
 |---|---|---|
 | Used by | Kubernetes, any replica count | Docker, systemd, the chart's `standalone` mode, each compose HA twin |
 | Backing | the apiserver: CRDs for public kinds, Secrets (`kudurru.io/kind=<Kind>`) for internal kinds; server-side apply with the manager as field owner | `state.db`: an `objects` table (JSON), a change feed, an audit table (hash-chained, same transaction), a `flock` |
-| Watch | informers; they keep serving from memory when the apiserver is away | the current objects, a bookmark, then an in-process broadcaster fed by the change feed |
+| Watch | initial list/watch uses informers; explicit resourceVersion resumes retained server history directly | the current objects, a bookmark, then an in-process broadcaster fed by the change feed |
 | Validation | the apiserver (CRD schema + CEL) | the embedded validator, inside `Apply` |
 | Leader | Lease `kudurru-controller` (15 s / 10 s / 2 s), identity = pod name | always this node |
 | Last-good copy | `local.db` on each node | not needed: `state.db` is local |
+
+Kubernetes watches with a nonempty resourceVersion resume the API server's
+retained event stream after that exact version, including modifications and
+deletions absent from the current informer state. They reuse the original
+identity-pinned transport and namespace; internal kinds resume labeled backing
+Secrets in the configured namespace and filter the decoded object namespace.
+The result buffer is bounded to 256 events. Cancellation, Store.Close and Stop
+release blocked sends and terminate the remote request, including an initial
+watch call still waiting for the server.
+
+A resumed stream never silently replaces history with a current-state list.
+Immediate server errors return from Watch; terminal stream/decoding errors close
+the result channel and are available through `interface{ Err() error }` on the
+watcher. Compaction remains a detectable Kubernetes expiration error. Callers
+can then explicitly rebuild their state with an empty cursor. The special
+Kubernetes cursor `0` is refused for exact resume. An empty cursor preserves the
+existing informer Added/bookmark/live path used by zonecache. SQLite retains
+its separately documented coalesced change-feed/relist behavior.
+
 
 The **validator** (`internal/store/validator`) runs the apiserver's own
 structural schema, defaulting and CEL programs from the embedded CRDs, so

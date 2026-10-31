@@ -8,10 +8,12 @@
 //     apiserver through an uncached controller-runtime client. API callers
 //     need read-your-writes and keyset pagination (Continue tokens), and an
 //     informer cache offers neither.
-//   - Watch is served from a controller-runtime informer cache (one
+//   - Initial Watch is served from a controller-runtime informer cache (one
 //     informer per kudurru.io kind, managedFields stripped). This is the
 //     high-volume path: zonecache and the reconcilers consume it, and it
-//     keeps working from memory while the apiserver is away (§4.4).
+//     keeps working from memory while the apiserver is away (§4.4). Explicit
+//     resourceVersion resumes instead use a direct watch of retained server
+//     history, with no replacement list after expiration or stream failure.
 //
 // Info().LastContact reports the last successful apiserver round trip so
 // consumers can tell a quiet cluster from an outage.
@@ -173,13 +175,14 @@ func podNamespace() string {
 
 // Store implements store.Store over the Kubernetes apiserver.
 type Store struct {
-	opts   Options
-	kinds  *registry
-	mapper meta.RESTMapper
-	c      client.Client // uncached: reads and writes go to the apiserver
-	cache  cache.Cache   // informers for Watch
-	leases coordinationv1client.LeasesGetter
-	log    *slog.Logger
+	opts        Options
+	kinds       *registry
+	mapper      meta.RESTMapper
+	c           client.Client    // uncached: reads and writes go to the apiserver
+	directWatch client.WithWatch // exact resourceVersion resumes, same guarded transport
+	cache       cache.Cache      // informers for Watch
+	leases      coordinationv1client.LeasesGetter
+	log         *slog.Logger
 
 	internal *internalKinds  // Options.InternalKinds, served as Secrets
 	coreREST rest.Interface  // core/v1 client for the internal-kind informer
@@ -261,7 +264,7 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: rest mapper: %w", err)
 	}
-	c, err := client.New(cfg, client.Options{Scheme: opts.Scheme, Mapper: mapper, HTTPClient: httpClient})
+	c, err := client.NewWithWatch(cfg, client.Options{Scheme: opts.Scheme, Mapper: mapper, HTTPClient: httpClient})
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: client: %w", err)
 	}
@@ -291,6 +294,7 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		kinds:          kinds,
 		mapper:         mapper,
 		c:              c,
+		directWatch:    c,
 		cache:          ca,
 		leases:         leases,
 		internal:       internal,

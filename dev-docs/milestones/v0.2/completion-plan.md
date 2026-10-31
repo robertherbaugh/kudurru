@@ -45,7 +45,7 @@ transactions and final credential/license checks. No refused mutation replay.
    and deployment/release gates on the final artifacts. Publishing a release,
    changing release branches or deploying to production is not part of this work.
 
-External decisions F03 and F23 need explicit documented dispositions;
+External decision F23 needs an explicit documented disposition;
 where implementation can satisfy the original requirement, do that work.
 Fixed-class performance and Windows/two-VM acceptance require their named
 runners. Unit tests cannot substitute for those results.
@@ -59,7 +59,7 @@ runners. Unit tests cannot substitute for those results.
 | F02b | SQLite secret redaction in before/after | Store and HA | Integrated aa3784c; raw-row redaction, historical integrity and export races pass |
 | F02c | SQLite cluster epoch / primary fencing setters | Store and HA | Implemented; final gates open |
 | F02d | `InternalKinds` once internal kinds exist | Store and HA | Implemented; final gates open |
-| F03 | `WatchOptions.ResourceVersion`: replay-as-Added vs true resume | Store and HA | External acceptance/decision open |
+| F03 | `WatchOptions.ResourceVersion`: replay-as-Added vs true resume | Store and HA | Implemented exact Kubernetes retained-event resume; actual envtest history/namespace/private-kind races and terminal-error/backpressure tests pass |
 | F04 | Shared sqlite/kube table rejecting the same inputs | Store and HA | Integrated d4075f5; scoped real-driver races pass |
 | F05 | Cache parsed endpoints per record-set object | Zones and AD | Integrated eb20ac7; composed actual-driver and parser races pass |
 | F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Integrated c80c6f2/46d7641; actual sender and composed SQLite/Kubernetes schema races pass |
