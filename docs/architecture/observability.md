@@ -65,6 +65,29 @@ not identify which configuration is serving. The combined response has bounded
 fields, count and aggregate size; overflow fails instead of silently omitting
 messages. Legacy Kubernetes diagnostics keep their existing sources.
 
+When `audit.store: auditlog` is selected, the Diagnosis page, `/doctor` and
+`kudurru doctor` include a separate current AuditLog observation for licensed
+`audit.read` users. The probe inherits the guarded Kubernetes transport and
+lists only metadata in the release namespace; it reads no batch contents and
+does not verify audit integrity or shipping. Permission, original credential
+expiry and the audit license are checked before acquisition and again before
+disclosure. Failure of the original captured diagnosis source does not invoke
+this probe as a fallback.
+
+The scan permits one active caller, 500 objects per page, at most 101 pages,
+2 MiB per decoded response and 64 MiB total, within three seconds. A complete
+coherent list reports an exact batch-object count up to 50,000. At 50,001 it
+stops and recommends central database storage or retention review, explicitly
+as a lower bound. Missing/denied endpoints, unavailable APIs, expired cursors,
+malformed responses and exhausted bounds have distinct nonhealthy results;
+there is no discovery, redirect or full-object fallback.
+
+The lazy probe can observe an API resource that was missing at startup. That
+observation does not activate the startup-disabled cluster audit reader or
+shipper: restart replicas after installing the CRD. DNS readiness remains
+independent. Doctor treats informational successful scans as OK rather than
+turning every nonempty diagnosis list into a warning.
+
 ## The query log pipeline
 
 ```mermaid
