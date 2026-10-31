@@ -77,12 +77,24 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.Logout(ctx, editors...)
 		return response, true, err
 	}
+	if method == "POST" && len(parts) == 3 && parts[0] == "auth" && parts[1] == "logout" && parts[2] == "browser" {
+		response, err := c.BrowserLogout(ctx, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "auth" && parts[1] == "me" {
 		response, err := c.Me(ctx, editors...)
 		return response, true, err
 	}
 	if method == "GET" && len(parts) == 4 && parts[0] == "auth" && parts[1] == "oidc" && parts[3] == "callback" {
 		response, err := c.OidcCallback(ctx, parts[2], editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 4 && parts[0] == "auth" && parts[1] == "oidc" && parts[3] == "logout" {
+		response, err := c.OidcLogout(ctx, parts[2], editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 5 && parts[0] == "auth" && parts[1] == "oidc" && parts[3] == "logout" && parts[4] == "callback" {
+		response, err := c.OidcLogoutCallback(ctx, parts[2], editors...)
 		return response, true, err
 	}
 	if method == "GET" && len(parts) == 4 && parts[0] == "auth" && parts[1] == "oidc" && parts[3] == "start" {

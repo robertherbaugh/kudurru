@@ -1,7 +1,7 @@
 package api
 
-// BrowserLogoutResponse contains only a same-origin continuation path. Provider
+// BrowserLogoutBody contains only a same-origin continuation path. Provider
 // token hints and state stay in encrypted HttpOnly cookies, never this response.
-type BrowserLogoutResponse struct {
+type BrowserLogoutBody struct {
 	ContinuePath string `json:"continuePath,omitempty"`
 }

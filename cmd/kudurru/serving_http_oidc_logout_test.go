@@ -57,11 +57,11 @@ func (f *servingBrowserFixture) logoutLogin(t *testing.T) (*http.Cookie, *http.C
 	}
 	return session, hint, info.CSRF
 }
-func (f *servingBrowserFixture) committedLogout(t *testing.T, session, hint *http.Cookie, csrf string) (*httptest.ResponseRecorder, api.BrowserLogoutResponse) {
+func (f *servingBrowserFixture) committedLogout(t *testing.T, session, hint *http.Cookie, csrf string) (*httptest.ResponseRecorder, api.BrowserLogoutBody) {
 	t.Helper()
 	w := f.logoutCall(t, "POST", "/auth/logout/browser", []*http.Cookie{session, hint}, csrf)
 	expectServingHTTPStatus(t, w, 200)
-	var result api.BrowserLogoutResponse
+	var result api.BrowserLogoutBody
 	if json.Unmarshal(w.Body.Bytes(), &result) != nil {
 		t.Fatal("invalid logout response")
 	}
@@ -265,7 +265,7 @@ func TestServingHTTPBrowserLogoutCannotMixTwoEnrolledSessions(t *testing.T) {
 	secondSession, _, secondCSRF := f.logoutLogin(t)
 	result := f.logoutCall(t, "POST", "/auth/logout/browser", []*http.Cookie{secondSession, firstHint}, secondCSRF)
 	expectServingHTTPStatus(t, result, 200)
-	var out api.BrowserLogoutResponse
+	var out api.BrowserLogoutBody
 	_ = json.Unmarshal(result.Body.Bytes(), &out)
 	state := f.security(t)
 	if out.ContinuePath != "" || len(state.ExternalSessions) != 2 {
@@ -312,7 +312,7 @@ func TestServingHTTPBrowserLogoutLocalAccountHasNoRemoteAuthority(t *testing.T) 
 	cookie, info := f.login(t)
 	w := f.call(t, "POST", "/auth/logout/browser", "", "", cookie, info.CSRF)
 	expectServingHTTPStatus(t, w, 200)
-	var out api.BrowserLogoutResponse
+	var out api.BrowserLogoutBody
 	if json.Unmarshal(w.Body.Bytes(), &out) != nil || out.ContinuePath != "" {
 		t.Fatal("local account acquired provider redirect authority")
 	}

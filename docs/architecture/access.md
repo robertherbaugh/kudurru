@@ -576,6 +576,63 @@ redirect following. No refresh token is retained. Provider receipt profile
 `provider-metadata/v2-browser` requires fresh authority admission; identical-byte
 withdrawal/reactivation cannot revive a preauth cookie across its provider floor.
 
+#### Browser logout
+
+On the complete SQLite runtime, `POST /auth/logout/browser` retains the original
+credential, CSRF and final writer checks and durably revokes the exact local
+session before clearing cookies. Its response may contain a same-origin
+continuation path. The dashboard clears cached session state and CSRF before
+navigating. Existing `POST /auth/logout` remains local and returns 204 for CLI
+cleanup and old callers; legacy Kubernetes hosts retain local logout.
+
+Verified browser enrollment can seal an HttpOnly hint cookie bound to the exact
+session, provider UID, origin, spec/resource identities, issuer, client and
+redirect URI. The raw ID token is neither persisted nor returned to JavaScript.
+The public continuation checks those original bindings against a ready captured
+provider and checks its original installed credential fingerprint once. It then
+redirects only to the trusted discovery `end_session_endpoint`, with the original
+hint and fresh state. Changed or unavailable capabilities return locally.
+Providers without an endpoint retain their previous metadata trust identity.
+
+The callback authenticates a separate encrypted state cookie, exact provider and
+original deadlines, clears it and returns to the configured app prefix. It cannot
+issue a session or restore a revoked one. Unknown or duplicate query fields and
+phase confusion refuse. Cookie deletion provides normal browser consumption;
+there is no durable logout replay tombstone. Replaying copied valid callback
+state grants only the same safe local redirect.
+
+```mermaid
+sequenceDiagram
+    actor B as browser
+    participant K as Kudurru API
+    participant I as identity provider
+    B->>K: POST /auth/logout/browser with original CSRF
+    K->>K: Commit exact session revocation; clear cookies
+    K-->>B: Optional same-origin continuation path
+    B->>B: Clear session/cache/CSRF
+    B->>K: GET continuation with encrypted logout cookie
+    K->>K: Check original provider, credential and expiry
+    K-->>B: Redirect to trusted end-session endpoint
+    B->>I: Original ID-token hint and fixed callback/state
+    I-->>B: Logout callback
+    B->>K: GET callback with authenticated state
+    K-->>B: Configured local app prefix; no session issuance
+```
+
+Register an additional OP return URI derived from the configured login callback:
+replace its final `/callback` with `/logout/callback`, for example
+`https://host/prefix/api/v1/auth/oidc/corp/logout/callback`. The configured login
+URI must end in canonical `/api/v1/auth/oidc/{idp}/callback`, without query,
+fragment, userinfo or escaped path. Otherwise remote logout stays local. Neither
+Host headers nor a `next` parameter determines the destination.
+
+The hint expires at the earliest original verified token, enrollment absolute or
+idle deadline, without renewal. Continuation and callback also cap at two minutes.
+Raw hints over 2000 bytes, plaintext over 2500 bytes or sealed cookies over 3800
+bytes safely fall back to local logout. Missing, expired or cross-session hints
+do the same. If the OP becomes unavailable after navigation, local revocation
+and cookie clearing have already committed.
+
 SQLite stores independent external identity and enrollment records. Grants are
 frozen at sign-in and intersected with current authority on every request. The
 legacy Kubernetes stack does not store OIDC users. Session defaults remain twelve

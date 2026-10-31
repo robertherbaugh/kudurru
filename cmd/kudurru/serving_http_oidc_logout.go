@@ -84,7 +84,7 @@ func (h *servingHTTP) logoutBrowser(w http.ResponseWriter, r *http.Request) erro
 	h.clearLogoutCookies(w, r)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	out := api.BrowserLogoutResponse{}
+	out := api.BrowserLogoutBody{}
 	if browser != nil && browser.Current() && continuation.ValidAt(h.now()) == nil {
 		sealed, err := v.SealBrowserLogout(continuation, h.now())
 		callback, _, targetErr := browseroidc.LogoutTargets(continuation.Binding())

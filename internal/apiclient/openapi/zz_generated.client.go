@@ -2255,6 +2255,11 @@ type BrandingInfo struct {
 	ValidUntil  *time.Time `json:"validUntil,omitempty"`
 }
 
+// BrowserLogoutBody defines model for BrowserLogoutBody.
+type BrowserLogoutBody struct {
+	ContinuePath *string `json:"continuePath,omitempty"`
+}
+
 // CacheEntryMetadata defines model for CacheEntryMetadata.
 type CacheEntryMetadata struct {
 	AgeSeconds float64                `json:"ageSeconds"`
@@ -6453,6 +6458,11 @@ type ClientInterface interface {
 	// Corresponds with POST /auth/logout (the `Logout` operationId).
 	Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// BrowserLogout Revoke the session and optionally continue provider logout
+	//
+	// Corresponds with POST /auth/logout/browser (the `BrowserLogout` operationId).
+	BrowserLogout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// Me The authenticated principal, roles, permissions and CSRF token
 	//
 	// Corresponds with GET /auth/me (the `Me` operationId).
@@ -6462,6 +6472,16 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /auth/oidc/{idp}/callback (the `OidcCallback` operationId).
 	OidcCallback(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcLogout Continue a committed browser logout (302 to the IdP)
+	//
+	// Corresponds with GET /auth/oidc/{idp}/logout (the `OidcLogout` operationId).
+	OidcLogout(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcLogoutCallback Validate the logout return state (302 to the app)
+	//
+	// Corresponds with GET /auth/oidc/{idp}/logout/callback (the `OidcLogoutCallback` operationId).
+	OidcLogoutCallback(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// OidcStart Start an OIDC login (302 to the IdP)
 	//
@@ -8025,6 +8045,21 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 	return c.Client.Do(req)
 }
 
+// BrowserLogout Revoke the session and optionally continue provider logout
+//
+// Corresponds with POST /auth/logout/browser (the `BrowserLogout` operationId).
+func (c *Client) BrowserLogout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBrowserLogoutRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // Me The authenticated principal, roles, permissions and CSRF token
 //
 // Corresponds with GET /auth/me (the `Me` operationId).
@@ -8045,6 +8080,36 @@ func (c *Client) Me(ctx context.Context, reqEditors ...RequestEditorFn) (*http.R
 // Corresponds with GET /auth/oidc/{idp}/callback (the `OidcCallback` operationId).
 func (c *Client) OidcCallback(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewOidcCallbackRequest(c.Server, idp)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcLogout Continue a committed browser logout (302 to the IdP)
+//
+// Corresponds with GET /auth/oidc/{idp}/logout (the `OidcLogout` operationId).
+func (c *Client) OidcLogout(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcLogoutRequest(c.Server, idp)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcLogoutCallback Validate the logout return state (302 to the app)
+//
+// Corresponds with GET /auth/oidc/{idp}/logout/callback (the `OidcLogoutCallback` operationId).
+func (c *Client) OidcLogoutCallback(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcLogoutCallbackRequest(c.Server, idp)
 	if err != nil {
 		return nil, err
 	}
@@ -12049,6 +12114,33 @@ func NewLogoutRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewBrowserLogoutRequest constructs an http.Request for the BrowserLogout method
+func NewBrowserLogoutRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/logout/browser")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewMeRequest constructs an http.Request for the Me method
 func NewMeRequest(server string) (*http.Request, error) {
 	var err error
@@ -12093,6 +12185,74 @@ func NewOidcCallbackRequest(server string, idp string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/auth/oidc/%s/callback", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewOidcLogoutRequest constructs an http.Request for the OidcLogout method
+func NewOidcLogoutRequest(server string, idp string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "idp", idp, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/oidc/%s/logout", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewOidcLogoutCallbackRequest constructs an http.Request for the OidcLogoutCallback method
+func NewOidcLogoutCallbackRequest(server string, idp string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "idp", idp, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/oidc/%s/logout/callback", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -20353,6 +20513,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /auth/logout (the `Logout` operationId).
 	LogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutResponse, error)
 
+	// BrowserLogoutWithResponse Revoke the session and optionally continue provider logout
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/logout/browser (the `BrowserLogout` operationId).
+	BrowserLogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*BrowserLogoutResponse, error)
+
 	// MeWithResponse The authenticated principal, roles, permissions and CSRF token
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -20366,6 +20533,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /auth/oidc/{idp}/callback (the `OidcCallback` operationId).
 	OidcCallbackWithResponse(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*OidcCallbackResponse, error)
+
+	// OidcLogoutWithResponse Continue a committed browser logout (302 to the IdP)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/oidc/{idp}/logout (the `OidcLogout` operationId).
+	OidcLogoutWithResponse(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*OidcLogoutResponse, error)
+
+	// OidcLogoutCallbackWithResponse Validate the logout return state (302 to the app)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/oidc/{idp}/logout/callback (the `OidcLogoutCallback` operationId).
+	OidcLogoutCallbackWithResponse(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*OidcLogoutCallbackResponse, error)
 
 	// OidcStartWithResponse Start an OIDC login (302 to the IdP)
 	//
@@ -22992,6 +23173,96 @@ func (r LogoutResponse) ContentType() string {
 	return ""
 }
 
+type BrowserLogoutResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *BrowserLogoutBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BrowserLogoutResponse) GetJSON200() *BrowserLogoutBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r BrowserLogoutResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r BrowserLogoutResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r BrowserLogoutResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r BrowserLogoutResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r BrowserLogoutResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r BrowserLogoutResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r BrowserLogoutResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r BrowserLogoutResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BrowserLogoutResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BrowserLogoutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BrowserLogoutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type MeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -23131,6 +23402,130 @@ func (r OidcCallbackResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r OidcCallbackResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type OidcLogoutResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r OidcLogoutResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r OidcLogoutResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcLogoutResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r OidcLogoutResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcLogoutResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcLogoutResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcLogoutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcLogoutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type OidcLogoutCallbackResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r OidcLogoutCallbackResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r OidcLogoutCallbackResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcLogoutCallbackResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r OidcLogoutCallbackResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcLogoutCallbackResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcLogoutCallbackResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcLogoutCallbackResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcLogoutCallbackResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -36796,6 +37191,19 @@ func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors
 	return ParseLogoutResponse(rsp)
 }
 
+// BrowserLogoutWithResponse Revoke the session and optionally continue provider logout
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/logout/browser (the `BrowserLogout` operationId).
+func (c *ClientWithResponses) BrowserLogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*BrowserLogoutResponse, error) {
+	rsp, err := c.BrowserLogout(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBrowserLogoutResponse(rsp)
+}
+
 // MeWithResponse The authenticated principal, roles, permissions and CSRF token
 //
 // Returns a wrapper object for the known response body format(s).
@@ -36820,6 +37228,32 @@ func (c *ClientWithResponses) OidcCallbackWithResponse(ctx context.Context, idp 
 		return nil, err
 	}
 	return ParseOidcCallbackResponse(rsp)
+}
+
+// OidcLogoutWithResponse Continue a committed browser logout (302 to the IdP)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/oidc/{idp}/logout (the `OidcLogout` operationId).
+func (c *ClientWithResponses) OidcLogoutWithResponse(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*OidcLogoutResponse, error) {
+	rsp, err := c.OidcLogout(ctx, idp, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcLogoutResponse(rsp)
+}
+
+// OidcLogoutCallbackWithResponse Validate the logout return state (302 to the app)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/oidc/{idp}/logout/callback (the `OidcLogoutCallback` operationId).
+func (c *ClientWithResponses) OidcLogoutCallbackWithResponse(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*OidcLogoutCallbackResponse, error) {
+	rsp, err := c.OidcLogoutCallback(ctx, idp, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcLogoutCallbackResponse(rsp)
 }
 
 // OidcStartWithResponse Start an OIDC login (302 to the IdP)
@@ -40421,6 +40855,81 @@ func ParseLogoutResponse(rsp *http.Response) (*LogoutResponse, error) {
 	return response, nil
 }
 
+// ParseBrowserLogoutResponse parses an HTTP response from a BrowserLogoutWithResponse call
+func ParseBrowserLogoutResponse(rsp *http.Response) (*BrowserLogoutResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BrowserLogoutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BrowserLogoutBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseMeResponse parses an HTTP response from a MeWithResponse call
 func ParseMeResponse(rsp *http.Response) (*MeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -40504,6 +41013,106 @@ func ParseOidcCallbackResponse(rsp *http.Response) (*OidcCallbackResponse, error
 
 	switch {
 	case rsp.StatusCode == 200:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOidcLogoutResponse parses an HTTP response from a OidcLogoutWithResponse call
+func ParseOidcLogoutResponse(rsp *http.Response) (*OidcLogoutResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcLogoutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOidcLogoutCallbackResponse parses an HTTP response from a OidcLogoutCallbackWithResponse call
+func ParseOidcLogoutCallbackResponse(rsp *http.Response) (*OidcLogoutCallbackResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcLogoutCallbackResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
 		break // No content-type
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:

@@ -1831,3 +1831,38 @@ impersonation/RBAC, managed ownership, version/UID replacement, source/deadline/
 continuation refusal and no background requests; no homelab credentials are used.
 Final scoped lint reports zero issues and CLI reference drift passes (0.030s).
 No full repository result is claimed.
+
+
+### F48b captured RP-initiated browser logout
+
+`2947b02` fixes only the real-OP fixture timing: wait past original provider
+CreatedAt before requesting numeric iat. `6f278bf` implements D282 with trusted
+end-session discovery, exact enrollment-bound encrypted hint, original
+credential/writer revocation, bounded continuation and authenticated callback
+state. Local revocation and cookie clearing precede navigation; provider errors
+or outage cannot undo them. Original deadlines and configured redirect prefixes
+remain authoritative. Legacy and CLI logout remain local; large/missing/expired
+hints also use local logout. Operator registration and cookie limits are
+documented in the access architecture.
+
+Agent frozen-source verification passes five full auth/adapter package races
+(382 tests/subtests), selected real-router/CLI races (49), final focused logout
+races (29), four API contract tests and scoped lint with zero issues. Actual
+local TLS OP tests verify signed original hint, one end-session request, durable
+revocation, callback/provider errors, closed OP, original expiry, installed
+credential rotation, cross-session hints, CSRF and writer refusal. Dashboard
+targeted four files/74 tests pass; final logout two files/20 tests, typecheck and
+scoped lint pass. Earlier fixture/compile failures are recorded in the handoff
+and are not counted as successful commands. No full repository result is claimed.
+Parent merged generation and composed checks are recorded separately.
+
+Parent composition caught an oapi-codegen schema/operation response-name collision;
+renaming the source body type to BrowserLogoutBody preserves the wire contract.
+Both OpenAPI versions, Go client/dispatch and TypeScript now cover 161 operations.
+Final composed browser/provider and actual logout/direct-Kubernetes CLI races pass
+(1.016s/1.318s/48.866s); the selected servingauth package had no matching tests and
+is not credited as a suite. Complete generator/client races pass (2.998s/1.598s),
+API drift/permission checks pass (0.479s), both logout UI files/20 tests and
+dashboard typecheck pass. Initial composed attempts failed compilation before
+execution due to the naming collision; they are not reproduction evidence for
+the separate control-settings CI failure.

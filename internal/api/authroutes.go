@@ -102,7 +102,7 @@ func (s *Server) registerAuth() {
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/callback", "oidcCallback", "OIDC redirect target (302 to the app)", "auth"), public, nil, nil)
 	s.forward(withStatus(operation(http.MethodGet, "/auth/oidc/{idp}/logout", "oidcLogout", "Continue a committed browser logout (302 to the IdP)", "auth"), http.StatusFound), public, nil, nil)
 	s.forward(withStatus(operation(http.MethodGet, "/auth/oidc/{idp}/logout/callback", "oidcLogoutCallback", "Validate the logout return state (302 to the app)", "auth"), http.StatusFound), public, nil, nil)
-	s.forward(operation(http.MethodPost, "/auth/logout/browser", "browserLogout", "Revoke the session and optionally continue provider logout", "auth"), authed, nil, BrowserLogoutResponse{})
+	s.forward(operation(http.MethodPost, "/auth/logout/browser", "browserLogout", "Revoke the session and optionally continue provider logout", "auth"), authed, nil, BrowserLogoutBody{})
 	s.forward(withStatus(operation(http.MethodPost, "/auth/logout", "logout", "Clear the session cookie", "auth"), http.StatusNoContent), authed, nil, nil)
 	s.forward(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password (a cookie session gets a new cookie)", "auth"), authed, PasswordChangeRequest{}, SessionInfo{})
 	s.forward(operation(http.MethodGet, "/auth/sessions", "listSessions", "List own enrolled sessions", "auth"), authed, nil, AuthList[SessionRecordInfo]{})

@@ -560,6 +560,15 @@
         ],
         "type": "object"
       },
+      "BrowserLogoutBody": {
+        "additionalProperties": false,
+        "properties": {
+          "continuePath": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CacheEntryMetadata": {
         "additionalProperties": false,
         "properties": {
@@ -11014,6 +11023,98 @@
         "x-kudurru-permission": "authenticated"
       }
     },
+    "/auth/logout/browser": {
+      "post": {
+        "operationId": "browserLogout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserLogoutBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Revoke the session and optionally continue provider logout",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
+      }
+    },
     "/auth/me": {
       "get": {
         "operationId": "me",
@@ -11155,6 +11256,136 @@
           }
         },
         "summary": "OIDC redirect target (302 to the app)",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "public"
+      }
+    },
+    "/auth/oidc/{idp}/logout": {
+      "get": {
+        "operationId": "oidcLogout",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Continue a committed browser logout (302 to the IdP)",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "public"
+      }
+    },
+    "/auth/oidc/{idp}/logout/callback": {
+      "get": {
+        "operationId": "oidcLogoutCallback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Validate the logout return state (302 to the app)",
         "tags": [
           "auth"
         ],

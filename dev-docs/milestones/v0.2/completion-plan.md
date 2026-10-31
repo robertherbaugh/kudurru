@@ -143,7 +143,7 @@ runners. Unit tests cannot substitute for those results.
 | F46 | Share login lockout counters across replicas | IAM and access | Queued: missing |
 | F47 | Bound offline Kubernetes SA tokens or periodically TokenReview | IAM and access | Integrated 101b614/9e7b177/41a7694; real envtest and races pass |
 | F48a | `autoProvision: never` and `syncGroups` with user store | IAM and access | Implemented; final gates open |
-| F48b | RP-initiated logout | IAM and access | Queued: missing |
+| F48b | RP-initiated logout | IAM and access | Integrated 2947b02/6f278bf; actual TLS OP/login/revocation/logout/callback, source/credential/expiry refusals, scoped races and dashboard tests pass |
 | F49 | Optional external-dns shared-secret header / tokenFile | IAM and access | Integrated; final gates open |
 | F50 | Separate Kubernetes vs Kudurru SA binding subject or document overlap | IAM and access | D254 documents shared namespace/name compatibility; actual binding engine/token-scope races pass |
 | F51 | Optional HTTPS-only catalogue and BlockList downloads | Operations and UI | Integrated a15480e; HTTP/TLS, redirect, real startup and API refusal races pass |
