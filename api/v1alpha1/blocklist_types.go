@@ -204,7 +204,8 @@ type BlockListSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=256
 	Sources []ListSource `json:"sources"`
-	// +kubebuilder:default="24h"
+	// RefreshInterval overrides blocking.refreshInterval for this list. When
+	// omitted, the current cluster default applies, including hot reloads.
 	// +optional
 	RefreshInterval metav1.Duration `json:"refreshInterval,omitempty,omitzero"`
 	// +optional

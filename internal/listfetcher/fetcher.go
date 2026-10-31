@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -104,7 +105,22 @@ type Fetcher struct {
 	metered map[string]bool
 	forced  map[string]bool // cache keys RefreshNow asked for
 
-	kick chan struct{}
+	kick    chan struct{}
+	refresh atomic.Int64 // default interval; each pass pins one value
+}
+
+// Reconfigure updates only default fetch scheduling. Existing downloads keep
+// their source, downloader, context and cooldown; Run recomputes deadlines from
+// the last successful fetch instead of renewing them from settings adoption.
+func (f *Fetcher) Reconfigure(refresh time.Duration) {
+	if refresh <= 0 {
+		refresh = DefaultRefreshInterval
+	}
+	f.refresh.Store(int64(max(refresh, f.opts.MinRefreshInterval)))
+	select {
+	case f.kick <- struct{}{}:
+	default:
+	}
 }
 
 // ErrUnknownList is returned by RefreshNow for a BlockList the fetcher
@@ -129,7 +145,7 @@ func (f *Fetcher) RefreshNow(namespace, name string) error {
 	if found == nil {
 		return fmt.Errorf("%w: %s/%s", ErrUnknownList, namespace, name)
 	}
-	pl := plan(found, f.opts.RefreshInterval, f.opts.MinRefreshInterval)
+	pl := plan(found, time.Duration(f.refresh.Load()), f.opts.MinRefreshInterval)
 	f.mu.Lock()
 	for _, ps := range pl.sources {
 		if ps.key != "" && !ps.disabled {
@@ -181,11 +197,13 @@ func New(opts Options) (*Fetcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Fetcher{
+	f := &Fetcher{
 		opts: opts, log: opts.Logger.With("component", "listfetcher"), m: m,
 		state: map[string]*sourceState{}, stats: map[string]listStats{}, metered: map[string]bool{},
 		forced: map[string]bool{}, kick: make(chan struct{}, 1),
-	}, nil
+	}
+	f.refresh.Store(int64(opts.RefreshInterval))
+	return f, nil
 }
 
 // NeedLeaderElection marks the Fetcher as leader-only.
@@ -234,12 +252,13 @@ type keyPlan struct {
 // view changed. It returns when the next source is due.
 func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 	now := f.opts.Now()
+	refresh := time.Duration(f.refresh.Load())
 	next := now.Add(maxIdle)
 	var plans []plannedList
 	keys := map[string]*keyPlan{}
 	var order []string
 	for _, bl := range f.opts.Objects.BlockLists() {
-		pl := plan(bl, f.opts.RefreshInterval, f.opts.MinRefreshInterval)
+		pl := plan(bl, refresh, f.opts.MinRefreshInterval)
 		plans = append(plans, pl)
 		for i := range pl.sources {
 			ps := &pl.sources[i]

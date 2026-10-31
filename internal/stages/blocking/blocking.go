@@ -171,11 +171,12 @@ type defaults struct {
 	customV4, customV6 netip.Addr
 	pageV4, pageV6     netip.Addr
 	blockTTL           time.Duration
+	allowDegraded      bool
 }
 
 func defaultsOf(o Options) *defaults {
 	d := &defaults{disabled: o.Disabled, response: o.DefaultResponse, customV4: o.CustomV4, customV6: o.CustomV6,
-		pageV4: o.BlockPageV4, pageV6: o.BlockPageV6, blockTTL: o.BlockTTL}
+		pageV4: o.BlockPageV4, pageV6: o.BlockPageV6, blockTTL: o.BlockTTL, allowDegraded: o.AllowDegraded}
 	if d.response == "" {
 		d.response = v1alpha1.BlockResponse("zeroIP")
 	}
@@ -186,7 +187,7 @@ func defaultsOf(o Options) *defaults {
 }
 
 // Reconfigure applies the blocking.* settings that are hot (enabled,
-// defaultResponse, blockTTL, customIP) and the block page addresses from o; Toggle, Index, AllowDegraded
+// defaultResponse, blockTTL, customIP, allowDegraded) and the block page addresses from o; Toggle, Index
 // and the metrics stay. Queries in flight finish with the old values.
 func (s *Stage) Reconfigure(o Options) { s.live.Store(defaultsOf(o)) }
 
@@ -227,7 +228,8 @@ func (s *Stage) Enabled() bool { return !s.live.Load().disabled && s.toggle.Enab
 // not ready while a referenced BlockList is not compiled yet, unless
 // AllowDegraded.
 func (s *Stage) Ready() (bool, []string) {
-	if s.opts.AllowDegraded || s.live.Load().disabled || s.opts.Index == nil {
+	d := s.live.Load()
+	if d.allowDegraded || d.disabled || s.opts.Index == nil {
 		return true, nil
 	}
 	ix := s.opts.Index.Index()

@@ -237,7 +237,7 @@ func TestRestartRequired(t *testing.T) {
 		"upstreams.recursion.dnssec", "upstreams.recursion.qnameMinimization", "upstreams.recursion.ipv6", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints", "upstreams.recursion.negativeTrustAnchors",
 		"cache.maxEntries", "cache.minTTL", "cache.maxTTL", "cache.negativeTTL", "cache.prefetch.threshold", "cache.prefetch.window",
 		"cache.serveStale.ttl", "cache.serveStale.answerTTL", "cache.serveStale.maxWait",
-		"blocking.enabled", "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP.v4", "blocking.customIP.v6",
+		"blocking.refreshInterval", "blocking.allowDegraded", "blocking.enabled", "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP.v4", "blocking.customIP.v6",
 		"blockPage.ipv4", "blockPage.ipv6", "blockPage.title", "blockPage.message", "blockPage.contact", "blockPage.showDetails",
 		"blockPage.dashboardURL", "blockPage.rateLimit",
 		"branding.name", "branding.logoLight", "branding.logoDark", "branding.favicon", "branding.accentColor",

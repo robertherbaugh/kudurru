@@ -1393,6 +1393,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 	reloadConsumers := reloadTargets{
+		listFetcher: fetcher, listResolver: listResolver,
 		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
 		control: controlStage, blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter, postprocess: post,
 	}

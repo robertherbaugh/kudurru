@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -134,6 +135,7 @@ type Resolver struct {
 	pendingSince       map[string]time.Time
 	leaderFailingSince time.Time
 	selfNext           map[string]time.Time
+	selfFetched        map[string]time.Time // success anchor; interval can change
 	failed             map[string]string
 	lastFP             string
 	published          bool
@@ -145,6 +147,26 @@ type Resolver struct {
 	lists       []internalapi.ListStatus
 	waiting     []string
 	notes       []string
+	live        atomic.Pointer[resolverSettings]
+	kick        chan struct{}
+}
+
+type resolverSettings struct {
+	refresh       time.Duration
+	allowDegraded bool
+}
+
+// Reconfigure updates operational scheduling and readiness only. It does not
+// replace the downloader, credentials, in-flight context or compiled snapshot.
+func (r *Resolver) Reconfigure(refresh time.Duration, allowDegraded bool) {
+	if refresh <= 0 {
+		refresh = DefaultRefreshInterval
+	}
+	r.live.Store(&resolverSettings{refresh: max(refresh, r.opts.MinRefreshInterval), allowDegraded: allowDegraded})
+	select {
+	case r.kick <- struct{}{}:
+	default:
+	}
 }
 
 // NewResolver returns a Resolver. It does no I/O.
@@ -191,11 +213,13 @@ func NewResolver(opts ResolverOptions) (*Resolver, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Resolver{
+	r := &Resolver{
 		opts: opts, log: opts.Logger.With("component", "listresolver"), m: m,
-		pendingSince: map[string]time.Time{}, selfNext: map[string]time.Time{}, failed: map[string]string{},
-		loadedCh: make(chan struct{}),
-	}, nil
+		pendingSince: map[string]time.Time{}, selfNext: map[string]time.Time{}, selfFetched: map[string]time.Time{}, failed: map[string]string{},
+		loadedCh: make(chan struct{}), kick: make(chan struct{}, 1),
+	}
+	r.live.Store(&resolverSettings{refresh: opts.RefreshInterval, allowDegraded: opts.AllowDegraded})
+	return r, nil
 }
 
 // NeedLeaderElection marks the Resolver as always-on.
@@ -251,6 +275,7 @@ func (r *Resolver) Run(ctx context.Context) error {
 			return nil
 		case <-changes:
 		case <-extra:
+		case <-r.kick:
 		case <-t.C:
 		}
 		t.Stop()
@@ -295,7 +320,7 @@ func (r *Resolver) Ready() (bool, []string) {
 	case r.opts.InitStrategy == InitFast:
 		msgs[0] = "blocklists loading in the background (initStrategy fast)"
 		return true, msgs
-	case r.opts.AllowDegraded:
+	case r.live.Load().allowDegraded:
 		msgs[0] = "blocklists still loading (blocking.allowDegraded)"
 		return true, msgs
 	}
@@ -330,6 +355,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 	r.passMu.Lock()
 	defer r.passMu.Unlock()
 	now := r.opts.Now()
+	settings := r.live.Load()
 	var res PassResult
 	var leader leaderLookup
 	var specs []blocking.Spec
@@ -342,7 +368,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 
 	for _, bl := range r.opts.Objects.BlockLists() {
 		res.Lists++
-		pl := plan(bl, r.opts.RefreshInterval, r.opts.MinRefreshInterval)
+		pl := plan(bl, settings.refresh, r.opts.MinRefreshInterval)
 		spec := blocking.Spec{Name: pl.name, Mode: pl.mode, ExternalPolicy: pl.externalPolicy()}
 		ls := internalapi.ListStatus{Name: pl.name}
 		fp.add("list", pl.name, string(pl.mode))
@@ -456,6 +482,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 				r.opts.Cache.Remove(key)
 				delete(r.pendingSince, key)
 				delete(r.selfNext, key)
+				delete(r.selfFetched, key)
 				delete(r.failed, key)
 			}
 		}
@@ -500,7 +527,11 @@ func (r *Resolver) obtain(ctx context.Context, pl *plannedList, ps *plannedSourc
 			}
 		}
 	}
-	fallback := r.opts.Downloader != nil && r.fallbackDue(ps.key, now) && !now.Before(r.selfNext[ps.key])
+	next := r.selfNext[ps.key] // failures retain their original retry deadline
+	if fetched, ok := r.selfFetched[ps.key]; ok {
+		next = maxTime(next, fetched.Add(pl.refresh))
+	}
+	fallback := r.opts.Downloader != nil && r.fallbackDue(ps.key, now) && !now.Before(next)
 	if fallback && !selfLeads {
 		if !leader.done {
 			leader.peer, leader.err = r.opts.Membership.Leader(ctx)
@@ -522,7 +553,8 @@ func (r *Resolver) obtain(ctx context.Context, pl *plannedList, ps *plannedSourc
 			r.log.Warn("blocklist fallback download failed", "list", pl.name, "source", redact(ps.key), "err", err)
 		} else {
 			delete(r.failed, ps.key)
-			r.selfNext[ps.key] = now.Add(pl.refresh)
+			delete(r.selfNext, ps.key)
+			r.selfFetched[ps.key] = now
 			r.m.pulls.WithLabelValues(OriginSelf, "ok").Inc()
 			r.log.Info("blocklist downloaded without the leader", "list", pl.name, "source", redact(ps.key), "digest", res.Entry.Digest)
 		}
@@ -531,6 +563,13 @@ func (r *Resolver) obtain(ctx context.Context, pl *plannedList, ps *plannedSourc
 	}
 	e, have := r.opts.Cache.Lookup(ps.key)
 	return e, have, have && (wanted == "" || e.Digest == wanted)
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // pull downloads the body with digest wanted from the leader into the

@@ -11,6 +11,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
@@ -43,10 +44,12 @@ type reloadTargets struct {
 	postprocess *postprocess.Stage
 	// edgeFlush empties the local edge's resolver cache when the block
 	// answers change; nil skips it.
-	edgeFlush *dnsdist.CacheFlusher
-	limiter   *ingress.RateLimiter
-	qlAsync   *querylog.Async
-	qlWriter  *sqlitelog.Writer
+	edgeFlush    *dnsdist.CacheFlusher
+	limiter      *ingress.RateLimiter
+	qlAsync      *querylog.Async
+	qlWriter     *sqlitelog.Writer
+	listFetcher  *listfetcher.Fetcher
+	listResolver *listfetcher.Resolver
 }
 
 // subscribeReload applies settings changes from r (the settings file
@@ -139,6 +142,12 @@ func applyReload(ctx context.Context, t reloadTargets, next *config.Config, chan
 		if t.edgeFlush != nil && config.ChangedUnder(changed, "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP", "blockPage.ipv4", "blockPage.ipv6") {
 			t.edgeFlush.BlockResponsesChanged()
 		}
+	}
+	if config.ChangedUnder(changed, "blocking.refreshInterval") && t.listFetcher != nil {
+		t.listFetcher.Reconfigure(next.Blocking.RefreshInterval.Std())
+	}
+	if config.ChangedUnder(changed, "blocking.refreshInterval", "blocking.allowDegraded") && t.listResolver != nil {
+		t.listResolver.Reconfigure(next.Blocking.RefreshInterval.Std(), next.Blocking.AllowDegraded)
 	}
 	if config.ChangedUnder(changed, "blockPage", "listeners.api", "unblockRequests", "blocking.blockTTL") && t.blockPage != nil {
 		t.blockPage.Reconfigure(blockpage.SettingsFrom(next))

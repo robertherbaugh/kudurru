@@ -90,6 +90,14 @@ with up to three attempts; a failing source cools down from 1 minute up to
 fetched, and loopback, link-local and metadata addresses are refused unless
 `blocking.allowLocalListURLs` is set.
 
+`blocking.refreshInterval` reloads the default schedule in the existing leader
+fetcher and replica resolver. Each pass pins its source plan and interval;
+reload wakes the next pass without replacing downloads, credentials, contexts,
+failure cooldowns or compiled policy. Deadlines are recomputed from the original
+successful fetch time. A per-list `spec.refreshInterval` takes precedence; newly
+omitted values inherit the cluster default. Persisted values, including `24h`
+inserted by older schemas, remain explicit overrides.
+
 ### When the leader is out of reach
 
 ```mermaid
@@ -114,6 +122,12 @@ comes back with its lists before it can reach anybody. Readiness follows
 source is waiting (unless `blocking.allowDegraded`), and `failOnError` exits
 the process when the first load fails.
 
+`blocking.allowDegraded` reloads readiness while lists are loading; startup
+`initStrategy` stays fixed. Complete serving still requires every candidate's
+exact bodies and digests. Allowing degraded readiness never permits a partial
+DNS policy publication. Operational reloads consume accepted complete settings,
+and held DNS requests retain their original compiled lists and response settings.
+
 ## Complete serving candidates
 
 `listfetcher.PrepareComplete` supplies strict list preparation for the complete
@@ -129,7 +143,8 @@ candidate. The publisher retains its previous complete bundle. Disabled and
 empty lists remain explicit; RPZ lists retain their identity while their feed
 data comes from a separately captured runtime owner. This preparer does not
 use the older-body and individual-list fallback behavior of the existing
-resolver described above. Production publisher composition is still pending.
+resolver described above. The SQLite production server publishes through this
+complete path; the resolver's live pointer does not supply its DNS policy.
 
 ```mermaid
 flowchart LR
