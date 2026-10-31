@@ -594,3 +594,13 @@ in 181.30 seconds, including the 21 startup helper checks. Combined with the
 149-scenario four-worker browser pass, this validates the local composition.
 The next pushed head's hosted results remain separate and are recorded on
 PR #54; no feature-package or release-completion claim follows from these fixes.
+
+
+### Continuing complete-audit work
+
+[completion-plan.md](completion-plan.md) retains every one of the 130 original
+subrequirements, all package dependencies and G01–G25 gates, with explicit
+active owners and separate external qualification. All GitHub workflows on
+`6fe025e` pass, including [CI 41182647688](https://github.com/robertherbaugh/kudurru/actions/runs/41182647688)
+and [Security 41182647671](https://github.com/robertherbaugh/kudurru/actions/runs/41182647671).
+The known Cloudflare docs check remains excluded by the user.
