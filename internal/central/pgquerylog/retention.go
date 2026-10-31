@@ -16,7 +16,8 @@ import (
 // Jobs are the leader's housekeeping of the central query log: daily
 // partitions three days ahead, expired fact partitions dropped whole (raw
 // is database.querylog.retention.raw; 0 keeps them) and expired rollups
-// (_1m 35 days, _1h 400 days, _1d forever, as on the nodes).
+// (_1m 35 days, _1h 400 days, _1d forever, as on the nodes), then a
+// bounded sweep of dictionaries unreferenced by any remaining facts/rollups.
 func Jobs(raw time.Duration) []central.Job {
 	return []central.Job{
 		{Name: "querylog-partitions", Run: func(ctx context.Context, tx pgx.Tx, now time.Time) (int64, error) {
@@ -74,6 +75,7 @@ func Jobs(raw time.Duration) []central.Job {
 			}
 			return n, nil
 		}},
+		{Name: "querylog-dictionary-retention", Timeout: dictionaryPruneTimeout, Run: pruneDictionaries},
 	}
 }
 
