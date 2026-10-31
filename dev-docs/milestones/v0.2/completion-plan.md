@@ -18,8 +18,8 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F02a/F02b/F38, F70 and F68c container acceptance; the parent has
-integrated F05/F31/F18a and added a Samba AD protocol lab. Freed agents take
+agents currently own F02a/F02b/F38, F66 and a hosted dashboard test failure;
+the parent has integrated F05/F31/F18a/F62/F70 and disposable Samba/VIP labs. Freed agents take
 the next independent package, retaining original proofs, ownership, current
 transactions and final credential/license checks. No refused mutation replay.
 
@@ -161,20 +161,20 @@ runners. Unit tests cannot substitute for those results.
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Queued: partial |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Queued: missing |
 | F61b | CLI device-code login | IAM and access | Queued: missing |
-| F62a | CLI conformance against actual API router | Operations and UI | Queued: partial |
-| F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Queued: partial |
+| F62a | CLI conformance against actual API router | Operations and UI | Integrated 6938fbb; actual router/CLI races and scoped lint pass |
+| F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Integrated c439532; exact wire contracts and API serialization races pass |
 | F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | External acceptance/decision open |
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
 | F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Queued: missing |
-| F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Queued: missing |
+| F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Active: storage paths agent, D250 design reviewed |
 | F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Queued: partial |
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
 | F68b | Knot catalog consumer interoperability | Zones and AD | Queued: missing |
-| F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative active; original VM qualification remains external |
+| F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; original VM qualification remains external |
 | F69 | Central reads for retired node via scope=node&node=other | Observability and release | Queued: missing |
-| F70 | Prune unreferenced central dictionaries | Observability and release | Active: central retention agent |
+| F70 | Prune unreferenced central dictionaries | Observability and release | Integrated eef61bd/b1a29e8/a7304d8; actual PostgreSQL 17 races and lint pass |
 | F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Queued: missing |
 | F72a | Diagnosis page: missing AuditLog CRD and object-count recommendation | Observability and release | Integrated e77d025; bounded real-envtest and composed auth races pass |
 | F72b | Same AuditLog checks in `kudurru doctor` | Observability and release | Integrated e77d025; actual router/CLI and composed races pass |

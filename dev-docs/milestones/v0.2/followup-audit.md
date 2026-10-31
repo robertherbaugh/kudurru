@@ -628,5 +628,21 @@ remain separate open requirements; G21–G24 remain applicable.
 `d1502a6` fixes a real F68c Docker-lab defect where cached health SERVFAILs
 could outlive backend removal and fault a healthy VIP. Exact-name cache bypass
 preserves transfer refusal, PROXY authentication, backend checks and all VRRP
-timers. Container recovery acceptance is still running; neither its partial
-results nor renderer races constitute the original two-VM qualification.
+timers. The complete container alternative now passes 12/12 checks; it does not
+constitute the original independent two-VM qualification. See the gap ledger.
+
+
+### F62/F70 implementation and container acceptance
+
+F62a/b leave the implementation queue with `6938fbb`/`c439532`: actual-router
+CLI tests and exact apply/settings/SSE prose pass scoped races and lint.
+F70 leaves the queue with `eef61bd`/`b1a29e8`/`a7304d8`: schema-4 references,
+locked dictionary resolution and bounded durable sweeps pass actual PostgreSQL
+17.11 migration/concurrency/restart/deadline races and lint. Scale and final
+artifact gates remain independent.
+
+The completed F68c container alternative (`6eac332`) passes 12/12 checks with
+real dnsdist/keepalived and four UDP/TCP streams, including whole-node recovery.
+It uses app source `b8fd96f`, and does not certify the later final artifact,
+independent VMs, Windows or replicated SQLite HA. Exact versions, transitions,
+observed packet failures and limits remain in [gaps.md](gaps.md).

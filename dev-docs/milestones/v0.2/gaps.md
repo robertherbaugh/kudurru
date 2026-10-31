@@ -857,8 +857,8 @@ keytabs remain in private container tmpfs; no host ports, host realm, extra
 capabilities or Docker runtime logs are used. The probe remains outside the
 production binary and refuses every UPDATE. These results do not close Windows
 DC/member/DHCP acceptance, production AD writes/ownership/aging/cutover, or the
-original two-VM keepalived gate. The container VIP runner remains active and has
-identified a real dnsdist cached-health-failure defect for a separate fix.
+original two-VM keepalived gate. The container VIP runner identified a real dnsdist cached-health-failure
+defect; the completed container acceptance is recorded below.
 
 ### F18a global DNS controls and integrated contracts
 
@@ -895,6 +895,63 @@ and Lua now skip packet-cache lookup/insertion only for the exact configured
 health QName, after transfer refusal/PROXY authentication and before pool
 selection. Six regression cases fail on the previous renderer and pass with
 the fix. Edge-renderer and health races pass (27.361s/1.347s); scoped lint
-reports zero issues. The runner is completing whole-node recovery acceptance.
-Partial successful cases do not count as a successful complete lab run, and
-containers do not close the original independent-VM gate.
+reports zero issues. The complete container run now passes as recorded below. Containers do not
+close the original independent-VM gate.
+
+
+### F62 actual-router CLI and wire contracts
+
+`6938fbb` drives the CLI through the production API router, validator, settings
+manager, memory object store and actual query tail. Mixed apply results retain
+versions, machine-readable error keys and owner hints; HTTP 200 with a failed
+document fails the CLI. Refused writes leave no mutation and are not replayed.
+The fixtures also cross the real 500-object pagination boundary, unwrap settings
+and consume a filtered named query SSE stream with subscription cleanup. Only
+authentication uses the existing apitest identity adapter; this is not a claim
+of mounted SQLite/current-credential qualification.
+
+`c439532` reconciles design §10 and operator API prose with ApplyResult, wrapped
+settings and QueryRow events, including cluster resume cursors and asynchronous
+complete publication. CLI races pass in 2.594s; actual API apply/settings/stream
+serialization races pass in 3.182s. Scoped CLI lint reports zero issues.
+
+### F68c completed container alternative
+
+`6eac332` adds the disposable runner and operator instructions. The final run
+against application source `b8fd96f14833a6a63f5c34682da87adc480568ac`, dnsdist
+2.1.3 and keepalived 2.4.3 passes **12/12 checks in 79.625s**. Real YAML/Lua
+preflights also pass. Two auth_hmac instances retain the VIP during lameduck,
+remove the backend, move after edge failure (4.2382s), graceful stop (1.2800s),
+drain (0.7571s) and whole-node loss (3.5849s), recover MASTER/BACKUP with
+nopreempt, and end in the requested split. Four UDP/TCP streams record 2,612
+samples, 57 counted transition failures and zero wrong answers; maximum sampled
+success gap is 3.2614s. All owned containers/networks/volumes were removed.
+Thirteen runner unit checks pass.
+
+The exact sanitized reports are retained in this workspace. This evidence uses
+the stated application source, not every later PR commit. It does not certify
+independent VMs, Windows, IPv6, HMAC attack handling, stale-snapshot behavior or
+replicated SQLite HA. The original VM gate remains explicit.
+
+### F70 central dictionary pruning
+
+`eef61bd`, `b1a29e8` and `a7304d8` implement schema/compatibility 4, reference
+constraints and indexes, cached-ID revalidation/locking, and bounded dictionary
+sweeps after fact/rollup retention. Every retained fact and all 14 rollup tables
+protect references. Each dictionary scans at most 256 candidates per pass with
+a durable fixed upper ID and cursor; new ingestion cannot prevent wrap. The
+whole scheduler transaction, including COMMIT, has a two-second budget.
+Failures roll back rows and progress and cannot report healthy removals.
+
+On disposable PostgreSQL 17.11, the final full central race suites pass in
+2.744s/8.671s/25.725s. Three repetitions of concurrent shipping, bounded sweep/
+restart and actual delayed-COMMIT cancellation pass in 14.726s. Final explicit
+recent-orphan/ancient-reference acceptance passes in 1.288s; scoped lint reports
+zero issues. Actual v3 upgrades preserve IDs, invalid references roll back,
+stale caches recover, held reader snapshots retain joins, and isolated schemas
+remain independent. The owned database resources were removed.
+
+Large upgrades can exceed existing startup migration limits and require a
+maintenance window; no deployment-scale migration performance is claimed.
+PostgreSQL 16/18 and final integrated-head checks remain separate. D248 records
+the design.

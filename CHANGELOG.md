@@ -23,6 +23,14 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Central query storage: bounded reference-safe dictionary pruning, guarded
+  cached-ID reuse and transactional schema-4 upgrade constraints. Retained
+  facts and rollups keep their dictionary entries.
+- Acceptance tooling: disposable Samba GSS-TSIG protocol and two-node
+  dnsdist/keepalived Docker labs, plus a Windows provisioning prompt.
+- CLI: actual-router conformance for apply outcomes, settings, pagination and
+  live query events, with documented wire contracts.
+
 - DNS controls: hot-reloadable allowed networks and blocked query types,
   including DNS64 dependencies, with validated settings and immutable rules
   for each captured request.
