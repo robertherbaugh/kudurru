@@ -64,7 +64,7 @@ func auditVerifyAPI(t *testing.T, rd audit.Reader, lic api.LicenseSource) (*http
 	return ts, calls
 }
 
-func runAuditVerifyCLI(t *testing.T, ctx context.Context, server, user string, args ...string) (string, error) {
+func runAuditVerifyCLI(ctx context.Context, t *testing.T, server, user string, args ...string) (string, error) {
 	t.Helper()
 	o := &cliOpts{
 		getenv: func(string) string { return "" }, now: func() time.Time { return testNow },
@@ -107,7 +107,7 @@ func TestAuditVerifyCLIRealSQLite(t *testing.T) {
 					}
 				}
 				ts, calls := auditVerifyAPI(t, auditstore.SQLite{Store: st}, license.Unrestricted())
-				out, err := runAuditVerifyCLI(t, t.Context(), ts.URL, "auditor", "audit", "verify", "-o", output)
+				out, err := runAuditVerifyCLI(t.Context(), t, ts.URL, "auditor", "audit", "verify", "-o", output)
 				if (err != nil) != tampered || calls.Load() != 1 {
 					t.Fatalf("verification: err = %v, calls = %d, output = %q", err, calls.Load(), out)
 				}
@@ -156,7 +156,7 @@ func TestAuditVerifyCLIRealAPIErrors(t *testing.T) {
 					lic = license.Unrestricted()
 				}
 				ts, calls := auditVerifyAPI(t, tc.reader, lic)
-				out, err := runAuditVerifyCLI(t, t.Context(), ts.URL, tc.user, "audit", "verify", "-o", output)
+				out, err := runAuditVerifyCLI(t.Context(), t, ts.URL, tc.user, "audit", "verify", "-o", output)
 				if !apiclient.IsStatus(err, tc.code) || !apiclient.IsKey(err, tc.key) || out != "" || calls.Load() != 1 {
 					t.Fatalf("API error = %v; output = %q, calls = %d", err, out, calls.Load())
 				}
@@ -174,7 +174,7 @@ func TestAuditVerifyCLIGatesAndCache(t *testing.T) {
 	ts, _ := auditVerifyAPI(t, rd, license.Unrestricted())
 	// Both authorized built-in roles reach the same cached server verification.
 	for _, user := range []string{"auditor", "admin"} {
-		if out, err := runAuditVerifyCLI(t, t.Context(), ts.URL, user, "audit", "verify", "-o", "json"); err != nil || !strings.Contains(out, `"verified": true`) {
+		if out, err := runAuditVerifyCLI(t.Context(), t, ts.URL, user, "audit", "verify", "-o", "json"); err != nil || !strings.Contains(out, `"verified": true`) {
 			t.Fatalf("authorized verification: %v, %q", err, out)
 		}
 	}
@@ -193,7 +193,7 @@ func TestAuditVerifyCLIGatesAndCache(t *testing.T) {
 		{ts.URL, "viewer", http.StatusForbidden},
 		{denied.URL, "auditor", http.StatusPaymentRequired},
 	} {
-		if _, err := runAuditVerifyCLI(t, t.Context(), tc.server, tc.user, "audit", "verify"); !apiclient.IsStatus(err, tc.code) {
+		if _, err := runAuditVerifyCLI(t.Context(), t, tc.server, tc.user, "audit", "verify"); !apiclient.IsStatus(err, tc.code) {
 			t.Fatalf("gate error = %v", err)
 		}
 	}
@@ -220,10 +220,11 @@ func TestAuditVerifyCLIContextAndTimeout(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			args := []string{"audit", "verify", "-o", "json"}
-			if mode == "context deadline" {
+			switch mode {
+			case "context deadline":
 				ctx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
 				defer cancel()
-			} else if mode == "request timeout" {
+			case "request timeout":
 				args = append(args, "--request-timeout", "500ms")
 			}
 			type result struct {
@@ -232,7 +233,7 @@ func TestAuditVerifyCLIContextAndTimeout(t *testing.T) {
 			}
 			done := make(chan result, 1)
 			go func() {
-				out, err := runAuditVerifyCLI(t, ctx, ts.URL, "auditor", args...)
+				out, err := runAuditVerifyCLI(ctx, t, ts.URL, "auditor", args...)
 				done <- result{out, err}
 			}()
 			// Release the server's intentionally independent shared scan on failure too.
@@ -273,7 +274,7 @@ func TestAuditVerifyCLIArgumentValidation(t *testing.T) {
 		{"audit", "verify", "--since", "24h"},
 		{"audit", "verify", "-o", "invalid"},
 	} {
-		if _, err := runAuditVerifyCLI(t, t.Context(), ts.URL, "auditor", args...); err == nil {
+		if _, err := runAuditVerifyCLI(t.Context(), t, ts.URL, "auditor", args...); err == nil {
 			t.Fatalf("invalid invocation accepted: %v", args)
 		}
 	}
