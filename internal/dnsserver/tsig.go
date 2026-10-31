@@ -22,7 +22,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
-// TSIG (RFC 8945) on the miekg/dns transports (udp, tcp, dot).
+// TSIG (RFC 8945) on all DNS listeners.
 //
 // Every miekg server gets a TsigProvider backed by the node's TSIGKeyring,
 // so the signature of every signed request is verified before the
@@ -32,8 +32,9 @@ import (
 // verified request carries the key name in pipeline.Client.TSIGKey, and
 // every message of its reply is signed with the same key: the first with
 // the request MAC, later messages of a transfer stream with the previous
-// MAC and the timers only (§5.3.1). DoH, DoQ and DoH3 do not verify TSIG;
-// a signed request on them is treated as unsigned.
+// MAC and the timers only (§5.3.1). DoH, DoQ and DoH3 verify original wire
+// bytes and sign one reply using encrypted_tsig.go. Their transport-local
+// signer never grants native UPDATE or NOTIFY mutation proof.
 
 // TSIGKeyring is the TSIG key provider seam: it returns the secret and the
 // algorithm of a key by name. Names are compared in canonical form

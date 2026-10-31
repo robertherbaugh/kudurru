@@ -122,13 +122,18 @@ func TestVerifiedUpdateProofNativeListeners(t *testing.T) {
 	}
 	for _, proto := range []Protocol{ProtoDoH, ProtoDoQ, ProtoDoH3} {
 		t.Run(string(proto), func(t *testing.T) {
-			// These transports parse TSIG as data, but do not verify it.
-			_, err := f.dnsproxyClient(t, proto).Exchange(context.Background(), signedUpdate())
-			if err != nil {
-				t.Fatal(err)
+			// Transport authentication is now supported, but it cannot issue
+			// the native mutation capability required by the production gates.
+			m := signedUpdate()
+			m.Id = 0
+			m.IsTsig().OrigId = 0
+			wire, mac := encryptedRequest(t, m, keys)
+			out := encryptedExchange(t, f, proto, "POST", wire)
+			if !encryptedMACValid(t, out, mac, xfrSecret) {
+				t.Fatal("encrypted UPDATE refusal was not signed")
 			}
-			if got := stage.receive(t); got.proof != nil || got.req.Client.TSIGKey != "" {
-				t.Fatal("unverified transport minted proof")
+			if got := stage.receive(t); got.proof != nil || got.req.Client.TSIGKey != xfrKey {
+				t.Fatal("encrypted authentication minted native mutation proof or lost verified key")
 			}
 		})
 	}
@@ -287,11 +292,16 @@ func TestVerifiedNotifyProofCannotBecomeUpdate(t *testing.T) {
 		})
 	}
 	for _, proto := range []Protocol{ProtoDoH, ProtoDoQ, ProtoDoH3} {
-		if _, err := f.dnsproxyClient(t, proto).Exchange(t.Context(), message()); err != nil {
-			t.Fatal(err)
+		m := message()
+		m.Id = 0
+		m.IsTsig().OrigId = 0
+		wire, mac := encryptedRequest(t, m, keys)
+		out := encryptedExchange(t, f, proto, "POST", wire)
+		if !encryptedMACValid(t, out, mac, xfrSecret) {
+			t.Fatal("encrypted NOTIFY refusal was not signed")
 		}
-		if got := stage.receive(t); got.proof != nil {
-			t.Fatal("unsupported transport minted NOTIFY proof", proto)
+		if got := stage.receive(t); got.proof != nil || got.req.Client.TSIGKey != xfrKey {
+			t.Fatal("encrypted authentication minted native NOTIFY proof or lost verified key")
 		}
 	}
 }

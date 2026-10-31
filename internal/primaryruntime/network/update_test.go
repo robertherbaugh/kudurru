@@ -35,12 +35,17 @@ import (
 
 type requestLeaseKey struct{}
 
-func nativeListeners(t *testing.T, f *fixture, capture network.CaptureUpdate, observe func(pr.UpdateOutcome)) (*dnsserver.Registry, *tls.Config) {
+func nativeListeners(t *testing.T, f *fixture, capture network.CaptureUpdate, observe func(pr.UpdateOutcome), encrypted ...dnsserver.Protocol) (*dnsserver.Registry, *tls.Config) {
 	t.Helper()
 	auth := authoritative.New(nil)
 	var err error
 	auth.Update, err = network.NewUpdate(network.UpdateOptions{Runtime: f.r, Capture: capture, Observe: observe})
 	check(t, err)
+	if len(encrypted) != 0 {
+		// The encrypted test requires the real transport gate to refuse even
+		// before a secondary receiver/refresh capability could be selected.
+		auth.Notify = servingbuild.CapturedNotify(nil, time.Now)
+	}
 	chain := pipeline.MustNew(&ingress.Stage{}, auth)
 	chain.SetCapture(func(req *pipeline.Request) (pipeline.ServingLease, error) {
 		lease, err := f.pub.CaptureHTTP(req.Ctx)
@@ -53,7 +58,8 @@ func nativeListeners(t *testing.T, f *fixture, capture network.CaptureUpdate, ob
 	registry, err := dnsserver.NewRegistry(dnsserver.Options{Handler: &dnsserver.Handler{Chain: chain, Logger: logger}, Logger: logger, TSIG: f.keys.Capture().Keys(), Sockets: 1})
 	check(t, err)
 	cert, key, pool := certificate(t)
-	for _, proto := range []dnsserver.Protocol{dnsserver.ProtoUDP, dnsserver.ProtoTCP, dnsserver.ProtoDoT} {
+	protocols := append([]dnsserver.Protocol{dnsserver.ProtoUDP, dnsserver.ProtoTCP, dnsserver.ProtoDoT}, encrypted...)
+	for _, proto := range protocols {
 		check(t, registry.Add(dnsserver.Spec{Protocol: proto, Address: "127.0.0.1:0", CertFile: cert, KeyFile: key}))
 	}
 	check(t, registry.Bind())

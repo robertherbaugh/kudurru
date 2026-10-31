@@ -39,7 +39,7 @@ func newDoH3Listener(spec Spec, e *env) (Listener, error) {
 	l := &doh3Listener{
 		spec:    spec,
 		env:     e,
-		handler: &dohHandler{h: e.handler, path: spec.Path, clientIDs: spec.ClientIDs, proto: ProtoDoH3.Pipeline(), maxBody: lim.MaxBodyBytes},
+		handler: &dohHandler{h: e.handler, env: e, path: spec.Path, clientIDs: spec.ClientIDs, proto: ProtoDoH3.Pipeline(), maxBody: lim.MaxBodyBytes},
 		qcfg: &quic.Config{
 			MaxIdleTimeout:     lim.QUICIdleTimeout,
 			MaxIncomingStreams: lim.QUICMaxStreams,

@@ -258,8 +258,9 @@ type Options struct {
 	// listeners. Nil or disabled means headers are not inspected.
 	Proxy  *proxyproto.Policy
 	Limits Limits
-	// TSIG verifies signed requests and signs their replies on the udp,
-	// tcp and dot listeners (RFC 8945, tsig.go). Nil knows no key: every
+	// TSIG verifies signed requests and signs replies on every listener
+	// (RFC 8945, tsig.go). Encrypted listeners require *StaticKeyring to
+	// pin the original installed credentials. Nil knows no key: every
 	// signed request is answered NOTAUTH/BADKEY.
 	TSIG TSIGKeyring
 	// OnTSIGFailure, if set, is called with TSIGBadKey, TSIGBadSig or
@@ -279,7 +280,7 @@ type env struct {
 	certs   *tlsreload.Store
 	proxy   *proxyproto.Policy
 	limits  Limits
-	// tsig verifies and signs TSIG on the miekg transports; nil means a
+	// tsig verifies and signs TSIG on all transports; nil means a
 	// provider that knows no key.
 	tsig          dns.TsigProvider
 	onTSIGFailure func(reason string)

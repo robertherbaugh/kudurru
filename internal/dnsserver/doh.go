@@ -30,6 +30,7 @@ const dohMIME = "application/dns-message"
 // The response carries Cache-Control: max-age=<smallest TTL>.
 type dohHandler struct {
 	h         *Handler
+	env       *env
 	path      string
 	proto     pipeline.Proto
 	maxBody   int
@@ -93,19 +94,15 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	client := clientFromHTTP(r, d.proto)
 	client.ClientID = id
-	padding := paddingFor(req, d.proto)
-	resp := d.h.resolveFreshID(r.Context(), req, client)
-	if resp == nil {
+	out, err := d.h.resolveEncrypted(r.Context(), d.env, wire, req, client)
+	if err != nil {
+		http.Error(w, "response could not be encoded", http.StatusInternalServerError)
+		return
+	}
+	if out == nil {
 		// A pipeline drop: abort the exchange without a response (HTTP/2
 		// and HTTP/3 reset the stream, HTTP/1.1 closes the connection).
 		panic(http.ErrAbortHandler)
-	}
-	resp = padding.apply(resp)
-	out, err := resp.Pack()
-	if err != nil {
-		d.h.logger().Debug("doh: pack failed", "err", err)
-		http.Error(w, "response could not be encoded", http.StatusInternalServerError)
-		return
 	}
 	hdr := w.Header()
 	if d.altSvc != nil {
@@ -116,11 +113,11 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hdr.Set("Content-Type", dohMIME)
 	// Every reply can depend on client policy, even without an explicit ID.
 	// Shared HTTP caches must never reuse one client's answer for another.
-	hdr.Set("Cache-Control", "private, "+cacheControl(resp))
-	hdr.Set("Content-Length", strconv.Itoa(len(out)))
+	hdr.Set("Cache-Control", "private, "+out.cache)
+	hdr.Set("Content-Length", strconv.Itoa(len(out.wire)))
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
-		_, _ = w.Write(out) //nolint:gosec // G705: a packed DNS message served as application/dns-message, never HTML
+		_, _ = w.Write(out.wire) //nolint:gosec // G705: a packed DNS message served as application/dns-message, never HTML
 	}
 }
 
@@ -185,7 +182,7 @@ func newDoHListener(spec Spec, e *env) (Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &dohListener{spec: spec, env: e, handler: &dohHandler{h: e.handler, path: spec.Path, clientIDs: spec.ClientIDs, proto: ProtoDoH.Pipeline(), maxBody: e.limits.MaxBodyBytes}}
+	l := &dohListener{spec: spec, env: e, handler: &dohHandler{h: e.handler, env: e, path: spec.Path, clientIDs: spec.ClientIDs, proto: ProtoDoH.Pipeline(), maxBody: e.limits.MaxBodyBytes}}
 	lim := e.limits
 	l.srv = &http.Server{
 		Handler:           l.handler,
