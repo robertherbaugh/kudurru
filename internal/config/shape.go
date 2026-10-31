@@ -73,6 +73,8 @@ const (
 // the keys and values of a map (Keys, Values) or the members of an object
 // (Fields). A Key carries the same constraints for its own value.
 type Shape struct {
+	// Help describes this nested value for operators; it does not affect validation.
+	Help string
 	Type Type
 	// Enum is the closed set of a string value.
 	Enum []Option

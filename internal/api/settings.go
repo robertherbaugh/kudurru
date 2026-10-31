@@ -76,6 +76,7 @@ type SettingOption struct {
 // SettingShape describes a value nested in a key (a list element, a map
 // key or value, an object member).
 type SettingShape struct {
+	Help string `json:"help,omitempty"`
 	Type string `json:"type" enum:"string,int,bool,duration,bytes,string[],list,map,object"`
 	// Default is what an omitted or empty value means.
 	Default any `json:"default,omitempty"`
@@ -99,7 +100,11 @@ func settingConstraints(s config.Shape) SettingConstraints {
 		out.Enum = append(out.Enum, SettingOption{Value: o.Value, Label: o.Label, Help: o.Help})
 	}
 	for _, f := range s.Fields {
-		out.Fields = append(out.Fields, SettingField{Name: f.Name, Label: f.Label, Help: f.Help, Required: f.Required, SettingShape: *settingShape(&f.Shape)})
+		help := f.Help
+		if help == "" {
+			help = f.Shape.Help
+		}
+		out.Fields = append(out.Fields, SettingField{Name: f.Name, Label: f.Label, Help: help, Required: f.Required, SettingShape: *settingShape(&f.Shape)})
 	}
 	return out
 }
@@ -108,7 +113,7 @@ func settingShape(s *config.Shape) *SettingShape {
 	if s == nil {
 		return nil
 	}
-	return &SettingShape{Type: string(s.Type), Default: s.Default, SettingConstraints: settingConstraints(*s)}
+	return &SettingShape{Type: string(s.Type), Help: s.Help, Default: s.Default, SettingConstraints: settingConstraints(*s)}
 }
 
 type schemaOutput struct{ Body *List[SettingKey] }

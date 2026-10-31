@@ -5,10 +5,19 @@
 // back to a section from the path's first segment, a label from the path
 // and a control from the bare type (text, JSON for lists and maps), which
 // is what the page did before.
-import type { SettingKey, SettingMeta, SettingShape } from '../api/types';
+import type { SettingKey, SettingMeta, SettingShape, SettingShapeField } from '../api/types';
 
-/** UI-only additions to a shape: what a map's keys are called. */
-export type UiShape = SettingShape & { keyLabel?: string; keyPlaceholder?: string };
+/** Recursive server metadata, plus UI labels for map keys. Optional help also
+ * supports schema responses newer than the generated client. */
+export type UiShape = Omit<SettingShape, 'items' | 'keys' | 'values' | 'fields'> & {
+  help?: string;
+  items?: UiShape;
+  keys?: UiShape;
+  values?: UiShape;
+  fields?: (Omit<SettingShapeField, 'items' | 'keys' | 'values' | 'fields'> & UiShape)[] | null;
+  keyLabel?: string;
+  keyPlaceholder?: string;
+};
 
 export type UiMeta = SettingMeta & { keyLabel?: string; keyPlaceholder?: string };
 

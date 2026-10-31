@@ -42,6 +42,8 @@ export interface StringListFieldProps {
   /** A closed set: each row is a select of these. */
   options?: EnumOption[] | undefined;
   itemError?: ((s: string) => string | null) | undefined;
+  /** Help linked to each row control, alongside any selected option help. */
+  itemHelp?: string | undefined;
   addLabel?: string;
   isDisabled?: boolean | undefined;
   /** An error for the whole list (e.g. "at least one"). */
@@ -59,6 +61,7 @@ export function StringListField({
   placeholder,
   options,
   itemError,
+  itemHelp,
   addLabel = 'Add',
   isDisabled,
   error,
@@ -77,9 +80,9 @@ export function StringListField({
           <HStack key={i} gap={2} vAlign="start" data-testid="list-row">
             <StackItem size="fill">
               {options ? (
-                <SelectField label={rowLabel} isLabelHidden value={v} options={options} placeholder="Choose…" isDisabled={isDisabled} onChange={(nv) => set(i, nv)} />
+                <SelectField label={rowLabel} isLabelHidden help={itemHelp} value={v} options={options} placeholder="Choose…" isDisabled={isDisabled} onChange={(nv) => set(i, nv)} />
               ) : (
-                <TextField label={rowLabel} isLabelHidden value={v} onChange={(nv) => set(i, nv)} placeholder={placeholder} isDisabled={isDisabled} error={e ?? undefined} />
+                <TextField label={rowLabel} isLabelHidden help={itemHelp} value={v} onChange={(nv) => set(i, nv)} placeholder={placeholder} isDisabled={isDisabled} error={e ?? undefined} />
               )}
             </StackItem>
             {/* Icon-only, like ShapeField's: "Remove <label> <n>" as text is cut off in narrow cards. */}
