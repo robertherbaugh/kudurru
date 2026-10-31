@@ -139,7 +139,7 @@ func validateOfflineYAML(ctx context.Context, n *yaml.Node, depth int, count *in
 		return errors.New("offline YAML anchors and aliases are not supported")
 	}
 	switch n.Tag {
-	case "", "!!map", "!!seq", "!!str", "!!bool", "!!int", "!!float", "!!null":
+	case "", "!!map", "!!seq", "!!str", "!!bool", "!!int", "!!float", "!!null", "!!timestamp":
 	default:
 		return errors.New("offline YAML contains an unsupported tag")
 	}

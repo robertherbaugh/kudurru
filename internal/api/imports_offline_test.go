@@ -33,3 +33,37 @@ func TestOfflineMigrationSourceIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestOfflineConvertedSettingsUseCurrentAdmission(t *testing.T) {
+	for _, source := range []string{"adguard", "blocky"} {
+		t.Run(source, func(t *testing.T) {
+			s, st, host := migrationSettingsFixture(t)
+			host.EnvLocked = []string{"upstreams.groups"}
+			input := "dns: {upstream_dns: [192.0.2.53]}"
+			preview := importers.PreviewAdGuard
+			if source == "blocky" {
+				input = "upstreams: {groups: {default: [192.0.2.53]}}"
+				preview = importers.PreviewBlocky
+			}
+			plan, err := preview(t.Context(), importers.OfflineRequest{}, strings.NewReader(input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan.Selection = &importers.Selection{Objects: []string{}, Settings: []string{"upstreams"}}
+			before, _ := migrationSettingsRead(t, st, host)
+			program, run, result, err := s.currentImportProgram(t.Context(), plan)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < program.Len(); i++ {
+				if err := migrationSettingsStep(t.Context(), st, program, i, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			after, _ := migrationSettingsRead(t, st, host)
+			if after.ResourceVersion != before.ResourceVersion || result.Settings != nil || result.SettingsError == "" || (*run).Spec.Status != "partial" || (*run).Spec.Items[len((*run).Spec.Items)-1].ErrorKey != KeyEnvLocked {
+				t.Fatal("offline settings bypassed current admission or lost settings report", result, (*run).Spec)
+			}
+		})
+	}
+}

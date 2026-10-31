@@ -66,18 +66,9 @@ func newMigrationCmd(o *cliOpts, source string) *cobra.Command {
 			if key == "" {
 				return fmt.Errorf("provide --source-key-file or set %s", env)
 			}
-			ns := o.namespace
-			if ns == "" {
-				cfg, err := o.loadConfig()
-				if err != nil {
-					return err
-				}
-				name := firstNonEmpty(o.context, o.getenv(cli.EnvContext), cfg.CurrentContext)
-				for _, c := range cfg.Contexts {
-					if c.Name == name {
-						ns = c.Namespace
-					}
-				}
+			ns, err := migrationNamespace(o)
+			if err != nil {
+				return err
 			}
 			nameservers, addresses, err := migrationTargets(cmd.Context(), o, nameservers, addresses, useVIPs, updateNameservers)
 			if err != nil {

@@ -517,7 +517,7 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 	return cmd
 }
 
-// newImportCmd includes file-based BIND imports and live API migrations.
+// newImportCmd includes offline file conversions and tracked API migrations.
 func newImportCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "import", Short: "Import data from other DNS servers"}
 	cmd.AddCommand(newZoneImportCmd(o, "bind <zone> -f file.zone"))

@@ -79,9 +79,12 @@ const APIVersion = "v1"
 // DefaultNamespace is used for namespaced objects that name none.
 const DefaultNamespace = "default"
 
-// maxBodyBytes caps request bodies (the 1.5 MiB etcd object cap plus
-// headroom for multi-document apply and zone imports).
-const maxBodyBytes = 32 << 20
+// MaxRequestBodyBytes caps public API request bodies, with headroom beyond
+// the 1.5 MiB object cap for multi-document apply and zone imports. CLI
+// converters check their generated payload against this same bound.
+const MaxRequestBodyBytes = 32 << 20
+
+const maxBodyBytes = MaxRequestBodyBytes
 
 // PolicySource returns the current policy index (policy.Source).
 type PolicySource interface {

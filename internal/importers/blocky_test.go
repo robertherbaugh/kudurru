@@ -88,6 +88,7 @@ func TestBlockyOfflineStrictAndLosses(t *testing.T) {
 			t.Fatalf("accepted malformed/ambiguous input: %s", input)
 		}
 	}
+	//nolint:gosec // G101: synthetic credential verifies preview redaction; never used for authentication.
 	input := `upstreams:
   groups:
     default: [https://user:secret-upstream-marker@resolver.test/dns-query]

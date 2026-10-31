@@ -1,14 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
-	"errors"
+	"github.com/spf13/cobra"
+
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cli"
 	"github.com/robertherbaugh/kudurru/internal/importers"
-	"github.com/spf13/cobra"
 )
 
 // selectMigrationPlan validates the entire explicit selection before any writes.
@@ -35,7 +36,6 @@ func selectMigrationPlan(cmd *cobra.Command, plan *importers.Plan, selectedObjec
 // finishMigration shares preview, one-shot start, and bounded report polling for
 // live and offline sources. It never replays an import-start request.
 func finishMigration(cmd *cobra.Command, o *cliOpts, plan *importers.Plan, f cli.Format, apply, wait bool) error {
-
 	for _, w := range plan.Warnings {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: "+w)
 	}
@@ -83,4 +83,22 @@ func finishMigration(cmd *cobra.Command, o *cliOpts, plan *importers.Plan, f cli
 		return fmt.Errorf("import finished with errors or unconfirmed items; successful writes remain; inspect run %s", run.ID)
 	}
 	return nil
+}
+
+// migrationNamespace reads only local CLI context state, never the destination.
+func migrationNamespace(o *cliOpts) (string, error) {
+	if o.namespace != "" {
+		return o.namespace, nil
+	}
+	cfg, err := o.loadConfig()
+	if err != nil {
+		return "", err
+	}
+	name := firstNonEmpty(o.context, o.getenv(cli.EnvContext), cfg.CurrentContext)
+	for _, c := range cfg.Contexts {
+		if c.Name == name && c.Namespace != "" {
+			return c.Namespace, nil
+		}
+	}
+	return "default", nil
 }

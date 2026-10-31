@@ -43,7 +43,15 @@ Code: `api/v1alpha1`, `api/internalkinds/v1alpha1`, `internal/store`
 ## API migrations
 
 `internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces
-objects, a settings merge patch and conversion warnings.
+objects, a settings merge patch and conversion warnings. The CLI also converts
+a bounded, single-document AdGuard Home or Blocky YAML file locally with
+`import adguard|blocky --file PATH` (`-` reads stdin). Offline conversion uses
+the same `Plan`, selection and migration start/apply commands. It never reads
+referenced files, resolves source client names or fetches source URLs. A normal
+offline preview has no destination API access; destination-derived authority
+options explicitly opt into destination context/VIP access. YAML aliases,
+anchors, duplicate keys and ambiguous identities are refused. Unsupported
+settings produce a bounded loss report with values redacted.
 
 The v0.2 complete SQLite runtime mounts migration apply/start, reviewed
 adoption and decommission through current compound commands, described below.
@@ -77,9 +85,11 @@ source semantics are reported in the preview. See the
 
 Each import starts an internal `MigrationRun` journal before destination writes
 (D182, D184), using the existing store: SQLite JSON rows or labeled Kubernetes
-Secrets. It retains source type and URL origin, actor, times, planned objects,
+Secrets. It retains source type and URL origin (empty for offline sources), actor, times, planned objects,
 per-object outcomes, zone UIDs, original/current authority and cutover attempts.
-Credentials, source URL paths/query parameters and source records are excluded.
+Credentials, source URL paths/query parameters, offline filenames and source records are excluded.
+Only `SourceInfo` and journal source identities admit offline formats;
+credential-bearing live preview requests remain limited to Pi-hole and Technitium.
 An optional selection lists object identities (`Kind/[namespace/]name`) and
 top-level settings sections; omitting it selects the full plan for compatibility.
 Unknown or duplicate selections and explicitly empty selections are refused before

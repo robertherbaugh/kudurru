@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cli"
 	"github.com/robertherbaugh/kudurru/internal/importers"
 	"github.com/spf13/cobra"
@@ -33,9 +35,9 @@ func newOfflineMigrationCmd(o *cliOpts, source string, preview offlinePreview) *
 			if !f.Structured() {
 				f = cli.FormatYAML
 			}
-			var r io.Reader = o.stdin
+			r := o.stdin
 			if file != "-" {
-				fh, err := os.Open(file)
+				fh, err := os.Open(file) //nolint:gosec // G304: operator-selected input; referenced source paths are never opened.
 				if err != nil {
 					return fmt.Errorf("cannot open offline source file")
 				}
@@ -45,9 +47,9 @@ func newOfflineMigrationCmd(o *cliOpts, source string, preview offlinePreview) *
 			if r == nil {
 				return fmt.Errorf("offline source input is unavailable")
 			}
-			ns := o.namespace
-			if ns == "" {
-				ns = "default"
+			ns, err := migrationNamespace(o)
+			if err != nil {
+				return err
 			}
 			targetNames, targetAddresses, err := migrationTargets(cmd.Context(), o, names, addresses, useVIPs, updateNameservers)
 			if err != nil {
@@ -58,6 +60,9 @@ func newOfflineMigrationCmd(o *cliOpts, source string, preview offlinePreview) *
 				return err
 			}
 			if err := selectMigrationPlan(cmd, plan, objects, settings, skipSettings); err != nil {
+				return err
+			}
+			if err := admitOfflinePlan(plan); err != nil {
 				return err
 			}
 			return finishMigration(cmd, o, plan, f, apply, wait)
@@ -79,4 +84,17 @@ func newOfflineMigrationCmd(o *cliOpts, source string, preview offlinePreview) *
 	cmd.MarkFlagsMutuallyExclusive("skip-settings", "select-setting")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
+}
+
+// Selection does not strip unselected plan entries. Check the exact encoded
+// request before printing a preview or attempting an import-start request.
+func admitOfflinePlan(plan *importers.Plan) error {
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		return fmt.Errorf("offline conversion cannot be encoded")
+	}
+	if len(raw) > api.MaxRequestBodyBytes {
+		return fmt.Errorf("generated offline plan exceeds the public API 32 MiB request limit; reduce the source configuration (selection retains unselected entries)")
+	}
+	return nil
 }

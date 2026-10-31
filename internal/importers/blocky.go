@@ -221,7 +221,7 @@ func blockyOffline(ctx context.Context, req OfflineRequest, root *offlineMap, p 
 			selectedSeen[group] = true
 			l, ok := lists[group]
 			if !ok {
-				return errors.New("Blocky client assignment references an undefined list group")
+				return errors.New("blocky client assignment references an undefined list group")
 			}
 			if l.incomplete {
 				incomplete = true
@@ -259,9 +259,7 @@ func blockyOffline(ctx context.Context, req OfflineRequest, root *offlineMap, p 
 func blockyServer(s string) (string, bool) {
 	s = strings.TrimSpace(s)
 	// tcp+udp uses UDP with TCP retry on truncation on both sides.
-	if strings.HasPrefix(s, "tcp+udp:") {
-		s = strings.TrimPrefix(s, "tcp+udp:")
-	}
+	s = strings.TrimPrefix(s, "tcp+udp:")
 	for _, pair := range [][2]string{{"tcp-tls:", "tls://"}, {"quic:", "quic://"}} {
 		if strings.HasPrefix(s, pair[0]) && !strings.HasPrefix(s, pair[0]+"//") {
 			s = pair[1] + strings.TrimPrefix(s, pair[0])
@@ -274,7 +272,7 @@ func blockySources(n *yaml.Node, p *Plan, path string) ([]public.ListSource, boo
 		return nil, false, nil
 	}
 	if n.Kind != yaml.SequenceNode {
-		return nil, false, errors.New("Blocky list sources must be a sequence")
+		return nil, false, errors.New("blocky list sources must be a sequence")
 	}
 	sources := []public.ListSource{}
 	seen := map[string]bool{}
@@ -341,7 +339,7 @@ func blockyConditional(n *yaml.Node, p *Plan, patch map[string]any, strategy str
 	for _, suffix := range offlineKeys(mapping) {
 		domain, ok := offlineDomain(suffix)
 		if !ok {
-			return errors.New("Blocky conditional suffix is invalid")
+			return errors.New("blocky conditional suffix is invalid")
 		}
 		if seen[domain] {
 			return errors.New("duplicate Blocky conditional suffix identity")
@@ -405,7 +403,7 @@ func blockyCustomDNS(n *yaml.Node, req OfflineRequest, p *Plan) error {
 	for _, name := range offlineKeys(mapping) {
 		domain, ok := offlineDomain(name)
 		if !ok {
-			return errors.New("Blocky customDNS owner is invalid")
+			return errors.New("blocky customDNS owner is invalid")
 		}
 		if seen[domain] {
 			return errors.New("duplicate Blocky customDNS suffix identity")
@@ -493,7 +491,7 @@ func blockyCustomTTL(n *yaml.Node) (time.Duration, error) {
 	if n != nil && n.Tag == "!!int" {
 		d, err := offlineSeconds(n, 0)
 		if err != nil || d <= 0 || d > time.Duration(2147483647)*time.Second/60 {
-			return 0, errors.New("Blocky numeric customTTL must be positive minutes within the DNS TTL range")
+			return 0, errors.New("blocky numeric customTTL must be positive minutes within the DNS TTL range")
 		}
 		return d * 60, nil
 	}

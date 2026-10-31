@@ -187,7 +187,7 @@ func adguardRules(p *Plan, rules []string) (block, allow []public.ListEntry) {
 		}
 		exception := strings.HasPrefix(s, "@@")
 		s = strings.TrimPrefix(s, "@@")
-		typ := public.EntryExact
+		var typ public.EntryType
 		if strings.HasPrefix(s, "||") && strings.HasSuffix(s, "^") && !strings.Contains(s, "$") {
 			s = strings.TrimSuffix(strings.TrimPrefix(s, "||"), "^")
 			typ = public.EntryWildcard
