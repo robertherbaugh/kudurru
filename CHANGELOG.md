@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Supervisor configuration: typed host-only `edge.*` and `vip.*` settings feed
+  existing render/run commands with file/environment/explicit-flag precedence.
+  Remote settings writes and resets remain refused.
+
 - Kubernetes store: explicit watch cursors resume retained server event history,
   including deletions, with detectable expiration and bounded delivery. Initial
   informer list/watch behavior is preserved.

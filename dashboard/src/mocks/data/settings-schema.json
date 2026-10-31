@@ -2659,6 +2659,1115 @@
       "items": {
         "type": "string"
       }
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Client prefixes allowed to query; empty uses private and loopback ranges.",
+      "hostOnly": true,
+      "items": {
+        "format": "cidr",
+        "type": "string"
+      },
+      "label": "Edge acl",
+      "path": "edge.acl",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string[]",
+      "writeOnly": false
+    },
+    {
+      "default": "127.0.0.1:8083",
+      "envLocked": false,
+      "format": "hostport",
+      "group": "Edge",
+      "help": "Loopback-only dnsdist webserver/API address.",
+      "hostOnly": true,
+      "label": "Edge api",
+      "path": "edge.api",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Group name or GID for apiKeyOut; empty preserves the file group.",
+      "hostOnly": true,
+      "label": "Edge api-key-group",
+      "path": "edge.apiKeyGroup",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Write the random per-start API key to this host file with mode 0640; empty does not write a key file.",
+      "hostOnly": true,
+      "label": "Edge api-key-out",
+      "path": "edge.apiKeyOut",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": false,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Cache the authoritative pool briefly and invalidate on zone serial changes.",
+      "hostOnly": true,
+      "label": "Edge authoritative-cache",
+      "path": "edge.authoritativeCache",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "bool",
+      "writeOnly": false
+    },
+    {
+      "default": 30,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Maximum authoritative cache TTL in seconds.",
+      "hostOnly": true,
+      "label": "Edge authoritative-cache-ttl",
+      "path": "edge.authoritativeCacheTTL",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Zones routed to the authoritative pool in addition to zones polled from backends.",
+      "hostOnly": true,
+      "items": {
+        "format": "domain",
+        "type": "string"
+      },
+      "label": "Edge authoritative-zones",
+      "path": "edge.authoritativeZones",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string[]",
+      "writeOnly": false
+    },
+    {
+      "default": 5353,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "DNS backend port when no port is specified.",
+      "hostOnly": true,
+      "label": "Edge backend-port",
+      "max": 65535,
+      "min": 1,
+      "path": "edge.backendPort",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": "dns",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "EndpointSlice port name carrying DNS.",
+      "hostOnly": true,
+      "label": "Edge backend-port-name",
+      "path": "edge.backendPortName",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Static [name=]host[:port] backends. Every edge lists every Kudurru node; empty requires a membership source.",
+      "hostOnly": true,
+      "items": {
+        "type": "string"
+      },
+      "label": "Edge backends",
+      "path": "edge.backends",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string[]",
+      "writeOnly": false
+    },
+    {
+      "default": "static",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Membership source: static or endpointslice:<namespace>/<service>.",
+      "hostOnly": true,
+      "label": "Edge backends-from",
+      "path": "edge.backendsFrom",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": 200000,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Resolver packet-cache entries; zero uses the renderer default.",
+      "hostOnly": true,
+      "label": "Edge cache-size",
+      "path": "edge.cacheSize",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": "/etc/dnsdist",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Directory for configuration rendered by edge run.",
+      "hostOnly": true,
+      "label": "Edge config-dir",
+      "path": "edge.configDir",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "127.0.0.1:5199",
+      "envLocked": false,
+      "format": "hostport",
+      "group": "Edge",
+      "help": "Loopback-only dnsdist console address.",
+      "hostOnly": true,
+      "label": "Edge console",
+      "path": "edge.console",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "5s",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Delay before rerendering membership or certificate changes.",
+      "hostOnly": true,
+      "label": "Edge debounce",
+      "path": "edge.debounce",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "duration",
+      "writeOnly": false
+    },
+    {
+      "default": "dnsdist",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "dnsdist executable used by edge run.",
+      "hostOnly": true,
+      "label": "Edge dnsdist-bin",
+      "path": "edge.dnsdistBin",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "uid[:gid] dnsdist switches to after binding sockets; empty retains the current user.",
+      "hostOnly": true,
+      "label": "Edge dnsdist-user",
+      "path": "edge.dnsdistUser",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "format": "hostport",
+      "group": "Edge",
+      "help": "Explicit doh frontend host:port, using a listen address. Requires TLS files.",
+      "hostOnly": true,
+      "label": "Edge doh",
+      "path": "edge.doh",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "format": "hostport",
+      "group": "Edge",
+      "help": "Explicit doh3 frontend host:port, using a listen address. Requires TLS files.",
+      "hostOnly": true,
+      "label": "Edge doh3",
+      "path": "edge.doh3",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "format": "hostport",
+      "group": "Edge",
+      "help": "Explicit doq frontend host:port, using a listen address. Requires TLS files.",
+      "hostOnly": true,
+      "label": "Edge doq",
+      "path": "edge.doq",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "format": "hostport",
+      "group": "Edge",
+      "help": "Explicit dot frontend host:port, using a listen address. Requires TLS files.",
+      "hostOnly": true,
+      "label": "Edge dot",
+      "path": "edge.dot",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "1s",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Readiness refusal period before restarting dnsdist.",
+      "hostOnly": true,
+      "label": "Edge drain",
+      "path": "edge.drain",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "duration",
+      "writeOnly": false
+    },
+    {
+      "default": false,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Enable dnsdist dynamic blocking.",
+      "hostOnly": true,
+      "label": "Edge dynblocks",
+      "path": "edge.dynblocks",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "bool",
+      "writeOnly": false
+    },
+    {
+      "default": 20,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Per-client NXDOMAIN rate that triggers a dynamic block; zero disables it.",
+      "hostOnly": true,
+      "label": "Edge dynblocks-nxdomain-rate",
+      "path": "edge.dynblocksNXDomainRate",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": 50,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Per-client query rate over ten seconds that triggers a dynamic block.",
+      "hostOnly": true,
+      "label": "Edge dynblocks-qps",
+      "path": "edge.dynblocksQPS",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": false,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Use an eBPF socket filter for dynamic-block drops; requires host capabilities.",
+      "hostOnly": true,
+      "label": "Edge ebpf",
+      "path": "edge.ebpf",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "bool",
+      "writeOnly": false
+    },
+    {
+      "default": ":8084",
+      "envLocked": false,
+      "format": "hostport",
+      "group": "Edge",
+      "help": "Supervisor health, status and metrics listener used by edge run.",
+      "hostOnly": true,
+      "label": "Edge health-address",
+      "path": "edge.healthAddress",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Host CA file for backend internal TLS; empty derives it from the encryption key.",
+      "hostOnly": true,
+      "label": "Edge internal-ca-file",
+      "path": "edge.internalCAFile",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": 8082,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Backend internal listener port for zone serial polling; zero disables it.",
+      "hostOnly": true,
+      "label": "Edge internal-port",
+      "max": 65535,
+      "min": 0,
+      "path": "edge.internalPort",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Backend internal TLS server name; empty uses internal.kudurru.invalid.",
+      "hostOnly": true,
+      "label": "Edge internal-server-name",
+      "path": "edge.internalServerName",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Host file with the internal bearer token; empty derives it from the encryption key.",
+      "hostOnly": true,
+      "label": "Edge internal-token-file",
+      "path": "edge.internalTokenFile",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": [
+        "0.0.0.0"
+      ],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "IP addresses every frontend binds.",
+      "hostOnly": true,
+      "items": {
+        "format": "ip",
+        "type": "string"
+      },
+      "label": "Edge listen",
+      "path": "edge.listen",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string[]",
+      "writeOnly": false
+    },
+    {
+      "default": "json",
+      "enum": [
+        {
+          "help": "Structured JSON log lines.",
+          "label": "JSON",
+          "value": "json"
+        },
+        {
+          "help": "Human-readable text log lines.",
+          "label": "Text",
+          "value": "text"
+        }
+      ],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Supervisor log format for edge run.",
+      "hostOnly": true,
+      "label": "Edge log-format",
+      "path": "edge.logFormat",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "info",
+      "enum": [
+        {
+          "help": "Detailed troubleshooting output.",
+          "label": "Debug",
+          "value": "debug"
+        },
+        {
+          "help": "Normal operations and changes.",
+          "label": "Info",
+          "value": "info"
+        },
+        {
+          "help": "Warnings and errors.",
+          "label": "Warning",
+          "value": "warn"
+        },
+        {
+          "help": "Errors only.",
+          "label": "Error",
+          "value": "error"
+        }
+      ],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Supervisor logging level for edge run.",
+      "hostOnly": true,
+      "label": "Edge log-level",
+      "path": "edge.logLevel",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": true,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Poll backend internal zone serials using the installed internal credentials.",
+      "hostOnly": true,
+      "label": "Edge poll-zones",
+      "path": "edge.pollZones",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "bool",
+      "writeOnly": false
+    },
+    {
+      "default": "leastOutstanding",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Authoritative pool load-balancing policy, validated by the existing renderer.",
+      "hostOnly": true,
+      "label": "Edge pool-authoritative",
+      "path": "edge.poolAuthoritative",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "chashed",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Resolver pool load-balancing policy, validated by the existing renderer.",
+      "hostOnly": true,
+      "label": "Edge pool-resolver",
+      "path": "edge.poolResolver",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Frontends to enable; empty selects do53 plus TLS frontends when tlsDir is set.",
+      "hostOnly": true,
+      "items": {
+        "enum": [
+          {
+            "help": "Plain DNS over UDP and TCP.",
+            "label": "DNS",
+            "value": "do53"
+          },
+          {
+            "help": "DNS over TLS.",
+            "label": "DoT",
+            "value": "dot"
+          },
+          {
+            "help": "DNS over HTTPS.",
+            "label": "DoH",
+            "value": "doh"
+          },
+          {
+            "help": "DNS over QUIC.",
+            "label": "DoQ",
+            "value": "doq"
+          },
+          {
+            "help": "DNS over HTTP/3.",
+            "label": "DoH3",
+            "value": "doh3"
+          }
+        ],
+        "type": "string"
+      },
+      "label": "Edge protocols",
+      "path": "edge.protocols",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string[]",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Host file containing the printable PROXYv2 TLV secret, at least 32 bytes. Required for nonloopback backends.",
+      "hostOnly": true,
+      "label": "Edge proxy-protocol-secret-file",
+      "path": "edge.proxyProtocolSecretFile",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "yaml",
+      "enum": [
+        {
+          "help": "dnsdist.yml plus functions-only dnsdist.lua.",
+          "label": "YAML",
+          "value": "yaml"
+        },
+        {
+          "help": "Standalone dnsdist.conf.",
+          "label": "Lua",
+          "value": "lua"
+        }
+      ],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "dnsdist configuration format: YAML plus functions-only Lua, or standalone Lua.",
+      "hostOnly": true,
+      "label": "Edge renderer",
+      "path": "edge.renderer",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "dnsdist server identifier; empty uses the host name.",
+      "hostOnly": true,
+      "label": "Edge server-id",
+      "path": "edge.serverID",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "10s",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "SIGTERM grace period before dnsdist is killed.",
+      "hostOnly": true,
+      "label": "Edge stop-timeout",
+      "path": "edge.stopTimeout",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "duration",
+      "writeOnly": false
+    },
+    {
+      "default": 2,
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Do53 listener threads; zero uses the renderer default.",
+      "hostOnly": true,
+      "label": "Edge threads",
+      "path": "edge.threads",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "TLS certificate directory. Supports tls.crt/tls.key, fullchain.pem/privkey.pem or cert.pem/key.pem; watched for rotation.",
+      "hostOnly": true,
+      "label": "Edge tls-dir",
+      "path": "edge.tlsDir",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Addresses or prefixes allowed to send AXFR, IXFR, NOTIFY and UPDATE through the edge.",
+      "hostOnly": true,
+      "items": {
+        "format": "cidr",
+        "type": "string"
+      },
+      "label": "Edge transfer-sources",
+      "path": "edge.transferSources",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string[]",
+      "writeOnly": false
+    },
+    {
+      "default": "5s",
+      "envLocked": false,
+      "group": "Edge",
+      "help": "Interval for backend zone serial polling.",
+      "hostOnly": true,
+      "label": "Edge zone-poll",
+      "path": "edge.zonePoll",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "duration",
+      "writeOnly": false
+    },
+    {
+      "default": "/etc/keepalived/keepalived.conf",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Configuration file rendered by vip run.",
+      "hostOnly": true,
+      "label": "VIP config-path",
+      "path": "vip.configPath",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "/run/kudurru/dnsdist-api.key",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Host API key file written by edge run and read by the VRRP probe.",
+      "hostOnly": true,
+      "label": "VIP dnsdist-api-key-file",
+      "path": "vip.dnsdistAPIKeyFile",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": ":8085",
+      "envLocked": false,
+      "format": "hostport",
+      "group": "VIP",
+      "help": "Supervisor health, status and metrics listener used by vip run.",
+      "hostOnly": true,
+      "label": "VIP health-address",
+      "path": "vip.healthAddress",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "/run/secrets/vrrp_hmac_{vrid}",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Host auth_hmac key-file pattern; {vrid} expands separately for every configured VRID.",
+      "hostOnly": true,
+      "label": "VIP hmac-key-file",
+      "path": "vip.hmacKeyFile",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "keepalived",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "keepalived executable used by vip run.",
+      "hostOnly": true,
+      "label": "VIP keepalived-bin",
+      "path": "vip.keepalivedBin",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "/usr/local/bin/kudurru",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Root-owned Kudurru executable used by rendered keepalived scripts.",
+      "hostOnly": true,
+      "label": "VIP kudurru-bin",
+      "path": "vip.kudurruBin",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": false,
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Render for keepalived 2.3 without auth_hmac; VRRP advertisements are unauthenticated.",
+      "hostOnly": true,
+      "label": "VIP legacy",
+      "path": "vip.legacy",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "bool",
+      "writeOnly": false
+    },
+    {
+      "default": "json",
+      "enum": [
+        {
+          "help": "Structured JSON log lines.",
+          "label": "JSON",
+          "value": "json"
+        },
+        {
+          "help": "Human-readable text log lines.",
+          "label": "Text",
+          "value": "text"
+        }
+      ],
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Supervisor log format for vip run.",
+      "hostOnly": true,
+      "label": "VIP log-format",
+      "path": "vip.logFormat",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "info",
+      "enum": [
+        {
+          "help": "Detailed troubleshooting output.",
+          "label": "Debug",
+          "value": "debug"
+        },
+        {
+          "help": "Normal operations and changes.",
+          "label": "Info",
+          "value": "info"
+        },
+        {
+          "help": "Warnings and errors.",
+          "label": "Warning",
+          "value": "warn"
+        },
+        {
+          "help": "Errors only.",
+          "label": "Error",
+          "value": "error"
+        }
+      ],
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Supervisor logging level for vip run.",
+      "hostOnly": true,
+      "label": "VIP log-level",
+      "path": "vip.logLevel",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": 0,
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Node count; zero uses peers plus one.",
+      "hostOnly": true,
+      "label": "VIP node-count",
+      "max": 20,
+      "min": 0,
+      "path": "vip.nodeCount",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Other nodes unicast addresses.",
+      "hostOnly": true,
+      "items": {
+        "format": "ip",
+        "type": "string"
+      },
+      "label": "VIP peers",
+      "path": "vip.peers",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string[]",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Host file containing one peer address per line; overrides peers and is watched by vip run.",
+      "hostOnly": true,
+      "label": "VIP peers-file",
+      "path": "vip.peersFile",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "nodes:<selector> discovers Kubernetes Node InternalIPs; cannot be combined with peers or peersFile.",
+      "hostOnly": true,
+      "label": "VIP peers-from",
+      "path": "vip.peersFrom",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": {},
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Per-VIP preemption delay in seconds; empty uses nopreempt. Environment accepts a JSON object.",
+      "hostOnly": true,
+      "keys": {
+        "help": "Name of a configured VIP.",
+        "type": "string"
+      },
+      "label": "VIP preempt-delay",
+      "path": "vip.preemptDelay",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "map",
+      "values": {
+        "help": "Preemption delay in seconds, zero uses nopreempt.",
+        "max": 1000,
+        "min": 0,
+        "type": "int"
+      },
+      "writeOnly": false
+    },
+    {
+      "default": 0,
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Node priority index. With Node discovery, an omitted value uses this node position; explicitly configured zero remains zero.",
+      "hostOnly": true,
+      "label": "VIP priority-index",
+      "max": 19,
+      "min": 0,
+      "path": "vip.priorityIndex",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": "/usr/local/bin/kudurru health --vrrp",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Whitespace-separated command prefix for the existing VRRP probe script; shell syntax is not evaluated.",
+      "hostOnly": true,
+      "label": "VIP probe-command",
+      "path": "vip.probeCommand",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": 1,
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Healthy backends required before this node holds a VIP.",
+      "hostOnly": true,
+      "label": "VIP require-backends",
+      "path": "vip.requireBackends",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "int",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Node router identifier; empty uses node.name or the host name.",
+      "hostOnly": true,
+      "label": "VIP router-id",
+      "path": "vip.routerID",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "/run/kudurru",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Shared host run directory for FIFO, weight files and state.",
+      "hostOnly": true,
+      "label": "VIP run-dir",
+      "path": "vip.runDir",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "15s",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "SIGTERM grace period before keepalived is killed.",
+      "hostOnly": true,
+      "label": "VIP stop-timeout",
+      "path": "vip.stopTimeout",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "duration",
+      "writeOnly": false
+    },
+    {
+      "default": "http://127.0.0.1:8083",
+      "envLocked": false,
+      "format": "url",
+      "group": "VIP",
+      "help": "dnsdist API checked by the VRRP probe.",
+      "hostOnly": true,
+      "label": "VIP track-dnsdist-api",
+      "path": "vip.trackDNSDistAPI",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "format": "ip",
+      "group": "VIP",
+      "help": "This node VRRP source address; empty discovers an address on the VRRP or first VIP interface.",
+      "hostOnly": true,
+      "label": "VIP unicast-src",
+      "path": "vip.unicastSrc",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
+    },
+    {
+      "default": [],
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Host VIP records. VRIDs are explicitly assigned by the operator and never allocated remotely. Environment accepts a JSON array.",
+      "hostOnly": true,
+      "items": {
+        "fields": [
+          {
+            "help": "Unique VIP name used in keepalived instance and script identifiers.",
+            "label": "Name",
+            "name": "name",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "format": "cidr",
+            "help": "VIP address with prefix length, for example 192.0.2.53/24.",
+            "label": "Address",
+            "name": "address",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "help": "Host interface receiving the VIP address.",
+            "label": "Interface",
+            "name": "interface",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "help": "Operator-assigned virtual router ID, unique on this host; never allocated by an API write.",
+            "label": "VRID",
+            "max": 255,
+            "min": 1,
+            "name": "vrid",
+            "required": true,
+            "type": "int"
+          }
+        ],
+        "type": "object"
+      },
+      "label": "VIP vip",
+      "path": "vip.vips",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "list",
+      "writeOnly": false
+    },
+    {
+      "default": "",
+      "envLocked": false,
+      "group": "VIP",
+      "help": "Interface for VRRP advertisements; empty uses each VIP interface.",
+      "hostOnly": true,
+      "label": "VIP vrrp-interface",
+      "path": "vip.vrrpInterface",
+      "restartRequired": true,
+      "scope": "node",
+      "type": "string",
+      "writeOnly": false
     }
   ]
 }

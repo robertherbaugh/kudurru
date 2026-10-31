@@ -840,3 +840,30 @@ cancellation under full result-buffer pressure, interrupted watch opening,
 malformed events and explicit expired-stream classification. Scoped kube lint
 reports zero issues. The earlier compile attempt used the wrong test-only
 subject type; it was corrected before the successful final run.
+
+### F40a typed host supervisor settings
+
+`52ec29d` implements D274: 46 edge and 24 VIP keys hydrate the existing explicit
+render/run commands. Defaults precede file, environment and explicitly changed
+flags. False/zero/empty values, aliases and whole-collection replacement are
+preserved; only the exact explicitly overridden key skips lower environment
+parsing or file reads. VIP instances and preempt delays have typed shapes and
+narrow JSON environment support. Configured zero priority retains provenance
+through node discovery. VRIDs remain operator-owned, secrets stay references,
+and no supervisor starts automatically from serve.
+
+Every key is node-scoped/host-only/restart-required. Actual authenticated API
+coverage refuses value changes and null resets on all 70 leaves through both
+settings/node-config routes (280 cases), plus whole-section resets. Existing
+source/PROXYv2 credential, TLS, frontend, renderer and legacy/HMAC refusals remain.
+Agent full config races pass in 9.586s, selected CLI races in 3.646s (38 cases),
+actual chart/Compose checks in 1.294s (32 cases), and scoped lint with zero issues.
+Parent selected config/CLI races pass in 1.928s/3.552s. Generated reference drift
+passes in 0.028s; the settings UI passes all 22 cases with the new mock schema.
+An initial parent combined test invocation incorrectly passed the CLI-only
+update flag to other packages; those packages refused the flag before testing.
+Correct independent commands above pass; no timeout or assertion was weakened.
+
+Hosted security 41214453550 and GitHub docs 41214453575 pass on 8bdb218.
+CI 41214453524 has only Go shard 1/2 still running at this checkpoint, with other
+jobs passed. Newer local commits are not yet qualified by that hosted run.

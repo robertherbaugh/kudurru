@@ -18,8 +18,8 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own high-cardinality statistics, exact ClientGroup list scope
-and typed supervisor settings; the parent
+agents currently own exact ClientGroup list scope, dnsdist console updates
+and VIP ownership observation; the parent
 has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
 disposable Samba/VIP labs. Freed agents take
 the next independent package, retaining original proofs, ownership, current
@@ -128,7 +128,7 @@ runners. Unit tests cannot substitute for those results.
 | F38 | Dedicated SQLite authz path/request/client audit columns | Observability and release | Integrated aa3784c; dedicated authenticated attribution columns |
 | F39a | Local edge resolver-cache invalidation | Edge and VIP | Implemented; final gates open |
 | F39b | Remote edge blocking-generation pull / resolver invalidation | Edge and VIP | Queued: missing |
-| F40a | Host-only `edge.*` / `vip.*` settings keys | Edge and VIP | Queued: missing |
+| F40a | Host-only `edge.*` / `vip.*` settings keys | Edge and VIP | Integrated 52ec29d; 70 typed keys, actual render/precedence/API-refusal races and chart/Compose checks pass; generated reference/mock updated |
 | F40b | Keepalived provider events to audit/SSE in serve | Edge and VIP | Queued: missing |
 | F41a | ServiceProvider current Owner | Edge and VIP | Queued: missing |
 | F41b | Chart provider annotations | Edge and VIP | Implemented; actual Helm/Go parity across 16 supported modes and four topology refusals pass; owner observation separate |

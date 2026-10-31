@@ -101,11 +101,38 @@ identical, file-managed configuration that you distribute (Git, Ansible,
 rsync). keepalived decides who holds the VIP; every dnsdist sends to every
 kudurru with PROXYv2 plus the shared TLV secret.
 
+### Host supervisor configuration
+
+The explicit `edge render|run` and `vip render|run` commands accept typed
+`edge.*` and `vip.*` sections from the selected node configuration. Every key
+is node-scoped, host-only and restart-required; neither settings API can write
+or reset one. These sections do not start a supervisor from `serve`. Secrets
+remain file references, and `--out` remains an invocation-only output location.
+
+Precedence is schema defaults, then node file, then environment, then flags
+explicitly supplied on that invocation. Explicit false, zero, empty strings and
+empty/replacement collections retain their meaning. Only an explicitly overridden
+supervisor key skips parsing its lower environment value or `_FILE` input;
+unrelated invalid environment still fails. `--readiness-address` aliases
+`edge.healthAddress`, and `--node-name` aliases `vip.routerID`. YAML/Lua renderer
+aliases and protocol casing retain their existing behavior.
+
+`vip.vips` is a list of `{name, address, interface, vrid}` records, and
+`vip.preemptDelay` maps VIP names to integer seconds. Only those two new keys
+accept structured JSON environment values. VRIDs remain operator-assigned and
+cannot change through a remote write. A configured `priorityIndex: 0` retains
+its source provenance during Kubernetes node discovery; only an omitted
+priority derives from the node's discovered position. All existing credential,
+frontend-address, source and renderer refusals still apply to the effective
+configuration. The [generated reference](../../docs-site/content/reference/configuration.md)
+lists the exact keys and constraints.
+
 ### The edge supervisor (`kudurru edge run`)
 
 ```mermaid
 flowchart TD
-    START(["container start"]) --> MEM["backends: --backends list,<br/>or an EndpointSlice (ready endpoints)"]
+    START(["explicit edge run"]) --> HOST["defaults → node file → environment<br/>→ explicitly supplied flags"]
+    HOST --> MEM["backends: configured list,<br/>or an EndpointSlice (ready endpoints)"]
     MEM --> CRED["new console key, API key,<br/>dashboard password (per start)"]
     CRED --> REN["render dnsdist.yml:<br/>pool resolver (chashed, packet cache)<br/>pool authoritative (leastOutstanding, no cache)<br/>add TLV 0xE0, refuse XFR/NOTIFY/UPDATE<br/>health check TXT health.kudurru.internal."]
     REN --> CHK{"dnsdist --check-config"}
