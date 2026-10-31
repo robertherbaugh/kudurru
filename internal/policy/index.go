@@ -263,13 +263,14 @@ type Index struct {
 	sets      map[string]*policySet // group-set key -> set
 	pols      []*compiledPolicy     // sorted by id
 	byGroup   [][]*compiledPolicy   // candidate policies per group
-	merge     func([]*compiledPolicy, bool) *Decision
+	merge     func([]*compiledPolicy, bool, []string) *Decision
 
-	fallback  *policySet
-	none      *Decision
-	lists     map[string]*ListInfo
-	notLoaded []string
-	diags     []Diagnosis
+	fallbackPolicy *compiledPolicy
+	fallback       *policySet
+	none           *Decision
+	lists          map[string]*ListInfo
+	notLoaded      []string
+	diags          []Diagnosis
 }
 
 type cidrTable struct {
@@ -474,6 +475,9 @@ func (b *builder) compileLists(bls []*v1alpha1.BlockList, lists *blocking.Snapsh
 		// Inline: every enabled source is inline or structured entries
 		// (disabled ones contribute nothing to the compiled list).
 		info := &ListInfo{Name: name, Object: id, Mode: mode, Response: bl.Spec.Response}
+		for _, group := range bl.EffectiveClientGroupRefs() {
+			info.groups = append(info.groups, objectID(bl.Namespace, group))
+		}
 		for i := range bl.Spec.Sources {
 			s := &bl.Spec.Sources[i]
 			if !s.IsEnabled() {
@@ -617,16 +621,19 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 		sortPolicies(ix.byGroup[g])
 	}
 	scope, infos := b.opts.ExceptionScope, ix.lists
-	ix.merge = func(active []*compiledPolicy, fb bool) *Decision {
-		return mergePolicies(active, fb, lists, scope, infos)
+	ix.merge = func(active []*compiledPolicy, fb bool, groups []string) *Decision {
+		return mergePolicies(active, fb, lists, scope, infos, groups)
+	}
+	ix.fallbackPolicy = fallback
+	if fallback != nil {
+		ix.fallback = newPolicySet([]*compiledPolicy{fallback}, true, func(active []*compiledPolicy, fb bool) *Decision {
+			return ix.merge(active, fb, nil)
+		})
 	}
 	ix.none = &Decision{lists: ix.lists}
 	ix.groupSets = make([]*policySet, len(ix.groupIDs))
 	for g := range ix.groupIDs {
 		ix.groupSets[g] = ix.policySetFor([]int{g})
-	}
-	if fallback != nil {
-		ix.fallback = newPolicySet([]*compiledPolicy{fallback}, true, ix.merge)
 	}
 }
 
@@ -637,7 +644,7 @@ func sortPolicies(ps []*compiledPolicy) {
 }
 
 // mergePolicies merges active (sorted by priority) into one Decision.
-func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snapshot, scope blocking.ExceptionScope, infos map[string]*ListInfo) *Decision {
+func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snapshot, scope blocking.ExceptionScope, infos map[string]*ListInfo, groups []string) *Decision {
 	top := active[0]
 	d := &Decision{Policy: top.id, Fallback: fallback, AllowOnly: top.spec.AllowOnly, lists: infos}
 	var allow, block []string
@@ -669,7 +676,13 @@ func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snap
 		allow = append(allow, p.allow...)
 		block = append(block, p.block...)
 	}
-	refs := slices.Concat(allow, block)
+	refs := slices.DeleteFunc(slices.Concat(allow, block), func(name string) bool {
+		info := infos[name]
+		if info == nil || len(info.groups) == 0 {
+			return false
+		}
+		return !slices.ContainsFunc(info.groups, func(group string) bool { return slices.Contains(groups, group) })
+	})
 	d.Response = responsepolicy.MergeOverrides(responseOverrides)
 	// Select keeps the first occurrence of each name and gives every list
 	// the role of its own mode; all names are known, so it cannot fail.
@@ -695,7 +708,17 @@ func (ix *Index) policySetFor(groups []int) *policySet {
 		}
 	}
 	sortPolicies(pols)
-	ps := newPolicySet(pols, false, ix.merge)
+	// Bind both active and fallback selections to private copied identities,
+	// never the exported diagnostic Membership.GroupIDs or request fields.
+	ids := make([]string, len(groups))
+	for i, g := range groups {
+		ids[i] = ix.groupIDs[g]
+	}
+	merge := func(active []*compiledPolicy, fb bool) *Decision { return ix.merge(active, fb, ids) }
+	ps := newPolicySet(pols, false, merge)
+	if ix.fallbackPolicy != nil {
+		ps.defaultSet = newPolicySet([]*compiledPolicy{ix.fallbackPolicy}, true, merge)
+	}
 	ix.sets[key] = ps
 	return ps
 }
@@ -1092,6 +1115,12 @@ func (ix *Index) Select(m *Membership, now time.Time) *Decision {
 	if m != nil {
 		if d := m.set.decide(now); d != nil {
 			return d
+		}
+		if m.set != nil {
+			if d := m.set.defaultSet.decide(now); d != nil {
+				return d
+			}
+			return ix.none
 		}
 	}
 	if d := ix.fallback.decide(now); d != nil {

@@ -229,7 +229,7 @@ func (s *Server) registerDomainLists() {
 		})
 		create := operation(http.MethodPost, path, "create"+title+"Entries", "Add "+title+" entries", tag)
 		create.Description = "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. " +
-			"The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. " +
+			"The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. " +
 			"Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422."
 		create.Errors = []int{http.StatusConflict, http.StatusUnprocessableEntity}
 		register(s, create, perm{resource: "blocklists", verb: "write"}, func(ctx context.Context, in *domainCreateInput) (*domainWriteOutput, error) {

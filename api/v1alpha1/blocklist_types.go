@@ -198,6 +198,18 @@ type CustomIP struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.response) || self.response != 'customIP' || has(self.customIP)",message="response customIP requires the customIP block"
 // +kubebuilder:validation:XValidation:rule="!has(self.mode) || self.mode != 'allow' || self.sources.all(s, !has(s.rpz))",message="RPZ sources require block mode"
 type BlockListSpec struct {
+	// ClientGroupRefs restricts this list to clients whose captured winning
+	// membership includes at least one of these namespace-local groups. It
+	// does not attach policies or grant identity. Omitted means unrestricted,
+	// except ui-allow-<group>/ui-deny-<group> retain their legacy group scope.
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=253
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*$`
+	// +listType=set
+	// +optional
+	ClientGroupRefs []string `json:"clientGroupRefs,omitempty"`
+
 	// +kubebuilder:default=block
 	// +optional
 	Mode ListMode `json:"mode,omitempty"`
@@ -276,6 +288,7 @@ type BlockListStatus struct {
 
 // BlockList is a named, refreshable set of block or allow entries.
 //
+// +kubebuilder:validation:XValidation:rule="!has(self.spec.clientGroupRefs) || self.spec.clientGroupRefs.size() == 0 || (!(self.metadata.name in ['ui-allow', 'ui-deny']) && !self.metadata.name.startsWith('ui-allow-') && !self.metadata.name.startsWith('ui-deny-')) || (self.spec.clientGroupRefs.size() == 1 && (self.metadata.name == 'ui-allow-' + self.spec.clientGroupRefs[0] || self.metadata.name == 'ui-deny-' + self.spec.clientGroupRefs[0]))",message="reserved UI list names must retain their original group scope"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=blocklist

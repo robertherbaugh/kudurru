@@ -81,6 +81,10 @@ func (d *Decision) List(name string) *ListInfo {
 
 // ListInfo describes one BlockList as the blocking stage needs it.
 type ListInfo struct {
+	// groups is copied namespace-qualified scope from the accepted object.
+	// Empty permits every membership. Only private policy-set identities use it.
+	groups []string
+
 	// Name is the list's name in the compiled blocking.Snapshot.
 	Name string
 	// Object is the BlockList, "namespace/name".
@@ -132,12 +136,13 @@ const maxLazySched = 63
 // policySet is the ordered candidate policies of one group set plus the
 // precomputed decisions for every combination of its scheduled policies.
 type policySet struct {
-	pols     []*compiledPolicy // priority desc, id asc
-	sched    []int             // indexes into pols of scheduled policies
-	eager    []*Decision       // by mask, when len(sched) <= maxEagerSched
-	lazy     sync.Map          // uint64 mask -> *Decision
-	merge    func(active []*compiledPolicy, fallback bool) *Decision
-	fallback bool
+	pols       []*compiledPolicy // priority desc, id asc
+	sched      []int             // indexes into pols of scheduled policies
+	eager      []*Decision       // by mask, when len(sched) <= maxEagerSched
+	lazy       sync.Map          // uint64 mask -> *Decision
+	merge      func(active []*compiledPolicy, fallback bool) *Decision
+	fallback   bool
+	defaultSet *policySet // fallback bound to this same original membership
 }
 
 func newPolicySet(pols []*compiledPolicy, fallback bool, merge func([]*compiledPolicy, bool) *Decision) *policySet {

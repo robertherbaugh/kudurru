@@ -10,6 +10,7 @@ erDiagram
     Policy }o--o{ ClientGroup : "clientGroupRefs"
     Policy }o--o{ BlockList : "blockListRefs (mode block)"
     Policy }o--o{ BlockList : "allowListRefs (mode allow)"
+    BlockList }o--o{ ClientGroup : "optional clientGroupRefs scope"
     Policy }o--o{ CatalogueService : "blockedServices / blockedCategories"
     BlockList ||--|{ Source : "sources[]: url | inline | configMapRef | entries | rpz"
     ClientMatcher {
@@ -198,6 +199,23 @@ keeps those lists attached to the right policies:
 
 Policies owned by files or integrations are never edited; they are reported
 as skipped.
+
+Attachment makes a list available to a policy; `BlockList.spec.clientGroupRefs`
+restricts it to the captured winning membership of the query. These optional
+namespace-local names form a set: any matching group permits the list, including
+ties in the winning tier. Lower tiers and groups from another namespace do not.
+The policy index copies this scope and filters list references before building
+its immutable selection, including fallback decisions. Serving never reads the
+store for scope, and a held request keeps its original complete publication.
+
+General lists without this field remain unrestricted. Reserved
+`ui-allow-<group>` and `ui-deny-<group>` names keep their exact group meaning for
+legacy objects too; dashboard and unblock writers materialize that scope on the
+list. Admission rejects an explicit scope that contradicts a reserved name.
+`ui-allow` and `ui-deny` retain their everyone meaning. A shared policy can
+therefore carry a group's allow or deny list without applying it to other groups.
+Content and regex caches stay shared behind the scoped selection; cached raw
+responses are inspected under the original request's selection.
 
 ## The block page and unblock requests
 
