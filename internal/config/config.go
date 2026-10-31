@@ -17,7 +17,6 @@ import (
 	"github.com/knadh/koanf/maps"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
-	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
 	"github.com/robertherbaugh/kudurru/internal/clientid"
@@ -33,6 +32,10 @@ const EnvPrefix = "KUDURRU_"
 // Config is the typed view of kudurru.yaml. Node-scoped sections are host
 // local; cluster-scoped sections are the Kudurru singleton.
 type Config struct {
+	// NodeLogSource captures host/default values and explicit node-file log
+	// authority. It is process source metadata, never replicated settings.
+	NodeLogSource *NodeLogSource `koanf:"-" json:"-"`
+
 	Edge                 Edge `koanf:"edge" json:"edge"`
 	VIP                  VIP  `koanf:"vip" json:"vip"`
 	supervisorConfigured map[string]bool
@@ -542,6 +545,8 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 	declared := map[string]bool{}
 	configured := map[string]bool{}
 	defaultUpstreamDeclared := false
+	var nodeLogFileLocked []string
+	var nodeFile map[string]any
 	if path != "" {
 		b, err := os.ReadFile(path) //nolint:gosec // operator-selected node configuration file
 		if err != nil {
@@ -551,7 +556,15 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 		if err != nil {
 			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
+		nodeFile = raw
 		defaultUpstreamDeclared = declaresDefaultUpstream(raw)
+		if values, ok := subMap(raw, "log"); ok {
+			for _, leaf := range []string{"level", "format"} {
+				if _, exists := values[leaf]; exists {
+					nodeLogFileLocked = append(nodeLogFileLocked, "log."+leaf)
+				}
+			}
+		}
 		for _, section := range []string{"edge", "vip"} {
 			if values, ok := subMap(raw, section); ok {
 				for name := range values {
@@ -567,7 +580,9 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 		return nil, fmt.Errorf("config: defaults: %w", err)
 	}
 	if path != "" {
-		if err := k.Load(file.Provider(path), yaml.Parser(), koanf.WithMergeFunc(mergeLayer)); err != nil {
+		// Source declarations and effective values must belong to the same
+		// original read. Empty delimiter preserves the parsed nested map.
+		if err := k.Load(confmap.Provider(nodeFile, ""), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
 			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
 	}
@@ -674,6 +689,7 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("config: decode: %w", err)
 	}
+	cfg.NodeLogSource = &NodeLogSource{Baseline: cfg.Log, FileLocked: nodeLogFileLocked}
 	cfg.supervisorConfigured = configured
 	cfg.Upstreams.normalize()
 	cfg.EnvLocked = locked

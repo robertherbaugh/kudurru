@@ -1102,19 +1102,35 @@ DNS settings continue to take effect through complete publication.
 
 `GET /node/config` remains a local configuration-document read. SQLite PATCH
 serializes local changes, remerges only requested `log.level`/`log.format` leaves,
-and reauthorizes the original raw credential for `node.config` in a current no-op
-transaction. After successful admission, it sets the actual logger level and the
-same local document before acknowledging. Cluster refreshes no longer compete
-for logger ownership. No cluster object, serving cut or file is changed.
+and reauthorizes the original raw credential for `node.config` in its original
+current-writer transaction. A bounded, versioned metadata row in `state.db` binds
+the optional preferences to this host's node name. Local stages share the final
+writer, dependency and credential-clock checks, rollback and commit boundary
+with authorization. A local-only commit does not change the canonical revision,
+object feed, complete serving cut or replicated image. Object snapshots omit it;
+replica installation preserves the receiver's local row and never imports the
+sender's. There is no settings-file write or nested legacy transaction.
 
-The minimal command is primary-local: an eligible follower can read its own
-document, but PATCH returns 503 without forwarding to another node. The result
-reports `Persisted=false`. `log.format` records a pending request; the startup
-handler keeps its original format, and restart discards local requests unless
-startup configuration is also changed. Current admission precedes memory
-adoption, so cancellation after admission can return an error after an effect;
-this is not a durable transaction spanning SQLite and the local logger. The
-local document is truthful readback, not part of the captured DNS installation.
+The priority is defaults, then durable API preferences, then explicitly declared
+node-file log leaves, then environment values. A set of a declared host leaf
+returns `409 host_locked`; an environment override returns `409 env_locked`.
+PATCH `null` deletes that overlay leaf and restores its captured original host
+baseline. Reset can remove a dormant preference under a host/environment lock
+without changing the effective host value. Startup reads the bounded metadata
+read-only before constructing the logger; a missing database remains lazy, a
+record for a different node is not adopted, and malformed/future records refuse
+startup. Cluster refreshes retain the original local baseline and leaf locks.
+
+The command is primary-local: an eligible follower can read its own document,
+but PATCH returns 503 without forwarding to another node. Successful SQLite
+receipts report `Persisted=true` for node-local durability. `log.level` updates
+the actual logger level; `log.format` remains restart-required and changes the
+handler only on restart. SQLite commit precedes local adoption and acknowledgment,
+so cancellation after commit may return an error after durable acceptance. A
+later admitted command reconciles any committed preference still pending local
+adoption. No receipt claims a transaction spanning SQLite and the local logger.
+The legacy Kubernetes path retains its explicit memory-only receipt. The local
+document is not part of the captured DNS installation.
 
 Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary

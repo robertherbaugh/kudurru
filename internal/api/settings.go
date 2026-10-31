@@ -130,8 +130,8 @@ type SettingsBody struct {
 	// ones that only apply after a restart.
 	Changed         []string `json:"changed,omitempty"`
 	RestartRequired []string `json:"restartRequired,omitempty"`
-	// Persisted is false when the change lives in memory only (node
-	// scope, or no settings file is configured; it is lost on restart).
+	// Persisted acknowledges a durable write in the scope's own storage. Node
+	// preferences are local to this node; logger format still requires restart.
 	Persisted *bool `json:"persisted,omitempty"`
 	Took
 }
@@ -379,12 +379,20 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 			}
 		}
 	}
-	next, restart, err := prepareSettingsValues(cur, scope, changes, paths, canonical)
+	var nodeReset []string
+	if scope == config.ScopeNode && s.opts.NodeConfigCommand != nil {
+		for _, path := range paths {
+			if changes[path] == nil {
+				nodeReset = append(nodeReset, path)
+			}
+		}
+	}
+	next, restart, err := prepareSettingsValues(cur, scope, changes, paths, canonical, nodeReset...)
 	if err != nil {
 		return nil, err
 	}
 	if scope == config.ScopeNode && s.opts.NodeConfigCommand != nil {
-		receipt, err := s.opts.NodeConfigCommand(ctx, next, paths)
+		receipt, err := s.opts.NodeConfigCommand(ctx, next, paths, nodeReset...)
 		if err != nil {
 			s.recordAction(ctx, "node.config", audit.Resource{Kind: "settings", Name: string(scope)}, err, nil, nil)
 			return nil, storeError(err)
@@ -402,7 +410,7 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		}
 		s.recordAction(ctx, "node.config", audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
 		out := s.settingsBody(receipt.After, scope, paths, restart)
-		persisted := false
+		persisted := receipt.Persisted
 		out.Body.Persisted = &persisted
 		return out, nil
 	}
@@ -463,8 +471,8 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 
 // prepareSettingsValues is shared by ordinary patches and transaction-local
 // imports so scope, locks, resets, map merges, and value validation stay identical.
-func prepareSettingsValues(cur *config.Config, scope config.Scope, changes map[string]any, paths []string, canonical bool) (*config.Config, []string, error) {
-	restart, err := validateSettingsPaths(cur, scope, paths, canonical)
+func prepareSettingsValues(cur *config.Config, scope config.Scope, changes map[string]any, paths []string, canonical bool, nodeReset ...string) (*config.Config, []string, error) {
+	restart, err := validateSettingsPaths(cur, scope, paths, canonical, nodeReset...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -487,10 +495,11 @@ func prepareSettingsValues(cur *config.Config, scope config.Scope, changes map[s
 		return nil, nil, err
 	}
 	next.EnvLocked, next.Source = cur.EnvLocked, cur.Source
+	config.CopyNodeLogSource(next, cur)
 	return next, restart, nil
 }
 
-func validateSettingsPaths(cur *config.Config, scope config.Scope, paths []string, canonical bool) ([]string, error) {
+func validateSettingsPaths(cur *config.Config, scope config.Scope, paths []string, canonical bool, nodeReset ...string) ([]string, error) {
 	var restart []string
 	for _, p := range paths {
 		k, _ := config.Lookup(p)
@@ -504,8 +513,10 @@ func validateSettingsPaths(cur *config.Config, scope config.Scope, paths []strin
 			return nil, errInvalid("%s: a cluster-scope key; use PATCH /api/v1/settings", p)
 		case canonical && !config.PublicClusterKey(k):
 			return nil, errInvalid("%s: not a public cluster settings key", p)
-		case slices.Contains(cur.EnvLocked, p):
+		case slices.Contains(cur.EnvLocked, p) && !slices.Contains(nodeReset, p):
 			return nil, newError(http.StatusConflict, KeyEnvLocked, p+" is set by the environment and read-only here", "unset KUDURRU_* for it on the node")
+		case config.NodeLogLocked(cur, p) && !slices.Contains(nodeReset, p):
+			return nil, newError(http.StatusConflict, KeyHostLocked, p+" is declared in the node file and read-only here", "remove the host log leaf to delegate it to the node API")
 		}
 		if k.RestartRequired {
 			restart = append(restart, p)

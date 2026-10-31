@@ -74,7 +74,15 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 	}
 	// No-op authorization/dedup replay still crossed the same fenced barrier.
 	if !t.changed {
-		return t.checkCommit(ctx)
+		if err := t.checkCommit(ctx); err != nil {
+			return err
+		}
+		if t.localChanged {
+			// Local metadata shares the original admission/rollback boundary,
+			// without advancing or publishing the canonical replicated image.
+			return tx.Commit()
+		}
+		return nil
 	}
 	if err := advanceRevision(ctx, tx, &a); err != nil {
 		return err
@@ -119,16 +127,17 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 // ordinary Apply/status/ownership/finalizer/audit semantics. Section rows share
 // this transaction, including a command's sealed dedup outcome.
 type CommandTx struct {
-	s         *Store
-	tx        *sql.Tx
-	q         cachedTx
-	authority replication.Authority
-	active    atomic.Bool
-	failed    error
-	changed   bool
-	mutations []*mutation
-	rvs       []uint64
-	checks    []func(context.Context) error
+	s            *Store
+	tx           *sql.Tx
+	q            cachedTx
+	authority    replication.Authority
+	active       atomic.Bool
+	failed       error
+	changed      bool
+	localChanged bool // node-local metadata, outside the canonical image
+	mutations    []*mutation
+	rvs          []uint64
+	checks       []func(context.Context) error
 }
 
 func (t *CommandTx) valid(ctx context.Context) error {

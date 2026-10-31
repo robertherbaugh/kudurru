@@ -237,6 +237,10 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 }
 
 func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error {
+	cfg, err := prepareServingNodeLog(ctx, cfg)
+	if err != nil {
+		return err
+	}
 	logger := newLoggerAt(cfg.Log, logLevel)
 	slog.SetDefault(logger)
 	// Settings hot reload (D25): every consumer of a cluster-scope key that

@@ -17,7 +17,7 @@ func TestNodeConfigCommandUsesActualReceiptWithoutLegacyInstall(t *testing.T) {
 	h := newHarness(t, func(o *Options) {
 		reload = config.NewReloadable(o.Config)
 		o.Reload = reload
-		o.NodeConfigCommand = func(_ context.Context, next *config.Config, changed []string) (NodeConfigReceipt, error) {
+		o.NodeConfigCommand = func(_ context.Context, next *config.Config, changed []string, _ ...string) (NodeConfigReceipt, error) {
 			calls++
 			if !slices.Equal(changed, []string{"log.level"}) || next.Log.Level != "debug" {
 				t.Fatal("wrong requested values", changed, next.Log)
@@ -72,7 +72,7 @@ func TestNodeConfigCommandFailuresNeverFallBack(t *testing.T) {
 				reload = config.NewReloadable(o.Config)
 				o.Reload = reload
 				o.CanonicalSettings = policyReadSettings{cfg: o.Config}
-				o.NodeConfigCommand = func(context.Context, *config.Config, []string) (NodeConfigReceipt, error) {
+				o.NodeConfigCommand = func(context.Context, *config.Config, []string, ...string) (NodeConfigReceipt, error) {
 					calls++
 					switch kind {
 					case "401":
@@ -115,16 +115,16 @@ func TestNodeConfigCommandKeepsValidationAndClusterPath(t *testing.T) {
 		o.Config.EnvLocked = []string{"log.level"}
 		reload = config.NewReloadable(o.Config)
 		o.Reload = reload
-		o.NodeConfigCommand = func(_ context.Context, next *config.Config, paths []string) (NodeConfigReceipt, error) {
+		o.NodeConfigCommand = func(_ context.Context, next *config.Config, paths []string, reset ...string) (NodeConfigReceipt, error) {
 			calls++
-			if !slices.Equal(paths, []string{"log.format"}) || next.Log.Format != "json" {
+			if !slices.Equal(paths, []string{"log.format"}) || !slices.Equal(reset, []string{"log.format"}) || next.Log.Format != "json" {
 				t.Fatal("null did not resolve schema default", paths, next.Log)
 			}
 			before := *reload.Current()
 			after := before
 			after.Log.Format = next.Log.Format
 			reload.Set(&after)
-			return NodeConfigReceipt{Before: &before, After: &after}, nil
+			return NodeConfigReceipt{Before: &before, After: &after, Persisted: true}, nil
 		}
 	})
 	for _, body := range []map[string]any{{"node": map[string]any{"name": "other"}}, {"cache": map[string]any{"maxEntries": 1}}, {"unknown": true}, {"log": map[string]any{"format": "bad"}}, {"log": map[string]any{"format": 42}}} {
@@ -137,8 +137,8 @@ func TestNodeConfigCommandKeepsValidationAndClusterPath(t *testing.T) {
 	}
 	var body SettingsBody
 	h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"format": nil}}).want(http.StatusOK).json(&body)
-	if !slices.Equal(body.RestartRequired, []string{"log.format"}) || body.Persisted == nil || *body.Persisted {
-		t.Fatal("lost restart-only memory semantics", body)
+	if !slices.Equal(body.RestartRequired, []string{"log.format"}) || body.Persisted == nil || !*body.Persisted {
+		t.Fatal("lost durable receipt or restart-only format semantics", body)
 	}
 	h.do(http.MethodPatch, "/api/v1/settings", "admin", map[string]any{"cache": map[string]any{"maxEntries": 42}}).want(http.StatusOK)
 	if calls != 1 || reload.Current().Cache.MaxEntries != 42 {

@@ -22,6 +22,10 @@ func TestRunServeSQLiteLocalUsersAndNodeConfig(t *testing.T) {
 	const chosen = "mounted-user-chosen-password"
 	const replacement = "mounted-replacement-password"
 	const final = "mounted-final-user-password"
+	desiredFormat := "text"
+	if startupFormat == desiredFormat {
+		desiredFormat = "json"
+	}
 	var uid string
 	for restart := range 2 {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -74,18 +78,19 @@ func TestRunServeSQLiteLocalUsersAndNodeConfig(t *testing.T) {
 		var local api.SettingsBody
 		mountedFactorRequest(t, admin, base, http.MethodGet, "/node/config", login.CSRF, nil, http.StatusOK, &local)
 		logConfig, ok := local.Settings["log"].(map[string]any)
-		if !ok || logConfig["level"] != startupLevel || logConfig["format"] != startupFormat {
-			t.Fatal("local requested logger document survived restart or changed startup values")
+		wantLevel, wantFormat := startupLevel, startupFormat
+		if restart == 1 {
+			wantLevel, wantFormat = "warn", desiredFormat
+		}
+		if !ok || logConfig["level"] != wantLevel || logConfig["format"] != wantFormat {
+			t.Fatal("mounted node preferences did not survive actual restart")
 		}
 		if restart == 0 {
-			format := "text"
-			if startupFormat == format {
-				format = "json"
-			}
+			format := desiredFormat
 			mountedFactorRequest(t, admin, base, http.MethodPatch, "/node/config", login.CSRF,
 				map[string]any{"log": map[string]any{"level": "warn", "format": format}}, http.StatusOK, &local)
-			if local.Persisted == nil || *local.Persisted || !slices.Contains(local.RestartRequired, "log.format") {
-				t.Fatal("node config claimed persistence or live format adoption")
+			if local.Persisted == nil || !*local.Persisted || !slices.Contains(local.RestartRequired, "log.format") {
+				t.Fatal("node config lost persistence or claimed live format adoption")
 			}
 			mountedFactorRequest(t, admin, base, http.MethodGet, "/node/config", login.CSRF, nil, http.StatusOK, &local)
 			logConfig, ok = local.Settings["log"].(map[string]any)

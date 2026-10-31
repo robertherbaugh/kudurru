@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -20,7 +21,9 @@ import (
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -44,6 +47,7 @@ func newServingNodeFixture(t *testing.T) *servingNodeFixture {
 		t.Fatal(err)
 	}
 	cfg.Log.Level, cfg.Log.Format = "info", "json"
+	cfg.Node.Name = "node-command"
 	cfg.Source, cfg.SettingsFile = "startup-node.yaml", filepath.Join(t.TempDir(), "settings.yaml")
 	if err := os.WriteFile(cfg.SettingsFile, []byte("cache:\n  maxEntries: 99\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -112,7 +116,7 @@ func TestServingNodeCommandActualHTTPAdoptionAndDesiredReadback(t *testing.T) {
 		t.Fatal("fixture logger is not actually level controlled")
 	}
 	body := servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"level":"debug"}}`))
-	if n.level.Level() != slog.LevelDebug || n.reload.Current().Log.Level != "debug" || body.Persisted == nil || *body.Persisted {
+	if n.level.Level() != slog.LevelDebug || n.reload.Current().Log.Level != "debug" || body.Persisted == nil || !*body.Persisted {
 		t.Fatal("success did not acknowledge actual local level", body)
 	}
 	logger.Debug("after")
@@ -120,8 +124,8 @@ func TestServingNodeCommandActualHTTPAdoptionAndDesiredReadback(t *testing.T) {
 		t.Fatal("actual logger failed to adopt level", log.String())
 	}
 	body = servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"format":"text"}}`))
-	if !reflect.DeepEqual(body.RestartRequired, []string{"log.format"}) || *body.Persisted || n.level.Level() != slog.LevelDebug {
-		t.Fatal("format pretended hot/durable adoption", body)
+	if !reflect.DeepEqual(body.RestartRequired, []string{"log.format"}) || !*body.Persisted || n.level.Level() != slog.LevelDebug {
+		t.Fatal("format durability/restart receipt was inaccurate", body)
 	}
 	log.Reset()
 	logger.Debug("still JSON")
@@ -149,10 +153,13 @@ func TestServingNodeCommandActualHTTPAdoptionAndDesiredReadback(t *testing.T) {
 	if actual, err := os.ReadFile(path); err != nil || !bytes.Equal(actual, file) || !reflect.DeepEqual(n.f.s.opts.Config, startup) { //nolint:gosec // Same test-created temporary file.
 		t.Fatal("local command changed startup/file inputs", err)
 	}
-	// Restart reconstruction uses startup inputs, not the transient document.
-	restarted := config.NewReloadable(startup)
-	if restarted.Current().Log.Format == "text" || restarted.Current().Log.Level == "debug" {
-		t.Fatal("in-memory requested values fabricated restart persistence")
+	local, err := sqlite.ReadNodeLogSettings(t.Context(), n.f.s.opts.Store.Path(), n.reload.Current().Node.Name)
+	if err != nil || local.Level == nil || *local.Level != "debug" || local.Format == nil || *local.Format != "text" {
+		t.Fatal("accepted local preferences were not committed", err)
+	}
+	restarted, err := config.WithNodeLogOverlay(startup, local.Level, local.Format)
+	if err != nil || restarted.Log.Format != "text" || restarted.Log.Level != "debug" {
+		t.Fatal("restart lost durable node preferences", err)
 	}
 }
 
@@ -180,7 +187,7 @@ func TestServingNodeCommandActualConcurrentLeavesReceiptsAndCancellation(t *test
 	case <-time.After(5 * time.Second):
 		t.Fatal("local install did not reach barrier")
 	}
-	// The actual no-op Command has returned: another SQLite command can run
+	// The actual local-only Command has returned: another SQLite command can run
 	// while local receipt delivery is held, proving there is no tx/pin reentry.
 	if err := n.f.s.opts.Store.Command(t.Context(), n.f.s.opts.Store.Authority().Term, func(context.Context, *sqlite.CommandTx) error { return nil }); err != nil {
 		t.Fatal(err)
@@ -305,6 +312,9 @@ func TestServingNodeCommandActualRefusesStaleAuthorityAndFinalExpiry(t *testing.
 		t.Run(mode, func(t *testing.T) {
 			n := newServingNodeFixture(t)
 			defer n.f.stop()
+			if mode == "expired-final-noop" {
+				servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"level":"info"}}`))
+			}
 			before := n.reload.Current()
 			if mode == "current-scope" {
 				if err := n.f.s.opts.Store.Command(t.Context(), n.f.s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
@@ -382,6 +392,10 @@ func TestServingNodeCommandActualRefusesStaleAuthorityAndFinalExpiry(t *testing.
 			if !called || n.reload.Current() != before || n.level.Level() != slog.LevelInfo {
 				t.Fatal("refusal changed memory or missed captured request", called)
 			}
+			local, err := sqlite.ReadNodeLogSettings(t.Context(), n.f.s.opts.Store.Path(), before.Node.Name)
+			if err != nil || local.Format != nil || (mode != "expired-final-noop" && local.Level != nil) || (mode == "expired-final-noop" && (local.Level == nil || *local.Level != "info")) {
+				t.Fatal("failed current admission leaked local persistence", err)
+			}
 		})
 	}
 }
@@ -400,6 +414,10 @@ func TestServingNodeCommandActualPostcommitCancellationIsTruthful(t *testing.T) 
 	body := servingNodeBody(t, n.call(t.Context(), http.MethodGet, ""))
 	if body.Settings["log"].(map[string]any)["level"] != "debug" {
 		t.Fatal("GET hid adopted local effect")
+	}
+	local, err := sqlite.ReadNodeLogSettings(t.Context(), n.f.s.opts.Store.Path(), n.reload.Current().Node.Name)
+	if err != nil || local.Level == nil || *local.Level != "debug" {
+		t.Fatal("postcommit cancellation hid durable effect", err)
 	}
 	stop()
 	servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"level":"debug"}}`))
@@ -461,5 +479,112 @@ func TestServingNodeCommandActualFollowerUnavailable(t *testing.T) {
 	})).ServeHTTP(httptest.NewRecorder(), n.f.request())
 	if !called || n.level.Level() != slog.LevelInfo || n.reload.Current().Log.Level != "info" {
 		t.Fatal("follower changed local config or missed authenticated request", called)
+	}
+}
+
+func TestServingNodeDurableReceipt(t *testing.T) {
+	n := newServingNodeFixture(t)
+	defer n.f.stop()
+	body := servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"level":"debug"}}`))
+	if body.Persisted == nil || !*body.Persisted {
+		t.Fatal("accepted node log update lacks durable receipt")
+	}
+}
+
+func TestServingNodeCommandActualResetAndSourcePriority(t *testing.T) {
+	n := newServingNodeFixture(t)
+	defer n.f.stop()
+	// Original process host baseline is captured by the command, never reread
+	// from a successor file/document when null arrives.
+	servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"level":"debug","format":"text"}}`))
+	body := servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"level":null}}`))
+	if body.Persisted == nil || !*body.Persisted || n.reload.Current().Log.Level != "info" || n.reload.Current().Log.Format != "text" || n.level.Level() != slog.LevelInfo {
+		t.Fatal("reset failed to restore captured baseline")
+	}
+	local, err := sqlite.ReadNodeLogSettings(t.Context(), n.f.s.opts.Store.Path(), n.reload.Current().Node.Name)
+	if err != nil || local.Level != nil || local.Format == nil || *local.Format != "text" {
+		t.Fatal("partial reset changed unrelated overlay", err)
+	}
+	current, err := cloneServingNodeConfig(n.reload.Current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	current.NodeLogSource = &config.NodeLogSource{Baseline: config.Log{Level: "warn", Format: "json"}, FileLocked: []string{"log.format"}}
+	current.Log.Format = "json"
+	n.reload.Set(current)
+	w := n.call(t.Context(), http.MethodPatch, `{"log":{"format":"text"}}`)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), api.KeyHostLocked) {
+		t.Fatal("host leaf set bypassed current lock", w.Code)
+	}
+	body = servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"format":null}}`))
+	if body.Persisted == nil || !*body.Persisted || n.reload.Current().Log.Format != "json" {
+		t.Fatal("shadowed reset changed effective host value")
+	}
+	local, err = sqlite.ReadNodeLogSettings(t.Context(), n.f.s.opts.Store.Path(), current.Node.Name)
+	if err != nil || local.Level != nil || local.Format != nil {
+		t.Fatal("shadowed reset retained overlay", err)
+	}
+	// A current environment lock also allows deleting dormant local state while
+	// refusing a set, and resetting cannot change its effective value.
+	locked, err := cloneServingNodeConfig(n.reload.Current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked.EnvLocked = []string{"log.level"}
+	locked.Log.Level = "error"
+	n.reload.Set(locked)
+	n.level.Set(slog.LevelError)
+	if w = n.call(t.Context(), http.MethodPatch, `{"log":{"level":"debug"}}`); w.Code != http.StatusConflict {
+		t.Fatal("environment allowed set", w.Code)
+	}
+	servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"level":null}}`))
+	if n.level.Level() != slog.LevelError || n.reload.Current().Log.Level != "error" {
+		t.Fatal("reset overrode environment")
+	}
+}
+
+func TestServingNodeCommandActualSQLFailureAndCommittedReadback(t *testing.T) {
+	n := newServingNodeFixture(t)
+	defer n.f.stop()
+	db, err := sql.Open("sqlite", n.f.s.opts.Store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.ExecContext(t.Context(), `CREATE TRIGGER reject_node_log BEFORE INSERT ON meta WHEN NEW.key='local_node_log_v1' BEGIN SELECT RAISE(ABORT,'fixture refusal'); END`); err != nil {
+		t.Fatal(err)
+	}
+	before := n.reload.Current()
+	w := n.call(t.Context(), http.MethodPatch, `{"log":{"level":"debug"}}`)
+	if w.Code == http.StatusOK || n.reload.Current() != before || n.level.Level() != slog.LevelInfo {
+		t.Fatal("SQL failure escaped to logger/memory")
+	}
+	local, err := sqlite.ReadNodeLogSettings(t.Context(), n.f.s.opts.Store.Path(), before.Node.Name)
+	if err != nil || local.Level != nil {
+		t.Fatal("SQL refusal persisted local overlay", err)
+	}
+	if _, err := db.ExecContext(t.Context(), `DROP TRIGGER reject_node_log`); err != nil {
+		t.Fatal(err)
+	}
+	// Deterministically model the durable side of a commit whose acknowledgment
+	// ended before local adoption, through the real original-proof command lane.
+	called := false
+	n.f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		called = true
+		err := n.f.s.currentCommand(r.Context(), rbac.Attributes{Resource: "node", Verb: "config", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}, func(ctx context.Context, tx *sqlite.CommandTx, _ auth.Principal) error {
+			value := "debug"
+			return tx.PutNodeLogSettings(ctx, sqlite.NodeLogSettings{Version: 1, Node: before.Node.Name, Level: &value})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})).ServeHTTP(httptest.NewRecorder(), n.f.request())
+	if !called {
+		t.Fatal("missing original captured command")
+	}
+	body := servingNodeBody(t, n.call(t.Context(), http.MethodPatch, `{"log":{"format":"text"}}`))
+	got := body.Settings["log"].(map[string]any)
+	if n.level.Level() != slog.LevelDebug || got["level"] != "debug" || got["format"] != "text" {
+		t.Fatal("later receipt lost a committed preference pending adoption")
 	}
 }
