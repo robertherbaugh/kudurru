@@ -116,10 +116,14 @@ func TestDictionaryPruneEveryReference(t *testing.T) {
 				kept[spec.table] = append(kept[spec.table], id)
 				cols := []string{"ts", "node"}
 				values := []any{int64(serial), node}
-				if ref.table == "query" {
+				switch ref.table {
+				case "query":
 					cols = []string{"ts", "node", "source", "source_id", "proto", "client", "domain", "qtype", "status", "rcode", "reply_type"}
 					values = []any{t0.UnixMicro() + int64(serial), node, sid, int64(serial), 1, cl, domain, 1, 1, 0, 1}
-				} else {
+				case "query_domain_hour":
+					cols = []string{"ts", "node", "source", "domain", "total", "blocked", "first_ts", "last_ts"}
+					values = []any{int64(serial), node, sid, domain, int64(1), int64(0), t0.UnixMicro(), t0.UnixMicro()}
+				default:
 					for _, rt := range sqlitelog.RollupTables {
 						if rt.Name != ref.table {
 							continue

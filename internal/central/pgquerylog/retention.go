@@ -58,6 +58,12 @@ func Jobs(raw time.Duration) []central.Job {
 					if _, err := tx.Exec(ctx, `UPDATE rollup_input_hour SET input_complete=false WHERE ts>=$1 AND ts<$2`, day/1000000, (day+dayUS)/1000000); err != nil {
 						return dropped, err
 					}
+					if _, err := tx.Exec(ctx, `DELETE FROM query_domain_hour WHERE ts>=$1 AND ts<$2`, day/1000000, (day+dayUS)/1000000); err != nil {
+						return dropped, err
+					}
+					if _, err := tx.Exec(ctx, `ALTER TABLE query DETACH PARTITION `+pgx.Identifier{name}.Sanitize()); err != nil {
+						return dropped, err
+					}
 					if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS `+pgx.Identifier{name}.Sanitize()); err != nil {
 						return dropped, err
 					}
@@ -179,7 +185,10 @@ func (p Purger) Purge(ctx context.Context, before time.Time) (int64, error) {
 					return err
 				}
 				if rows > 0 {
-					if _, err := tx.Exec(ctx, `TRUNCATE `+table); err != nil {
+					if _, err := tx.Exec(ctx, `DELETE FROM query_domain_hour WHERE ts>=$1 AND ts<$2`, day/1000000, (day+dayUS)/1000000); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, `TRUNCATE `+table+`, query_domain_guard`); err != nil {
 						return err
 					}
 				}

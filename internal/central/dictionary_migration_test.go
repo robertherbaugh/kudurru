@@ -70,7 +70,7 @@ func TestDictionaryMigration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if result.SchemaVersion != central.SchemaVersion || result.CompatVersion != central.CompatVersion || len(result.Applied) != 2 || result.Applied[0] != 4 || result.Applied[1] != 5 {
+			if result.SchemaVersion != central.SchemaVersion || result.CompatVersion != central.CompatVersion || len(result.Applied) != 3 || result.Applied[0] != 4 || result.Applied[1] != 5 || result.Applied[2] != 6 {
 				t.Fatalf("migration result: %+v", result)
 			}
 			var node, domain, clients, total int64

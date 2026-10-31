@@ -31,6 +31,9 @@ func dictionarySpecs() []dictionarySpec {
 	var out []dictionarySpec
 	for _, name := range []string{"node", "client", "domain", "upstream", "zone", "list", "policy"} {
 		spec := dictionarySpec{table: "dict_" + name, references: []dictionaryReference{{"query", name}}}
+		if name == "domain" || name == "node" {
+			spec.references = append(spec.references, dictionaryReference{"query_domain_hour", name})
+		}
 		if name == "domain" {
 			spec.references = append(spec.references, dictionaryReference{"query", "cname"})
 		}
