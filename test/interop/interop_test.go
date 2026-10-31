@@ -150,12 +150,18 @@ func TestBINDSecondary(t *testing.T) {
 	kd := kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{})
 	t.Logf("timing: kudurru ready in %s", time.Since(start).Round(time.Millisecond))
 
+	primaryStatus := primaryStatusProbe(t, spec)
 	var primarySerial uint32
 	if !kudurrutest.Eventually(20*time.Second, 100*time.Millisecond, func() bool {
-		primarySerial, _ = soaSerial(t, spec.Ports.DNS, "interop.test.")
-		return primarySerial != 0
+		statusSerial, settled := primaryStatus()
+		if !settled {
+			return false
+		}
+		var rcode int
+		primarySerial, rcode = soaSerial(t, spec.Ports.DNS, "interop.test.")
+		return rcode == dns.RcodeSuccess && primarySerial != 0 && primarySerial == statusSerial
 	}) {
-		t.Fatal("kudurru does not serve interop.test SOA")
+		t.Fatal("kudurru primary status and interop.test SOA did not settle")
 	}
 
 	// named: the secondary.
