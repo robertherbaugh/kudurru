@@ -559,3 +559,46 @@ spec:
 
 Both selected key and source belong to the captured zone policy. Rotation or a
 policy change during delivery cannot acknowledge the obsolete pending intent.
+
+
+## Import a dnsmasq routing file
+
+Set `upstreams.importFile` in the node configuration (or
+`KUDURRU_UPSTREAMS__IMPORTFILE`) to a local routing file. Relative paths resolve
+beside the node configuration. For example:
+
+```yaml
+upstreams:
+  importFile: upstream-routes.conf
+```
+
+```text
+server=/corp.example/10.in-addr.arpa/192.0.2.53#5353
+server=/corp.example/192.0.2.54
+server=/public.corp.example/#
+[/svc.example/]tls://192.0.2.55 tcp://192.0.2.56
+```
+
+Repeated rules for a suffix combine servers in their original order. Imported
+conditional groups use strict failover and names `dnsmasq-1`, `dnsmasq-2`, etc.;
+`#` selects the normal default group. Global `server=192.0.2.53` or plain server
+lines can replace the compiled default when no explicit default group is set.
+This translates routing, not dnsmasq's adaptive upstream selection strategy.
+
+The whole import is refused on a collision, unsupported directive or malformed
+input. Errors report line numbers without echoing the source. `local=`, local
+answer rules, `address=`, DHCP options, source-interface selectors and wildcard
+selectors require explicit Kudurru configuration. Blank lines and full-line
+comments are supported; shell expansions and inline comments are not.
+
+Limits are 4 MiB per regular file, 64 KiB per line, 65,536 rules and suffixes,
+4,096 conditional groups, 256 servers per suffix and 1,024 default servers.
+Expansion is also capped at 65,536 suffix/server assignments and 4 MiB of
+server-address bytes, preventing short input from multiplying into large routes.
+Up to 64 unsupported-line reports are retained. No partial import is installed.
+
+The path is host-only. Existing environment overrides, persisted canonical
+settings and UI ownership retain precedence. To adopt or release upstreams,
+use the normal reviewed ownership workflow; adopted values survive a missing
+original file, but release requires a matching available source. The setting
+adds no watcher and does not overwrite an existing cluster singleton on restart.

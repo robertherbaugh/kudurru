@@ -28,6 +28,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Upstreams: bounded dnsmasq/dnsproxy routing-file import into canonical
+  groups, with unsupported-line reports, collision refusal and ownership checks.
+
 - Central history: read retained data for retired nodes without live peer
   membership, with exact-node statistics, dictionaries and export.
 - DNS over TLS: use configured Linux listener sockets, retaining TLS rotation

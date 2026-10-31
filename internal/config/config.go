@@ -207,6 +207,7 @@ type KubeSnapshot struct {
 
 // Upstreams configures forwarding.
 type Upstreams struct {
+	ImportFile  string                   `koanf:"importFile" json:"importFile,omitempty"`
 	Groups      map[string]UpstreamGroup `koanf:"groups" json:"groups"`
 	Bootstrap   []string                 `koanf:"bootstrap" json:"bootstrap"`
 	Conditional map[string]string        `koanf:"conditional" json:"conditional"`
@@ -518,6 +519,7 @@ type SectionLoader func(*Config) (map[string]any, error)
 func LoadWithSections(path string, environ []string, owned SectionLoader) (*Config, error) {
 	k := koanf.New(".")
 	declared := map[string]bool{}
+	defaultUpstreamDeclared := false
 	if path != "" {
 		b, err := os.ReadFile(path) //nolint:gosec // operator-selected node configuration file
 		if err != nil {
@@ -527,6 +529,7 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 		if err != nil {
 			return nil, fmt.Errorf("config: read %s: %w", path, err)
 		}
+		defaultUpstreamDeclared = declaresDefaultUpstream(raw)
 		for section := range raw {
 			declared[section] = true
 		}
@@ -578,6 +581,7 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 		if err != nil {
 			return nil, err
 		}
+		defaultUpstreamDeclared = defaultUpstreamDeclared || declaresDefaultUpstream(tree)
 		// Validate only authoritative file sections. Even malformed or unknown
 		// keys in a UI-owned section are ignored as a whole, before decoding.
 		checked := map[string]any{}
@@ -594,6 +598,15 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 			return nil, fmt.Errorf("config: settings file %s: %w", settingsPath, err)
 		}
 	}
+	importPath := k.String("upstreams.importFile")
+	if value, ok := overrides["upstreams.importFile"].(string); ok {
+		importPath = value
+	}
+	if _, uiOwned := sections["upstreams"]; !uiOwned {
+		if err := importUpstreams(k, path, importPath, defaultUpstreamDeclared); err != nil {
+			return nil, err
+		}
+	}
 	fileBytes, err := json.Marshal(k.Get("upstreams"))
 	if err != nil {
 		return nil, err
@@ -604,6 +617,10 @@ func LoadWithSections(path string, environ []string, owned SectionLoader) (*Conf
 		if err := k.Load(confmap.Provider(map[string]any{section: value}, "."), nil); err != nil {
 			return nil, err
 		}
+	}
+	// The source path remains host-owned even when the public section is UI-owned.
+	if err := k.Load(confmap.Provider(map[string]any{"upstreams.importFile": importPath}, "."), nil); err != nil {
+		return nil, err
 	}
 	if err := k.Load(confmap.Provider(overrides, "."), nil, koanf.WithMergeFunc(mergeLayer)); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)

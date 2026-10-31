@@ -28,6 +28,34 @@ See [configuration and the store](configuration-and-store.md#settings) for
 revision checks, environment locks, persistence and the handoff flow.
 Changes still swap the upstream set and flush cached answers as described below.
 
+## File-authored routing imports
+
+The host-only `upstreams.importFile` setting expands a bounded dnsmasq/dnsproxy
+file during ordinary configuration loading. Relative paths use the node file's
+directory. One parser also backs `upstream.ImportDnsmasq`; reports identify
+unsupported lines without repeating their contents. No network request or
+query-path file read is introduced.
+
+```mermaid
+flowchart LR
+    FILE["Node/settings declarations + import file"] --> PARSE["Bounded parse and collision checks"]
+    PARSE --> CANON["Canonical groups and suffix routes"]
+    OWN["Stored UI-owned public section"] --> LAYER["Ownership and environment precedence"]
+    CANON --> LAYER
+    LAYER --> CAPTURE["Existing canonical publication and captured upstream set"]
+```
+
+Unsupported local-answer/address/DHCP directives, malformed input or conflicting
+named groups/suffixes reject the entire source. Repeated server rules combine
+ordered alternatives; conditional groups use strict failover. This does not
+emulate dnsmasq's adaptive upstream scheduling. Unscoped servers replace only
+the compiled default, and conflict with an explicit default declaration.
+Environment locks still win. An explicitly UI-owned section skips the stale
+file source; adoption stores public canonical values, never the host file path.
+Revision/handoff checks include imported effective routing, and release needs
+an available matching file source. Existing persisted canonical cluster settings
+retain authority; setting this path does not reseed them or add a file watcher.
+
 ## Which group answers
 
 Three places can name a group, and they are checked in a fixed order. The

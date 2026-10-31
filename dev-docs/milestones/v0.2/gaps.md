@@ -1225,3 +1225,35 @@ the queued resize before challenging those operations. Composed cache/persist/
 stage races pass in 3.650s/1.534s/1.549s. Combined DoT/control-capture/signed-AXFR/
 actual mounted cache growth races pass in 1.851s/1.525s/2.883s/11.034s. Integrated
 API/cache/servingbuild/dnsserver/interop scoped lint reports zero issues.
+
+
+### F21a upstream routing-file import
+
+D263 implements host-only `upstreams.importFile` through the ordinary loader,
+shared bounded parser and canonical groups/suffix routes. Repeated suffix rules
+retain all ordered servers; `#` exceptions remain normal-default routes.
+Unsupported directives, local answers, collisions and malformed input refuse
+the whole source with line-only reports. Input and expanded representations have
+explicit byte/count bounds. Conditional scheduling is strict ordered failover,
+not an assertion of dnsmasq's adaptive scheduling behavior.
+
+Environment and UI/canonical ownership retain precedence. Host paths cannot
+enter durable public sections; both memory/ConfigMap and legacy file backends
+now exclude host-only leaves during serialization/export. Imported effective
+routing participates in reviewed revisions; adoption survives missing source,
+and release refuses absent or mismatched input. No query-path read, implicit
+singleton reseed or new watcher is introduced.
+
+Full config/upstream/settings race suites pass in 9.587s/4.610s/4.897s. Actual
+mounted UDP routing proves imported suffixes, default exceptions and ordinary
+default forwarding; composed mounted/current-command and ownership/restart
+races pass in 16.697s/1.769s. Final expanded-input bounds/refusal races pass in
+1.364s/1.020s. Scoped config/upstream/settings/audit/command lint, followed by
+frozen final parser lint, reports zero issues. Generated reference/API outputs
+are refreshed. An initial mounted test used an authoritative-only helper for a
+forwarding answer; corrected tests assert the proper non-AA/RA wire behavior.
+
+Hosted security run 41210334267 passes every applicable job on `a45f749`.
+CI's only completed failure so far is exported-method documentation; `29dbec0`
+adds the missing VerifierFunc.Verify comment and scoped audit lint passes.
+The final built-dashboard artifact at `a45f749` is also 77,074,592 bytes.
