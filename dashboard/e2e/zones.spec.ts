@@ -5,6 +5,7 @@
 import { expect, expectRendered, main, settle, test } from './fixtures';
 import { choose } from './support/astryx';
 import { adminApi } from './support/api';
+import type { DNSZone } from '../src/api/types';
 
 const zone = (name: string, spec: unknown) => ({ apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name }, spec });
 
@@ -41,6 +42,15 @@ test('a primary zone is deleted with its records from its page', async ({ page }
   await page.goto('/');
   const api = await adminApi(page);
   await api.put(`/objects/dnszones/${name}`, zone(name, { zoneName: apex, type: 'primary' }));
+  // Creation acknowledges desired storage before the primary's Ready status
+  // and complete serving publication. Read that accepted status before the
+  // dependent record command; never replay a refused mutation.
+  await expect.poll(async () => {
+    const current = await api.get<DNSZone>(`/objects/dnszones/${name}`);
+    if (current.status !== 200) return false;
+    const { metadata, status } = current.body;
+    return status?.observedGeneration === metadata.generation && status?.conditions?.some((c) => c.type === 'Ready' && c.status === 'True' && c.observedGeneration === metadata.generation) === true;
+  }).toBe(true);
   await api.post(`/zones/${name}/records`, { dnsName: host, recordType: 'A', targets: ['192.0.2.77'] });
   await expect
     .poll(async () => (await api.post<{ status: string }>('/dns/query', { name: host, type: 'A' })).status, { timeout: 30_000 })
