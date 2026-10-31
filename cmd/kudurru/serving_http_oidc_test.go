@@ -37,7 +37,14 @@ type servingBrowserFixture struct {
 
 func newServingBrowserFixture(t *testing.T) *servingBrowserFixture {
 	t.Helper()
+	return newServingBrowserFixtureConfigured(t, nil)
+}
+func newServingBrowserFixtureConfigured(t *testing.T, configure func(*servingBrowserOP)) *servingBrowserFixture {
+	t.Helper()
 	op := newServingBrowserOP(t)
+	if configure != nil {
+		configure(op)
+	}
 	base := newServingRuntimeFixture(t)
 	if err := base.Close(t.Context()); err != nil {
 		t.Fatal(err)

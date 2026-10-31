@@ -10,6 +10,7 @@ import (
 
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/browseroidc"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -19,7 +20,8 @@ import (
 // must commit its command and acquire a complete serving view containing the
 // enrollment before Seal. It carries no independently usable cookie.
 type Enrollment struct {
-	id, csrf string
+	id, csrf   string
+	logoutHint browseroidc.Logout
 }
 
 func (Enrollment) String() string { return "private session enrollment" }
@@ -49,6 +51,16 @@ func (e Enrollment) Seal(view *servingauth.View, now time.Time) (string, auth.Se
 		return "", auth.Session{}, err
 	}
 	return cookie, s, nil
+}
+
+// SealLogoutHint releases only encrypted bounded hint evidence after the exact
+// enrollment is visible and currently authenticates in the complete owner view.
+func (e Enrollment) SealLogoutHint(view *servingauth.View, now time.Time) (string, time.Time, error) {
+	if _, _, err := e.Seal(view, now); err != nil {
+		return "", time.Time{}, err
+	}
+	raw, err := view.SealBrowserLogout(e.logoutHint, now)
+	return raw, e.logoutHint.ExpiresAt(), err
 }
 
 // IssueLocal verifies the password, exact account UID, current licensed grants

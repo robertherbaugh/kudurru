@@ -60,6 +60,15 @@ func (d ExternalSessionDecision) ValidAt(now time.Time) error {
 	return d.evidence.ValidAt(now)
 }
 
+// VerifiedProofExpiresAt returns the original verified proof deadline. It is
+// provenance for a logout hint, never the lifetime of an enrolled session.
+func (d ExternalSessionDecision) VerifiedProofExpiresAt() time.Time {
+	if d.evidence == nil {
+		return time.Time{}
+	}
+	return d.evidence.Facts().ExpiresAt
+}
+
 // SealEvidence requires the exact existing account UID or a new independently generated UID.
 func (d ExternalSessionDecision) SealEvidence(k *oidccore.EvidenceKeyring, identityUID, sessionID string) (string, error) {
 	if d.evidence == nil || !externalUIDPattern.MatchString(identityUID) || d.existingUID != "" && identityUID != d.existingUID {

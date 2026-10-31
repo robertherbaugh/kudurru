@@ -35,7 +35,7 @@ func captureBrowser(d Desired) *browserSnapshot {
 type BrowserInfo struct {
 	Provider                                         servingauth.ProviderRef
 	SpecIdentity, ResourceIdentity, Issuer, ClientID string
-	RedirectURI, AuthorizationURL                    string
+	RedirectURI, AuthorizationURL, EndSessionURL     string
 	Scopes                                           []string
 }
 
@@ -96,7 +96,7 @@ func (l *Lease) Browser(ref servingauth.ProviderRef, resourceID string) (*Browse
 			if a.Active && a.Provider == ref && a.SpecIdentity == e.descriptor.SpecIdentity && hash(a.Binding) == e.resource.TrustIdentity {
 				return &Browser{lease: l, resolver: resolver, ref: e.descriptor, binding: a.Binding, network: cut.host.network, tokenURL: e.metadata.token, attempted: &atomic.Bool{},
 					info: BrowserInfo{Provider: ref, SpecIdentity: e.descriptor.SpecIdentity, ResourceIdentity: id, Issuer: e.descriptor.Issuer,
-						ClientID: e.descriptor.Spec.ClientID, RedirectURI: e.descriptor.Spec.RedirectURL, AuthorizationURL: e.metadata.authorization, Scopes: slices.Clone(e.descriptor.Spec.Scopes)}}, nil
+						ClientID: e.descriptor.Spec.ClientID, RedirectURI: e.descriptor.Spec.RedirectURL, AuthorizationURL: e.metadata.authorization, EndSessionURL: e.metadata.endSession, Scopes: slices.Clone(e.descriptor.Spec.Scopes)}}, nil
 			}
 		}
 		return nil, ErrStale

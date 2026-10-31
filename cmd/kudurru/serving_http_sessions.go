@@ -26,6 +26,7 @@ func (h *servingHTTP) register() {
 	h.route("GET", "/auth/status", h.status)
 	h.route("POST", "/auth/login", h.login)
 	h.route("POST", "/auth/logout", h.logout)
+	h.route("POST", "/auth/logout/browser", h.logoutBrowser)
 	h.route("GET", "/auth/me", h.me)
 	h.route("POST", "/auth/password", h.password)
 	h.route("GET", "/auth/sessions", h.sessions)
@@ -38,7 +39,7 @@ func (h *servingHTTP) register() {
 	h.route("GET", "/iam/serviceaccounts", h.iamServiceAccounts)
 	h.route("GET", "/iam/rolebindings", h.iamRoleBindings)
 	h.route("GET", "/iam/identityproviders", h.iamProviders)
-	for _, p := range []string{"/auth/oidc/{idp}/start", "/auth/oidc/{idp}/callback"} {
+	for _, p := range []string{"/auth/oidc/{idp}/start", "/auth/oidc/{idp}/callback", "/auth/oidc/{idp}/logout", "/auth/oidc/{idp}/logout/callback"} {
 		h.route("GET", p, func(w http.ResponseWriter, r *http.Request) error {
 			if h.opts.ProviderHandler == nil {
 				return &auth.Error{Status: 503, Key: "unavailable", Message: "captured browser provider login unavailable"}
@@ -261,7 +262,7 @@ func (h *servingHTTP) me(w http.ResponseWriter, r *http.Request) error {
 	}
 	return servingHTTPJSON(w, 200, out)
 }
-func (h *servingHTTP) logout(w http.ResponseWriter, r *http.Request) error {
+func (h *servingHTTP) commitLogout(r *http.Request) error {
 	proof, err := servinghttp.Credential(r.Context())
 	if err != nil {
 		return err
@@ -292,7 +293,13 @@ func (h *servingHTTP) logout(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	h.opts.Runtime.publisher.Wake()
-	h.opts.Cookie.Clear(w, r)
+	return nil
+}
+func (h *servingHTTP) logout(w http.ResponseWriter, r *http.Request) error {
+	if err := h.commitLogout(r); err != nil {
+		return err
+	}
+	h.clearLogoutCookies(w, r)
 	w.WriteHeader(204)
 	return nil
 }

@@ -48,6 +48,10 @@ func (b *servingBrowserHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	var err error
 	switch {
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/logout/callback"):
+		err = b.logoutCallback(w, r)
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/logout"):
+		err = b.logout(w, r)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/start"):
 		err = b.start(w, r)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/callback"):
@@ -339,6 +343,8 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 	}
 	var raw string
 	var expires time.Time
+	var logoutHint string
+	var logoutHintExpiry time.Time
 	err = b.h.browserPublication(r.Context(), func(view *servingauth.View) (bool, error) {
 		if !browser.Current() {
 			return false, servingBrowserUnavailable()
@@ -348,6 +354,9 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 			return false, nil
 		}
 		raw, expires = sealed, sess.ExpiresAt
+		if info.EndSessionURL != "" {
+			logoutHint, logoutHintExpiry, _ = enrollment.SealLogoutHint(view, b.h.now())
+		}
 		return true, nil
 	})
 	if err != nil {
@@ -355,6 +364,10 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 	}
 	if !browser.Current() || !b.h.now().Before(expires) {
 		return servingBrowserUnavailable()
+	}
+	b.h.logoutCookie("hint").Clear(w, r)
+	if logoutHint != "" && b.h.now().Before(logoutHintExpiry) {
+		b.h.logoutCookie("hint").Set(w, r, logoutHint, logoutHintExpiry.Sub(b.h.now()))
 	}
 	b.h.opts.Cookie.Set(w, r, raw, expires.Sub(b.h.now()))
 	w.Header().Set("Location", state.Next())

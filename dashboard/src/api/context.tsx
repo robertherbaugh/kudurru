@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiClient, ApiError } from './client';
 import { endpoints, type Endpoints, type ScopeParams } from './endpoints';
 import type { Me } from './types';
+import { browserLogoutContinuation } from './logout';
 
 interface ApiContextValue {
   client: ApiClient;
@@ -139,11 +140,13 @@ export function canAnyScope(me: Me, resource: string, verb: string): boolean {
 }
 
 export function useSignOut(): () => Promise<void> {
-  const { api, setCsrf } = useApiContext();
+  const { api, client, setCsrf } = useApiContext();
   const qc = useQueryClient();
   return useCallback(async () => {
+    let continuation: string | undefined;
     try {
-      await api.auth.logout();
+      const result = await api.auth.browserLogout();
+      continuation = browserLogoutContinuation(client.baseUrl, result?.continuePath, window.location.origin);
     } finally {
       await qc.cancelQueries();
       setCsrf(undefined);
@@ -153,7 +156,8 @@ export function useSignOut(): () => Promise<void> {
       qc.setQueryData(qk.me, null);
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== qk.me[0] || q.queryKey[1] !== qk.me[1] });
     }
-  }, [api, qc, setCsrf]);
+    if (continuation) window.location.assign(continuation);
+  }, [api, client, qc, setCsrf]);
 }
 
 // ---------------------------------------------------------------------------

@@ -774,6 +774,12 @@ export const handlers = [
     db.session = null;
     return new HttpResponse(null, { status: 204 });
   }),
+  http.post(`${B}/auth/logout/browser`, ({ request }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'No session');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'CSRF required');
+    db.session = null;
+    return ok({});
+  }),
   http.get(`${B}/auth/me`, () => (db.session ? ok({ ...me() }) : fail(401, 'unauthenticated', 'No session'))),
   http.get(`${B}/auth/sessions`, () => db.session ? ok({ items: structuredClone(ownSessions(db.session.user.username)) }) : fail(401, 'unauthenticated', 'No session')),
   http.delete(`${B}/auth/sessions/:id`, ({ request, params }) => {

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/auth/browseroidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -88,7 +89,18 @@ func IssueExternal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.D
 	if err := s.Commit(ctx); err != nil {
 		return Enrollment{}, err
 	}
-	return Enrollment{id: id, csrf: csrf}, nil
+	enrollment := Enrollment{id: id, csrf: csrf}
+	if proof.Mode == oidccore.BrowserIDToken {
+		expiry := d.VerifiedProofExpiresAt()
+		for _, deadline := range []time.Time{record.ExpiresAt, record.IdleExpiresAt} {
+			if deadline.Before(expiry) {
+				expiry = deadline
+			}
+		}
+		// An oversized hint disables only remote logout, never a valid enrollment.
+		enrollment.logoutHint, _ = browseroidc.NewLogoutHint(browseroidc.LogoutBinding{Provider: proof.Provider.ID, ProviderUID: proof.Provider.UID, Origin: string(proof.Provider.Origin), SpecIdentity: proof.SpecIdentity, ResourceIdentity: proof.ResourceIdentity, Issuer: d.Provider.Issuer, ClientID: d.Provider.Spec.ClientID, RedirectURI: d.Provider.Spec.RedirectURL}, id, proof.RawIDToken, issuedAt, expiry)
+	}
+	return enrollment, nil
 }
 
 func (s *State) syncExternal(d servingauth.ExternalSessionDecision, now time.Time) (servingauth.ExternalIdentity, error) {

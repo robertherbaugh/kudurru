@@ -77,6 +77,9 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodGet, Path: "/auth/status", Access: AccessPublic, Handler: http.HandlerFunc(s.handleStatus)},
 		{Method: http.MethodPost, Path: "/auth/login", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogin)},
 		{Method: http.MethodPost, Path: "/auth/logout", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogout)},
+		// Legacy hosts retain safe local logout; remote logout requires the
+		// complete captured provider/session authority in the SQLite runtime.
+		{Method: http.MethodPost, Path: "/auth/logout/browser", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogout)},
 		{Method: http.MethodGet, Path: "/auth/me", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handleMe)},
 		{Method: http.MethodPost, Path: "/auth/password", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handlePassword)},
 		{Method: http.MethodGet, Path: "/auth/sessions", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handleSessionsUnavailable)},

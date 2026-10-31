@@ -42,6 +42,7 @@ type View struct {
 	externalSessions   map[string]ExternalSessionRecord
 	tokenSealer        *session.Sealer
 	browserCodec       *browseroidc.Codec
+	logoutCodec        *browseroidc.LogoutCodec
 	released           atomic.Bool
 }
 
@@ -143,6 +144,10 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 	}
 	v := &View{cut: cut, license: deps.License, permissions: &permissions, grants: map[string]bool{}, floors: map[string]time.Time{}, accounts: map[AccountRef]time.Time{}, providers: map[string]time.Time{}, sessions: map[string]SessionRecord{}, sealer: sealer, hasher: deps.Hasher}
 	v.browserCodec, err = browseroidc.NewCodec(deps.CurrentKey, deps.PreviousKey)
+	if err != nil {
+		return nil, ErrDependency
+	}
+	v.logoutCodec, err = browseroidc.NewLogoutCodec(deps.CurrentKey, deps.PreviousKey)
 	if err != nil {
 		return nil, ErrDependency
 	}

@@ -22,10 +22,10 @@ type fetchCache struct {
 	until     time.Time
 }
 type metadata struct {
-	issuer, authorization, token, jwksURL string
-	algorithms                            []string
-	browser                               bool
-	discovery, keys                       fetchCache
+	issuer, authorization, token, jwksURL, endSession string
+	algorithms                                        []string
+	browser                                           bool
+	discovery, keys                                   fetchCache
 }
 type acquisition struct {
 	descriptor servingauth.ProviderDescriptor
@@ -81,11 +81,7 @@ func (o *Owner) acquire(ctx context.Context, d Desired, source servingauth.Provi
 		return out
 	}
 	m.discovery = discovery
-	out.binding.MetadataBinding = hash(struct {
-		Profile, Issuer, Authorization, Token, JWKS string
-		Algorithms                                  []string
-		Browser                                     bool
-	}{"provider-metadata/v2-browser", m.issuer, m.authorization, m.token, m.jwksURL, m.algorithms, m.browser})
+	out.binding.MetadataBinding = metadataBinding(m)
 	keyCache := prior.metadata.keys
 	if keyCache.url != m.jwksURL {
 		keyCache = fetchCache{}
@@ -118,6 +114,21 @@ func (o *Owner) acquire(ctx context.Context, d Desired, source servingauth.Provi
 		out.until = keys.until
 	}
 	return out
+}
+
+// Keep the original receipt for providers without logout support. A newly
+// consumed end-session endpoint adds its own bound extension; neither a changed
+// endpoint nor its withdrawal can retain the previous authority identity.
+func metadataBinding(m metadata) string {
+	base := hash(struct {
+		Profile, Issuer, Authorization, Token, JWKS string
+		Algorithms                                  []string
+		Browser                                     bool
+	}{"provider-metadata/v2-browser", m.issuer, m.authorization, m.token, m.jwksURL, m.algorithms, m.browser})
+	if m.endSession == "" {
+		return base
+	}
+	return hash(struct{ Profile, BrowserBinding, EndSession string }{"provider-metadata/v3-logout", base, m.endSession})
 }
 
 // Compare actual newly observed material before allowing a transient old cut.
@@ -172,6 +183,15 @@ func parseMetadata(raw []byte, issuer string, n *networkPolicy) (metadata, error
 			return metadata{}, err
 		}
 	}
+	endSession, err := jsonString(fields, "end_session_endpoint", false)
+	if err != nil {
+		return metadata{}, err
+	}
+	if endSession != "" {
+		if _, err = n.endpoint(endSession); err != nil {
+			return metadata{}, err
+		}
+	}
 	algorithms := []string{"RS256"}
 	if raw, ok := fields["id_token_signing_alg_values_supported"]; ok {
 		algorithms, err = boundedStrings(raw, 64, 16)
@@ -203,7 +223,7 @@ func parseMetadata(raw []byte, issuer string, n *networkPolicy) (metadata, error
 			browser = browser && slices.Contains(values, requirement.value)
 		}
 	}
-	return metadata{issuer: got, authorization: auth, token: token, jwksURL: keys, algorithms: accepted, browser: browser}, nil
+	return metadata{issuer: got, authorization: auth, token: token, jwksURL: keys, endSession: endSession, algorithms: accepted, browser: browser}, nil
 }
 
 func (o *Owner) fetch(ctx context.Context, client *http.Client, url string, cache fetchCache, limit int) (fetchCache, bool, error) {

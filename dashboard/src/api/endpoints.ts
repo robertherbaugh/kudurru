@@ -124,6 +124,7 @@ export function endpoints(c: ApiClient) {
       me: () => c.get<Me>('/auth/me'),
       login: (username: string, password: string, totpCode?: string) => c.post<Me>('/auth/login', { username, password, ...(totpCode ? { totpCode } : {}) }),
       logout: () => c.post<void>('/auth/logout'),
+      browserLogout: () => c.post<{ continuePath?: string } | undefined>('/auth/logout/browser'),
       sessions: (signal?: AbortSignal) => c.request<ListEnvelope<SessionRecordInfo>>('GET', '/auth/sessions', { signal }),
       revokeSession: (id: string, signal?: AbortSignal) => c.request<void>('DELETE', `/auth/sessions/${enc(id)}`, { signal }),
       oidcStartURL: (idp: string, next: string) => c.url(`/auth/oidc/${enc(idp)}/start`, { next }),

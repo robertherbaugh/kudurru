@@ -38,6 +38,10 @@ type servingBrowserOP struct {
 	mode                   string
 	entered, resume        chan struct{}
 	requests               atomic.Int64
+	logoutRequests         atomic.Int64
+	logoutFailure          atomic.Bool
+	omitLogout             bool
+	lastToken              string
 }
 type servingBrowserOPFlow struct {
 	issuer, client, redirect, nonce, challenge string
@@ -109,9 +113,18 @@ func (p *servingBrowserOP) serve(w http.ResponseWriter, r *http.Request) {
 	issuer := p.Issuer(parts[0])
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/.well-known/openid-configuration"):
-		_ = json.NewEncoder(w).Encode(map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"EdDSA"}, "code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"client_secret_basic"}})
+		metadata := map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"EdDSA"}, "code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"client_secret_basic"}}
+		p.mu.Lock()
+		omit := p.omitLogout
+		p.mu.Unlock()
+		if !omit {
+			metadata["end_session_endpoint"] = issuer + "/end"
+		}
+		_ = json.NewEncoder(w).Encode(metadata)
 	case strings.HasSuffix(r.URL.Path, "/keys"):
 		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: p.key.Public(), KeyID: "browser-test", Algorithm: "EdDSA", Use: "sig"}}})
+	case strings.HasSuffix(r.URL.Path, "/end"):
+		p.endSession(w, r, issuer)
 	case strings.HasSuffix(r.URL.Path, "/token"):
 		p.exchange(w, r, issuer)
 	default:
@@ -170,6 +183,9 @@ func (p *servingBrowserOP) exchange(w http.ResponseWriter, r *http.Request, issu
 	now := time.Now().UTC()
 	hash := sha512.Sum512([]byte("browser-test-access-token"))
 	claims := map[string]any{"iss": issuer, "sub": "browser-subject", "aud": client, "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(), "nonce": flow.nonce, "at_hash": base64.RawURLEncoding.EncodeToString(hash[:32]), "preferred_username": "alice", "name": "Alice", "groups": []string{"dns"}}
+	if mode == "logout-short" {
+		claims["exp"] = now.Add(2 * time.Second).Unix()
+	}
 	if mode == "nonce" {
 		claims["nonce"] = "wrong"
 	}
@@ -196,5 +212,50 @@ func (p *servingBrowserOP) exchange(w http.ResponseWriter, r *http.Request, issu
 		w.WriteHeader(500)
 		return
 	}
+	p.mu.Lock()
+	p.lastToken = token
+	p.mu.Unlock()
 	_ = json.NewEncoder(w).Encode(map[string]any{"id_token": token, "access_token": "browser-test-access-token", "token_type": "Bearer", "expires_in": 60, "refresh_token": "NEVER-RETAIN-REFRESH"}) //nolint:gosec // Deliberately synthetic tokens test nonretention, never real credentials.
+}
+
+// endSession validates the actual HTTPS request and the exact signed token from
+// the one-use code exchange. Nothing private is printed, even on test failure.
+func (p *servingBrowserOP) endSession(w http.ResponseWriter, r *http.Request, issuer string) {
+	p.logoutRequests.Add(1)
+	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil || r.Method != "GET" || len(q) != 4 || q.Get("client_id") != p.ClientID || q.Get("post_logout_redirect_uri") != "https://kudurru.test/api/v1/auth/oidc/corp/logout/callback" || len(q.Get("state")) != 43 {
+		w.WriteHeader(400)
+		return
+	}
+	p.mu.Lock()
+	token := p.lastToken
+	p.mu.Unlock()
+	if q.Get("id_token_hint") != token {
+		w.WriteHeader(400)
+		return
+	}
+	signed, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.EdDSA})
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	raw, err := signed.Verify(p.key.Public())
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	var claims map[string]any
+	if json.Unmarshal(raw, &claims) != nil || claims["iss"] != issuer || claims["aud"] != p.ClientID || claims["exp"].(float64) <= float64(time.Now().Unix()) {
+		w.WriteHeader(400)
+		return
+	}
+	target, _ := url.Parse(q.Get("post_logout_redirect_uri"))
+	values := url.Values{"state": {q.Get("state")}}
+	if p.logoutFailure.Load() {
+		values.Set("error", "provider_failure")
+		values.Set("error_description", "NEVER-EXPOSE-LOGOUT-DIAGNOSTIC")
+	}
+	target.RawQuery = values.Encode()
+	w.Header().Set("Location", target.String())
+	w.WriteHeader(http.StatusFound)
 }
