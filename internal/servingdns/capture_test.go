@@ -27,6 +27,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	"github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
+	"github.com/robertherbaugh/kudurru/internal/stages/control"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	"github.com/robertherbaugh/kudurru/internal/stages/rewrite"
@@ -194,7 +195,14 @@ func TestBundleCaptureAllOldAllNewThroughCNAMEAndDNS64(t *testing.T) {
 			_ = set.Close()
 			return serving.Prepared{}, err
 		}
-		components := map[string]any{"objects": c.Image, "zones": zone.Set(zs), "policy": ix, "resolution": rv, "response": response, "cache": cv, "blocking": block, "inventory": inventoryView{inv.Snapshot()}, "auth": emptyAuthView{c.Token.Generation()}, "runtime": fixtureRuntime{"dns-fixture", addresses[cut]}}
+		// The fixture's proven empty global rules are an explicit member of
+		// the complete publication, just like the production control owner.
+		controls, err := control.NewView(control.Options{})
+		if err != nil {
+			_ = set.Close()
+			return serving.Prepared{}, err
+		}
+		components := map[string]any{"objects": c.Image, "zones": zone.Set(zs), "policy": ix, "resolution": rv, "response": response, "cache": cv, "blocking": block, "inventory": inventoryView{inv.Snapshot()}, "auth": emptyAuthView{c.Token.Generation()}, "runtime": fixtureRuntime{"dns-fixture", addresses[cut]}, "control": controls}
 		prepared := serving.Prepared{Current: func() bool { return true }}
 		for name, value := range components {
 			component := serving.Component{Name: name, Base: c.Token.Generation(), Identity: c.Token.Generation().Digest + ":" + name, Value: value}
