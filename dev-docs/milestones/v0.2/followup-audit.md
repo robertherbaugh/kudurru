@@ -659,3 +659,23 @@ Actual mounted composition, PostgreSQL acceptance, download, migration, chart,
 Compose and volume checks pass as detailed in [gaps.md](gaps.md). Their explicit
 historical-data, filesystem, physical-deployment and final-artifact limits remain.
 F73 key lifecycle and the hosted dashboard failure are still active work.
+
+### F60d and F50 follow-up closures
+
+F60d is implemented in `c9f14dc`: dedicated reviewed zone-option get/set uses
+the existing object PUT and `If-Match`, with complete-spec replacement and
+metadata/status preservation. Actual-router tests cover ownership, permissions,
+invalid/stale reviews and no replay. Actual SQLite/current-serving tests prove
+successful persistence and original credential expiry at final commit for both
+changed and unchanged options; composed races pass in 6.350s. CLI reference
+generation and scoped lint pass. This does not add a second zone mutation seam.
+
+F50 takes the original review's documented-overlap option in `feefdbc` (D254). The v0.2
+contract preserves exact namespace/name matching for both authenticated
+service-account providers, documents creation/recreation and distinct account
+lifecycles, and explains narrowing token scopes plus independent SAR grants.
+Actual auth-to-binding-engine tests cover both kinds, other names/namespaces,
+zone scope, absent service-account identity and narrow/malformed scopes. Auth
+and RBAC races pass in 1.052s/1.023s; scoped lint reports zero issues. This is
+authorization-contract evidence, not new Kubernetes identity or driver-wide
+acceptance; F44b/F47 and other identity gates retain their own evidence.

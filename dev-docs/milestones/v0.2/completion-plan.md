@@ -44,7 +44,7 @@ transactions and final credential/license checks. No refused mutation replay.
    and deployment/release gates on the final artifacts. Publishing a release,
    changing release branches or deploying to production is not part of this work.
 
-External decisions F03, F23 and F50 need explicit documented dispositions;
+External decisions F03 and F23 need explicit documented dispositions;
 where implementation can satisfy the original requirement, do that work.
 Fixed-class performance and Windows/two-VM acceptance require their named
 runners. Unit tests cannot substitute for those results.
@@ -144,7 +144,7 @@ runners. Unit tests cannot substitute for those results.
 | F48a | `autoProvision: never` and `syncGroups` with user store | IAM and access | Implemented; final gates open |
 | F48b | RP-initiated logout | IAM and access | Queued: missing |
 | F49 | Optional external-dns shared-secret header / tokenFile | IAM and access | Integrated; final gates open |
-| F50 | Separate Kubernetes vs Kudurru SA binding subject or document overlap | IAM and access | External acceptance/decision open |
+| F50 | Separate Kubernetes vs Kudurru SA binding subject or document overlap | IAM and access | D254 documents shared namespace/name compatibility; actual binding engine/token-scope races pass |
 | F51 | Optional HTTPS-only catalogue and BlockList downloads | Operations and UI | Integrated a15480e; HTTP/TLS, redirect, real startup and API refusal races pass |
 | F52 | Dig answer reports matched exclusion, avoiding second request | Operations and UI | Queued: missing |
 | F53 | Query-time exact ClientGroup scope for allow/deny lists (D143) | Operations and UI | Queued: partial |
@@ -159,7 +159,7 @@ runners. Unit tests cannot substitute for those results.
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
 | F60b | `cluster status` / `promote` / `join-token` | Store and HA | Queued: missing |
 | F60c | `integrations …` CLI | Store and HA | Queued: missing |
-| F60d | Zone option writes via PUT/PATCH | Store and HA | Queued: partial |
+| F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Queued: missing |
 | F61b | CLI device-code login | IAM and access | Queued: missing |
 | F62a | CLI conformance against actual API router | Operations and UI | Integrated 6938fbb; actual router/CLI races and scoped lint pass |

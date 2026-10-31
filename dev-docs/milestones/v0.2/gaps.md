@@ -1046,3 +1046,26 @@ The hosted authenticator test still fails and is reproduced on Node 24.22.0;
 the native request fails before reaching the MSW handler. It remains open
 while the agent isolates the cause. Later source commits require their own
 hosted results. The understood Cloudflare docs check stays excluded.
+
+### Reviewed zone options and service-account binding contract
+
+`c9f14dc` closes F60d's dedicated CLI implementation. Get emits the complete
+reviewed spec and resourceVersion; set accepts one bounded strict YAML/JSON
+document, preserves current metadata/status and issues one existing object PUT.
+Actual-router and current SQLite tests pass in 6.350s, including final original
+credential expiry after the route staged an update or selected a no-op. Stale,
+invalid, foreign-managed and unauthorized writes are refused without replay.
+CLI reference generation succeeds; scoped lint reports zero issues.
+
+`feefdbc` resolves F50 through D254's shared namespace/name contract, the
+existing behavior allowed by the original requirement. Both authenticated
+service-account providers match the same binding; distinct namespace/name,
+zone scope, narrowing/malformed scopes and an absent account identity are
+covered through the actual auth-to-RBAC engine. Package races pass in
+1.052s/1.023s and scoped lint is clean. Operator and architecture documentation
+explain account creation/recreation, separate credential/disable lifecycles and
+independent Kubernetes SAR grants. No provider-isolated subject is claimed.
+
+On pushed `f7ccf4a`, hosted security run
+[41207334455](https://github.com/robertherbaugh/kudurru/actions/runs/41207334455)
+passes all applicable jobs. Later commits require their own hosted results.
