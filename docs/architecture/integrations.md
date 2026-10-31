@@ -271,3 +271,52 @@ integration work. Local HTTPS and actual host tests cover rotation, lease loss,
 expiry, restart, drift, TLS, budget/cancellation and query-time memory isolation.
 Optional DHCP DNS pushes, gateway mirroring and actions remain subsequent slices;
 unsupported configured writes currently return an error.
+
+## external-dns webhook transport authentication
+
+The external-dns webhook is an optional, licensed inbound listener. Authentication
+is disabled by default for compatibility with existing webhook clients. Operators
+can require a shared bearer token on every route, including protocol negotiation,
+by setting this host-only startup configuration:
+
+```yaml
+externalDNS:
+  webhook:
+    enabled: true
+    listen: 127.0.0.1:8888
+    tokenFile: /run/secrets/external-dns-token
+```
+
+Supply a private regular file of at most 4 KiB containing a randomly generated
+bearer token of at least 16 characters. The token uses RFC 6750 bearer syntax
+(letters, digits, `-._~+/`, with optional trailing `=` padding); surrounding file
+whitespace is trimmed. Mounted-secret symlinks are supported. A missing,
+unreadable, special, oversized, empty or malformed configured file prevents the
+enabled, licensed webhook from starting. The file must have a read permission
+bit and be readable by the process. The constructor captures only a SHA-256
+digest; replacing or removing the file does not change the running credential.
+Restart kudurru after rotation. File errors disclose neither contents nor paths.
+
+Clients must send exactly one `Authorization: Bearer <shared token>` header on
+every webhook request. Missing, incorrect, duplicate or malformed credentials
+return a generic HTTP 401 before route dispatch or body parsing. The digest
+comparison takes constant time. This authenticates transport access only:
+record changes still pass the existing current-command admission, validation,
+namespace and zone restrictions, and ownership checks. A token does not grant
+current write authority or authorize retrying a refused mutation.
+
+Upstream external-dns v0.23.0 exposes `--webhook-provider-url`, but its
+[documented flags](https://github.com/kubernetes-sigs/external-dns/blob/v0.23.0/docs/flags.md)
+and [webhook client](https://github.com/kubernetes-sigs/external-dns/blob/v0.23.0/provider/webhook/webhook.go)
+do not provide a custom Authorization header setting. With that version, enable
+this option only when a trusted local proxy injects the header on every request;
+point `--webhook-provider-url` at that proxy. Keep the proxy private and restrict
+access to the webhook listener. The listener serves plain HTTP: a bearer token
+does not encrypt traffic. The default loopback address supports a sidecar or
+client on the same host; wider listeners require suitable network protection.
+
+Kubernetes source selection stays in external-dns, including the Ingress,
+Service, Gateway and CRD sources supported by that client. This option adds no
+Kubernetes watch or direct `DNSEndpoint` source to kudurru. The webhook continues
+to receive external-dns's computed endpoints, including its TXT registry records,
+and preserves its existing record ownership rules.
