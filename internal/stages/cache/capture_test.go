@@ -92,6 +92,9 @@ func TestCapturedFetchRetainsLeaderJoinerAndFencesABA(t *testing.T) {
 	if refs.Load() != 2 {
 		t.Fatalf("leader/joiner refs=%d", refs.Load())
 	}
+	// Capacity changes must not renew a retired publication or lose the
+	// leader/joiner ownership of detached work.
+	h.stage.c.Resize(1_000_000)
 	current.Store(b)
 	current.Store(a2)
 	r3 := request("held.example.", dns.TypeA, 3)
@@ -117,6 +120,7 @@ func TestCapturedFetchRetainsLeaderJoinerAndFencesABA(t *testing.T) {
 		t.Fatal(result.Err)
 	}
 	r3.Serving.Release()
+	h.stage.c.Resize(128)
 	close(finish)
 	for _, ch := range []<-chan singleflight.Result{ch1, ch2} {
 		if result := <-ch; result.Err != nil {

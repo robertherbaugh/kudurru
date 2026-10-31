@@ -37,6 +37,8 @@ func (c *Cache) Dump(w io.Writer) error {
 
 // WriteDump is Dump that also returns how many entries it wrote.
 func (c *Cache) WriteDump(w io.Writer) (int, error) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	bw := bufio.NewWriter(w)
 	if _, err := bw.WriteString(dumpMagic); err != nil {
 		return 0, err
@@ -226,7 +228,9 @@ func (c *Cache) Load(r io.Reader) (int, error) {
 		if !valid || parts.Scope != metadata.Scope {
 			continue
 		}
+		c.publication.RLock()
 		c.insert(&entry{metadata: metadata, restored: true, key: Key(key), wire: wire, kind: Kind(kind), stored: stored, expires: expires, staleUntil: staleUntil, windowStart: now})
+		c.publication.RUnlock()
 		n++
 	}
 }

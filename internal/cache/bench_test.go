@@ -150,3 +150,45 @@ func heap() uint64 {
 	runtime.ReadMemStats(&ms)
 	return ms.HeapAlloc
 }
+
+// BenchmarkGrowth compares the hot-reload topology to a fresh cache of the
+// same size, and reports the stop-the-cache reshard cost separately.
+func BenchmarkGrowth(b *testing.B) {
+	for _, size := range []int{200_000, 1_000_000} {
+		for _, grown := range []bool{false, true} {
+			b.Run(fmt.Sprintf("entries=%d/grown=%t", size, grown), func(b *testing.B) {
+				initial := size
+				if grown {
+					initial = 64
+				}
+				c := New(Options{MaxEntries: initial})
+				c.Resize(size)
+				keys := benchKeys(size * 3 / 4)
+				for _, k := range keys {
+					c.Set(k, make([]byte, benchWire), Positive, time.Hour)
+				}
+				b.ReportAllocs()
+				b.ResetTimer()
+				b.RunParallel(func(pb *testing.PB) {
+					i := 0
+					for pb.Next() {
+						c.Get(keys[i%len(keys)])
+						i += 7919
+					}
+				})
+			})
+		}
+	}
+	b.Run("reshard-8k-to-1m", func(b *testing.B) {
+		// Growing from 64 to 256 shards migrates an existing populated cache.
+		for b.Loop() {
+			b.StopTimer()
+			c := New(Options{MaxEntries: 8192})
+			for _, k := range benchKeys(6000) {
+				c.Set(k, make([]byte, benchWire), Positive, time.Hour)
+			}
+			b.StartTimer()
+			c.Resize(1_000_000)
+		}
+	})
+}

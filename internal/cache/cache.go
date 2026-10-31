@@ -40,9 +40,8 @@ const (
 type Options struct {
 	// MaxEntries bounds the cache; entries beyond it are evicted least
 	// recently used first. It must be positive. The bound is enforced per
-	// shard (MaxEntries/shards each, up to 256 shards of at least 64
-	// entries), so it is never exceeded but a full cache holds slightly
-	// fewer entries (about 0.5 % fewer at 200 k) and LRU order is per shard.
+	// shard (up to 256 shards, targeting at least 64 entries each), so it
+	// is never exceeded. LRU order is per shard.
 	MaxEntries int
 	// StaleTTL is how long past expiry an entry is kept and may be served
 	// stale (RFC 8767); 0 drops entries when they expire.
@@ -88,6 +87,8 @@ type Lookup struct {
 // accounting and in-flight coalescing. It stores packed messages as bytes
 // and knows nothing about DNS beyond the key.
 type Cache struct {
+	// publication protects the shard topology and invalidation epoch. Acquire
+	// it before shard locks; insert and shard require it to be held.
 	publication sync.RWMutex
 	generation  atomic.Uint64
 	shards      []shard
@@ -141,12 +142,7 @@ type shard struct {
 // New returns an empty cache.
 func New(opts Options) *Cache {
 	maxEntries := max(opts.MaxEntries, 1)
-	// Enough shards to spread lock contention, few enough that each keeps a
-	// meaningful LRU (at least 64 entries per shard).
-	n := 1
-	for n < 256 && maxEntries/(n*2) >= 64 {
-		n *= 2
-	}
+	n := shardCount(maxEntries)
 	c := &Cache{
 		shards: make([]shard, n),
 		mask:   uint64(n - 1), //nolint:gosec // n is a small power of two
@@ -158,10 +154,9 @@ func New(opts Options) *Cache {
 		c.now = time.Now
 	}
 	c.setLimits(opts)
-	per := (maxEntries + n - 1) / n
 	for i := range c.shards {
 		c.shards[i].m = make(map[Key]*entry)
-		c.shards[i].capacity = per
+		c.shards[i].capacity = shardCapacity(maxEntries, n, i)
 	}
 	return c
 }
@@ -172,40 +167,83 @@ func (c *Cache) setLimits(opts Options) {
 	c.window.Store(int64(opts.PrefetchWindow))
 }
 
-// Reconfigure applies new limits without dropping the cache (settings hot
-// reload): the stale window and prefetch rules apply to entries stored
-// from now on, and MaxEntries resizes every shard, evicting the least
-// recently used entries beyond the new bound at once. The shard count
-// chosen by New stays, so a much larger bound means larger shards.
-// MaxEntries <= 0 keeps the current size (the cache stage bypasses a
-// disabled cache instead). Now and Metrics are ignored.
+// shardCount spreads lock contention while retaining meaningful per-shard LRUs.
+func shardCount(maxEntries int) int {
+	n := 1
+	for n < 256 && maxEntries/(n*2) >= 64 {
+		n *= 2
+	}
+	return n
+}
+
+func shardCapacity(maxEntries, n, i int) int {
+	capacity := maxEntries / n
+	if i < maxEntries%n {
+		capacity++
+	}
+	return capacity
+}
+
+// Reconfigure applies limits without dropping the cache. Stale and prefetch
+// rules apply to future stores. Resize also adjusts the shard count to the new
+// capacity. Now and Metrics are ignored; a nonpositive capacity preserves size.
 func (c *Cache) Reconfigure(opts Options) {
 	c.setLimits(opts)
 	c.Resize(opts.MaxEntries)
 }
 
-// Resize changes only storage capacity. Captured serving uses it without
-// replacing the stale/prefetch policy of independently held requests.
-// A nonpositive bound preserves capacity; the captured stage controls bypass.
+// Resize changes storage capacity and shard count without replacing captured
+// policy, invalidation epochs or entry deadlines. A nonpositive bound preserves
+// capacity; the captured stage controls bypass. Resharding pauses cache access
+// while moving existing entries, without copying keys, wire data or metadata.
 func (c *Cache) Resize(maxEntries int) {
 	if maxEntries <= 0 {
 		return
 	}
-	n := len(c.shards)
-	per := max((maxEntries+n-1)/n, 1)
+	c.publication.Lock()
+	defer c.publication.Unlock()
+	n := shardCount(maxEntries)
+	// Rebuild after a substantial shrink too, so retained map buckets follow
+	// the smaller bound even when the number of shards stays the same.
+	if n != len(c.shards) || c.shards[0].capacity/2 > shardCapacity(maxEntries, n, 0) {
+		old := c.shards
+		c.shards = make([]shard, n)
+		c.mask = uint64(n - 1) //nolint:gosec // bounded power of two
+		for i := range c.shards {
+			c.shards[i].m = make(map[Key]*entry)
+			c.shards[i].capacity = shardCapacity(maxEntries, n, i)
+		}
+		for i := range old {
+			// Iterate oldest first so each split LRU retains its original order.
+			for e := old[i].tail; e != nil; {
+				previous := e.prev
+				old[i].remove(e)
+				sh := c.shard(e.key)
+				sh.m[e.key] = e
+				sh.pushFront(e)
+				// Bound the destination maps during a large shrink as well as
+				// afterward; evicting only at the end retains oversized maps.
+				c.trim(sh)
+				e = previous
+			}
+		}
+	}
 	for i := range c.shards {
 		sh := &c.shards[i]
-		var evicted [2]int
-		sh.mu.Lock()
-		sh.capacity = per
-		for len(sh.m) > sh.capacity && sh.tail != nil {
-			evicted[sh.tail.kind]++
-			sh.remove(sh.tail)
-		}
-		sh.mu.Unlock()
-		for kind, k := range evicted {
-			c.m.evictedN(ReasonCapacity, Kind(kind), k) //nolint:gosec // 0 or 1
-		}
+		sh.capacity = shardCapacity(maxEntries, n, i)
+		c.trim(sh)
+	}
+}
+
+// trim requires publication exclusion; no shard access can run concurrently.
+func (c *Cache) trim(sh *shard) {
+	var evicted [2]int
+	for len(sh.m) > sh.capacity && sh.tail != nil {
+		evicted[sh.tail.kind]++
+		sh.remove(sh.tail)
+	}
+	for kind, k := range evicted {
+		c.m.evictedN(ReasonCapacity, Kind(kind), k) //nolint:gosec // 0 or 1
 	}
 }
 
@@ -222,6 +260,8 @@ func (c *Cache) nanos() int64 { return c.now().UnixNano() }
 // refresh makes it a miss). A fresh hit moves the entry to the front of the
 // LRU and feeds the prefetch accounting.
 func (c *Cache) Get(k Key) (Lookup, bool) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	c.m.request()
 	now := c.nanos()
 	sh := c.shard(k)
@@ -274,6 +314,8 @@ func (c *Cache) CountPrefetch() { c.m.Prefetched() }
 // Entries past their stale window are reported absent. It is meant for
 // debugging APIs and tests.
 func (c *Cache) Peek(k Key) (Lookup, bool) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	now := c.nanos()
 	sh := c.shard(k)
 	sh.mu.Lock()
@@ -362,6 +404,8 @@ func (c *Cache) insert(e *entry) {
 // ReleasePrefetch gives up a prefetch claim without storing (the refresh
 // failed); the next qualifying hit may claim it again.
 func (c *Cache) ReleasePrefetch(k Key) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	sh := c.shard(k)
 	sh.mu.Lock()
 	if e := sh.m[k]; e != nil {
@@ -374,6 +418,8 @@ func (c *Cache) ReleasePrefetch(k Key) {
 // upstream just failed, so for a while stale data is served immediately
 // instead of waiting on upstreams again (RFC 8767 §4, failure recheck).
 func (c *Cache) MarkRefreshFailed(k Key, d time.Duration) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	until := c.nanos() + int64(d)
 	sh := c.shard(k)
 	sh.mu.Lock()
@@ -511,6 +557,8 @@ func (c *Cache) FlushZone(apex string) int {
 
 // Len returns the number of entries, including stale ones.
 func (c *Cache) Len() int {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	n := 0
 	for i := range c.shards {
 		sh := &c.shards[i]
@@ -523,6 +571,8 @@ func (c *Cache) Len() int {
 
 // Sweep removes entries past their stale window and returns how many.
 func (c *Cache) Sweep() int {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	now := c.nanos()
 	total := 0
 	for i := range c.shards {

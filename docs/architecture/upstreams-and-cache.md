@@ -427,7 +427,13 @@ intercept port 53 break it.
 ## The response cache
 
 The cache stores packed answers in a sharded LRU (up to 256 shards, each with
-its own lock). The key is `(qname, qtype, qclass, DO, CD, ECS subnet sent
+its own lock). Both complete-publication reloads and legacy settings reloads
+resize this same storage owner. Capacity changes adjust the shard count under
+the cache publication lock, briefly pausing lookups and fills while moving
+existing entries without copying their payloads. The exact entry bound holds
+after each resize; shrinking evicts per-shard LRU entries. Growth preserves
+cache scopes, invalidation epochs, absolute TTL/security deadlines and refresh
+claims; it does not replace any captured request policy. The key is `(qname, qtype, qclass, DO, CD, ECS subnet sent
 upstream)`. Client identity and Policy are **not** in the key: blocking runs
 before the cache on the way in and inspects the answer again on the way out,
 so one cached answer can serve every client safely.
