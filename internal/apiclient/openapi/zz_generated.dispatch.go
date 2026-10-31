@@ -317,6 +317,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.GetEdge(ctx, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 3 && parts[0] == "edge" && parts[1] == "vip" && parts[2] == "stream" {
+		response, err := c.VipEventStream(ctx, nil, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "identityproviders" {
 		response, err := c.ListIdentityProviders(ctx, editors...)
 		return response, true, err

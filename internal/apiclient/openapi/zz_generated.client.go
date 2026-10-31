@@ -4578,6 +4578,7 @@ type SettingKey struct {
 	Min             *int64               `json:"min,omitempty"`
 	Path            string               `json:"path"`
 	Presets         *[]string            `json:"presets,omitempty"`
+	ReadOnly        *bool                `json:"readOnly,omitempty"`
 	Ref             *SettingKeyRef       `json:"ref,omitempty"`
 	RestartRequired bool                 `json:"restartRequired"`
 	Scope           SettingKeyScope      `json:"scope"`
@@ -5630,6 +5631,12 @@ type AddDomainsParamsAction string
 // AddDomainsParamsKind defines parameters for AddDomains.
 type AddDomainsParamsKind string
 
+// VipEventStreamParams defines parameters for VipEventStream.
+type VipEventStreamParams struct {
+	Cursor      *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	LastEventID *string `json:"Last-Event-ID,omitempty"`
+}
+
 // ListMigrationRunsParams defines parameters for ListMigrationRuns.
 type ListMigrationRunsParams struct {
 	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -5900,6 +5907,9 @@ type PatchSettingsJSONBody map[string]interface{}
 
 // PatchSettingsParams defines parameters for PatchSettings.
 type PatchSettingsParams struct {
+	// Scope Cluster settings only. Node settings use PATCH /node/config and require a supported durable node writer.
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+
 	// IfMatch Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams.
 	IfMatch *string `json:"If-Match,omitempty"`
 }
@@ -6982,6 +6992,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /edge (the `GetEdge` operationId).
 	GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// VipEventStream Local observed VIP transitions (Server-Sent Events)
+	//
+	// Bounded local notifications: event vip.master_changed contains VIP, node, VRID, previous/state, original transition time and source session/sequence. Source diagnostics use vip.observation_status without a fabricated transition. No historical replay; cursors are refused. Observer startup baselines existing history; source restart/gaps close streams. Each emission rechecks original request credentials and edge.read permission; no writer authority is granted.
+	//
+	// Corresponds with GET /edge/vip/stream (the `VipEventStream` operationId).
+	VipEventStream(ctx context.Context, params *VipEventStreamParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIdentityProviders List identityproviders
 	//
@@ -9358,6 +9375,23 @@ func (c *Client) AddDomains(ctx context.Context, action AddDomainsParamsAction, 
 // Corresponds with GET /edge (the `GetEdge` operationId).
 func (c *Client) GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetEdgeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VipEventStream Local observed VIP transitions (Server-Sent Events)
+//
+// Bounded local notifications: event vip.master_changed contains VIP, node, VRID, previous/state, original transition time and source session/sequence. Source diagnostics use vip.observation_status without a fabricated transition. No historical replay; cursors are refused. Observer startup baselines existing history; source restart/gaps close streams. Each emission rechecks original request credentials and edge.read permission; no writer authority is granted.
+//
+// Corresponds with GET /edge/vip/stream (the `VipEventStream` operationId).
+func (c *Client) VipEventStream(ctx context.Context, params *VipEventStreamParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVipEventStreamRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -14985,6 +15019,75 @@ func NewGetEdgeRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewVipEventStreamRequest constructs an http.Request for the VipEventStream method
+func NewVipEventStreamRequest(server string, params *VipEventStreamParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/edge/vip/stream")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.LastEventID != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListIdentityProvidersRequest constructs an http.Request for the ListIdentityProviders method
 func NewListIdentityProvidersRequest(server string) (*http.Request, error) {
 	var err error
@@ -18440,6 +18543,33 @@ func NewPatchSettingsRequestWithBody(server string, params *PatchSettingsParams,
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
 	if err != nil {
 		return nil, err
@@ -20838,6 +20968,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /edge (the `GetEdge` operationId).
 	GetEdgeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEdgeResponse, error)
+
+	// VipEventStreamWithResponse Local observed VIP transitions (Server-Sent Events)
+	//
+	// Bounded local notifications: event vip.master_changed contains VIP, node, VRID, previous/state, original transition time and source session/sequence. Source diagnostics use vip.observation_status without a fabricated transition. No historical replay; cursors are refused. Observer startup baselines existing history; source restart/gaps close streams. Each emission rechecks original request credentials and edge.read permission; no writer authority is granted.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /edge/vip/stream (the `VipEventStream` operationId).
+	VipEventStreamWithResponse(ctx context.Context, params *VipEventStreamParams, reqEditors ...RequestEditorFn) (*VipEventStreamResponse, error)
 
 	// ListIdentityProvidersWithResponse List identityproviders
 	//
@@ -28367,6 +28506,89 @@ func (r GetEdgeResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetEdgeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type VipEventStreamResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r VipEventStreamResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r VipEventStreamResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r VipEventStreamResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r VipEventStreamResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r VipEventStreamResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r VipEventStreamResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r VipEventStreamResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r VipEventStreamResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r VipEventStreamResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VipEventStreamResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r VipEventStreamResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -37682,6 +37904,21 @@ func (c *ClientWithResponses) GetEdgeWithResponse(ctx context.Context, reqEditor
 	return ParseGetEdgeResponse(rsp)
 }
 
+// VipEventStreamWithResponse Local observed VIP transitions (Server-Sent Events)
+//
+// Bounded local notifications: event vip.master_changed contains VIP, node, VRID, previous/state, original transition time and source session/sequence. Source diagnostics use vip.observation_status without a fabricated transition. No historical replay; cursors are refused. Observer startup baselines existing history; source restart/gaps close streams. Each emission rechecks original request credentials and edge.read permission; no writer authority is granted.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /edge/vip/stream (the `VipEventStream` operationId).
+func (c *ClientWithResponses) VipEventStreamWithResponse(ctx context.Context, params *VipEventStreamParams, reqEditors ...RequestEditorFn) (*VipEventStreamResponse, error) {
+	rsp, err := c.VipEventStream(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVipEventStreamResponse(rsp)
+}
+
 // ListIdentityProvidersWithResponse List identityproviders
 //
 // Returns a wrapper object for the known response body format(s).
@@ -44988,6 +45225,74 @@ func ParseGetEdgeResponse(rsp *http.Response) (*GetEdgeResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseVipEventStreamResponse parses an HTTP response from a VipEventStreamWithResponse call
+func ParseVipEventStreamResponse(rsp *http.Response) (*VipEventStreamResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VipEventStreamResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

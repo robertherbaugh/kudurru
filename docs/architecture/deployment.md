@@ -161,13 +161,17 @@ changes (when that pool is cached). The poll needs the internal credentials
 (`KUDURRU_ENCRYPTION_KEY[_FILE]` or `--internal-token-file`); the shipped
 chart, Kustomize and Compose files mount the backend's encryption key into
 the edge for this.
-Runtime removal and anonymous backend addition use bounded acknowledged console
+Runtime removal and qualified backend addition use bounded acknowledged console
 commands. New entries stay in private pools until original automatic health
 checks succeed; removal first marks the old backend down, then waits the purge
-delay before removal. Same-UUID replacements, routing changes and new named
-validators retain a validated restart path: dnsdist 2.1.3 does not support setting
-the original response validator at runtime. Restart-free named additions remain
-a separate protocol qualification. Readiness stays false after uncertain runtime
+delay before removal. Named backends qualify the first-party v1 targeted-health
+contract with exact-owner and random wrong-owner probes using original PROXYv2
+authentication. Ongoing probes address a name derived from the exact node ID;
+the captured ingress owner refuses wrong identities and preserves lameduck
+failure. Qualified named additions retain the running PID. Legacy generic-only
+backends, same-UUID replacements and structural routing changes retain a
+validated restart path; dnsdist 2.1.3 cannot install the original response
+validator at runtime. Readiness stays false after uncertain runtime
 changes until a validated restart and fresh status converge. Established DNS
 connections may return SERVFAIL after their selected backend is removed; the
 supervisor does not replay queries or promise connection migration.
@@ -327,3 +331,31 @@ deadlines bound observation age. MetalLB status has no provider heartbeat:
 `createdAt`, UID and resource version retain its original age; `livenessAt`
 is separately the Node Lease renewal. This reports provider state and does not
 certify physical ARP/BGP ownership or create writer authority.
+
+### Local keepalived notifications
+
+Set host-only `vip.observation.provider: keepalived` and
+`vip.observation.runDir` to the existing Consumer's run directory. Explicit
+`node.name` and up to 32 `vip.vips` mappings bind observed names to operator VRIDs.
+The Consumer writes its state atomically with mode 0600; the serving UID must
+already be able to read it. Observation does not broaden permissions, open a
+second FIFO reader, launch a supervisor or expose track-file writers.
+
+The additive state format retains a random source session and the latest 64
+sequenced transitions. Its `updated` timestamp remains the last transition,
+not a heartbeat. Startup baselines the current head without replay. Original
+transition age bounds audit and delivery, even across queue delays. Legacy files
+remain readable by existing consumers but cannot provide sequenced notifications.
+Source restart, regression, gaps, malformed/foreign files and failed acquisition
+close active streams; new streams return 503 until valid acquisition recovers.
+This availability means journal acquisition, never DNS or physical VIP readiness.
+
+`GET /api/v1/edge/vip/stream` requires `edge.read` and emits
+`vip.master_changed` with node, VIP, VRID, previous/state, original time and
+session/sequence. Source diagnostics use `vip.observation_status`. The stream
+has no replay or cursor support; limits are 16 subscriptions and 32 queued events
+per subscription, with bounded writes and cancellation. Every emission rechecks
+the original request credential, authorizer and time evidence. Slow consumers
+are disconnected. The existing audit recorder receives the same typed evidence;
+audit refusal/timeout closes streams without retrying the transition. Neither
+notifications nor provider observations grant allocation or writer authority.

@@ -1705,3 +1705,110 @@ exit grace to zero while preserving race detection and other options. Parent
 scoped dnsdist races then pass in 6.815s with the ordinary invocation; production
 deadlines are unchanged. The initial combined invocation is not claimed green.
 A fresh origin/main fetch remains fully contained in the branch.
+
+### F18b bounded asynchronous reverse-PTR fallback
+
+`83c1096` implements D281 through the existing identify stage. Eight host-only
+restart settings opt into explicit source IP:ports and client networks; default
+is disabled. The query path reads bounded memory and queues cold demand without
+waiting. Fixed workers, LRU/queue bounds, strict direct PTR response validation,
+original acquisition TTL, negative backoff and joined cancellation prevent stale
+identity renewal or unbounded lookup work. Inventory/DHCP names and stronger
+IP/MAC/CIDR tiers retain precedence; original requests/dependencies retain their
+captured identity. PTR is observation, not authentication.
+
+Actual UDP cache/expiry/dedup/ambiguity/bounds/late-response races pass; original
+identity/glob/precedence races pass. Typed environment/bounds and both actual API
+host-only write/reset routes pass. Actual runServe SQLite DNS proves background
+PTR acquisition changes policy selection and source expiry removes it. Final
+source PTR/mounted races pass in 2.303s/5.766s. Selected identification/config/API
+races pass in 1.069s/1.656s/1.694s; the preceding complete config race passed in
+10.465s. Scoped five-package lint reports zero issues. Initial CNAME fixture
+encoded its header as PTR and was corrected; initial lint comments/style findings
+were corrected. Those failed invocations are not credited green.
+
+### F32 durable node settings and unsupported capability refusal
+
+`ffcf20e` and `bd47907` implement D279. The original SQLite Command transaction
+stages a bounded versioned node-bound local log overlay with unchanged final
+writer, raw proof, dependency and clock fences. Defaults precede durable API
+preferences, explicit host-file leaves and environment. Null deletes the overlay;
+log level adopts after commit and format remains restart-required. No canonical
+revision/feed or replica payload includes local preferences. Postcommit
+cancellation is not described as rollback; a later admitted command can reconcile
+a committed overlay awaiting local adoption.
+
+Without the durable command capability, node sets/resets return 501 read_only
+before legacy writes/adoption. Reads/schema remain available; node schema rows
+advertise readOnly and the dashboard explains host configuration. Cluster settings
+remain independently writable. `/settings?scope=node` is a refused mutation alias;
+supported node changes use `/node/config` with its original permission/CSRF.
+
+Agent full config/settings races pass in 12.760s/8.277s, actual mounted repeated
+same-disk source/reset/logger-format acceptance in 62.368s, and original command
+transaction/replication/source tests pass. The separate unsupported-write
+regression failed before the fix, then repeated API races pass in 12.001s and
+actual legacy/Kubernetes envtest/SQLite receipt checks pass in 10.096s without
+skips. All 23 Settings UI cases, dashboard typecheck and scoped Go/UI lint pass.
+Parent first integration SQLite/config/API/cmd races pass in
+3.330s/2.316s/2.097s/19.039s. New composed checks remain recorded separately.
+
+### F40b private keepalived journal to audit and bounded SSE
+
+`380458f` extends D278 with the existing Consumer's additive random-session,
+64-transition journal in its atomic 0600 state file. Read-only serve observation
+baselines startup, deduplicates, checks original node/name/VRID/time and reports
+restart/regression/gap/legacy/foreign/unavailable sources honestly. Source failure
+closes old streams and refuses new ones until valid acquisition recovers; this is
+journal availability, not DNS/physical VIP readiness. No second FIFO reader,
+supervisor launch, permission broadening or weight-writer capability is added.
+
+`GET /edge/vip/stream` requires edge.read, bounds subscriptions/events/writes and
+rechecks original credential/authorizer/time on each emission. Original source
+expiry survives audit and queue delay. Audit uses the existing recorder with a
+bounded original timeout; refusal does not retry a transition. Real FIFO through
+production observer/audit/actual router and real stored serving-token expiry pass,
+as do source refusal, recovery, dedup/gap/cancel/queue/deadline races and scoped
+lint. Parent composed mounted PTR/VIP races pass in 5.723s and selected API races
+in 1.694s. Physical two-VM failover qualification remains external.
+
+### F43a named runtime membership and hosted edge/security corrections
+
+`88ca477` completes the targeted-health extension to `e60001f`/D276. The first-party
+v1 name binds an exact captured node ID. Strict original-auth positive and random
+wrong-owner probes qualify runtime support; ongoing targeted probes enforce node
+identity, drain and readiness. Generic-only backends and structural changes retain
+explicit validated restarts. Actual pinned dnsdist 2.1.3 YAML under UID953 and Lua
+acceptance pass in 45.28s/44.50s with same-PID named additions/removals, original
+PROXY auth, wrong-owner refusal, all TLS leaf reloads, retained invalid-pair
+snapshot, child crash and lost-mutation-ack convergence. Default race invocation
+passes; parent integrated nodehealth/ingress/log/dnsdist races pass in
+1.011s/1.144s/1.066s/10.167s. Established connection migration is not promised.
+
+Hosted security 41217188940 on 5b74077 failed only two Semgrep false positives:
+custom exact-leaf TLS verification and an owner-only directory mode. `439ddc3`
+adds narrow reasoned annotations without altering trust or permissions. The same
+pinned scanner and all 593 rules pass locally with zero findings. The first local
+attempt failed registry DNS inside the isolated Docker bridge; host networking
+resolved that acquisition failure, with unchanged scan rules.
+
+Hosted edge 41217189046 treated the new console-lab directory as a golden case.
+`e581fc8` moves only that fixture to a flat file. Ten actual non-eBPF YAML/Lua
+golden checks, Go golden tests (0.090s) and original-contract real supervisor
+acceptance (42.119s) pass. Hosted full image/eBPF/volume checks still require a
+fresh run; a partial local result is not credited as the entire workflow.
+
+Final composed node/VIP/PTR races pass on the integrated source in
+2.106s (config), 4.791s (API) and 15.723s (cmd), including real local envtest.
+OpenAPI/Go/TypeScript generation now covers 158 operations. Generator/client/docs
+races pass in 3.471s/1.621s/1.235s; all 23 Settings UI tests and dashboard
+typecheck pass, and the local docs site builds successfully. The schema mock
+updates only new/changed observation keys while preserving existing entries.
+The user-owned dashboard/dist/index.html remains excluded from every commit.
+
+A coordinated v5 idle hold confirmed all four agents and absence of Go/test/
+compiler/lint/envtest processes before removing only regular Go cache hash files
+whose access and modification times were both older than two hours. It reclaimed
+5.409 GB; all agents were explicitly released afterward. No source, current build
+output, daemon data or lab image was deleted. This is workspace maintenance,
+not feature acceptance.

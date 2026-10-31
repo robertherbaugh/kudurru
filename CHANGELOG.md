@@ -28,6 +28,16 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Client identification: optional host-selected asynchronous reverse-PTR fallback
+  with bounded workers/cache, strict answer validation, original TTL expiry and
+  inventory/DHCP precedence.
+- Node settings: durable SQLite log preferences and null resets survive restart;
+  unsupported node writes are explicitly read-only in the API and dashboard.
+- VIP notifications: bounded keepalived transition journal feeds audit and live
+  permissioned SSE with original credential/source expiry and gap refusal.
+- Edge: targeted node health qualifies same-process named backend additions;
+  legacy or structural changes retain validated restart behavior.
+
 - VIP: opt-in read-only kube-vip/MetalLB ownership evidence with bounded source
   reads, exact source identity and expiry; status never grants writer authority.
 

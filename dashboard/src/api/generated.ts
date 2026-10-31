@@ -1052,6 +1052,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/edge/vip/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Local observed VIP transitions (Server-Sent Events)
+         * @description Bounded local notifications: event vip.master_changed contains VIP, node, VRID, previous/state, original transition time and source session/sequence. Source diagnostics use vip.observation_status without a fabricated transition. No historical replay; cursors are refused. Observer startup baselines existing history; source restart/gaps close streams. Each emission rechecks original request credentials and edge.read permission; no writer authority is granted.
+         */
+        get: operations["vipEventStream"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/iam/identityproviders": {
         parameters: {
             query?: never;
@@ -4530,6 +4550,7 @@ export interface components {
             min?: number;
             path: string;
             presets?: string[] | null;
+            readOnly?: boolean;
             /** @enum {string} */
             ref?: "upstreamGroup" | "clientGroup" | "blockList" | "policy" | "zone";
             restartRequired: boolean;
@@ -11798,6 +11819,93 @@ export interface operations {
             };
         };
     };
+    vipEventStream: {
+        parameters: {
+            query?: {
+                cursor?: string;
+            };
+            header?: {
+                "Last-Event-ID"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live local notification stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listIdentityProviders: {
         parameters: {
             query?: never;
@@ -17306,7 +17414,10 @@ export interface operations {
     };
     patchSettings: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Cluster settings only. Node settings use PATCH /node/config and require a supported durable node writer. */
+                scope?: string;
+            };
             header?: {
                 /** @description Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams. */
                 "If-Match"?: string;

@@ -86,7 +86,7 @@ runners. Unit tests cannot substitute for those results.
 | F16 | Current-hour query stats beyond 100k distinct names | DNS and resolver | Integrated 8b98f41; exact local/central index, real migrations/races and 1M-row scale checks pass; parent composed PostgreSQL/API/SQLite races pass |
 | F17 | `$important` / `$badfilter` | DNS and resolver | Implemented; final gates open |
 | F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Integrated 50773f9; generated schemas and composed mounted/publication races pass |
-| F18b | Reverse-PTR hostname cache | DNS and resolver | Queued: missing |
+| F18b | Reverse-PTR hostname cache | DNS and resolver | Integrated 83c1096; bounded async PTR, actual UDP and mounted SQLite policy/expiry races; scoped lint pass |
 | F18c | UniFi hostname source | DNS and resolver | Queued: partial |
 | F19a | Durable replicated blocking toggle on complete SQLite path | Store and HA | Implemented; final gates open |
 | F19b | Kube runtime annotation publisher/watcher or equivalent cluster toggle | Store and HA | Queued: missing |
@@ -117,7 +117,7 @@ runners. Unit tests cannot substitute for those results.
 | F29b | Negative trust anchors for recursive groups | DNS and resolver | Integrated ddc5f2d; native/socket, captured-publication and actual Kubernetes schema races pass |
 | F30 | DNSSEC validation of forwarded answers | DNS and resolver | Implemented; final gates open |
 | F31 | DNS cookies to authoritative servers | DNS and resolver | Integrated 668203c; composed native/socket/DNSSEC/cache races pass |
-| F32 | Persist node-scope API changes or remove write half | Operations and UI | Queued: partial |
+| F32 | Persist node-scope API changes or remove write half | Operations and UI | Integrated ffcf20e/bd47907; SQLite durable reset/host precedence; unsupported node writes refused with UI capability; actual restart/envtest/UI checks pass |
 | F33 | Remote `GET /nodes/{name}/health` | Operations and UI | Integrated; final gates open |
 | F34 | `/auth/me` exposes zone-scoped permissions | IAM and access | Implemented; final gates open |
 | F35a | Read external-dns `DNSEndpoint` CRs directly | Zones and AD | Queued: missing |
@@ -129,11 +129,11 @@ runners. Unit tests cannot substitute for those results.
 | F39a | Local edge resolver-cache invalidation | Edge and VIP | Implemented; final gates open |
 | F39b | Remote edge blocking-generation pull / resolver invalidation | Edge and VIP | Queued: missing |
 | F40a | Host-only `edge.*` / `vip.*` settings keys | Edge and VIP | Integrated 52ec29d; 70 typed keys, actual render/precedence/API-refusal races and chart/Compose checks pass; generated reference/mock updated |
-| F40b | Keepalived provider events to audit/SSE in serve | Edge and VIP | Queued: missing |
+| F40b | Keepalived provider events to audit/SSE in serve | Edge and VIP | Integrated 380458f; bounded private FIFO journal to audit/SSE, original token/source expiry and source refusal races pass |
 | F41a | ServiceProvider current Owner | Edge and VIP | Integrated 1c934e7/9990ede; bounded host-selected provider evidence, actual envtest/mounted read/expiry and Node replacement races pass; physical ownership remains separate |
 | F41b | Chart provider annotations | Edge and VIP | Implemented; actual Helm/Go parity across 16 supported modes and four topology refusals pass; owner observation separate |
 | F42 | Per-VRID `--hmac-key-file` in chart | Edge and VIP | Integrated 49a9cf8/376d63d/e760dd7; chart/CLI races and real keepalived staging/preflight pass |
-| F43a | dnsdist console backend diff-apply | Edge and VIP | Integrated e60001f supported removal/anonymous addition and safe convergence; restart-free named additions remain in progress |
+| F43a | dnsdist console backend diff-apply | Edge and VIP | Integrated e60001f/88ca477; targeted first-party health qualifies same-PID named additions; actual pinned YAML/Lua and default races pass; legacy structural fallback explicit |
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Integrated e60001f; real pinned all-frontend leaf checks, held DoT, invalid-pair retention and child-restart acceptance pass |
 | F43c | Console spike (a) gates both changes | Edge and VIP | D275: actual dnsdist 2.1.3 YAML console, live DNS/cert/invalid-cert/PID/restart checks pass; established-connection limit recorded |
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |

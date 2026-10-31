@@ -7378,6 +7378,9 @@
               "null"
             ]
           },
+          "readOnly": {
+            "type": "boolean"
+          },
           "ref": {
             "enum": [
               "upstreamGroup",
@@ -18215,6 +18218,120 @@
         }
       }
     },
+    "/edge/vip/stream": {
+      "get": {
+        "description": "Bounded local notifications: event vip.master_changed contains VIP, node, VRID, previous/state, original transition time and source session/sequence. Source diagnostics use vip.observation_status without a fabricated transition. No historical replay; cursors are refused. Observer startup baselines existing history; source restart/gaps close streams. Each emission rechecks original request credentials and edge.read permission; no writer authority is granted.",
+        "operationId": "vipEventStream",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Live local notification stream"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Local observed VIP transitions (Server-Sent Events)",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "edge",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/iam/identityproviders": {
       "get": {
         "operationId": "listIdentityProviders",
@@ -25867,6 +25984,16 @@
       "patch": {
         "operationId": "patchSettings",
         "parameters": [
+          {
+            "description": "Cluster settings only. Node settings use PATCH /node/config and require a supported durable node writer.",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "Cluster settings only. Node settings use PATCH /node/config and require a supported durable node writer.",
+              "type": "string"
+            }
+          },
           {
             "description": "Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams.",
             "in": "header",

@@ -3822,19 +3822,24 @@
       "group": "VIP",
       "enum": [
         {
-          "help": "Do not acquire VIP ownership evidence.",
+          "value": "none",
           "label": "Disabled",
-          "value": "none"
+          "help": "Do not acquire VIP ownership evidence."
         },
         {
-          "help": "Observe per-Service kubevip-<service> Leases agreeing with vipHost, assigned IP and a live Node.",
+          "value": "kube-vip",
           "label": "kube-vip",
-          "value": "kube-vip"
+          "help": "Observe per-Service kubevip-<service> Leases agreeing with vipHost, assigned IP and a live Node."
         },
         {
-          "help": "Observe ServiceL2Status, live UID-matching speaker Pod and live Node heartbeat. L2 status has no provider heartbeat or physical ARP proof.",
+          "value": "metallb",
           "label": "MetalLB L2",
-          "value": "metallb"
+          "help": "Observe ServiceL2Status, live UID-matching speaker Pod and live Node heartbeat. L2 status has no provider heartbeat or physical ARP proof."
+        },
+        {
+          "value": "keepalived",
+          "label": "Keepalived notifications",
+          "help": "Read the local Consumer transition journal for audit/live events. Requires vip.vips mappings and a readable observation runDir. No current ownership or writer authority is inferred."
         }
       ]
     },
@@ -3851,38 +3856,38 @@
       "label": "Observed VIP Services",
       "group": "VIP",
       "items": {
+        "type": "object",
         "fields": [
           {
-            "help": "Local name for this observed VIP.",
-            "label": "VIP name",
             "name": "name",
+            "label": "VIP name",
+            "help": "Local name for this observed VIP.",
             "required": true,
             "type": "string"
           },
           {
-            "format": "ip",
-            "help": "Expected Service LoadBalancer IP, used only to match allocation, never to infer ownership.",
-            "label": "Address",
             "name": "address",
+            "label": "Address",
+            "help": "Expected Service LoadBalancer IP, used only to match allocation, never to infer ownership.",
             "required": true,
-            "type": "string"
+            "type": "string",
+            "format": "ip"
           },
           {
-            "help": "Exact namespace of the observed Service.",
-            "label": "Service namespace",
             "name": "namespace",
+            "label": "Service namespace",
+            "help": "Exact namespace of the observed Service.",
             "required": true,
             "type": "string"
           },
           {
-            "help": "Exact Service name. kube-vip observation requires its per-Service kubevip-<name> Lease.",
-            "label": "Service name",
             "name": "service",
+            "label": "Service name",
+            "help": "Exact Service name. kube-vip observation requires its per-Service kubevip-<name> Lease.",
             "required": true,
             "type": "string"
           }
-        ],
-        "type": "object"
+        ]
       }
     },
     {
@@ -3896,6 +3901,135 @@
       "restartRequired": true,
       "writeOnly": false,
       "label": "VIP acquisition timeout",
+      "group": "VIP"
+    },
+    {
+      "path": "clientNames.reversePTR.enabled",
+      "type": "bool",
+      "scope": "node",
+      "default": false,
+      "help": "Acquire client names asynchronously from explicit DNS sources. Untrusted fallback only when inventory and DHCP have no name.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Enable reverse PTR",
+      "group": "Client names"
+    },
+    {
+      "path": "clientNames.reversePTR.maxAge",
+      "type": "duration",
+      "scope": "node",
+      "default": "10m",
+      "help": "Positive lifetime cap, 1s-1h, bounded by DNS TTL from acquisition start. Expired names never remain a fallback.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PTR maximum age",
+      "group": "Client names"
+    },
+    {
+      "path": "clientNames.reversePTR.maxEntries",
+      "type": "int",
+      "scope": "node",
+      "default": 4096,
+      "help": "Bounded observation cache. Cold and expired names return immediately without waiting for DNS.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PTR cache entries",
+      "group": "Client names",
+      "min": 1,
+      "max": 65536
+    },
+    {
+      "path": "clientNames.reversePTR.negativeTTL",
+      "type": "duration",
+      "scope": "node",
+      "default": "30s",
+      "help": "Negative or failed acquisition backoff, 1s-5m. No client name is retained on failure.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PTR retry delay",
+      "group": "Client names"
+    },
+    {
+      "path": "clientNames.reversePTR.networks",
+      "type": "string[]",
+      "scope": "node",
+      "default": [],
+      "help": "One to 32 explicit IPv4/IPv6 CIDRs eligible for background name acquisition.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PTR client networks",
+      "group": "Client names",
+      "items": {
+        "type": "string",
+        "format": "cidr"
+      }
+    },
+    {
+      "path": "clientNames.reversePTR.servers",
+      "type": "string[]",
+      "scope": "node",
+      "default": [],
+      "help": "One to four explicit unicast IP:port sources. UDP only; no system resolver, DNS search, TCP fallback or CNAME chasing.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PTR DNS servers",
+      "group": "Client names",
+      "items": {
+        "type": "string",
+        "format": "hostport"
+      }
+    },
+    {
+      "path": "clientNames.reversePTR.timeout",
+      "type": "duration",
+      "scope": "node",
+      "default": "1s",
+      "help": "Original acquisition deadline, 100ms-5s across all configured sources.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PTR timeout",
+      "group": "Client names"
+    },
+    {
+      "path": "clientNames.reversePTR.workers",
+      "type": "int",
+      "scope": "node",
+      "default": 2,
+      "help": "Fixed number of background DNS workers. Demand queue holds at most 256 addresses.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "PTR workers",
+      "group": "Client names",
+      "min": 1,
+      "max": 8
+    },
+    {
+      "path": "vip.observation.runDir",
+      "type": "string",
+      "scope": "node",
+      "default": "/run/kudurru",
+      "help": "Absolute directory containing the existing keepalived Consumer journal. Read-only in serve; no FIFO reader, supervisor, weight file or writer is started. Files retain private 0600 access; the serve process must already have permission.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "VIP observation directory",
       "group": "VIP"
     }
   ]

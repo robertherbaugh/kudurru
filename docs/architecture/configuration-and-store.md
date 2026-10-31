@@ -1136,3 +1136,12 @@ Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary
 limitation remains: a former primary can acknowledge writes until it learns of
 a higher term; this publication mechanism does not provide consensus.
+
+Unsupported node-write capabilities keep node values and schema readable but
+return `501 read_only` for node PATCH sets and null resets. Schema `readOnly`
+marks those node rows so the dashboard directs operators to host configuration;
+cluster rows remain independently editable. SQLite uses the durable original
+command described above. `/settings` remains cluster-only: `scope=node` is
+refused, and supported node changes use `/node/config` with its existing
+permission and CSRF checks. Capability metadata does not bypass final primary,
+credential, host-lock or writer checks.

@@ -916,3 +916,22 @@ root-shutdown/final-credential races pass in 82.997s. Production authority and
 deadlines were not changed. Security, GitHub docs and kind/MetalLB passed that
 head. Newer commits still need their own hosted runs. Exact commands and limits
 remain in the gap ledger; the complete original inventory is retained.
+
+### F18b/F32/F40b/F43a integration evidence
+
+`83c1096` supplies opt-in bounded asynchronous reverse-PTR fallback through the
+original identification seam; actual UDP, host-only API and mounted SQLite
+policy/expiry races pass. `ffcf20e`/`bd47907` persist supported SQLite node log
+preferences through the original fenced transaction and refuse unsupported node
+writes with read-only API/UI capability; repeated restart, real envtest and all
+23 Settings UI cases pass. `380458f` connects the private bounded keepalived
+journal to original-authorized audit/SSE, with real FIFO/router/token-expiry
+acceptance. `88ca477` qualifies same-PID named backend additions through captured
+node targeted health, with actual pinned YAML/Lua runtime acceptance and default
+races. Legacy/structural restart fallback and physical-lab limits remain explicit.
+
+`439ddc3` documents two narrow Semgrep false positives; all 593 pinned rules pass
+locally. `e581fc8` corrects the hosted edge golden-fixture directory collision;
+actual selected golden/supervisor checks pass. Fresh hosted evidence remains
+required on the updated PR head. Exact outcomes, unsuccessful intermediate checks
+and remaining scope are retained in gaps.md and the complete inventory.
