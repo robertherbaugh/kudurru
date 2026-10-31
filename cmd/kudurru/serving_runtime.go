@@ -23,6 +23,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -50,6 +51,7 @@ type servingRuntimeOptions struct {
 	Namespace   string
 	Upstreams   upstream.Options
 	Now         func() time.Time
+	Logging     *querylogRuntime
 }
 
 // servingRuntime owns the complete publisher and provider/primary workers.
@@ -144,7 +146,21 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
-	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, Now: o.Now, Upstreams: o.Upstreams, PrepareIntegrations: func(ctx context.Context, image *replication.Image, primary *primaryruntime.PreparedImage, at time.Time) (*servingbuild.InventoryOwner, []*public.ClientGroup, error) {
+	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, Now: o.Now, Upstreams: o.Upstreams, PrepareLogging: func(ctx context.Context, cfg config.Querylog) (*querylog.Captured, error) {
+		if o.Logging == nil {
+			return &querylog.Captured{}, nil
+		}
+		previous := o.Logging.current.Load()
+		if s.publisher != nil {
+			if lease, err := s.publisher.Capture(); err == nil {
+				defer lease.Release()
+				if value, ok := lease.Bundle().Component("logging"); ok {
+					previous, _ = value.(*querylog.Captured)
+				}
+			}
+		}
+		return o.Logging.prepare(ctx, cfg, previous)
+	}, PrepareIntegrations: func(ctx context.Context, image *replication.Image, primary *primaryruntime.PreparedImage, at time.Time) (*servingbuild.InventoryOwner, []*public.ClientGroup, error) {
 		return prepareIntegrationImage(ctx, image, primary, schema, at)
 	}})
 	if err != nil {

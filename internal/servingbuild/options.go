@@ -10,6 +10,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/rpz"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -55,6 +56,10 @@ type Options struct {
 	Upstreams  upstream.Options
 	ZoneLimits zonestate.Limits
 	MaxZones   int
+	// PrepareLogging binds an immutable collector to this candidate's exact
+	// settings. Local sink preparation must honor cancellation and never adopt
+	// the candidate operationally. Nil is explicit no logging infrastructure.
+	PrepareLogging func(context.Context, config.Querylog) (*querylog.Captured, error)
 	// PrepareIntegrations is a pure root-owned complete-image adapter. It may
 	// suppress ineligible source claims and overlay granted private MAC members;
 	// it must never acquire resources, perform I/O or confer write authority.

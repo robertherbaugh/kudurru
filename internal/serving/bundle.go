@@ -31,7 +31,7 @@ var (
 // CompleteManifest returns the minimum complete serving component manifest.
 // Deployments may require additional named owners; none of these can be omitted.
 func CompleteManifest() []string {
-	return []string{"objects", "zones", "policy", "resolution", "response", "cache", "blocking", "inventory", "auth", "runtime", "control"}
+	return []string{"objects", "zones", "policy", "resolution", "response", "cache", "blocking", "inventory", "auth", "runtime", "control", "logging"}
 }
 
 // Component transfers one immutable owner value and ONE resource reference to

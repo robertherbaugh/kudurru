@@ -6,6 +6,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 )
@@ -18,11 +19,16 @@ func (s *servingRuntime) runServingReload(ctx context.Context, targets reloadTar
 	previous := s.opts.Config
 	for {
 		changed := s.publisher.Subscribe()
-		next, err := s.captureOperationalSettings(ctx)
+		next, logging, err := s.captureOperationalOwners(ctx)
 		if err == nil {
+			operational := targets
+			if targets.qlOwner != nil {
+				targets.qlOwner.adopt(logging, next.Querylog)
+				operational.qlOwner, operational.qlAsync, operational.qlWriter = nil, nil, nil
+			}
 			paths := config.Changed(previous, next)
 			if len(paths) > 0 {
-				applyReload(ctx, targets, next, paths)
+				applyReload(ctx, operational, next, paths)
 				if responseCache != nil && config.ChangedUnder(paths, "cache.maxEntries") {
 					responseCache.Resize(next.Cache.MaxEntries)
 				}
@@ -43,24 +49,37 @@ func (s *servingRuntime) runServingReload(ctx context.Context, targets reloadTar
 }
 
 func (s *servingRuntime) captureOperationalSettings(ctx context.Context) (*config.Config, error) {
+	next, _, err := s.captureOperationalOwners(ctx)
+	return next, err
+}
+
+func (s *servingRuntime) captureOperationalOwners(ctx context.Context) (*config.Config, *querylog.Captured, error) {
 	lease, err := s.publisher.CaptureHTTP(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer lease.Release()
 	owner, ok := lease.Bundle().Component("auth")
 	view, typed := owner.(*servingauth.View)
 	if !ok || !typed || view == nil {
-		return nil, serving.ErrComponents
+		return nil, nil, serving.ErrComponents
 	}
 	settings, err := view.Settings()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	document, err := servingSettingsDocument(settings)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	next, _, err := config.ApplyClusterDocument(s.opts.Config, document)
-	return next, err
+	if err != nil {
+		return nil, nil, err
+	}
+	value, ok := lease.Bundle().Component("logging")
+	logging, typed := value.(*querylog.Captured)
+	if !ok || !typed || logging == nil {
+		return nil, nil, serving.ErrComponents
+	}
+	return next, logging, nil
 }

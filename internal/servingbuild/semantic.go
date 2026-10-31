@@ -16,6 +16,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/responsepolicy"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -47,6 +48,7 @@ type semanticOwners struct {
 	response   *responsepolicy.Settings
 	cache      *cachestage.View
 	blocking   *blockingstage.View
+	logging    *querylog.Captured
 	auth       *servingauth.View
 	upstreams  *upstream.Set
 	lists      string
@@ -106,6 +108,13 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	owners.config, _, err = config.ApplyClusterDocument(deps.Host, document)
 	if err != nil {
 		return nil, err
+	}
+	owners.logging = &querylog.Captured{}
+	if opts.PrepareLogging != nil {
+		owners.logging, err = opts.PrepareLogging(ctx, owners.config.Querylog)
+		if err != nil || owners.logging == nil {
+			return nil, serving.ErrDependency
+		}
 	}
 	owners.control, err = control.ViewFromConfig(owners.config.Control)
 	if err != nil {

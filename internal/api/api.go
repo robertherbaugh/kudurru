@@ -239,8 +239,11 @@ type Options struct {
 	// Querylog reads the node's query log; Tail is the live tail (SSE
 	// resume via Last-Event-ID); Purger backs DELETE /querylog.
 	Querylog *sqlitelog.Reader
-	Tail     *querylog.Tail
-	Purger   QuerylogPurger
+	// QuerylogSource returns a lifetime-stable local reader after lazy sink
+	// preparation. Once available it stays open through server shutdown.
+	QuerylogSource func() *sqlitelog.Reader
+	Tail           *querylog.Tail
+	Purger         QuerylogPurger
 	// CentralQuerylog answers scope=cluster from the central database
 	// (sqlitelog.NewCentralReader, D161) and CentralPurger purges it with
 	// this node's rows; nil without a central database.

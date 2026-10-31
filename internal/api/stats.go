@@ -249,11 +249,11 @@ func (s *Server) registerStats() {
 
 // reader returns the query-log reader or 503 when the log is off.
 func (s *Server) reader() (*sqlitelog.Reader, error) {
-	if s.opts.Querylog == nil {
+	if s.localQuerylog() == nil {
 		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the query log is not stored on this node",
 			"set querylog.enabled: true and querylog.sink: sqlite")
 	}
-	return s.opts.Querylog, nil
+	return s.localQuerylog(), nil
 }
 
 // window parses window/from/to.
@@ -458,7 +458,7 @@ func (s *Server) statsUpstreams(ctx context.Context, in *WindowParams) (*upstrea
 	if err != nil {
 		return nil, err
 	}
-	if in.Scope != "cluster" && (in.Node == "" || in.Node == s.opts.NodeName) && s.opts.Querylog == nil {
+	if in.Scope != "cluster" && (in.Node == "" || in.Node == s.opts.NodeName) && s.localQuerylog() == nil {
 		servers, err := s.upstreamServers(ctx)
 		if err != nil {
 			return nil, err
@@ -826,7 +826,7 @@ func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.Stream
 	if in.Scope == "cluster" || !peers[0].Self {
 		return s.scopedQueryStream(ctx, in, peers)
 	}
-	if s.opts.Tail == nil && s.opts.Querylog == nil {
+	if s.opts.Tail == nil && s.localQuerylog() == nil {
 		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the live tail is not available on this node", "set querylog.enabled: true")
 	}
 	filter, err := newStreamFilter(in.QueryParams)
@@ -856,7 +856,7 @@ func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.Stream
 		if s.opts.Tail != nil {
 			events = s.opts.Tail.Subscribe(sctx)
 		} else {
-			events = s.opts.Querylog.Subscribe(sctx)
+			events = s.localQuerylog().Subscribe(sctx)
 		}
 		h := w.Header()
 		h.Set("Content-Type", "text/event-stream")

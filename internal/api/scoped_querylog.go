@@ -104,7 +104,7 @@ func (r *scopedQuerylog) direct() *sqlitelog.Reader {
 		return r.central
 	}
 	if r.localOnly() {
-		return r.s.opts.Querylog
+		return r.s.localQuerylog()
 	}
 	return nil
 }
@@ -150,7 +150,7 @@ func (r *scopedQuerylog) gather(ctx context.Context, q internalapi.QuerylogReque
 			var out *internalapi.QuerylogResponse
 			var err error
 			if p.Self {
-				out, err = internalapi.ReadLocalQuerylog(peerCtx, r.s.opts.Querylog, req)
+				out, err = internalapi.ReadLocalQuerylog(peerCtx, r.s.localQuerylog(), req)
 				if err == nil && req.Kind == "upstreams" {
 					out.Servers, err = r.s.upstreamStates(peerCtx)
 				}
@@ -609,7 +609,7 @@ func (r *scopedQuerylog) Queries(ctx context.Context, f sqlitelog.QueryFilter) (
 	}
 	if !r.cluster {
 		if r.localOnly() {
-			return r.s.opts.Querylog.Queries(ctx, f)
+			return r.s.localQuerylog().Queries(ctx, f)
 		}
 		shards, scope, err := r.gather(ctx, internalapi.QuerylogRequest{Kind: "queries", Filter: f}, nil)
 		if err != nil {

@@ -372,7 +372,7 @@ an immutable value that something else swaps atomically:
 | blocking defaults, the blocking toggle | blocking | a reload of `blocking.*`; `POST /api/v1/dns/blocking` |
 | rate limits | ingress | a reload of `ratelimit.*` |
 | safe-search catalogue | blocking | the catalogue refresher |
-| query log privacy | query log collector | a reload of `querylog.*` |
+| captured logging decision, sink and privacy | log observer and collector | the complete SQLite publication prepared from accepted `querylog.*`; legacy drivers adopt one immutable operational route |
 
 ## DNSSEC and raw cache provenance
 
@@ -405,7 +405,9 @@ When the chain returns, the log observer runs synchronously but never waits:
 it updates the DNS metrics and makes a non-blocking hand-off of a
 `QueryEvent` to the query log. The health name and the dashboard's built-in
 dig are not logged. [Observability](observability.md) follows the event from
-there.
+there. Complete SQLite requests retain the logging component from their
+original DNS lease through observer emission. A settings change cannot enable
+a held disabled request, redirect its sink, or replace its privacy transform.
 
 ## Not built yet
 

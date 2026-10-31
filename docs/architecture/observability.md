@@ -97,7 +97,9 @@ flowchart LR
     CH --> COL["collector (one goroutine)<br/>exclusions, privacy mode,<br/>stamp the ID"]
     COL --> TAIL["live tail<br/>ring of 65 536 + SSE subscribers"]
     COL --> BATCH["batch: 1000 events or 1 s"]
-    BATCH --> DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups, one transaction")]
+    PUB["original DNS publication<br/>enabled, sink, privacy owner"] -.-> OBS
+    BATCH -->|"captured SQLite sink"| DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups, one transaction")]
+    BATCH -->|"captured slog sink"| SLOG["structured logger"]
     TAIL --> API["dashboard: live tail,<br/>block page reasons"]
     DB --> API2["dashboard: query log,<br/>stats, top lists,<br/>bounded JSON export"]
 ```
@@ -114,6 +116,27 @@ or automatically combine pages into a snapshot.
 The answer never waits for the log: when the channel is full, the event is
 dropped and counted. The health name and the dashboard's built-in dig are
 never logged.
+
+`querylog.enabled` and `querylog.sink` reload without restarting. One bounded
+queue, consumer and tail survive every toggle, including disabled startup.
+Complete SQLite requests use the enabled decision, destination and privacy of
+their original DNS publication through emission. Each queued item retains that
+owner; the consumer flushes before crossing destinations. Disabled successor
+requests collect nothing, while held enabled requests finish at their original
+sink. DNS admission never waits for sink preparation, writes or final drain.
+
+The root prepares sinks before accepting a complete publication. Failure keeps
+the previous coherent DNS/logging bundle and reports unavailable readiness.
+There is at most one slog sink and one lazily opened SQLite writer. Once opened,
+local history, purge, retention, maintenance and configured central shipping keep
+that writer through disabled/slog modes. A rejected candidate cannot change its
+retention. The queue and tail keep their event-ID sequence across reloads.
+
+Shutdown stops admission and drains accepted records once under a bounded
+context, then closes SQLite after the consumer joins. A timed-out batch is
+canceled and counted, never replayed at a successor sink. The caller returns on
+its deadline even if an external slog handler ignores cancellation; that single
+pending consumer keeps its sink and is not replaced or closed underneath I/O.
 
 **Privacy is applied once, at the collector**, before anything is stored or
 shown: `full`, `anonymize_client` (a /24 or /48 prefix, or a daily

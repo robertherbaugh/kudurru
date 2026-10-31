@@ -286,7 +286,7 @@ func TestServingBrandingLegacyBlockPageFinalOriginalLicenseClock(t *testing.T) {
 	}
 	cfg.Branding.Name = "Expired during preparation"
 	cfg.BlockPage.Enabled = false
-	page, err := newBlockPage(cfg, config.NewReloadable(cfg), nil, nil, nil, nil, nil, manager, nil, slog.New(slog.DiscardHandler))
+	page, err := newBlockPage(cfg, config.NewReloadable(cfg), nil, nil, nil, nil, nil, nil, manager, nil, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

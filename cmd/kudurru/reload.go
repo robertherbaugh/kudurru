@@ -50,6 +50,7 @@ type reloadTargets struct {
 	qlWriter     *sqlitelog.Writer
 	listFetcher  *listfetcher.Fetcher
 	listResolver *listfetcher.Resolver
+	qlOwner      *querylogRuntime
 }
 
 // subscribeReload applies settings changes from r (the settings file
@@ -161,7 +162,12 @@ func applyReload(ctx context.Context, t reloadTargets, next *config.Config, chan
 			log.Error("ratelimit settings not applied", "err", err)
 		}
 	}
-	if config.ChangedUnder(changed, "querylog.privacy", "querylog.anonymize", "querylog.exclude") && t.qlAsync != nil {
+	if config.ChangedUnder(changed, "querylog") && t.qlOwner != nil {
+		if err := t.qlOwner.reload(ctx, next.Querylog); err != nil {
+			log.Error("querylog settings not applied", "err", err)
+		}
+	}
+	if t.qlOwner == nil && config.ChangedUnder(changed, "querylog.privacy", "querylog.anonymize", "querylog.exclude") && t.qlAsync != nil {
 		p, err := querylog.PrivacyFrom(next.Querylog)
 		if err != nil {
 			log.Error("querylog privacy not applied", "err", err)

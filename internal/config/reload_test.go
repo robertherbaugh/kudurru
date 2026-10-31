@@ -242,7 +242,7 @@ func TestRestartRequired(t *testing.T) {
 		"blockPage.dashboardURL", "blockPage.rateLimit",
 		"branding.name", "branding.logoLight", "branding.logoDark", "branding.favicon", "branding.accentColor",
 		"unblockRequests.enabled", "unblockRequests.rateLimit", "unblockRequests.maxPending", "unblockRequests.pendingExpiry", "unblockRequests.retention",
-		"querylog.privacy", "querylog.anonymize", "querylog.retention.raw", "querylog.retention.maxDBBytes",
+		"querylog.enabled", "querylog.sink", "querylog.privacy", "querylog.anonymize", "querylog.retention.raw", "querylog.retention.maxDBBytes",
 		"querylog.exclude.domains", "querylog.exclude.clients", "querylog.exclude.sudn",
 		"ratelimit.enabled", "ratelimit.ipv4", "ratelimit.ipv6", "ratelimit.slip", "ratelimit.maxBuckets", "ratelimit.exempt",
 	} {

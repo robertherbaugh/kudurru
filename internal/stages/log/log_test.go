@@ -216,3 +216,18 @@ func TestObserverDNSSEC(t *testing.T) {
 		}
 	}
 }
+
+func TestObserverCapturedOwnerFailureNeverUsesLiveCollector(t *testing.T) {
+	live, original := &recorder{}, &recorder{}
+	req := request("original.example.", dns.TypeA)
+	response := &pipeline.Response{Msg: reply(req, dns.RcodeSuccess), Status: pipeline.StatusForwarded}
+	o := &Observer{Collector: live, Capture: func(*pipeline.Request) (querylog.Collector, error) { return original, nil }}
+	o.Observe(req, response, nil, time.Millisecond)
+	o.Capture = func(*pipeline.Request) (querylog.Collector, error) {
+		return nil, errors.New("missing captured logging")
+	}
+	o.Observe(req, response, nil, time.Millisecond)
+	if len(live.events) != 0 || len(original.events) != 1 {
+		t.Fatal("missing original logging owner fell back to live collector")
+	}
+}

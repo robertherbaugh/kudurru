@@ -591,7 +591,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		internalCreds  *internalapi.Credentials
 		listResolver   *listfetcher.Resolver
 		qlTail         *querylog.Tail
-		qlReader       *sqlitelog.Reader
+		qlLogs         *querylogRuntime
 		queryUpstreams func() []upstream.ServerStatus
 	)
 	if encKey != nil || cfg.Listeners.Internal.TokenFile != "" {
@@ -609,7 +609,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
 			Event: func(e internalapi.Event) bool { return secondaries.Trigger(e.Identity) },
 			Querylog: func(ctx context.Context, q internalapi.QuerylogRequest) (*internalapi.QuerylogResponse, error) {
-				out, err := internalapi.ReadLocalQuerylog(ctx, qlReader, q)
+				out, err := internalapi.ReadLocalQuerylog(ctx, qlLogs.reader(), q)
 				if err == nil && q.Kind == "upstreams" && queryUpstreams != nil {
 					out.Servers = queryUpstreams()
 				}
@@ -680,53 +680,26 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// Query log (§11.2): privacy once at ingest, live tail, sqlite or slog sink.
-	var (
-		collector querylog.Collector // nil interface when disabled
-		qlAsync   *querylog.Async
-		qlWriter  *sqlitelog.Writer
-	)
 	listedDomains := func() int64 {
 		if sn := zc.Snapshot(); sn != nil {
 			return domainsOnLists(sn.Objects.Lists())
 		}
 		return 0
 	}
-	if cfg.Querylog.Enabled {
-		qlMetrics := querylog.NewMetrics(reg)
-		privacy, err := querylog.PrivacyFrom(cfg.Querylog)
-		if err != nil {
-			return err
-		}
-		tail := querylog.NewTail(0, 0, qlMetrics)
-		qlTail = tail
-		var sink querylog.Sink
-		var firstID uint64
-		switch cfg.Querylog.Sink {
-		case "sqlite":
-			opts, err := sqlitelog.OptionsFrom(cfg.Querylog, cfg.QuerylogDataDir(), cfg.Node.Name)
-			if err != nil {
-				return err
-			}
-			opts.Metrics, opts.Tail, opts.Logger = qlMetrics, tail, logger
-			opts.DomainsOnLists = listedDomains
-			if qlWriter, err = sqlitelog.Open(ctx, opts); err != nil {
-				if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
-					return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
-				}
-				return err
-			}
-			sink, firstID = qlWriter, qlWriter.NextID()
-			qlReader = qlWriter.Reader()
-		default:
-			s := &querylog.SlogSink{Logger: logger, Level: slog.LevelInfo}
-			if err := s.Open(ctx, nil, reg); err != nil {
-				return err
-			}
-			sink = s
-		}
-		qlAsync = querylog.NewAsyncWith(querylog.AsyncOptions{Sink: sink, Privacy: privacy, Tail: tail, Metrics: qlMetrics, FirstID: firstID, Logger: logger})
-		collector = qlAsync
+	qlLogs, err = newQuerylogRuntime(ctx, cfg, reg, logger, listedDomains)
+	if err != nil {
+		return err
 	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer closeCancel()
+		if err := qlLogs.close(closeCtx); err != nil {
+			logger.Warn("query log flush incomplete", "err", err, "dropped", qlLogs.async.Dropped())
+		}
+	}()
+	qlTail = qlLogs.tail
+	qlAsync := qlLogs.async
+	checker.Register("querylog", qlLogs.ready)
 
 	// Postprocess wraps all answering stages; DNSSEC validates raw forwarded
 	// answers before the cache stores them. The log observer sees the result.
@@ -815,7 +788,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return complete.captureBlockPageBranding(ctx, &brandCache)
 		})
 	}
-	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, lic, reg, logger, brandSource...)
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlLogs.reader(), qlAsync, qlLogs.reader, unblockBook, lic, reg, logger, brandSource...)
 	if err != nil {
 		return err
 	}
@@ -874,7 +847,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	rewriteTarget = dependencies.Serve
-	chain.Observe(&logstage.Observer{Node: cfg.Node.Name, Collector: collector, Metrics: dnsMetrics})
+	loggingObserver := &logstage.Observer{Node: cfg.Node.Name, Collector: qlAsync, Metrics: dnsMetrics}
+	chain.Observe(loggingObserver)
 	logger.Info("pipeline ready", "stages", chain.Stages(), "upstreamGroups", upSet.Groups())
 
 	// TSIG keys for transfers and NOTIFY (RFC 8945).
@@ -1031,7 +1005,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		complete, err = newServingRuntime(ctx, servingRuntimeOptions{
 			Store: sql, Config: cfg, Validator: v, License: lic, AuthKeys: authKeys,
 			Keyrings: rings, Catalog: catalogs, Transferred: servingbuild.NewTransferredRuntime(secondaries, stubs, feeds),
-			Lists: lists, Namespace: namespace, Upstreams: upOpts,
+			Lists: lists, Namespace: namespace, Upstreams: upOpts, Logging: qlLogs,
 		})
 		if err != nil {
 			return err
@@ -1045,6 +1019,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		auth.Notify = complete.primary.doctorNotify(servingbuild.CapturedNotify(notifyReceiver, time.Now))
 		if err := servingbuild.BindDNS(complete.publisher, servingbuild.DNSStages{Chain: chain, Control: controlStage, Identify: idStage, Authority: auth, Blocking: bs, Cache: cs, Response: post, Resolution: fwd}, time.Now); err != nil {
 			return err
+		}
+		loggingObserver.Capture = func(req *pipeline.Request) (querylog.Collector, error) {
+			return servingdns.Component[*querylog.Captured](req, "logging")
 		}
 		checker.Register("serving", complete.ready)
 		zoneReads, err = servingbuild.NewDiagnostics(complete.publisher, time.Now)
@@ -1171,18 +1148,21 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	// The query log in the central database (D160): this node copies its
 	// querylog.db rows and rollups; the leader keeps the partitions.
-	var qlShipper *pgquerylog.Shipper
+	var qlShipper func(context.Context) error
 	var centralQuerylog *sqlitelog.Reader
 	var centralPurger api.QuerylogPurger
 	if centralDB != nil && cfg.Database.Querylog.Ship {
 		centralQuerylog = sqlitelog.NewCentralReader(centralDB.SQL, sqlitelog.CentralOptions{
 			RawRetention: cfg.Database.Querylog.Retention.Raw.Std(), DomainsOnLists: listedDomains, Recovery: pgquerylog.Recovery{DB: centralDB}})
 		centralPurger = pgquerylog.Purger{DB: centralDB}
-		if qlWriter == nil {
-			logger.Info("database.querylog.ship is set but this node keeps no query log (querylog.enabled and querylog.sink: sqlite); nothing is sent", "component", "central")
-		} else {
-			qlShipper = &pgquerylog.Shipper{DB: centralDB, Local: qlWriter, Node: cfg.Node.Name, Version: info.Version,
+		qlShipper = func(ctx context.Context) error {
+			w := qlLogs.waitWriter(ctx)
+			if w == nil {
+				return nil
+			}
+			shipper := &pgquerylog.Shipper{DB: centralDB, Local: w, Node: cfg.Node.Name, Version: info.Version,
 				Facts: cfg.Database.Querylog.Facts, Retention: cfg.Database.Querylog.Retention.Raw.Std(), Registerer: reg, Logger: logger}
+			return shipper.Run(ctx)
 		}
 		centralJobs = append(centralJobs, pgquerylog.Jobs(cfg.Database.Querylog.Retention.Raw.Std())...)
 	}
@@ -1207,7 +1187,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
-		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
+		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, Chain: chain, DNSQueryCapture: dnsQueryCapture,
 		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
@@ -1215,7 +1195,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Lists: listResolver, Notifier: manualNotify,
 		Refresher:  listRefresher(membership, fetcher),
 		ListBodies: listBodies{cache: lists},
-		Purger:     querylogPurger(qlWriter),
+		Purger:     qlLogs,
 		Audit:      recorders, AuditReader: auditReader, Central: centralState, AuditLogDiagnosis: auditDiagnosis,
 		Authenticate: authenticate, Authorizer: authorizer, CSRF: authn.CSRF, CrossOrigin: crossOrigin,
 		AuthHandler: authHandler,
@@ -1395,7 +1375,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	reloadConsumers := reloadTargets{
 		listFetcher: fetcher, listResolver: listResolver,
 		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
-		control: controlStage, blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter, postprocess: post,
+		control: controlStage, blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlOwner: qlLogs, postprocess: post,
 	}
 	if complete != nil {
 		// Complete requests use immutable settings and resource owners. Legacy
@@ -1465,10 +1445,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
-	if qlWriter != nil {
-		if err := add("querylog", false, qlWriter.Run); err != nil {
-			return err
-		}
+	if err := add("querylog", false, qlLogs.run); err != nil {
+		return err
 	}
 	// Audit retention (§11.4): the leader prunes state.db audit rows older
 	// than 400 days once a day.
@@ -1488,7 +1466,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 	if qlShipper != nil {
-		if err := add("querylog-ship", false, qlShipper.Run); err != nil {
+		if err := add("querylog-ship", false, qlShipper); err != nil {
 			return err
 		}
 	}
@@ -1520,13 +1498,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		cs.Wait()
 	}
 	_ = fwd.Set().Close()
-	shutdownCtx, c2 := context.WithTimeout(context.Background(), 5*time.Second)
-	defer c2()
-	if qlAsync != nil {
-		if err := qlAsync.Close(shutdownCtx); err != nil {
-			logger.Warn("query log flush incomplete", "err", err, "dropped", qlAsync.Dropped())
-		}
-	}
+
 	if snapDB != nil {
 		_ = snapDB.Close()
 	}

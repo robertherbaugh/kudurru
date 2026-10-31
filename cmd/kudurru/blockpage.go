@@ -64,14 +64,15 @@ const (
 // it has none, from the client's current policy. ql is the query log's
 // collector (nil when it is off); it names the client's pseudonym.
 func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.IndexSource, tail *querylog.Tail, reader *sqlitelog.Reader,
-	ql *querylog.Async, book *unblock.Service, lic *license.Manager, reg prometheus.Registerer, logger *slog.Logger, brandSource ...func(context.Context) (*blockpage.Branding, error)) (*blockpage.Server, error) {
+	ql *querylog.Async, readerSource func() *sqlitelog.Reader, book *unblock.Service, lic *license.Manager, reg prometheus.Registerer, logger *slog.Logger, brandSource ...func(context.Context) (*blockpage.Branding, error)) (*blockpage.Server, error) {
 	pf := blockpage.PolicyFinder{Source: src}
 	qf := &blockpage.QuerylogFinder{
-		Tail: tail, Reader: reader, Disabled: !cfg.Querylog.Enabled,
+		Tail: tail, Reader: reader, ReaderSource: readerSource, Disabled: !cfg.Querylog.Enabled,
 		Privacy: querylogPrivacy(reload),
 	}
 	if ql != nil {
 		qf.Pseudonym = ql.Pseudonym
+		qf.Enabled, qf.Privacy = ql.Enabled, ql.PrivacySetting
 	}
 	o := blockpage.Options{
 		Node: cfg.Node.Name, Finder: blockpage.Chain{qf, pf}, Policy: pf.Policy, Membership: pf.Membership,
