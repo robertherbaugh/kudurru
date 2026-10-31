@@ -431,6 +431,8 @@ type Server struct {
 	// bodyScans is the semaphore of the parses of cached list bodies
 	// (maxBodyScans).
 	bodyScans chan struct{}
+	// sourceIndexes caches bounded derived parser results, never read authority.
+	sourceIndexes sourceIndexCache
 
 	// unblockFallback serves /unblockrequests without Options.Unblock.
 	unblockOnce     sync.Once

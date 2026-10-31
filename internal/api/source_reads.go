@@ -245,11 +245,10 @@ func (s *Server) listCapturedSourceEntries(ctx context.Context, in *sourceEntrie
 		if openErr != nil || body == nil || actualDigest != digest || size < 0 || size > maxCapturedSourceBytes {
 			return nil, sourceReadUnavailable()
 		}
-		_, err = parser.Parse(sourceAPIReader{ctx, io.LimitReader(body, size+1)}, parser.Options{Format: parser.Format(src.Format), HostsSubdomains: src.Subdomains, KeepInvalid: -1, KeepUnsupported: -1}, func(rule parser.Rule) error {
-			value := rule.String()
-			pg.add(SourceEntry{Value: value, Line: rule.Line, Enabled: !ex.hit(value)})
-			return ctx.Err()
-		})
+		// Opening and verifying the exact captured body remains mandatory even
+		// on a hit. A derived index must never revive missing bytes or authority.
+		key := sourceIndexKey{digest, parser.Format(src.Format), src.Subdomains}
+		err = s.scanIndexedSource(ctx, key, io.LimitReader(body, size+1), pg, ex, maxSourceIndexBytes)
 		out.StaleExcludes = ex.stale()
 	}
 	if ctx.Err() != nil || err != nil && !errors.Is(err, io.EOF) {

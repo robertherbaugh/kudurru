@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Source-entry browsing: bounded digest/parser indexes avoid repeated parsing
+  of large downloaded lists while preserving exact exclusions, line numbers,
+  original-publication cursors and body verification.
+
 - Blocking: refresh interval and degraded readiness reload without restarting
   in-flight downloads. New lists inherit the cluster refresh default unless
   they specify an interval; existing stored durations remain overrides.

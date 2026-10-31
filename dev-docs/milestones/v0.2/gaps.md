@@ -1319,3 +1319,36 @@ zero issues. Parent regenerates Kustomize/Helm/embedded schemas and references.
 
 Parent composed mounted/published-settings/scheduler/readiness/config/schema
 races pass in 8.957s/1.093s/1.093s/1.272s/1.310s.
+
+
+### F55 verified source-digest page indexes
+
+D267 adds compact bounded parser-result indexes keyed by body digest, format
+and subdomain mode. Every complete-serving page still checks the original
+object/cursor and opens/verifies the exact body; an index cannot revive missing
+or corrupted bytes. Legacy file sources also verify length/digest before reuse;
+non-file adapters preserve streaming. Parser line numbers, duplicate rules and
+multiple hosts per line survive. Exclusions/filters remain request-local.
+
+The cache accounts at most 128 MiB and 16 indexes, each builder at most 96 MiB,
+with the existing four admitted readers bounding concurrently pinned/building
+indexes. Oversized normalized expansions continue the same streaming parse;
+failed/canceled parsing publishes no index. Unfiltered pages with no exclusions
+select only their own rows after verification; filtered totals still require a
+normalized-rule scan. Derived indexes are not persisted across process restart.
+
+Final API and real SQLite/publisher/body-reader races pass in 7.224s/8.634s,
+including actual-file corruption and loss after populating a warm index,
+generation-bound cursors, exclusion changes, parser-buffer ownership, bounded
+fallback, eviction and concurrent readers. Scoped API/servingbuild lint reports
+zero issues. The two-million-rule local benchmark fits the unchanged 96 MiB
+index budget: cold late-page parse 690.5 ms / 48.1 MB / 2,000,118 allocations;
+warm page with actual file rehash 29.1 ms / 44.0 KB / 113 allocations; indexed
+row selection alone 30.6 microseconds / 10.9 KB / 108 allocations. These are
+shared-sandbox measurements, not fixed-class fleet qualification.
+
+Hosted kind run 41210334567 failed on absent cluster audit history after F73.
+Its fixture omitted the now-required independent trust Secret. `bededd6`
+provisions a fresh cluster/namespace-bound key with the built image before
+replicas start. It changes neither audit refusal rules nor the 90-second test
+bound. Shell syntax passes; fresh hosted kind qualification remains pending.

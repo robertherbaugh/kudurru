@@ -184,6 +184,8 @@ func (p *entryPager) add(e SourceEntry) {
 		}
 		return
 	}
+	// Parser values can alias its reused line buffer; retain only page values.
+	e.Value = strings.Clone(e.Value)
 	p.out.Items = append(p.out.Items, e)
 }
 
@@ -279,7 +281,7 @@ func (s *Server) listSourceEntries(ctx context.Context, in *sourceEntriesInput) 
 }
 
 // maxBodyScans caps the concurrent parses of cached list bodies (GET
-// …/entries, list exceptions) on one server: each parses the whole body,
+// …/entries, list exceptions) on one server. Cold or oversized indexes parse the whole body,
 // about half a second of CPU and 76 MiB of allocations for a 60 MiB list,
 // and every viewer may page. Requests beyond it wait up to bodyScanWait
 // for a slot, then get 503 with Retry-After.
@@ -346,6 +348,15 @@ func (s *Server) scanSourceBody(ctx context.Context, bl *v1alpha1.BlockList, src
 		if st.Name == name && st.Digest != "" && st.Digest != body.Digest {
 			pg.out.Stale = true
 		}
+	}
+	if verified, indexed, err := verifiedLegacyIndexBody(ctx, rc, body); err != nil {
+		return err
+	} else if indexed {
+		key := sourceIndexKey{body.Digest, parser.Format(src.Format), src.Subdomains}
+		if err := s.scanIndexedSource(ctx, key, verified, pg, ex, maxSourceIndexBytes); err != nil || ctx.Err() != nil {
+			return sourceReadUnavailable()
+		}
+		return nil
 	}
 	n := 0
 	_, err = parser.Parse(rc, parser.Options{Format: parser.Format(src.Format), HostsSubdomains: src.Subdomains, KeepInvalid: -1, KeepUnsupported: -1}, func(r parser.Rule) error {

@@ -128,6 +128,32 @@ exact bodies and digests. Allowing degraded readiness never permits a partial
 DNS policy publication. Operational reloads consume accepted complete settings,
 and held DNS requests retain their original compiled lists and response settings.
 
+## Source-entry pagination
+
+The entries API retains a bounded in-memory index of parsed URL and ConfigMap
+bodies by exact SHA-256 digest, format and subdomain mode. Compact owned data
+blocks and line references preserve parser normalization, physical line numbers,
+multiple hosts on a line and duplicate rules. Exclusions and filters belong to
+each request; the shared index contains no object, URL, credentials or policy.
+
+Every complete-serving page still authorizes the original captured object,
+checks its bound continuation and opens/verifies its exact body before consulting
+the index. A missing or changed body returns unavailable even when its parsed
+index remains cached. A different publication, object UID/version, parser option,
+filter or exclusion list invalidates the continuation. Index eviction never
+changes a held request's owner. The legacy file-body adapter independently checks
+file length and digest before index reuse; non-file adapters keep streaming.
+
+The cache retains at most 16 indexes and 128 MiB of accounted storage. Each
+builder stops at 96 MiB and continues the same bounded streaming parse if a
+normalized source exceeds that budget. The existing four-request admission gate
+bounds simultaneous builds and indexes held after eviction; there is no disk
+artifact or background worker. Unfiltered pages without exclusions select only
+the requested rules from the index. Filtered/excluded pages still scan normalized
+rules for exact totals; all pages still pay for body verification. These are
+administrative read optimizations, with no change to DNS compilation or cache
+invalidation.
+
 ## Complete serving candidates
 
 `listfetcher.PrepareComplete` supplies strict list preparation for the complete

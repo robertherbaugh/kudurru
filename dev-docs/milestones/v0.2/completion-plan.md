@@ -151,7 +151,7 @@ runners. Unit tests cannot substitute for those results.
 | F53 | Query-time exact ClientGroup scope for allow/deny lists (D143) | Operations and UI | Queued: partial |
 | F54a | Regex “overrides block list” explanation | Operations and UI | Queued: missing |
 | F54b | Regex allow/deny cache invalidation | Operations and UI | Queued: partial |
-| F55 | Per-digest index for paginated URL entries | Operations and UI | Queued: missing |
+| F55 | Per-digest index for paginated URL entries | Operations and UI | Implemented; bounded parsed indexes, original-source/eviction races and two-million-rule local benchmark pass |
 | F56 | Self-host Inter/JetBrains Mono in Kudurru theme | Operations and UI | Integrated 13c0c9e; 7 browser/9 theme tests and 480.5 KiB entry payload pass |
 | F57 | Nested Shape help for list/map elements/keys | Operations and UI | Integrated; final gates open |
 | F58a | Astryx record-delete AlertDialog | Operations and UI | Implemented; final gates open |

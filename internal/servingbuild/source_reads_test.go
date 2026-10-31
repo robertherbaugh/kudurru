@@ -253,6 +253,11 @@ func TestSourceBodyReadsActualSQLiteDescriptorVerificationAndCancellation(t *tes
 	cachePath := f.builder.opts.Lists.Path(list.Spec.Sources[0].URL)
 	captured := make(chan context.Context, 8)
 	server := sourceReadHTTP(t, f, NewObjectReads(), sourceReadProbe{reader, func(ctx context.Context) { captured <- ctx }})
+	// Populate the parsed digest index before corrupting the real body. Cached
+	// derived data must never stand in for original descriptor verification.
+	if page := sourceReadPage(t, objectReadGET(t.Context(), server, f.token, sourceReadPath)); page.Total != 1 {
+		t.Fatal("valid original body did not populate the source index")
+	}
 	for _, fault := range []string{"hash", "size", "directory", "too-large", "missing"} {
 		t.Run(fault, func(t *testing.T) {
 			// Deliberately corrupt actual cache files AFTER full publication,
