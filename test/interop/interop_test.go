@@ -224,7 +224,10 @@ zone "denied.test" {
 	})
 
 	t.Run("NOTIFY", func(t *testing.T) {
-		before, _ := soaSerial(t, spec.Ports.DNS, "interop.test.")
+		// AXFR already verified this serial on both servers. A fresh SOA
+		// probe can fail and return zero; using it would mistake the unchanged
+		// zone for progress before the file change has been published.
+		before := primarySerial
 		changed := time.Now()
 		writeFile(t, filepath.Join(objDir, "records.yaml"), recordsYAML(`{ dnsName: new.interop.test, recordType: A, targets: ["192.0.2.77"] }`))
 		var after uint32
