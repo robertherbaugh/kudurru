@@ -140,11 +140,16 @@ flowchart TD
     CHK -- "ok" --> SWAP["swap files atomically,<br/>write the API key to /run/kudurru"]
     SWAP --> EXEC["start dnsdist --supervised"]
     EXEC --> LOOP{"event<br/>(debounced 5 s)"}
-    LOOP -- "backends, zones or<br/>certificates changed" --> REN2["re-render"]
-    REN2 --> DIFF{"bytes changed?"}
-    DIFF -- "no" --> LOOP
-    DIFF -- "yes" --> RST["readiness 503 for 1 s,<br/>stop dnsdist, start it again"]
+    LOOP -- "certificate changed" --> TLS["validate private immutable pair<br/>reload and verify every fresh TLS leaf"]
+    TLS --> LOOP
+    LOOP -- "backends or zones changed" --> REN2["render and validate target"]
+    REN2 --> DIFF{"supported runtime diff?"}
+    DIFF -- "removal or anonymous addition" --> APPLY["qualify private-pool automatic health<br/>persist target, promote, drain and remove"]
+    APPLY --> LOOP
+    DIFF -- "new named validator or other change" --> RST["validated staged restart<br/>retain original identity checks"]
     RST --> LOOP
+    APPLY -- "uncertain acknowledgment" --> RECOVER["readiness false until validated<br/>restart target and fresh status converge"]
+    RECOVER --> LOOP
     LOOP -- "dnsdist exited" --> BO["restart with backoff<br/>0.5 s .. 30 s"]
     BO --> LOOP
 ```
@@ -156,9 +161,25 @@ changes (when that pool is cached). The poll needs the internal credentials
 (`KUDURRU_ENCRYPTION_KEY[_FILE]` or `--internal-token-file`); the shipped
 chart, Kustomize and Compose files mount the backend's encryption key into
 the edge for this.
-Membership changes restart dnsdist in
-v0.1: invisible behind a VIP or a LoadBalancer with two edge replicas, a
-sub-second gap for a lone edge.
+Runtime removal and anonymous backend addition use bounded acknowledged console
+commands. New entries stay in private pools until original automatic health
+checks succeed; removal first marks the old backend down, then waits the purge
+delay before removal. Same-UUID replacements, routing changes and new named
+validators retain a validated restart path: dnsdist 2.1.3 does not support setting
+the original response validator at runtime. Restart-free named additions remain
+a separate protocol qualification. Readiness stays false after uncertain runtime
+changes until a validated restart and fresh status converge. Established DNS
+connections may return SERVFAIL after their selected backend is removed; the
+supervisor does not replay queries or promise connection migration.
+
+Certificate rotation uses bounded, valid matching pairs in private immutable
+snapshots and an atomic active selection. `reloadAllCertificates()` must receive
+an acknowledgment and fresh DoT/DoH/DoQ/DoH3 handshakes must present the exact
+candidate leaf before acceptance. Half rotations and invalid material retain the
+accepted snapshot, including after child restart. The external console client
+reads credentials from private configuration; keys never appear in command
+arguments or returned diagnostics. The actual pinned dnsdist acceptance also
+qualifies held DoT through successful rotation and uncertain-mutation recovery.
 
 ### The VIP (`kudurru vip run`)
 
@@ -262,3 +283,47 @@ The named chart annotation helper is checked against the Go ServiceProvider
 annotation contract across direct, sidecar, separate Deployment and DaemonSet
 edge topologies. These annotations request allocation; they do not prove which
 node currently announces an address. Owner observation remains a separate task.
+
+### Read-only Service VIP ownership
+
+`serve` can observe an explicitly selected Kubernetes VIP provider through
+host-only `vip.observation.*` settings. The default provider is `none`; selecting
+`kube-vip` or `metallb` does not launch a supervisor or change a Service/Lease:
+
+```yaml
+vip:
+  observation:
+    provider: metallb
+    services:
+      - name: dns
+        address: 192.0.2.53
+        namespace: dns
+        service: kudurru-dns
+    announcerNamespace: metallb-system
+    interval: 5s
+    timeout: 2s
+    maxAge: 15s
+```
+
+The Service list is file-only structured configuration. API writes/resets are
+refused. Scalar environment values retain normal host precedence. Observation
+uses the installed Kubernetes credentials and transport, including impersonation;
+operators must grant the exact source reads. Both providers need `get` Services
+and Nodes. kube-vip needs `get` its namespace-local `kubevip-<service>` Lease.
+MetalLB needs `list/get` ServiceL2Status and `get` speaker Pods in the announcer
+namespace, plus `get` speaker Node Leases in `kube-node-lease`.
+
+`GET /api/v1/edge` includes optional `observation` under existing `edge.read`.
+An allocated address is only a prerequisite. kube-vip per-Service ARP ownership
+requires an unexpired Lease matching the Service's `vipHost` and a Ready Node.
+MetalLB L2 evidence requires matching status, a live Ready speaker Pod with the
+original UID, and a Ready Node whose fresh Lease has that exact Node UID as
+owner. Replacement/deletion, ambiguity, unreadable sources and expiry clear the
+owner. BGP and global kube-vip election do not establish a single current owner.
+
+Each acquisition is bounded to 32 bindings, 64 MetalLB status objects, 2 MiB per
+response and a total timeout of 100 ms–5 s. Original Lease and local acquisition
+deadlines bound observation age. MetalLB status has no provider heartbeat:
+`createdAt`, UID and resource version retain its original age; `livenessAt`
+is separately the Node Lease renewal. This reports provider state and does not
+certify physical ARP/BGP ownership or create writer authority.

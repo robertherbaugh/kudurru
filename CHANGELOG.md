@@ -28,6 +28,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- VIP: opt-in read-only kube-vip/MetalLB ownership evidence with bounded source
+  reads, exact source identity and expiry; status never grants writer authority.
+
 - Cache: permissioned exact-key REST inspection reports TTL/state/size metadata
   without resolving misses or exposing stored answer bodies and client subnets.
 

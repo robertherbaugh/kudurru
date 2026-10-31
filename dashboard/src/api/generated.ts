@@ -19,7 +19,7 @@ export interface paths {
         put?: never;
         /**
          * Add Allowlist entries
-         * @description Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+         * @description Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
          */
         post: operations["createAllowlistEntries"];
         delete?: never;
@@ -596,6 +596,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cache/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect one raw default-route cache entry without resolving */
+        get: operations["inspectCache"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalogue": {
         parameters: {
             query?: never;
@@ -804,7 +821,7 @@ export interface paths {
         put?: never;
         /**
          * Add Denylist entries
-         * @description Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+         * @description Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
          */
         post: operations["createDenylistEntries"];
         delete?: never;
@@ -2395,6 +2412,40 @@ export interface components {
             /** Format: date-time */
             validUntil?: string;
         };
+        CacheEntryMetadata: {
+            /** Format: double */
+            ageSeconds: number;
+            /** @enum {string} */
+            kind: "positive" | "negative";
+            /**
+             * Format: double
+             * @description Zero for stale entries.
+             */
+            remainingSeconds: number;
+            /** @enum {string} */
+            state: "fresh" | "stale";
+            /**
+             * Format: double
+             * @description Original stored lifetime.
+             */
+            ttlSeconds: number;
+            validation: string;
+            /** Format: int64 */
+            wireBytes: number;
+        };
+        CacheInspection: {
+            cacheable: boolean;
+            entry?: components["schemas"]["CacheEntryMetadata"];
+            found: boolean;
+            name: string;
+            node: string;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+            type: string;
+        };
         CatalogueCategory: {
             description?: string;
             /** @description A Lucide icon name (kebab-case). */
@@ -3257,6 +3308,7 @@ export interface components {
             backends: components["schemas"]["EdgeBackend"][];
             edge: components["schemas"]["EdgeComponent"];
             node: string;
+            observation?: components["schemas"]["VIPObservationSnapshot"];
             supervisors: components["schemas"]["EdgeSupervisorStatus"][];
             /**
              * Format: double
@@ -5043,6 +5095,34 @@ export interface components {
             /** Format: date-time */
             until: string;
             upstreams: components["schemas"]["UpstreamItem"][] | null;
+        };
+        VIPAnnouncerEvidence: {
+            /** Format: date-time */
+            createdAt: string;
+            kind: string;
+            /** Format: date-time */
+            livenessAt?: string;
+            /** Format: date-time */
+            renewedAt?: string;
+            resourceVersion: string;
+            uid: string;
+        };
+        VIPObservationSnapshot: {
+            provider: string;
+            vips: components["schemas"]["VIPOwnerObservation"][];
+        };
+        VIPOwnerObservation: {
+            address: string;
+            /** Format: date-time */
+            checkedAt: string;
+            evidence?: components["schemas"]["VIPAnnouncerEvidence"];
+            /** Format: date-time */
+            expiresAt: string;
+            known: boolean;
+            name: string;
+            owner?: string;
+            reason?: string;
+            serviceUID?: string;
         };
         VersionOutputBody: {
             /** @description API version (the /api/v1 contract). */
@@ -8803,6 +8883,101 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    inspectCache: {
+        parameters: {
+            query: {
+                /** @description Exact DNS name; no wildcard or cache enumeration. */
+                name: string;
+                /** @description DNS type mnemonic. */
+                type?: string;
+                /** @description DNSSEC OK bit of the raw cache key. */
+                do?: boolean;
+                /** @description Checking Disabled bit of the raw cache key. */
+                cd?: boolean;
+                /** @description Address used only to derive ECS; default 127.0.0.1. */
+                client?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheInspection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

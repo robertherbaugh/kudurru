@@ -95,7 +95,7 @@ runners. Unit tests cannot substitute for those results.
 | F20c | Move benchgate to `hack/` | DNS and resolver | Integrated; final gates open |
 | F20d | Lazy-DFA regex engine | DNS and resolver | Queued: missing |
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Implemented; bounded canonical translation, refusal/ownership/restart and real mounted DNS routes pass |
-| F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated contracts pending batch regeneration |
+| F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated 157-operation client and API/reference contracts updated |
 | F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |
 | F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Implemented; actual transport/config/mounted races pass |
 | F22b | DoH `Alt-Svc` | DNS and resolver | Implemented; actual HTTPS/HTTP3 and full transport races pass |
@@ -130,11 +130,11 @@ runners. Unit tests cannot substitute for those results.
 | F39b | Remote edge blocking-generation pull / resolver invalidation | Edge and VIP | Queued: missing |
 | F40a | Host-only `edge.*` / `vip.*` settings keys | Edge and VIP | Integrated 52ec29d; 70 typed keys, actual render/precedence/API-refusal races and chart/Compose checks pass; generated reference/mock updated |
 | F40b | Keepalived provider events to audit/SSE in serve | Edge and VIP | Queued: missing |
-| F41a | ServiceProvider current Owner | Edge and VIP | Queued: missing |
+| F41a | ServiceProvider current Owner | Edge and VIP | Integrated 1c934e7/9990ede; bounded host-selected provider evidence, actual envtest/mounted read/expiry and Node replacement races pass; physical ownership remains separate |
 | F41b | Chart provider annotations | Edge and VIP | Implemented; actual Helm/Go parity across 16 supported modes and four topology refusals pass; owner observation separate |
 | F42 | Per-VRID `--hmac-key-file` in chart | Edge and VIP | Integrated 49a9cf8/376d63d/e760dd7; chart/CLI races and real keepalived staging/preflight pass |
-| F43a | dnsdist console backend diff-apply | Edge and VIP | Queued: missing |
-| F43b | `reloadAllCertificates()` without restart | Edge and VIP | Queued: missing |
+| F43a | dnsdist console backend diff-apply | Edge and VIP | Integrated e60001f supported removal/anonymous addition and safe convergence; restart-free named additions remain in progress |
+| F43b | `reloadAllCertificates()` without restart | Edge and VIP | Integrated e60001f; real pinned all-frontend leaf checks, held DoT, invalid-pair retention and child-restart acceptance pass |
 | F43c | Console spike (a) gates both changes | Edge and VIP | D275: actual dnsdist 2.1.3 YAML console, live DNS/cert/invalid-cert/PID/restart checks pass; established-connection limit recorded |
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |
 | F44b | Cluster-wide production use on every advertised driver/route | IAM and access | Queued: partial |

@@ -189,6 +189,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.FlushCacheWithBody(ctx, nil, contentType, body, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 2 && parts[0] == "cache" && parts[1] == "inspect" {
+		response, err := c.InspectCache(ctx, nil, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 1 && parts[0] == "catalogue" {
 		response, err := c.GetCatalogue(ctx, editors...)
 		return response, true, err

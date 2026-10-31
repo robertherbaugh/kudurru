@@ -224,6 +224,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | Method | Path | Summary | Permission |
 |---|---|---|---|
 | POST | `/api/v1/cache/flush` | Flush the response cache (or one name) | `cache.flush` (cluster) |
+| GET | `/api/v1/cache/inspect` | Inspect one raw default-route cache entry without resolving | `cache.read` (cluster) |
 | GET | `/api/v1/dns/blocking` | Blocking state of this node | `blocking.read` (cluster) |
 | POST | `/api/v1/dns/blocking` | Enable blocking, or disable it for a while | `blocking.toggle` (cluster) |
 | POST | `/api/v1/dns/query` | Run one query through the pipeline in-process (built-in dig) | `stats.read` (cluster) |

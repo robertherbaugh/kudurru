@@ -560,6 +560,93 @@
         ],
         "type": "object"
       },
+      "CacheEntryMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "ageSeconds": {
+            "format": "double",
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "positive",
+              "negative"
+            ],
+            "type": "string"
+          },
+          "remainingSeconds": {
+            "description": "Zero for stale entries.",
+            "format": "double",
+            "type": "number"
+          },
+          "state": {
+            "enum": [
+              "fresh",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "ttlSeconds": {
+            "description": "Original stored lifetime.",
+            "format": "double",
+            "type": "number"
+          },
+          "validation": {
+            "type": "string"
+          },
+          "wireBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "ageSeconds",
+          "ttlSeconds",
+          "remainingSeconds",
+          "wireBytes",
+          "validation"
+        ],
+        "type": "object"
+      },
+      "CacheInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "cacheable": {
+            "type": "boolean"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/CacheEntryMetadata"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "node",
+          "cacheable",
+          "found",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "CatalogueCategory": {
         "additionalProperties": false,
         "properties": {
@@ -3301,6 +3388,9 @@
           },
           "node": {
             "type": "string"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/VIPObservationSnapshot"
           },
           "supervisors": {
             "items": {
@@ -8797,6 +8887,100 @@
         ],
         "type": "object"
       },
+      "VIPAnnouncerEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "livenessAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "renewedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "resourceVersion": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "uid",
+          "resourceVersion",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "VIPObservationSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "vips": {
+            "items": {
+              "$ref": "#/components/schemas/VIPOwnerObservation"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider",
+          "vips"
+        ],
+        "type": "object"
+      },
+      "VIPOwnerObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/VIPAnnouncerEvidence"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "known": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "serviceUID": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "known",
+          "checkedAt",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "VersionOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -9340,7 +9524,7 @@
         }
       },
       "post": {
-        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
+        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
         "operationId": "createAllowlistEntries",
         "requestBody": {
           "content": {
@@ -13975,6 +14159,167 @@
         }
       }
     },
+    "/cache/inspect": {
+      "get": {
+        "operationId": "inspectCache",
+        "parameters": [
+          {
+            "description": "Exact DNS name; no wildcard or cache enumeration.",
+            "explode": false,
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Exact DNS name; no wildcard or cache enumeration.",
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "DNS type mnemonic.",
+            "explode": false,
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "default": "A",
+              "description": "DNS type mnemonic.",
+              "maxLength": 16,
+              "type": "string"
+            }
+          },
+          {
+            "description": "DNSSEC OK bit of the raw cache key.",
+            "explode": false,
+            "in": "query",
+            "name": "do",
+            "schema": {
+              "description": "DNSSEC OK bit of the raw cache key.",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Checking Disabled bit of the raw cache key.",
+            "explode": false,
+            "in": "query",
+            "name": "cd",
+            "schema": {
+              "description": "Checking Disabled bit of the raw cache key.",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Address used only to derive ECS; default 127.0.0.1.",
+            "explode": false,
+            "in": "query",
+            "name": "client",
+            "schema": {
+              "description": "Address used only to derive ECS; default 127.0.0.1.",
+              "maxLength": 45,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CacheInspection"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Inspect one raw default-route cache entry without resolving",
+        "tags": [
+          "runtime"
+        ],
+        "x-kudurru-permission": {
+          "resource": "cache",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/catalogue": {
       "get": {
         "operationId": "getCatalogue",
@@ -15779,7 +16124,7 @@
         }
       },
       "post": {
-        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
+        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
         "operationId": "createDenylistEntries",
         "requestBody": {
           "content": {

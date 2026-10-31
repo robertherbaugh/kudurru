@@ -80,6 +80,42 @@ func (e BlockingStateScope) Valid() bool {
 	}
 }
 
+// Defines values for CacheEntryMetadataKind.
+const (
+	CacheEntryMetadataKindNegative CacheEntryMetadataKind = "negative"
+	CacheEntryMetadataKindPositive CacheEntryMetadataKind = "positive"
+)
+
+// Valid indicates whether the value is a known member of the CacheEntryMetadataKind enum.
+func (e CacheEntryMetadataKind) Valid() bool {
+	switch e {
+	case CacheEntryMetadataKindNegative:
+		return true
+	case CacheEntryMetadataKindPositive:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CacheEntryMetadataState.
+const (
+	CacheEntryMetadataStateFresh CacheEntryMetadataState = "fresh"
+	CacheEntryMetadataStateStale CacheEntryMetadataState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the CacheEntryMetadataState enum.
+func (e CacheEntryMetadataState) Valid() bool {
+	switch e {
+	case CacheEntryMetadataStateFresh:
+		return true
+	case CacheEntryMetadataStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CatalogueServiceOrigin.
 const (
 	CatalogueServiceOriginAdguard CatalogueServiceOrigin = "adguard"
@@ -2219,6 +2255,40 @@ type BrandingInfo struct {
 	ValidUntil  *time.Time `json:"validUntil,omitempty"`
 }
 
+// CacheEntryMetadata defines model for CacheEntryMetadata.
+type CacheEntryMetadata struct {
+	AgeSeconds float64                `json:"ageSeconds"`
+	Kind       CacheEntryMetadataKind `json:"kind"`
+
+	// RemainingSeconds Zero for stale entries.
+	RemainingSeconds float64                 `json:"remainingSeconds"`
+	State            CacheEntryMetadataState `json:"state"`
+
+	// TtlSeconds Original stored lifetime.
+	TtlSeconds float64 `json:"ttlSeconds"`
+	Validation string  `json:"validation"`
+	WireBytes  int64   `json:"wireBytes"`
+}
+
+// CacheEntryMetadataKind defines model for CacheEntryMetadata.Kind.
+type CacheEntryMetadataKind string
+
+// CacheEntryMetadataState defines model for CacheEntryMetadata.State.
+type CacheEntryMetadataState string
+
+// CacheInspection defines model for CacheInspection.
+type CacheInspection struct {
+	Cacheable bool                `json:"cacheable"`
+	Entry     *CacheEntryMetadata `json:"entry,omitempty"`
+	Found     bool                `json:"found"`
+	Name      string              `json:"name"`
+	Node      string              `json:"node"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+	Type   string  `json:"type"`
+}
+
 // CatalogueCategory defines model for CatalogueCategory.
 type CatalogueCategory struct {
 	Description *string `json:"description,omitempty"`
@@ -3195,10 +3265,11 @@ type EdgeComponent struct {
 
 // EdgeInfo defines model for EdgeInfo.
 type EdgeInfo struct {
-	Backends    []EdgeBackend          `json:"backends"`
-	Edge        EdgeComponent          `json:"edge"`
-	Node        string                 `json:"node"`
-	Supervisors []EdgeSupervisorStatus `json:"supervisors"`
+	Backends    []EdgeBackend           `json:"backends"`
+	Edge        EdgeComponent           `json:"edge"`
+	Node        string                  `json:"node"`
+	Observation *VIPObservationSnapshot `json:"observation,omitempty"`
+	Supervisors []EdgeSupervisorStatus  `json:"supervisors"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64       `json:"took_ms"`
@@ -5104,6 +5175,35 @@ type UpstreamsBody struct {
 	Upstreams *[]UpstreamItem `json:"upstreams"`
 }
 
+// VIPAnnouncerEvidence defines model for VIPAnnouncerEvidence.
+type VIPAnnouncerEvidence struct {
+	CreatedAt       time.Time  `json:"createdAt"`
+	Kind            string     `json:"kind"`
+	LivenessAt      *time.Time `json:"livenessAt,omitempty"`
+	RenewedAt       *time.Time `json:"renewedAt,omitempty"`
+	ResourceVersion string     `json:"resourceVersion"`
+	Uid             string     `json:"uid"`
+}
+
+// VIPObservationSnapshot defines model for VIPObservationSnapshot.
+type VIPObservationSnapshot struct {
+	Provider string                `json:"provider"`
+	Vips     []VIPOwnerObservation `json:"vips"`
+}
+
+// VIPOwnerObservation defines model for VIPOwnerObservation.
+type VIPOwnerObservation struct {
+	Address    string                `json:"address"`
+	CheckedAt  time.Time             `json:"checkedAt"`
+	Evidence   *VIPAnnouncerEvidence `json:"evidence,omitempty"`
+	ExpiresAt  time.Time             `json:"expiresAt"`
+	Known      bool                  `json:"known"`
+	Name       string                `json:"name"`
+	Owner      *string               `json:"owner,omitempty"`
+	Reason     *string               `json:"reason,omitempty"`
+	ServiceUID *string               `json:"serviceUID,omitempty"`
+}
+
 // VersionOutputBody defines model for VersionOutputBody.
 type VersionOutputBody struct {
 	// Api API version (the /api/v1 contract).
@@ -5377,6 +5477,24 @@ type PreviewBlockPageParams struct {
 type FlushCacheParams struct {
 	// Name Same as the body field.
 	Name *string `form:"name,omitempty" json:"name,omitempty"`
+}
+
+// InspectCacheParams defines parameters for InspectCache.
+type InspectCacheParams struct {
+	// Name Exact DNS name; no wildcard or cache enumeration.
+	Name string `form:"name" json:"name"`
+
+	// Type DNS type mnemonic.
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+
+	// Do DNSSEC OK bit of the raw cache key.
+	Do *bool `form:"do,omitempty" json:"do,omitempty"`
+
+	// Cd Checking Disabled bit of the raw cache key.
+	Cd *bool `form:"cd,omitempty" json:"cd,omitempty"`
+
+	// Client Address used only to derive ECS; default 127.0.0.1.
+	Client *string `form:"client,omitempty" json:"client,omitempty"`
 }
 
 // GetCatalogueIconParams defines parameters for GetCatalogueIcon.
@@ -6202,7 +6320,7 @@ type ClientInterface interface {
 
 	// CreateAllowlistEntriesWithBody Add Allowlist entries
 	//
-	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -6211,7 +6329,7 @@ type ClientInterface interface {
 
 	// CreateAllowlistEntries Add Allowlist entries
 	//
-	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -6575,6 +6693,11 @@ type ClientInterface interface {
 	// Corresponds with POST /cache/flush (the `FlushCache` operationId).
 	FlushCache(ctx context.Context, params *FlushCacheParams, body FlushCacheJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// InspectCache Inspect one raw default-route cache entry without resolving
+	//
+	// Corresponds with GET /cache/inspect (the `InspectCache` operationId).
+	InspectCache(ctx context.Context, params *InspectCacheParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetCatalogue The blocked-services and safe-search catalogue in service
 	//
 	// Corresponds with GET /catalogue (the `GetCatalogue` operationId).
@@ -6683,7 +6806,7 @@ type ClientInterface interface {
 
 	// CreateDenylistEntriesWithBody Add Denylist entries
 	//
-	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -6692,7 +6815,7 @@ type ClientInterface interface {
 
 	// CreateDenylistEntries Add Denylist entries
 	//
-	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -7592,7 +7715,7 @@ func (c *Client) ListAllowlist(ctx context.Context, params *ListAllowlistParams,
 
 // CreateAllowlistEntriesWithBody Add Allowlist entries
 //
-// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7611,7 +7734,7 @@ func (c *Client) CreateAllowlistEntriesWithBody(ctx context.Context, contentType
 
 // CreateAllowlistEntries Add Allowlist entries
 //
-// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -8515,6 +8638,21 @@ func (c *Client) FlushCache(ctx context.Context, params *FlushCacheParams, body 
 	return c.Client.Do(req)
 }
 
+// InspectCache Inspect one raw default-route cache entry without resolving
+//
+// Corresponds with GET /cache/inspect (the `InspectCache` operationId).
+func (c *Client) InspectCache(ctx context.Context, params *InspectCacheParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInspectCacheRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetCatalogue The blocked-services and safe-search catalogue in service
 //
 // Corresponds with GET /catalogue (the `GetCatalogue` operationId).
@@ -8803,7 +8941,7 @@ func (c *Client) ListDenylist(ctx context.Context, params *ListDenylistParams, r
 
 // CreateDenylistEntriesWithBody Add Denylist entries
 //
-// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 //
 // Takes any type of body and a specified content type.
 //
@@ -8822,7 +8960,7 @@ func (c *Client) CreateDenylistEntriesWithBody(ctx context.Context, contentType 
 
 // CreateDenylistEntries Add Denylist entries
 //
-// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -13194,6 +13332,104 @@ func NewFlushCacheRequestWithBody(server string, params *FlushCacheParams, conte
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewInspectCacheRequest constructs an http.Request for the InspectCache method
+func NewInspectCacheRequest(server string, params *InspectCacheParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/cache/inspect")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "name", params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "type", *params.Type, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Do != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "do", *params.Do, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cd != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cd", *params.Cd, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Client != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "client", *params.Client, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -19850,7 +20086,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAllowlistEntriesWithBodyWithResponse Add Allowlist entries
 	//
-	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -19859,7 +20095,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAllowlistEntriesWithResponse Add Allowlist entries
 	//
-	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -20273,6 +20509,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /cache/flush (the `FlushCache` operationId).
 	FlushCacheWithResponse(ctx context.Context, params *FlushCacheParams, body FlushCacheJSONRequestBody, reqEditors ...RequestEditorFn) (*FlushCacheResponse, error)
 
+	// InspectCacheWithResponse Inspect one raw default-route cache entry without resolving
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /cache/inspect (the `InspectCache` operationId).
+	InspectCacheWithResponse(ctx context.Context, params *InspectCacheParams, reqEditors ...RequestEditorFn) (*InspectCacheResponse, error)
+
 	// GetCatalogueWithResponse The blocked-services and safe-search catalogue in service
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -20405,7 +20648,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateDenylistEntriesWithBodyWithResponse Add Denylist entries
 	//
-	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -20414,7 +20657,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateDenylistEntriesWithResponse Add Denylist entries
 	//
-	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25166,6 +25409,103 @@ func (r FlushCacheResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r FlushCacheResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// InspectCacheResponse200Headers the declared response headers of an HTTP 200 response for InspectCache
+type InspectCacheResponse200Headers struct {
+	CacheControl *string
+}
+
+type InspectCacheResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CacheInspection
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *InspectCacheResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r InspectCacheResponse) GetJSON200() *CacheInspection {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r InspectCacheResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r InspectCacheResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r InspectCacheResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r InspectCacheResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r InspectCacheResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r InspectCacheResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r InspectCacheResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r InspectCacheResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InspectCacheResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InspectCacheResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InspectCacheResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -35995,7 +36335,7 @@ func (c *ClientWithResponses) ListAllowlistWithResponse(ctx context.Context, par
 
 // CreateAllowlistEntriesWithBodyWithResponse Add Allowlist entries
 //
-// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -36010,7 +36350,7 @@ func (c *ClientWithResponses) CreateAllowlistEntriesWithBodyWithResponse(ctx con
 
 // CreateAllowlistEntriesWithResponse Add Allowlist entries
 //
-// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -36748,6 +37088,19 @@ func (c *ClientWithResponses) FlushCacheWithResponse(ctx context.Context, params
 	return ParseFlushCacheResponse(rsp)
 }
 
+// InspectCacheWithResponse Inspect one raw default-route cache entry without resolving
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /cache/inspect (the `InspectCache` operationId).
+func (c *ClientWithResponses) InspectCacheWithResponse(ctx context.Context, params *InspectCacheParams, reqEditors ...RequestEditorFn) (*InspectCacheResponse, error) {
+	rsp, err := c.InspectCache(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInspectCacheResponse(rsp)
+}
+
 // GetCatalogueWithResponse The blocked-services and safe-search catalogue in service
 //
 // Returns a wrapper object for the known response body format(s).
@@ -36988,7 +37341,7 @@ func (c *ClientWithResponses) ListDenylistWithResponse(ctx context.Context, para
 
 // CreateDenylistEntriesWithBodyWithResponse Add Denylist entries
 //
-// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -37003,7 +37356,7 @@ func (c *ClientWithResponses) CreateDenylistEntriesWithBodyWithResponse(ctx cont
 
 // CreateDenylistEntriesWithResponse Add Denylist entries
 //
-// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); group lists apply only to the query's captured winning membership, even with shared policies. Policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -42076,6 +42429,94 @@ func ParseFlushCacheResponse(rsp *http.Response) (*FlushCacheResponse, error) {
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseInspectCacheResponse parses an HTTP response from a InspectCacheWithResponse call
+func ParseInspectCacheResponse(rsp *http.Response) (*InspectCacheResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InspectCacheResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CacheInspection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers InspectCacheResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

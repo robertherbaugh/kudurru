@@ -3768,6 +3768,135 @@
       "scope": "node",
       "type": "string",
       "writeOnly": false
+    },
+    {
+      "path": "vip.observation.announcerNamespace",
+      "type": "string",
+      "scope": "node",
+      "default": "metallb-system",
+      "help": "Namespace containing MetalLB ServiceL2Status and speaker Pods. Requires read permissions; at most 64 status objects per acquisition. No provider credential or write permission is added.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "MetalLB announcer namespace",
+      "group": "VIP"
+    },
+    {
+      "path": "vip.observation.interval",
+      "type": "duration",
+      "scope": "node",
+      "default": "5s",
+      "help": "Read-only polling interval, 1s-1m. Polling does not renew a provider heartbeat.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "VIP observation interval",
+      "group": "VIP"
+    },
+    {
+      "path": "vip.observation.maxAge",
+      "type": "duration",
+      "scope": "node",
+      "default": "15s",
+      "help": "Local acquisition expiry measured from its original start; at least interval+timeout, at most 1m. Provider Lease or Node heartbeat expiry can shorten this; a fresh L2 status read never invents a provider heartbeat.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "VIP observation maximum age",
+      "group": "VIP"
+    },
+    {
+      "path": "vip.observation.provider",
+      "type": "string",
+      "scope": "node",
+      "default": "none",
+      "help": "Read-only ownership evidence in serve; never starts or controls a supervisor. kube-vip supports per-Service ARP leader Leases; MetalLB supports L2 status with live matching speaker and Node. BGP/global/ambiguous sources remain unknown.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "VIP observation provider",
+      "group": "VIP",
+      "enum": [
+        {
+          "help": "Do not acquire VIP ownership evidence.",
+          "label": "Disabled",
+          "value": "none"
+        },
+        {
+          "help": "Observe per-Service kubevip-<service> Leases agreeing with vipHost, assigned IP and a live Node.",
+          "label": "kube-vip",
+          "value": "kube-vip"
+        },
+        {
+          "help": "Observe ServiceL2Status, live UID-matching speaker Pod and live Node heartbeat. L2 status has no provider heartbeat or physical ARP proof.",
+          "label": "MetalLB L2",
+          "value": "metallb"
+        }
+      ]
+    },
+    {
+      "path": "vip.observation.services",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Up to 32 exact Service/address bindings. File-only structured input; each Service must remain allocated to the expected address. Allocation never implies an owner.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Observed VIP Services",
+      "group": "VIP",
+      "items": {
+        "fields": [
+          {
+            "help": "Local name for this observed VIP.",
+            "label": "VIP name",
+            "name": "name",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "format": "ip",
+            "help": "Expected Service LoadBalancer IP, used only to match allocation, never to infer ownership.",
+            "label": "Address",
+            "name": "address",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "help": "Exact namespace of the observed Service.",
+            "label": "Service namespace",
+            "name": "namespace",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "help": "Exact Service name. kube-vip observation requires its per-Service kubevip-<name> Lease.",
+            "label": "Service name",
+            "name": "service",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "path": "vip.observation.timeout",
+      "type": "duration",
+      "scope": "node",
+      "default": "2s",
+      "help": "Deadline for the entire acquisition, 100ms-5s. Failed reads replace previous ownership with unknown.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "VIP acquisition timeout",
+      "group": "VIP"
     }
   ]
 }

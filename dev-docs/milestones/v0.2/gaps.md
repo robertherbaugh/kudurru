@@ -1632,3 +1632,76 @@ An initial test invocation exposed test setup errors (missing captured resolver,
 incorrect stale-window assumption and expected validation status); corrected
 commands pass without production gate or deadline changes. Generated OpenAPI,
 Go/TypeScript clients and references are part of the next integrated batch.
+
+### F41a provider ownership evidence
+
+`1c934e7` and review follow-up `9990ede` implement D278. Six host-only observation
+keys mount a bounded read-only provider observer in serve; existing edge.read
+protects API evidence. kube-vip per-Service ARP Lease plus vipHost/Ready Node,
+or MetalLB L2 status plus UID-matching live speaker/Ready Node and exact
+Node-owned Lease, can establish provider-reported ownership. Failed/stale,
+ambiguous, replaced and unauthorized inputs clear the owner. MetalLB status
+retains its original creation/version evidence; Node renewal is distinct and
+cannot turn an old status read into a provider heartbeat or physical ARP proof.
+
+Full provider/config races pass in 1.107s/11.554s. Selected API/cmd races pass
+in 1.447s/10.133s, including real envtest both providers, mounted route permissions,
+source expiry and read-only Service update refusal; scoped four-package lint
+reports zero issues. Review reproduced a replaced-Node/unbound-Lease bug before
+the narrow fix. Exact Node owner UID and final Node/Lease head fences fix it;
+selected provider/cmd races pass in 1.139s/10.519s, including an actual envtest
+Node deletion/recreation while a predecessor-owned Lease is freshly renewed.
+No real provider daemon/ARP/BGP or hardware failover qualification is claimed.
+F40b keepalived audit/SSE remains separate work.
+
+### F43b and supported F43a runtime paths
+
+`e60001f` implements D276. The external console client has bounded commands,
+output, cancellation and an exact random terminal acknowledgment; it never puts
+keys in argv or emits raw diagnostics. Supported runtime removals/anonymous
+additions preserve private staging, automatic health, accepted restart targets,
+original purge delay and fresh status. Uncertain mutation converges through a
+validated restart, without assuming rollback or replaying DNS queries. Named
+additions retain the original YAML/Lua validator through a staged restart because
+pinned dnsdist 2.1.3 rejects runtime validator installation. This fallback does
+not close the fully restart-free named-addition requirement.
+
+Certificate rotation uses validated immutable private snapshots, bounded reload
+and exact fresh leaf verification for DoT/DoH/DoQ/DoH3. Invalid/half-rotated sources
+retain accepted contexts and child-restart material. Actual pinned generated
+supervisor acceptance passes in 47.497s, including held DoT, same PID for supported
+updates, wrong-node refusal, real lost acknowledgment after rmServer and desired
+restart convergence. Scoped supervisor/console/certificate races pass in 6.096s;
+scoped lint reports zero issues. First-party targeted-health work for named
+runtime additions remains independent and must pass actual same-PID acceptance.
+
+### Hosted CI shutdown fixture correction
+
+Security 41214453550, GitHub docs 41214453575 and kind/MetalLB 41214453416 passed
+on 8bdb218. CI 41214453524 finished with one failure:
+`TestServingCurrentCommandFinalCredentialClock/expiry/noop`, reporting
+`serving_command_test.go:68: context canceled`. Closing the serving root before
+the independent elector deterministically reproduces that fixture failure.
+`0e8c3be` recognizes the root's original cancellation in the fixture callback;
+production authority, time checks and deadlines are unchanged. Twenty repeated
+root-shutdown and final-credential-clock race runs pass in 82.997s. Later commits
+require fresh hosted checks; the previous run is not credited as fully green.
+
+Integrated API/Go/TypeScript contracts now include cache inspection and VIP
+ownership evidence; generated dispatch covers 157 operations. Complete generator
+and client races pass in 4.589s/1.833s; reference drift passes in 0.029s, all 22
+settings UI cases and dashboard typecheck pass, and the local docs site builds.
+The settings mock preserves existing entries and adds only the six observation
+keys. Two initial verification commands used a nonexistent Settings test filename
+and a non-package docs directory; neither is counted as passing. Correct named
+commands above passed. The modified dashboard/dist/index.html remains excluded.
+
+Parent integrated mounted CLI/VIP/cache races pass in 29.632s and cache-stage
+races in 1.035s. The combined command initially failed dnsdist tests because its
+reexecuted race-instrumented fake waited Go's default one-second exit grace,
+exceeding the original 250/500 ms test health/console deadlines. Agent checks had
+supplied GORACE externally. `0435528` makes the fake helper set only its child
+exit grace to zero while preserving race detection and other options. Parent
+scoped dnsdist races then pass in 6.815s with the ordinary invocation; production
+deadlines are unchanged. The initial combined invocation is not claimed green.
+A fresh origin/main fetch remains fully contained in the branch.

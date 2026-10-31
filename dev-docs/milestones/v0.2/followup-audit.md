@@ -894,3 +894,25 @@ and saving list settings preserves it (all 20 list-detail cases pass, plus
 typecheck and scoped lint). Original credentials, current-command final fences,
 request Received/Deadline and compiled content ownership remain unchanged.
 F54b remote-edge invalidation and other topology gates are still separate.
+
+### Further F21b/F41a/F43b implementation evidence
+
+`6400220` adds bounded exact-key raw cache metadata over REST with original
+HTTP/resolver/cache scope, no DNS I/O or stored answer/subnet enumeration.
+Mounted DNS/API races and actual SQLite held-cut/ABA tests pass. `1c934e7` and
+`9990ede` add host-selected provider ownership observation and fix Node-incarnation
+binding; real envtest source expiry/replacement and permission tests pass.
+`e60001f` adds bounded dnsdist console reconciliation and immutable certificate
+reload; actual pinned generated-supervisor acceptance passes all enabled TLS
+frontends, held DoT, invalid material and uncertain mutation recovery. Fully
+restart-free named additions remain open until their separate targeted-health
+protocol acceptance passes. These updates do not certify physical ARP/BGP or
+Windows/two-VM acceptance.
+
+Hosted CI 41214453524 on 8bdb218 failed only its first Go shard because the command
+fixture reported the independently canceled serving root as an unexpected writer
+error. `0e8c3be` fixes that fixture after deterministic reproduction; 20 repeated
+root-shutdown/final-credential races pass in 82.997s. Production authority and
+deadlines were not changed. Security, GitHub docs and kind/MetalLB passed that
+head. Newer commits still need their own hosted runs. Exact commands and limits
+remain in the gap ledger; the complete original inventory is retained.
