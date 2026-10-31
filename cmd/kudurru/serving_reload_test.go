@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
+	"github.com/robertherbaugh/kudurru/internal/store"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestServingReloadUsesPublishedCanonicalSettings(t *testing.T) {
@@ -66,5 +69,35 @@ func TestServingReloadUsesPublishedCanonicalSettings(t *testing.T) {
 	awaitServingRuntime(t, f.s, func() bool { return limiter.Enabled() })
 	if !f.s.opts.Config.RateLimit.Enabled {
 		t.Fatal("operational watcher mutated startup host settings")
+	}
+}
+
+func TestServingReloadInvalidatesRegexOnlyPublications(t *testing.T) {
+	f := newServingCommandFixture(t)
+	flush, flushed, _ := controlEdgeFlush(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- f.s.runServingReload(ctx, reloadTargets{logger: slog.New(slog.DiscardHandler), edgeFlush: flush}, nil)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("publication watcher did not join")
+		}
+	})
+	waitControlFlush(t, flushed) // accepted initial publication
+	for _, expression := range []string{`^first\.example$`, `^second\.example$`, `^first\.example$`} {
+		if _, err := f.s.opts.Store.Apply(t.Context(), &public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "reload-regex", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block", Sources: []public.ListSource{{Name: "inline", Entries: []public.ListEntry{{Type: public.EntryRegex, Value: expression}}}}}}, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+			t.Fatal(err)
+		}
+		// No desired settings changed, and this fixture has no list callback.
+		// Only observing the actually accepted publication can trigger this.
+		waitControlFlush(t, flushed)
 	}
 }
