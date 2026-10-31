@@ -54,6 +54,13 @@ func (s *Server) registerImports() {
 	apply := operation(http.MethodPost, "/imports/apply", "applyMigration", "Apply a reviewed migration preview", "imports")
 	apply.Description = "Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed."
 	register(s, apply, perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *importApplyInput) (*importApplyOutput, error) {
+		if s.currentMigrations() {
+			result, err := s.applyCurrentMigration(ctx, &in.Body)
+			if err != nil {
+				return nil, err
+			}
+			return &importApplyOutput{Body: result}, nil
+		}
 		if err := s.readOnly(); err != nil {
 			return nil, err
 		}

@@ -167,7 +167,11 @@ authoritative; token scopes narrow administrator permissions too.
 cookie, API token or OIDC JWT and keeps it until the bounded handler finishes.
 JWTs use only the captured offline verifier and bounded claim policy; unknown
 issuers, expired signatures and oversized proofs cannot trigger discovery or a
-cookie fallback. Original raw proofs survive only for the lease lifetime. CSRF uses
+cookie fallback. Ordinary raw HTTP proofs survive only for the lease lifetime.
+A bounded migration program can retain its original untrusted proof for its original ten-minute job
+deadline and elected writer episode; each later step captures its own initial
+lease and reverifies that proof against current transaction-local authority.
+No previously successful step grants permission to another step. CSRF uses
 the same captured enrollment. Authorization rechecks the original proof against
 that view; a caller-supplied principal cannot replace it. Pending publication
 returns 503, and a rejected bearer never falls back to a cookie. Mutations must

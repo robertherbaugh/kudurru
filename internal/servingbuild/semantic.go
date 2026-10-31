@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	internal "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
@@ -35,6 +36,7 @@ type CatalogResource struct {
 }
 
 type semanticOwners struct {
+	migrations []*internal.MigrationRun
 	objects    *zonecache.Snapshot
 	settings   *public.Kudurru
 	config     *config.Config
@@ -106,6 +108,9 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 		object, err := opts.Schema.decode(raw)
 		if err != nil {
 			return nil, err
+		}
+		if run, ok := object.(*internal.MigrationRun); ok {
+			owners.migrations = append(owners.migrations, run)
 		}
 		if slices.Contains(kinds, store.KindOf(object)) {
 			objects = append(objects, object)

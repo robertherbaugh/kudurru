@@ -37,6 +37,9 @@ func (s *Server) Close() {
 }
 
 func (s *Server) startMigration(ctx context.Context, plan *importers.Plan) (*MigrationRun, error) {
+	if s.currentMigrations() {
+		return s.startCurrentMigration(ctx, plan)
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}

@@ -318,6 +318,9 @@ type Options struct {
 	// ObjectCommand admits canonical object writes in the supplied current
 	// transaction. Nil retains the legacy object-management implementation.
 	ObjectCommand ObjectCommand
+	// MigrationCommand admits bounded journal and destination programs.
+	MigrationCommand MigrationCommand
+	MigrationReads   MigrationReadSource
 	// ZoneCommand admits one complete current zone convenience operation.
 	ZoneCommand ZoneCommand
 	// ZoneNotifyCommand admits durable manual NOTIFY under current authority.

@@ -155,6 +155,49 @@ its own `zones.write` grant. CLI `import runs`, `import decommission` and
 `import track-existing` use these same routes, with saved JSON previews required
 for the latter two writes.
 
+### Current SQLite migration commands
+
+SQLite apply/start and decommission execute an immutable, copied program of at
+most 1,000 object or zone steps plus initialization and completion. Initialization
+uses the original HTTP lease. Each subsequent command captures its initial whole
+lease, reauthenticates the original raw request credential against transaction-local
+IAM, and retains the original elected writer episode and all current dependency
+exclusions through final commit. A failed command ends the program; it never
+retries against a successor lease or writer. Browser disconnects do not cancel
+background jobs. Shutdown, credential revocation, expiry, and writer replacement
+stop further steps. Plans are never replayed after restart.
+
+Every successful object write and its journal outcome share one concrete SQLite
+transaction. Schema and manager failures are prepared before mutation and become
+error items without attempting a rejected write. VIP address records, NS/SOA
+changes and their outcomes commit together for each zone. An unexpected mutation
+or final-admission failure rolls back the entire step, preserving previous
+committed outcomes. Completion uses current authorization too. If it cannot run,
+the durable deadline eventually exposes the unfinished run as interrupted with
+unresolved items, without inventing a successful terminal report.
+
+History and previews read private journals and public objects from the same
+original complete serving image. They do not use live Store fallback. In this
+mode adoption remains explicitly unavailable. Selected settings are not yet
+admitted in a transaction-local migration planner: object failure leaves them
+`not_applied`; otherwise the durable report includes an explicit unavailable
+settings error. Operators can apply reviewed settings through the existing
+current settings route. Kubernetes retains the preceding legacy behavior.
+
+```mermaid
+flowchart LR
+    Plan["Copied bounded reviewed program"] --> Init["Original HTTP lease: create journal"]
+    Init --> Step["Next step: original raw proof + original writer"]
+    Step --> Auth["Current SQLite IAM and complete permissions"]
+    Auth --> Commit["Destination effect + journal outcome: one commit"]
+    Commit --> Step
+    Auth --> Stop["Rejection: stop; retain prior durable outcomes"]
+    Commit --> Read["Same-image history and previews"]
+```
+
+The following sequence describes the legacy Kubernetes path; SQLite uses the
+current command protocol above.
+
 ```mermaid
 sequenceDiagram
     participant U as Dashboard or CLI

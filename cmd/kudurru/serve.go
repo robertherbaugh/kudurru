@@ -968,6 +968,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var blockingReads api.BlockingReadSource
 	var blockingCommand api.BlockingCommand
 	var upstreamReads api.UpstreamReadSource
+	var migrationReads api.MigrationReadSource
+	var migrationCommand api.MigrationCommand
 	var zoneCommand api.ZoneCommand
 	var zoneNotifyCommand api.ZoneNotifyCommand
 	catalogSource := catalogueAPI(catalogs, catRefreshers)
@@ -1051,6 +1053,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		blockingReads = servingbuild.NewBlockingReads()
 		blockingCommand = complete.BlockingCommand
 		upstreamReads = servingbuild.NewUpstreamReads()
+		migrationCommand = complete.MigrationCommand
+		migrationReads = servingbuild.NewMigrationReads()
 		zoneCommand = complete.ZoneCommand
 		zoneNotifyCommand = complete.ZoneNotifyCommand
 		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
@@ -1154,7 +1158,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, PolicyListReads: policyListReads,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,

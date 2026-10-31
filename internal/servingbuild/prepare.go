@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	internal "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
@@ -35,6 +36,7 @@ func New(opts Options) (*Builder, error) {
 // RuntimeOwner retains the exact primary versions and bound local runtime part.
 // Preparing a version does not acknowledge actual publication to an UPDATE.
 type RuntimeOwner struct {
+	migrations      []*internal.MigrationRun
 	primary         *primaryruntime.PreparedImage
 	zones           *servingzones.Prepared
 	keys            *dnsserver.StaticKeyring
@@ -148,7 +150,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current, browser: deps.Browser}, deps.Release),
+		component("runtime", &RuntimeOwner{migrations: owners.migrations, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current, browser: deps.Browser}, deps.Release),
 	}
 	// List content and pure auth policy have exact owner identities in addition
 	// to the captured host dependency revision and canonical image identity.

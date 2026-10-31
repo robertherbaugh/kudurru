@@ -21,7 +21,11 @@ type migrationAdoptInput struct {
 
 func (s *Server) registerMigrationAdoption() {
 	register(s, operation(http.MethodGet, "/imports/existing", "listExistingImports", "Find previous API imports without a migration run", "imports"), perm{resource: "settings", verb: "write"}, func(ctx context.Context, _ *struct{}) (*migrationExistingOutput, error) {
-		list, err := s.opts.Store.List(ctx, "DNSZone", store.ListOptions{})
+		reader, err := s.migrationReader(ctx)
+		if err != nil {
+			return nil, err
+		}
+		list, err := reader.List(ctx, "DNSZone", store.ListOptions{})
 		if err != nil {
 			return nil, storeError(err)
 		}
@@ -41,6 +45,9 @@ func (s *Server) registerMigrationAdoption() {
 		return &migrationExistingOutput{Body: newList(items, "")}, nil
 	})
 	register(s, operation(http.MethodPost, "/imports/adopt", "adoptExistingImports", "Track reviewed previous imports without reimporting records", "imports"), perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *migrationAdoptInput) (*importApplyOutput, error) {
+		if s.currentMigrations() {
+			return nil, errUnavailable("current migration adoption command unavailable")
+		}
 		if err := s.readOnly(); err != nil {
 			return nil, err
 		}
