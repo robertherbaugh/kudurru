@@ -104,12 +104,17 @@ func (r *Reader) filterSQL(ctx context.Context, tx *rtx, f QueryFilter) ([]strin
 		where = append(where, `q.ts<?`)
 		args = append(args, f.Until.UnixMicro())
 	}
+	node := tx.nodeWhere("q.", &args)
+	if node != "" {
+		where = append(where, strings.TrimPrefix(node, " AND "))
+	}
 	return where, args, nil
 }
 
 // clientsIn returns the dict_client ids whose address lies in pfx.
 func (r *Reader) clientsIn(ctx context.Context, tx *rtx, pfx netip.Prefix) ([]int64, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT id, ip FROM dict_client WHERE ip <> ''`)
+	args := []any{}
+	rows, err := tx.QueryContext(ctx, `SELECT id, ip FROM dict_client WHERE ip <> ''`+tx.dictionaryWhere("dict_client", "dict_client.", &args), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +169,7 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		cursor = c
 	}
 	var out *QueryPage
-	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, _ *snapshot) error {
 		where, args, err := r.filterSQL(ctx, tx, f)
 		if err != nil {
 			return err
@@ -185,7 +190,9 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 			}
 		} else {
 			// The central log can be large: count up to centralCap + 1.
-			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM query LIMIT ?) AS t`, centralCap+1).Scan(&res.RecordsTotal); err != nil {
+			totalArgs := []any{}
+			whereNode := tx.nodeWhere("", &totalArgs)
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM query WHERE 1=1`+whereNode+` LIMIT ?) AS t`, append(totalArgs, centralCap+1)...).Scan(&res.RecordsTotal); err != nil {
 				return fmt.Errorf("sqlitelog: count: %w", err)
 			}
 			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM query q`+cond+` LIMIT ?) AS t`, append(append([]any{}, args...), centralCap+1)...).Scan(&res.RecordsFiltered); err != nil {
@@ -213,7 +220,7 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		rows, err := tx.QueryContext(ctx, `SELECT q.id, q.ts, q.latency_us, coalesce(n.name,''), q.proto, coalesce(c.ip,''), coalesce(c.name,''), coalesce(c.grp,''),
 			coalesce(d.name,''), coalesce(cn.name,''), q.qtype, q.qclass, q.status, q.rcode, q.reply_type, coalesce(u.addr,''), coalesce(z.name,''),
 			coalesce(l.name,''), coalesce(q.rule,''), q.dnssec, q.ede, q.flags, coalesce(q.ecs,''), q.trace_id, coalesce(q.answer,''), coalesce(p.name,'')
-			FROM (SELECT q.id FROM query q`+pcond+` ORDER BY `+order+` LIMIT ?) page JOIN query q ON q.id=page.id
+			FROM (SELECT q.id, q.node FROM query q`+pcond+` ORDER BY `+order+` LIMIT ?) page JOIN query q ON q.id=page.id AND q.node=page.node
 			LEFT JOIN dict_node n ON n.id=q.node LEFT JOIN dict_client c ON c.id=q.client
 			LEFT JOIN dict_domain d ON d.id=q.domain LEFT JOIN dict_domain cn ON cn.id=q.cname
 			LEFT JOIN dict_upstream u ON u.id=q.upstream LEFT JOIN dict_zone z ON z.id=q.zone LEFT JOIN dict_list l ON l.id=q.list
@@ -238,7 +245,8 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 			res.CursorNext = RowCursor(res.Queries[limit-1], f.TimeOrder)
 		}
 		var oldest sql.NullInt64
-		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query`).Scan(&oldest); err != nil {
+		oldestArgs := []any{}
+		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query WHERE 1=1`+tx.nodeWhere("", &oldestArgs), oldestArgs...).Scan(&oldest); err != nil {
 			return err
 		}
 		if oldest.Valid {
@@ -252,7 +260,7 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		return nil, err
 	}
 	if r.w == nil {
-		out.Scope = r.scope(start)
+		out.Scope = scope
 		return out, nil
 	}
 	if tail := r.w.opts.Tail; tail != nil {
@@ -261,7 +269,7 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 			out.EarliestTSMemory = &t
 		}
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }
 
@@ -311,33 +319,38 @@ func (r *Reader) Suggestions(ctx context.Context, field, prefix string, n int) (
 	if n <= 0 || n > maxSuggestion {
 		n = maxSuggestion
 	}
-	// Ranges and order are bytewise, as SQLite's BINARY collation.
-	c := r.d.bytewise
-	one := func(table, col string) string {
-		return `SELECT ` + col + ` FROM ` + table + ` WHERE ` + c(col) + `>=?1 AND ` + c(col) + `<?2 ORDER BY ` + c(col) + ` LIMIT ?3`
-	}
-	var q string
+	var table, col string
 	switch field {
 	case FieldDomain:
+		table, col = "dict_domain", "name"
 		prefix = strings.ToLower(prefix)
-		q = one("dict_domain", "name")
 	case FieldClient:
-		q = `SELECT v FROM (SELECT ip AS v FROM dict_client WHERE ` + c("ip") + `>=?1 AND ` + c("ip") + `<?2 UNION SELECT name FROM dict_client WHERE ` +
-			c("name") + `>=?1 AND ` + c("name") + `<?2) AS u ORDER BY ` + c("v") + ` LIMIT ?3`
+		table, col = "dict_client", "ip"
 	case FieldUpstream:
-		q = one("dict_upstream", "addr")
+		table, col = "dict_upstream", "addr"
 	case FieldList:
-		q = one("dict_list", "name")
+		table, col = "dict_list", "name"
 	case FieldZone:
-		q = one("dict_zone", "name")
+		table, col = "dict_zone", "name"
 	case FieldPolicy:
-		q = one("dict_policy", "name")
+		table, col = "dict_policy", "name"
 	default:
 		return nil, fmt.Errorf("sqlitelog: unknown suggestion field %q", field)
 	}
 	var out *Suggestions
-	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
-		rows, err := tx.QueryContext(ctx, q, prefix, r.d.prefixEnd(prefix), n)
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, _ *snapshot) error {
+		var args []any
+		one := func(column string) string {
+			args = append(args, prefix, r.d.prefixEnd(prefix))
+			return `SELECT ` + column + ` AS v FROM ` + table + ` WHERE ` + r.d.bytewise(column) + `>=? AND ` + r.d.bytewise(column) + `<?` + tx.dictionaryWhere(table, table+".", &args)
+		}
+		q := one(col)
+		if field == FieldClient {
+			q += " UNION " + one("name")
+		}
+		q = `SELECT v FROM (` + q + `) AS u ORDER BY ` + r.d.bytewise("v") + ` LIMIT ?`
+		args = append(args, n)
+		rows, err := tx.QueryContext(ctx, q, args...)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: suggestions: %w", err)
 		}
@@ -358,7 +371,7 @@ func (r *Reader) Suggestions(ctx context.Context, field, prefix string, n int) (
 	if err != nil {
 		return nil, err
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }
 
@@ -397,9 +410,10 @@ func (r *Reader) Status(ctx context.Context) (*Status, error) {
 	if w.opts.Tail != nil {
 		res.Subscribers = w.opts.Tail.Subscribers()
 	}
-	err = r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, _ *snapshot) error {
 		var oldest sql.NullInt64
-		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query`).Scan(&oldest); err != nil {
+		oldestArgs := []any{}
+		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query WHERE 1=1`+tx.nodeWhere("", &oldestArgs), oldestArgs...).Scan(&oldest); err != nil {
 			return err
 		}
 		if oldest.Valid {
@@ -411,6 +425,6 @@ func (r *Reader) Status(ctx context.Context) (*Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	res.Scope = r.scope(start)
+	res.Scope = scope
 	return res, nil
 }

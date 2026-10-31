@@ -122,10 +122,28 @@ reads it: every node's queries, charts, totals and top lists, the same on
 whichever node serves the page (D161). The scope note reads "All nodes:
 … (central database)" and names a node whose statistics are more than five
 minutes behind. Without the database, **All nodes** asks every replica and
-misses those that are down or replaced. **This node** and a chosen node
-still read that node's own `querylog.db`, which is real time. The live
-tail streams from the replicas, so it is off in the central view; choose a
-node to follow it. Purging the query log deletes this node's rows and every
+misses those that are down or replaced. **This node** reads its own `querylog.db`, which is real time. An explicit
+other node (`scope=node&node=<name>`) reads only that name's retained central
+history, including replaced files and retired nodes absent from membership.
+These responses carry `scope: node`, `source: central`, and that node alone.
+Unknown historical names return 404. Central failures return 503; historical
+reads never fall back to a peer or this node's log. Without a central reader,
+selecting another live node still uses its internal listener.
+
+Node filtering applies before pagination, counts and aggregation, and to
+retained dictionary references. Client last-seen values use that node's facts
+or rollup buckets after raw expiration, rather than global dictionary touches.
+Suggestions (`/queries/suggestions`) and status (`/querylog/status`) accept the
+same scope/node parameters. A historical status counts only that node's rows;
+its physical database size describes the shared schema, not allocated bytes
+for that node. Historical upstream traffic has no local live-health rows.
+
+Central query IDs remain central IDs when selecting a historical row for an
+action: pass its `scope=node&node=<name>` selector, or the existing
+`scope=cluster`. The immutable selected domain goes through the normal current
+object command and its permission/ownership checks. A row is never authority
+for a current mutation. The live tail continues to require live membership and
+streams from active replicas; it does not stream retained central history. Purging the query log deletes this node's rows and every
 node's rows in the database; other nodes keep their own copies.
 
 ## Grafana monitoring

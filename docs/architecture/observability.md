@@ -185,6 +185,16 @@ database. While enabled, the dashboard shows only incoming queries; it
 does not merge node IDs with central history. Stopping the tail refreshes
 history from the database.
 
+Central historical selection uses an immutable exact node selector. Every
+fact and rollup relation binds that node before grouping, counting or limiting;
+dictionary reads require a retained reference in the same scope. Progress,
+node metadata and rows come from one read-only repeatable-read snapshot.
+Explicit other-node history uses central storage even after membership retires
+the node. Unknown names return 404; central failures return 503 without a local
+or peer fallback. Live tails retain their separate membership transport. Query
+row actions keep the central ID namespace and pass only the selected immutable
+domain into the existing current command and its original authorization proof.
+
 ## Metrics
 
 All metric labels are bounded: list names, upstream names and status values,

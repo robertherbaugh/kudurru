@@ -212,11 +212,7 @@ func (s *Server) commandQueryAction(ctx context.Context, in *queryActionInput) (
 	}
 	// Query history is read outside the object transaction. Its selected name is
 	// immutable input to the subsequent bounded domain command, never authority.
-	reader := s.opts.CentralQuerylog
-	var readErr error
-	if in.Scope != sqlitelog.ScopeCluster || reader == nil {
-		reader, readErr = s.reader()
-	}
+	reader, readErr := s.queryActionReader(ctx, in)
 	var value string
 	if readErr == nil {
 		page, err := reader.Queries(ctx, sqlitelog.QueryFilter{Cursor: strconv.FormatUint(in.ID+1, 10), Limit: 1})

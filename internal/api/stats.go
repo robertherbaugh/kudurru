@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -98,7 +99,7 @@ type WindowParams struct {
 	From   string `query:"from" doc:"Window start (RFC 3339); overrides window."`
 	To     string `query:"to" doc:"Window end (RFC 3339); default now."`
 	Scope  string `query:"scope" enum:"node,cluster," doc:"node (default) or cluster; cluster merges the known nodes and reports partial results on failure."`
-	Node   string `query:"node" doc:"Node to answer for (scope=node); requests for another known node are routed over the internal listener."`
+	Node   string `query:"node" doc:"Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener."`
 }
 
 type summaryOutput struct{ Body *SummaryBody }
@@ -162,13 +163,21 @@ type streamInput struct {
 	LastEventIDQuery string `query:"last_event_id"`
 }
 
+// HistoryScopeParams selects a local or retained central history source.
+type HistoryScopeParams struct {
+	Scope string `query:"scope"`
+	Node  string `query:"node"`
+}
+
 type suggestionsInput struct {
+	HistoryScopeParams
 	Field  string `query:"field" required:"true" enum:"domain,client,upstream,list,zone,policy"`
 	Prefix string `query:"prefix"`
 	N      int    `query:"n" minimum:"0" maximum:"100"`
 }
 
 type queryActionInput struct {
+	Node  string `query:"node" doc:"Exact historical node for a central row ID; valid only with node scope."`
 	ID    uint64 `path:"id"`
 	Scope string `query:"scope" enum:"node,cluster," doc:"cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database)."`
 	Body  struct {
@@ -315,6 +324,12 @@ func parseStep(v string) (time.Duration, error) {
 
 // readerError maps reader failures.
 func readerError(err error) error {
+	if errors.Is(err, sqlitelog.ErrUnknownNode) {
+		return errNotFound("unknown historical node")
+	}
+	if errors.Is(err, sqlitelog.ErrCentralRead) {
+		return errUnavailable("central query history unavailable")
+	}
 	if strings.Contains(err.Error(), "invalid cursor") {
 		return errInvalid("cursor: not a cursor returned by this API")
 	}
@@ -612,9 +627,13 @@ func (s *Server) listQueries(ctx context.Context, in *QueryParams) (*queriesOutp
 }
 
 func (s *Server) querySuggestions(ctx context.Context, in *suggestionsInput) (*suggestionsOutput, error) {
-	r, err := s.reader()
+	scoped, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
+	}
+	r := scoped.direct()
+	if r == nil {
+		return nil, errUnavailable("dictionary suggestions require local or central history")
 	}
 	res, err := r.Suggestions(ctx, in.Field, in.Prefix, in.N)
 	if err != nil {
@@ -623,10 +642,14 @@ func (s *Server) querySuggestions(ctx context.Context, in *suggestionsInput) (*s
 	return &suggestionsOutput{Body: &SuggestionsBody{Suggestions: *res}}, nil
 }
 
-func (s *Server) querylogStatus(ctx context.Context, _ *struct{}) (*querylogStatusOutput, error) {
-	r, err := s.reader()
+func (s *Server) querylogStatus(ctx context.Context, in *HistoryScopeParams) (*querylogStatusOutput, error) {
+	scoped, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
+	}
+	r := scoped.direct()
+	if r == nil {
+		return nil, errUnavailable("query-log status requires local or central history")
 	}
 	res, err := r.Status(ctx)
 	if err != nil {
@@ -666,13 +689,9 @@ func (s *Server) queryAction(ctx context.Context, in *queryActionInput) (*proces
 	if s.useDomainCommand() {
 		return s.commandQueryAction(ctx, in)
 	}
-	// A row of the central database's log has the database's id (D161).
-	r := s.opts.CentralQuerylog
-	if in.Scope != sqlitelog.ScopeCluster || r == nil {
-		var err error
-		if r, err = s.reader(); err != nil {
-			return nil, err
-		}
+	r, err := s.queryActionReader(ctx, in)
+	if err != nil {
+		return nil, err
 	}
 	page, err := r.Queries(ctx, sqlitelog.QueryFilter{Cursor: strconv.FormatUint(in.ID+1, 10), Limit: 1})
 	if err != nil {
@@ -919,4 +938,20 @@ func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.Stream
 			}
 		}
 	}}, nil
+}
+
+// queryActionReader preserves the central ID namespace of historical reads.
+// The selected immutable domain remains input to the existing current command.
+func (s *Server) queryActionReader(ctx context.Context, in *queryActionInput) (*sqlitelog.Reader, error) {
+	if in.Scope == sqlitelog.ScopeCluster && in.Node == "" && s.opts.CentralQuerylog == nil {
+		return nil, errUnavailable("central query history unavailable")
+	}
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
+	if err != nil {
+		return nil, err
+	}
+	if d := r.direct(); d != nil {
+		return d, nil
+	}
+	return nil, errUnavailable("query actions require local or central history")
 }

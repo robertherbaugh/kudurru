@@ -35,6 +35,7 @@ const (
 
 // snapshot is a consistent copy of the writer state a read needs.
 type snapshot struct {
+	scope    Scope // exact central metadata captured in this read snapshot
 	now      time.Time
 	hourDone int64 // the _1h rollups are readable for hours < hourDone
 	dayDone  int64 // the _1d rollups are readable for days < dayDone
@@ -95,13 +96,21 @@ func (r *Reader) read(ctx context.Context, withHours bool, fn func(tx *rtx, s *s
 	}
 }
 
-func (r *Reader) scope(start time.Time) Scope {
-	if r.c != nil {
-		return r.c.scope(start)
+// readScoped returns metadata from the same snapshot as the answer. Sharing a
+// central reader between concurrent requests never shares mutable result state.
+func (r *Reader) readScoped(ctx context.Context, withHours bool, start time.Time, fn func(*rtx, *snapshot) error) (Scope, error) {
+	var scope Scope
+	err := r.read(ctx, withHours, func(tx *rtx, s *snapshot) error {
+		scope = s.scope
+		if r.c == nil {
+			scope = Scope{Scope: ScopeNode, Nodes: []NodeResult{{Name: r.w.opts.Node, OK: true}}}
+		}
+		return fn(tx, s)
+	})
+	for i := range scope.Nodes {
+		scope.Nodes[i].TookMS = float64(time.Since(start).Microseconds()) / 1000
 	}
-	return Scope{Scope: ScopeNode, Nodes: []NodeResult{{
-		Name: r.w.opts.Node, OK: true, TookMS: float64(time.Since(start).Microseconds()) / 1000,
-	}}}
+	return scope, err
 }
 
 // window applies the defaults: the last 24 hours ending now.
@@ -228,8 +237,8 @@ func (r *Reader) baseSeries(ctx context.Context, tx *rtx, s *snapshot, from, unt
 		var parts []string
 		var args []any
 		for _, sg := range segs {
-			parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+strings.Join(baseCols, ",")+` FROM `+sg.t.table+` WHERE ts>=? AND ts<?`)
 			args = append(args, sg.from, sg.until)
+			parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+strings.Join(baseCols, ",")+` FROM `+sg.t.table+` WHERE ts>=? AND ts<?`+tx.nodeWhere("", &args))
 		}
 		q := `SELECT bk, ` + sumCols(baseCols) + ` FROM (` + strings.Join(parts, " UNION ALL ") + `) AS u GROUP BY bk` //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 		rows, err := tx.QueryContext(ctx, q, args...)
@@ -323,12 +332,12 @@ func (r *Reader) keyed(ctx context.Context, tx *rtx, s *snapshot, src keyedSourc
 			if src.fWhere != "" {
 				where = " AND " + src.fWhere
 			}
-			parts = append(parts, `SELECT `+bucketExpr(step, true)+` AS bk, `+src.fKey+` AS k, `+src.fA+` AS a, `+src.fB+` AS b FROM query WHERE ts>=? AND ts<?`+where)
 			args = append(args, sg.from*1e6, sg.until*1e6)
+			parts = append(parts, `SELECT `+bucketExpr(step, true)+` AS bk, `+src.fKey+` AS k, `+src.fA+` AS a, `+src.fB+` AS b FROM query WHERE ts>=? AND ts<?`+where+tx.nodeWhere("", &args))
 			continue
 		}
-		parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+src.key+` AS k, `+src.a+` AS a, `+src.b+` AS b FROM `+sg.t.table+` WHERE ts>=? AND ts<?`)
 		args = append(args, sg.from, sg.until)
+		parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+src.key+` AS k, `+src.a+` AS a, `+src.b+` AS b FROM `+sg.t.table+` WHERE ts>=? AND ts<?`+tx.nodeWhere("", &args))
 	}
 	if src.minute != nil {
 		for ts, m := range s.minutes {

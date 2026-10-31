@@ -3,6 +3,7 @@ package pgquerylog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
@@ -307,7 +308,7 @@ func TestReaderUnavailable(t *testing.T) {
 	}
 	defer db.Close()
 	r := sqlitelog.NewCentralReader(db.SQL, sqlitelog.CentralOptions{})
-	if _, err := r.Summary(context.Background(), sqlitelog.SummaryQuery{}); err != central.ErrUnavailable {
+	if _, err := r.Summary(context.Background(), sqlitelog.SummaryQuery{}); !errors.Is(err, central.ErrUnavailable) {
 		t.Fatalf("summary: %v", err)
 	}
 }
