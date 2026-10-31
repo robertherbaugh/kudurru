@@ -78,7 +78,7 @@ func (s *Server) capturedInfoMessages(ctx context.Context) (*messagesOutput, err
 	if err != nil || out.err != nil {
 		return nil, errUnavailable("original diagnosis read: %v", firstInfoError(err, out.err))
 	}
-	if err := s.infoOperationalMessages(now, out.add); err != nil {
+	if err := s.infoOperationalMessages(ctx, now, out.add); err != nil {
 		return nil, errUnavailable("operational diagnosis read: %v", err)
 	}
 	slices.SortFunc(out.items, func(a, b DiagnosisMessage) int {

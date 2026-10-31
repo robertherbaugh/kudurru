@@ -81,6 +81,21 @@ func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, en
 	}, nil
 }
 
+// auditLogDiagnosis is independent of the startup Reader/shipper decision: a
+// CRD missing then can appear later and be diagnosed without discovery caching.
+// Transport setup failures remain explicit unavailable observations and never
+// add an audit dependency to DNS startup.
+func auditLogDiagnosis(cfg *rest.Config) func(context.Context) auditlog.Diagnostic {
+	ns := kube.PodNamespace()
+	probe, err := auditlog.NewProbe(cfg, ns)
+	if err != nil {
+		return func(context.Context) auditlog.Diagnostic {
+			return auditlog.Diagnostic{State: auditlog.DiagnosticUnavailable, Namespace: ns}
+		}
+	}
+	return probe.Diagnose
+}
+
 // auditSealKeys keeps the current key first for writes and accepts the previous
 // key when verifying batches retained across a cluster encryption-key rotation.
 func auditSealKeys(current, previous []byte) ([][]byte, error) {

@@ -268,10 +268,13 @@ func (o *cliOpts) checkAPI(ctx context.Context, rep *doctorReport, cfg *config.C
 		}
 		return true
 	}
-	errs := 0
+	errs, warns := 0, 0
 	for _, d := range ds {
-		if severityRank(d.Severity) == 0 {
+		switch severityRank(d.Severity) {
+		case 0:
 			errs++
+		case 1:
+			warns++
 		}
 	}
 	switch {
@@ -279,6 +282,8 @@ func (o *cliOpts) checkAPI(ctx context.Context, rep *doctorReport, cfg *config.C
 		rep.ok("diagnoses", "none")
 	case errs > 0:
 		rep.fail("diagnoses", "%d messages, %d errors", len(ds), errs)
+	case warns == 0:
+		rep.ok("diagnoses", "%d messages, none a warning", len(ds))
 	default:
 		rep.warn("diagnoses", "%d messages", len(ds))
 	}

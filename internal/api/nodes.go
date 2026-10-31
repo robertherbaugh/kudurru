@@ -355,12 +355,20 @@ func (s *Server) infoMessages(ctx context.Context, _ *struct{}) (*messagesOutput
 			add(DiagnosisMessage{Severity: "error", Source: "health", Reason: "NotReady", Message: u})
 		}
 	}
+	if m, ok := s.auditLogMessage(ctx); ok {
+		add(m)
+	}
 	return &messagesOutput{Body: newList(out, "")}, nil
 }
 
 // infoOperationalMessages samples process observations. These do not attest to
 // the policy, lists, or routes installed in the original request's serving cut.
-func (s *Server) infoOperationalMessages(now time.Time, add func(DiagnosisMessage) error) error {
+func (s *Server) infoOperationalMessages(ctx context.Context, now time.Time, add func(DiagnosisMessage) error) error {
+	if m, ok := s.auditLogMessage(ctx); ok {
+		if err := add(m); err != nil {
+			return err
+		}
+	}
 	if s.opts.Objects != nil {
 		for _, d := range s.opts.Objects.Diagnoses() {
 			const prefix = "Current object loader: "

@@ -37,6 +37,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditlog"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/central"
@@ -345,6 +346,10 @@ type Options struct {
 	// feature (license.FeatureAudit), answered 402 without it.
 	Audit       audit.Recorder
 	AuditReader audit.Reader
+	// AuditLogDiagnosis observes bounded live operational API availability and
+	// namespace batch count. It is separate from original canonical reads,
+	// gated by audit.read and the audit license before acquisition/disclosure.
+	AuditLogDiagnosis func(context.Context) auditlog.Diagnostic
 	// License is the node's license (*license.Manager). It backs GET
 	// /license and the 402 for configuration writes while the cluster is
 	// larger than the license allows; nil turns both gates off.

@@ -30,6 +30,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditlog"
 	"github.com/robertherbaugh/kudurru/internal/audit/spool"
 	authn "github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
@@ -1108,11 +1109,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 	var auditLogs *auditLogStore
+	var auditDiagnosis func(context.Context) auditlog.Diagnostic
 	if auditSpool != nil {
 		auditReader = auditSpool
 		recorders = audit.Multi{audit.Log{Logger: logger}, auditSpool}
 		// audit.store auditlog: every replica reads every node's events.
 		if cfg.AuditStore() == config.AuditStoreAuditLog {
+			auditDiagnosis = auditLogDiagnosis(restCfg)
 			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, encPrev, logger, kubeStartupTimeout(cfg)); err != nil {
 				return fmt.Errorf("audit: %w", err)
 			}
@@ -1191,7 +1194,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Refresher:  listRefresher(membership, fetcher),
 		ListBodies: listBodies{cache: lists},
 		Purger:     querylogPurger(qlWriter),
-		Audit:      recorders, AuditReader: auditReader, Central: centralState,
+		Audit:      recorders, AuditReader: auditReader, Central: centralState, AuditLogDiagnosis: auditDiagnosis,
 		Authenticate: authenticate, Authorizer: authorizer, CSRF: authn.CSRF, CrossOrigin: crossOrigin,
 		AuthHandler: authHandler,
 		Roles:       roles,
