@@ -7,4 +7,9 @@ RUN apt-get update \
       krb5-user bind9-dnsutils ldb-tools python3 \
  && rm -rf /var/lib/apt/lists/*
 COPY container.py /opt/lab/container.py
+# Samba AD provisioning and its DC processes require root for domain-file
+# ownership and identity changes. This disposable test image is never shipped;
+# hack/test-ad-samba.py uses private tmpfs and an internal network, with no
+# published ports, host realm, privileged mode or additional capabilities.
+# nosemgrep: missing-user-entrypoint -- Samba AD lab requires root; see above.
 ENTRYPOINT ["python3", "/opt/lab/container.py"]

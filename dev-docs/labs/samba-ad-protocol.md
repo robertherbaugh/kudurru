@@ -33,6 +33,12 @@ sanitized first-party result is printed. The runner removes resources carrying
 its unique ownership label even after failures; it never prunes other resources.
 The development image remains available for another run.
 
+Samba domain provisioning and DC identity changes run as root inside this
+test container. An unprivileged UID trial failed during domain provisioning;
+it is not a supported substitute for this fixture. The Dockerfile documents
+the requirement, and the Semgrep/Trivy root-user exceptions apply only to this
+test image. They do not exclude its dependencies or other security checks.
+
 The test image aggregates unmodified Debian Samba, MIT Kerberos and BIND
 packages. Their code is neither copied into this repository nor linked into
 Kudurru. The Debian base digest is pinned; installed package versions and image
