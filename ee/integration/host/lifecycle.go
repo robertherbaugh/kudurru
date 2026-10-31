@@ -119,8 +119,12 @@ func (h *Host) refresh(ctx context.Context) {
 		} else if j.ctx.Err() == nil {
 			// Runtime receipts/budgets/status may update a whole bundle without
 			// changing desired sources. They must not trigger a self-sync loop.
-			changed := j.sourceDigest != sourceDigest
-			j.sourceDigest = sourceDigest
+			nextDigest := sourceDigest
+			if digest, ok := input.ReconcileDigests[i.owner]; ok {
+				nextDigest = digest
+			}
+			changed := j.sourceDigest != nextDigest
+			j.sourceDigest = nextDigest
 			// An identical capture is the same immutable cut. Keep its original
 			// frame so periodic polls cannot fence a longer source observation.
 			// Any real bundle/source/RV replacement still revokes that frame.
@@ -163,7 +167,11 @@ func (h *Host) refresh(ctx context.Context) {
 			continue
 		}
 		jobCtx, cancel := context.WithCancel(ctx)
-		j := &job{key: key, frame: frame{i, input}, sourceDigest: sourceDigest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
+		digest := sourceDigest
+		if selected, ok := input.ReconcileDigests[i.owner]; ok {
+			digest = selected
+		}
+		j := &job{key: key, frame: frame{i, input}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
 		h.jobs[key] = j
 		h.statuses[key] = InstanceStatus{Owner: i.owner, Phase: "Waiting", Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
 		go h.elect(j)

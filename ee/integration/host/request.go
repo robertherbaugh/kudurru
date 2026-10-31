@@ -83,3 +83,18 @@ func (p providerHost) Request(ctx context.Context, provider, account string, mut
 	// text to safe host errors before exposing it to status/API consumers.
 	return fn(ctx)
 }
+
+// RequestGuard exposes the identity already carried by a host-created request
+// to its root commit adapter. It cannot sample a successor frame or grant a
+// lease: the adapter still enters WithLease/WithSource and its actual command.
+func (h *Host) RequestGuard(ctx context.Context, expected ledger.Guard) (ExecutionGuard, error) {
+	s, ok := ctx.Value(scopeKey{}).(requestScope)
+	if !ok || s.j == nil || s.g.Ledger != expected {
+		return ExecutionGuard{}, ErrFenced
+	}
+	_, current, err := h.captured(s.j)
+	if err != nil || current != s.g {
+		return ExecutionGuard{}, ErrFenced
+	}
+	return s.g, nil
+}

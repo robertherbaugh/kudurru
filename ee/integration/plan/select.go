@@ -102,7 +102,7 @@ func Select(in SelectionInput) (*Selection, error) {
 			return nil, ErrInvalid
 		}
 		ns := r.Spec.ZoneRef.Namespace
-		if ns == "" {
+		if ns == "" && z.Namespace != "" {
 			ns = r.Namespace
 		}
 		if r.Spec.ZoneRef.Name != z.Name || ns != z.Namespace {

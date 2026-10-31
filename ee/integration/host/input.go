@@ -42,6 +42,10 @@ type Input struct {
 	Term        replication.Term
 	BundleID    string
 	Complete    bool
+	// ReconcileDigests optionally scopes source wakeups to one captured instance.
+	// Values are deterministic digests of its desired inputs, excluding the host's
+	// own admitted observation/receipt/status writes. BundleID still fences reads.
+	ReconcileDigests map[InstanceID]string
 }
 
 // Instance retains one private definition and resolved named capabilities.
@@ -64,6 +68,14 @@ type Instance struct {
 func CaptureInstances(ctx context.Context, in Input) ([]*Instance, error) {
 	if !in.Complete || in.Term.Validate() != nil || in.BundleID == "" || len(in.BundleID) > 512 {
 		return nil, ErrInvalid
+	}
+	if len(in.ReconcileDigests) > MaxInstances {
+		return nil, ErrCapacity
+	}
+	for owner, digest := range in.ReconcileDigests {
+		if owner.Validate() != nil || !kinds.ValidDigest(digest) {
+			return nil, ErrInvalid
+		}
 	}
 	objects := in.Objects.List(store.Kind("Integration"))
 	if len(objects) > MaxInstances {

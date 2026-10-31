@@ -63,3 +63,27 @@ func TestProviderRequestDeadlineAndLeaseLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRequestGuardDoesNotAdoptSuccessor(t *testing.T) {
+	h, j, _ := preferredSourceFixture(t)
+	f, g, err := h.captured(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := h.scopedOriginal(t.Context(), j, f, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := h.RequestGuard(ctx, g.Ledger); err != nil || got != g {
+		t.Fatal("original request guard unavailable", err)
+	}
+	h.mu.Lock()
+	j.frame.input.BundleID = "successor"
+	h.mu.Unlock()
+	if _, err := h.RequestGuard(ctx, g.Ledger); err != ErrFenced {
+		t.Fatal("successor repaired original guard")
+	}
+	if _, err := h.RequestGuard(t.Context(), g.Ledger); err != ErrFenced {
+		t.Fatal("unscoped request acquired authority")
+	}
+}

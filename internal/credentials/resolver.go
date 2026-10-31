@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -57,6 +58,7 @@ type Resolver struct {
 	secret             func(context.Context, string, string, string) ([]byte, error)
 	getenv             func(string) (string, bool)
 	key                []byte
+	captured           map[string]capturedValue
 }
 
 // Value belongs to the caller. Fingerprint is safe for status and change
@@ -97,6 +99,17 @@ func New(opts Options) (*Resolver, error) {
 // are rechecked on each call, so credentials cannot escape their captured host
 // capabilities through an object edit. Construct a new Resolver on host reload.
 func (r *Resolver) Resolve(ctx context.Context, ref v1alpha1.CredentialReference) (Value, error) {
+	if r.captured != nil {
+		if err := ctx.Err(); err != nil {
+			return Value{}, err
+		}
+		raw, _ := json.Marshal(ref)
+		value, ok := r.captured[string(raw)]
+		if !ok {
+			return Value{}, ErrDenied
+		}
+		return Value{Bytes: slices.Clone(value.value.Bytes), Fingerprint: value.value.Fingerprint}, value.err
+	}
 	if err := ctx.Err(); err != nil {
 		return Value{}, err
 	}
@@ -164,4 +177,34 @@ func (r *Resolver) Resolve(ctx context.Context, ref v1alpha1.CredentialReference
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write(data)
 	return Value{Bytes: slices.Clone(data), Fingerprint: "hmac-sha256:" + hex.EncodeToString(h.Sum(nil))}, nil
+}
+
+// Snapshot acquires exactly the named references before any command gate. The
+// returned resolver performs no I/O, preserves failures and original keyed
+// fingerprints, and cannot resolve additional references. It owns all bytes.
+func (r *Resolver) Snapshot(ctx context.Context, refs []v1alpha1.CredentialReference) (*Resolver, error) {
+	if len(refs) > 2048 {
+		return nil, ErrDenied
+	}
+	out := &Resolver{captured: map[string]capturedValue{}}
+	for _, ref := range refs {
+		raw, err := json.Marshal(ref)
+		if err != nil {
+			return nil, ErrDenied
+		}
+		if _, ok := out.captured[string(raw)]; ok {
+			continue
+		}
+		value, err := r.Resolve(ctx, ref)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		out.captured[string(raw)] = capturedValue{value: value, err: err}
+	}
+	return out, nil
+}
+
+type capturedValue struct {
+	value Value
+	err   error
 }

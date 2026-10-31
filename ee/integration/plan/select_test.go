@@ -132,3 +132,16 @@ func TestSelectPolicyConflict(t *testing.T) {
 		t.Fatalf("conflicting matching policies: %v", err)
 	}
 }
+
+func TestSelectActualClusterScopedZone(t *testing.T) {
+	in := selectionFixture()
+	in.Sources[0].Zone.Namespace = ""
+	in.Sources[0].Records.Spec.Endpoints = []public.Endpoint{endpoint("public.example.com.", "A", "192.0.2.9")}
+	if out, err := Select(in); err != nil || len(out.Records) != 1 {
+		t.Fatal("cluster-scoped zone failed selection", err)
+	}
+	in.Sources[0].Records.Spec.ZoneRef.Namespace = "other"
+	if _, err := Select(in); err == nil {
+		t.Fatal("ambiguous explicit zone namespace accepted")
+	}
+}

@@ -155,3 +155,11 @@ func TestCaptureRejectsIncompleteUnsupportedAndCanceledInput(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCaptureRejectsMalformedPerInstanceSourceDigest(t *testing.T) {
+	in := captureInput(t, webhook("source"))
+	in.ReconcileDigests = map[InstanceID]string{{ClusterID: "cluster", Namespace: "dns", Name: "source", UID: "original"}: "not-a-digest"}
+	if _, err := CaptureInstances(t.Context(), in); err != ErrInvalid {
+		t.Fatal("malformed source digest accepted")
+	}
+}
