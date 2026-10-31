@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
 // CentralOptions configures NewCentralReader.
 type CentralOptions struct {
+	// Recovery owns bounded source-provenance receipts and replacements.
+	Recovery RollupRecovery
 	// Now is the clock; default time.Now.
 	Now func() time.Time
 	// RawRetention is the central database's fact retention
@@ -101,8 +104,8 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 	defer func() { _ = tx.Rollback() }()
 	t := &rtx{tx: tx, d: dialectPostgres}
 	now := c.opts.Now()
-	progressWhere := "s.last_seen >= ?"
-	progressArgs := []any{now.Add(-c.opts.Active)}
+	progressWhere := "true"
+	progressArgs := []any{}
 	if c.node != "" {
 		t.scoped, t.node = true, -1
 		if err := t.QueryRowContext(ctx, `SELECT id FROM dict_node WHERE name=?`, c.node).Scan(&t.node); err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -120,15 +123,22 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 		if !known {
 			return ErrUnknownNode
 		}
-		progressWhere, progressArgs = "(s.node=? OR s.id IN (SELECT source FROM query WHERE node=?))", []any{c.node, t.node}
+		progressWhere, progressArgs = "true", []any{}
+		progressWhere += t.sourceWhere("s.", &progressArgs)
 
 	}
-	rows, err := t.QueryContext(ctx, `SELECT s.node, coalesce(h.last_id, 0), coalesce(d.last_id, 0), m.updated_at, s.last_seen
+	rows, err := t.QueryContext(ctx, `SELECT s.node, greatest(coalesce(h.last_id,oh.last_id,0),coalesce(rs.hour_done,0)), greatest(coalesce(d.last_id,od.last_id,0),coalesce(rs.day_done,0)), coalesce(m.updated_at,om.updated_at), s.last_seen, coalesce(rs.legacy_before,0), coalesce(rs.input_partial,false), EXISTS(SELECT 1 FROM rollup_input_hour f LEFT JOIN rollup_bucket b ON b.source=f.source AND b.resolution=3600 AND b.ts=f.ts WHERE f.source=s.id AND f.ts<? AND (b.source IS NULL OR b.origin='pending' OR b.origin='synthetic' AND b.revision<>f.revision)),
+ EXISTS(SELECT 1 FROM rollup_input_hour f LEFT JOIN rollup_bucket d ON d.source=f.source AND d.resolution=86400 AND d.ts=(f.ts/86400)*86400 WHERE f.source=s.id AND f.ts<? AND (d.source IS NULL OR d.origin='pending' OR d.origin='synthetic' AND d.revision<>(SELECT sum(i.revision) FROM rollup_input_hour i WHERE i.source=f.source AND i.ts>=(f.ts/86400)*86400 AND i.ts<(f.ts/86400+1)*86400))),
+ EXISTS(SELECT 1 FROM rollup_bucket b WHERE b.source=s.id AND b.error_key<>'')
 		FROM source s
-		LEFT JOIN ship_cursor h ON h.source = s.id AND h.stream = 'rollup_1h'
-		LEFT JOIN ship_cursor d ON d.source = s.id AND d.stream = 'rollup_1d'
-		LEFT JOIN ship_cursor m ON m.source = s.id AND m.stream = 'rollup_1m'
-		WHERE s.kind = 'querylog' AND `+progressWhere, progressArgs...)
+		LEFT JOIN ship_cursor h ON h.source = s.id AND h.stream = 'source_rollup_1h'
+		LEFT JOIN ship_cursor d ON d.source = s.id AND d.stream = 'source_rollup_1d'
+		LEFT JOIN ship_cursor m ON m.source = s.id AND m.stream = 'source_rollup_1m'
+		LEFT JOIN ship_cursor oh ON oh.source=s.id AND oh.stream='rollup_1h'
+  LEFT JOIN ship_cursor od ON od.source=s.id AND od.stream='rollup_1d'
+  LEFT JOIN ship_cursor om ON om.source=s.id AND om.stream='rollup_1m'
+  LEFT JOIN rollup_source_state rs ON rs.source=s.id
+  WHERE s.kind = 'querylog' AND `+progressWhere, append([]any{floorTo(now.Unix(), 3600), floorTo(now.Unix(), 86400)}, progressArgs...)...)
 	if err != nil {
 		return fmt.Errorf("sqlitelog: central progress: %w", err)
 	}
@@ -140,9 +150,20 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 		var hour, day int64
 		var minute sql.NullTime
 		var seen time.Time
-		if err := rows.Scan(&node, &hour, &day, &minute, &seen); err != nil {
+		var legacy int64
+		var inputPartial, backfillPartial, dayPartial, detailPartial bool
+		if err := rows.Scan(&node, &hour, &day, &minute, &seen, &legacy, &inputPartial, &backfillPartial, &dayPartial, &detailPartial); err != nil {
 			_ = rows.Close()
 			return err
+		}
+
+		if seen.Before(now.Add(-c.opts.Active)) && legacy == 0 {
+			if !backfillPartial {
+				hour = floorTo(now.Unix(), 3600)
+			}
+			if !dayPartial {
+				day = floorTo(now.Unix(), 86400)
+			}
 		}
 		if first || hour < s.hourDone {
 			s.hourDone = hour
@@ -156,16 +177,21 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 		}
 		nr := NodeResult{Name: node, OK: true}
 		switch {
-		case c.node != "" && seen.Before(now.Add(-c.opts.Active)):
+		case legacy > 0:
+			nr.OK, nr.Error = false, "legacy_provenance_required"
+		case backfillPartial || dayPartial || detailPartial:
+			nr.OK, nr.Error = false, "source rollup recovery incomplete"
+		case inputPartial:
+			nr.OK, nr.Error = false, "source input incomplete"
+		case seen.Before(now.Add(-c.opts.Active)):
 			// Inactive sources describe retained history, not peer health.
 		case !minute.Valid:
 			nr.OK, nr.Error = false, "no statistics received yet"
 		case now.Sub(minute.Time) > c.opts.Lagging:
 			nr.OK, nr.Error = false, "statistics last received "+now.Sub(minute.Time).Round(time.Second).String()+" ago"
 		}
-		// A node with several sources (a replaced volume) counts once,
-		// as its freshest.
-		if prev, ok := byNode[node]; !ok || nr.OK && !prev.OK {
+		// A replaced file cannot hide an unresolved older source.
+		if prev, ok := byNode[node]; !ok || !nr.OK && prev.OK || nr.Error == ErrRollupLegacy.Error() {
 			byNode[node] = nr
 		}
 	}
@@ -177,6 +203,35 @@ func (c *central) read(ctx context.Context, fn func(tx *rtx, s *snapshot) error)
 	}
 	if c.node != "" && len(byNode) == 0 {
 		byNode[c.node] = NodeResult{Name: c.node, OK: true}
+	}
+
+	// Opaque legacy cells can outlive even their source registration. They remain
+	// visible and partial without attributing them to any current file.
+	clauses := []string{}
+	for _, table := range RollupTables {
+		clauses = append(clauses, "EXISTS(SELECT 1 FROM "+table.Name+" l WHERE l.source IS NULL AND l.node=n.id)")
+	}
+	legacyArgs := []any{}
+	legacyWhere := ""
+	if t.scoped {
+		legacyWhere = " AND n.id=?"
+		legacyArgs = append(legacyArgs, t.node)
+	}
+	legacyNodes, err := t.QueryContext(ctx, `SELECT n.name FROM dict_node n WHERE (`+strings.Join(clauses, " OR ")+`)`+legacyWhere, legacyArgs...)
+	if err != nil {
+		return err
+	}
+	for legacyNodes.Next() {
+		var name string
+		if err := legacyNodes.Scan(&name); err != nil {
+			_ = legacyNodes.Close()
+			return err
+		}
+		byNode[name] = NodeResult{Name: name, OK: false, Error: ErrRollupLegacy.Error()}
+	}
+	_ = legacyNodes.Close()
+	if err := legacyNodes.Err(); err != nil {
+		return err
 	}
 	nodes := make([]NodeResult, 0, len(byNode))
 	partial := false
@@ -217,7 +272,9 @@ func (c *central) status(ctx context.Context, r *Reader) (*Status, error) {
 			t := time.UnixMicro(oldest.Int64).UTC()
 			res.OldestTS = &t
 		}
-		return nil
+		var err error
+		res.Backfill, err = tx.backfillStatus(ctx)
+		return err
 	})
 	if err != nil {
 		return nil, err

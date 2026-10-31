@@ -1052,3 +1052,7 @@ func nextRetentionTime(now time.Time, minute int) time.Time {
 	}
 	return t
 }
+
+// FactsAvailable reports whether the current irreversible privacy policy keeps
+// fact rows. Central recovery cannot reconstruct suppressed dimensions.
+func (w *Writer) FactsAvailable() bool { return w.privacy().StoresFacts() }

@@ -501,6 +501,10 @@ func TestDictionaryPruneAfterRollupRetentionBoundaries(t *testing.T) {
 	db := centraltest.New(t)
 	ctx := context.Background()
 	err := db.Tx(ctx, func(tx pgx.Tx) error {
+		sid, err := central.EnsureSource(ctx, tx, "retention-owned", "querylog", "boundary", "test")
+		if err != nil {
+			return err
+		}
 		d := newDicts()
 		node, err := d.names(ctx, tx, "dict_node", "name", map[string]bool{"expired": true, "boundary": true, "daily": true}, nil, 0)
 		if err != nil {
@@ -528,7 +532,7 @@ func TestDictionaryPruneAfterRollupRetentionBoundaries(t *testing.T) {
 				if rt.Res == 86400 {
 					n = node["daily"]
 				}
-				_, err := tx.Exec(ctx, `INSERT INTO `+pgx.Identifier{rt.Name}.Sanitize()+`(ts,node,total,blocked,cached,forwarded,authoritative,dropped) VALUES($1,$2,1,0,0,1,0,0)`, ts, n)
+				_, err := tx.Exec(ctx, `INSERT INTO `+pgx.Identifier{rt.Name}.Sanitize()+`(ts,node,source,total,blocked,cached,forwarded,authoritative,dropped) VALUES($1,$2,$3,1,0,0,1,0,0)`, ts, n, sid)
 				if err != nil {
 					return err
 				}

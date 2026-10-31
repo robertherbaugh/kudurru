@@ -232,3 +232,19 @@ func (w *Writer) SetShippedThrough(f func() int64) {
 	defer w.mu.Unlock()
 	w.shippedThrough = f
 }
+
+// ExportRollups captures every family under the writer lock. Maintain, writes,
+// privacy changes and retention cannot split this export across local versions.
+func (w *Writer) ExportRollups(ctx context.Context, tables []RollupTable, from, until int64) ([][]RollupRow, int64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	out := make([][]RollupRow, len(tables))
+	for i, t := range tables {
+		rows, err := w.ExportRollup(ctx, t, from, until)
+		if err != nil {
+			return nil, 0, err
+		}
+		out[i] = rows
+	}
+	return out, w.maxID, nil
+}
