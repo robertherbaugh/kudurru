@@ -113,7 +113,10 @@ captured data before retention keeps its matching dictionary rows through
 that read. Reclamation does not cross database/schema isolation boundaries.
 
 Statistics of a node that stops for good during an hour that it has not
-summarized yet lose that part hour; the individual queries are kept.
+summarized yet lose that part hour; the individual queries are kept. The
+[source-provenance transition design](../architecture/central-stopped-source-rollups.md)
+records the required hourly/daily recovery and unresolved legacy upgrade gate;
+that backfill is not implemented.
 
 ## The dashboard's All nodes view
 
