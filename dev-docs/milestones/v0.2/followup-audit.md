@@ -296,6 +296,21 @@ in the original review without a v0.2 follow-up row are still required.
 | G23 / interoperability/performance | F05, F11, F15–F31, F39, F43, F55, F61, F63, F68; tests with optional external-program skips require unskipped results. |
 | G24 / deployment/release | F15, F23, F41–F43, F56, F63–F68, F74; applicable release-checklist, license/artifact and two-VM evidence remain open. |
 
+## F64a authority-fencing metric closure
+
+The SQLite metric registry now exports `kudurru_cluster_fenced` by sampling the
+bound store's atomic authority and failed-persistence fence. Real store tests
+cover unenrolled/follower/promoted states, a higher-term fence, successor-image
+installation, failed durable fencing/retry/restart, divergence, failed resolution
+rollback and explicit resolution. The registered scrape remains 1 while fenced;
+healthy read-only followers report 0. No DNS or writable-readiness claim follows.
+The immediate alert and Grafana panel are synchronized into Helm assets.
+
+Focused SQLite races pass in 9.296 seconds; dashboard generation, registered
+metric references and rule checks pass; scoped SQLite/deployment lint reports
+zero issues. This closes F64a's instrument and shipped assets. F64b, F64c and
+final multi-process/deployment acceptance retain their separate requirements.
+
 ## Prioritized bounded implementation queue
 
 “Owner” is a proposed workstream, not an assignment or authorization to change

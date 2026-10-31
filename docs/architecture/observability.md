@@ -13,6 +13,17 @@ Plus the **audit** trail of who changed what. Code: `internal/stages/log`,
 `internal/querylog/sqlitelog` (writer, rollups, retention, reader),
 `internal/metrics`, `internal/health`, `internal/audit`.
 
+SQLite exports `kudurru_cluster_fenced` from its current local authority, with
+no database read during a scrape. It is 1 for a higher-term fence, conflicting
+promotions, divergent images, or an in-memory fence when persistence fails.
+Persisted fences survive restart. Installing an accepted successor image as a
+follower or explicitly resolving a conflict clears the signal when the store
+transition succeeds. A healthy read-only follower or unenrolled mirror reports
+0; zero does not establish writable readiness. Valid last-good DNS can continue
+while fenced. Kubernetes nodes do not export this SQLite authority signal.
+The Grafana cluster/store row and immediate `KudurruClusterFenced` alert use it;
+inspect authority and storage errors before attempting explicit recovery.
+
 The Nodes page also polls `GET /api/v1/edge` every ten seconds. In Helm,
 the server discovers every separate edge pod through the headless
 `<release>-edge-status` Service's EndpointSlices, then reads `/status` on

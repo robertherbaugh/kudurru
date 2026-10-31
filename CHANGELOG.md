@@ -23,6 +23,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- SQLite replication: `kudurru_cluster_fenced` reports durable and failed
+  in-memory authority fences, with an immediate Prometheus alert and Grafana
+  panel. Healthy read-only followers do not trigger the fencing alert.
+
 - Independent secondary-zone AXFR/IXFR ingestion over TCP or verified TLS, with optional TSIG,
   SOA refresh/retry/expiry, RFC 1982 serial handling and durable node-local
   last-good copies. Invalid, unauthenticated and oversized transfers retain

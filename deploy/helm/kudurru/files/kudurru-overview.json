@@ -2667,14 +2667,60 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "1 means an authority fence, promotion conflict, divergent image or failed durable fence blocks writes. Healthy followers report 0; zero is not writable readiness. Valid last-good DNS can continue. Kubernetes nodes do not emit this metric.",
+      "fieldConfig": {
+        "defaults": {
+          "max": 1,
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 161
+      },
+      "id": 69,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (instance) (kudurru_cluster_fenced{instance=~\"$instance\"})",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "title": "SQLite authority fenced",
+      "type": "timeseries"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 161
+        "y": 169
       },
-      "id": 69,
+      "id": 70,
       "panels": [],
       "title": "dnsdist edge",
       "type": "row"
@@ -2694,9 +2740,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 162
+        "y": 170
       },
-      "id": 70,
+      "id": 71,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2746,9 +2792,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 162
+        "y": 170
       },
-      "id": 71,
+      "id": 72,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2798,9 +2844,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 162
+        "y": 170
       },
-      "id": 72,
+      "id": 73,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2843,9 +2889,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 170
+        "y": 178
       },
-      "id": 73,
+      "id": 74,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2886,9 +2932,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 170
+        "y": 178
       },
-      "id": 74,
+      "id": 75,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2929,9 +2975,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 178
+        "y": 186
       },
-      "id": 75,
+      "id": 76,
       "panels": [],
       "title": "VIP",
       "type": "row"
@@ -2953,9 +2999,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 179
+        "y": 187
       },
-      "id": 76,
+      "id": 77,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2996,9 +3042,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 179
+        "y": 187
       },
-      "id": 77,
+      "id": 78,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -3039,9 +3085,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 179
+        "y": 187
       },
-      "id": 78,
+      "id": 79,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -3072,9 +3118,9 @@
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 187
+        "y": 195
       },
-      "id": 79,
+      "id": 80,
       "options": {
         "content": "These panels come from the keepalived supervisor's metrics listener (:8085). With kube-vip or MetalLB, ownership is visible in the Service status and in those projects' own metrics.",
         "mode": "markdown"

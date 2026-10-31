@@ -19,7 +19,9 @@ func TestFailedDurableFenceStaysBlockedAndCanRetry(t *testing.T) {
 		t.Run(map[bool]string{false: "higher", true: "conflict"}[conflict], func(t *testing.T) {
 			ctx := context.Background()
 			path := filepath.Join(t.TempDir(), FileName)
-			s := openAt(t, path)
+			m := NewMetrics(nil)
+			s := openAt(t, path, func(o *Options) { o.Metrics = m })
+			assertFencedMetric(t, m, 0)
 			mustApply(t, s, zone("home", "home.example."), store.ManagerAPI)
 			term := s.Authority().Term
 			term.PrimaryID, term.PromotionID = "other", "other-promotion"
@@ -32,6 +34,7 @@ func TestFailedDurableFenceStaysBlockedAndCanRetry(t *testing.T) {
 			if _, err := s.ObserveAuthority(ctx, term); err == nil {
 				t.Fatal("disk failure was not returned")
 			}
+			assertFencedMetric(t, m, 1)
 			if _, err := s.Apply(ctx, zone("blocked", "blocked.example."), store.ApplyOptions{Manager: store.ManagerSystem, Force: true}); !errors.Is(err, replication.ErrFenced) {
 				t.Fatalf("failed fence allowed mutation: %v", err)
 			}
@@ -48,10 +51,12 @@ func TestFailedDurableFenceStaysBlockedAndCanRetry(t *testing.T) {
 			if s.writeBlocked.Load() {
 				t.Fatal("durable retry left transient block")
 			}
+			assertFencedMetric(t, m, 1)
 			if err := s.Close(); err != nil {
 				t.Fatal(err)
 			}
-			back := openAt(t, path, func(o *Options) { o.InitialMode = replication.Primary })
+			back := openAt(t, path, func(o *Options) { o.InitialMode = replication.Primary; o.Metrics = m })
+			assertFencedMetric(t, m, 1)
 			if back.Authority().Writable() || (conflict && back.Authority().Conflict == nil) || (!conflict && !back.Authority().Term.Same(term)) {
 				t.Fatal("durable retry did not survive restart")
 			}
@@ -64,12 +69,15 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 	p := openTemp(t)
 	mustApply(t, p, zone("home", "home.example."), store.ManagerAPI)
 	path := filepath.Join(t.TempDir(), FileName)
-	s := openAt(t, path, func(o *Options) { o.InitialMode = replication.Follower })
+	m := NewMetrics(nil)
+	s := openAt(t, path, func(o *Options) { o.InitialMode = replication.Follower; o.Metrics = m })
+	assertFencedMetric(t, m, 0)
 	if err := s.Enroll(ctx, p.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
 	base := imageOf(t, p)
 	install(t, s, base)
+	assertFencedMetric(t, m, 0)
 	bad := *base
 	bad.Payload.Runtime = []replication.Entry{{Key: "blocking", Data: json.RawMessage(`{"mode":"disabled"}`)}}
 	if err := replication.Seal(&bad); err != nil {
@@ -83,10 +91,12 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 	if !errors.Is(err, replication.ErrDivergent) || s.Authority().Divergence == nil {
 		t.Fatalf("divergence: %v", err)
 	}
+	assertFencedMetric(t, m, 1)
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s = openAt(t, path, func(o *Options) { o.InitialMode = replication.Primary })
+	s = openAt(t, path, func(o *Options) { o.InitialMode = replication.Primary; o.Metrics = m })
+	assertFencedMetric(t, m, 1)
 	if s.Authority().Mode != replication.Fenced || s.Authority().Divergence == nil || !imageOf(t, s).Generation().Same(base.Generation()) {
 		t.Fatal("divergence diagnosis/last-good lost")
 	}
@@ -98,6 +108,7 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 	if _, err := s.ResolveConflict(ctx, v, req); err == nil {
 		t.Fatal("failed resolution succeeded")
 	}
+	assertFencedMetric(t, m, 1)
 	if !reflect.DeepEqual(before, s.Authority()) || !imageOf(t, s).Generation().Same(base.Generation()) {
 		t.Fatal("partial resolution committed")
 	}
@@ -111,6 +122,7 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertFencedMetric(t, m, 0)
 	if !a.Writable() || a.Term.Epoch != base.Term.Epoch+1 || a.Parent == nil || !a.Parent.Same(bad.Generation()) {
 		t.Fatal("resolution did not allocate new chosen branch")
 	}

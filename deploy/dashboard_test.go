@@ -151,6 +151,9 @@ func dashboardRows() []row {
 			ts("Internal listener", "reqps", target{`sum by (route, code) (rate(kudurru_internal_requests_total{` + sel + `}` + rate + `))`, "{{route}} {{code}}"}),
 			ts("Blocklist pulls", "ops", target{`sum by (origin, result) (rate(kudurru_blocklist_pulls_total{` + sel + `}` + rate + `))`, "{{origin}} {{result}}"}),
 			ts("Object file diagnoses", "short", target{`max by (severity) (kudurru_objects_diagnoses{` + sel + `})`, "{{severity}}"}),
+			{title: "SQLite authority fenced", kind: "timeseries", unit: "short", w: 8, h: 8, min: f(0), max: f(1),
+				desc:    "1 means an authority fence, promotion conflict, divergent image or failed durable fence blocks writes. Healthy followers report 0; zero is not writable readiness. Valid last-good DNS can continue. Kubernetes nodes do not emit this metric.",
+				targets: []target{{`max by (instance) (kudurru_cluster_fenced{` + sel + `})`, "{{instance}}"}}},
 		}},
 		{"dnsdist edge", []panel{
 			ts("Edge queries and responses", "reqps",
@@ -359,7 +362,7 @@ func TestPrometheusRules(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"KudurruNoLeader", "KudurruServfailRatio", "KudurruUpstreamUnhealthy", "KudurruQuerylogDrops", "KudurruQuerylogNearCap", "KudurruSerialDivergence", "KudurruServingFromSnapshot", "KudurruSnapshotStale", "KudurruLatencyP95High", "KudurruEdgeBackendDown", "KudurruVIPNoMaster", "KudurruBlocklistStale"} {
+	for _, want := range []string{"KudurruClusterFenced", "KudurruNoLeader", "KudurruServfailRatio", "KudurruUpstreamUnhealthy", "KudurruQuerylogDrops", "KudurruQuerylogNearCap", "KudurruSerialDivergence", "KudurruServingFromSnapshot", "KudurruSnapshotStale", "KudurruLatencyP95High", "KudurruEdgeBackendDown", "KudurruVIPNoMaster", "KudurruBlocklistStale"} {
 		if !seen[want] {
 			t.Errorf("§11.6 alert %s is missing", want)
 		}

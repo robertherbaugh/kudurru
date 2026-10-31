@@ -316,6 +316,9 @@ func Open(path string, opts Options) (*Store, error) {
 			return fail(err)
 		}
 	}
+	if opts.Metrics != nil {
+		opts.Metrics.boundStore.Store(s)
+	}
 	return s, nil
 }
 

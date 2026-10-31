@@ -162,7 +162,7 @@ runners. Unit tests cannot substitute for those results.
 | F62a | CLI conformance against actual API router | Operations and UI | Queued: partial |
 | F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Queued: partial |
 | F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | External acceptance/decision open |
-| F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Active: parent |
+| F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Queued: missing |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
 | F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Queued: missing |
