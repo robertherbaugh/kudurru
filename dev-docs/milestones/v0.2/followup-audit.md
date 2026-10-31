@@ -561,9 +561,7 @@ relocation (F20b/F20c), nested settings help (F57) and webhook authentication
 | Priority / IDs | Current owner / dependencies | Concrete next change and exact acceptance |
 |---|---|---|
 | P1 / F09b | Integration host agent; SQLite atomic sources, then Kubernetes equivalents | Mount providers with original elected writer/credential/license proof, atomic ownership/inventory and receipt-qualified publication; qualify failover and finish Delete/Kubernetes dependencies. |
-| P1 / F05 | Record-cache agent | Reuse per-object parsed RRs with detached copies, identity/TTL/expiry invalidation and separate changed-record reconciliation benchmarks. |
-| P1 / F31 | Recursive-cookie agent | Bound outgoing authority cookies, address identity, BADCOOKIE recovery and work budgets with real UDP/TCP acceptance. |
-| P2 / F18a | Parent; immutable serving configuration | Wire global network/type controls through captured publications and legacy reload without live fallback. |
+| P2 / F18a | Global-control agent; immutable serving configuration | Wire global network/type controls through captured publications and legacy reload without live fallback. |
 | P2 / F70 | Central DB; reference/pruning transaction design | Prune bounded dictionaries against retained facts/rollups and concurrent shipping; prove no dangling references/data loss and stable retry/restart. |
 
 AD F11–F15, core HA wiring, RFC 8198/5011, console diff-apply and external
@@ -597,3 +595,21 @@ editor. Existing temporary record-read 503s during policy publication are
 recognized only on this test's exact record route; eventual 200, visible recovered
 page and persisted values remain required. No mutation is replayed. Final
 combined Go lint reports zero issues; browser typecheck and ESLint pass.
+
+
+## F05/F31 implementation closure after the baseline audit
+
+`eb20ac7` supplies bounded per-record parsing reuse with detached records and
+full source/zone identity, TTL/expiry invalidation. `668203c` supplies native
+recursive authority cookies, exact echoed-cookie checks, actual address
+binding, bounded rotation/state and original-budget BADCOOKIE/TCP recovery.
+The integrated nine-package race run and combined lint pass; actual UDP/TCP
+and Kubernetes fixtures ran. Shared-host changed-record benchmarks and limits
+are recorded in [gaps.md](gaps.md#f05f31-composed-parsing-reuse-and-authority-cookies).
+These two items leave the implementation queue. Final performance,
+interoperability and release gates remain independent.
+
+`09c0eed` corrects hosted DoH3 timeout observation at the actual server, without
+changing the configured bound or test deadline. Ten focused race repetitions
+and the full transport race suite pass. The hosted dashboard failure remains
+recorded even though 25 focused tests and all 880 dashboard tests pass locally.

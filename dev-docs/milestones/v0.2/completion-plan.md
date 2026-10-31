@@ -18,7 +18,8 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own F31, F09b and F05; the parent integrates F29b/F06/F56. Freed agents take
+agents currently own F18a, F09b and F68c container acceptance; the parent has
+integrated F05/F31 and added a Samba AD protocol lab. Freed agents take
 the next independent package, retaining original proofs, ownership, current
 transactions and final credential/license checks. No refused mutation replay.
 
@@ -58,7 +59,7 @@ runners. Unit tests cannot substitute for those results.
 | F02d | `InternalKinds` once internal kinds exist | Store and HA | Implemented; final gates open |
 | F03 | `WatchOptions.ResourceVersion`: replay-as-Added vs true resume | Store and HA | External acceptance/decision open |
 | F04 | Shared sqlite/kube table rejecting the same inputs | Store and HA | Integrated d4075f5; scoped real-driver races pass |
-| F05 | Cache parsed endpoints per record-set object | Zones and AD | Active: record-cache agent |
+| F05 | Cache parsed endpoints per record-set object | Zones and AD | Integrated eb20ac7; composed actual-driver and parser races pass |
 | F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Integrated c80c6f2/46d7641; actual sender and composed SQLite/Kubernetes schema races pass |
 | F06b | Per-zone `notifySource` | Zones and AD | Integrated c80c6f2/46d7641; actual source/refusal races and UI unit tests pass |
 | F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Queued: missing |
@@ -82,7 +83,7 @@ runners. Unit tests cannot substitute for those results.
 | F15 | Windows acceptance with every DC DNS service stopped | Zones and AD | External acceptance/decision open |
 | F16 | Current-hour query stats beyond 100k distinct names | DNS and resolver | Queued: missing |
 | F17 | `$important` / `$badfilter` | DNS and resolver | Implemented; final gates open |
-| F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Queued: missing |
+| F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Active: global control agent |
 | F18b | Reverse-PTR hostname cache | DNS and resolver | Queued: missing |
 | F18c | UniFi hostname source | DNS and resolver | Queued: partial |
 | F19a | Durable replicated blocking toggle on complete SQLite path | Store and HA | Implemented; final gates open |
@@ -113,7 +114,7 @@ runners. Unit tests cannot substitute for those results.
 | F29a | Expiring negative trust anchors for forwarded validation | DNS and resolver | Implemented; final gates open |
 | F29b | Negative trust anchors for recursive groups | DNS and resolver | Integrated ddc5f2d; native/socket, captured-publication and actual Kubernetes schema races pass |
 | F30 | DNSSEC validation of forwarded answers | DNS and resolver | Implemented; final gates open |
-| F31 | DNS cookies to authoritative servers | DNS and resolver | Active: recursive-cookie agent |
+| F31 | DNS cookies to authoritative servers | DNS and resolver | Integrated 668203c; composed native/socket/DNSSEC/cache races pass |
 | F32 | Persist node-scope API changes or remove write half | Operations and UI | Queued: partial |
 | F33 | Remote `GET /nodes/{name}/health` | Operations and UI | Integrated; final gates open |
 | F34 | `/auth/me` exposes zone-scoped permissions | IAM and access | Implemented; final gates open |
@@ -171,7 +172,7 @@ runners. Unit tests cannot substitute for those results.
 | F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Queued: partial |
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
 | F68b | Knot catalog consumer interoperability | Zones and AD | Queued: missing |
-| F68c | Two-VM keepalived failover acceptance | Zones and AD | External acceptance/decision open |
+| F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative active; original VM qualification remains external |
 | F69 | Central reads for retired node via scope=node&node=other | Observability and release | Queued: missing |
 | F70 | Prune unreferenced central dictionaries | Observability and release | Queued: missing |
 | F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Queued: missing |

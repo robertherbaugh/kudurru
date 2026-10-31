@@ -23,6 +23,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Recursive DNS: negotiate per-authority DNS cookies with bounded peer state,
+  address-bound random client cookies, rotation and budgeted BADCOOKIE recovery.
+  Cookies stay out of shared response caches and client answers.
+- Zone reconciliation: bounded per-record-set parsing reuse with detached RRs
+  and identity, TTL and expiry invalidation across controller and primary builds.
+
 - Zones: select a separate NOTIFY TSIG key and local source address through
   zone policy and primary-zone wizard/settings controls. Missing keys and bind
   failures refuse delivery without switching identity or source.

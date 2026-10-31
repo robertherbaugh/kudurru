@@ -32,7 +32,7 @@ The evidence audit preserves their original requirements and limits.
 
 | Item | Source | Target |
 |---|---|---|
-| Controller zone builds parse every record per zone reconcile (paced Apply → status p50 0.4 ms → 2-3 ms at 1,000 record sets); cache parsed endpoints per record-set object and copy RRs into each build | dev-docs/milestones/m2/xfr.md | v0.2 (moved from M3: performance only; status writes stay in the low milliseconds at 1,000 record sets) |
+| Per-record parsed RR reuse is implemented in `eb20ac7`, with bounded retention, detached copies and identity/TTL/expiry invalidation; composed races and local changed-record benchmarks pass | dev-docs/milestones/m2/xfr.md; F05 | v0.2 (implementation complete; final performance/release qualification remains) |
 | Per-zone NOTIFY signing key and source shipped in the v0.2 review (F06): separate `notifyTSIGKeyRef`, `notifySource`, compatible empty defaults, current-policy/key refusal and primary-zone wizard/settings controls | dev-docs/milestones/m2/xfr.md | v0.2 |
 | Store-backed internal `TSIGKey` kind behind `dnsserver.TSIGKeyring` (encrypted at rest, §4.1); TSIG on DoH/DoQ/DoH3 (signed requests are treated as unsigned there) | dev-docs/milestones/m2/xfr.md | v0.2 (moved from M3 / v0.2: the node-config `tsigKeys` keyring covers v0.1) |
 | `kudurru doctor` self-NOTIFY round trip reporting the egress address (§4.6) | dev-docs/milestones/m2/xfr.md | v0.2 (moved from M4: a diagnostic, NOTIFY itself works) |
@@ -82,7 +82,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | Automatic root trust-anchor updates (RFC 5011): new anchors come with releases or `upstreams.recursion.trustAnchors` | D170 | v0.2 |
 | Negative trust anchors: a list of zones whose broken DNSSEC is ignored, so an operator can work around a provider's signing outage without turning validation off | D170 | v0.2 |
 | DNSSEC validation of forwarded answers (the `dnssec` stage, §7.1 step 10); only recursive groups validate | D170 | v0.2 |
-| DNS cookies (RFC 7873, RFC 9018) on queries to authoritative servers | D170 | v0.2 |
+| DNS cookies (RFC 7873, RFC 9018) to authoritative servers implemented in `668203c`: bounded peer state, rotation, exact echo checks and budgeted BADCOOKIE/TCP recovery; composed socket/DNSSEC/cache races pass | D170; F31 | v0.2 (implementation complete; final interoperability/release qualification remains) |
 | A local copy of the root zone (RFC 8806) for recursive groups | D170 | later |
 
 ## API (dev-docs/milestones/m3/api.md)

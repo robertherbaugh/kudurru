@@ -762,3 +762,48 @@ editor. Existing temporary record-read 503s during policy publication are
 recognized only on this test's exact record route; eventual 200, visible recovered
 page and persisted values remain required. No mutation is replayed. Final
 combined Go lint reports zero issues; browser typecheck and ESLint pass.
+
+### F05/F31 composed parsing reuse and authority cookies
+
+`eb20ac7` integrates bounded per-object parsed RR reuse in controller,
+zoneview and current primary compilation. It preserves detached records,
+complete source/zone identity, TTL/expiry and existing selection, reservation,
+ownership, serial and publication rules. Local changed-one-of-1000-records
+benchmarks measured 15.67–21.23 ms and approximately 2.99 MB/45,347 allocations,
+versus 31.37–36.25 ms and 9.70 MB/249,113 allocations without reuse. These are
+shared-host synthetic controller-build measurements, not full request latency
+or a fixed-class performance guarantee. Whole-zone hits were measured separately.
+
+`668203c` integrates automatic native recursive authority cookies. Actual
+connected local/remote addresses scope random client cookies and bounded
+server-cookie state. Malformed/spoofed responses cannot update it; BADCOOKIE,
+TCP fallback and case retry share the original work budget. Rotation, original
+deadlines, DNSSEC/NTA context and cache/client-answer isolation remain intact.
+
+The integrated nine-package race run passes with actual Kubernetes envtest
+assets: zone 3.561s, controller 61.445s, primaryzone 8.890s, zoneview 1.407s,
+recursor 4.263s, upstream 4.102s, upstream stage 1.338s, DNSSEC stage 1.126s
+and cache stage 1.684s. Only the pre-existing optional live-Internet recursion
+test is unconfigured; local UDP/TCP cookie fixtures ran. Scoped combined lint
+reports zero issues. The corresponding original audit rows remain historical;
+the completion plan and these closures record their current implementation.
+
+### Integration prerequisites and hosted-check follow-up
+
+Separate signed-off commits `39f5e2f`, `aa8041f`, `28d6a5e` and `01579b2`
+capture immutable provider inputs, preserve representable UniFi expiry, retain
+the original host request lease and bound private MAC grants to their original
+inventory source/deadline. Composed races pass for credentials, policy,
+identify, integration host/planner, UniFi and Cloudflare. Production mounting,
+Kubernetes atomic-source dependencies and Delete semantics remain F09b.
+
+Hosted CI `41203722639` exposed a DoH3 idle test that observed the client's
+later detection of a silent server timeout. `09c0eed` installs a test observer
+before serving and verifies the actual server context and close reason, with
+the existing 200 ms configuration and three-second deadline unchanged. Ten
+race-enabled repetitions pass in 14.233s; full dnsserver races pass in 30.164s.
+The same hosted run's authenticator status-read failure did not reproduce in
+the isolated 25-test file or the complete **880/880** dashboard tests (165.28s,
+two workers). That hosted failure remains recorded pending the next run.
+Security workflow `41203722606` passes all applicable jobs. The understood
+Cloudflare docs check remains excluded by the owner's instruction.
