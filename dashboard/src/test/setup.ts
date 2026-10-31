@@ -4,6 +4,7 @@ import { cleanup, configure } from '@testing-library/react';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest';
 import { handlers, resetDB } from '../mocks/handlers';
+import { installTestTransport } from './transport';
 
 // CI runners and the shared dev machine are slow; findBy* waits up to 5 s.
 configure({ asyncUtilTimeout: 5000 });
@@ -11,13 +12,23 @@ configure({ asyncUtilTimeout: 5000 });
 /** The MSW server answering /api/v1 from the fixtures in every test. */
 export const server = setupServer(...handlers);
 
-beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
+let disposeTransport: () => Promise<void>;
+beforeAll(() => {
+  disposeTransport = installTestTransport();
+  server.listen({ onUnhandledFrame: 'error' });
+});
 beforeEach(() => {
   resetDB();
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
-afterAll(() => server.close());
+afterAll(async () => {
+  try {
+    await disposeTransport();
+  } finally {
+    server.close();
+  }
+});
 
 class ResizeObserverStub {
   observe(): void {}
