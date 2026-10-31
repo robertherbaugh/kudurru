@@ -216,7 +216,10 @@ func (p *Provider) clients(ctx context.Context, budget *pollBudget, site uni.Int
 		if row.Name == "" || len(row.Name) > 253 || row.ConnectedAt != nil && row.ConnectedAt.After(observed) {
 			return nil, ErrInvalid
 		}
-		d := Device{ID: site.ID + "/" + row.ID, Name: row.Name, ObservedAt: observed, ExpiresAt: observed.Add(3 * pollInterval(p.config))}
+		// Desired endpoints use metav1.Time's whole-second wire format. Choose
+		// the same conservative absolute deadline at initial acquisition, before
+		// inventory or DNS proof exists, so persistence never renews or changes it.
+		d := Device{ID: site.ID + "/" + row.ID, Name: row.Name, ObservedAt: observed, ExpiresAt: observed.Add(3 * pollInterval(p.config)).Truncate(time.Second)}
 		switch row.Type {
 		case "WIRED", "WIRELESS":
 			mac, err := normalizeMAC(row.MACAddress)

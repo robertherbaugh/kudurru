@@ -376,3 +376,19 @@ func TestLegacySavedMetadataPrecedenceAndNetworkConflict(t *testing.T) {
 		})
 	}
 }
+
+func TestOfficialChoosesRepresentableOriginalExpiry(t *testing.T) {
+	server, _ := controller(t)
+	p := provisionFixture(t, server, public.UniFiIntegration{}, fixtureLoan())
+	at := translationFixture().Observation.ObservedAt.Add(123456789 * time.Nanosecond)
+	p.now = func() time.Time { return at }
+	observed, err := p.Observe(t.Context())
+	if err != nil || len(observed.Clients) != 1 {
+		t.Fatal("complete observation unavailable", err)
+	}
+	client := observed.Clients[0]
+	limit := at.Add(3 * time.Minute)
+	if !client.ObservedAt.Equal(at) || !client.ExpiresAt.Equal(limit.Truncate(time.Second)) || client.ExpiresAt.After(limit) {
+		t.Fatal("acquisition changed observation or extended its original deadline")
+	}
+}
