@@ -994,6 +994,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var zoneNotifyCommand api.ZoneNotifyCommand
 	catalogSource := catalogueAPI(catalogs, catRefreshers)
 	if sql == nil {
+		logger.Warn("background integration execution is unavailable for the Kubernetes store; atomic source publication is required")
 		authMux := http.NewServeMux()
 		ids.Register(authMux)
 		registerUnavailableTOTP(authMux)

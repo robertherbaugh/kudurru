@@ -10,7 +10,9 @@ suspended so applying an example cannot publish records.
 
 The schema, credential resolver, publication planner, durable ownership ledger,
 background host, Cloudflare SDK adapter and UniFi polling adapter are implemented.
-Production commit adapters, remaining providers and API/dashboard controls remain parts of the full
+The SQLite serving runtime mounts the host, concrete fenced ledger/source commands,
+and complete-image inventory publication. Kubernetes execution, `Delete` cleanup,
+remaining providers and API/dashboard controls remain parts of the full
 [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ```mermaid
@@ -28,7 +30,11 @@ flowchart LR
 `internal/credentials` accepts exactly one Secret, file, or environment
 reference. File and environment references require explicit host allowlists.
 Secret references cannot choose a namespace: the operator supplies it to the
-resolver. These capabilities are captured immutably and replaced on host reload.
+resolver. These capabilities are captured immutably; SQLite background capture detects
+file/environment rotation and joins the old provider before replacement. SQLite
+does not enable native Secret lookup. Kubernetes production execution remains
+disabled pending atomic complete-source admission; it cannot use sequential
+per-object writes as a substitute.
 The resolver bounds credential sizes, returns private copies, and removes
 provider error bodies before reporting lookup failures. A keyed HMAC fingerprint
 detects changes without publishing a plain hash of the credential. Secret values
@@ -93,6 +99,12 @@ for the old provider to stop. Missing credentials or incomplete input cancel
 execution; failed inventory polls retain observations only until their original
 absolute expiry. Source changes schedule a new reconciliation, while the host's
 own receipt/status writes do not invalidate its desired-source identity.
+The SQLite root binds each instance to its own authority dependencies, excluding
+incidental target status and its own generated facts. Equivalent capture refreshes
+supply future operations with fresh immutable inputs; held operations keep their
+original root resource and source-zone copy. Exact original UID/resource versions
+are still compared inside every desired-object transaction. Configuration,
+credential, admission or selected outbound source replacement revokes authority.
 
 ```mermaid
 flowchart TD
@@ -110,8 +122,9 @@ flowchart TD
 Every actual provider request, including a retry or batch fallback, must enter
 the host's request adapter with its original operation context. A cluster-wide
 Cloudflare budget survives token/instance replacement. Rate limits and temporary
-failures use bounded backoff; permanent failures wait for changed input or an
-explicit command. Preview binds all destinations, and sync rejects a changed
+failures use bounded backoff only when explicitly classified temporary or
+rate-limited. Fencing, refused, permanent and unclassified failures wait for
+changed input or an explicit command; no refused command is automatically replayed. Preview binds all destinations, and sync rejects a changed
 preview before effects. Unknown or foreign remote outcomes remain pending until
 a complete reread establishes ownership and outcome.
 
@@ -130,11 +143,22 @@ before callbacks, retries to the original 24-hour deadline, and retains terminal
 records for deduplication and audit. Delivery is at least once. Guarded retention
 cleanup remains necessary before sustained production feeds.
 
-The host's `WithLease` holds instance admission through the root writer callback;
-the production adapter must still check current configuration, credentials and
-HA authority inside the actual transaction or carrier CAS. The host does not
-replace that commit check with a preliminary leader check. Real production
-adapters and multi-node failover acceptance remain open.
+The host's `WithLease` holds instance admission through the SQLite root command.
+The root retains the original credential/key/license cut and elected writer token,
+then pins complete serving dependencies through the concrete transaction. It
+compares current Integration UID, resource version and configuration, plus the
+original selected source UID/resource versions; memory-only final checks run
+before commit, including no-ops. Provider I/O occurs outside those gates. Actual
+SQLite replica-install/promotion acceptance verifies that a held observation
+cannot commit after its original writer is fenced.
+
+`Retain` is the supported production deletion policy. A configured `Delete`
+instance is refused before provider work until an original-authority cleanup
+and finalizer protocol exists. Kubernetes needs a single fenced atomic admission
+root binding configuration, desired objects, allocations, source and global
+inventory; ordinary per-object CAS plus a Lease is insufficient. These remain
+explicit dependencies, not completed capabilities. See the
+[operator guide](../deploy/integrations.md).
 
 ## Cloudflare adapter
 
@@ -172,8 +196,9 @@ flowchart LR
 
 Actual SDK tests against local HTTP servers cover UID-bound ownership, paging
 drift, wire records, partial batches, ambiguous responses and restart recovery.
-Host recovery covers mixed intermediate attributes. Production admission and
-mounting remain required before enabling the adapter in a running server.
+Host recovery covers mixed intermediate attributes. SQLite production mounting
+uses this adapter and the same durable ledger protocol; local root acceptance
+also exercises a publisher double through actual fenced ledger and budget writes.
 
 ## Durable inventory evidence
 
@@ -196,8 +221,11 @@ through replication. Complete image validation requires it, and the
 omitting it. The complete serving builder derives inventory from this same
 candidate image as DNS and authentication. Held requests keep their original
 snapshot and expiry even after replacement or store shutdown; a missing or
-malformed owner rejects the candidate. Production source admission and allocation
-updates remain separate integration work.
+malformed owner rejects the candidate. The SQLite root source command stages
+source-owned desired objects, permanent allocations, source head/chunks and
+global inventory in one transaction. Publication acknowledgment waits for the
+exact source root and admitted desired-record receipts in a complete bundle;
+complete omission also settles old same-manager receipts on current primary heads.
 
 The pure `ee/integration/inbound` adapter now encodes complete original source
 observations in bounded digest chunks. It validates target, generated-record,
@@ -211,9 +239,12 @@ target mismatches and duplicate inventory slots before preparing an overlay;
 actual SQLite restart, replica installation and promotion preserve those proofs.
 Its serving overlay suppresses ineligible live claims while retaining original
 watermarks and merging authorized MAC contributions into detached public groups.
-These functions confer no write authority: the production source command must
-admit and save desired objects, allocations and global inventory together, then
-acknowledge the exact primary publication.
+These functions confer no write authority. The root source command separately
+admits and saves all components together, then acknowledges exact publication.
+Private MAC grants compile separately from manual public members, bound to the
+original inventory source, group UID and exclusive absolute expiry. Identification
+checks these immutable predicates at the original request time; another source
+using the same MAC cannot inherit them.
 
 The host's preferred source callbacks now retain one original observation
 capability from acquisition through commit and acknowledgment. Its request ID,
@@ -222,8 +253,9 @@ Bounds and pure validation precede copying. The root can hold host replacement
 exclusion through the actual SQLite command and register a memory-only final
 check, including for deduplication. A committed observation whose publication
 fails retains its receipt and pending state. Actual SQLite rollback, cancellation
-and final-check tests cover this seam; the durable source mutation adapter and
-production mount remain separate work.
+and final-check tests cover this seam; mounted SQLite tests additionally cover real
+UniFi HTTPS acquisition, desired DNS publication, ownership rollback, omission,
+credential rotation, joined replacement and replica promotion.
 
 ## UniFi inventory adapter
 
@@ -242,8 +274,10 @@ names and notes can enrich metadata, but historical timestamps and fixed-IP
 reservations never create a fresh address claim.
 
 Successful connected-client observations produce absolute expiry, normally three
-poll intervals. Failed polls retain that original deadline; complete omission
-withdraws an address immediately. Restart requires a new observation. Ambiguous
+poll intervals, floored to a whole second at acquisition so durable endpoint
+evidence retains exactly the same expiry. Failed polls retain that original deadline; complete omission
+withdraws an address immediately. Restart and replicas retain finite original
+evidence without renewal; only a new successful poll creates new authority. Ambiguous
 address claims never fall back to an older owner. Queries read only the immutable
 published inventory, including after the controller becomes unavailable.
 

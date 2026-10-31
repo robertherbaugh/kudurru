@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerhost"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
@@ -21,6 +22,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -54,23 +56,24 @@ type servingRuntimeOptions struct {
 // Manager acquisition, the store, license loader and key owners remain borrowed.
 // The root joins RunWriter before stopping public serving and calling Close.
 type servingRuntime struct {
-	opts      servingRuntimeOptions
-	publisher *serving.Publisher
-	providers *providercoordinator.Coordinator
-	host      *providerhost.Owner
-	resources *providerresources.Owner
-	primary   *primaryRuntime
-	status    *servingbuild.PrimaryStatus
-	catalog   *servingbuild.CatalogRuntime
-	local     []providerregistry.DesiredConfig
-	life      context.Context
-	cancel    context.CancelFunc
-	lifecycle chan struct{}
-	mu        sync.Mutex
-	workers   sync.WaitGroup
-	running   bool
-	writing   bool
-	closing   bool
+	opts         servingRuntimeOptions
+	publisher    *serving.Publisher
+	providers    *providercoordinator.Coordinator
+	host         *providerhost.Owner
+	resources    *providerresources.Owner
+	primary      *primaryRuntime
+	status       *servingbuild.PrimaryStatus
+	integrations *integrationRuntime
+	catalog      *servingbuild.CatalogRuntime
+	local        []providerregistry.DesiredConfig
+	life         context.Context
+	cancel       context.CancelFunc
+	lifecycle    chan struct{}
+	mu           sync.Mutex
+	workers      sync.WaitGroup
+	running      bool
+	writing      bool
+	closing      bool
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {
@@ -141,7 +144,9 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
-	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, Now: o.Now, Upstreams: o.Upstreams})
+	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, Now: o.Now, Upstreams: o.Upstreams, PrepareIntegrations: func(ctx context.Context, image *replication.Image, primary *primaryruntime.PreparedImage, at time.Time) (*servingbuild.InventoryOwner, []*public.ClientGroup, error) {
+		return prepareIntegrationImage(ctx, image, primary, schema, at)
+	}})
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +198,10 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 		return nil, err
 	}
 	s.status, err = servingbuild.NewPrimaryStatus(servingbuild.PrimaryStatusOptions{Store: o.Store, Publisher: s.publisher, Pin: pin, Now: o.Now})
+	if err != nil {
+		return nil, err
+	}
+	s.integrations, err = newIntegrationRuntime(s, schema, pin)
 	if err != nil {
 		return nil, err
 	}

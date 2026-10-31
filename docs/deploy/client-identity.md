@@ -5,8 +5,10 @@ globs or client IDs. The first matching tier selects all matching groups:
 exact IP → MAC → longest nonzero CIDR → hostname → name glob → client ID →
 catch-all `/0` → default. Inventory supplies MACs and hostnames from memory.
 Expired inventory stops identifying a device, and reassigned IPs never inherit
-an older device's policy. Integration inventory and its management UI are being
-implemented separately from these listener selectors.
+an older device's policy. SQLite can populate inventory through the background
+[UniFi integration](integrations.md); its management UI and Kubernetes execution
+remain separate work. Private group contributions retain their original source
+and expiry, while manual public matchers keep their configured behavior.
 
 Client IDs are optional, client-selected policy identifiers. They are **not
 passwords or authentication**. Do not use them to grant privileged DNS updates
