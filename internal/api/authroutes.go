@@ -80,6 +80,7 @@ type AuditPage struct {
 type auditOutput struct{ Body *AuditPage }
 
 func (s *Server) registerAuth() {
+	s.registerExternalUsers()
 	public := perm{public: true}
 	authed := perm{authenticated: true}
 	// Own tokens: every built-in role holds tokens.own, including the

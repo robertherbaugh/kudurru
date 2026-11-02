@@ -860,3 +860,53 @@ allows it, and the audit record names the path.
 Always TLS with the derived CA, always the bearer node token, rate-limited
 per client. The same token is accepted on `:8080` as a `Node` principal with
 `viewer` and `auditor`.
+
+### External account administration (D289)
+
+The complete SQLite runtime exposes persisted external identities through
+`GET /api/v1/iam/external-users` and `GET /api/v1/iam/external-users/{name}`.
+The account name is the existing provider-incarnation/issuer/subject digest;
+the independent account UID is separate from the provider UID. A read returns a
+revision binding the identity profile, disabled state and account revocation
+floor. Pages bind the security epoch and reject continuation after it changes.
+Responses expose profile data, never token hashes or session evidence.
+
+`POST .../{name}/disable`, `/enable` and `/logout` require the reviewed UID and
+revision plus current cluster `users.write`. Cookie requests retain CSRF checks;
+commands reverify the original raw credential against the transaction, including
+current permissions, dependencies, writer admission and final credential time.
+Disable and logout raise the exact account floor, revoke its enrolled sessions
+and delete its personal tokens atomically. Token deletion matches immutable
+UID/provider/issuer/subject ownership, including tokens under an earlier username.
+Another identity with the same display name is unaffected. Enable preserves all
+floors and does not restore any revoked credential or grant a role.
+
+```mermaid
+sequenceDiagram
+    participant A as Administrator
+    participant H as Captured HTTP request
+    participant C as Current SQLite command
+    participant P as Publication
+    A->>H: Read exact account UID and revision
+    A->>H: Confirm disable, enable or logout
+    H->>C: Original raw proof, reviewed UID and revision
+    C->>C: Reauthorize, compare revision, stage account/token/session changes
+    C->>C: Append local audit; final credential and writer checks
+    C-->>H: Commit or roll back all changes
+    H-->>A: 204 or explicit refusal
+    C->>P: Publish committed account state
+    A->>H: New read observes publication
+```
+
+The audit event and token deletions share the same transaction and rollback
+boundary. The local audit record does not itself advance the replicated image.
+Account state, floors, sessions and token deletions survive restart and replica
+installation/promotion. The dashboard does not optimistically acknowledge a
+published revision; it retires the selection after a command and observes the
+result with a new read. An uncertain mutation is never automatically retried.
+
+Legacy and Kubernetes Stack hosts return `external_users_unavailable` after
+normal permission checks. Local administrators can revoke external accounts even
+when the provider license is unavailable; enabling does not bypass provider
+licensing or ordinary login admission. This is Kudurru account administration,
+not remote identity-provider logout or external identity provisioning.

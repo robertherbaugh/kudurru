@@ -31,8 +31,9 @@ type iamMigrationOptions struct {
 
 type iamMigrationFactory func(*cobra.Command, iamMigrationOptions) (iamMigrationBackend, error)
 
-func newIAMCmd(configPath *string) *cobra.Command {
+func newIAMCmd(configPath *string, o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "iam", Short: "Manage identity configuration and upgrades"}
+	cmd.AddCommand(newExternalUsersCmd(o))
 	cmd.AddCommand(newIAMMigrationCmd(func(cmd *cobra.Command, o iamMigrationOptions) (iamMigrationBackend, error) {
 		cfg, err := loadConfig(cmd, *configPath)
 		if err != nil {

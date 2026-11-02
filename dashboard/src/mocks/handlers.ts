@@ -834,6 +834,7 @@ export const handlers = [
     db.session = null;
     return new HttpResponse(null, { status: 204 });
   }),
+  http.get(`${B}/iam/external-users`, () => HttpResponse.json({ error: { key: 'external_users_unavailable', message: 'External account administration is unavailable in this demo.' } }, { status: 503 })),
   http.post(`${B}/iam/users/:name/totp/recover`, async ({ request, params }) => {
     const denied = guard(request, 'users', 'write');
     if (denied) return denied;

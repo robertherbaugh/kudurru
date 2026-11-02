@@ -1,3 +1,4 @@
+import { ExternalUsersPanel } from '../components/access/ExternalUsers';
 // Access: the signed-in principal, its roles and permissions, its
 // own API tokens (the kdr_ secret is shown once), the read-only IAM views
 // (the write API is v0.2; IAM is declared in YAML today).
@@ -410,6 +411,7 @@ function Iam() {
           empty('local users', users.isLoading)
         )}
       </Panel>
+      <ExternalUsersPanel />
       <Panel title="Service accounts" headingId="iam-sa">
         {sas.error ? <ErrorBanner error={sas.error} /> : null}
         {sas.data?.items.length ? (

@@ -1,6 +1,7 @@
 // One typed function per /api/v1 route the dashboard uses. Pages call these
 // through the hooks in ./hooks; tests and mocks share the paths.
 import type { ApiClient, Query } from './client';
+import type { ExternalUser, ExternalUserCommand, ExternalUserPage } from './types';
 import type { DomainRegexImpact } from './types';
 import { dhcpEndpoints } from './dhcp';
 import type {
@@ -281,6 +282,9 @@ export function endpoints(c: ApiClient) {
     iam: {
       recoverTOTP: (name: string, req: TOTPRecoverRequest, signal?: AbortSignal) => c.request<void>('POST', `/iam/users/${enc(name)}/totp/recover`, { body: req, signal }),
       users: () => c.get<IamList<IamUser>>('/iam/users'),
+      externalUsers: (cursor = '', signal?: AbortSignal) => c.request<ExternalUserPage>('GET', '/iam/external-users', { query: { limit: 50, continue: cursor }, signal }),
+      externalUser: (name: string, signal?: AbortSignal) => c.request<ExternalUser>('GET', `/iam/external-users/${enc(name)}`, { signal }),
+      administerExternalUser: (name: string, action: 'disable' | 'enable' | 'logout', reviewed: ExternalUserCommand, signal?: AbortSignal) => c.request<void>('POST', `/iam/external-users/${enc(name)}/${action}`, { body: reviewed, signal }),
       serviceAccounts: () => c.get<IamList<IamServiceAccount>>('/iam/serviceaccounts'),
       roleBindings: () => c.get<IamList<IamRoleBinding>>('/iam/rolebindings'),
       identityProviders: () => c.get<IamList<IamIdentityProvider>>('/iam/identityproviders'),

@@ -139,7 +139,7 @@ runners. Unit tests cannot substitute for those results.
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |
 | F44b | Cluster-wide production use on every advertised driver/route | IAM and access | Queued: partial |
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |
-| F45b | External per-user disable / log out everywhere administration | IAM and access | Queued: partial |
+| F45b | External per-user disable / log out everywhere administration | IAM and access | Implemented D289 on complete SQLite: exact UID/revision API/CLI/UI, atomic credential/audit revocation, actual TLS/router/restart/replica races, nine dashboard tests and lint/contracts pass; unsupported Stack explicitly refuses |
 | F46 | Share login lockout counters across replicas | IAM and access | Queued: missing |
 | F47 | Bound offline Kubernetes SA tokens or periodically TokenReview | IAM and access | Integrated 101b614/9e7b177/41a7694; real envtest and races pass |
 | F48a | `autoProvision: never` and `syncGroups` with user store | IAM and access | Implemented; final gates open |

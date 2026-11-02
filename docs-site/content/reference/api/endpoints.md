@@ -154,6 +154,11 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
+| GET | `/api/v1/iam/external-users` | List persisted external accounts | `users.read` (cluster) |
+| GET | `/api/v1/iam/external-users/{name}` | Read an exact external account | `users.read` (cluster) |
+| POST | `/api/v1/iam/external-users/{name}/disable` | Disable an external account and revoke its credentials | `users.write` (cluster) |
+| POST | `/api/v1/iam/external-users/{name}/enable` | Enable an external account without restoring credentials | `users.write` (cluster) |
+| POST | `/api/v1/iam/external-users/{name}/logout` | Revoke all credentials of an external account | `users.write` (cluster) |
 | GET | `/api/v1/iam/identityproviders` | List identityproviders | `identityproviders.read` (cluster) |
 | GET | `/api/v1/iam/rolebindings` | List rolebindings | `rolebindings.read` (cluster) |
 | GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts | `serviceaccounts.read` (cluster) |

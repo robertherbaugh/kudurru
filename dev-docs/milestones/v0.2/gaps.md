@@ -1941,3 +1941,47 @@ refusal, redirect/lost-ack single attempts, body bounds and joined cancellation.
 Scoped final lint passes with zero issues. Initial lint findings were fixed
 before these final commands. Generated CLI reference drift passes. No full
 repository, deployed external-dns client or direct CR watcher claim is made.
+
+### F45b exact external-account administration
+
+D289 adds bounded `users.read` inventory and current `users.write`
+disable/enable/logout routes to the complete SQLite runtime, the
+`iam external-users` CLI family and a separate dashboard external-account panel.
+Commands require the reviewed independent UID and identity/floor revision.
+Disable and logout atomically raise the account floor, revoke exact enrolled
+sessions, delete exact-owned personal tokens (including earlier usernames) and
+record local audit. Enable preserves revocation history. Same-name foreign
+identities and tokens are unaffected. Original raw credential, CSRF, dependency,
+writer and final time checks remain in the current command. Stack hosts explicitly
+return `external_users_unavailable`; no Kubernetes administration is claimed.
+Local administrators may revoke after provider-license loss; enable does not
+bypass ordinary licensed provider admission.
+
+Final frozen-source affected library races pass: security 119.177s,
+Stack 14.614s, SQLite 291.043s and servingauth 68.170s. Final selected cmd race
+`TestServingHTTPExternalAccounts|TestExternalUsersCLI` passes in 30.841s.
+Acceptance includes real TLS OP enrollment, production router and generated
+CLI dispatch, actual personal-token/session revocation, retained admin access,
+stale UID/revision and malformed request refusal, pagination across two
+same-name identities and changed-epoch cursor refusal, unsupported runtime,
+provider-license loss, current writer refusal, final raw JWT expiry/clock
+regression including a no-op, atomic token/audit rollback, SQLite restart and
+actual replica installation/promotion. Earlier focused security/cmd races also
+passed; these are scoped checks, not the full repository suite.
+
+Dashboard tests pass nine cases, including exact reviewed command/CSRF,
+single-send behavior, uncertain outcomes, caller replacement, read/write
+permissions, unsupported runtime and recovery after a later-page cursor becomes
+invalid. No optimistic mutation replay is introduced. Typechecking and scoped
+ESLint pass. Scoped six-package Go lint passes with zero issues. Merged
+166-operation OpenAPI/Go dispatch/TypeScript contracts, generated API/CLI
+references and their drift/permission checks pass; local Hugo build passes.
+
+Initial failures are not credited as green: a new test used the wrong SQLite
+option field; a newly enrolled account's PAT request fell before its original
+nanosecond creation boundary at persisted whole-second token precision. The
+fixture now waits actual time before requesting a token; production checks were
+unchanged. Initial lint found import/style issues, and an immediate React update
+assertion required waiting for the caller replacement. Final source passed the
+commands above. Physical identity-provider sessions are not ended by these
+account operations; RP-initiated logout remains the separate F48b flow.

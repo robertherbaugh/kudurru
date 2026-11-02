@@ -90,6 +90,11 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodPost, Path: "/auth/tokens", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleCreateToken)},
 		{Method: http.MethodGet, Path: "/auth/tokens/{id}", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleGetToken)},
 		{Method: http.MethodDelete, Path: "/auth/tokens/{id}", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleDeleteToken)},
+		{Method: http.MethodGet, Path: "/iam/external-users", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
+		{Method: http.MethodGet, Path: "/iam/external-users/{name}", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
+		{Method: http.MethodPost, Path: "/iam/external-users/{name}/disable", Access: AccessPermission, Resource: "users", Verb: "write", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
+		{Method: http.MethodPost, Path: "/iam/external-users/{name}/enable", Access: AccessPermission, Resource: "users", Verb: "write", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
+		{Method: http.MethodPost, Path: "/iam/external-users/{name}/logout", Access: AccessPermission, Resource: "users", Verb: "write", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
 		{Method: http.MethodGet, Path: "/iam/users", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleIAMUsers)},
 		{Method: http.MethodGet, Path: "/iam/serviceaccounts", Access: AccessPermission, Resource: "serviceaccounts", Verb: "read", Handler: http.HandlerFunc(s.handleIAMServiceAccounts)},
 		{Method: http.MethodGet, Path: "/iam/rolebindings", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBindings)},
@@ -594,4 +599,8 @@ func (s *Stack) Roles(_ context.Context, p auth.Principal) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+func (s *Stack) handleExternalUsersUnavailable(w http.ResponseWriter, r *http.Request) {
+	writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "external_users_unavailable", Message: "external account administration requires the complete SQLite authentication runtime"})
 }

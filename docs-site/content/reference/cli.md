@@ -750,6 +750,78 @@ Flags:
 
 Manage identity configuration and upgrades.
 
+### kudurru iam external-users
+
+Inspect persisted external identities and revoke their Kudurru credentials. Requires the complete SQLite runtime and users.read or users.write permission. Read the exact name, UID and revision before choosing a mutation. A conflict requires a fresh review; commands never refresh or replay a mutation for you. Log out everywhere is local to Kudurru and does not end identity-provider sessions.
+
+#### kudurru iam external-users disable
+
+Disable an account and revoke its local credentials.
+
+```text
+kudurru iam external-users disable NAME [flags]
+```
+
+Flags:
+
+```text
+      --revision string   required: revision from the reviewed account
+      --uid string        required: exact independent account UID
+```
+
+#### kudurru iam external-users enable
+
+Enable an account without restoring revoked credentials.
+
+```text
+kudurru iam external-users enable NAME [flags]
+```
+
+Flags:
+
+```text
+      --revision string   required: revision from the reviewed account
+      --uid string        required: exact independent account UID
+```
+
+#### kudurru iam external-users get
+
+Read an account and its current UID/revision.
+
+```text
+kudurru iam external-users get NAME
+```
+
+#### kudurru iam external-users list
+
+Read one bounded account page.
+
+```text
+kudurru iam external-users list [flags]
+```
+
+Flags:
+
+```text
+      --continue string   exact continuation from the previous page
+      --limit int         maximum accounts on this page (1–100) (default 50)
+```
+
+#### kudurru iam external-users logout
+
+Revoke all local sessions and personal tokens.
+
+```text
+kudurru iam external-users logout NAME [flags]
+```
+
+Flags:
+
+```text
+      --revision string   required: revision from the reviewed account
+      --uid string        required: exact independent account UID
+```
+
 ### kudurru iam migrate
 
 Inspect or perform the offline Kubernetes IAM upgrade. Stop every old and new kudurru process, IAM writer and previous migrator before begin or resume. Install the new CRDs and back up the release namespace first. The commands use Kubernetes credentials directly; they do not connect to the kudurru API.

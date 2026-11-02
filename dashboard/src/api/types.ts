@@ -1037,3 +1037,7 @@ export type MigrationAuthorityChange = S['MigrationAuthorityChange'];
 
 /** Public Enterprise presentation; no license or account details. */
 export type BrandingInfo = S['BrandingInfo'];
+
+export type ExternalUser = S['ExternalUser'];
+export type ExternalUserCommand = S['ExternalUserCommand'];
+export type ExternalUserPage = S['AuthListExternalUser'];

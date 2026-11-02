@@ -333,6 +333,26 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.VipEventStream(ctx, nil, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "external-users" {
+		response, err := c.ListExternalUsers(ctx, nil, editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 3 && parts[0] == "iam" && parts[1] == "external-users" {
+		response, err := c.GetExternalUser(ctx, parts[2], editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "external-users" && parts[3] == "disable" {
+		response, err := c.DisableExternalUserWithBody(ctx, parts[2], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "external-users" && parts[3] == "enable" {
+		response, err := c.EnableExternalUserWithBody(ctx, parts[2], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "external-users" && parts[3] == "logout" {
+		response, err := c.LogoutExternalUserWithBody(ctx, parts[2], contentType, body, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "identityproviders" {
 		response, err := c.ListIdentityProviders(ctx, editors...)
 		return response, true, err

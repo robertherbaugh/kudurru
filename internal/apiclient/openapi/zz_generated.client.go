@@ -2099,6 +2099,16 @@ type AuditVerification struct {
 	Verified  bool      `json:"verified"`
 }
 
+// AuthListExternalUser defines model for AuthListExternalUser.
+type AuthListExternalUser struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string      `json:"diagnoses,omitempty"`
+	Items     []ExternalUser `json:"items"`
+	TookMs    int64          `json:"took_ms"`
+}
+
 // AuthListIAMUser defines model for AuthListIAMUser.
 type AuthListIAMUser struct {
 	Continue string `json:"continue"`
@@ -3353,6 +3363,31 @@ type Event struct {
 	Result          string      `json:"result"`
 	Ts              time.Time   `json:"ts"`
 	Uid             *string     `json:"uid,omitempty"`
+}
+
+// ExternalUser defines model for ExternalUser.
+type ExternalUser struct {
+	CreatedAt   time.Time  `json:"createdAt"`
+	Disabled    bool       `json:"disabled"`
+	DisplayName string     `json:"displayName"`
+	Email       string     `json:"email"`
+	Groups      []string   `json:"groups"`
+	Issuer      string     `json:"issuer"`
+	Name        string     `json:"name"`
+	Origin      string     `json:"origin"`
+	Provider    string     `json:"provider"`
+	ProviderUID string     `json:"providerUID"`
+	Revision    string     `json:"revision"`
+	Subject     string     `json:"subject"`
+	Uid         string     `json:"uid"`
+	Username    string     `json:"username"`
+	ValidAfter  *time.Time `json:"validAfter,omitempty"`
+}
+
+// ExternalUserCommand defines model for ExternalUserCommand.
+type ExternalUserCommand struct {
+	Revision string `json:"revision"`
+	Uid      string `json:"uid"`
 }
 
 // Flags defines model for Flags.
@@ -5642,6 +5677,12 @@ type VipEventStreamParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
+// ListExternalUsersParams defines parameters for ListExternalUsers.
+type ListExternalUsersParams struct {
+	Limit    *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
 // ListMigrationRunsParams defines parameters for ListMigrationRuns.
 type ListMigrationRunsParams struct {
 	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -6167,6 +6208,15 @@ type BatchDeleteDnszonesJSONRequestBody = BatchDeleteInputBody
 
 // AddDomainsJSONRequestBody defines body for AddDomains for application/json ContentType.
 type AddDomainsJSONRequestBody = DomainsRequest
+
+// DisableExternalUserJSONRequestBody defines body for DisableExternalUser for application/json ContentType.
+type DisableExternalUserJSONRequestBody = ExternalUserCommand
+
+// EnableExternalUserJSONRequestBody defines body for EnableExternalUser for application/json ContentType.
+type EnableExternalUserJSONRequestBody = ExternalUserCommand
+
+// LogoutExternalUserJSONRequestBody defines body for LogoutExternalUser for application/json ContentType.
+type LogoutExternalUserJSONRequestBody = ExternalUserCommand
 
 // CreateLocalUserJSONRequestBody defines body for CreateLocalUser for application/json ContentType.
 type CreateLocalUserJSONRequestBody = CreateLocalUserRequest
@@ -7019,6 +7069,70 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /edge/vip/stream (the `VipEventStream` operationId).
 	VipEventStream(ctx context.Context, params *VipEventStreamParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListExternalUsers List persisted external accounts
+	//
+	// Corresponds with GET /iam/external-users (the `ListExternalUsers` operationId).
+	ListExternalUsers(ctx context.Context, params *ListExternalUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetExternalUser Read an exact external account
+	//
+	// Corresponds with GET /iam/external-users/{name} (the `GetExternalUser` operationId).
+	GetExternalUser(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DisableExternalUserWithBody Disable an external account and revoke its credentials
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/external-users/{name}/disable (the `DisableExternalUser` operationId).
+	DisableExternalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DisableExternalUser Disable an external account and revoke its credentials
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/external-users/{name}/disable (the `DisableExternalUser` operationId).
+	DisableExternalUser(ctx context.Context, name string, body DisableExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// EnableExternalUserWithBody Enable an external account without restoring credentials
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/external-users/{name}/enable (the `EnableExternalUser` operationId).
+	EnableExternalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// EnableExternalUser Enable an external account without restoring credentials
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/external-users/{name}/enable (the `EnableExternalUser` operationId).
+	EnableExternalUser(ctx context.Context, name string, body EnableExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LogoutExternalUserWithBody Revoke all credentials of an external account
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/external-users/{name}/logout (the `LogoutExternalUser` operationId).
+	LogoutExternalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LogoutExternalUser Revoke all credentials of an external account
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/external-users/{name}/logout (the `LogoutExternalUser` operationId).
+	LogoutExternalUser(ctx context.Context, name string, body LogoutExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIdentityProviders List identityproviders
 	//
@@ -9457,6 +9571,150 @@ func (c *Client) GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 // Corresponds with GET /edge/vip/stream (the `VipEventStream` operationId).
 func (c *Client) VipEventStream(ctx context.Context, params *VipEventStreamParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewVipEventStreamRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListExternalUsers List persisted external accounts
+//
+// Corresponds with GET /iam/external-users (the `ListExternalUsers` operationId).
+func (c *Client) ListExternalUsers(ctx context.Context, params *ListExternalUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListExternalUsersRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetExternalUser Read an exact external account
+//
+// Corresponds with GET /iam/external-users/{name} (the `GetExternalUser` operationId).
+func (c *Client) GetExternalUser(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetExternalUserRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DisableExternalUserWithBody Disable an external account and revoke its credentials
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/external-users/{name}/disable (the `DisableExternalUser` operationId).
+func (c *Client) DisableExternalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisableExternalUserRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DisableExternalUser Disable an external account and revoke its credentials
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/external-users/{name}/disable (the `DisableExternalUser` operationId).
+func (c *Client) DisableExternalUser(ctx context.Context, name string, body DisableExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisableExternalUserRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// EnableExternalUserWithBody Enable an external account without restoring credentials
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/external-users/{name}/enable (the `EnableExternalUser` operationId).
+func (c *Client) EnableExternalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEnableExternalUserRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// EnableExternalUser Enable an external account without restoring credentials
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/external-users/{name}/enable (the `EnableExternalUser` operationId).
+func (c *Client) EnableExternalUser(ctx context.Context, name string, body EnableExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEnableExternalUserRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LogoutExternalUserWithBody Revoke all credentials of an external account
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/external-users/{name}/logout (the `LogoutExternalUser` operationId).
+func (c *Client) LogoutExternalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLogoutExternalUserRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LogoutExternalUser Revoke all credentials of an external account
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/external-users/{name}/logout (the `LogoutExternalUser` operationId).
+func (c *Client) LogoutExternalUser(ctx context.Context, name string, body LogoutExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLogoutExternalUserRequest(c.Server, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -15244,6 +15502,247 @@ func NewVipEventStreamRequest(server string, params *VipEventStreamParams) (*htt
 		}
 
 	}
+
+	return req, nil
+}
+
+// NewListExternalUsersRequest constructs an http.Request for the ListExternalUsers method
+func NewListExternalUsersRequest(server string, params *ListExternalUsersParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/external-users")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetExternalUserRequest constructs an http.Request for the GetExternalUser method
+func NewGetExternalUserRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/external-users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDisableExternalUserRequest calls the generic DisableExternalUser builder with application/json body
+func NewDisableExternalUserRequest(server string, name string, body DisableExternalUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDisableExternalUserRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewDisableExternalUserRequestWithBody constructs an http.Request for the DisableExternalUser method, with any body, and a specified content type
+func NewDisableExternalUserRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/external-users/%s/disable", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewEnableExternalUserRequest calls the generic EnableExternalUser builder with application/json body
+func NewEnableExternalUserRequest(server string, name string, body EnableExternalUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewEnableExternalUserRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewEnableExternalUserRequestWithBody constructs an http.Request for the EnableExternalUser method, with any body, and a specified content type
+func NewEnableExternalUserRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/external-users/%s/enable", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewLogoutExternalUserRequest calls the generic LogoutExternalUser builder with application/json body
+func NewLogoutExternalUserRequest(server string, name string, body LogoutExternalUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewLogoutExternalUserRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewLogoutExternalUserRequestWithBody constructs an http.Request for the LogoutExternalUser method, with any body, and a specified content type
+func NewLogoutExternalUserRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/external-users/%s/logout", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -21158,6 +21657,74 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /edge/vip/stream (the `VipEventStream` operationId).
 	VipEventStreamWithResponse(ctx context.Context, params *VipEventStreamParams, reqEditors ...RequestEditorFn) (*VipEventStreamResponse, error)
+
+	// ListExternalUsersWithResponse List persisted external accounts
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /iam/external-users (the `ListExternalUsers` operationId).
+	ListExternalUsersWithResponse(ctx context.Context, params *ListExternalUsersParams, reqEditors ...RequestEditorFn) (*ListExternalUsersResponse, error)
+
+	// GetExternalUserWithResponse Read an exact external account
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /iam/external-users/{name} (the `GetExternalUser` operationId).
+	GetExternalUserWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetExternalUserResponse, error)
+
+	// DisableExternalUserWithBodyWithResponse Disable an external account and revoke its credentials
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/external-users/{name}/disable (the `DisableExternalUser` operationId).
+	DisableExternalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DisableExternalUserResponse, error)
+
+	// DisableExternalUserWithResponse Disable an external account and revoke its credentials
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/external-users/{name}/disable (the `DisableExternalUser` operationId).
+	DisableExternalUserWithResponse(ctx context.Context, name string, body DisableExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*DisableExternalUserResponse, error)
+
+	// EnableExternalUserWithBodyWithResponse Enable an external account without restoring credentials
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/external-users/{name}/enable (the `EnableExternalUser` operationId).
+	EnableExternalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EnableExternalUserResponse, error)
+
+	// EnableExternalUserWithResponse Enable an external account without restoring credentials
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/external-users/{name}/enable (the `EnableExternalUser` operationId).
+	EnableExternalUserWithResponse(ctx context.Context, name string, body EnableExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*EnableExternalUserResponse, error)
+
+	// LogoutExternalUserWithBodyWithResponse Revoke all credentials of an external account
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/external-users/{name}/logout (the `LogoutExternalUser` operationId).
+	LogoutExternalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LogoutExternalUserResponse, error)
+
+	// LogoutExternalUserWithResponse Revoke all credentials of an external account
+	//
+	// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/external-users/{name}/logout (the `LogoutExternalUser` operationId).
+	LogoutExternalUserWithResponse(ctx context.Context, name string, body LogoutExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*LogoutExternalUserResponse, error)
 
 	// ListIdentityProvidersWithResponse List identityproviders
 	//
@@ -28984,6 +29551,442 @@ func (r VipEventStreamResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r VipEventStreamResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListExternalUsersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuthListExternalUser
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListExternalUsersResponse) GetJSON200() *AuthListExternalUser {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListExternalUsersResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListExternalUsersResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListExternalUsersResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListExternalUsersResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListExternalUsersResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListExternalUsersResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListExternalUsersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListExternalUsersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListExternalUsersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListExternalUsersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetExternalUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ExternalUser
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetExternalUserResponse) GetJSON200() *ExternalUser {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetExternalUserResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetExternalUserResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetExternalUserResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetExternalUserResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetExternalUserResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetExternalUserResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetExternalUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetExternalUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetExternalUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetExternalUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DisableExternalUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DisableExternalUserResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DisableExternalUserResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DisableExternalUserResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DisableExternalUserResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DisableExternalUserResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DisableExternalUserResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DisableExternalUserResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DisableExternalUserResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DisableExternalUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DisableExternalUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DisableExternalUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DisableExternalUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type EnableExternalUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r EnableExternalUserResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r EnableExternalUserResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r EnableExternalUserResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r EnableExternalUserResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r EnableExternalUserResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r EnableExternalUserResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r EnableExternalUserResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r EnableExternalUserResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r EnableExternalUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r EnableExternalUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r EnableExternalUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r EnableExternalUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type LogoutExternalUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r LogoutExternalUserResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r LogoutExternalUserResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r LogoutExternalUserResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r LogoutExternalUserResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r LogoutExternalUserResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r LogoutExternalUserResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r LogoutExternalUserResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r LogoutExternalUserResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r LogoutExternalUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LogoutExternalUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LogoutExternalUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LogoutExternalUserResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -38353,6 +39356,122 @@ func (c *ClientWithResponses) VipEventStreamWithResponse(ctx context.Context, pa
 	return ParseVipEventStreamResponse(rsp)
 }
 
+// ListExternalUsersWithResponse List persisted external accounts
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /iam/external-users (the `ListExternalUsers` operationId).
+func (c *ClientWithResponses) ListExternalUsersWithResponse(ctx context.Context, params *ListExternalUsersParams, reqEditors ...RequestEditorFn) (*ListExternalUsersResponse, error) {
+	rsp, err := c.ListExternalUsers(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListExternalUsersResponse(rsp)
+}
+
+// GetExternalUserWithResponse Read an exact external account
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /iam/external-users/{name} (the `GetExternalUser` operationId).
+func (c *ClientWithResponses) GetExternalUserWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetExternalUserResponse, error) {
+	rsp, err := c.GetExternalUser(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetExternalUserResponse(rsp)
+}
+
+// DisableExternalUserWithBodyWithResponse Disable an external account and revoke its credentials
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/external-users/{name}/disable (the `DisableExternalUser` operationId).
+func (c *ClientWithResponses) DisableExternalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DisableExternalUserResponse, error) {
+	rsp, err := c.DisableExternalUserWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisableExternalUserResponse(rsp)
+}
+
+// DisableExternalUserWithResponse Disable an external account and revoke its credentials
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/external-users/{name}/disable (the `DisableExternalUser` operationId).
+func (c *ClientWithResponses) DisableExternalUserWithResponse(ctx context.Context, name string, body DisableExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*DisableExternalUserResponse, error) {
+	rsp, err := c.DisableExternalUser(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisableExternalUserResponse(rsp)
+}
+
+// EnableExternalUserWithBodyWithResponse Enable an external account without restoring credentials
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/external-users/{name}/enable (the `EnableExternalUser` operationId).
+func (c *ClientWithResponses) EnableExternalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EnableExternalUserResponse, error) {
+	rsp, err := c.EnableExternalUserWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEnableExternalUserResponse(rsp)
+}
+
+// EnableExternalUserWithResponse Enable an external account without restoring credentials
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/external-users/{name}/enable (the `EnableExternalUser` operationId).
+func (c *ClientWithResponses) EnableExternalUserWithResponse(ctx context.Context, name string, body EnableExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*EnableExternalUserResponse, error) {
+	rsp, err := c.EnableExternalUser(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEnableExternalUserResponse(rsp)
+}
+
+// LogoutExternalUserWithBodyWithResponse Revoke all credentials of an external account
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/external-users/{name}/logout (the `LogoutExternalUser` operationId).
+func (c *ClientWithResponses) LogoutExternalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LogoutExternalUserResponse, error) {
+	rsp, err := c.LogoutExternalUserWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLogoutExternalUserResponse(rsp)
+}
+
+// LogoutExternalUserWithResponse Revoke all credentials of an external account
+//
+// Requires the complete SQLite runtime, exact UID/revision and current users.write authority. Revocation is local to Kudurru; no remote identity-provider session is ended. No retry or credential issuance.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/external-users/{name}/logout (the `LogoutExternalUser` operationId).
+func (c *ClientWithResponses) LogoutExternalUserWithResponse(ctx context.Context, name string, body LogoutExternalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*LogoutExternalUserResponse, error) {
+	rsp, err := c.LogoutExternalUser(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLogoutExternalUserResponse(rsp)
+}
+
 // ListIdentityProvidersWithResponse List identityproviders
 //
 // Returns a wrapper object for the known response body format(s).
@@ -45895,6 +47014,376 @@ func ParseVipEventStreamResponse(rsp *http.Response) (*VipEventStreamResponse, e
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListExternalUsersResponse parses an HTTP response from a ListExternalUsersWithResponse call
+func ParseListExternalUsersResponse(rsp *http.Response) (*ListExternalUsersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListExternalUsersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthListExternalUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetExternalUserResponse parses an HTTP response from a GetExternalUserWithResponse call
+func ParseGetExternalUserResponse(rsp *http.Response) (*GetExternalUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetExternalUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ExternalUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDisableExternalUserResponse parses an HTTP response from a DisableExternalUserWithResponse call
+func ParseDisableExternalUserResponse(rsp *http.Response) (*DisableExternalUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DisableExternalUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseEnableExternalUserResponse parses an HTTP response from a EnableExternalUserWithResponse call
+func ParseEnableExternalUserResponse(rsp *http.Response) (*EnableExternalUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &EnableExternalUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseLogoutExternalUserResponse parses an HTTP response from a LogoutExternalUserWithResponse call
+func ParseLogoutExternalUserResponse(rsp *http.Response) (*LogoutExternalUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LogoutExternalUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest Error

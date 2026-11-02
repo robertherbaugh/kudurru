@@ -42,3 +42,38 @@ Use [Identity](identity.md) to inspect users, role bindings and sign-in provider
 The program can perform its intended operation with the token.
 Confirm its scope with a permitted read request before enabling automated changes.
 After revocation, requests with that token fail authentication.
+
+### External accounts
+
+On servers with the complete SQLite authentication runtime, the Identity tab
+lists persisted external accounts separately from local users. The account's
+provider, subject and independent UID distinguish it from other users with the
+same display name. Reading requires `users.read`; changes require `users.write`.
+
+- **Disable account** prevents authentication and revokes that account's Kudurru
+  sessions and personal tokens.
+- **Enable account** permits a new login under the current provider and role
+  policy. Previously revoked credentials remain invalid.
+- **Log out everywhere** revokes the account's Kudurru sessions and personal
+  tokens without disabling it. Identity-provider sessions remain unchanged.
+
+Review the exact account in the confirmation dialog. A conflict means its
+reviewed revision changed; refresh and review again. After an uncertain network
+result, refresh before choosing another action. The dashboard never retries the
+mutation automatically. A successful command may precede its published read
+snapshot; refresh to observe the new revision.
+
+The equivalent CLI commands return UID and revision explicitly:
+
+```sh
+kudurru iam external-users list
+kudurru iam external-users get ACCOUNT_NAME
+kudurru iam external-users disable ACCOUNT_NAME --uid REVIEWED_UID --revision REVIEWED_REVISION
+kudurru iam external-users enable ACCOUNT_NAME --uid REVIEWED_UID --revision REVIEWED_REVISION
+kudurru iam external-users logout ACCOUNT_NAME --uid REVIEWED_UID --revision REVIEWED_REVISION
+```
+
+Use a fresh reviewed revision for each action. `list` returns one bounded page;
+pass its `continue` value with `--continue` for the next page. If the inventory
+changes between pages, restart the read. Unsupported runtimes report that
+external account administration is unavailable.
