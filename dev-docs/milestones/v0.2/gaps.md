@@ -2216,3 +2216,21 @@ On the merged root, the composed operation/auth-controls/route-contract race
 passed servingauth (12.040s), API (4.749s) and CLI (41.284s). This verifies
 F26 host locks compose with the retained original-operation authority helper;
 F60c public integration routes remain under separate qualification.
+
+
+### F07a encrypted source and current-transaction prerequisites (D292)
+
+Integrated `717d0d7` and `6cb85a8` add a private bounded encrypted TSIG source,
+original owner/credential epochs, immutable prepared rings and same-transaction
+source checks before current DNS mutation/no-op/replay admission. Actual SQLite
+backup/restart/follower promotion and local Kubernetes Secret UID/CAS/restart
+fixtures passed. Core source/currentguard races passed 6.688s/18.748s; selected
+legacy/native keyring races passed 3.071s/2.287s and scoped lint reported zero
+issues. Earlier encrypted-source and actual-envtest evidence is retained in the
+agent's exact qualification report.
+
+These are prerequisites, not F07a closure. Production coordinator, serving
+transport activation, original wire ownership and background transfer rotation
+remain in progress. Kubernetes evidence currently covers encrypted persistence
+and explicit setup/cold reads; hot key management is not qualified. No secret
+values or encrypted source credentials become public configuration/API fields.

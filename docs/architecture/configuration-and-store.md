@@ -1172,3 +1172,24 @@ returns a conflict instead of reacquiring a replacement. Kubernetes credential,
 namespace, impersonation and RBAC semantics come from one explicit kubeconfig
 selection. HTTP contexts remain separate. Listing/response/document and original
 command-time bounds fail visibly; CRD describe never calls a server diagnosis API.
+
+
+## Encrypted TSIG source ownership
+
+Private TSIG records store purpose-separated authenticated ciphertext bound to
+cluster, actual storage UID, canonical name, algorithm and credential epoch.
+Safe backups exclude these credentials; full backups preserve the ciphertext
+and require the original encryption trust. A Kubernetes Secret receives its
+actual UID before an explicit CAS reseals the source for cold startup.
+
+A complete bounded source prepares an immutable keyring together with the
+installed encryption owner and file baseline. Duplicate file/store names,
+malformed carriers, missing keys and oversized inventories refuse the whole
+source. Resealing preserves the credential epoch; independent replacement does
+not. Current DNS commands compare the exact retained durable rows inside the
+same transaction, including no-op and replay paths, so coordinator lag cannot
+supply current authority.
+
+These storage and transaction primitives are integrated. Production coordinator
+and transport activation are still in progress; they do not yet advertise a
+stored-key management API or hot Kubernetes rotation.
