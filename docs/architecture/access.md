@@ -40,6 +40,17 @@ request editor.
 
 ## Coherent authentication owner foundation
 
+The complete SQLite runtime exposes dedicated reviewed RoleBinding commands
+(D294; [operator guide](../deploy/rolebindings.md)). Creation requires absence;
+replacement and deletion require exact UID/resourceVersion and API ownership.
+Each command retains its original raw proof, view and writer while checking
+current authority, target identity and final time/cancellation. The object,
+grant floors and audit commit in the same security transaction. Dedicated CLI
+mutation transport disables redirects and body replay. Legacy/Kubernetes
+mutations explicitly refuse; ordinary IAM aliases remain unavailable. The
+file/inline source adapter and Kubernetes durable revocation boundary remain
+open, so this is not an all-driver completion claim.
+
 `internal/servingauth` prepares an immutable auth view from one complete SQLite
 replication image. Its input includes public ServiceAccount, RoleBinding and
 IdentityProvider configuration, private LocalUser, APIToken and PrincipalState

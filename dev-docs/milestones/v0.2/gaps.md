@@ -2287,3 +2287,35 @@ term/revision without retrying a refused command or changing production guards.
 F60c remains open for webhook conformance, merged contracts and remaining
 all-driver/restart release evidence. Exact-RV status is conservative and may be
 unknown after its own status publication until a matching observation arrives.
+
+### F44b public SQLite RoleBinding tranche (D294)
+
+Integrated `c44b67d` adds reviewed create/get/replace/delete API and generated-client
+CLI commands. Exact UID/resourceVersion and API ownership checks share one
+transaction with security floors and audit. Original proof/current permission,
+source, writer, clock and cancellation checks apply to changed and no-op effects.
+Generic aliases remain refused; legacy/Kubernetes mutations explicitly return503.
+
+The complete focused three-package race command passed API4.139s, client1.089s
+and cmd32.999s:34 test/subtest entries, no failures/skips. It covers actual TLS
+OP cookie/PAT removal and regrant without revival, genuine fresh enrollment,
+actual generated CLI/router, UID/revision/manager/CSRF/scopes, final proof
+refusals and durable replica installation/restart/promotion. Replica evidence
+covers stored state, not a second restarted HTTP runtime or Kubernetes. Frozen
+scoped lint passed with zero issues. The14 source/generated Go fingerprints
+remained unchanged during verification; the commit contains12 source/test files.
+
+Earlier commands failed due a schema-name collision, an unused import, conflict
+error mapping and fixture status/input assumptions, including bulk apply's
+per-item refusal under HTTP200. Those outcomes remain failed commands; the final
+command above is independently green. Isolated173-operation generation stayed
+uncommitted. Root must regenerate the combined180-operation contract.
+
+F44b remains open: file/inline RoleBinding writes still use ordinary CRUD and
+the controlled BEFORE reproduction is prepared but not run. Kubernetes accepted
+authority, native desired-write ordering and multi-replica HTTP qualification
+remain design/acceptance work. No all-driver completion is claimed.
+
+Hosted `b687223` Go shard1 (job125088928076) subsequently completed successfully
+at2026-11-02T04:34:03Z. Shard2 and SAST failures recorded above remain failures
+of that head; their integrated corrections still need fresh hosted qualification.

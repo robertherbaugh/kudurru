@@ -137,7 +137,7 @@ runners. Unit tests cannot substitute for those results.
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Integrated e60001f; real pinned all-frontend leaf checks, held DoT, invalid-pair retention and child-restart acceptance pass |
 | F43c | Console spike (a) gates both changes | Edge and VIP | D275: actual dnsdist 2.1.3 YAML console, live DNS/cert/invalid-cert/PID/restart checks pass; established-connection limit recorded |
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |
-| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | Active D294: public SQLite RoleBinding writer under qualification; file/inline source and Kubernetes accepted-authority boundaries remain open |
+| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | D294 public SQLite RoleBinding API/CLI integrated c44b67d; actual TLS/router/replica focused races and lint pass. Merged generation, file/inline source and Kubernetes accepted-authority boundaries remain open |
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |
 | F45b | External per-user disable / log out everywhere administration | IAM and access | Implemented D289 on complete SQLite: exact UID/revision API/CLI/UI, atomic credential/audit revocation, actual TLS/router/restart/replica races, nine dashboard tests and lint/contracts pass; unsupported Stack explicitly refuses |
 | F46 | Share login lockout counters across replicas | IAM and access | Queued: missing |
