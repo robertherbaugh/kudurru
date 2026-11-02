@@ -786,7 +786,7 @@ func (s *Supervisor) pollStatus(ctx context.Context) {
 func (s *Supervisor) pollZones(ctx context.Context, ch chan zoneObservation) {
 	t := time.NewTicker(s.cfg.ZonePoll)
 	defer t.Stop()
-	serials := map[string]map[string]uint32{} // backend address → zone → serial
+	serials := zoneSerialHistory{} // successful observations survive poll iterations
 	unsupported := map[string]bool{}
 	var lastSet []string
 	var lastFence resolverFence
@@ -806,17 +806,14 @@ func (s *Supervisor) pollZones(ctx context.Context, ch chan zoneObservation) {
 		for _, e := range eps {
 			live[e.Address] = true
 		}
-		for address := range serials {
-			if !live[address] {
-				delete(serials, address)
-				delete(unsupported, address)
-			}
-		}
+		serials.retain(live, unsupported)
 		set := map[string]bool{}
 		flush := map[string]bool{}
 		polled := 0
 		for _, result := range results {
-			e, zl, err := result.endpoint, result.zones, result.err
+			e := result.endpoint
+			zl := result.zones
+			err := result.err
 			if err != nil {
 				if errors.Is(err, internalapi.ErrZonesUnsupported) {
 					if !unsupported[e.Address] {
@@ -829,7 +826,6 @@ func (s *Supervisor) pollZones(ctx context.Context, ch chan zoneObservation) {
 				continue
 			}
 			polled++
-			prev := serials[e.Address]
 			next := map[string]uint32{}
 			for _, z := range zl.Zones {
 				name := edge.NormalizeZones([]string{z.Name})
@@ -838,11 +834,10 @@ func (s *Supervisor) pollZones(ctx context.Context, ch chan zoneObservation) {
 				}
 				next[name[0]] = z.Serial
 				set[name[0]] = true
-				if old, ok := prev[name[0]]; ok && old != z.Serial {
-					flush[name[0]] = true
-				}
 			}
-			serials[e.Address] = next
+			for _, name := range serials.observe(e.Address, next) {
+				flush[name] = true
+			}
 		}
 		if polled == 0 {
 			select {
