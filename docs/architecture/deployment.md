@@ -50,10 +50,11 @@ and the supervisors refuse a first start without a key that covers the edge
 
 With the edge, dnsdist owns :53, :853 and :443 and kudurru listens on
 `127.0.0.1:5353`. Because both share one network namespace, kudurru accepts
-PROXYv2 only from `127.0.0.1` and needs no shared secret. When the lists or
-the blocking toggle change, kudurru flushes dnsdist's packet cache through
-the dnsdist API, whose key the supervisor writes to the shared
-`/run/kudurru` volume.
+PROXYv2 only from `127.0.0.1` and needs no shared secret. Each accepted complete
+publication, including list, regex and timed blocking changes, requests a
+bounded local cache flush through the dnsdist API. Its key lives in the shared
+`/run/kudurru` volume. Shared edge caches also require the original authenticated
+backend eligibility described below; a flush alone cannot isolate client policy.
 
 ## Kubernetes
 
@@ -134,12 +135,18 @@ flowchart TD
     START(["explicit edge run"]) --> HOST["defaults → node file → environment<br/>→ explicitly supplied flags"]
     HOST --> MEM["backends: configured list,<br/>or an EndpointSlice (ready endpoints)"]
     MEM --> CRED["new console key, API key,<br/>dashboard password (per start)"]
-    CRED --> REN["render dnsdist.yml:<br/>pool resolver (chashed, packet cache)<br/>pool authoritative (leastOutstanding, no cache)<br/>add TLV 0xE0, refuse XFR/NOTIFY/UPDATE<br/>health check TXT health.kudurru.internal."]
+    CRED --> REN["render dnsdist.yml:<br/>resolver and authoritative pools uncached<br/>add TLV 0xE0, refuse XFR/NOTIFY/UPDATE<br/>health check TXT health.kudurru.internal."]
     REN --> CHK{"dnsdist --check-config"}
     CHK -- "fails" --> KEEP["keep the running config"]
     CHK -- "ok" --> SWAP["swap files atomically,<br/>write the API key to /run/kudurru"]
     SWAP --> EXEC["start dnsdist --supervised"]
     EXEC --> LOOP{"event<br/>(debounced 5 s)"}
+    EXEC --> PULL["bounded authenticated backend pulls<br/>original publication and cache eligibility"]
+    PULL --> CACHE{"all original proofs current?"}
+    CACHE -- "eligible pool" --> FRESH["attach fresh cache with configured limits"]
+    CACHE -- "missing, changed or unsafe" --> BYPASS["detach affected cache; report bypass"]
+    FRESH --> PULL
+    BYPASS --> PULL
     LOOP -- "certificate changed" --> TLS["validate private immutable pair<br/>reload and verify every fresh TLS leaf"]
     TLS --> LOOP
     LOOP -- "backends or zones changed" --> REN2["render and validate target"]
@@ -154,13 +161,39 @@ flowchart TD
     BO --> LOOP
 ```
 
-Readiness on `:8084/healthz/ready` is "dnsdist runs and at least one backend
-is up". The supervisor also polls every backend's `/internal/zones` on
-`:8082` and flushes the authoritative pool's cache when a zone serial
-changes (when that pool is cached). The poll needs the internal credentials
+Readiness on `:8084/healthz/ready` requires a running dnsdist and a healthy
+backend, with no unresolved runtime mutation. The supervisor polls every
+backend's `/internal/zones` on `:8082`. The poll needs the internal credentials
 (`KUDURRU_ENCRYPTION_KEY[_FILE]` or `--internal-token-file`); the shipped
 chart, Kustomize and Compose files mount the backend's encryption key into
 the edge for this.
+
+Both pools start uncached, including standalone rendered configurations and
+supervisor restarts. Configured cache sizes request supervised qualification.
+Each bounded authenticated response contains an original complete-publication
+observation with a fresh challenge, runtime identity, publication sequence and
+original expiry. One serial controller replaces or detaches only the two fixed
+local pool caches. Missing, legacy, failed or expired evidence causes visible
+bypass; a resolver grant never implies an authoritative grant. Unconfigured
+polling and Kubernetes backends without this complete evidence remain uncached.
+
+Shared packet caching is eligible only when the captured served model proves
+client-independent behavior. Per-client rate limits (including the default),
+group/list/RPZ restrictions, zone ACLs, client names and unproven dynamic inputs
+conservatively bypass caching. Served zone ACLs gate both pools, including a
+committed primary whose policy differs from desired configuration. Authoritative
+eligibility covers proven static primary/forward data; signatures, acquired or
+expiring data and client views remain uncached. This does not partition caches
+by PROXYv2 client.
+
+Publication, source or child replacement requires a fresh cache; late responses
+cannot refill the replacement through a retired cache reference. Ordinary
+acknowledged changes retain the daemon PID. An uncertain console acknowledgment
+retires only its matching child, then starts the accepted uncached configuration;
+connections may be interrupted. Remote invalidation is asynchronous, bounded by
+original source deadlines, pulls and acknowledged convergence. It does not
+provide atomic ACL cutover across nodes or a zero stale interval.
+
 Runtime removal and qualified backend addition use bounded acknowledged console
 commands. New entries stay in private pools until original automatic health
 checks succeed; removal first marks the old backend down, then waits the purge

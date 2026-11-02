@@ -2124,3 +2124,32 @@ issues. The original source-only candidate failed with `generation_pending`
 and its remaining repetition process was stopped; it is not credited green.
 The historical hosted failure was `unavailable` at current command admission,
 so no exact retrospective interleaving is claimed without its missing trace.
+
+
+### F39b/F54b original-publication edge cache safety (D283)
+
+The seven integrated implementation/test commits through `61bb854` add
+authenticated, challenge-bound remote publication observations and one bounded
+cache controller. Both resolver and authoritative pools start uncached, including
+render-only and restart configurations. Positive grants require original served
+client-independent input; default per-client limiting, scoped lists/RPZ, zone
+ACLs and unproven dynamic input conservatively bypass shared packet caching.
+Served ACLs gate both pools. Authoritative permission is separate, false by
+default and restricted to proven static primary/forward data.
+
+The agent's final focused default-race acceptance used the actual mounted
+SQLite runtime and pinned dnsdist 2.1.3: authoritative cache hits preceded an
+ACL change, then allowed client 127.0.0.2 received the answer while denied
+client 127.0.0.3 received REFUSED in both query orders. Auth/stalled-pull bypass,
+recovery and same-PID ordinary transitions passed (66.338s). Earlier resolver
+acceptance covers regex allow/deny changes, late original responses, timed
+blocking, client/group/forward ACL isolation and uncertain-child retirement.
+Scoped original-owner/controller/protocol races and final lint passed. These
+are scoped agent results, not a merged full-suite or final release claim.
+
+Remote invalidation remains asynchronous within original source deadlines,
+pulls and acknowledged convergence. It is not atomic cross-node ACL cutover.
+Unknown console acknowledgment may restart the matching child and interrupt
+connections. No query is replayed, no remote arbitrary pool command is added,
+and legacy or incomplete backends stay visibly uncached. Dynamic zone routing,
+physical deployments and final composed release qualification remain separate.

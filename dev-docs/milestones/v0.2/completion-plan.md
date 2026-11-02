@@ -127,7 +127,7 @@ runners. Unit tests cannot substitute for those results.
 | F37 | Adopt generated OpenAPI Go client underneath CLI client | Operations and UI | Integrated a106708 plus generated 156-operation dispatch; complete adapter/generator and selected actual-router CLI races pass |
 | F38 | Dedicated SQLite authz path/request/client audit columns | Observability and release | Integrated aa3784c; dedicated authenticated attribution columns |
 | F39a | Local edge resolver-cache invalidation | Edge and VIP | Implemented; final gates open |
-| F39b | Remote edge blocking-generation pull / resolver invalidation | Edge and VIP | Queued: missing |
+| F39b | Remote edge blocking-generation pull / resolver invalidation | Edge and VIP | Implemented D283: bounded authenticated original-publication grants, safe uncached startup, both-pool client/ACL bypass and actual dnsdist acceptance; merged topology/release gates remain |
 | F40a | Host-only `edge.*` / `vip.*` settings keys | Edge and VIP | Integrated 52ec29d; 70 typed keys, actual render/precedence/API-refusal races and chart/Compose checks pass; generated reference/mock updated |
 | F40b | Keepalived provider events to audit/SSE in serve | Edge and VIP | Integrated 380458f; bounded private FIFO journal to audit/SSE, original token/source expiry and source refusal races pass |
 | F41a | ServiceProvider current Owner | Edge and VIP | Integrated 1c934e7/9990ede; bounded host-selected provider evidence, actual envtest/mounted read/expiry and Node replacement races pass; physical ownership remains separate |
@@ -150,7 +150,7 @@ runners. Unit tests cannot substitute for those results.
 | F52 | Dig answer reports matched exclusion, avoiding second request | Operations and UI | Integrated 8879459; original selected-rule evidence, mounted/API races and 28 domain UI cases pass |
 | F53 | Query-time exact ClientGroup scope for allow/deny lists (D143) | Operations and UI | Integrated 926b2a3; reproduced shared-policy leak fixed, mounted native/cache/publication races and actual Kubernetes admission pass |
 | F54a | Regex “overrides block list” explanation | Operations and UI | Implemented; original-publication API/SQLite races and 32 domain UI cases pass; concrete-name limits explicit |
-| F54b | Regex allow/deny cache invalidation | Operations and UI | Queued: partial |
+| F54b | Regex allow/deny cache invalidation | Operations and UI | Implemented D283: local accepted-publication flush and remote cache replacement; actual regex allow/deny, late response and two-client safety acceptance pass; asynchronous convergence explicit |
 | F55 | Per-digest index for paginated URL entries | Operations and UI | Implemented; bounded parsed indexes, original-source/eviction races and two-million-rule local benchmark pass |
 | F56 | Self-host Inter/JetBrains Mono in Kudurru theme | Operations and UI | Integrated 13c0c9e; 7 browser/9 theme tests and 480.5 KiB entry payload pass |
 | F57 | Nested Shape help for list/map elements/keys | Operations and UI | Integrated; final gates open |
