@@ -66,6 +66,45 @@ func TestProviderRequestDeadlineAndLeaseLoss(t *testing.T) {
 	}
 }
 
+func TestProviderRequestRechecksAfterBudgetReservation(t *testing.T) {
+	for _, mutating := range []bool{false, true} {
+		name := "read"
+		if mutating {
+			name = "write"
+		}
+		t.Run(name, func(t *testing.T) {
+			h, j, _, st, _ := engineFixture(t)
+			_, g, err := h.captured(j)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reserved := false
+			repo, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
+				out, err := st.Apply(ctx, obj, opts)
+				if err == nil {
+					reserved = true
+					h.mu.Lock()
+					j.frame.input.BundleID = "replaced-during-reservation"
+					h.mu.Unlock()
+				}
+				return out, err
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.opts.Ledger = repo
+			called := false
+			err = (providerHost{h, j}).Request(scoped(t.Context(), j, g), "local", "account", mutating, func(context.Context) error {
+				called = true
+				return nil
+			})
+			if !reserved || called || !errors.Is(err, ErrFenced) {
+				t.Fatal("reservation allowed a request under replaced authority", reserved, called, err)
+			}
+		})
+	}
+}
+
 func TestRequestGuardDoesNotAdoptSuccessor(t *testing.T) {
 	h, j, _ := preferredSourceFixture(t)
 	f, g, err := h.captured(j)

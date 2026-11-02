@@ -46,7 +46,7 @@ func (p providerHost) guard(ctx context.Context) (ExecutionGuard, error) {
 	return s.g, nil
 }
 
-func (p providerHost) Request(ctx context.Context, provider, account string, mutating bool, fn func(context.Context) error) error {
+func (p providerHost) Request(ctx context.Context, provider, account string, _ bool, fn func(context.Context) error) error {
 	if fn == nil || provider == "" || account == "" {
 		return ErrInvalid
 	}
@@ -75,10 +75,10 @@ func (p providerHost) Request(ctx context.Context, provider, account string, mut
 	if _, err := p.h.opts.Ledger.ReserveBudget(ctx, g.Ledger, ledger.BudgetCharge{Provider: provider, Account: account, ID: id, Cost: 1, Capacity: 1000, WindowSeconds: 300}); err != nil {
 		return err
 	}
-	if mutating {
-		if err := p.h.fence(ctx, p.j, g); err != nil {
-			return err
-		}
+	// Reservation is a distinct transaction. Both reads and writes must retain
+	// the original caller/source authority after it, immediately before I/O.
+	if err := p.h.fence(ctx, p.j, g); err != nil {
+		return err
 	}
 	// Providers return sanitized typed errors. The caller maps arbitrary error
 	// text to safe host errors before exposing it to status/API consumers.
