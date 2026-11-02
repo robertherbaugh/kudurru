@@ -669,6 +669,18 @@ adapter exercises exact-object CAS without claiming a multi-object transaction;
 production Kubernetes UPDATE and durable NOTIFY require their own admission
 barriers. Receipt capacity remains finite with no automatic eviction.
 
+The transport layer also offers explicit captured TSIG mode (D292). Before
+verification it acquires the original complete serving lease and selects that
+lease's immutable key provider. Native reader hooks retain only bounded raw
+frames; the handler owns the lease through the actual response or transfer
+write, signs with the original request MAC, and releases on errors. A later
+message on the same connection captures independently. Encrypted transports
+retain the same original context and signature deadline through emission and
+still cannot issue native mutation proofs. Fixed-key mode remains supported.
+This transport capability has actual same-connection acceptance across all six
+protocols; stored-key coordinator/serve activation and background wiring are
+separate pending work. It does not imply stored keys are already mounted.
+
 Native UDP/TCP/DoT listeners now admit bounded UPDATE framing before TSIG
 verification. A successfully verified UPDATE using an immutable static keyring
 carries a private context proof of its parsed message, client, transport,

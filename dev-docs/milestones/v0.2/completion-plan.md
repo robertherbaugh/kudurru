@@ -18,8 +18,8 @@ Later pushes require their own hosted results.
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
 maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own durable node settings, dnsdist console updates
-and VIP ownership observation; the parent
+agents currently own RoleBinding source revocation, stored TSIG activation
+and bounded lazy-DFA matching; the parent
 has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
 disposable Samba/VIP labs. Freed agents take
 the next independent package, retaining original proofs, ownership, current
