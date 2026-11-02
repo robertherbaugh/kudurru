@@ -2319,3 +2319,18 @@ remain design/acceptance work. No all-driver completion is claimed.
 Hosted `b687223` Go shard1 (job125088928076) subsequently completed successfully
 at2026-11-02T04:34:03Z. Shard2 and SAST failures recorded above remain failures
 of that head; their integrated corrections still need fresh hosted qualification.
+
+### F07a captured transport tranche (D292)
+
+Integrated `a404a30` retains the exact immutable TSIG provider from the original
+publication before verification and through response/transfer writes. Opt-in
+captured native mode owns bounded original frames; fixed mode remains available.
+Actual same UDP/TCP/DoT/DoQ/HTTP2/HTTP3 connection tests prove held-old/fresh-new
+keys, transfer MAC chains, original deadlines, PROXY/SNI identity, native proof
+and encrypted no-proof paths, unsigned foreign-signature stripping and cleanup.
+Final captured/error race passed10.137s; selected legacy DNS13.067s and
+servingbuild5.264s; scoped frozen lint passed with zero issues after three
+mechanical corrections. Pending cmd coordinator files were excluded from the
+commit and these checks. Production activation, background key use, management
+routes and broader Kubernetes rotation remain open; this is transport capability
+evidence, not a mounted stored-key completion claim.
