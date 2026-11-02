@@ -110,7 +110,7 @@ runners. Unit tests cannot substitute for those results.
 | F26b | Cache growth retains initial shard count | DNS and resolver | Integrated 62990dd; safe resharding, mounted reload, races and local growth benchmarks pass |
 | F26c | Blocking refresh/degraded settings hot reload | DNS and resolver | Integrated 38153fa; real download/publication and scheduler/readiness races pass; generated inheritance schema included |
 | F26d | Querylog enabled/sink hot reload | DNS and resolver | Integrated 08ee759/9a62eb4; captured sink/drain, mounted reload and disabled-restart history races pass |
-| F26e | `auth.*` hot reload | DNS and resolver | Queued: partial |
+| F26e | Auth settings hot reload | IAM and access | Implemented D290 on complete SQLite: five controls, exact host locks and original-view cookies; mounted TLS/router/restart/current-command races pass. Legacy/Kubernetes and host inputs remain restart-bound |
 | F27 | RFC 8198 aggressive NSEC/NSEC3 cached synthesis | DNS and resolver | Queued: missing |
 | F28 | RFC 5011 automatic trust-anchor updates | DNS and resolver | Queued: missing |
 | F29a | Expiring negative trust anchors for forwarded validation | DNS and resolver | Implemented; final gates open |

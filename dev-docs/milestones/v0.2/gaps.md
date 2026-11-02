@@ -2190,3 +2190,29 @@ operator contract. The root integration prerequisites preserve pre-queue inputs
 and recheck reads as well as writes after budget reservation. Public integration
 administration and webhook conformance remain F60c work in progress; helper
 qualification is not route/effect qualification.
+
+### F26e complete-view auth control reload (D290)
+
+Integrated `a506100` fixes the controlled real-server mismatch where status
+reported installed session locks of 2m idle/7m absolute while issuance used
+default/canonical values. Immutable typed controls and exact copied host locks
+now participate in the same current View and its aggregate dependency identity.
+Five public controls reload on complete SQLite only; original-view cookie
+selection/writes/clears share policy, and postcommit policy mismatch refuses
+sealing without reissuance. Existing session/token deadlines never extend.
+Global/legacy/Kubernetes/host-only restart metadata remains conservative.
+
+The isolated six-library race command failed solely OpenAPI drift (166 generated
+versus 169 existing source operations); its five other packages passed. The API
+package had 595 passing entries and three existing external PostgreSQL/envtest
+skips. Local uncommitted regeneration corrected the contract, whose focused
+race passed 5.145s. The final mounted/router/current-command race passed all
+97 entries, 56 top-level tests, 347.282s, with no skips; scoped lint passed with
+zero issues. Those results do not turn the earlier failed aggregate command
+green or claim the skipped external environments. No new operation IDs or
+generated files were included in the F26 implementation commit.
+
+On the merged root, the composed operation/auth-controls/route-contract race
+passed servingauth (12.040s), API (4.749s) and CLI (41.284s). This verifies
+F26 host locks compose with the retained original-operation authority helper;
+F60c public integration routes remain under separate qualification.

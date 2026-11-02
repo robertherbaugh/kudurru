@@ -621,7 +621,8 @@ Each key in the metadata table
 | node, `hostOnly`, restart | `node.*`, `listeners.*`, `store.*`, `tsigKeys`, `auth.adminSocket.*` | file or environment, then restart; never through the API |
 | node, dedicated DHCP setup | enabled state and complete DHCP scope topology | DHCP setup API/dashboard, explicit file adoption, then restart; generic Settings remains host-only |
 | cluster, hot | `control.*`, `upstreams.*`, `cache.*`, `blocking.enabled/defaultResponse/blockTTL`, `ratelimit.*`, `querylog.enabled/sink/privacy/retention` | API, dashboard, settings file; applied without a restart |
-| cluster, restart | `blocking.initStrategy`, `auth.session.*` | as above, applied at the next start |
+| cluster, complete SQLite auth reload | `auth.localLogin`, `auth.session.idleTimeout/lifetime/secure`, `auth.tokens.maxLifetime` | canonical settings; applies to new credentials and original-view cookie policy after complete publication |
+| cluster, restart | `blocking.initStrategy`, auth controls on legacy/Kubernetes hosts | as above, applied at the next start |
 | cluster, `hostOnly` | `auth.identityProviders`, `rbac.bindings` | file or environment only |
 
 ```mermaid
@@ -640,6 +641,15 @@ On the v0.2 complete SQLite runtime, canonical settings commands replace this
 legacy ownership manager. Adoption/release and legacy YAML export return 503;
 canonical reads and writes never change the legacy settings file or reload
 pointer. Kubernetes retains the ownership flow described here.
+
+Complete SQLite auth controls validate the entire canonical document before
+applying the exact installed environment locks. Settings schema, PATCH results
+and restart logging use the same explicit runtime capability; a canonical reader
+alone does not advertise hot auth reload. Global generated schema remains
+conservative for other runtimes. Existing session/token deadlines are unchanged,
+and a cookie naming/security change can require a fresh sign-in. File-defined
+providers, provider trust/network policy, bootstrap input and admin-socket inputs
+remain host-only and restart-bound. See [auth control reload](access.md#auth-control-reload).
 
 UI-owned upstreams live with their ownership record in a separate ConfigMap,
 `<release>-ui-settings` by default (`KUDURRU_SETTINGS_RESOURCE`). Helm never

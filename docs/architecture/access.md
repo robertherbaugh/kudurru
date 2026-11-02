@@ -971,3 +971,50 @@ correlation, and the raw token must independently qualify. The CLI stores only
 the original verified ID token, with no RP enrollment, refresh-token storage or
 new durable credential issuer. Explicit `--device` does not consume an ambient
 API bearer or silently switch to local-password login.
+
+## Auth control reload
+
+Complete SQLite serving applies five public settings through its original
+immutable auth View: `auth.localLogin`, `auth.session.idleTimeout`,
+`auth.session.lifetime`, `auth.session.secure` and `auth.tokens.maxLifetime`.
+New local/external enrollment and token issuance use the same effective controls
+as status, including installed environment locks. The entire canonical document
+validates before those locks apply. Exact copied lock values participate in the
+View dependency identity used by current commands.
+
+```mermaid
+flowchart LR
+    C["validated canonical auth controls"] --> V["complete immutable auth View"]
+    H["installed host environment locks"] --> V
+    V --> R["original request capture"]
+    R --> K["cookie selection, writes and clears"]
+    R --> T["actual current-command transaction"]
+    T --> E["new credential with fixed deadlines"]
+    E --> S["postcommit cookie-policy check"]
+    S --> OK["seal once or refuse without reissuance"]
+```
+
+The new lifetimes affect only newly issued credentials. Existing absolute, idle
+and token expiry timestamps survive reload and restart unchanged; this change
+does not slide idle deadlines. `localLogin` controls new password/TOTP enrollment
+while retaining existing-session and break-glass behavior.
+
+Cookie selection and every complete session, browser, logout, factor and password
+write/clear use the request's original View with its immutable host name/path
+template. No old-name alias is accepted after the new publication. A naming or
+security change may require a fresh sign-in or browser flow. If cookie policy
+changes between enrollment commit and sealing publication, the response refuses
+to seal a cookie and never repeats issuance.
+
+Settings metadata reports these keys as hot only when the runtime explicitly
+implements this lifecycle. Legacy Stack/Kubernetes remains restart-bound. The
+ten host auth inputs also remain startup/restart-bound: bootstrap password file
+(initial bootstrap only), file-defined providers, provider allowed/local origins,
+algorithms, system/CA trust, Kubernetes mode and admin-socket path/group. Durable
+IdentityProvider object changes retain their separate existing lifecycle.
+
+Mounted qualification covers host-lock issuance/status parity, live PATCH, true
+server stop/restart with retained deadlines, TLS API/OP browser/logout, changed
+cookie clear paths, old-alias refusal and postcommit mismatch without another
+issuance. Replica tests cover local host locks, writer refusal and retained
+revocation. These results do not qualify hot auth controls on Kubernetes.
