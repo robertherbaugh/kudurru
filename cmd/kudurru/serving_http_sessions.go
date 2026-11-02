@@ -180,10 +180,16 @@ func (h *servingHTTP) sealEnrollment(w http.ResponseWriter, r *http.Request, e s
 			if ok && typed {
 				raw, sess, sealErr := e.Seal(v, h.now())
 				if sealErr == nil {
+					if err := h.checkCookiePublication(r, v); err != nil {
+						lease.Release()
+						return err
+					}
 					out, err := h.sessionInfo(v, sess.Principal, &sess)
 					if err == nil {
-						h.opts.Cookie.Set(w, r, raw, sess.ExpiresAt.Sub(h.now()))
-						err = servingHTTPJSON(w, 200, out)
+						err = h.setCookie(w, r, "", raw, sess.ExpiresAt.Sub(h.now()))
+						if err == nil {
+							err = servingHTTPJSON(w, 200, out)
+						}
 					}
 					lease.Release()
 					return err
@@ -300,7 +306,9 @@ func (h *servingHTTP) logout(w http.ResponseWriter, r *http.Request) error {
 	if err := h.commitLogout(r); err != nil {
 		return err
 	}
-	h.clearLogoutCookies(w, r)
+	if err := h.clearLogoutCookies(w, r); err != nil {
+		return err
+	}
 	w.WriteHeader(204)
 	return nil
 }

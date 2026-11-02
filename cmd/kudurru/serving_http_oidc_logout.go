@@ -9,23 +9,19 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/browseroidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
-	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 )
 
-func (h *servingHTTP) logoutCookie(kind string) session.CookieConfig {
-	c := h.opts.Cookie
-	c.Name += "_oidc_" + kind
-	return c
-}
-func (h *servingHTTP) clearLogoutCookies(w http.ResponseWriter, r *http.Request) {
-	h.opts.Cookie.Clear(w, r)
-	for _, kind := range []string{"hint", "logout", "logout_state"} {
-		h.logoutCookie(kind).Clear(w, r)
+func (h *servingHTTP) clearLogoutCookies(w http.ResponseWriter, r *http.Request) error {
+	for _, suffix := range []string{"", "_oidc_hint", "_oidc_logout", "_oidc_logout_state", "_oidc"} {
+		if err := h.clearCookie(w, r, suffix); err != nil {
+			return err
+		}
 	}
-	h.browserCookie().Clear(w, r)
+	return nil
 }
+
 func browserLogoutBinding(i providerresources.BrowserInfo) browseroidc.LogoutBinding {
 	return browseroidc.LogoutBinding{Provider: i.Provider.ID, ProviderUID: i.Provider.UID, Origin: string(i.Provider.Origin), SpecIdentity: i.SpecIdentity, ResourceIdentity: i.ResourceIdentity, Issuer: i.Issuer, ClientID: i.ClientID, RedirectURI: i.RedirectURI}
 }
@@ -42,7 +38,11 @@ func (h *servingHTTP) openLogout(r *http.Request, kind, phase string) (*servinga
 			return nil, browseroidc.Logout{}, servingBrowserInvalid()
 		}
 	}
-	cookies := r.CookiesNamed(h.logoutCookie(kind).NameFor(r))
+	cookie, err := h.cookiePolicy(r, "_oidc_"+kind)
+	if err != nil {
+		return nil, browseroidc.Logout{}, err
+	}
+	cookies := r.CookiesNamed(cookie.NameFor(r))
 	if len(cookies) != 1 || len(cookies[0].Value) > browseroidc.MaxCookieBytes {
 		return nil, browseroidc.Logout{}, servingBrowserInvalid()
 	}
@@ -81,7 +81,9 @@ func (h *servingHTTP) logoutBrowser(w http.ResponseWriter, r *http.Request) erro
 	if err := h.commitLogout(r); err != nil {
 		return err
 	}
-	h.clearLogoutCookies(w, r)
+	if err := h.clearLogoutCookies(w, r); err != nil {
+		return err
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	out := api.BrowserLogoutBody{}
@@ -91,14 +93,19 @@ func (h *servingHTTP) logoutBrowser(w http.ResponseWriter, r *http.Request) erro
 		if err == nil && targetErr == nil && browser.Current() && continuation.ValidAt(h.now()) == nil {
 			target, _ := url.Parse(callback)
 			out.ContinuePath = strings.TrimSuffix(target.Path, "/callback")
-			h.logoutCookie("logout").Set(w, r, sealed, continuation.ExpiresAt().Sub(h.now()))
+			if err := h.setCookie(w, r, "_oidc_logout", sealed, continuation.ExpiresAt().Sub(h.now())); err != nil {
+				return err
+			}
 		}
 	}
 	return servingHTTPJSON(w, 200, out)
 }
 
 func (b *servingBrowserHTTP) logout(w http.ResponseWriter, r *http.Request) error {
-	cookie := b.h.logoutCookie("logout")
+	cookie, err := b.h.cookiePolicy(r, "_oidc_logout")
+	if err != nil {
+		return err
+	}
 	cookie.Clear(w, r)
 	if r.URL.RawQuery != "" {
 		return servingBrowserInvalid()
@@ -135,14 +142,18 @@ func (b *servingBrowserHTTP) logout(w http.ResponseWriter, r *http.Request) erro
 		w.WriteHeader(302)
 		return nil
 	}
-	b.h.logoutCookie("logout_state").Set(w, r, sealed, state.ExpiresAt().Sub(b.h.now()))
+	if err := b.h.setCookie(w, r, "_oidc_logout_state", sealed, state.ExpiresAt().Sub(b.h.now())); err != nil {
+		return err
+	}
 	w.Header().Set("Location", target)
 	w.WriteHeader(302)
 	return nil
 }
 
 func (b *servingBrowserHTTP) logoutCallback(w http.ResponseWriter, r *http.Request) error {
-	b.h.logoutCookie("logout_state").Clear(w, r)
+	if err := b.h.clearCookie(w, r, "_oidc_logout_state"); err != nil {
+		return err
+	}
 	if len(r.URL.RawQuery) > 4096 {
 		return servingBrowserInvalid()
 	}

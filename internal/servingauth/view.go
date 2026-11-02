@@ -15,6 +15,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/totp"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -45,6 +46,7 @@ type View struct {
 	browserCodec       *browseroidc.Codec
 	logoutCodec        *browseroidc.LogoutCodec
 	cliCodec           *clioidc.Codec
+	authControls       config.AuthControls
 	released           atomic.Bool
 }
 
@@ -70,6 +72,15 @@ func (v *View) Settings() (*publicv1.Kudurru, error) {
 		return nil, ErrInvalid
 	}
 	return v.cut.objects[store.Key{Kind: "Kudurru", Name: "default"}].(*publicv1.Kudurru).DeepCopy(), nil
+}
+
+// AuthControls returns policy from this exact cut and its installed host locks.
+// It neither reads a live configuration nor authorizes a current command.
+func (v *View) AuthControls() (config.AuthControls, error) {
+	if v == nil || v.released.Load() {
+		return config.AuthControls{}, ErrInvalid
+	}
+	return v.authControls, nil
 }
 
 // BrandingAllowed evaluates only this view's original immutable entitlement.
@@ -145,6 +156,22 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 		return nil, ErrDependency
 	}
 	v := &View{cut: cut, license: deps.License, permissions: &permissions, grants: map[string]bool{}, floors: map[string]time.Time{}, accounts: map[AccountRef]time.Time{}, providers: map[string]time.Time{}, sessions: map[string]SessionRecord{}, sealer: sealer, hasher: deps.Hasher}
+	settings, err := v.Settings()
+	if err != nil {
+		return nil, err
+	}
+	document := map[string]any{}
+	for key, raw := range settings.Spec.Settings {
+		var value any
+		if err := json.Unmarshal(raw.Raw, &value); err != nil {
+			return nil, ErrInvalid
+		}
+		document[key] = value
+	}
+	v.authControls, err = config.ResolveAuthControls(document, deps.AuthOverrides)
+	if err != nil {
+		return nil, ErrInvalid
+	}
 	v.browserCodec, err = browseroidc.NewCodec(deps.CurrentKey, deps.PreviousKey)
 	if err != nil {
 		return nil, ErrDependency
@@ -228,7 +255,8 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 		Current, Previous   string
 		TOTPKeys            string
 		Providers, Evidence string
-	}{deps.Identity, deps.License, v.permissions, v.bindings, hash(deps.CurrentKey), hash(deps.PreviousKey), deps.TOTPKeys.Identity(), v.providerIdentity, v.evidenceKeys.Identity()})
+		AuthOverrides       config.AuthControlOverrides
+	}{deps.Identity, deps.License, v.permissions, v.bindings, hash(deps.CurrentKey), hash(deps.PreviousKey), deps.TOTPKeys.Identity(), v.providerIdentity, v.evidenceKeys.Identity(), deps.AuthOverrides})
 	return v, nil
 }
 

@@ -19,7 +19,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 )
 
-// Options pins the host's cookie/CSRF policy. Provider and local-login endpoints
+// Options pins the host's cookie template and CSRF policy. Cookie Secure mode
+// comes from the original complete auth View. Provider and local-login endpoints
 // use their own current command flows; Basic/password authentication is absent.
 type Options struct {
 	Publisher             *serving.Publisher
@@ -212,7 +213,11 @@ func (a *Adapter) selectCredential(r *http.Request) (servingauth.Credential, err
 		// captured auth owner verifies signature, issuer, audience and policy.
 		return servingauth.Credential{Kind: servingauth.OIDCJWT, Value: parts[1]}, nil
 	}
-	cookies := r.CookiesNamed(a.options.Cookie.NameFor(r))
+	policy, err := CookiePolicy(r.Context(), a.options.Cookie)
+	if err != nil {
+		return servingauth.Credential{}, err
+	}
+	cookies := r.CookiesNamed(policy.NameFor(r))
 	if len(cookies) == 0 {
 		return servingauth.Credential{}, auth.ErrNoCredentials
 	}

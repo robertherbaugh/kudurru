@@ -4,11 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"slices"
 	"time"
 
-	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/browseroidc"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -77,11 +75,11 @@ func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depe
 	if d.Principal.Kind != auth.KindUser || d.Principal.Provider != "local" || d.Principal.AccountUID == "" || d.Settings == nil {
 		return Enrollment{}, servingauth.ErrUnsupported
 	}
-	cfg, err := localLoginConfig(d)
+	cfg, err := localLoginControls(d)
 	if err != nil {
 		return Enrollment{}, err
 	}
-	if now.IsZero() || cfg.Auth.Session.Lifetime.Std() <= 0 || cfg.Auth.Session.IdleTimeout.Std() <= 0 {
+	if now.IsZero() || cfg.SessionLifetime <= 0 || cfg.SessionIdleTimeout <= 0 {
 		return Enrollment{}, servingauth.ErrInvalid
 	}
 	s, err := Load(ctx, tx)
@@ -94,7 +92,7 @@ func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depe
 	id, csrf := randomID(), randomID()
 	_, err = s.Enroll(servingauth.SessionRecord{
 		ID: id, Account: servingauth.AccountRef{Kind: "LocalUser", Name: d.Principal.Name, UID: d.Principal.AccountUID},
-		Provider: "local", IssuedAt: now.UTC(), ExpiresAt: now.Add(cfg.Auth.Session.Lifetime.Std()).UTC(), IdleExpiresAt: now.Add(cfg.Auth.Session.IdleTimeout.Std()).UTC(),
+		Provider: "local", IssuedAt: now.UTC(), ExpiresAt: now.Add(cfg.SessionLifetime).UTC(), IdleExpiresAt: now.Add(cfg.SessionIdleTimeout).UTC(),
 		Grants: d.Grants, CSRFHash: servingauth.CSRFHash(csrf),
 	})
 	if err != nil {
@@ -106,40 +104,14 @@ func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depe
 	return Enrollment{id: id, csrf: csrf}, nil
 }
 
-func localLoginConfig(d servingauth.SessionDecision) (*config.Config, error) {
-	cfg, err := sessionConfig(d.Settings)
-	if err != nil {
-		return nil, err
-	}
+func localLoginControls(d servingauth.SessionDecision) (config.AuthControls, error) {
+	cfg := d.Controls
 	// ResolveSessionCurrent supplies normalized grants after current license
 	// policy. Only the exact cluster admin grant permits admins-only login;
 	// scoped admin grants and unlicensed bindings cannot broaden this gate.
 	admin := d.Principal.BuiltinAdmin || slices.Contains(d.Grants, "admin")
-	if cfg.Auth.LocalLogin == config.LocalLoginDisabled || cfg.Auth.LocalLogin == config.LocalLoginAdminsOnly && !admin {
-		return nil, servingauth.ErrDenied
-	}
-	return cfg, nil
-}
-
-func sessionConfig(settings *publicv1.Kudurru) (*config.Config, error) {
-	if settings == nil {
-		return nil, servingauth.ErrInvalid
-	}
-	raw, err := json.Marshal(settings.Spec.Settings)
-	if err != nil {
-		return nil, servingauth.ErrInvalid
-	}
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return nil, servingauth.ErrInvalid
-	}
-	defaults, err := config.FromFlat(config.Defaults())
-	if err != nil {
-		return nil, err
-	}
-	cfg, _, err := config.ApplyClusterDocument(defaults, document)
-	if err != nil {
-		return nil, servingauth.ErrInvalid
+	if cfg.LocalLogin == config.LocalLoginDisabled || cfg.LocalLogin == config.LocalLoginAdminsOnly && !admin {
+		return config.AuthControls{}, servingauth.ErrDenied
 	}
 	return cfg, nil
 }

@@ -32,16 +32,17 @@ const upstreamRetireGrace = 30 * time.Second
 // restartRequired must be handled here; config.TestRestartRequired pins
 // the list.
 type reloadTargets struct {
-	logger      *slog.Logger
-	level       *slog.LevelVar
-	upstreams   *upstreamstage.Stage
-	upOpts      upstream.Options
-	cache       *cache.Cache
-	cacheStg    *cachestage.Stage
-	control     *control.Stage
-	blocking    *blockingstage.Stage
-	blockPage   *blockpage.Server
-	postprocess *postprocess.Stage
+	completeAuth bool
+	logger       *slog.Logger
+	level        *slog.LevelVar
+	upstreams    *upstreamstage.Stage
+	upOpts       upstream.Options
+	cache        *cache.Cache
+	cacheStg     *cachestage.Stage
+	control      *control.Stage
+	blocking     *blockingstage.Stage
+	blockPage    *blockpage.Server
+	postprocess  *postprocess.Stage
 	// edgeFlush empties the local edge's resolver cache when the block
 	// answers change; nil skips it.
 	edgeFlush    *dnsdist.CacheFlusher
@@ -67,7 +68,7 @@ func applyReload(ctx context.Context, t reloadTargets, next *config.Config, chan
 	log := t.logger.With("component", "settings")
 	var applied, restart []string
 	for _, p := range changed {
-		if k, ok := config.Lookup(p); ok && k.RestartRequired {
+		if k, ok := config.Lookup(p); ok && config.RequiresRestart(k, t.completeAuth) {
 			restart = append(restart, p)
 		} else {
 			applied = append(applied, p)

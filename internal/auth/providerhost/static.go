@@ -131,6 +131,9 @@ func PrepareStatic(ctx context.Context, in StaticInput) (*StaticResources, error
 	if len(in.Auth.ConfigProviders) != 0 || len(in.Auth.ProviderResources) != 0 {
 		return nil, ErrInvalid
 	}
+	if err := in.Auth.AuthOverrides.Validate(); err != nil {
+		return nil, ErrInvalid
+	}
 	if _, err := session.NewSealer("providerhost-static-check", in.Auth.CurrentKey, in.Auth.PreviousKey); err != nil {
 		return nil, ErrInvalid
 	}

@@ -18,6 +18,17 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/settings"
 )
 
+// AuthControlReloadCapability explicitly identifies a mounted complete auth
+// lifecycle. A canonical settings reader/writer alone does not imply support.
+type AuthControlReloadCapability interface {
+	AuthControlsHotReload() bool
+}
+
+func (s *Server) authControlsHotReload() bool {
+	capability, ok := s.opts.CanonicalSettings.(AuthControlReloadCapability)
+	return ok && capability.AuthControlsHotReload()
+}
+
 // Redacted replaces writeOnly values in settings responses.
 const Redacted = "<redacted>"
 
@@ -292,9 +303,18 @@ func (s *Server) settingsSchema(ctx context.Context, _ *struct{}) (*schemaOutput
 		if k.WriteOnly {
 			v = Redacted
 		}
+		help := k.Help
+		if s.authControlsHotReload() {
+			switch k.Path {
+			case "auth.session.idleTimeout":
+				help = "Idle deadline assigned to new dashboard sign-ins; at least 1m. Existing durable sign-ins keep their exact original deadline; requests do not renew it."
+			case "auth.session.lifetime":
+				help = "Absolute lifetime assigned to new dashboard sign-ins; at least auth.session.idleTimeout. Changes do not extend or shorten existing durable sign-ins."
+			}
+		}
 		items = append(items, SettingKey{
-			Path: k.Path, Type: string(k.Type), Scope: string(k.Scope), Default: k.Default, Help: k.Help,
-			HostOnly: k.HostOnly, EnvLocked: slices.Contains(cfg.EnvLocked, k.Path), RestartRequired: k.RestartRequired,
+			Path: k.Path, Type: string(k.Type), Scope: string(k.Scope), Default: k.Default, Help: help,
+			HostOnly: k.HostOnly, EnvLocked: slices.Contains(cfg.EnvLocked, k.Path), RestartRequired: config.RequiresRestart(k, s.authControlsHotReload()),
 			ReadOnly:  k.Scope == config.ScopeNode && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil),
 			WriteOnly: k.WriteOnly, Label: k.Label, Group: k.Group, SettingConstraints: settingConstraints(k.Shape()), Value: v,
 		})
@@ -403,6 +423,7 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		}
 	}
 	next, restart, err := prepareSettingsValues(cur, scope, changes, paths, canonical, nodeReset...)
+	restart = config.RestartKeys(restart, s.authControlsHotReload())
 	if err != nil {
 		return nil, err
 	}

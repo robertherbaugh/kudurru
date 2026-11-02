@@ -172,7 +172,7 @@ func loadProviderStatic(ctx context.Context, o providerStaticOptions) (providerh
 	var released atomic.Bool
 	input := providerhost.StaticInput{
 		Identity: "provider-static/v1/" + hex.EncodeToString(nonce[:]), LocalProviders: local,
-		Auth:              servingauth.Dependencies{Permissions: permissions, StaticBindings: bindings, CurrentKey: slices.Clone(material.current), PreviousKey: slices.Clone(material.previous), Hasher: users.NewHasher(0), TOTPKeys: material.totp},
+		Auth:              servingauth.Dependencies{Permissions: permissions, StaticBindings: bindings, CurrentKey: slices.Clone(material.current), PreviousKey: slices.Clone(material.previous), Hasher: users.NewHasher(0), TOTPKeys: material.totp, AuthOverrides: config.CaptureAuthOverrides(cfg)},
 		ObjectCredentials: objects, ConfigCredentials: resolvers,
 		CredentialPolicy: hex.EncodeToString(digest[:]), FingerprintKeyID: material.fingerprintID, AuthKeyIdentity: cut.Identity(),
 		AllowedOrigins: append([]string{}, cfg.Auth.ProviderResources.AllowedOrigins...), LocalOrigins: append([]string{}, cfg.Auth.ProviderResources.LocalOrigins...),

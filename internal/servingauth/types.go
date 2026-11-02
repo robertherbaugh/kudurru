@@ -9,6 +9,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
 	"github.com/robertherbaugh/kudurru/internal/auth/totp"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -63,6 +64,7 @@ type Dependencies struct {
 	TOTPKeys                   *totp.Keyring
 	ConfigProviders            []ProviderSource
 	ProviderResources          []ProviderResource
+	AuthOverrides              config.AuthControlOverrides
 }
 
 // PasswordVerifier is a bounded pure crypto seam; users.Hasher implements it.
@@ -97,6 +99,7 @@ type SessionDecision struct {
 	Principal auth.Principal
 	Grants    []string
 	Settings  *publicv1.Kudurru
+	Controls  config.AuthControls
 }
 
 // AccountRef binds a durable session/floor to an exact object incarnation.

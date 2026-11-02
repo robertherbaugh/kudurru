@@ -40,7 +40,7 @@ func (s *servingRuntime) Settings(ctx context.Context) (*config.Config, error) {
 func (s *servingRuntime) WriteSettings(ctx context.Context, next *config.Config, changed []string) error {
 	attrs := rbac.Attributes{Resource: "settings", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}
 	err := s.currentCommand(ctx, attrs, func(ctx context.Context, tx *sqlite.CommandTx, _ auth.Principal) error {
-		plan, err := api.PrepareCanonicalSettingsValues(ctx, tx, s.opts.Config, next, changed)
+		plan, err := api.PrepareCanonicalSettingsValues(ctx, tx, s.opts.Config, next, changed, s.AuthControlsHotReload())
 		if err != nil {
 			return err
 		}
@@ -59,7 +59,7 @@ func (s *servingRuntime) WriteSettings(ctx context.Context, next *config.Config,
 // It shares canonical PATCH persistence and retains the original whole view's
 // branding entitlement through the enclosing transaction's final commit check.
 func (s *servingRuntime) PrepareSettings(ctx context.Context, tx *sqlite.CommandTx, patch map[string]any) (*api.CanonicalSettingsPlan, error) {
-	plan, err := api.PrepareCanonicalSettingsPatch(ctx, tx, s.opts.Config, patch)
+	plan, err := api.PrepareCanonicalSettingsPatch(ctx, tx, s.opts.Config, patch, s.AuthControlsHotReload())
 	if err != nil {
 		return nil, err
 	}
@@ -117,3 +117,8 @@ func currentCommandAPIError(err error) error {
 
 var _ api.CanonicalSettings = (*servingRuntime)(nil)
 var _ api.CanonicalSettingsPlanner = (*servingRuntime)(nil)
+
+// AuthControlsHotReload advertises only the complete runtime's mounted lifecycle.
+func (*servingRuntime) AuthControlsHotReload() bool { return true }
+
+var _ api.AuthControlReloadCapability = (*servingRuntime)(nil)

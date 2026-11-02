@@ -80,7 +80,7 @@ func ResolveSessionCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Depen
 	if err != nil {
 		return SessionDecision{}, err
 	}
-	return SessionDecision{Principal: detachedPrincipal(p), Grants: grants, Settings: settings}, nil
+	return SessionDecision{Principal: detachedPrincipal(p), Grants: grants, Settings: settings, Controls: view.authControls}, nil
 }
 
 func authenticateInCommand(ctx context.Context, tx *sqlite.CommandTx, view *View, proof Credential, now time.Time) (auth.Principal, error) {

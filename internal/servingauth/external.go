@@ -8,6 +8,7 @@ import (
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
@@ -36,6 +37,7 @@ type ExternalSessionDecision struct {
 	Existing    *ExternalIdentity
 	Grants      []string
 	Settings    *publicv1.Kudurru
+	Controls    config.AuthControls
 	evidence    *oidccore.VerifiedToken
 	mode        oidccore.ProofMode
 	verifiedAt  time.Time
@@ -131,7 +133,7 @@ func ResolveExternalSessionCurrent(ctx context.Context, tx *sqlite.CommandTx, de
 	if err != nil {
 		return ExternalSessionDecision{}, err
 	}
-	d := ExternalSessionDecision{Identity: identity, Provider: info.Descriptor, Existing: existing, Grants: grants, Settings: settings, evidence: token, mode: proof.Mode, verifiedAt: now, provider: provider.descriptor.Ref, source: provider.evidenceSource()}
+	d := ExternalSessionDecision{Identity: identity, Provider: info.Descriptor, Existing: existing, Grants: grants, Settings: settings, Controls: v.authControls, evidence: token, mode: proof.Mode, verifiedAt: now, provider: provider.descriptor.Ref, source: provider.evidenceSource()}
 	if existing != nil {
 		d.existingUID = existing.UID
 	}

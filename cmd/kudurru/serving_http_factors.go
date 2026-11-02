@@ -176,7 +176,9 @@ func (h *servingHTTP) confirmTOTP(w http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 	h.opts.Runtime.publisher.Wake()
-	h.opts.Cookie.Clear(w, r)
+	if err := h.clearCookie(w, r, ""); err != nil {
+		return err
+	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
@@ -201,7 +203,9 @@ func (h *servingHTTP) disableTOTP(w http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 	h.opts.Runtime.publisher.Wake()
-	h.opts.Cookie.Clear(w, r)
+	if err := h.clearCookie(w, r, ""); err != nil {
+		return err
+	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
@@ -235,7 +239,9 @@ func (h *servingHTTP) recoverTOTP(w http.ResponseWriter, r *http.Request) error 
 	}
 	h.opts.Runtime.publisher.Wake()
 	if proof.Kind == servingauth.Cookie && p.Provider == "local" && p.Name == target.Name && p.AccountUID == target.UID {
-		h.opts.Cookie.Clear(w, r)
+		if err := h.clearCookie(w, r, ""); err != nil {
+			return err
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil

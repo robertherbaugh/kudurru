@@ -57,7 +57,7 @@ func (p *CanonicalSettingsPlan) Apply(ctx context.Context, tx *sqlite.CommandTx)
 
 // PrepareCanonicalSettingsPatch merges a reviewed patch with the current
 // transaction's singleton using exactly the ordinary PATCH validation rules.
-func PrepareCanonicalSettingsPatch(ctx context.Context, tx *sqlite.CommandTx, host *config.Config, patch map[string]any) (*CanonicalSettingsPlan, error) {
+func PrepareCanonicalSettingsPatch(ctx context.Context, tx *sqlite.CommandTx, host *config.Config, patch map[string]any, completeAuth ...bool) (*CanonicalSettingsPlan, error) {
 	settings, document, cur, err := currentSettings(ctx, tx, host)
 	if err != nil {
 		return nil, err
@@ -82,13 +82,13 @@ func PrepareCanonicalSettingsPatch(ctx context.Context, tx *sqlite.CommandTx, ho
 	if err != nil {
 		return nil, err
 	}
-	return planCanonicalSettings(tx, settings, document, host, next, paths, restart)
+	return planCanonicalSettings(tx, settings, document, host, next, paths, config.RestartKeys(restart, len(completeAuth) == 1 && completeAuth[0]))
 }
 
 // PrepareCanonicalSettingsValues prepares already-merged ordinary PATCH values.
 // Map leaves are replacements here, preserving deletions from the earlier merge;
 // imports use PrepareCanonicalSettingsPatch to merge inside their own command.
-func PrepareCanonicalSettingsValues(ctx context.Context, tx *sqlite.CommandTx, host, next *config.Config, paths []string) (*CanonicalSettingsPlan, error) {
+func PrepareCanonicalSettingsValues(ctx context.Context, tx *sqlite.CommandTx, host, next *config.Config, paths []string, completeAuth ...bool) (*CanonicalSettingsPlan, error) {
 	settings, document, cur, err := currentSettings(ctx, tx, host)
 	if err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func PrepareCanonicalSettingsValues(ctx context.Context, tx *sqlite.CommandTx, h
 	if err != nil {
 		return nil, err
 	}
-	return planCanonicalSettings(tx, settings, document, host, next, paths, restart)
+	return planCanonicalSettings(tx, settings, document, host, next, paths, config.RestartKeys(restart, len(completeAuth) == 1 && completeAuth[0]))
 }
 
 func currentSettings(ctx context.Context, tx *sqlite.CommandTx, host *config.Config) (*public.Kudurru, map[string]any, *config.Config, error) {

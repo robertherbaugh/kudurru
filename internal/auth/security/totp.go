@@ -199,7 +199,7 @@ func factorAccount(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.D
 	if err != nil {
 		return nil, err
 	}
-	if _, err := localLoginConfig(d); err != nil {
+	if _, err := localLoginControls(d); err != nil {
 		return nil, err
 	}
 	p := d.Principal

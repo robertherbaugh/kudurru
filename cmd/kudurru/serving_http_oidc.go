@@ -14,7 +14,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/browseroidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
-	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -88,14 +87,6 @@ func (b *servingBrowserHTTP) admitAttempt(attempt string) error {
 	}
 	b.attempts.Fail(attempt)
 	return nil
-}
-
-func (h *servingHTTP) browserCookie() session.CookieConfig {
-	c := h.opts.Cookie
-	// Keep the same secure/path/__Host policy, but never accept Stack's legacy
-	// preauth name or confuse the enrolled-session cookie with pending state.
-	c.Name += "_oidc"
-	return c
 }
 
 func servingBrowserInvalid() error {
@@ -244,6 +235,9 @@ func (b *servingBrowserHTTP) start(w http.ResponseWriter, r *http.Request) error
 	}
 	var raw string
 	err = b.h.browserPublication(r.Context(), func(v *servingauth.View) (bool, error) {
+		if err := b.h.checkCookiePublication(r, v); err != nil {
+			return false, err
+		}
 		if !browser.Current() || state.ValidAt(b.h.now()) != nil {
 			return false, servingBrowserUnavailable()
 		}
@@ -260,14 +254,19 @@ func (b *servingBrowserHTTP) start(w http.ResponseWriter, r *http.Request) error
 	if !browser.Current() || state.ValidAt(b.h.now()) != nil {
 		return servingBrowserUnavailable()
 	}
-	b.h.browserCookie().Set(w, r, raw, state.ExpiresAt().Sub(b.h.now()))
+	if err := b.h.setCookie(w, r, "_oidc", raw, state.ExpiresAt().Sub(b.h.now())); err != nil {
+		return err
+	}
 	w.Header().Set("Location", redirect)
 	w.WriteHeader(http.StatusFound)
 	return nil
 }
 
 func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) error {
-	cookie := b.h.browserCookie()
+	cookie, err := b.h.cookiePolicy(r, "_oidc")
+	if err != nil {
+		return err
+	}
 	cookie.Clear(w, r)
 	if err := b.admit(r, true); err != nil {
 		return err
@@ -349,6 +348,9 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 		if !browser.Current() {
 			return false, servingBrowserUnavailable()
 		}
+		if err := b.h.checkCookiePublication(r, view); err != nil {
+			return false, err
+		}
 		sealed, sess, err := enrollment.Seal(view, b.h.now())
 		if err != nil {
 			return false, nil
@@ -365,11 +367,17 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 	if !browser.Current() || !b.h.now().Before(expires) {
 		return servingBrowserUnavailable()
 	}
-	b.h.logoutCookie("hint").Clear(w, r)
-	if logoutHint != "" && b.h.now().Before(logoutHintExpiry) {
-		b.h.logoutCookie("hint").Set(w, r, logoutHint, logoutHintExpiry.Sub(b.h.now()))
+	if err := b.h.clearCookie(w, r, "_oidc_hint"); err != nil {
+		return err
 	}
-	b.h.opts.Cookie.Set(w, r, raw, expires.Sub(b.h.now()))
+	if logoutHint != "" && b.h.now().Before(logoutHintExpiry) {
+		if err := b.h.setCookie(w, r, "_oidc_hint", logoutHint, logoutHintExpiry.Sub(b.h.now())); err != nil {
+			return err
+		}
+	}
+	if err := b.h.setCookie(w, r, "", raw, expires.Sub(b.h.now())); err != nil {
+		return err
+	}
 	w.Header().Set("Location", state.Next())
 	w.WriteHeader(http.StatusFound)
 	return nil

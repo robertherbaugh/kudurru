@@ -119,7 +119,9 @@ func (h *servingHTTP) resetLocalUserPassword(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 	if self && proof.Kind == servingauth.Cookie {
-		h.opts.Cookie.Clear(w, r)
+		if err := h.clearCookie(w, r, ""); err != nil {
+			return err
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil

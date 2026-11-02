@@ -33,11 +33,7 @@ func IssueExternal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.D
 	if err != nil {
 		return Enrollment{}, err
 	}
-	cfg, err := sessionConfig(d.Settings)
-	if err != nil {
-		return Enrollment{}, err
-	}
-	lifetime, idle := cfg.Auth.Session.Lifetime.Std(), cfg.Auth.Session.IdleTimeout.Std()
+	lifetime, idle := d.Controls.SessionLifetime, d.Controls.SessionIdleTimeout
 	if lifetime <= 0 || idle <= 0 || idle > lifetime {
 		return Enrollment{}, servingauth.ErrInvalid
 	}
