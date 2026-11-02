@@ -78,6 +78,9 @@ type TSIGKey struct {
 	Algorithm string
 	// Secret is the raw (decoded) secret.
 	Secret []byte
+	// CredentialEpoch binds an explicitly stored credential incarnation. Empty
+	// preserves legacy file-backed content identity; this is never a key lookup.
+	CredentialEpoch string
 }
 
 // StaticKeyring is an immutable TSIGKeyring over a fixed set of keys.
@@ -105,6 +108,10 @@ func NewStaticKeyring(keys ...TSIGKey) (*StaticKeyring, error) {
 			errs = append(errs, fmt.Errorf("tsig key %s: algorithm %q is not supported (%s, %s)", name, key.Algorithm, TSIGHMACSHA256, TSIGHMACSHA512))
 			continue
 		}
+		if len(key.CredentialEpoch) > 256 {
+			errs = append(errs, fmt.Errorf("tsig key %s: invalid credential epoch", name))
+			continue
+		}
 		if len(key.Secret) == 0 {
 			errs = append(errs, fmt.Errorf("tsig key %s: empty secret", name))
 			continue
@@ -113,7 +120,7 @@ func NewStaticKeyring(keys ...TSIGKey) (*StaticKeyring, error) {
 			errs = append(errs, fmt.Errorf("tsig key %s: defined twice", name))
 			continue
 		}
-		k.keys[name] = TSIGKey{Name: name, Algorithm: alg, Secret: append([]byte(nil), key.Secret...)}
+		k.keys[name] = TSIGKey{Name: name, Algorithm: alg, Secret: append([]byte(nil), key.Secret...), CredentialEpoch: key.CredentialEpoch}
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, err

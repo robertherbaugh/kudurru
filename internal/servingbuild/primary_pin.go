@@ -66,7 +66,7 @@ func NewPrimaryPin(o PrimaryPinOptions) (currentguard.PinFunc, error) {
 								if !current() {
 									return serving.ErrDependency
 								}
-								return fn(currentguard.Pinned{Identity: keys.Identity(), Keys: keys.Keys(), Current: current})
+								return fn(currentguard.Pinned{Identity: keys.Identity(), Keys: keys.Keys(), Current: current, CheckTx: keys.CheckTx})
 							})
 						})
 					})

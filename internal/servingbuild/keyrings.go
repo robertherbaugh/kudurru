@@ -14,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime/currentguard"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/tsigkeys"
 )
 
 // KeyringOwner serializes replacement of the immutable TSIG provider with
@@ -32,6 +33,7 @@ type KeyringOwner struct {
 type keyringGeneration struct {
 	keys     *dnsserver.StaticKeyring
 	identity string
+	prepared *tsigkeys.Prepared
 }
 
 // KeyringCut retains immutable Go-owned keys; it needs no external close hook.
@@ -76,6 +78,18 @@ func (o *KeyringOwner) lock(ctx context.Context) error {
 // Replace installs an already prepared ring and invalidates every earlier cut.
 // It waits for complete commands/publications using the same owner to finish.
 func (o *KeyringOwner) Replace(ctx context.Context, keys *dnsserver.StaticKeyring) error {
+	return o.replace(ctx, keys, nil)
+}
+
+// ReplacePrepared installs only a completely validated encrypted source/ring.
+func (o *KeyringOwner) ReplacePrepared(ctx context.Context, p *tsigkeys.Prepared) error {
+	if p == nil {
+		return serving.ErrComponents
+	}
+	return o.replace(ctx, p.Keys(), p)
+}
+
+func (o *KeyringOwner) replace(ctx context.Context, keys *dnsserver.StaticKeyring, p *tsigkeys.Prepared) error {
 	if keys == nil {
 		return serving.ErrComponents
 	}
@@ -90,7 +104,7 @@ func (o *KeyringOwner) Replace(ctx context.Context, keys *dnsserver.StaticKeyrin
 		return serving.ErrDependency
 	}
 	o.next++
-	o.current.Store(&keyringGeneration{keys: keys, identity: fmt.Sprintf("tsig-local/%s/%d", o.instance, o.next)})
+	o.current.Store(&keyringGeneration{keys: keys, prepared: p, identity: fmt.Sprintf("tsig-local/%s/%d", o.instance, o.next)})
 	o.signal()
 	return nil
 }
@@ -109,6 +123,26 @@ func (c KeyringCut) Keys() *dnsserver.StaticKeyring {
 		return nil
 	}
 	return c.value.keys
+}
+
+// Prepared returns the exact encrypted source owner, nil in legacy static mode.
+func (c KeyringCut) Prepared() *tsigkeys.Prepared {
+	if c.value == nil {
+		return nil
+	}
+	return c.value.prepared
+}
+
+// CheckTx validates source rows inside the actual command, including empty
+// stored inventories. Only legacy static mode has no durable-source check.
+func (c KeyringCut) CheckTx(ctx context.Context, tx *sqlite.CommandTx) error {
+	if c.value == nil {
+		return serving.ErrDependency
+	}
+	if c.value.prepared == nil {
+		return nil
+	}
+	return c.value.prepared.CheckTx(ctx, tx)
 }
 
 // Identity names this process-local installation, not a durable credential ID.
@@ -166,7 +200,7 @@ func (o *KeyringOwner) PrimaryPin(publisher *serving.Publisher) currentguard.Pin
 		}
 		return publisher.WithWriterGate(ctx, serving.TermActivation{Term: fence.Term, Incarnation: fence.Incarnation}, func() error {
 			return o.WithCurrent(ctx, func(cut KeyringCut) error {
-				return fn(currentguard.Pinned{Identity: cut.Identity(), Keys: cut.Keys(), Current: cut.Current})
+				return fn(currentguard.Pinned{Identity: cut.Identity(), Keys: cut.Keys(), Current: cut.Current, CheckTx: cut.CheckTx})
 			})
 		})
 	}

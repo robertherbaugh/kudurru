@@ -26,6 +26,9 @@ func (k *StaticKeyring) sealVersions() {
 		key := k.keys[name]
 		mac := hmac.New(sha256.New, key.Secret)
 		_, _ = mac.Write([]byte("kudurru/tsig/credential/v1\x00" + name + "\x00" + key.Algorithm))
+		if key.CredentialEpoch != "" {
+			_, _ = mac.Write([]byte("\x00kudurru/tsig/stored-epoch/v1\x00" + key.CredentialEpoch))
+		}
 		version := hex.EncodeToString(mac.Sum(nil))
 		k.versions[name] = version
 		_, _ = provider.Write([]byte(name + "\x00" + version + "\x00"))

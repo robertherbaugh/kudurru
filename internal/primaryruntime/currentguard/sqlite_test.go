@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	tsigkinds "github.com/robertherbaugh/kudurru/api/tsigkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
@@ -92,13 +93,16 @@ type sqliteFixture struct {
 func newSQLiteFixture(t *testing.T) *sqliteFixture {
 	t.Helper()
 	scheme := runtime.NewScheme()
+	if err := tsigkinds.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
 	if err := public.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	if err := zk.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	s, err := sqlite.Open(filepath.Join(t.TempDir(), "current.db"), sqlite.Options{Scheme: scheme})
+	s, err := sqlite.Open(filepath.Join(t.TempDir(), "current.db"), sqlite.Options{Scheme: scheme, InternalKinds: []store.Kind{tsigkinds.KindTSIGKey}})
 	if err != nil {
 		t.Fatal(err)
 	}

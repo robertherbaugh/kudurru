@@ -86,7 +86,12 @@ func (m *Material) Key() dnsserver.TSIGKey {
 	if m == nil {
 		return dnsserver.TSIGKey{}
 	}
-	return dnsserver.TSIGKey{Name: m.owner.KeyName, Algorithm: m.owner.Algorithm, Secret: bytes.Clone(m.secret)}
+	binding, _ := json.Marshal(struct {
+		Owner Owner
+		Epoch string
+	}{m.owner, m.epoch})
+	epoch := sha256.Sum256(append([]byte("kudurru/tsig/credential-owner/v1\x00"), binding...))
+	return dnsserver.TSIGKey{Name: m.owner.KeyName, Algorithm: m.owner.Algorithm, Secret: bytes.Clone(m.secret), CredentialEpoch: hex.EncodeToString(epoch[:])}
 }
 
 // Sealer owns one purpose-separated immutable current/previous encryption cut.

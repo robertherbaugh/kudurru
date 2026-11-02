@@ -30,6 +30,9 @@ type Pinned struct {
 	// dependency cut, including its absolute deadlines. It must take no locks
 	// or perform I/O; replacement exclusion alone does not stop time expiry.
 	Current func() bool
+	// CheckTx validates an original encrypted key source in the SAME command
+	// transaction. Nil is allowed only for explicit legacy static key mode.
+	CheckTx func(context.Context, *sqlite.CommandTx) error
 }
 
 // PinFunc holds real dependency-replacement/publication exclusion through ALL
@@ -155,7 +158,13 @@ func admitted(pinCtx, ctx context.Context, active *atomic.Bool, p Pinned, f pr.P
 	if !active.Load() || tx == nil || !f.Term.Same(tx.Authority()) || f.Incarnation != tx.Incarnation() {
 		return pr.ErrUnavailable
 	}
-	return stillPinned(pinCtx, ctx, active, p)
+	if err := stillPinned(pinCtx, ctx, active, p); err != nil {
+		return err
+	}
+	if p.CheckTx != nil {
+		return p.CheckTx(ctx, tx)
+	}
+	return nil
 }
 
 func stillPinned(pinCtx, ctx context.Context, active *atomic.Bool, p Pinned) error {
