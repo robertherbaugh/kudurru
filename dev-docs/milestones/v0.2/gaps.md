@@ -2234,3 +2234,24 @@ transport activation, original wire ownership and background transfer rotation
 remain in progress. Kubernetes evidence currently covers encrypted persistence
 and explicit setup/cold reads; hot key management is not qualified. No secret
 values or encrypted source credentials become public configuration/API fields.
+
+### Hosted supervisor SAST and DoT fixture follow-ups
+
+On pushed `b687223`, hosted SAST reported two retained-zone-history data-flow
+findings. Integrated `eaf977f` extracts the existing successful-observation
+history and reads captured result fields separately. Pinned Semgrep 1.181.0
+reproduced both findings before and neither afterward; no suppression was added.
+Focused history/controller races passed 2.601s. This is not a full-security-run
+claim.
+
+The same head's second Go shard failed the DoT socket fixture four times with
+EOF before the asserted query-count limit. Its sequential client scheduling
+could cross the separate 150ms idle deadline. Integrated `f7bd976` queues both
+allowed original frames in one bounded TLS write and checks their IDs/questions;
+all original idle, maximum-query, TLS, rotation, load and shutdown limits remain.
+A controlled actual server-close fixture demonstrates sequential query2 EOF
+after idle expiry and both prequeued replies after maximum-query close, followed
+by one refused third query. The unmodified random local baseline passed once
+(2.039s), while corrected/controlled races passed ten repetitions (11.769s) and
+scoped DNS lint passed. The hosted failure remains recorded, and fresh CI is
+required for these corrections.
