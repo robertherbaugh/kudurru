@@ -71,6 +71,7 @@ func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
 	h.registerTOTP()
 	h.registerLocalUsers()
 	h.registerExternalUsers()
+	h.registerRoleBindings()
 	return h, nil
 }
 func (h *servingHTTP) Middleware(next http.Handler) http.Handler { return h.adapter.Middleware(next) }
