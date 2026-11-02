@@ -2153,3 +2153,21 @@ Unknown console acknowledgment may restart the matching child and interrupt
 connections. No query is replayed, no remote arbitrary pool command is added,
 and legacy or incomplete backends stay visibly uncached. Dynamic zone routing,
 physical deployments and final composed release qualification remain separate.
+
+### F18c composed held-CNAME deadline qualification
+
+The later combined CLI/F45/F18 race command failed its held-CNAME phase: the
+fixture withheld upstream for over seven seconds while the original request
+correctly expired after five. The first correction then exposed a missing
+original-policy precondition after unrelated expiry work. Neither failed command
+is credited as green or treated as evidence of production policy loss.
+
+Integrated `4337c79` schedules a complete authenticated UniFi poll before the
+held request, captures the proven Phone policy, and publishes renamed inventory
+within the original five-second lifetime. File endpoint/credential replacement
+is qualified independently afterward. Three frozen focused races passed
+(160.145s total), with held boundaries at 871ms, 1.690s and 1.470s; the full
+lifecycle passed 139.618s, and scoped lint passed with zero issues. Native,
+authenticated PROXYv2 and pinned dnsdist 2.1.3 UDP/TCP remain exercised. This
+proves held policy across inventory publication, not across file reconciliation;
+no production timeout, credential gate or refused request was relaxed/replayed.
