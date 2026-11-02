@@ -8,6 +8,7 @@ import (
 
 	integration "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	iam "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	tsig "github.com/robertherbaugh/kudurru/api/tsigkinds/v1alpha1"
 	zone "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -18,7 +19,7 @@ func NewScheme() (*runtime.Scheme, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, add := range []func(*runtime.Scheme) error{zone.AddToScheme, integration.AddToScheme} {
+	for _, add := range []func(*runtime.Scheme) error{zone.AddToScheme, integration.AddToScheme, tsig.AddToScheme} {
 		if err := add(scheme); err != nil {
 			return nil, err
 		}
@@ -33,6 +34,7 @@ func Private() []string {
 	out = append(out, iam.Kinds...)
 	out = append(out, zone.Kinds...)
 	out = append(out, integration.Kinds...)
+	out = append(out, tsig.KindTSIGKey)
 	slices.Sort(out)
 	return out
 }
