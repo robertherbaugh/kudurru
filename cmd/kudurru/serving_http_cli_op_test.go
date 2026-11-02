@@ -63,9 +63,15 @@ func (p *servingBrowserOP) exchangeCLI(w http.ResponseWriter, r *http.Request, i
 		_, _ = w.Write([]byte(`{"error_description":"NEVER-EXPOSE-CLI-UPSTREAM"}`))
 		return
 	}
+	p.issueCLIToken(w, issuer, flow.nonce, mode)
+}
+func (p *servingBrowserOP) issueCLIToken(w http.ResponseWriter, issuer, nonce, mode string) {
 	now := time.Now()
 	sum := sha512.Sum512([]byte("cli-test-access"))
-	claims := map[string]any{"iss": issuer, "sub": "cli-subject", "aud": "kudurru-cli", "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(), "nonce": flow.nonce, "at_hash": base64.RawURLEncoding.EncodeToString(sum[:32]), "preferred_username": "alice", "groups": []string{"dns"}}
+	claims := map[string]any{"iss": issuer, "sub": "cli-subject", "aud": "kudurru-cli", "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(), "nonce": nonce, "at_hash": base64.RawURLEncoding.EncodeToString(sum[:32]), "preferred_username": "alice", "groups": []string{"dns"}}
+	if nonce == "" {
+		delete(claims, "nonce")
+	}
 	switch mode {
 	case "nonce":
 		claims["nonce"] = "wrong"

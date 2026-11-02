@@ -41,6 +41,7 @@ type Provider struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	Browser     bool   `json:"browser"`
+	Device      bool   `json:"device"`
 }
 
 // Preparation returns public metadata and an opaque, non-authoritative receipt.
@@ -51,6 +52,7 @@ type Preparation struct {
 	ClientID         string    `json:"clientID"`
 	AuthorizationURL string    `json:"authorizationURL"`
 	TokenURL         string    `json:"tokenURL"`
+	DeviceURL        string    `json:"deviceURL,omitempty"`
 	Scopes           []string  `json:"scopes"`
 	Receipt          string    `json:"receipt"`
 	ExpiresAt        time.Time `json:"expiresAt"`
@@ -144,6 +146,12 @@ func (r Receipt) ValidAt(now time.Time) error {
 
 // Validate accepts only supported flow fields and exact loopback targets.
 func (p PrepareRequest) Validate() error {
+	if p.Mode == "device" {
+		if p.Nonce != "" || p.RedirectURI != "" {
+			return ErrInvalid
+		}
+		return nil
+	}
 	if p.Mode != "browser" || !RandomProof(p.Nonce) || (p.RedirectURI != "http://127.0.0.1:8000/callback" && p.RedirectURI != "http://127.0.0.1:18000/callback") {
 		return ErrInvalid
 	}

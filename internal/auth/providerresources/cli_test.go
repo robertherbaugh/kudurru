@@ -122,3 +122,43 @@ func TestCLIDiscoveryAdvertisedPublicSupportAndBinding(t *testing.T) {
 		t.Fatal("incompatible grant accepted")
 	}
 }
+
+func TestCLIDeviceDiscoveryAdvertisementAndAuthorityBinding(t *testing.T) {
+	f := newBrowserFixture(t)
+	s := f.source(t, servingauth.ProviderObject)
+	h := f.host(t, s)
+	var base map[string]any
+	_ = json.Unmarshal(f.discovery, &base)
+	base["token_endpoint_auth_methods_supported"] = []string{"client_secret_basic", "none"}
+	base["device_authorization_endpoint"] = s.Issuer + "/device"
+	base["grant_types_supported"] = []string{"urn:ietf:params:oauth:grant-type:device_code"}
+	raw, _ := json.Marshal(base)
+	m, e := parseMetadata(raw, s.Issuer, h.network)
+	if e != nil || !m.cliDevice || m.cliBrowser {
+		t.Fatal("device support coupled to browser or not advertised")
+	}
+	bound := metadataBinding(m)
+	for _, field := range []string{"token_endpoint_auth_methods_supported", "device_authorization_endpoint", "grant_types_supported"} {
+		fields := map[string]any{}
+		for k, v := range base {
+			fields[k] = v
+		}
+		delete(fields, field)
+		b, _ := json.Marshal(fields)
+		got, e := parseMetadata(b, s.Issuer, h.network)
+		if e != nil || got.cliDevice || metadataBinding(got) == bound {
+			t.Fatal("missing device capability retained authority")
+		}
+	}
+	base["device_authorization_endpoint"] = s.Issuer + "/replacement"
+	raw, _ = json.Marshal(base)
+	changed, e := parseMetadata(raw, s.Issuer, h.network)
+	if e != nil || !changed.cliDevice || metadataBinding(changed) == bound {
+		t.Fatal("device endpoint unbound")
+	}
+	base["device_authorization_endpoint"] = "http://untrusted.example/device"
+	raw, _ = json.Marshal(base)
+	if _, e := parseMetadata(raw, s.Issuer, h.network); e == nil {
+		t.Fatal("untrusted device endpoint admitted")
+	}
+}

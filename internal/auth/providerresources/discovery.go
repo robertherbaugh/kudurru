@@ -22,10 +22,10 @@ type fetchCache struct {
 	until     time.Time
 }
 type metadata struct {
-	issuer, authorization, token, jwksURL, endSession string
-	algorithms                                        []string
-	browser, cliBrowser                               bool
-	discovery, keys                                   fetchCache
+	issuer, authorization, token, jwksURL, endSession, device string
+	algorithms                                                []string
+	browser, cliBrowser, cliDevice                            bool
+	discovery, keys                                           fetchCache
 }
 type acquisition struct {
 	descriptor servingauth.ProviderDescriptor
@@ -128,6 +128,12 @@ func metadataBinding(m metadata) string {
 	if m.cliBrowser {
 		base = hash(struct{ Profile, Base string }{"provider-metadata/cli-public/v1", base})
 	}
+	if m.device != "" {
+		base = hash(struct {
+			Profile, Base, Device string
+			Supported             bool
+		}{"provider-metadata/cli-device/v1", base, m.device, m.cliDevice})
+	}
 	if m.endSession == "" {
 		return base
 	}
@@ -183,6 +189,15 @@ func parseMetadata(raw []byte, issuer string, n *networkPolicy) (metadata, error
 	}
 	if token != "" {
 		if _, err = n.endpoint(token); err != nil {
+			return metadata{}, err
+		}
+	}
+	device, err := jsonString(fields, "device_authorization_endpoint", false)
+	if err != nil {
+		return metadata{}, err
+	}
+	if device != "" {
+		if _, err = n.endpoint(device); err != nil {
 			return metadata{}, err
 		}
 	}
@@ -244,7 +259,8 @@ func parseMetadata(raw []byte, issuer string, n *networkPolicy) (metadata, error
 		}
 		cliBrowser = cliBrowser && slices.Contains(values, "authorization_code")
 	}
-	return metadata{issuer: got, authorization: auth, token: token, jwksURL: keys, endSession: endSession, algorithms: accepted, browser: browser, cliBrowser: cliBrowser}, nil
+	cliDevice := device != "" && token != "" && advertised("token_endpoint_auth_methods_supported", "none") && advertised("grant_types_supported", "urn:ietf:params:oauth:grant-type:device_code")
+	return metadata{issuer: got, authorization: auth, token: token, jwksURL: keys, endSession: endSession, device: device, algorithms: accepted, browser: browser, cliBrowser: cliBrowser, cliDevice: cliDevice}, nil
 }
 
 func (o *Owner) fetch(ctx context.Context, client *http.Client, url string, cache fetchCache, limit int) (fetchCache, bool, error) {

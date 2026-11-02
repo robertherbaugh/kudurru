@@ -11,9 +11,19 @@ import (
 )
 
 func TestCLIRawProofAndReceiptAcrossActualRestartAndReplica(t *testing.T) {
+	for _, mode := range []string{"browser", "device"} {
+		t.Run(mode, func(t *testing.T) { cliRawRestartAndReplica(t, mode) })
+	}
+}
+func cliRawRestartAndReplica(t *testing.T, mode string) {
 	f := newExternalFixture(t)
 	f.claims["aud"] = "cli"
 	f.claims["nonce"] = strings.Repeat("A", 43)
+	q := clioidc.PrepareRequest{Mode: "browser", Nonce: strings.Repeat("A", 43), RedirectURI: "http://127.0.0.1:8000/callback"}
+	if mode == "device" {
+		delete(f.claims, "nonce")
+		q = clioidc.PrepareRequest{Mode: "device"}
+	}
 	raw := f.sign(t, f.claims)
 	v := f.view(t)
 	info, e := v.ProviderInfo("corp")
@@ -22,7 +32,7 @@ func TestCLIRawProofAndReceiptAcrossActualRestartAndReplica(t *testing.T) {
 	}
 	d := info.Descriptor
 	s := clioidc.Source{Provider: d.Ref.ID, UID: d.Ref.UID, Origin: string(d.Ref.Origin), Spec: d.SpecIdentity, Policy: d.PolicyIdentity, Resource: info.ResourceIdentity, Issuer: d.Issuer, ClientID: d.Spec.CLIClientID}
-	sealed, _, e := v.SealCLIReceipt(s, clioidc.PrepareRequest{Mode: "browser", Nonce: strings.Repeat("A", 43), RedirectURI: "http://127.0.0.1:8000/callback"}, f.now)
+	sealed, _, e := v.SealCLIReceipt(s, q, f.now)
 	if e != nil {
 		t.Fatal("receipt")
 	}
@@ -86,7 +96,7 @@ func TestCLIRawProofAndReceiptAcrossActualRestartAndReplica(t *testing.T) {
 	}
 	changed := s
 	changed.Resource = strings.Repeat("f", 64)
-	if _, _, e = v.SealCLIReceipt(changed, clioidc.PrepareRequest{Mode: "browser", Nonce: strings.Repeat("A", 43), RedirectURI: "http://127.0.0.1:8000/callback"}, f.now); e == nil {
+	if _, _, e = v.SealCLIReceipt(changed, q, f.now); e == nil {
 		t.Fatal("resource substitution")
 	}
 }

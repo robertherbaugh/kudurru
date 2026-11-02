@@ -44,6 +44,10 @@ type servingBrowserOP struct {
 	logoutFailure          atomic.Bool
 	omitLogout             bool
 	cliPublic              bool
+	cliDevice              bool
+	devices                map[string]*servingDeviceGrant
+	deviceReady            chan struct{}
+	deviceTimes            []time.Time
 	lastToken              string
 }
 type servingBrowserOPFlow struct {
@@ -125,6 +129,11 @@ func (p *servingBrowserOP) serve(w http.ResponseWriter, r *http.Request) {
 			metadata["token_endpoint_auth_methods_supported"] = []string{"client_secret_basic", "none"}
 			metadata["response_types_supported"] = []string{"code"}
 		}
+		if p.cliDevice {
+			metadata["device_authorization_endpoint"] = issuer + "/device"
+			metadata["token_endpoint"] = issuer + "/device-token"
+			metadata["grant_types_supported"] = []string{"authorization_code", deviceGrantType}
+		}
 		p.mu.Lock()
 		omit := p.omitLogout
 		p.mu.Unlock()
@@ -132,6 +141,12 @@ func (p *servingBrowserOP) serve(w http.ResponseWriter, r *http.Request) {
 			metadata["end_session_endpoint"] = issuer + "/end"
 		}
 		_ = json.NewEncoder(w).Encode(metadata)
+	case strings.HasSuffix(r.URL.Path, "/device") && p.cliDevice:
+		p.authorizeDevice(w, r, issuer)
+	case strings.HasSuffix(r.URL.Path, "/device-token") && p.cliDevice:
+		p.exchangeDevice(w, r, issuer)
+	case strings.HasSuffix(r.URL.Path, "/approve") && p.cliDevice:
+		p.approveDevice(w, r)
 	case strings.HasSuffix(r.URL.Path, "/keys"):
 		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: p.key.Public(), KeyID: "browser-test", Algorithm: "EdDSA", Use: "sig"}}})
 	case strings.HasSuffix(r.URL.Path, "/end"):

@@ -44,6 +44,9 @@ a loopback callback on port 8000 or 18000 and S256 PKCE. The original OP ID toke
 is stored as bearer; no Kudurru token or browser session is created. This mode
 requires verified HTTPS for the API and OP. Select --provider when necessary;
 --oidc-ca-file configures OP trust separately from the API --ca-file.
+Use --device for RFC8628 device login on a headless machine. Approve only a
+request you initiated, checking the provider, client and displayed user code.
+Device approval never creates a Kudurru session or replacement token.
 
 With --token the API token is verified (GET /auth/me) and stored. With
 --username the local password is exchanged for a session (POST /auth/login),
@@ -62,7 +65,7 @@ or automatic retries.`,
   echo "$PW" | kudurru login --server http://127.0.0.1:8080 --username admin --password-stdin --name local`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if oidc.provider != "" && (o.token != "" || username != "" || password != "" || passwordStdin || tokenStdin || totpPrompt || totpStdin || tokenName != "" || expiresIn != "") {
+			if (oidc.provider != "" || oidc.device) && (o.token != "" || username != "" || password != "" || passwordStdin || tokenStdin || totpPrompt || totpStdin || tokenName != "" || expiresIn != "") {
 				return errors.New("OIDC provider selection cannot be combined with local or API-token options")
 			}
 			factor := loginFactorOptions{username: username, password: password, token: o.token, passwordStdin: passwordStdin, tokenStdin: tokenStdin, prompt: totpPrompt, stdin: totpStdin}
@@ -128,7 +131,7 @@ or automatic retries.`,
 					return errors.New("empty token on stdin")
 				}
 			}
-			if token == "" && username == "" && oidc.provider == "" {
+			if token == "" && username == "" && oidc.provider == "" && !oidc.device {
 				token = o.getenv(cli.EnvToken)
 			}
 			errOut := cmd.ErrOrStderr()
@@ -183,7 +186,11 @@ or automatic retries.`,
 				if password != "" || passwordStdin || tokenName != "" || expiresIn != "" {
 					return errors.New("local password or token options require the matching credential mode")
 				}
-				token, me, oidcExpiry, err = o.browserLogin(cmd, r, oidc)
+				if oidc.device {
+					token, me, oidcExpiry, err = o.deviceLogin(cmd, r, oidc)
+				} else {
+					token, me, oidcExpiry, err = o.browserLogin(cmd, r, oidc)
+				}
 				if err != nil {
 					return err
 				}
@@ -223,6 +230,7 @@ or automatic retries.`,
 		},
 	}
 	f := cmd.Flags()
+	f.BoolVar(&oidc.device, "device", false, "use the public OIDC device authorization flow without a loopback listener")
 	f.StringVar(&oidc.provider, "provider", "", "configured public OIDC provider (default: the only eligible provider)")
 	f.StringVar(&oidc.caFile, "oidc-ca-file", "", "additional PEM roots for the OP, separate from API TLS")
 	f.StringVar(&name, "name", "", "context name (default: the server host)")

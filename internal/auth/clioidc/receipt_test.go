@@ -47,3 +47,28 @@ func TestCLIReceiptCorrelationIsReusableAndPurposeSeparated(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIDeviceReceiptHasNoInventedBrowserNonce(t *testing.T) {
+	now := time.Now()
+	source := Source{"corp", "uid", "config", strings.Repeat("a", 64), strings.Repeat("b", 64), strings.Repeat("c", 64), "https://issuer.test", "cli"}
+	r, e := NewReceipt(source, PrepareRequest{Mode: "device"}, now)
+	if e != nil {
+		t.Fatal("device correlation")
+	}
+	codec, _ := NewCodec([]byte(strings.Repeat("k", 32)), nil)
+	raw, e := codec.Seal(r, now)
+	if e != nil {
+		t.Fatal("seal device")
+	}
+	for range 2 {
+		got, e := codec.Open(raw, now)
+		if e != nil || got.Request().Mode != "device" || got.Request().Nonce != "" {
+			t.Fatal("reusable non-authoritative device receipt")
+		}
+	}
+	for _, q := range []PrepareRequest{{Mode: "device", Nonce: strings.Repeat("A", 43)}, {Mode: "device", RedirectURI: "http://127.0.0.1:8000/callback"}} {
+		if q.Validate() == nil {
+			t.Fatal("mixed device/browser correlation")
+		}
+	}
+}

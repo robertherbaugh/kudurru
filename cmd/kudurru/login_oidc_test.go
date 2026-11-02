@@ -76,6 +76,9 @@ func runActualCLILogin(t *testing.T, f *servingBrowserFixture, options loginOIDC
 	root.SetErr(&errOut)
 	config := filepath.Join(t.TempDir(), "contexts.yaml")
 	root.SetArgs([]string{"--cli-config", config, "--ca-file", apiCA, "login", "--server", server.URL, "--name", "actual", "--provider", "corp", "--oidc-ca-file", options.caFile})
+	if options.device {
+		root.SetArgs([]string{"--cli-config", config, "--ca-file", apiCA, "login", "--server", server.URL, "--name", "actual", "--provider", "corp", "--oidc-ca-file", options.caFile, "--device"})
+	}
 	e := root.ExecuteContext(t.Context())
 	return o, config, out.String() + errOut.String(), e
 }
@@ -297,6 +300,7 @@ func TestCLIOIDCVerifyFinalActualClockRegressionRefused(t *testing.T) {
 	var bearer string
 	_, _, _, e := runActualCLILogin(t, f, loginOIDCOptions{}, func(r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/verify") {
+			base = time.Now() // Observe after the actual OP issued its strict-time proof.
 			body, _ = io.ReadAll(r.Body)
 			r.Body = io.NopCloser(strings.NewReader(string(body)))
 			bearer = r.Header.Get("Authorization")

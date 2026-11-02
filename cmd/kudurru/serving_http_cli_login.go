@@ -70,7 +70,7 @@ func (h *servingHTTP) cliProviders(w http.ResponseWriter, r *http.Request) error
 			continue
 		}
 		i := c.Info()
-		out = append(out, api.CLILoginProviderBody{ID: p.ID, DisplayName: p.DisplayName, Browser: i.Browser})
+		out = append(out, api.CLILoginProviderBody{ID: p.ID, DisplayName: p.DisplayName, Browser: i.Browser, Device: i.Device})
 	}
 	return servingHTTPList(w, r, out)
 }
@@ -96,6 +96,9 @@ func (h *servingHTTP) cliPrepare(w http.ResponseWriter, r *http.Request) error {
 		return servingCLIUnavailable()
 	}
 	i := c.Info()
+	if q.Mode == "browser" && !i.Browser || q.Mode == "device" && !i.Device {
+		return servingCLIUnavailable()
+	}
 	raw, expiry, e := v.SealCLIReceipt(i.Source, q, h.now())
 	if e != nil {
 		return servingCLIInvalid()
@@ -103,7 +106,7 @@ func (h *servingHTTP) cliPrepare(w http.ResponseWriter, r *http.Request) error {
 	if !c.Current() || r.Context().Err() != nil {
 		return servingCLIUnavailable()
 	}
-	return servingHTTPJSON(w, 200, clioidc.Preparation{Provider: i.Source.Provider, DisplayName: i.DisplayName, Issuer: i.Source.Issuer, ClientID: i.Source.ClientID, AuthorizationURL: i.AuthorizationURL, TokenURL: i.TokenURL, Scopes: i.Scopes, Receipt: raw, ExpiresAt: expiry})
+	return servingHTTPJSON(w, 200, clioidc.Preparation{Provider: i.Source.Provider, DisplayName: i.DisplayName, Issuer: i.Source.Issuer, ClientID: i.Source.ClientID, AuthorizationURL: i.AuthorizationURL, TokenURL: i.TokenURL, DeviceURL: i.DeviceURL, Scopes: i.Scopes, Receipt: raw, ExpiresAt: expiry})
 }
 func (h *servingHTTP) cliVerify(w http.ResponseWriter, r *http.Request) error {
 	var q clioidc.VerifyRequest

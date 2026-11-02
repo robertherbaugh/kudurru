@@ -32,6 +32,7 @@ import (
 
 type loginOIDCOptions struct {
 	provider, caFile string
+	device           bool
 	open             func(context.Context, string) error
 }
 
@@ -50,7 +51,7 @@ func openLoginBrowser(ctx context.Context, target string) error {
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if cmd.Run() != nil {
-		return errors.New("browser could not be opened")
+		return errors.New("browser could not be opened; start again with --device on a headless machine")
 	}
 	return nil
 }
@@ -165,17 +166,32 @@ func newCLIOPClient(caFile string) (*http.Client, error) {
 type publicLoginTokens struct {
 	IDToken     string `json:"id_token"`
 	AccessToken string `json:"access_token"`
+	Error       string `json:"error"`
 }
 
 func (publicLoginTokens) String() string     { return "private public-client token proof" }
 func (p publicLoginTokens) GoString() string { return p.String() }
 func publicLoginPost(ctx context.Context, c *http.Client, target string, form url.Values, out any) error {
-	if !clioidc.HTTPS(target) {
+	status, b, e := publicLoginResponse(ctx, c, target, form)
+	defer clear(b)
+	if e != nil || status != http.StatusOK || decodePublicLoginJSON(b, out) != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return clioidc.ErrInvalid
+	}
+	return nil
+}
+
+// Each call is one explicit protocol operation. Only the device polling caller
+// may interpret a pre-response timeout under RFC8628; other callers refuse it.
+func publicLoginResponse(ctx context.Context, c *http.Client, target string, form url.Values) (int, []byte, error) {
+	if !clioidc.HTTPS(target) {
+		return 0, nil, clioidc.ErrInvalid
 	}
 	r, e := http.NewRequestWithContext(ctx, "POST", target, strings.NewReader(form.Encode()))
 	if e != nil {
-		return clioidc.ErrInvalid
+		return 0, nil, clioidc.ErrInvalid
 	}
 	r.GetBody = nil
 	r.Close = true
@@ -184,21 +200,26 @@ func publicLoginPost(ctx context.Context, c *http.Client, target string, form ur
 	resp, e := c.Do(r)
 	if e != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return 0, nil, ctx.Err()
 		}
-		return clioidc.ErrInvalid
+		var n net.Error
+		if errors.As(e, &n) && n.Timeout() {
+			return 0, nil, errDeviceConnectionTimeout
+		}
+		return 0, nil, clioidc.ErrInvalid
 	}
 	defer func() { _ = resp.Body.Close() }()
 	media, _, e := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if e != nil || media != "application/json" || resp.StatusCode != 200 || resp.ContentLength > 64<<10 {
-		return clioidc.ErrInvalid
+	if e != nil || media != "application/json" || resp.ContentLength > 64<<10 {
+		return 0, nil, clioidc.ErrInvalid
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, (64<<10)+1))
-	defer clear(b)
-	if e != nil || len(b) > 64<<10 || decodePublicLoginJSON(b, out) != nil {
-		return clioidc.ErrInvalid
+	// A body-read failure may follow successful grant consumption. It is terminal.
+	if e != nil || len(b) > 64<<10 {
+		clear(b)
+		return 0, nil, clioidc.ErrInvalid
 	}
-	return nil
+	return resp.StatusCode, b, nil
 }
 
 // Reject duplicate top-level members before decoding consumed protocol fields.
@@ -264,24 +285,9 @@ func (o *cliOpts) browserLogin(cmd *cobra.Command, r cli.Resolved, options login
 	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), clioidc.Lifetime)
 	defer cancel()
-	c, e := o.newClient(r)
+	c, id, e := o.selectCLILogin(ctx, r, options)
 	if e != nil {
-		return "", nil, time.Time{}, loginStageError("configure OIDC API transport", e)
-	}
-	providers, e := c.CLILoginProviders(ctx)
-	if e != nil {
-		return "", nil, time.Time{}, loginStageError("select OIDC provider", e)
-	}
-	id := options.provider
-	if id == "" && len(providers) == 1 {
-		id = providers[0].ID
-	}
-	found := false
-	for _, p := range providers {
-		found = found || p.ID == id && p.Browser
-	}
-	if !found {
-		return "", nil, time.Time{}, errors.New("select an advertised public CLI provider with --provider; configure CLIClientID and public PKCE support")
+		return "", nil, time.Time{}, e
 	}
 	l, e := listenCLILogin(ctx)
 	if e != nil {
@@ -314,9 +320,12 @@ func (o *cliOpts) browserLogin(cmd *cobra.Command, r cli.Resolved, options login
 	}
 	var tokens publicLoginTokens
 	e = publicLoginPost(ctx, op, p.TokenURL, url.Values{"grant_type": {"authorization_code"}, "client_id": {p.ClientID}, "code": {code}, "redirect_uri": {q.RedirectURI}, "code_verifier": {verifier}}, &tokens)
-	if e != nil || tokens.IDToken == "" {
+	if e != nil || tokens.IDToken == "" || tokens.Error != "" {
 		return "", nil, time.Time{}, loginStageError("exchange OIDC code", e)
 	}
+	return o.completeCLILogin(ctx, c, id, p, tokens)
+}
+func (o *cliOpts) completeCLILogin(ctx context.Context, c *apiclient.Client, id string, p clioidc.Preparation, tokens publicLoginTokens) (string, *apiclient.Me, time.Time, error) {
 	c.SetToken(tokens.IDToken)
 	verified, e := c.VerifyCLILogin(ctx, id, clioidc.VerifyRequest{Receipt: p.Receipt, AccessToken: tokens.AccessToken})
 	if e != nil {
@@ -326,4 +335,34 @@ func (o *cliOpts) browserLogin(cmd *cobra.Command, r cli.Resolved, options login
 		return "", nil, time.Time{}, clioidc.ErrInvalid
 	}
 	return tokens.IDToken, &verified.Me, verified.ExpiresAt, nil
+}
+
+func (o *cliOpts) selectCLILogin(ctx context.Context, r cli.Resolved, options loginOIDCOptions) (*apiclient.Client, string, error) {
+	if !clioidc.HTTPS(r.Server) || r.InsecureSkipVerify {
+		return nil, "", errors.New("OIDC login requires an HTTPS API with verified TLS")
+	}
+	c, e := o.newClient(r)
+	if e != nil {
+		return nil, "", loginStageError("configure OIDC API transport", e)
+	}
+	providers, e := c.CLILoginProviders(ctx)
+	if e != nil {
+		return nil, "", loginStageError("select OIDC provider", e)
+	}
+	eligible := []string{}
+	for _, p := range providers {
+		if options.device && p.Device || !options.device && p.Browser {
+			eligible = append(eligible, p.ID)
+		}
+	}
+	id := options.provider
+	if id == "" && len(eligible) == 1 {
+		id = eligible[0]
+	}
+	for _, candidate := range eligible {
+		if candidate == id {
+			return c, id, nil
+		}
+	}
+	return nil, "", errors.New("select an advertised public CLI provider with --provider; configure CLIClientID and support for the selected flow")
 }

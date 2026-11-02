@@ -12,10 +12,10 @@ import (
 
 // CLIInfo contains detached public metadata from one exact admitted capability.
 type CLIInfo struct {
-	Source                                  clioidc.Source
-	DisplayName, AuthorizationURL, TokenURL string
-	Scopes                                  []string
-	Browser                                 bool
+	Source                                             clioidc.Source
+	DisplayName, AuthorizationURL, TokenURL, DeviceURL string
+	Scopes                                             []string
+	Browser, Device                                    bool
 }
 
 // CLI borrows its original complete lease. It grants neither identity nor writes.
@@ -49,7 +49,9 @@ func (l *Lease) CLI(ref servingauth.ProviderRef, resourceID string) (*CLI, error
 		if err != nil || id != resourceID || e.resource.Availability != servingauth.ProviderReady {
 			return nil, ErrStale
 		}
-		if e.descriptor.Spec.CLIClientID == "" || !e.metadata.cliBrowser || !clioidc.HTTPS(e.descriptor.Issuer) || !clioidc.HTTPS(e.metadata.authorization) || !clioidc.HTTPS(e.metadata.token) {
+		browser := e.metadata.cliBrowser && clioidc.HTTPS(e.metadata.authorization)
+		device := e.metadata.cliDevice && clioidc.HTTPS(e.metadata.device)
+		if e.descriptor.Spec.CLIClientID == "" || (!browser && !device) || !clioidc.HTTPS(e.descriptor.Issuer) || !clioidc.HTTPS(e.metadata.token) {
 			return nil, ErrUnavailable
 		}
 		resolver := cut.host.objects
@@ -64,7 +66,7 @@ func (l *Lease) CLI(ref servingauth.ProviderRef, resourceID string) (*CLI, error
 		}
 		for _, a := range cut.authorities {
 			if a.Active && a.Provider == ref && a.SpecIdentity == e.descriptor.SpecIdentity && hash(a.Binding) == e.resource.TrustIdentity {
-				return &CLI{base: &Browser{lease: l, resolver: resolver, ref: e.descriptor, binding: a.Binding}, info: CLIInfo{Source: clioidc.Source{Provider: ref.ID, UID: ref.UID, Origin: string(ref.Origin), Spec: e.descriptor.SpecIdentity, Policy: e.descriptor.PolicyIdentity, Resource: id, Issuer: e.descriptor.Issuer, ClientID: e.descriptor.Spec.CLIClientID}, DisplayName: e.descriptor.Spec.DisplayName, AuthorizationURL: e.metadata.authorization, TokenURL: e.metadata.token, Scopes: slices.Clone(e.descriptor.Spec.Scopes), Browser: e.metadata.cliBrowser}}, nil
+				return &CLI{base: &Browser{lease: l, resolver: resolver, ref: e.descriptor, binding: a.Binding}, info: CLIInfo{Source: clioidc.Source{Provider: ref.ID, UID: ref.UID, Origin: string(ref.Origin), Spec: e.descriptor.SpecIdentity, Policy: e.descriptor.PolicyIdentity, Resource: id, Issuer: e.descriptor.Issuer, ClientID: e.descriptor.Spec.CLIClientID}, DisplayName: e.descriptor.Spec.DisplayName, AuthorizationURL: e.metadata.authorization, TokenURL: e.metadata.token, DeviceURL: e.metadata.device, Device: device, Scopes: slices.Clone(e.descriptor.Spec.Scopes), Browser: browser}}, nil
 			}
 		}
 		return nil, ErrStale

@@ -61,7 +61,12 @@ func (v *View) VerifyCLILogin(ctx context.Context, proof Credential, r clioidc.R
 	if e != nil {
 		return auth.Principal{}, time.Time{}, e
 	}
-	token, e := provider.resource.Verifier.VerifyBrowser(ctx, proof.Value, oidccore.BrowserProof{Nonce: r.Request().Nonce, AccessToken: access}, now)
+	var token *oidccore.VerifiedToken
+	if r.Request().Mode == "device" {
+		token, e = provider.resource.Verifier.VerifyDevice(ctx, proof.Value, access, now)
+	} else {
+		token, e = provider.resource.Verifier.VerifyBrowser(ctx, proof.Value, oidccore.BrowserProof{Nonce: r.Request().Nonce, AccessToken: access}, now)
+	}
 	if e != nil {
 		return auth.Principal{}, time.Time{}, ErrCredentials
 	}

@@ -117,30 +117,52 @@ func (v *Verifier) VerifyBrowser(ctx context.Context, raw string, proof BrowserP
 	if !constantEqual(t.facts.Nonce, proof.Nonce) {
 		return nil, ErrBrowser
 	}
+	if verifyAccessHash(t, proof.AccessToken) != nil {
+		return nil, ErrBrowser
+	}
+	t.browser = true
+	return t, nil
+}
+
+// VerifyDevice checks optional at_hash on an independently verified ID token.
+// RFC8628 does not require a nonce; this cannot mark browser enrollment proof.
+func (v *Verifier) VerifyDevice(ctx context.Context, raw, access string, now time.Time) (*VerifiedToken, error) {
+	if len(access) > MaxTokenBytes {
+		return nil, ErrBounds
+	}
+	t, e := v.Verify(ctx, raw, now)
+	if e != nil {
+		return nil, e
+	}
+	if verifyAccessHash(t, access) != nil {
+		return nil, ErrBrowser
+	}
+	return t, nil
+}
+func verifyAccessHash(t *VerifiedToken, access string) error {
 	if t.facts.AccessTokenHash != "" {
-		if proof.AccessToken == "" {
-			return nil, ErrBrowser
+		if access == "" {
+			return ErrBrowser
 		}
 		var sum []byte
 		switch t.facts.Algorithm {
 		case "RS256", "PS256", "ES256":
-			h := sha256.Sum256([]byte(proof.AccessToken))
+			h := sha256.Sum256([]byte(access))
 			sum = h[:]
 		case "RS384", "PS384", "ES384":
-			h := sha512.Sum384([]byte(proof.AccessToken))
+			h := sha512.Sum384([]byte(access))
 			sum = h[:]
 		case "RS512", "PS512", "ES512", "EdDSA":
-			h := sha512.Sum512([]byte(proof.AccessToken))
+			h := sha512.Sum512([]byte(access))
 			sum = h[:]
 		default:
-			return nil, ErrBrowser
+			return ErrBrowser
 		}
 		if !constantEqual(base64.RawURLEncoding.EncodeToString(sum[:len(sum)/2]), t.facts.AccessTokenHash) {
-			return nil, ErrBrowser
+			return ErrBrowser
 		}
 	}
-	t.browser = true
-	return t, nil
+	return nil
 }
 
 func constantEqual(a, b string) bool {
