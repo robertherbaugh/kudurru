@@ -21,6 +21,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime/currentguard"
 	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -45,11 +46,12 @@ type integrationRuntime struct {
 	factory func(string) (integration.Integration, error)
 }
 type integrationCut struct {
-	input       ih.Input
-	image       *replication.Image
-	license     license.Cut
-	keysCurrent func() bool
-	instances   map[kinds.Owner]*ih.Instance
+	input              ih.Input
+	image              *replication.Image
+	license            license.Cut
+	keysCurrent        func() bool
+	credentialResolver *credentials.Resolver
+	instances          map[kinds.Owner]*ih.Instance
 }
 
 func newIntegrationRuntime(s *servingRuntime, schema *servingbuild.Schema, pin currentguard.PinFunc) (*integrationRuntime, error) {
@@ -133,6 +135,7 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	if err != nil {
 		return ih.Input{}, ih.ErrCredentials
 	}
+	liveResolver := resolver
 	resolver, err = resolver.Snapshot(ctx, refs)
 	if err != nil {
 		return ih.Input{}, err
@@ -260,7 +263,7 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	if !lc.Current() || !keys.Current() {
 		return ih.Input{}, ih.ErrFenced
 	}
-	next := &integrationCut{image: image, license: lc, keysCurrent: keys.Current, instances: map[kinds.Owner]*ih.Instance{}}
+	next := &integrationCut{image: image, license: lc, keysCurrent: keys.Current, credentialResolver: liveResolver, instances: map[kinds.Owner]*ih.Instance{}}
 	in.Resource = next
 	next.input = in
 	instances, err = ih.CaptureInstances(ctx, in)
@@ -320,7 +323,7 @@ func (r *integrationRuntime) original(ctx context.Context, g ih.ExecutionGuard) 
 
 type integrationRequestKey struct{}
 
-// fence is background-only. Current desired objects are compared to the
+// fence checks current desired objects against the
 // ORIGINAL cut; a fresher read may reject it but can never repair or replace it.
 func (r *integrationRuntime) fence(ctx context.Context, g ih.ExecutionGuard) error {
 	bound, original, err := r.requestContext(ctx, g.Ledger)
@@ -328,6 +331,14 @@ func (r *integrationRuntime) fence(ctx context.Context, g ih.ExecutionGuard) err
 		return ih.ErrFenced
 	}
 	ctx = bound
+	if op, present := ctx.Value(integrationOperationKey{}).(*integrationOperation); present {
+		if err := op.credentialsCurrent(ctx); err != nil {
+			return err
+		}
+		return r.host.WithLease(ctx, g.Ledger, func(ctx context.Context) error {
+			return r.command(ctx, g, func(context.Context, *sqlite.CommandTx, *integrationCut) error { return nil })
+		})
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	c, err := r.original(ctx, g)
@@ -379,6 +390,31 @@ func (r *integrationRuntime) command(ctx context.Context, g ih.ExecutionGuard, f
 	if !ok || !token.Term().Same(g.Ledger.Term) {
 		return ih.ErrFenced
 	}
+	apply := func(ctx context.Context, tx *sqlite.CommandTx) error {
+		if err := integrationInputsCurrent(ctx, tx, c, g); err != nil {
+			return err
+		}
+		return fn(ctx, tx, c)
+	}
+	if op, present := ctx.Value(integrationOperationKey{}).(*integrationOperation); present {
+		if op == nil || op.runtime != r || op.guard != g || op.cut != c {
+			return ih.ErrFenced
+		}
+		// Do not nest r.pin around WithCommand: the coordinator already holds
+		// publication -> provider -> host -> SQLite in the established order.
+		return r.s.providers.WithCommand(ctx, writerTarget(token), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+			if err := op.check(ctx); err != nil {
+				return err
+			}
+			if err := tx.RequireCommitCheck(op.check); err != nil {
+				return err
+			}
+			if _, err := servingauth.ReauthorizeOperationCurrent(ctx, tx, deps, op.proof, r.s.opts.Now); err != nil {
+				return err
+			}
+			return apply(ctx, tx)
+		})
+	}
 	fence := pr.PublicationFence{Term: token.Term(), Incarnation: token.Incarnation()}
 	return r.pin(ctx, fence, func(p currentguard.Pinned) error {
 		return r.s.opts.Store.Command(ctx, g.Ledger.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
@@ -394,35 +430,43 @@ func (r *integrationRuntime) command(ctx context.Context, g ih.ExecutionGuard, f
 			if err := tx.RequireCommitCheck(final); err != nil {
 				return err
 			}
-			var definition public.Integration
-			if err := tx.Get(ctx, store.Key{Kind: "Integration", Namespace: g.Ledger.Owner.Namespace, Name: g.Ledger.Owner.Name}, &definition); err != nil {
-				return err
-			}
-			digest, _ := json.Marshal(definition.Spec)
-			if string(definition.UID) != g.Ledger.Owner.UID || definition.ResourceVersion != g.Ledger.IntegrationResourceVersion || kinds.Digest(digest) != g.Ledger.ConfigDigest || definition.Spec.Suspend || !definition.DeletionTimestamp.IsZero() {
-				return ih.ErrFenced
-			}
-			var selected []plan.Source
-			if c.instances[g.Ledger.Owner].Definition().Spec.Cloudflare != nil {
-				selected = c.input.Sources
-			}
-			for _, source := range selected {
-				var zone public.DNSZone
-				var records public.DNSRecordSet
-				if err := tx.Get(ctx, store.KeyOf(source.Zone), &zone); err != nil {
-					return err
-				}
-				if err := tx.Get(ctx, store.KeyOf(source.Records), &records); err != nil {
-					return err
-				}
-				if zone.UID != source.Zone.UID || zone.ResourceVersion != source.Zone.ResourceVersion || records.UID != source.Records.UID || records.ResourceVersion != source.Records.ResourceVersion {
-					return ih.ErrFenced
-				}
-			}
-			return fn(ctx, tx, c)
+			return apply(ctx, tx)
 		})
 	})
 }
+
+// integrationInputsCurrent compares desired objects in the actual transaction
+// to retained original versions. A private budget/receipt write changes no
+// reviewed input and never supplies a successor frame or credential.
+func integrationInputsCurrent(ctx context.Context, tx *sqlite.CommandTx, c *integrationCut, g ih.ExecutionGuard) error {
+	var definition public.Integration
+	if err := tx.Get(ctx, store.Key{Kind: "Integration", Namespace: g.Ledger.Owner.Namespace, Name: g.Ledger.Owner.Name}, &definition); err != nil {
+		return err
+	}
+	digest, _ := json.Marshal(definition.Spec)
+	if string(definition.UID) != g.Ledger.Owner.UID || definition.ResourceVersion != g.Ledger.IntegrationResourceVersion || kinds.Digest(digest) != g.Ledger.ConfigDigest || definition.Spec.Suspend || !definition.DeletionTimestamp.IsZero() {
+		return ih.ErrFenced
+	}
+	var selected []plan.Source
+	if c.instances[g.Ledger.Owner].Definition().Spec.Cloudflare != nil {
+		selected = c.input.Sources
+	}
+	for _, source := range selected {
+		var zone public.DNSZone
+		var records public.DNSRecordSet
+		if err := tx.Get(ctx, store.KeyOf(source.Zone), &zone); err != nil {
+			return err
+		}
+		if err := tx.Get(ctx, store.KeyOf(source.Records), &records); err != nil {
+			return err
+		}
+		if zone.UID != source.Zone.UID || zone.ResourceVersion != source.Zone.ResourceVersion || records.UID != source.Records.UID || records.ResourceVersion != source.Records.ResourceVersion {
+			return ih.ErrFenced
+		}
+	}
+	return nil
+}
+
 func (r *integrationRuntime) write(ctx context.Context, g ledger.Guard, obj store.Object, opt store.ApplyOptions) (store.Object, error) {
 	ctx, guard, err := r.requestContext(ctx, g)
 	if err != nil {
@@ -471,6 +515,13 @@ func integrationBindWriter(ctx, lease context.Context) (context.Context, error) 
 }
 
 func (r *integrationRuntime) status(ctx context.Context, g ih.ExecutionGuard, status ih.InstanceStatus) error {
+	if op, present := ctx.Value(integrationOperationKey{}).(*integrationOperation); present {
+		if op == nil || op.runtime != r || op.guard != g || op.check(ctx) != nil {
+			return ih.ErrFenced
+		}
+		op.status.Store(&status)
+		return nil
+	}
 	bound, original, err := r.requestContext(ctx, g.Ledger)
 	if err != nil || original != g {
 		return ih.ErrFenced
@@ -478,24 +529,28 @@ func (r *integrationRuntime) status(ctx context.Context, g ih.ExecutionGuard, st
 	ctx = bound
 	return r.host.WithLease(ctx, g.Ledger, func(ctx context.Context) error {
 		return r.command(ctx, g, func(ctx context.Context, tx *sqlite.CommandTx, c *integrationCut) error {
-			d := c.instances[g.Ledger.Owner].Definition()
-			d.Status.ObservedGeneration = d.Generation
-			d.Status.Clients = int64(status.Result.Clients)
-			d.Status.CredentialFingerprints = status.CredentialFingerprints
-			d.Status.Records = public.IntegrationRecordCounts{Managed: int64(status.Result.Applied + status.Result.Unchanged), Conflicts: int64(status.Result.Conflicts), Drift: int64(status.Result.Pending)}
-			condition := metav1.Condition{Type: "Ready", Status: metav1.ConditionFalse, Reason: status.Reason, Message: "Background integration is not synchronized.", ObservedGeneration: d.Generation}
-			if status.Phase == "Ready" {
-				condition.Status = metav1.ConditionTrue
-				condition.Message = "Background integration is synchronized."
-			}
-			meta.SetStatusCondition(&d.Status.Conditions, condition)
-			if !status.LastSync.IsZero() {
-				at := metav1.NewTime(status.LastSync)
-				d.Status.LastSyncTime = &at
-			}
-			return tx.UpdateStatus(ctx, d)
+			return stageIntegrationStatus(ctx, tx, c, g, status)
 		})
 	})
+}
+
+func stageIntegrationStatus(ctx context.Context, tx *sqlite.CommandTx, c *integrationCut, g ih.ExecutionGuard, status ih.InstanceStatus) error {
+	d := c.instances[g.Ledger.Owner].Definition()
+	d.Status.ObservedGeneration = d.Generation
+	d.Status.Clients = int64(status.Result.Clients)
+	d.Status.CredentialFingerprints = status.CredentialFingerprints
+	d.Status.Records = public.IntegrationRecordCounts{Managed: int64(status.Result.Applied + status.Result.Unchanged), Conflicts: int64(status.Result.Conflicts), Drift: int64(status.Result.Pending)}
+	condition := metav1.Condition{Type: "Ready", Status: metav1.ConditionFalse, Reason: status.Reason, Message: "Background integration is not synchronized.", ObservedGeneration: d.Generation}
+	if status.Phase == "Ready" {
+		condition.Status = metav1.ConditionTrue
+		condition.Message = "Background integration is synchronized."
+	}
+	meta.SetStatusCondition(&d.Status.Conditions, condition)
+	if !status.LastSync.IsZero() {
+		at := metav1.NewTime(status.LastSync)
+		d.Status.LastSyncTime = &at
+	}
+	return tx.UpdateStatus(ctx, d)
 }
 
 // beforeObserve retains the original cut for acquisition through acknowledgment.

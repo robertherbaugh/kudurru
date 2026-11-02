@@ -70,6 +70,39 @@ func (c *CommandCapture) Current(ctx context.Context) error {
 	return c.currentLocked()
 }
 
+// Bind retains this capture's original request scope before root performs its
+// initial admission. It grants no caller or writer authority. Root must keep
+// the original HTTP lifetime and use WithLease for each concrete transaction.
+func (c *CommandCapture) Bind(ctx context.Context) (context.Context, ExecutionGuard, error) {
+	if err := c.Current(ctx); err != nil {
+		return nil, ExecutionGuard{}, err
+	}
+	bound, err := c.host.scopedOriginal(ctx, c.job, c.frame, c.guard)
+	if err != nil {
+		return nil, ExecutionGuard{}, err
+	}
+	return context.WithValue(bound, commandCaptureKey{}, c), c.guard, nil
+}
+
+// CheckLifetime checks only immutable original contexts and host licensing.
+// It takes no locks and is safe inside root's transaction final check. Root
+// must separately hold WithLease/WithSource to exclude frame replacement.
+func (c *CommandCapture) CheckLifetime(ctx context.Context) error {
+	if c == nil || c.host == nil || c.origin == nil || c.job == nil || c.lease == nil || ctx == nil {
+		return ErrInvalid
+	}
+	if err := c.origin.Err(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.job.ctx.Err() != nil || c.lease.Err() != nil || !c.host.opts.Allowed() {
+		return ErrFenced
+	}
+	return nil
+}
+
 func (c *CommandCapture) currentLocked() error {
 	j := c.job
 	if j == nil || c.host.jobs[j.key] != j || !j.active || j.ctx.Err() != nil || c.lease == nil || c.lease.Err() != nil || j.leaseCtx != c.lease || j.frame.instance != c.frame.instance || j.guard != c.guard.Ledger || j.frame.input.BundleID != c.guard.BundleID || !c.host.opts.Allowed() {

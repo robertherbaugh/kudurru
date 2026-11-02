@@ -261,6 +261,11 @@ func (h *Host) WithLease(ctx context.Context, g ledger.Guard, fn func(context.Co
 	if j == nil || !j.active || j.ctx.Err() != nil || j.leaseCtx.Err() != nil || j.guard != g || !h.opts.Allowed() {
 		return ErrFenced
 	}
+	if request, ok := ctx.Value(scopeKey{}).(requestScope); ok && request.original != nil {
+		if request.j != j || request.g.Ledger != g || j.frame.instance != request.original.instance || j.leaseCtx != request.original.lease || j.frame.input.BundleID != request.g.BundleID {
+			return ErrFenced
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
