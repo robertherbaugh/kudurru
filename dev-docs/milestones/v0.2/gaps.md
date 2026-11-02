@@ -1985,3 +1985,127 @@ unchanged. Initial lint found import/style issues, and an immediate React update
 assertion required waiting for the caller replacement. Final source passed the
 commands above. Physical identity-provider sessions are not ended by these
 account operations; RP-initiated logout remains the separate F48b flow.
+
+### F18c mounted UniFi hostname acceptance
+
+Commit 380f43f adds actual TLS controller acquisition through the production
+integration host, durable SQLite source and complete runServe DNS assembly.
+It qualifies normalized legacy and official-name-only clients, exact hostname
+precedence over nameGlob, conflicting IP claims, complete omission, exclusive
+source expiry, failed-poll retention bounds, immutable held snapshots, independent
+same-name allocations, source UID and mounted endpoint/credential replacement.
+CNAME decisions retain the original policy within the unchanged request deadline.
+The native path may correctly return SERVFAIL after its original primary image
+expires; it never returns retained source answers.
+
+Final source races pass: direct acquisition 40.456s; actual mounted native,
+authenticated PROXYv2 and pinned dnsdist 2.1.3 UDP/TCP lifecycle 109.392s.
+The opt-in daemon test explicitly ran with `KUDURRU_F18C_DNSDIST=1`; wrong PROXY
+credentials are refused. Scoped lint reports zero issues. This is Do53 acceptance
+with a TLS provider connection, not DoT/DoH/QUIC routing qualification. The earlier
+independent periodic-observer scheduling fix remains separately committed as
+d7e98d8/D284 and was not duplicated during integration.
+
+### F61a public CLI loopback login
+
+D286 and 4fddbce implement explicit public CLIClientID with loopback 8000/18000,
+state, nonce and S256 PKCE. The original verified OP ID token is stored as bearer;
+no Kudurru PAT, session or new server-side CLI grant is issued. Read-only public
+source preparation and raw-proof verification retain exact provider/source,
+installed credential, audience, nonce/hash and original expiry bounds. The
+reusable AEAD receipt is source correlation, never authority. Preparation counts requests atomically per normalized client IP,
+independently of authentication-failure buckets. Normal later current commands retain
+original raw-proof, writer and final credential checks.
+
+Agent frozen-source qualification passed all eight affected package race suites
+(1,367 test/subtest results), complete selected CLI race (97 results, 135.227s),
+final scoped lint (zero issues), and post-style CLI race (18 results). Actual
+installed Chrome, verified TLS API/OP, signed JWTs and loopback callbacks ran;
+no browser skip is credited. Receipt/source/secret rotation, protocol duplicates,
+original expiry/clock regression, independent preparation IPs and actual
+SQLite restart/follower verification are included. Initial Chrome failure was
+an Ed25519 TLS test certificate unsupported by the installed browser; the
+fixture now uses ECDSA TLS while retaining EdDSA JWTs and verified trust. Initial
+lint findings were fixed before final passes. Merged OpenAPI/client/reference contracts pass; vendor-specific OP registration
+beyond the local TLS OP is not claimed. F61b device flow remains a separate commit and acceptance record.
+
+
+### F61b public CLI device authorization
+
+D287 and b09fc77 add explicit `login --device` over the original public
+CLIClientID. Trusted discovery must advertise the device endpoint, grant and
+public client authentication. Polling honors pending/slow_down and connection
+timeout pacing without replacing the original grant or widening its deadline.
+HTTP refusal, redirects, unknown protocol errors and body-read timeout are
+terminal. The CLI prints only deliberate verification instructions and stores
+the original verified ID token; no RP session/PAT or refresh credential is issued.
+Device verification preserves ordinary bearer admission, strict CLI audience,
+optional access-token hash, original source/installed credential and time gates.
+No standardized device-code-to-ID-token nonce guarantee is claimed.
+
+Agent full affected core-package races passed 339 test/subtest results; the
+complete selected CLI race passed 122 results in 230.753s, including installed
+Chrome and actual TLS device flows, with no skips. Final targeted in-flight
+cancellation, caller deadline, original clock and Kubernetes transport refusal
+races passed five results in 8.4s. Final scoped lint reported zero issues.
+Concurrent OP grant consumption, ambient bearer refusal, pending/slow_down,
+expiry, source rotation, audience/azp/hash refusal, access-token-only response,
+real SQLite restart/follower verification and bounded response/HTTP failures
+are included. Merged OpenAPI/client/reference contracts pass.
+
+An early pure-core fixture used the web audience and was correctly refused;
+that fixture was corrected to the public CLI audience. A later cancellation
+fixture waited for disconnect without draining its POST body, hung at teardown
+and was stopped; it is not credited green. The fixture now drains the bounded
+body and has an explicit teardown release. The final focused command passed.
+The original synthetic prepare path did not establish a reproduced cross-IP
+lockout: its error was not counted by loginResult. The new independently tested
+request limiter counts five accepted preparations then refuses the sixth,
+without touching the username/IP authentication-failure buckets.
+
+
+### Merged CLI contracts and continuing acceptance
+
+Merged OpenAPI 3.1/3.0, generated Go client/dispatch, TypeScript types and API/CLI
+references now cover 169 operations. Full apiclient/clientdispatch/docsgen races
+pass (1.705s/4.185s/1.395s), selected API OpenAPI/route-permission/generated-client
+races pass (6.192s), dashboard typecheck and local Hugo build pass. The full
+merged clioidc/oidccore/providerresources/servingauth races pass
+(1.028s/3.296s/7.443s/58.161s), as does selected external-admin security race
+(9.277s).
+
+The merged selected command suite is NOT green: it passed 51 test/subtest
+results, including actual installed Chrome, device flow and external-account
+administration, but TestRunServeUniFiHostnamePolicyLifecycle returned SERVFAIL
+after the original held CNAME request reached its five-second deadline
+(5.165s observed). That regression remains under investigation; no deadline or
+original policy guard was relaxed. Earlier isolated F18c acceptance remains
+recorded separately and is not substituted for a successful merged command.
+
+Hosted security 41380836776 and GitHub docs 41380836809 passed on 5ca4054.
+Main CI 41380836896 failed only Go shard 1 at TestRunServeQueryExport: its initial
+single login received 503/unavailable after DNS became ready. Other applicable
+main CI jobs passed. These are old-head results; a new pushed head requires new
+hosted checks. The separate Cloudflare dashboard docs check remains excluded by
+the owner's direction.
+
+### Initial primary status readiness in settings acceptance
+
+85f9243 integrates the separate signed-off settings fixture correction. The
+bounded read-only startup observer now requires Ready=True/Serving for the
+actual zone generation and an active lifecycle with matching UID and source
+resource version. A controlled real controller/HTTP/SQLite interleaving proved
+that observedGeneration alone could accept the initial unavailable phase, then
+Ready/lifecycle writes legitimately superseded a held one-shot PATCH. The
+original publication check refused that request; credentials and writer were
+not replaced.
+
+An actual HTTP 100-continue regression retains a PATCH through an independent
+CSRF-authorized login publication, proves the original cookie remains valid on
+a fresh read, and requires the held PATCH to return 503/unavailable without
+changing settings. The corrected isolated settings restart race passed all 15
+repetitions (170.464s), original command/credential-clock/shutdown fences passed
+(9.199s), and scoped lint reported zero issues. No production code, mutation
+retry or request deadline changed. The historical 3/15 failures did not capture
+enough diagnostic data to prove their exact past interleaving; the controlled
+matching readiness defect is the causal evidence.

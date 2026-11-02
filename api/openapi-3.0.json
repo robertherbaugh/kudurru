@@ -118,6 +118,38 @@
         ],
         "type": "object"
       },
+      "AuthListCLILoginProviderBody": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "type": "string"
+          },
+          "diagnoses": {
+            "description": "Why entries were ignored (role bindings, identity providers).",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CLILoginProviderBody"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "continue",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "AuthListExternalUser": {
         "additionalProperties": false,
         "properties": {
@@ -599,6 +631,132 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "CLILoginPrepareBody": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "string"
+          },
+          "redirectURI": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "CLILoginPreparedBody": {
+        "additionalProperties": false,
+        "properties": {
+          "authorizationURL": {
+            "type": "string"
+          },
+          "clientID": {
+            "type": "string"
+          },
+          "deviceURL": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "receipt": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "tokenURL": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "displayName",
+          "issuer",
+          "clientID",
+          "authorizationURL",
+          "tokenURL",
+          "scopes",
+          "receipt",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "CLILoginProviderBody": {
+        "additionalProperties": false,
+        "properties": {
+          "browser": {
+            "type": "boolean"
+          },
+          "device": {
+            "type": "boolean"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "browser",
+          "device"
+        ],
+        "type": "object"
+      },
+      "CLILoginVerifiedBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "me": {
+            "$ref": "#/components/schemas/SessionInfo"
+          }
+        },
+        "required": [
+          "me",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "CLILoginVerifyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "receipt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt"
+        ],
         "type": "object"
       },
       "CacheEntryMetadata": {
@@ -10957,6 +11115,303 @@
           "scope": "cluster",
           "verb": "read"
         }
+      }
+    },
+    "/auth/cli/providers": {
+      "get": {
+        "operationId": "listCLILoginProviders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthListCLILoginProviderBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Advertised public-client login options",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "public"
+      }
+    },
+    "/auth/cli/{idp}/prepare": {
+      "post": {
+        "description": "Brute-force limited per client address and user: 429 with Retry-After.",
+        "operationId": "prepareCLILogin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CLILoginPrepareBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CLILoginPreparedBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Correlate a public CLI login source without issuing authority",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "public"
+      }
+    },
+    "/auth/cli/{idp}/verify": {
+      "post": {
+        "operationId": "verifyCLILogin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CLILoginVerifyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CLILoginVerifiedBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Verify original CLI ID-token proof without issuing authority",
+        "tags": [
+          "auth"
+        ],
+        "x-kudurru-permission": "authenticated"
       }
     },
     "/auth/login": {

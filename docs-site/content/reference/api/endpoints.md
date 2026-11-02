@@ -23,6 +23,9 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
+| GET | `/api/v1/auth/cli/providers` | Advertised public-client login options | public |
+| POST | `/api/v1/auth/cli/{idp}/prepare` | Correlate a public CLI login source without issuing authority | public |
+| POST | `/api/v1/auth/cli/{idp}/verify` | Verify original CLI ID-token proof without issuing authority | authenticated |
 | POST | `/api/v1/auth/login` | Local login (sets the session cookie) | public |
 | POST | `/api/v1/auth/logout` | Clear the session cookie | authenticated |
 | POST | `/api/v1/auth/logout/browser` | Revoke the session and optionally continue provider logout | authenticated |

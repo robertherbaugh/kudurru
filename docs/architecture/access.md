@@ -791,7 +791,7 @@ policy. The login flow makes no discovery probe, second login or automatic
 mutation retry; printable credential-chain errors use static safe messages.
 A lost response can follow a successful remote commit, so it leaves an uncertain
 outcome requiring explicit inspection. Only a verified personal token is saved.
-Browser and device-code sign-in for the CLI remain planned for v0.2.
+Public CLI browser and device sign-in use the D286/D287 flows below.
 
 ## Authorization
 
@@ -910,3 +910,64 @@ normal permission checks. Local administrators can revoke external accounts even
 when the provider license is unavailable; enabling does not bypass provider
 licensing or ordinary login admission. This is Kudurru account administration,
 not remote identity-provider logout or external identity provisioning.
+
+### Public CLI browser login (D286)
+
+Without local-password or explicit token options, `kudurru login --server
+https://dns.example --provider corp` uses the provider's explicit public
+CLIClientID. Register `http://127.0.0.1:8000/callback` and
+`http://127.0.0.1:18000/callback` for that public client with code flow and S256
+PKCE. The second port is used only when the first is already in use. API and OP
+connections require verified HTTPS; `--ca-file` configures API trust and
+`--oidc-ca-file` configures OP trust. Browser trust must also recognize the OP.
+
+The CLI opens the platform browser and owns a bounded loopback callback with
+independent state, nonce and PKCE verifier. It exchanges the one-time code with
+the OP as a public client, then supplies the exact raw ID token to the server's
+read-only verification route. The normal credential store keeps that original
+ID token and its original expiry. No Kudurru PAT, browser session or server-side
+CLI session is issued, and no refresh token is retained or automatically used.
+The existing local-password login continues to mint a personal token; explicit
+token login and logout retain their prior semantics.
+
+The provider list/prepare/verify routes bind the complete original provider UID,
+origin, spec, policy, resource and installed credential identity. A short-lived
+AEAD receipt only correlates the source and flow; it is reusable and is not an
+identity grant. Verification requires ordinary raw bearer admission, exact
+public CLI audience/azp, nonce and at_hash when supplied, original time bounds,
+and current captured source. Later writes retain the normal original raw proof
+and transaction reauthorization/final-commit checks. Public preparation is
+bounded per normalized client IP, independently of username lockout buckets.
+
+Local acceptance uses a real TLS OP with signed JWTs, actual loopback sockets
+and installed Chrome. It does not certify every vendor's public-client setup;
+operators must register the public client and both exact loopback redirects.
+
+### Public CLI device login (D287)
+
+Use `kudurru login --server https://dns.example --provider corp --device` on
+hosts without a browser. The provider must advertise a trusted HTTPS device
+endpoint, the RFC 8628 device grant and public `none` token authentication for
+its explicit CLIClientID. An omitted capability is unsupported. The CLI displays
+the provider, public client, verification URI and user code; it never displays
+the device code or opens `verification_uri_complete` automatically. Follow the
+provider's verification instructions on another device.
+
+Polling retains the original grant and deadline. The first wait uses the
+advertised interval (five seconds when omitted); `authorization_pending` waits
+again and `slow_down` adds five seconds to every later wait. A connection timeout
+before a response doubles the wait; other HTTP refusals, redirects, unknown
+OAuth errors and body-read timeouts stop the flow. The deadline is the earliest
+of the caller, original source receipt and OP `expires_in` measured before the
+authorization request. Work is capped at 600 polls. Cancellation and caller
+expiry retain their context errors; no new grant or receipt repairs a failure.
+
+Success still requires ordinary raw ID-token bearer admission, exact CLI
+audience/azp, optional at_hash and the captured provider/source/installed
+credential/time bounds. Device verification does not fabricate a browser nonce
+or browser proof marker. RFC 8628 does not standardize a nonce binding between
+a device code and the returned ID token; the receipt is reusable source
+correlation, and the raw token must independently qualify. The CLI stores only
+the original verified ID token, with no RP enrollment, refresh-token storage or
+new durable credential issuer. Explicit `--device` does not consume an ambient
+API bearer or silently switch to local-password login.

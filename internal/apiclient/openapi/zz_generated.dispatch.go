@@ -69,6 +69,18 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.VerifyAudit(ctx, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 3 && parts[0] == "auth" && parts[1] == "cli" && parts[2] == "providers" {
+		response, err := c.ListCLILoginProviders(ctx, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "auth" && parts[1] == "cli" && parts[3] == "prepare" {
+		response, err := c.PrepareCLILoginWithBody(ctx, parts[2], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "auth" && parts[1] == "cli" && parts[3] == "verify" {
+		response, err := c.VerifyCLILoginWithBody(ctx, parts[2], contentType, body, editors...)
+		return response, true, err
+	}
 	if method == "POST" && len(parts) == 2 && parts[0] == "auth" && parts[1] == "login" {
 		response, err := c.LoginWithBody(ctx, contentType, body, editors...)
 		return response, true, err

@@ -1215,6 +1215,8 @@ kudurru lists search <domain>
 
 Log in to a kudurru API server and save the endpoint as a named context in ~/.config/kudurru/config.yaml.
 
+Without local or token credentials, login uses the configured public OIDC client, a loopback callback on port 8000 or 18000 and S256 PKCE. The original OP ID token is stored as bearer; no Kudurru token or browser session is created. This mode requires verified HTTPS for the API and OP. Select --provider when necessary; --oidc-ca-file configures OP trust separately from the API --ca-file. Use --device for RFC8628 device login on a headless machine. Approve only a request you initiated, checking the provider, client and displayed user code. Device approval never creates a Kudurru session or replacement token.
+
 With --token the API token is verified (GET /auth/me) and stored. With --username the local password is exchanged for a session (POST /auth/login), which then mints an API token for the CLI (POST /auth/tokens). Tokens go to the OS keyring; when no keyring is available (headless Linux, containers) they are kept in the config file, which is written with mode 0600. Set KUDURRU\_KEYRING=file to skip the keyring.
 
 For an enrolled authenticator, add --totp for a hidden terminal prompt, or --password-stdin --totp-stdin to read password and code as two lines. Codes must contain six ASCII digits. Login is attempted once, without redirects or automatic retries.
@@ -1236,9 +1238,14 @@ Flags:
 
 ```text
       --default-namespace string   default namespace stored in the context
+      --device                     use the public OIDC device authorization flow without a
+                                   loopback listener
       --name string                context name (default: the server host)
+      --oidc-ca-file string        additional PEM roots for the OP, separate from API TLS
   -p, --password string            password (prefer the prompt or --password-stdin)
       --password-stdin             read the password from stdin
+      --provider string            configured public OIDC provider (default: the only eligible
+                                   provider)
       --token-expires-in string    lifetime of the minted token, e.g. 720h (default: the server's)
       --token-name string          name of the token minted for the CLI (default
                                    kudurru-cli@<hostname>)

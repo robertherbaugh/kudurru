@@ -77,3 +77,31 @@ Use a fresh reviewed revision for each action. `list` returns one bounded page;
 pass its `continue` value with `--continue` for the next page. If the inventory
 changes between pages, restart the read. Unsupported runtimes report that
 external account administration is unavailable.
+
+### Command-line sign-in
+
+For OIDC browser sign-in, register a separate public client with S256 PKCE and
+set its explicit `cliClientID` on the provider. Register both loopback redirects,
+`http://127.0.0.1:8000/callback` and `http://127.0.0.1:18000/callback`, then run:
+
+```sh
+kudurru login --server https://dns.example --provider corp
+```
+
+The CLI opens the browser and saves the original provider ID token in the normal
+credential store. The token retains its original expiry; sign in again when it
+expires. No refresh token, Kudurru personal token or browser session is issued
+by this public-client flow. Existing local-password and explicit API-token login
+remain available.
+
+On a host without a browser, use `--device` if the provider advertises RFC 8628
+public-client support. Follow the displayed verification URI and enter the
+user code on another device. The CLI polls within the original grant deadline
+and stops on cancellation, expiry or refusal. It does not create a replacement
+grant automatically.
+
+Both flows require verified HTTPS for the API and provider. Use `--ca-file` for
+private API trust and `--oidc-ca-file` for private provider trust; the browser must
+also trust the provider certificate. Providers without the required advertised
+capability are explicitly unavailable for that flow. The complete SQLite runtime
+supports these public-client routes; direct Kubernetes transport does not.

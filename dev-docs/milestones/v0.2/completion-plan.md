@@ -87,7 +87,7 @@ runners. Unit tests cannot substitute for those results.
 | F17 | `$important` / `$badfilter` | DNS and resolver | Implemented; final gates open |
 | F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Integrated 50773f9; generated schemas and composed mounted/publication races pass |
 | F18b | Reverse-PTR hostname cache | DNS and resolver | Integrated 83c1096; bounded async PTR, actual UDP and mounted SQLite policy/expiry races; scoped lint pass |
-| F18c | UniFi hostname source | DNS and resolver | Queued: partial |
+| F18c | UniFi hostname source | DNS and resolver | Integrated 380f43f; actual TLS/SQLite/native/PROXYv2/dnsdist lifecycle races passed in isolation; merged held-CNAME deadline regression under investigation |
 | F19a | Durable replicated blocking toggle on complete SQLite path | Store and HA | Implemented; final gates open |
 | F19b | Kube runtime annotation publisher/watcher or equivalent cluster toggle | Store and HA | Queued: missing |
 | F20a | AdGuard black-box conformance implementation | DNS and resolver | Implemented; final gates open |
@@ -161,8 +161,8 @@ runners. Unit tests cannot substitute for those results.
 | F60b | `cluster status` / `promote` / `join-token` | Store and HA | Queued: missing |
 | F60c | `integrations …` CLI | Store and HA | Queued: missing |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
-| F61a | CLI browser loopback + PKCE login | IAM and access | Queued: missing |
-| F61b | CLI device-code login | IAM and access | Queued: missing |
+| F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
+| F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F62a | CLI conformance against actual API router | Operations and UI | Integrated 6938fbb; actual router/CLI races and scoped lint pass |
 | F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Integrated c439532; exact wire contracts and API serialization races pass |
 | F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | External acceptance/decision open |

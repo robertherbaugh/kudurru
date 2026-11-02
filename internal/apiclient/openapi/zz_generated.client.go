@@ -2099,6 +2099,16 @@ type AuditVerification struct {
 	Verified  bool      `json:"verified"`
 }
 
+// AuthListCLILoginProviderBody defines model for AuthListCLILoginProviderBody.
+type AuthListCLILoginProviderBody struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string              `json:"diagnoses,omitempty"`
+	Items     []CLILoginProviderBody `json:"items"`
+	TookMs    int64                  `json:"took_ms"`
+}
+
 // AuthListExternalUser defines model for AuthListExternalUser.
 type AuthListExternalUser struct {
 	Continue string `json:"continue"`
@@ -2268,6 +2278,47 @@ type BrandingInfo struct {
 // BrowserLogoutBody defines model for BrowserLogoutBody.
 type BrowserLogoutBody struct {
 	ContinuePath *string `json:"continuePath,omitempty"`
+}
+
+// CLILoginPrepareBody defines model for CLILoginPrepareBody.
+type CLILoginPrepareBody struct {
+	Mode        string  `json:"mode"`
+	Nonce       *string `json:"nonce,omitempty"`
+	RedirectURI *string `json:"redirectURI,omitempty"`
+}
+
+// CLILoginPreparedBody defines model for CLILoginPreparedBody.
+type CLILoginPreparedBody struct {
+	AuthorizationURL string    `json:"authorizationURL"`
+	ClientID         string    `json:"clientID"`
+	DeviceURL        *string   `json:"deviceURL,omitempty"`
+	DisplayName      string    `json:"displayName"`
+	ExpiresAt        time.Time `json:"expiresAt"`
+	Issuer           string    `json:"issuer"`
+	Provider         string    `json:"provider"`
+	Receipt          string    `json:"receipt"`
+	Scopes           *[]string `json:"scopes"`
+	TokenURL         string    `json:"tokenURL"`
+}
+
+// CLILoginProviderBody defines model for CLILoginProviderBody.
+type CLILoginProviderBody struct {
+	Browser     bool   `json:"browser"`
+	Device      bool   `json:"device"`
+	DisplayName string `json:"displayName"`
+	Id          string `json:"id"`
+}
+
+// CLILoginVerifiedBody defines model for CLILoginVerifiedBody.
+type CLILoginVerifiedBody struct {
+	ExpiresAt time.Time   `json:"expiresAt"`
+	Me        SessionInfo `json:"me"`
+}
+
+// CLILoginVerifyBody defines model for CLILoginVerifyBody.
+type CLILoginVerifyBody struct {
+	AccessToken *string `json:"accessToken,omitempty"`
+	Receipt     string  `json:"receipt"`
 }
 
 // CacheEntryMetadata defines model for CacheEntryMetadata.
@@ -6140,6 +6191,12 @@ type BatchAllowlistEntriesJSONRequestBody = DomainEntriesBatch
 // ApplyJSONRequestBody defines body for Apply for application/json ContentType.
 type ApplyJSONRequestBody = ApplyJSONBody
 
+// PrepareCLILoginJSONRequestBody defines body for PrepareCLILogin for application/json ContentType.
+type PrepareCLILoginJSONRequestBody = CLILoginPrepareBody
+
+// VerifyCLILoginJSONRequestBody defines body for VerifyCLILogin for application/json ContentType.
+type VerifyCLILoginJSONRequestBody = CLILoginVerifyBody
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -6484,6 +6541,43 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
 	VerifyAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCLILoginProviders Advertised public-client login options
+	//
+	// Corresponds with GET /auth/cli/providers (the `ListCLILoginProviders` operationId).
+	ListCLILoginProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PrepareCLILoginWithBody Correlate a public CLI login source without issuing authority
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /auth/cli/{idp}/prepare (the `PrepareCLILogin` operationId).
+	PrepareCLILoginWithBody(ctx context.Context, idp string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PrepareCLILogin Correlate a public CLI login source without issuing authority
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /auth/cli/{idp}/prepare (the `PrepareCLILogin` operationId).
+	PrepareCLILogin(ctx context.Context, idp string, body PrepareCLILoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// VerifyCLILoginWithBody Verify original CLI ID-token proof without issuing authority
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /auth/cli/{idp}/verify (the `VerifyCLILogin` operationId).
+	VerifyCLILoginWithBody(ctx context.Context, idp string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// VerifyCLILogin Verify original CLI ID-token proof without issuing authority
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /auth/cli/{idp}/verify (the `VerifyCLILogin` operationId).
+	VerifyCLILogin(ctx context.Context, idp string, body VerifyCLILoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LoginWithBody Local login (sets the session cookie)
 	//
@@ -8096,6 +8190,93 @@ func (c *Client) ExportAudit(ctx context.Context, params *ExportAuditParams, req
 // Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
 func (c *Client) VerifyAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewVerifyAuditRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCLILoginProviders Advertised public-client login options
+//
+// Corresponds with GET /auth/cli/providers (the `ListCLILoginProviders` operationId).
+func (c *Client) ListCLILoginProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCLILoginProvidersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PrepareCLILoginWithBody Correlate a public CLI login source without issuing authority
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /auth/cli/{idp}/prepare (the `PrepareCLILogin` operationId).
+func (c *Client) PrepareCLILoginWithBody(ctx context.Context, idp string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrepareCLILoginRequestWithBody(c.Server, idp, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PrepareCLILogin Correlate a public CLI login source without issuing authority
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /auth/cli/{idp}/prepare (the `PrepareCLILogin` operationId).
+func (c *Client) PrepareCLILogin(ctx context.Context, idp string, body PrepareCLILoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrepareCLILoginRequest(c.Server, idp, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyCLILoginWithBody Verify original CLI ID-token proof without issuing authority
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /auth/cli/{idp}/verify (the `VerifyCLILogin` operationId).
+func (c *Client) VerifyCLILoginWithBody(ctx context.Context, idp string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyCLILoginRequestWithBody(c.Server, idp, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyCLILogin Verify original CLI ID-token proof without issuing authority
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /auth/cli/{idp}/verify (the `VerifyCLILogin` operationId).
+func (c *Client) VerifyCLILogin(ctx context.Context, idp string, body VerifyCLILoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyCLILoginRequest(c.Server, idp, body)
 	if err != nil {
 		return nil, err
 	}
@@ -12301,6 +12482,127 @@ func NewVerifyAuditRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListCLILoginProvidersRequest constructs an http.Request for the ListCLILoginProviders method
+func NewListCLILoginProvidersRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/cli/providers")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPrepareCLILoginRequest calls the generic PrepareCLILogin builder with application/json body
+func NewPrepareCLILoginRequest(server string, idp string, body PrepareCLILoginJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPrepareCLILoginRequestWithBody(server, idp, "application/json", bodyReader)
+}
+
+// NewPrepareCLILoginRequestWithBody constructs an http.Request for the PrepareCLILogin method, with any body, and a specified content type
+func NewPrepareCLILoginRequestWithBody(server string, idp string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "idp", idp, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/cli/%s/prepare", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewVerifyCLILoginRequest calls the generic VerifyCLILogin builder with application/json body
+func NewVerifyCLILoginRequest(server string, idp string, body VerifyCLILoginJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewVerifyCLILoginRequestWithBody(server, idp, "application/json", bodyReader)
+}
+
+// NewVerifyCLILoginRequestWithBody constructs an http.Request for the VerifyCLILogin method, with any body, and a specified content type
+func NewVerifyCLILoginRequestWithBody(server string, idp string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "idp", idp, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/cli/%s/verify", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -20987,6 +21289,45 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
 	VerifyAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*VerifyAuditResponse, error)
 
+	// ListCLILoginProvidersWithResponse Advertised public-client login options
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/cli/providers (the `ListCLILoginProviders` operationId).
+	ListCLILoginProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCLILoginProvidersResponse, error)
+
+	// PrepareCLILoginWithBodyWithResponse Correlate a public CLI login source without issuing authority
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/cli/{idp}/prepare (the `PrepareCLILogin` operationId).
+	PrepareCLILoginWithBodyWithResponse(ctx context.Context, idp string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareCLILoginResponse, error)
+
+	// PrepareCLILoginWithResponse Correlate a public CLI login source without issuing authority
+	//
+	// Brute-force limited per client address and user: 429 with Retry-After.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/cli/{idp}/prepare (the `PrepareCLILogin` operationId).
+	PrepareCLILoginWithResponse(ctx context.Context, idp string, body PrepareCLILoginJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareCLILoginResponse, error)
+
+	// VerifyCLILoginWithBodyWithResponse Verify original CLI ID-token proof without issuing authority
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/cli/{idp}/verify (the `VerifyCLILogin` operationId).
+	VerifyCLILoginWithBodyWithResponse(ctx context.Context, idp string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*VerifyCLILoginResponse, error)
+
+	// VerifyCLILoginWithResponse Verify original CLI ID-token proof without issuing authority
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/cli/{idp}/verify (the `VerifyCLILogin` operationId).
+	VerifyCLILoginWithResponse(ctx context.Context, idp string, body VerifyCLILoginJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyCLILoginResponse, error)
+
 	// LoginWithBodyWithResponse Local login (sets the session cookie)
 	//
 	// Brute-force limited per client address and user: 429 with Retry-After.
@@ -23561,6 +23902,262 @@ func (r VerifyAuditResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r VerifyAuditResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCLILoginProvidersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuthListCLILoginProviderBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCLILoginProvidersResponse) GetJSON200() *AuthListCLILoginProviderBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListCLILoginProvidersResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListCLILoginProvidersResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListCLILoginProvidersResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListCLILoginProvidersResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCLILoginProvidersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCLILoginProvidersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCLILoginProvidersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCLILoginProvidersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PrepareCLILoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CLILoginPreparedBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PrepareCLILoginResponse) GetJSON200() *CLILoginPreparedBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PrepareCLILoginResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PrepareCLILoginResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PrepareCLILoginResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PrepareCLILoginResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r PrepareCLILoginResponse) GetJSON429() *Error {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PrepareCLILoginResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PrepareCLILoginResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PrepareCLILoginResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PrepareCLILoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PrepareCLILoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PrepareCLILoginResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type VerifyCLILoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CLILoginVerifiedBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON200() *CLILoginVerifiedBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r VerifyCLILoginResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r VerifyCLILoginResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyCLILoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyCLILoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r VerifyCLILoginResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -38151,6 +38748,75 @@ func (c *ClientWithResponses) VerifyAuditWithResponse(ctx context.Context, reqEd
 	return ParseVerifyAuditResponse(rsp)
 }
 
+// ListCLILoginProvidersWithResponse Advertised public-client login options
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/cli/providers (the `ListCLILoginProviders` operationId).
+func (c *ClientWithResponses) ListCLILoginProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCLILoginProvidersResponse, error) {
+	rsp, err := c.ListCLILoginProviders(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCLILoginProvidersResponse(rsp)
+}
+
+// PrepareCLILoginWithBodyWithResponse Correlate a public CLI login source without issuing authority
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/cli/{idp}/prepare (the `PrepareCLILogin` operationId).
+func (c *ClientWithResponses) PrepareCLILoginWithBodyWithResponse(ctx context.Context, idp string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareCLILoginResponse, error) {
+	rsp, err := c.PrepareCLILoginWithBody(ctx, idp, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrepareCLILoginResponse(rsp)
+}
+
+// PrepareCLILoginWithResponse Correlate a public CLI login source without issuing authority
+//
+// Brute-force limited per client address and user: 429 with Retry-After.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/cli/{idp}/prepare (the `PrepareCLILogin` operationId).
+func (c *ClientWithResponses) PrepareCLILoginWithResponse(ctx context.Context, idp string, body PrepareCLILoginJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareCLILoginResponse, error) {
+	rsp, err := c.PrepareCLILogin(ctx, idp, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrepareCLILoginResponse(rsp)
+}
+
+// VerifyCLILoginWithBodyWithResponse Verify original CLI ID-token proof without issuing authority
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/cli/{idp}/verify (the `VerifyCLILogin` operationId).
+func (c *ClientWithResponses) VerifyCLILoginWithBodyWithResponse(ctx context.Context, idp string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*VerifyCLILoginResponse, error) {
+	rsp, err := c.VerifyCLILoginWithBody(ctx, idp, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyCLILoginResponse(rsp)
+}
+
+// VerifyCLILoginWithResponse Verify original CLI ID-token proof without issuing authority
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/cli/{idp}/verify (the `VerifyCLILogin` operationId).
+func (c *ClientWithResponses) VerifyCLILoginWithResponse(ctx context.Context, idp string, body VerifyCLILoginJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyCLILoginResponse, error) {
+	rsp, err := c.VerifyCLILogin(ctx, idp, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyCLILoginResponse(rsp)
+}
+
 // LoginWithBodyWithResponse Local login (sets the session cookie)
 //
 // Brute-force limited per client address and user: 429 with Retry-After.
@@ -41808,6 +42474,217 @@ func ParseVerifyAuditResponse(rsp *http.Response) (*VerifyAuditResponse, error) 
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCLILoginProvidersResponse parses an HTTP response from a ListCLILoginProvidersWithResponse call
+func ParseListCLILoginProvidersResponse(rsp *http.Response) (*ListCLILoginProvidersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCLILoginProvidersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthListCLILoginProviderBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePrepareCLILoginResponse parses an HTTP response from a PrepareCLILoginWithResponse call
+func ParsePrepareCLILoginResponse(rsp *http.Response) (*PrepareCLILoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PrepareCLILoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CLILoginPreparedBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseVerifyCLILoginResponse parses an HTTP response from a VerifyCLILoginWithResponse call
+func ParseVerifyCLILoginResponse(rsp *http.Response) (*VerifyCLILoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyCLILoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CLILoginVerifiedBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
