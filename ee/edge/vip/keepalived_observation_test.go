@@ -80,6 +80,12 @@ func TestKeepalivedObservationJournalTransitionsAndRestart(t *testing.T) {
 	if n := nextNotice(t, notices); n.Issue != "source_restart" || n.Event != nil || n.Sequence != 0 {
 		t.Fatal("producer restart manufactured transition")
 	}
+	// A restarted source becomes available on its next unchanged acquisition.
+	// Observe that readiness separately before writing the next transition;
+	// otherwise a scheduled poll may legitimately precede the transition notice.
+	if n := nextNotice(t, notices); n.Issue != "source_ready" || n.Event != nil || n.Sequence != 0 {
+		t.Fatal("restarted source did not recover journal readiness")
+	}
 	apply(`INSTANCE "VI_dns" MASTER 200`)
 	if n := nextNotice(t, notices); n.Event == nil || n.Event.Previous != "" || n.Event.State != Master {
 		t.Fatal("new episode borrowed previous state")
