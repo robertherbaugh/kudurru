@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
@@ -34,11 +36,16 @@ func TestRunServeQueryExport(t *testing.T) {
 		}
 	})
 	awaitMountedDNSAbsent(t, cfg, "missing.export.example.")
+	// DNS can serve before the initial Ready status and lifecycle source writes
+	// finish. Observe those actual commits before the single login mutation;
+	// do not replay a login refused by its original publication fence.
+	awaitControlMountedSource(t, cfg)
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	client := &contractClient{t: t, base: "http://" + cfg.Listeners.API.Address + "/api/v1", http: &http.Client{Jar: jar, Timeout: 10 * time.Second}}
+	awaitQueryExportHTTPPublication(t, client)
 	var login api.SessionInfo
 	client.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, &login)
 	client.csrf = login.CSRF
@@ -56,5 +63,45 @@ func TestRunServeQueryExport(t *testing.T) {
 			t.Fatal("query writer did not publish the observed DNS request")
 		}
 		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// The settled source is not yet an acknowledgment that the complete HTTP
+// publication has been built. Observe only the public read endpoint before
+// submitting login once; no refused or ambiguous mutation is retried.
+func awaitQueryExportHTTPPublication(t *testing.T, client *contractClient) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, client.base+"/auth/status", nil)
+		if err != nil {
+			t.Fatal("query export publication request construction failed")
+		}
+		response, err := client.http.Do(req)
+		if err != nil {
+			t.Fatal("query export publication observation failed")
+		}
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, (64<<10)+1))
+		closeErr := response.Body.Close()
+		if readErr != nil || closeErr != nil || len(body) > 64<<10 {
+			t.Fatal("query export publication response exceeded its bounds")
+		}
+		if response.StatusCode == http.StatusOK {
+			var status api.AuthStatus
+			if json.Unmarshal(body, &status) != nil || !status.LocalLogin || status.Session == nil {
+				t.Fatal("query export publication omitted local login capability")
+			}
+			return
+		}
+		var failure struct{ Error api.ErrorBody }
+		if response.StatusCode != http.StatusServiceUnavailable || json.Unmarshal(body, &failure) != nil || failure.Error.Key != "generation_pending" {
+			t.Fatalf("query export publication observation: unexpected status=%d", response.StatusCode)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("query export HTTP publication did not become available")
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 }

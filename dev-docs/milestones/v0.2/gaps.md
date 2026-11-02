@@ -2109,3 +2109,18 @@ repetitions (170.464s), original command/credential-clock/shutdown fences passed
 retry or request deadline changed. The historical 3/15 failures did not capture
 enough diagnostic data to prove their exact past interleaving; the controlled
 matching readiness defect is the causal evidence.
+
+
+### Query-export startup publication qualification
+
+The query-export fixture now observes the actual primary Ready/lifecycle source
+and then a complete HTTP `/auth/status` publication before submitting its one
+login. Source writes can finish while HTTP still reports `generation_pending`;
+that distinct initial-publication phase is read-only and bounded. Authentication,
+writer checks and production deadlines are unchanged, and login is never
+retried. Ten query-export and ten settings-restart race repetitions passed in
+one complete command (399.851s); final eight-package scoped lint reports zero
+issues. The original source-only candidate failed with `generation_pending`
+and its remaining repetition process was stopped; it is not credited green.
+The historical hosted failure was `unavailable` at current command admission,
+so no exact retrospective interleaving is claimed without its missing trace.
