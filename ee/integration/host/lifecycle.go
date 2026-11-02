@@ -281,6 +281,14 @@ func (h *Host) captured(j *job) (frame, ExecutionGuard, error) {
 	return j.frame, ExecutionGuard{Ledger: j.guard, BundleID: j.frame.input.BundleID}, nil
 }
 func (h *Host) fence(ctx context.Context, j *job, g ExecutionGuard) error {
+	if original, ok := ctx.Value(commandCaptureKey{}).(*CommandCapture); ok {
+		if original == nil || original.host != h || original.job != j || original.origin == nil {
+			return ErrFenced
+		}
+		if err := original.origin.Err(); err != nil {
+			return err
+		}
+	}
 	_, current, err := h.captured(j)
 	if err != nil {
 		return err

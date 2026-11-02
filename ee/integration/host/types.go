@@ -190,6 +190,7 @@ type job struct {
 }
 type command struct {
 	ctx                    context.Context
+	original               *CommandCapture
 	kind, expected, action string
 	params                 json.RawMessage
 	event                  *integration.Event

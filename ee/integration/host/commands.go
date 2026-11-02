@@ -47,6 +47,9 @@ func (h *Host) submit(ctx context.Context, id InstanceID, c command) answer {
 	h.mu.RLock()
 	j := h.jobs[instanceKey(id)]
 	valid := j != nil && j.active && j.frame.instance.owner == id && j.ctx.Err() == nil
+	if c.original != nil {
+		valid = valid && c.original.host == h && c.original.job == j && c.original.currentLocked() == nil
+	}
 	h.mu.RUnlock()
 	if !valid {
 		return answer{err: ErrUnavailable}
@@ -238,7 +241,20 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 	ctx, cancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 	defer cancel()
-	f, g, err := h.captured(j)
+	var f frame
+	var g ExecutionGuard
+	var err error
+	if c.original != nil {
+		if c.original.host != h || c.original.job != j {
+			return answer{err: ErrFenced}
+		}
+		if err := c.original.Current(ctx); err != nil {
+			return answer{err: err}
+		}
+		f, g, err = c.original.frame, c.original.guard, nil
+	} else {
+		f, g, err = h.captured(j)
+	}
 	if err != nil {
 		return answer{err: err}
 	}
@@ -277,6 +293,9 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 		var result *Result
 		_, observer := j.provider.(Observer)
 		if _, publisher := j.provider.(Publisher); publisher {
+			if c.original != nil && c.expected == "" {
+				return answer{err: ErrStalePreview}
+			}
 			result, err = h.sync(ctx, j, f, g, c.expected)
 			if err == nil && observer {
 				var observation *Result
