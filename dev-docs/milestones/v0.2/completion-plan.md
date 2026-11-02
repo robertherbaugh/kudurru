@@ -93,7 +93,7 @@ runners. Unit tests cannot substitute for those results.
 | F20a | AdGuard black-box conformance implementation | DNS and resolver | Implemented; final gates open |
 | F20b | Real AdGuard/container qualification and CI evidence | DNS and resolver | Integrated; final gates open |
 | F20c | Move benchgate to `hack/` | DNS and resolver | Integrated; final gates open |
-| F20d | Lazy-DFA regex engine | DNS and resolver | Queued: missing |
+| F20d | Lazy-DFA regex engine | DNS and resolver | Active D293: bounded executor and production wiring in isolated worktree; comparator, original performance gates and final qualification remain |
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Implemented; bounded canonical translation, refusal/ownership/restart and real mounted DNS routes pass |
 | F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated 157-operation client and API/reference contracts updated |
 | F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |
@@ -137,7 +137,7 @@ runners. Unit tests cannot substitute for those results.
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Integrated e60001f; real pinned all-frontend leaf checks, held DoT, invalid-pair retention and child-restart acceptance pass |
 | F43c | Console spike (a) gates both changes | Edge and VIP | D275: actual dnsdist 2.1.3 YAML console, live DNS/cert/invalid-cert/PID/restart checks pass; established-connection limit recorded |
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |
-| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | Queued: partial |
+| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | Active D294: public SQLite RoleBinding writer under qualification; file/inline source and Kubernetes accepted-authority boundaries remain open |
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |
 | F45b | External per-user disable / log out everywhere administration | IAM and access | Implemented D289 on complete SQLite: exact UID/revision API/CLI/UI, atomic credential/audit revocation, actual TLS/router/restart/replica races, nine dashboard tests and lint/contracts pass; unsupported Stack explicitly refuses |
 | F46 | Share login lockout counters across replicas | IAM and access | Queued: missing |
@@ -159,7 +159,7 @@ runners. Unit tests cannot substitute for those results.
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
 | F60b | `cluster status` / `promote` / `join-token` | Store and HA | Queued: missing |
-| F60c | `integrations …` CLI | Store and HA | Active D291: original-operation authority integrated; public API/CLI real-provider qualification passes in isolation, lint/integration and webhook conformance remain |
+| F60c | `integrations …` CLI | Store and HA | Active D291: reviewed API/CLI integrated with real-provider/router races and lint; merged generation, webhook conformance and remaining driver/restart gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |

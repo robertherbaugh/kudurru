@@ -12,7 +12,7 @@ The schema, credential resolver, publication planner, durable ownership ledger,
 background host, Cloudflare SDK adapter and UniFi polling adapter are implemented.
 The SQLite serving runtime mounts the host, concrete fenced ledger/source commands,
 and complete-image inventory publication. Kubernetes execution, `Delete` cleanup,
-remaining providers and API/dashboard controls remain parts of the full
+remaining providers, webhook conformance and dashboard controls remain parts of the full
 [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ```mermaid
@@ -377,3 +377,59 @@ forwarding headers are discarded. A response is bounded before downstream
 headers commit; uncertain responses remain errors and are never retried by the
 relay. Remote upstreams require verified HTTPS; local development HTTP requires
 a literal loopback destination.
+
+
+## Reviewed API and CLI operations
+
+Complete SQLite serving mounts bounded integration list/get, connection check,
+preview, explicit sync and advertised-action routes under `/api/v1/integrations`.
+The matching `integrations` CLI uses generated dispatch. Every execution requires
+the reviewed Integration UID and resource version. Cloudflare sync additionally
+requires `--mode publish --preview-digest DIGEST`; UniFi inventory acquisition
+uses `--mode observe`. A command never fetches a replacement review or retries a
+refused effect. Legacy/Kubernetes hosts explicitly refuse this execution
+capability; direct Kubernetes object transport does not bypass that refusal.
+
+```mermaid
+flowchart TD
+    Review["Explicit UID, revision and preview"] --> Capture["Original HTTP proof, View, host frame and writer"]
+    Capture --> Admit["Initial current command admission"]
+    Admit --> Budget["Same-proof budget transaction"]
+    Budget --> Request["Original credential and current authority check"]
+    Request --> Network["Bounded provider request outside gates"]
+    Network --> Record["Same-proof intent, receipt or source transaction"]
+    Record --> Final["Original time and current authority; final status commit"]
+    Final --> Reply["Acknowledge once or report uncertain partial outcome"]
+```
+
+The first command requires the original complete HTTP publication. Its own
+budget/receipt/source writes can advance publication, so later transactions
+retain the original operation proof and independently reauthorize it against
+that transaction's current View. Both aggregate dependency identities must
+match. Original credential expiry, cancellation, Integration source, installed
+credential fingerprint, host lease and writer episode remain required through
+final acknowledgment. Provider I/O and installed-reference reads occur outside
+publication and SQLite gates. Final status is deferred until the operation has
+finished its effects, avoiding invalidation by its own resource-version update.
+
+Reads expose public identity/type and a local status only when its observed
+UID/revision matches the reviewed object. Status can conservatively be unknown
+after a status publication; it grants no allocation or writer authority. Preview
+exposes bounded DNS changes/conflicts and one aggregate digest, excluding remote
+account/zone/row IDs, versions, credential references and private receipts.
+Named credentials are rejected even when JSON-escaped. Action return bodies are
+discarded; the built-in providers currently advertise no actions and unsupported
+invocation returns501.
+
+An obsolete preview before any effect returns409. A partially applied or
+unacknowledged mutation returns an explicit uncertain result with confirmed
+counts and pending/source-publication flags. The CLI disables mutation body
+replay and redirects, bounds acknowledgments, and preserves the refusal. A
+separate, intentional operator review is required before further work.
+
+Qualification includes the real Cloudflare SDK and UniFi adapter against local
+TLS peers, production router and generated CLI, stale-plan refusal, committed
+writes, an applied-but-unreadable pending outcome, original cookie CSRF and
+scoped-token/writer/revocation refusals. It does not claim contact with production
+provider infrastructure. Webhook conformance, Kubernetes execution and remaining
+all-driver/restart release gates remain separate work.

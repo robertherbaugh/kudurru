@@ -150,3 +150,41 @@ response can leave the upstream outcome unknown; inspect the existing records
 before manually replaying a write. A canceled process stops its listener and
 joins shutdown within a bounded grace period. Direct `DNSEndpoint` reconciliation
 is separate from this command.
+
+
+## Review and run an integration
+
+On complete SQLite serving, first read the exact instance and retain its `uid`
+and `revision`:
+
+```sh
+kudurru integrations list -n default
+kudurru integrations get publisher -n default -o json
+kudurru integrations check publisher -n default --uid UID --revision REVISION
+kudurru integrations preview publisher -n default --uid UID --revision REVISION
+kudurru integrations sync publisher -n default --uid UID --revision REVISION --mode publish --preview-digest DIGEST
+```
+
+Use the digest returned by that complete preview. Changed source, credentials,
+remote state or ledger ownership can invalidate it. A refusal is final for that
+command; inspect the current state before intentionally reviewing new work.
+An uncertain response can mean an external effect occurred. The client never
+replays it automatically.
+
+For a UniFi source, run one inventory acquisition with explicit observation mode:
+
+```sh
+kudurru integrations sync inventory -n default --uid UID --revision REVISION --mode observe
+```
+
+Permissions are `integrations.read`, `.check`, `.sync` and `.act` as appropriate;
+server-side cookie calls also require CSRF. `integrations actions NAME --uid UID
+--revision REVISION` lists only advertised actions. Current built-in providers
+advertise none. `integrations act NAME ACTION --uid UID --revision REVISION
+--params '{}'` cannot enable an unsupported provider action.
+
+These routes require complete SQLite runtime authority. Kubernetes execution
+and webhook conformance remain unsupported by this command tranche. List/get
+status is a local observation and can be unknown when the exact revision has no
+matching observation. Public previews omit credential references, fingerprints,
+private provider IDs and ledger receipts.

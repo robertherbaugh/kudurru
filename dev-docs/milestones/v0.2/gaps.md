@@ -2255,3 +2255,35 @@ by one refused third query. The unmodified random local baseline passed once
 (2.039s), while corrected/controlled races passed ten repetitions (11.769s) and
 scoped DNS lint passed. The hosted failure remains recorded, and fresh CI is
 required for these corrections.
+
+
+### F60c reviewed integration administration tranche (D291)
+
+Integrated `1975029` adds seven bounded API routes and matching generated-client
+CLI list/get/check/preview/sync/actions/act operations on complete SQLite. Every
+execution retains explicit UID/revision, original caller and host authority;
+Cloudflare sync also requires its exact complete preview digest. Source-only
+implementation excludes generated files. Legacy/Kubernetes execution remains
+unavailable. Current built-in providers advertise no actions.
+
+The expanded frozen scoped race command passed API1.852s, client1.064s,
+host1.084s and CLI87.628s. It runs the real Cloudflare SDK over a verified local
+TLS peer with original canonical origin, stale-preview409/no effect, confirmed
+write, and applied-but-unreadable503/pending/no replay; real UniFi TLS acquisition
+and source publication; actual router/generated CLI; stored cookie CSRF;
+scoped-token/stopped-writer/refused transport; and original revocation between
+provider requests. This does not claim external provider infrastructure. The
+independent original-proof/source/time/replay/disclosure source review found no
+blocking issue. Scoped lint initially found four missing DTO comments, then
+passed with zero issues. Later source changes only document error response
+schemas and exported types; final merged generation remains required.
+
+Earlier commands failed due an unexported embedded path DTO, a viewer fixture
+without the declared permission, a new request during publication, and an
+optional-digest comparison in the fixture's publication wait. Those failures
+remain recorded; they are not relabeled green. The final wait compares actual
+term/revision without retrying a refused command or changing production guards.
+
+F60c remains open for webhook conformance, merged contracts and remaining
+all-driver/restart release evidence. Exact-RV status is conservative and may be
+unknown after its own status publication until a matching observation arrives.
