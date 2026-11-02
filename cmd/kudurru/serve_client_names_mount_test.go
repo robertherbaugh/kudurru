@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -54,6 +56,7 @@ func TestRunServeSQLiteReversePTRPolicy(t *testing.T) {
 	})
 	cfg, _ := mountedTestConfig(t)
 	cfg.Auth.IdentityProviders = nil
+	cfg.Listeners.Internal.Address = offlineFreeAddress(t, "tcp")
 	cfg.Blocking.DefaultResponse = "nxdomain"
 	cfg.Cache.MaxEntries = 0
 	ptr := &cfg.ClientNames.ReversePTR
@@ -112,6 +115,31 @@ func TestRunServeSQLiteReversePTRPolicy(t *testing.T) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+	creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{Key: bytes.Repeat([]byte{8}, 32), NodeName: "ptr-cache-observer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer := internalapi.NewClient(creds, internalapi.ClientOptions{})
+	wantCacheBypass := func() {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			z, err := observer.Zones(ctx, cfg.Listeners.Internal.Address)
+			cancel()
+			if err == nil && z.Resolver != nil {
+				if z.Resolver.Available || z.Resolver.UnavailableReason != "async-ptr" {
+					t.Fatal("original PTR-enabled serving cut qualified shared resolver caching")
+				}
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("original PTR cache eligibility unavailable")
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+	}
+	wantCacheBypass()
 	waitMountedDomainDNS(t, cfg, true)
 	if requests.Load() == 0 {
 		t.Fatal("mounted identification did not acquire reverse DNS")
@@ -121,6 +149,7 @@ func TestRunServeSQLiteReversePTRPolicy(t *testing.T) {
 	if requests.Load() < 2 {
 		t.Fatal("expired identity did not reacquire")
 	}
+	wantCacheBypass()
 }
 
 func TestReversePTRDisabledMount(t *testing.T) {

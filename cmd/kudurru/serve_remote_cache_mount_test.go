@@ -21,12 +21,15 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/edge"
 	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/license"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type remoteCachePoll struct {
@@ -110,9 +113,15 @@ func TestRunServeRemoteEdgeRegexAndLateFill(t *testing.T) {
 	go func() { _ = upstream.ActivateAndServe() }()
 	t.Cleanup(func() { release(); _ = upstream.Shutdown() })
 	cfg, _ := mountedTestConfig(t)
+	// Exercise the original license gate with a signed throwaway test issuer,
+	// just like the mounted browser fixture. Community cannot add policies.
+	licenseKey := trustTestKey(t)(license.Claims{Plan: license.PlanPersonal, Nodes: 3, Features: []license.Feature{license.FeatureEdge}})
 	cfg.Auth.IdentityProviders = nil
 	cfg.DNSSEC.Enabled = false
 	cfg.Cache.MaxEntries = 0
+	// This positive cache fixture has no per-client backend verdicts. The
+	// default per-prefix limiter correctly disqualifies a shared packet cache.
+	cfg.RateLimit.Enabled = false
 	cfg.Listeners.Internal.Address = offlineFreeAddress(t, "tcp")
 	cfg.Blocking.Enabled = true
 	cfg.Blocking.DefaultResponse = "customIP"
@@ -127,7 +136,7 @@ func TestRunServeRemoteEdgeRegexAndLateFill(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- runServe(ctx, cfg, "") }()
+	go func() { done <- runServe(ctx, cfg, licenseKey) }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -360,4 +369,119 @@ func TestRunServeRemoteEdgeRegexAndLateFill(t *testing.T) {
 	})
 	want("probe.example.", "192.0.2.80")
 	t.Log("PASS lost real console acknowledgment retired its original child and requalified accepted uncached restart; no DNS replay")
+	qualifiedPID := pid()
+	writePublished := func(method, path string, body any, want int) {
+		t.Helper()
+		read := func() (uint64, bool) {
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+			z, err := poller.good.Zones(ctx, cfg.Listeners.Internal.Address)
+			if err != nil || z.Resolver == nil {
+				return 0, false
+			}
+			return z.Resolver.Publication, true
+		}
+		var before uint64
+		wait("current original before mutation", func() bool { var ok bool; before, ok = read(); return ok })
+		controlMountedRequest(t, client, base, method, path, login.CSRF, body, want, nil)
+		// One API write, no mutation replay. A successful original complete
+		// observation proves the durable source has caught up before another
+		// original-authorized command is submitted.
+		wait("complete publication after mutation", func() bool { after, ok := read(); return ok && after > before })
+	}
+	// Distinct source addresses are carried by the actual authenticated
+	// PROXYv2 listener. Identical questions must never share client verdicts.
+	from := func(source, qname string) (*dns.Msg, error) {
+		q := new(dns.Msg)
+		q.SetQuestion(qname, dns.TypeA)
+		c := &dns.Client{Timeout: 5 * time.Second, Dialer: &net.Dialer{LocalAddr: &net.UDPAddr{IP: net.ParseIP(source)}}}
+		m, _, err := c.ExchangeContext(t.Context(), q, address)
+		return m, err
+	}
+	clientAnswer := func(source, qname, ip string, rcode int) {
+		t.Helper()
+		m, err := from(source, qname)
+		if err != nil || m == nil || m.Rcode != rcode {
+			t.Fatal("original client response failed", source, qname)
+		}
+		if ip == "" {
+			if len(m.Answer) != 0 {
+				t.Fatal("denied original client received cached answer")
+			}
+			return
+		}
+		if len(m.Answer) != 1 {
+			t.Fatal("original client missing answer")
+		}
+		a, ok := m.Answer[0].(*dns.A)
+		if !ok || a.A.String() != ip {
+			t.Fatal("shared packet cache leaked another client's verdict", source)
+		}
+	}
+	for _, source := range []string{"127.0.0.2", "127.0.0.3"} {
+		clientAnswer(source, "probe.example.", "192.0.2.80", dns.RcodeSuccess)
+	}
+	group := &public.ClientGroup{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "ClientGroup"}, ObjectMeta: metav1.ObjectMeta{Name: "cache-scoped", Namespace: "default"}, Spec: public.ClientGroupSpec{Clients: []public.ClientMatcher{{IP: "127.0.0.2"}}}}
+	policy := &public.Policy{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "Policy"}, ObjectMeta: metav1.ObjectMeta{Name: "cache-scoped", Namespace: "default"}, Spec: public.PolicySpec{ClientGroupRefs: []string{"cache-scoped"}, Priority: 1000, Rewrites: []public.Rewrite{{Name: "probe.example", Targets: []string{"192.0.2.99"}}}}}
+	writePublished(http.MethodPost, "/objects/clientgroups", group, http.StatusCreated)
+	writePublished(http.MethodPost, "/objects/policies", policy, http.StatusCreated)
+	wait("client policy shared-cache bypass", func() bool { mode, _ := status(); return mode == "bypass-client-scope" })
+	for range 3 {
+		clientAnswer("127.0.0.2", "probe.example.", "192.0.2.99", dns.RcodeSuccess)
+		clientAnswer("127.0.0.3", "probe.example.", "192.0.2.80", dns.RcodeSuccess)
+		clientAnswer("127.0.0.3", "probe.example.", "192.0.2.80", dns.RcodeSuccess)
+		clientAnswer("127.0.0.2", "probe.example.", "192.0.2.99", dns.RcodeSuccess)
+	}
+	writePublished(http.MethodDelete, "/objects/policies/default/cache-scoped", nil, http.StatusNoContent)
+	writePublished(http.MethodDelete, "/objects/clientgroups/default/cache-scoped", nil, http.StatusNoContent)
+	wait("uniform cache restored after client policy", func() bool { mode, _ := status(); return mode == "qualified" })
+	t.Log("PASS warm uniform cache then two original PROXYv2 clients alternate distinct policy verdicts under acknowledged client-scope bypass")
+	var defaultPolicy public.Policy
+	controlMountedRequest(t, client, base, http.MethodGet, "/objects/policies/default/default", "", nil, http.StatusOK, &defaultPolicy)
+	originalPolicy := defaultPolicy.DeepCopy()
+	list := &public.BlockList{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "BlockList"}, ObjectMeta: metav1.ObjectMeta{Name: "cache-client-rule", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block", Sources: []public.ListSource{{Name: "inline", Format: "adblock", Inline: []string{"||probe.example^$client=127.0.0.2"}}}}}
+	writePublished(http.MethodPost, "/objects/blocklists", list, http.StatusCreated)
+	defaultPolicy.Spec.BlockListRefs = append(defaultPolicy.Spec.BlockListRefs, "cache-client-rule")
+	writePublished(http.MethodPut, "/objects/policies/default/default", &defaultPolicy, http.StatusOK)
+	wait("compiled client-rule shared-cache bypass", func() bool { mode, _ := status(); return mode == "bypass-rule-client-scope" })
+	for range 3 {
+		clientAnswer("127.0.0.3", "probe.example.", "192.0.2.80", dns.RcodeSuccess)
+		clientAnswer("127.0.0.2", "probe.example.", "192.0.2.99", dns.RcodeSuccess)
+		clientAnswer("127.0.0.2", "probe.example.", "192.0.2.99", dns.RcodeSuccess)
+		clientAnswer("127.0.0.3", "probe.example.", "192.0.2.80", dns.RcodeSuccess)
+	}
+	controlMountedRequest(t, client, base, http.MethodGet, "/objects/policies/default/default", "", nil, http.StatusOK, &defaultPolicy)
+	defaultPolicy.Spec = originalPolicy.Spec
+	writePublished(http.MethodPut, "/objects/policies/default/default", &defaultPolicy, http.StatusOK)
+	writePublished(http.MethodDelete, "/objects/blocklists/default/cache-client-rule", nil, http.StatusNoContent)
+	wait("uniform cache restored after compiled client rule", func() bool { mode, _ := status(); return mode == "qualified" })
+	t.Log("PASS compiled $client rule with no scoped ClientGroup preserves distinct same-question verdicts; original uniform policy restored")
+	forward := &public.DNSZone{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSZone"}, ObjectMeta: metav1.ObjectMeta{Name: "cache-forward"}, Spec: public.DNSZoneSpec{ZoneName: "forward.example.", Type: public.ZoneTypeForward, Forward: &public.ForwardSpec{UpstreamGroup: "default"}, Policy: public.ZonePolicy{QueryAccess: public.AccessAllow}}}
+	writePublished(http.MethodPost, "/objects/dnszones", forward, http.StatusCreated)
+	wait("uniform forward zone qualified", func() bool {
+		mode, _ := status()
+		m, err := from("127.0.0.2", "probe.forward.example.")
+		return mode == "qualified" && err == nil && m != nil && len(m.Answer) == 1
+	})
+	clientAnswer("127.0.0.2", "probe.forward.example.", "192.0.2.80", dns.RcodeSuccess)
+	before = calls.Load()
+	clientAnswer("127.0.0.3", "probe.forward.example.", "192.0.2.80", dns.RcodeSuccess)
+	if calls.Load() != before {
+		t.Fatal("uniform forward-zone response did not warm shared resolver cache")
+	}
+	controlMountedRequest(t, client, base, http.MethodGet, "/objects/dnszones/cache-forward", "", nil, http.StatusOK, forward)
+	forward.Spec.Policy.QueryAccess = public.AccessUseNetworkACL
+	forward.Spec.Policy.QueryACL = []string{"127.0.0.2/32"}
+	writePublished(http.MethodPut, "/objects/dnszones/cache-forward", forward, http.StatusOK)
+	wait("forward-zone query ACL shared-cache bypass", func() bool { mode, _ := status(); return mode == "bypass-zone-client-acl" })
+	for range 3 {
+		clientAnswer("127.0.0.2", "probe.forward.example.", "192.0.2.80", dns.RcodeSuccess)
+		clientAnswer("127.0.0.3", "probe.forward.example.", "", dns.RcodeRefused)
+		clientAnswer("127.0.0.3", "probe.forward.example.", "", dns.RcodeRefused)
+		clientAnswer("127.0.0.2", "probe.forward.example.", "192.0.2.80", dns.RcodeSuccess)
+	}
+	if pid() != qualifiedPID {
+		t.Fatal("client-isolation bypass restarted actual daemon")
+	}
+	t.Log("PASS warm allowed forward-zone answer then ACL-denied original client REFUSED, alternating both orders; same daemon PID; authoritative pool caching not qualified")
 }
