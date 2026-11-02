@@ -50,6 +50,27 @@ type uniFiHostnameController struct {
 	mu     sync.Mutex
 	active bool
 	cut    int32
+	hold   *uniFiHostnamePollGate
+}
+
+type uniFiHostnamePollGate struct {
+	phase            int32
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (g *uniFiHostnamePollGate) resume() { g.once.Do(func() { close(g.release) }) }
+
+// Queue a real configured poll before opening the DNS request's bounded window.
+// Only the last authenticated HTTP response is held; source admission and
+// complete publication still run through the production owners afterward.
+func (c *uniFiHostnameController) holdPhase(phase int32) *uniFiHostnamePollGate {
+	g := &uniFiHostnamePollGate{phase: phase, entered: make(chan struct{}), release: make(chan struct{})}
+	c.mu.Lock()
+	c.hold = g
+	c.phase.Store(phase)
+	c.mu.Unlock()
+	return g
 }
 
 const (
@@ -124,6 +145,16 @@ func newUniFiHostnameController(t *testing.T, key string) *uniFiHostnameControll
 				rows = []map[string]any{{"mac": "00:11:22:33:44:52", "hostname": a}, {"mac": "00:11:22:33:44:53", "hostname": b}}
 			}
 			if r.URL.Path == "/proxy/network/v2/api/site/default/active-leases" {
+				if g := c.hold; g != nil && g.phase == phase {
+					close(g.entered)
+					select {
+					case <-g.release:
+					case <-r.Context().Done():
+						c.active, c.hold = false, nil
+						return
+					}
+					c.hold = nil
+				}
 				c.active = false
 				_ = json.NewEncoder(w).Encode(map[string]any{"dhcp_lease_info": rows})
 			} else {
@@ -148,6 +179,17 @@ func (c *uniFiHostnameController) definition(path string) *public.Integration {
 // guarded durable source admission, complete publication, policy selection,
 // response cache, native UDP/TCP and authenticated edge PROXYv2 decoding.
 func TestRunServeUniFiHostnamePolicyLifecycle(t *testing.T) {
+	runServeUniFiHostnamePolicyLifecycle(t, true)
+}
+
+// Repeat the held original-publication boundary without first spending the
+// assignment's lifetime on the independent collision/expiry/restoration matrix.
+func TestRunServeUniFiHostnameHeldPublicationDeadline(t *testing.T) {
+	runServeUniFiHostnamePolicyLifecycle(t, false)
+}
+
+func runServeUniFiHostnamePolicyLifecycle(t *testing.T, fullLifecycle bool) {
+	t.Helper()
 	controller := newUniFiHostnameController(t, "unifi-fixture-one")
 	successor := newUniFiHostnameController(t, "unifi-fixture-two")
 	successor.phase.Store(uniFiRenamed)
@@ -281,11 +323,17 @@ func TestRunServeUniFiHostnamePolicyLifecycle(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
+	var heldDeadline time.Time
 	await := func(source, name string, blocked bool) {
 		t.Helper()
 		until := time.Now().Add(observationBound)
+		if !heldDeadline.IsZero() && heldDeadline.Before(until) {
+			until = heldDeadline
+		}
+		ctx, cancel := context.WithDeadline(t.Context(), until)
+		defer cancel()
 		for {
-			a, err := exchange(source, "udp", name, true)
+			a, err := uniFiHostnameExchange(ctx, cfg, secret, source, "udp", name, true)
 			if err == nil && uniFiHostnameAnswer(a, blocked) {
 				return
 			}
@@ -295,8 +343,92 @@ func TestRunServeUniFiHostnamePolicyLifecycle(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
+	phase := func(next int32) {
+		t.Helper()
+		controller.phase.Store(next)
+		until := time.Now().Add(observationBound)
+		if !heldDeadline.IsZero() && heldDeadline.Before(until) {
+			until = heldDeadline
+		}
+		for {
+			doc := uniFiHostnameDocument(t, cfg)
+			present, renamed, phone := 0, 0, false
+			for _, client := range doc.Snapshot.Clients {
+				present += len(client.IPs)
+				phone = phone || len(client.IPs) > 0 && strings.EqualFold(strings.TrimSuffix(client.Hostname, "."), "phone.unifi.lan")
+				if len(client.IPs) > 0 && client.Hostname == "safe.other.lan" {
+					renamed++
+				}
+			}
+			if next == uniFiConflict && present == 1 || next == uniFiOmitted && present == 0 || next == uniFiNames && present == 3 && phone || next == uniFiRenamed && present == 3 && renamed == 2 {
+				return
+			}
+			if time.Now().After(until) {
+				t.Fatalf("controller phase=%d was not durably accepted; attempts=%d", next, controller.calls.Load())
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
 	await("127.0.0.2", "exact.test.", true)
 	await("127.0.0.3", "glob.test.", true)
+	// Wait for the scheduled acquisition before starting the original DNS
+	// deadline. Waiting for file reconciliation or the next Poll while holding
+	// DNS could legitimately consume that entire five-second request lifetime.
+	poll := controller.holdPhase(uniFiRenamed)
+	defer poll.resume()
+	select {
+	case <-poll.entered:
+	case <-time.After(observationBound):
+		t.Fatal("renamed UniFi poll did not reach authenticated response gate")
+	}
+	// Establish the policy actually served immediately before this request;
+	// reaching the next poll alone does not prove the old inventory is live.
+	before, err := exchange("127.0.0.2", "tcp", "exact.test.", true)
+	if err != nil || !uniFiHostnameAnswer(before, true) {
+		code := -1
+		if before != nil {
+			code = before.Rcode
+		}
+		t.Fatalf("original hostname policy unavailable at held request capture: rcode=%d transport_error=%t assignment_remaining=%s", code, err != nil, time.Until(uniFiHostnameDeadline(t, cfg, "shared-label.example.")).Round(time.Millisecond))
+	}
+	heldAt := time.Now()
+	heldDeadline = heldAt.Add(dnsserver.DefaultQueryTimeout)
+	held := make(chan *dns.Msg, 1)
+	go func() {
+		a, _ := exchange("127.0.0.2", "tcp", "held.alias.test.", true)
+		held <- a
+	}()
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("held alias did not reach actual upstream")
+	}
+	// Complete that original real acquisition and observe its durable renamed
+	// source and fresh policy before releasing the held upstream response.
+	poll.resume()
+	phase(uniFiRenamed)
+	await("127.0.0.2", "exact.test.", false)
+	resume()
+	select {
+	case a := <-held:
+		if !uniFiHostnameAnswer(a, true) || time.Since(heldAt) >= dnsserver.DefaultQueryTimeout {
+			code := -1
+			if a != nil {
+				code = a.Rcode
+			}
+			t.Fatalf("held CNAME response lost original policy: rcode=%d elapsed=%s", code, time.Since(heldAt).Round(time.Millisecond))
+		}
+		t.Logf("held original hostname policy retained across accepted inventory change in %s (original deadline %s)", time.Since(heldAt).Round(time.Millisecond), dnsserver.DefaultQueryTimeout)
+	case <-time.After(5 * time.Second):
+		t.Fatal("held alias did not complete")
+	}
+	heldDeadline = time.Time{}
+	// Independently qualify endpoint/allowlisted-credential replacement through
+	// the production file loader. Restore Phone first so an earlier renamed
+	// observation cannot impersonate the replacement provider's publication.
+	phase(uniFiNames)
+	await("127.0.0.2", "exact.test.", true)
+
 	for _, transport := range transports {
 		want("127.0.0.2", transport, "exact.test.", true)
 		want("127.0.0.2", transport, "glob.test.", false) // Exact hostname tier beats nameGlob.
@@ -312,129 +444,80 @@ func TestRunServeUniFiHostnamePolicyLifecycle(t *testing.T) {
 		t.Fatal("real authenticated complete UniFi acquisition was not exercised")
 	}
 
-	allocations := map[string]string{}
-	for _, name := range []string{"shared-label.example.", "shared-label-2.example."} {
-		await("127.0.0.4", name, false)
-		a, err := exchange("127.0.0.4", "tcp", name, true)
-		if err != nil || !uniFiHostnameAnswer(a, false) || !a.Authoritative {
-			t.Fatal("allocated source name missing from mounted authority")
+	if fullLifecycle {
+		allocations := map[string]string{}
+		for _, name := range []string{"shared-label.example.", "shared-label-2.example."} {
+			await("127.0.0.4", name, false)
+			a, err := exchange("127.0.0.4", "tcp", name, true)
+			if err != nil || !uniFiHostnameAnswer(a, false) || !a.Authoritative {
+				t.Fatal("allocated source name missing from mounted authority")
+			}
+			allocations[name] = a.Answer[0].(*dns.A).A.String()
 		}
-		allocations[name] = a.Answer[0].(*dns.A).A.String()
-	}
-	if allocations["shared-label.example."] == allocations["shared-label-2.example."] {
-		t.Fatal("colliding display names collapsed two assignments")
-	}
+		if allocations["shared-label.example."] == allocations["shared-label-2.example."] {
+			t.Fatal("colliding display names collapsed two assignments")
+		}
 
-	phase := func(next int32) {
-		t.Helper()
-		controller.phase.Store(next)
-		until := time.Now().Add(observationBound)
-		for {
-			doc := uniFiHostnameDocument(t, cfg)
-			present, phone := 0, false
-			for _, client := range doc.Snapshot.Clients {
-				present += len(client.IPs)
-				phone = phone || len(client.IPs) > 0 && strings.EqualFold(strings.TrimSuffix(client.Hostname, "."), "phone.unifi.lan")
-			}
-			if next == uniFiConflict && present == 1 || next == uniFiOmitted && present == 0 || next == uniFiNames && present == 3 && phone {
-				return
-			}
-			if time.Now().After(until) {
-				t.Fatalf("controller phase=%d was not durably accepted; attempts=%d", next, controller.calls.Load())
-			}
-			time.Sleep(50 * time.Millisecond)
+		phase(uniFiConflict)
+		await("127.0.0.2", "exact.test.", false)
+		await("127.0.0.3", "glob.test.", false)
+		await("127.0.0.4", "glob.test.", true)
+		phase(uniFiNames)
+		await("127.0.0.2", "exact.test.", true)
+		await("127.0.0.3", "glob.test.", true)
+		phase(uniFiOmitted)
+		await("127.0.0.2", "exact.test.", false)
+		await("127.0.0.3", "glob.test.", false)
+		phase(uniFiNames)
+		await("127.0.0.2", "exact.test.", true)
+		// Capture the real persisted assignment deadline before failing the source.
+		// A temporary policy withdrawal alone is not evidence of expiry.
+		expiry := uniFiHostnameDeadline(t, cfg, "shared-label.example.")
+		controller.phase.Store(uniFiUnavailable)
+		if remaining := time.Until(expiry); remaining <= 0 || remaining > 3*controller.definition(paths[0]).Spec.UniFi.Poll.Duration {
+			t.Fatal("persisted original assignment has an invalid remaining lifetime")
 		}
-	}
-	phase(uniFiConflict)
-	await("127.0.0.2", "exact.test.", false)
-	await("127.0.0.3", "glob.test.", false)
-	await("127.0.0.4", "glob.test.", true)
-	phase(uniFiNames)
-	await("127.0.0.2", "exact.test.", true)
-	await("127.0.0.3", "glob.test.", true)
-	phase(uniFiOmitted)
-	await("127.0.0.2", "exact.test.", false)
-	await("127.0.0.3", "glob.test.", false)
-	phase(uniFiNames)
-	await("127.0.0.2", "exact.test.", true)
-	// Capture the real persisted assignment deadline before failing the source.
-	// A temporary policy withdrawal alone is not evidence of expiry.
-	expiry := uniFiHostnameDeadline(t, cfg, "shared-label.example.")
-	controller.phase.Store(uniFiUnavailable)
-	if remaining := time.Until(expiry); remaining <= 0 || remaining > 3*controller.definition(paths[0]).Spec.UniFi.Poll.Duration {
-		t.Fatal("persisted original assignment has an invalid remaining lifetime")
-	}
-	timer := time.NewTimer(time.Until(expiry))
-	select {
-	case <-timer.C:
-	case <-t.Context().Done():
-		timer.Stop()
-		t.Fatal("assignment expiry observation canceled")
-	}
-	await("127.0.0.2", "exact.test.", false)
-	await("127.0.0.3", "glob.test.", false)
-	if fresh := uniFiHostnameDeadline(t, cfg, "shared-label.example."); !fresh.Equal(expiry) {
-		t.Fatal("failed polls changed the original persisted assignment deadline")
-	}
-	for _, transport := range transports {
-		want("127.0.0.2", transport, "exact.test.", false)
-		want("127.0.0.4", transport, "glob.test.", false)
-	}
-	// At the exact deadline an expired primary image refuses with SERVFAIL
-	// until its replacement is published. Both that refusal and the settled
-	// NXDOMAIN/NODATA must contain no retained source answer.
-	for name := range allocations {
-		a, err := exchange("127.0.0.4", "tcp", name, true)
-		if err != nil || a == nil || len(a.Answer) != 0 || a.Rcode != dns.RcodeNameError && a.Rcode != dns.RcodeSuccess && a.Rcode != dns.RcodeServerFailure {
-			code, answers := -1, -1
-			if a != nil {
-				code, answers = a.Rcode, len(a.Answer)
-			}
-			t.Fatalf("expired source record query: rcode=%d answers=%d transport_error=%t", code, answers, err != nil)
+		timer := time.NewTimer(time.Until(expiry))
+		select {
+		case <-timer.C:
+		case <-t.Context().Done():
+			timer.Stop()
+			t.Fatal("assignment expiry observation canceled")
 		}
-	}
-	phase(uniFiNames)
-	await("127.0.0.2", "exact.test.", true)
-	for name, ip := range allocations {
-		await("127.0.0.4", name, false)
-		a, err := exchange("127.0.0.4", "tcp", name, true)
-		if err != nil || !uniFiHostnameAnswer(a, false) || a.Answer[0].(*dns.A).A.String() != ip {
-			t.Fatal("restoration changed stable name allocation")
+		await("127.0.0.2", "exact.test.", false)
+		await("127.0.0.3", "glob.test.", false)
+		if fresh := uniFiHostnameDeadline(t, cfg, "shared-label.example."); !fresh.Equal(expiry) {
+			t.Fatal("failed polls changed the original persisted assignment deadline")
+		}
+		for _, transport := range transports {
+			want("127.0.0.2", transport, "exact.test.", false)
+			want("127.0.0.4", transport, "glob.test.", false)
+		}
+		// At the exact deadline an expired primary image refuses with SERVFAIL
+		// until its replacement is published. Both that refusal and the settled
+		// NXDOMAIN/NODATA must contain no retained source answer.
+		for name := range allocations {
+			a, err := exchange("127.0.0.4", "tcp", name, true)
+			if err != nil || a == nil || len(a.Answer) != 0 || a.Rcode != dns.RcodeNameError && a.Rcode != dns.RcodeSuccess && a.Rcode != dns.RcodeServerFailure {
+				code, answers := -1, -1
+				if a != nil {
+					code, answers = a.Rcode, len(a.Answer)
+				}
+				t.Fatalf("expired source record query: rcode=%d answers=%d transport_error=%t", code, answers, err != nil)
+			}
+		}
+		phase(uniFiNames)
+		await("127.0.0.2", "exact.test.", true)
+		for name, ip := range allocations {
+			await("127.0.0.4", name, false)
+			a, err := exchange("127.0.0.4", "tcp", name, true)
+			if err != nil || !uniFiHostnameAnswer(a, false) || a.Answer[0].(*dns.A).A.String() != ip {
+				t.Fatal("restoration changed stable name allocation")
+			}
 		}
 	}
 
-	heldAt := time.Now()
-	held := make(chan *dns.Msg, 1)
-	go func() {
-		a, _ := exchange("127.0.0.2", "tcp", "held.alias.test.", true)
-		held <- a
-	}()
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("held alias did not reach actual upstream")
-	}
-	// Production file reconciliation changes the endpoint and allowlisted
-	// credential. The integration host must cancel/join the old provider and
-	// acquire a complete new observation, preserving the held request's owner.
 	writeUniFiHostnameSource(t, sourceFile, successor.definition(paths[1]))
-	// A fresh publication withdraws the original configuration's identity
-	// before its replacement provider becomes ready. Release while still
-	// inside the original five-second DNS deadline, then qualify the successor.
-	await("127.0.0.2", "exact.test.", false)
-	resume()
-	select {
-	case a := <-held:
-		if !uniFiHostnameAnswer(a, true) || time.Since(heldAt) >= dnsserver.DefaultQueryTimeout {
-			code := -1
-			if a != nil {
-				code = a.Rcode
-			}
-			t.Fatalf("held CNAME response lost original policy: rcode=%d elapsed=%s", code, time.Since(heldAt).Round(time.Millisecond))
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("held alias did not complete")
-	}
 	// Fresh requests must acquire only the successor hostname, never the old
 	// source identity or a fallback to an earlier live claim for this address.
 	await("127.0.0.2", "successor.test.", true)
