@@ -21,6 +21,23 @@ func resolverFixture(now time.Time) resolverObservation {
 	return resolverObservation{endpoints: []cluster.Endpoint{e}, results: []backendZones{{endpoint: e, zones: internalapi.ZoneList{Node: e.Name, Resolver: st}}}, eligible: true, sent: now}
 }
 
+func TestResolverOriginalClientIsolationBypassReasons(t *testing.T) {
+	now := time.Now()
+	for _, reason := range []string{"async-ptr", "dhcp-runtime", "client-scope", "rule-client-scope", "zone-client-acl", "client-acl", "ecs", "rebinding-client-scope", "rate-limit", "untrusted-console-text"} {
+		o := resolverFixture(now)
+		o.results[0].zones.Resolver.Available = false
+		o.results[0].zones.Resolver.UnavailableReason = reason
+		want := "bypass-" + reason
+		if reason == "untrusted-console-text" {
+			want = "bypass-input-unavailable"
+		}
+		key, expiry, mode := resolverTarget(o, now, map[string]*resolverHistory{})
+		if key != "" || !expiry.IsZero() || mode != want {
+			t.Fatal("unavailable original selected a cache or unbounded mode", reason)
+		}
+	}
+}
+
 func TestResolverTargetSequenceABAExpiryAndOwner(t *testing.T) {
 	now := time.Now()
 	o := resolverFixture(now)

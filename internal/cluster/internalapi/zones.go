@@ -24,17 +24,18 @@ const ResolverLease = 15 * time.Second
 // It grants no cache command authority. Missing metadata denotes an older peer;
 // Available=false explicitly denies packet caching for this observation.
 type ResolverState struct {
-	Version         int       `json:"version"`
-	Node            string    `json:"node"`
-	Instance        string    `json:"instance"`
-	Publication     uint64    `json:"publication,string"`
-	Identity        string    `json:"identity"`
-	Phase           string    `json:"phase"`
-	ObservedAt      time.Time `json:"observedAt"`
-	ValidUntil      time.Time `json:"validUntil"`
-	BlockingEnabled bool      `json:"blockingEnabled"`
-	DisabledUntil   time.Time `json:"disabledUntil,omitzero"`
-	Available       bool      `json:"available"`
+	Version           int       `json:"version"`
+	Node              string    `json:"node"`
+	Instance          string    `json:"instance"`
+	Publication       uint64    `json:"publication,string"`
+	Identity          string    `json:"identity"`
+	Phase             string    `json:"phase"`
+	ObservedAt        time.Time `json:"observedAt"`
+	ValidUntil        time.Time `json:"validUntil"`
+	BlockingEnabled   bool      `json:"blockingEnabled"`
+	DisabledUntil     time.Time `json:"disabledUntil,omitzero"`
+	Available         bool      `json:"available"`
+	UnavailableReason string    `json:"unavailableReason,omitempty"`
 }
 
 // ErrZonesUnsupported is returned by Client.Zones when the peer has no

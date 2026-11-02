@@ -31,13 +31,14 @@ func (s *Selection) Summary(now time.Time) (rules int, available bool) {
 }
 
 // CacheUntil exposes the original absolute source boundary, without renewing
-// an unavailable/expired copy. An empty selection has no time boundary.
+// an unavailable/expired copy. Client-IP rules cannot qualify a shared cache
+// whose key has no original client identity. An empty selection has no boundary.
 func (s *Selection) CacheUntil(now time.Time) (until time.Time, available bool) {
 	if s == nil || now.IsZero() || len(s.zones) > maxSummarySources {
 		return time.Time{}, false
 	}
 	for _, z := range s.zones {
-		if !z.AvailableAt(now) {
+		if !z.AvailableAt(now) || len(z.clients) != 0 {
 			return time.Time{}, false
 		}
 		if until.IsZero() || z.spec.ExpiresAt.Before(until) {

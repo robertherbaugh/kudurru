@@ -138,7 +138,7 @@ func (o *EdgeCache) project(lease *serving.Lease, now time.Time) (*internalapi.R
 		return nil, serving.ErrComponents
 	}
 	digest := sha256.Sum256(data)
-	return &internalapi.ResolverState{Version: 1, Node: o.node, Instance: o.instance, Publication: bundle.Identity().Publication, Identity: hex.EncodeToString(digest[:]), Phase: phase, ObservedAt: now.UTC(), ValidUntil: until.UTC(), BlockingEnabled: enabled, DisabledUntil: disabledUntil, Available: available}, nil
+	return &internalapi.ResolverState{Version: 1, Node: o.node, Instance: o.instance, Publication: bundle.Identity().Publication, Identity: hex.EncodeToString(digest[:]), Phase: phase, ObservedAt: now.UTC(), ValidUntil: until.UTC(), BlockingEnabled: enabled, DisabledUntil: disabledUntil, Available: available, UnavailableReason: timeline.reason}, nil
 }
 
 // cacheTimeline contains only detached original time boundaries. Compilation
@@ -147,10 +147,11 @@ type cacheTimeline struct {
 	deadlines []time.Time
 	scheduled bool
 	rpz       []*rpz.Selection
+	reason    string
 }
 
 func newCacheTimeline(owners *semanticOwners, inventory *InventoryOwner, zones *servingzones.Prepared) (*cacheTimeline, error) {
-	t := &cacheTimeline{}
+	t := &cacheTimeline{reason: sharedCacheBypass(owners)}
 	for _, p := range owners.objects.Objects.Policies() {
 		if p.Spec.Schedule != nil {
 			t.scheduled = true
@@ -196,7 +197,7 @@ func newCacheTimeline(owners *semanticOwners, inventory *InventoryOwner, zones *
 func (t *cacheTimeline) at(now time.Time) (string, time.Time, bool) {
 	i := sort.Search(len(t.deadlines), func(i int) bool { return t.deadlines[i].After(now) })
 	var until time.Time
-	available := true
+	available := t.reason == ""
 	for _, selection := range t.rpz {
 		boundary, ok := selection.CacheUntil(now)
 		available = available && ok
@@ -216,4 +217,53 @@ func (t *cacheTimeline) at(now time.Time) (string, time.Time, bool) {
 		}
 	}
 	return fmt.Sprintf("%d:%d", i, minute), until, available
+}
+
+// Shared dnsdist packet caches carry no exact original client/identity key.
+// These configured modes may change a verdict between clients or between two
+// requests in one publication. A finite publication lease cannot repair that.
+func sharedCacheBypass(owners *semanticOwners) string {
+	if owners == nil || owners.config == nil || owners.objects == nil {
+		return "input-unavailable"
+	}
+	cfg := owners.config
+	switch {
+	case cfg.ClientNames.ReversePTR.Enabled:
+		return "async-ptr"
+	case cfg.DHCP.Enabled || len(cfg.DHCP.Scopes) != 0:
+		return "dhcp-runtime"
+	case !owners.policy.ClientIndependent():
+		return "client-scope"
+	case !owners.objects.Objects.Lists().ClientIndependent():
+		return "rule-client-scope"
+	case !zoneQueriesClientIndependent(owners.objects.Objects.Zones()):
+		return "zone-client-acl"
+	case len(cfg.Control.AllowedNetworks) != 0:
+		return "client-acl"
+	case cfg.Upstreams.ECS.Mode != "" && cfg.Upstreams.ECS.Mode != "strip":
+		return "ecs"
+	case cfg.Response.Rebinding.Enabled && len(cfg.Response.Rebinding.BypassNetworks) != 0:
+		return "rebinding-client-scope"
+	case cfg.RateLimit.Enabled:
+		return "rate-limit"
+	default:
+		return ""
+	}
+}
+
+func zoneQueriesClientIndependent(zones []*public.DNSZone) bool {
+	for _, z := range zones {
+		// Forward and stub routes use the resolver pool. Include other local
+		// zones conservatively because CNAME/fallback paths can cross them.
+		// Transfer/notify keys authorize different operations, not queries.
+		if z == nil || len(z.Spec.Policy.QueryACL) != 0 {
+			return false
+		}
+		switch z.Spec.Policy.QueryAccess {
+		case "", public.AccessAllow, public.AccessDeny:
+		default:
+			return false
+		}
+	}
+	return true
 }

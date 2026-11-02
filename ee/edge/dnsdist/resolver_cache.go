@@ -179,6 +179,10 @@ func resolverTarget(o resolverObservation, now time.Time, histories map[string]*
 		}
 		if !st.Available {
 			mode = "bypass-input-unavailable"
+			switch st.UnavailableReason {
+			case "async-ptr", "dhcp-runtime", "client-scope", "rule-client-scope", "zone-client-acl", "client-acl", "ecs", "rebinding-client-scope", "rate-limit":
+				mode = "bypass-" + st.UnavailableReason
+			}
 			continue
 		}
 		// A captured future blocking boundary cannot outlive its lease.

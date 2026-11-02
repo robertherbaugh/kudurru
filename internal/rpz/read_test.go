@@ -1,11 +1,29 @@
 package rpz
 
 import (
+	"net/netip"
 	"testing"
 	"time"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 )
+
+func TestSelectionCacheUntilRejectsOriginalClientIPTriggers(t *testing.T) {
+	z := fixtureZone(t, "32.1.2.0.192.rpz-client-ip.policy.test. 60 IN CNAME .")
+	s := NewSelection(z)
+	if !z.AvailableAt(testNow) {
+		t.Fatal("original source unavailable")
+	}
+	if _, ok := s.CacheUntil(testNow); ok {
+		t.Fatal("client-IP source qualified shared cache")
+	}
+	for _, ip := range []string{"192.0.2.1", "192.0.2.2"} {
+		d := s.Evaluate(Context{Name: "same.example.", ClientIP: netip.MustParseAddr(ip)}, testNow)
+		if d.Unavailable || (d.Action == ActionNXDOMAIN) != (ip == "192.0.2.1") {
+			t.Fatal("client-IP proof no longer matches original source")
+		}
+	}
+}
 
 func TestSelectionSummaryCountsAllRequiredSourcesAndExactExpiry(t *testing.T) {
 	a := fixtureZone(t, "a.policy.test. 30 IN CNAME .", "b.policy.test. 30 IN CNAME rpz-passthru.")
