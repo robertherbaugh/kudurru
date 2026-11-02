@@ -156,3 +156,9 @@ func (c *CommandCapture) Invoke(ctx context.Context, action string, params json.
 	a := c.submit(ctx, command{kind: "invoke", action: action, params: append(json.RawMessage(nil), params...)})
 	return a.value, a.err
 }
+
+// Actions returns only the original provider's bounded advertised schemas.
+func (c *CommandCapture) Actions(ctx context.Context) ([]integration.ActionSpec, error) {
+	a := c.submit(ctx, command{kind: "actions"})
+	return a.actions, a.err
+}

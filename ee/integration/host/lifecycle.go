@@ -178,7 +178,7 @@ func (h *Host) refresh(ctx context.Context) {
 			if !i.definition.DeletionTimestamp.IsZero() {
 				reason = "Deleting"
 			}
-			h.statuses[key] = InstanceStatus{Owner: i.owner, Phase: "Paused", Reason: reason, CredentialFingerprints: i.CredentialFingerprints()}
+			h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: "Paused", Reason: reason, CredentialFingerprints: i.CredentialFingerprints()}
 			continue
 		}
 		jobCtx, cancel := context.WithCancel(ctx)
@@ -190,7 +190,7 @@ func (h *Host) refresh(ctx context.Context) {
 		nextInput.BundleID = i.BundleID()
 		j := &job{key: key, frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
 		h.jobs[key] = j
-		h.statuses[key] = InstanceStatus{Owner: i.owner, Phase: "Waiting", Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
+		h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: "Waiting", Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
 		go h.elect(j)
 	}
 }
@@ -316,7 +316,7 @@ func (h *Host) setLocal(j *job, phase, reason string, result Result, leader bool
 		return
 	}
 	old := h.statuses[j.key]
-	s := InstanceStatus{Owner: j.frame.instance.owner, Phase: phase, Reason: reason, Leader: leader, Result: valueResult(&result), LastSync: old.LastSync, CredentialFingerprints: j.frame.instance.CredentialFingerprints()}
+	s := InstanceStatus{Owner: j.frame.instance.owner, Revision: j.frame.instance.definition.ResourceVersion, Phase: phase, Reason: reason, Leader: leader, Result: valueResult(&result), LastSync: old.LastSync, CredentialFingerprints: j.frame.instance.CredentialFingerprints()}
 	if phase == "Ready" {
 		s.LastSync = h.opts.Now()
 	}

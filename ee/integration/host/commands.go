@@ -331,20 +331,31 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 		}
 		h.publishStatus(ctx, j, g)
 		return answer{result: result, err: err}
+	case "actions":
+		provider, ok := j.provider.(integration.ActionProvider)
+		if !ok {
+			return answer{actions: []integration.ActionSpec{}}
+		}
+		out, err := declaredActions(provider, f.instance.secrets)
+		if err != nil {
+			return answer{err: err}
+		}
+		if err := h.fence(ctx, j, g); err != nil {
+			return answer{err: err}
+		}
+		return answer{actions: out}
 	case "invoke":
 		actions, ok := j.provider.(integration.ActionProvider)
 		if !ok {
 			return answer{err: ErrUnsupported}
 		}
-		advertised := false
-		if len(actions.Actions()) > 128 {
-			return answer{err: ErrCapacity}
+		declared, err := declaredActions(actions, f.instance.secrets)
+		if err != nil {
+			return answer{err: err}
 		}
-		for _, a := range actions.Actions() {
+		advertised := false
+		for _, a := range declared {
 			if a.Name == c.action {
-				if advertised {
-					return answer{err: ErrInvalid}
-				}
 				if err := validateParams(a.Params, c.params); err != nil {
 					return answer{err: err}
 				}

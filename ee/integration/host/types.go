@@ -84,8 +84,9 @@ type RequestHost interface {
 
 // Preview binds all complete destination plans, not only one configured zone.
 type Preview struct {
-	Digest string
-	Plans  []*plan.Plan
+	Domains [][]string
+	Digest  string
+	Plans   []*plan.Plan
 }
 
 // Result reports only durable confirmed outcomes; ambiguity remains Degraded.
@@ -113,6 +114,7 @@ type DesiredBatch struct {
 
 // InstanceStatus contains sanitized local observations, never secret values.
 type InstanceStatus struct {
+	Revision               string
 	Owner                  InstanceID
 	Phase                  string
 	Reason                 string
@@ -197,6 +199,7 @@ type command struct {
 	reply                  chan answer
 }
 type answer struct {
+	actions []integration.ActionSpec
 	check   integration.Status
 	preview *Preview
 	result  *Result

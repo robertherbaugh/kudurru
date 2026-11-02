@@ -103,6 +103,7 @@ func (s *Server) registerRoutes() {
 	s.registerBranding()
 	s.registerAuth()
 	s.registerObjects()
+	s.registerIntegrations()
 	s.registerImports()
 	s.registerZones()
 	s.registerLists()

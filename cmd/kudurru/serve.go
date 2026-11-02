@@ -981,6 +981,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	var dnsQueryCapture pipeline.Capture
 	var canonicalSettings api.CanonicalSettings
+	var integrationAdmin api.IntegrationAdministration
 	var brandingReads api.BrandingReadSource
 	var blockPagePreview api.BlockPagePreviewer = blockPage
 	var nodeConfigCommand api.NodeConfigCommand
@@ -1049,6 +1050,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 		capturedZoneReads = zoneReads
+		integrationAdmin = complete.integrations
 		reg.MustRegister(newServingZoneCollector(zoneReads))
 		httpAuth, err := newServingHTTP(servingHTTPOptions{
 			Runtime: complete, Cookie: ids.Cookie(), CrossOrigin: crossOrigin,
@@ -1212,7 +1214,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,

@@ -335,6 +335,7 @@ func buildPreview(inputs []publicationInput) (*Preview, error) {
 			return nil, err
 		}
 		p.Plans = append(p.Plans, built)
+		p.Domains = append(p.Domains, slices.Clone(in.publication.Domains))
 	}
 	var digests []string
 	for _, plan := range p.Plans {

@@ -83,47 +83,8 @@ func newIntegrationOperationFixture(t *testing.T) *integrationOperationFixture {
 	f.s, f.path = integrationFixture(t, func(o *servingRuntimeOptions) {
 		o.Now = func() time.Time { return time.Now().Add(time.Duration(f.offset.Load())) }
 	}, func(string) (integration.Integration, error) { return f.probe, nil })
-	f.token, f.tokenID = tokens.Generate()
-	err := f.s.opts.Store.Command(t.Context(), f.s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		user, err := tx.Apply(ctx, &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "operation-admin"}, Spec: internalv1.LocalUserSpec{BuiltinAdmin: true}}, store.ApplyOptions{Manager: store.ManagerSystem})
-		if err != nil {
-			return err
-		}
-		expires := metav1.NewTime(time.Now().Add(time.Hour))
-		_, err = tx.Apply(ctx, &internalv1.APIToken{ObjectMeta: metav1.ObjectMeta{Name: f.tokenID}, Spec: internalv1.APITokenSpec{SecretHash: tokens.Hash(f.token), Owner: internalv1.TokenOwner{Kind: internalv1.OwnerUser, Name: user.GetName(), UID: string(user.GetUID()), ID: "local:operation-admin", Provider: "local"}, Scopes: []string{"admin"}, ExpiresAt: &expires}}, store.ApplyOptions{Manager: store.ManagerSystem})
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.d = integrationApply(t, f.s, integrationDefinition("manual", f.path))
-	f.stop = integrationRun(t, f.s)
-	integrationReadyCommand(t, f.s, integrationOwner(f.s, f.d))
-	// Status changes the public resource version. Review the settled original
-	// before creating the single HTTP request; never retry a refused operation.
-	awaitServingRuntime(t, f.s, func() bool {
-		var current public.Integration
-		if f.s.opts.Store.Get(t.Context(), store.KeyOf(f.d), &current) != nil {
-			return false
-		}
-		if _, err := f.s.integrations.host.CaptureCommand(t.Context(), integrationOwner(f.s, &current), current.ResourceVersion); err != nil {
-			return false
-		}
-		lease, err := f.s.publisher.CaptureHTTP(t.Context())
-		if err != nil {
-			return false
-		}
-		defer lease.Release()
-		if lease.Bundle().Identity().Base.Revision != f.s.publisher.Status().Authority.Installed.Revision {
-			return false
-		}
-		f.d = current.DeepCopy()
-		return true
-	})
-	f.adapter, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.s.opts.Now})
-	if err != nil {
-		t.Fatal(err)
-	}
+	integrationOperationCaller(t, f)
+	integrationOperationStart(t, f, integrationDefinition("manual", f.path))
 	return f
 }
 
@@ -251,4 +212,55 @@ func TestIntegrationOperationSourceCommitAndFinalStatus(t *testing.T) {
 			t.Fatalf("final own-status transaction: %v", err)
 		}
 	})
+}
+
+func integrationOperationCaller(t *testing.T, f *integrationOperationFixture) {
+	t.Helper()
+	f.token, f.tokenID = tokens.Generate()
+	err := f.s.opts.Store.Command(t.Context(), f.s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		user, err := tx.Apply(ctx, &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "operation-admin"}, Spec: internalv1.LocalUserSpec{BuiltinAdmin: true}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		if err != nil {
+			return err
+		}
+		expires := metav1.NewTime(time.Now().Add(time.Hour))
+		_, err = tx.Apply(ctx, &internalv1.APIToken{ObjectMeta: metav1.ObjectMeta{Name: f.tokenID}, Spec: internalv1.APITokenSpec{SecretHash: tokens.Hash(f.token), Owner: internalv1.TokenOwner{Kind: internalv1.OwnerUser, Name: user.GetName(), UID: string(user.GetUID()), ID: "local:operation-admin", Provider: "local"}, Scopes: []string{"admin"}, ExpiresAt: &expires}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func integrationOperationStart(t *testing.T, f *integrationOperationFixture, definition *public.Integration) {
+	t.Helper()
+
+	f.d = integrationApply(t, f.s, definition)
+	f.stop = integrationRun(t, f.s)
+	integrationReadyCommand(t, f.s, integrationOwner(f.s, f.d))
+	// Status changes the public resource version. Review the settled original
+	// before creating the single HTTP request; never retry a refused operation.
+	awaitServingRuntime(t, f.s, func() bool {
+		var current public.Integration
+		if f.s.opts.Store.Get(t.Context(), store.KeyOf(f.d), &current) != nil {
+			return false
+		}
+		if _, err := f.s.integrations.host.CaptureCommand(t.Context(), integrationOwner(f.s, &current), current.ResourceVersion); err != nil {
+			return false
+		}
+		lease, err := f.s.publisher.CaptureHTTP(t.Context())
+		if err != nil {
+			return false
+		}
+		defer lease.Release()
+		if lease.Bundle().Identity().Base.Revision != f.s.publisher.Status().Authority.Installed.Revision {
+			return false
+		}
+		f.d = current.DeepCopy()
+		return true
+	})
+	var err error
+	f.adapter, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.s.opts.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
