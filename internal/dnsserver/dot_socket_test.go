@@ -3,7 +3,9 @@ package dnsserver
 import (
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"path/filepath"
 	"sync"
@@ -20,6 +22,11 @@ import (
 // Observe successfully decoded DNS on each bound socket, after real TLS and
 // before the normal shared handler. Instrumentation is installed before Run.
 func runDoTSockets(tb testing.TB, sockets int, limits Limits) (*Registry, *testcert.Pair, []atomic.Int64, func()) {
+	tb.Helper()
+	return runObservedDoTSockets(tb, sockets, limits, nil)
+}
+
+func runObservedDoTSockets(tb testing.TB, sockets int, limits Limits, beforeServe func(*dnsListener)) (*Registry, *testcert.Pair, []atomic.Int64, func()) {
 	tb.Helper()
 	pair, err := testcert.Write(tb.TempDir(), "")
 	if err != nil {
@@ -42,6 +49,9 @@ func runDoTSockets(tb testing.TB, sockets int, limits Limits) (*Registry, *testc
 			counts[i].Add(1)
 			listener.ServeDNS(w, q)
 		})
+	}
+	if beforeServe != nil {
+		beforeServe(listener)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -81,6 +91,33 @@ func dotSocketClient(pair *testcert.Pair) *dns.Client {
 	return &dns.Client{Net: "tcp-tls", Timeout: 2 * time.Second, TLSConfig: &tls.Config{RootCAs: pair.Pool, ServerName: "localhost", MinVersion: tls.VersionTLS12, NextProtos: []string{"dot"}}}
 }
 
+// queueDoTQueries submits both admitted messages before waiting for either
+// response. Client rescheduling cannot accidentally test the separate 150ms
+// idle limit between sequential exchanges in the 96-client query-limit load.
+// There is one bounded TLS write, no request replay and no deadline renewal.
+func queueDoTQueries(co *dns.Conn, queries ...*dns.Msg) error {
+	if len(queries) != 2 {
+		return fmt.Errorf("DoT fixture requires exactly two original queries")
+	}
+	wire := make([]byte, 0, 512)
+	for _, q := range queries {
+		message, err := q.Pack()
+		if err != nil {
+			return err
+		}
+		wire = binary.BigEndian.AppendUint16(wire, uint16(len(message))) //nolint:gosec // bounded fixture queries packed by dns.Msg
+		wire = append(wire, message...)
+	}
+	if err := co.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		return err
+	}
+	n, err := co.Conn.Write(wire)
+	if err == nil && n != len(wire) {
+		return io.ErrShortWrite
+	}
+	return err
+}
+
 func TestDoTMultiSocketTLSLimitsRotationAndShutdown(t *testing.T) {
 	cfg, err := config.Load("", []string{"KUDURRU_LISTENERS__SOCKETS=4", "KUDURRU_LISTENERS__LIMITS__MAXTCPQUERIES=2", "KUDURRU_LISTENERS__LIMITS__IDLETIMEOUT=150ms"})
 	if err != nil {
@@ -110,10 +147,19 @@ func TestDoTMultiSocketTLSLimitsRotationAndShutdown(t *testing.T) {
 					t.Error("DoT socket did not use verified current TLS identity/ALPN")
 					return
 				}
-				for i := range 2 {
-					response, _, err := c.ExchangeWithConn(query(fmt.Sprintf("c%d-q%d.example.", client, i)), co)
+				queries := []*dns.Msg{query(fmt.Sprintf("c%d-q0.example.", client)), query(fmt.Sprintf("c%d-q1.example.", client))}
+				if err := queueDoTQueries(co, queries...); err != nil {
+					t.Error("DoT bounded two-query write failed", err)
+					return
+				}
+				for _, original := range queries {
+					response, err := co.ReadMsg()
 					if err != nil {
-						t.Error("DoT query before per-connection limit failed", err)
+						t.Error("DoT queued query before per-connection limit failed", err)
+						return
+					}
+					if response.Id != original.Id || len(response.Question) != 1 || response.Question[0] != original.Question[0] {
+						t.Error("DoT response lost original query ID or question")
 						return
 					}
 					checkA(t, response)
