@@ -36,6 +36,10 @@ type ResolverState struct {
 	DisabledUntil     time.Time `json:"disabledUntil,omitzero"`
 	Available         bool      `json:"available"`
 	UnavailableReason string    `json:"unavailableReason,omitempty"`
+	// AuthoritativeAvailable is an explicit additional proof, never inferred
+	// from resolver availability by older or partially upgraded sources.
+	AuthoritativeAvailable bool   `json:"authoritativeAvailable,omitempty"`
+	AuthoritativeReason    string `json:"authoritativeReason,omitempty"`
 }
 
 // ErrZonesUnsupported is returned by Client.Zones when the peer has no

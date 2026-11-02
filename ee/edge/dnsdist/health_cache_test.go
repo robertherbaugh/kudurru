@@ -28,6 +28,15 @@ func TestHealthQueriesBypassPacketCacheBeforePoolSelection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			for i := range top.Pools {
+				// Explicit raw cache topology for bypass-rule coverage. Build
+				// itself has no original publication authority to enable these.
+				if top.Pools[i].Name == edge.PoolResolver {
+					top.Pools[i].Cache = edge.DefaultResolverCache()
+				} else if tc.cache {
+					top.Pools[i].Cache = edge.AuthoritativeCache(30)
+				}
+			}
 			for _, qname := range []string{edge.HealthQName, "custom-health.lab.invalid."} {
 				t.Run(qname, func(t *testing.T) {
 					top.HealthCheck.QName = qname

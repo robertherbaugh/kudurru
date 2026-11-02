@@ -107,27 +107,28 @@ type Supervisor struct {
 	rendered  prometheus.Gauge
 	gatherer  prometheus.Gatherer
 
-	mu                                sync.Mutex
-	status                            *ServerStatus
-	statusAt                          time.Time
-	statusErr                         error
-	restarting                        bool
-	current                           []File
-	endpoints                         []cluster.Endpoint
-	zones                             []string
-	updateError                       string
-	membershipError, certificateError string
-	statusEpoch                       uint64
-	membershipMode                    string
-	classifyBackend                   func(context.Context, edge.Backend) (healthCapability, error) // unit fixture seam; nil uses authenticated direct probes
-	tlsState                          *certificateState                                             // Run owns snapshots; never contains source credentials in status
-	cacheSourceEpoch, cacheChildEpoch uint64
-	cacheDesired                      []cluster.Endpoint
-	cacheWatchFailed                  bool
-	cacheWake                         chan struct{}
-	cacheObservations                 chan resolverObservation
-	cacheMode, cacheError             string
-	cacheIdentity                     string
+	mu                                                 sync.Mutex
+	status                                             *ServerStatus
+	statusAt                                           time.Time
+	statusErr                                          error
+	restarting                                         bool
+	current                                            []File
+	endpoints                                          []cluster.Endpoint
+	zones                                              []string
+	updateError                                        string
+	membershipError, certificateError                  string
+	statusEpoch                                        uint64
+	membershipMode                                     string
+	classifyBackend                                    func(context.Context, edge.Backend) (healthCapability, error) // unit fixture seam; nil uses authenticated direct probes
+	tlsState                                           *certificateState                                             // Run owns snapshots; never contains source credentials in status
+	cacheSourceEpoch, cacheChildEpoch                  uint64
+	cacheDesired                                       []cluster.Endpoint
+	cacheWatchFailed                                   bool
+	cacheWake                                          chan struct{}
+	cacheObservations                                  chan resolverObservation
+	cacheMode, cacheError                              string
+	cacheIdentity                                      string
+	authoritativeCacheMode, authoritativeCacheIdentity string
 }
 
 // New validates cfg and returns a Supervisor.
@@ -260,7 +261,7 @@ func (s *Supervisor) topology(eps []cluster.Endpoint, zones []string) (*edge.Top
 		// source proves its original complete publication. Never restore an
 		// unqualified packet cache from a persisted restart configuration.
 		for i := range t.Pools {
-			if t.Pools[i].Name == edge.PoolResolver {
+			if t.Pools[i].Name == edge.PoolResolver || t.Pools[i].Name == edge.PoolAuthoritative {
 				t.Pools[i].Cache = nil
 			}
 		}
@@ -531,6 +532,10 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	} else {
 		s.mu.Lock()
 		s.cacheMode = "bypass-unconfigured"
+		s.authoritativeCacheMode = "bypass-unconfigured"
+		if !s.cfg.Options.AuthoritativeCache {
+			s.authoritativeCacheMode = "disabled"
+		}
 		s.mu.Unlock()
 	}
 	wg.Go(func() { s.pollStatus(ctx) })
@@ -926,6 +931,7 @@ func (s *Supervisor) Handler() http.Handler {
 		body := map[string]any{"ready": ready, "message": message, "endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath(), "updateError": s.updateError, "membershipUpdateMode": s.membershipMode, "membershipError": s.membershipError, "certificateError": s.certificateError}
 		body["resolverCacheMode"], body["resolverCacheError"] = s.cacheMode, s.cacheError
 		body["resolverCacheIdentity"] = s.cacheIdentity
+		body["authoritativeCacheMode"], body["authoritativeCacheIdentity"] = s.authoritativeCacheMode, s.authoritativeCacheIdentity
 		if s.status != nil {
 			body["dnsdist"] = s.status
 		}

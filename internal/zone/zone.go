@@ -156,6 +156,13 @@ func (z *Zone) Contains(name string) bool {
 // address (dev-docs/design-record.md §7.1 step 6).
 func (z *Zone) QueryAllowed(client netip.Addr) bool { return z.access.allowed(client) }
 
+// QueryClientIndependent proves the compiled original query policy is uniform.
+// Desired settings cannot replace this proof for a frozen committed primary.
+func (z *Zone) QueryClientIndependent() bool {
+	return z != nil && len(z.access.acl) == 0 &&
+		(z.access.mode == v1alpha1.AccessAllow || z.access.mode == v1alpha1.AccessDeny)
+}
+
 // TransferAllowed applies spec.policy.zoneTransfer, transferACL and
 // transferTSIGKeyRefs to a transfer request (AXFR or IXFR out). The access
 // mode decides on the client address exactly as queryAccess does (an empty

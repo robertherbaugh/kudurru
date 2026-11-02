@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -221,15 +222,53 @@ func (s *Supervisor) resolverCacheCommand(enabled bool) string {
 	return fmt.Sprintf(`getPool("resolver"):setCache(newPacketCache(%d,{maxTTL=%d,minTTL=%d,staleTTL=%d,temporaryFailureTTL=%d,maxNegativeTTL=%d}))`, c.Size, c.MaxTTL, c.MinTTL, c.StaleTTL, c.TemporaryFailureTTL, c.MaxNegativeTTL)
 }
 
-// runResolverCache is the sole remote resolver-cache mutator. HTTP pulls never
-// delay expiry handling; there is at most one bounded console command/retry.
+// authoritativeTarget adds an explicit original zone proof to the SAME
+// validated source/child/time observation. No remote field selects a pool.
+func authoritativeTarget(o resolverObservation, key, mode string, enabled bool) (string, string) {
+	if !enabled {
+		return "", "disabled"
+	}
+	if key == "" {
+		return "", mode
+	}
+	if len(o.results) == 0 || len(o.results) != len(o.endpoints) {
+		return "", "bypass-source"
+	}
+	for _, result := range o.results {
+		st := result.zones.Resolver
+		if st == nil || !st.AuthoritativeAvailable {
+			mode = "bypass-authoritative-proof"
+			if st != nil {
+				switch st.AuthoritativeReason {
+				case "zone-runtime", "zone-unavailable", "zone-expiry", "signed-zone", "zone-client-view", "zone-client-acl":
+					mode = "bypass-" + st.AuthoritativeReason
+				}
+			}
+			return "", mode
+		}
+	}
+	return key, "qualified"
+}
+
+func (s *Supervisor) authoritativeCacheCommand(enabled bool) string {
+	if !enabled {
+		return `getPool("authoritative"):unsetCache()`
+	}
+	c := edge.AuthoritativeCache(s.cfg.Options.AuthoritativeCacheTTL)
+	return fmt.Sprintf(`getPool("authoritative"):setCache(newPacketCache(%d,{maxTTL=%d,minTTL=%d,staleTTL=%d,temporaryFailureTTL=%d,maxNegativeTTL=%d}))`, c.Size, c.MaxTTL, c.MinTTL, c.StaleTTL, c.TemporaryFailureTTL, c.MaxNegativeTTL)
+}
+
+type packetCacheKeys struct{ resolver, authoritative string }
+
+// runResolverCache is the sole remote packet-cache mutator for both fixed
+// pools. One bounded console acknowledgment covers every changed target.
 func (s *Supervisor) runResolverCache(ctx context.Context) {
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	histories := map[string]*resolverHistory{}
 	var latest *resolverObservation
 	var appliedFence resolverFence
-	appliedKey := ""
+	applied := packetCacheKeys{}
 	var retry time.Time
 	for {
 		select {
@@ -243,54 +282,61 @@ func (s *Supervisor) runResolverCache(ctx context.Context) {
 		now := time.Now()
 		fence, _, eligible := s.resolverFence()
 		if appliedFence.child != fence.child {
-			// Every new child is loaded from the validated uncached restart
-			// target. Do not send a redundant unset before its console starts.
-			appliedKey, appliedFence = "", fence
+			// Every new child loads the validated restart target with BOTH pools
+			// uncached. Never restore former authorization from persisted YAML.
+			applied, appliedFence = packetCacheKeys{}, fence
 		}
 		key, mode := "", "bypass-source"
+		var observation resolverObservation
 		if latest != nil && eligible && latest.fence == fence {
-			key, _, mode = resolverTarget(*latest, now, histories)
+			observation = *latest
+			key, _, mode = resolverTarget(observation, now, histories)
 		}
+		authKey, authMode := authoritativeTarget(observation, key, mode, s.cfg.Options.AuthoritativeCache)
+		target := packetCacheKeys{key, authKey}
 		if !retry.IsZero() && now.Before(retry) {
 			continue
 		}
-		if appliedKey == key && (appliedFence == fence || key == "") {
+		if applied == target && (appliedFence == fence || target == (packetCacheKeys{})) {
 			appliedFence = fence
 			s.mu.Lock()
-			s.cacheMode = mode
-			s.cacheIdentity, s.cacheError = key, ""
+			s.cacheMode, s.cacheIdentity, s.cacheError = mode, key, ""
+			s.authoritativeCacheMode, s.authoritativeCacheIdentity = authMode, authKey
 			s.mu.Unlock()
 			continue
 		}
-		// A fresh positive qualification always installs a NEW packet cache;
-		// only a formerly attached cache requires an unset acknowledgment.
-		err := s.console(ctx, s.resolverCacheCommand(key != ""))
+		var commands []string
+		if applied.resolver != key || appliedFence != fence && key != "" {
+			commands = append(commands, s.resolverCacheCommand(key != ""))
+		}
+		if applied.authoritative != authKey || appliedFence != fence && authKey != "" {
+			commands = append(commands, s.authoritativeCacheCommand(authKey != ""))
+		}
+		err := s.console(ctx, strings.Join(commands, ";"))
 		after, _, current := s.resolverFence()
-		if err != nil || after != fence || key != "" && !current {
-			appliedKey = "uncertain"
+		if err != nil || after != fence || (key != "" || authKey != "") && !current {
+			applied = packetCacheKeys{"uncertain", "uncertain"}
 			s.mu.Lock()
-			s.cacheMode = "uncertain"
-			s.cacheIdentity = ""
-			s.cacheError = "resolver cache convergence failed"
+			s.cacheMode, s.cacheIdentity = "uncertain", ""
+			s.authoritativeCacheMode, s.authoritativeCacheIdentity = "uncertain", ""
+			s.cacheError = "packet cache convergence failed"
 			child := s.child
 			if s.cacheChildEpoch != fence.child {
 				child = nil
 			}
 			s.mu.Unlock()
-			// A successful mutation without acknowledgment might have attached
-			// an obsolete cache. Retire only this captured child, outside locks;
-			// Run restarts the accepted uncached configuration. Never stop a
-			// successor child to repair an obsolete command's result.
+			// Unknown acknowledgment can leave either target attached. Retire only
+			// this captured child; its successor starts uncached. Never replay DNS.
 			if child != nil && ctx.Err() == nil {
 				child.Stop()
 			}
 			retry = time.Now().Add(time.Second)
 			continue
 		}
-		appliedKey, appliedFence, retry = key, fence, time.Time{}
+		applied, appliedFence, retry = target, fence, time.Time{}
 		s.mu.Lock()
-		s.cacheMode, s.cacheError = mode, ""
-		s.cacheIdentity = key
+		s.cacheMode, s.cacheIdentity, s.cacheError = mode, key, ""
+		s.authoritativeCacheMode, s.authoritativeCacheIdentity = authMode, authKey
 		s.mu.Unlock()
 	}
 }

@@ -17,7 +17,7 @@ import (
 
 func resolverFixture(now time.Time) resolverObservation {
 	e := cluster.Endpoint{Name: "node-a", Address: "127.0.0.1:5353", InternalAddress: "127.0.0.1:8082", Ready: true, Serving: true}
-	st := &internalapi.ResolverState{Version: 1, Node: e.Name, Instance: strings.Repeat("a", 64), Publication: 1, Identity: strings.Repeat("b", 64), Phase: "0:0", ObservedAt: now, ValidUntil: now.Add(internalapi.ResolverLease), Available: true, BlockingEnabled: true}
+	st := &internalapi.ResolverState{Version: 1, Node: e.Name, Instance: strings.Repeat("a", 64), Publication: 1, Identity: strings.Repeat("b", 64), Phase: "0:0", ObservedAt: now, ValidUntil: now.Add(internalapi.ResolverLease), Available: true, BlockingEnabled: true, AuthoritativeAvailable: true}
 	return resolverObservation{endpoints: []cluster.Endpoint{e}, results: []backendZones{{endpoint: e, zones: internalapi.ZoneList{Node: e.Name, Resolver: st}}}, eligible: true, sent: now}
 }
 
@@ -127,7 +127,11 @@ func (g *gatedResolverZones) Zones(context.Context, string) (internalapi.ZoneLis
 func TestResolverControllerFailureExpiryAndSourceEpoch(t *testing.T) {
 	fixture := resolverFixture(time.Now())
 	zones := &gatedResolverZones{observation: fixture}
-	h := newHarness(t, func(c *Config) { c.Zones = zones; c.ZonePoll = 50 * time.Millisecond })
+	h := newHarness(t, func(c *Config) {
+		c.Zones = zones
+		c.ZonePoll = 50 * time.Millisecond
+		c.Options.AuthoritativeCache = true
+	})
 	h.waitFor("initial resolver endpoint", func() bool { h.sup.mu.Lock(); defer h.sup.mu.Unlock(); return len(h.sup.endpoints) > 0 })
 	// Harness names differ; qualify against the actual accepted source owner.
 	h.sup.mu.Lock()
@@ -136,15 +140,27 @@ func TestResolverControllerFailureExpiryAndSourceEpoch(t *testing.T) {
 	zones.mu.Lock()
 	zones.observation.results[0].zones.Resolver.Node = ep.Name
 	zones.mu.Unlock()
-	h.waitFor("qualified resolver cache", func() bool { h.sup.mu.Lock(); defer h.sup.mu.Unlock(); return h.sup.cacheMode == "qualified" })
+	h.waitFor("qualified resolver cache", func() bool {
+		h.sup.mu.Lock()
+		defer h.sup.mu.Unlock()
+		return h.sup.cacheMode == "qualified" && h.sup.authoritativeCacheMode == "qualified"
+	})
 	zones.mu.Lock()
 	zones.failed = true
 	zones.mu.Unlock()
-	h.waitFor("auth failure cache bypass", func() bool { h.sup.mu.Lock(); defer h.sup.mu.Unlock(); return h.sup.cacheMode == "bypass-unavailable" })
+	h.waitFor("auth failure cache bypass", func() bool {
+		h.sup.mu.Lock()
+		defer h.sup.mu.Unlock()
+		return h.sup.cacheMode == "bypass-unavailable" && h.sup.authoritativeCacheMode == "bypass-unavailable"
+	})
 	zones.mu.Lock()
 	zones.failed = false
 	zones.mu.Unlock()
-	h.waitFor("authenticated reconnect", func() bool { h.sup.mu.Lock(); defer h.sup.mu.Unlock(); return h.sup.cacheMode == "qualified" })
+	h.waitFor("authenticated reconnect", func() bool {
+		h.sup.mu.Lock()
+		defer h.sup.mu.Unlock()
+		return h.sup.cacheMode == "qualified" && h.sup.authoritativeCacheMode == "qualified"
+	})
 	// A source A->B->A event fences a previously pulled A response even when
 	// the final endpoint bytes are identical. No stale observation can reattach.
 	fence, eps, _ := h.sup.resolverFence()
@@ -186,7 +202,7 @@ func TestResolverPullConcurrencyAndCancellation(t *testing.T) {
 
 func TestResolverControllerRejectsDelayedDiscoveryAndChildReplies(t *testing.T) {
 	o := resolverFixture(time.Now())
-	s, err := New(Config{Source: &cluster.StaticSource{}, Binary: fakeBinary(t), ConfigDir: t.TempDir(), ChildEnv: []string{"KUDURRU_FAKE_CONSOLE_MODE=ack"}})
+	s, err := New(Config{Options: edge.Options{AuthoritativeCache: true}, Source: &cluster.StaticSource{}, Binary: fakeBinary(t), ConfigDir: t.TempDir(), ChildEnv: []string{"KUDURRU_FAKE_CONSOLE_MODE=ack"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,6 +220,9 @@ func TestResolverControllerRejectsDelayedDiscoveryAndChildReplies(t *testing.T) 
 		for {
 			s.mu.Lock()
 			got := s.cacheMode
+			if s.authoritativeCacheMode != got {
+				got = "different-pool-modes"
+			}
 			s.mu.Unlock()
 			if got == mode {
 				return
@@ -226,8 +245,9 @@ func TestResolverControllerRejectsDelayedDiscoveryAndChildReplies(t *testing.T) 
 		time.Sleep(150 * time.Millisecond)
 		s.mu.Lock()
 		mode, identity := s.cacheMode, s.cacheIdentity
+		authMode, authIdentity := s.authoritativeCacheMode, s.authoritativeCacheIdentity
 		s.mu.Unlock()
-		if mode != "bypass-source" || identity != "" || s.resolverObservationCurrent(o.fence) {
+		if mode != "bypass-source" || identity != "" || authMode != "bypass-source" || authIdentity != "" || s.resolverObservationCurrent(o.fence) {
 			t.Fatal("delayed original observation reattached cache or zone routing")
 		}
 		o.fence, _, _ = s.resolverFence()
@@ -240,6 +260,7 @@ func TestResolverControllerLostAcknowledgmentAndRetry(t *testing.T) {
 	zones := &gatedResolverZones{observation: resolverFixture(time.Now())}
 	h := newHarness(t, func(c *Config) {
 		c.Zones = zones
+		c.Options.AuthoritativeCache = true
 		if err := os.MkdirAll(c.ConfigDir, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -250,7 +271,7 @@ func TestResolverControllerLostAcknowledgmentAndRetry(t *testing.T) {
 	h.waitFor("lost cache acknowledgment", func() bool {
 		h.sup.mu.Lock()
 		defer h.sup.mu.Unlock()
-		return h.sup.cacheMode == "uncertain" && h.sup.cacheError != "" && h.sup.cacheIdentity == ""
+		return h.sup.cacheMode == "uncertain" && h.sup.authoritativeCacheMode == "uncertain" && h.sup.cacheError != "" && h.sup.cacheIdentity == "" && h.sup.authoritativeCacheIdentity == ""
 	})
 	if ready, _ := h.sup.Ready(); ready {
 		t.Fatal("uncertain command outcome reported ready")
@@ -266,7 +287,7 @@ func TestResolverControllerLostAcknowledgmentAndRetry(t *testing.T) {
 	h.waitFor("bounded fresh cache retry", func() bool {
 		h.sup.mu.Lock()
 		defer h.sup.mu.Unlock()
-		return h.sup.cacheMode == "qualified" && h.sup.cacheError == "" && h.sup.cacheIdentity != ""
+		return h.sup.cacheMode == "qualified" && h.sup.authoritativeCacheMode == "qualified" && h.sup.cacheError == "" && h.sup.cacheIdentity != ""
 	})
 	if h.count("start") < 2 {
 		t.Fatal("uncertain cache acknowledgment retained the original child")
@@ -297,7 +318,7 @@ func TestResolverTargetLegacyUnavailableAndBoundaries(t *testing.T) {
 }
 
 func TestResolverUnconfiguredStartupCannotRestorePacketCache(t *testing.T) {
-	h := newHarness(t, nil)
+	h := newHarness(t, func(c *Config) { c.Options.AuthoritativeCache = true })
 	h.waitFor("explicit unconfigured bypass", func() bool {
 		h.sup.mu.Lock()
 		defer h.sup.mu.Unlock()
@@ -311,7 +332,7 @@ func TestResolverUnconfiguredStartupCannotRestorePacketCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, pool := range topology.Pools {
-		if pool.Name == edge.PoolResolver && pool.Cache != nil {
+		if pool.Cache != nil {
 			t.Fatal("unconfigured proof restored an eligible resolver cache")
 		}
 	}

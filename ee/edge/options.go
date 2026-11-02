@@ -28,10 +28,12 @@ type Options struct {
 	// PoolResolver and PoolAuthoritative are the pool policies; default
 	// chashed and leastOutstanding.
 	PoolResolver, PoolAuthoritative string
-	// ResolverCacheSize is the resolver packet cache size; default 200000.
+	// ResolverCacheSize sizes a supervised, qualified resolver cache; default
+	// 200000. Static rendering has no original proof and leaves it uncached.
 	ResolverCacheSize int
-	// AuthoritativeCache enables a short cache on the authoritative pool
-	// with AuthoritativeCacheTTL seconds of max TTL (default 30).
+	// AuthoritativeCache requests supervised qualification of a short cache
+	// with AuthoritativeCacheTTL seconds of max TTL (default 30). Static
+	// rendering has no original publication proof and leaves this pool uncached.
 	AuthoritativeCache    bool
 	AuthoritativeCacheTTL int
 	// API and Console are loopback host:port; default 127.0.0.1:8083 and
@@ -115,14 +117,10 @@ func Build(o Options, backends []Backend, creds Credentials) (*Topology, error) 
 			t.Binds = append(t.Binds, b)
 		}
 	}
-	resolver := DefaultResolverCache()
-	if o.ResolverCacheSize > 0 {
-		resolver.Size = o.ResolverCacheSize
-	}
-	t.Pools = []Pool{{Name: PoolResolver, Policy: o.PoolResolver, Cache: resolver}, {Name: PoolAuthoritative, Policy: o.PoolAuthoritative}}
-	if o.AuthoritativeCache {
-		t.Pools[1].Cache = AuthoritativeCache(o.AuthoritativeCacheTTL)
-	}
+	// Only the supervisor's original, time-bounded publication proof can
+	// authorize a shared cache. Persisted startup/render targets remain
+	// uncached even when the operator requests that qualification.
+	t.Pools = []Pool{{Name: PoolResolver, Policy: o.PoolResolver}, {Name: PoolAuthoritative, Policy: o.PoolAuthoritative}}
 	for _, b := range backends {
 		b.ProxyProtocol = true
 		t.Backends = append(t.Backends, b)

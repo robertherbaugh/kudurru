@@ -11,12 +11,14 @@ import (
 	"sort"
 	"time"
 
+	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/rpz"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingzones"
 	"github.com/robertherbaugh/kudurru/internal/stages/blocking"
+	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
@@ -138,7 +140,111 @@ func (o *EdgeCache) project(lease *serving.Lease, now time.Time) (*internalapi.R
 		return nil, serving.ErrComponents
 	}
 	digest := sha256.Sum256(data)
-	return &internalapi.ResolverState{Version: 1, Node: o.node, Instance: o.instance, Publication: bundle.Identity().Publication, Identity: hex.EncodeToString(digest[:]), Phase: phase, ObservedAt: now.UTC(), ValidUntil: until.UTC(), BlockingEnabled: enabled, DisabledUntil: disabledUntil, Available: available, UnavailableReason: timeline.reason}, nil
+	unavailableReason := timeline.reason
+	authoritativeReason := unavailableReason
+	if available {
+		authoritativeReason, err = authoritativeCacheBypass(lease, now)
+		if err != nil {
+			return nil, err
+		}
+		if authoritativeReason == "zone-client-acl" {
+			// CNAME/fallback and not-yet-applied pool routing can send local
+			// questions through the resolver pool too. The original served
+			// ACL proof must gate BOTH shared caches, not just the final pool.
+			available, unavailableReason = false, authoritativeReason
+		}
+	}
+	return &internalapi.ResolverState{Version: 1, Node: o.node, Instance: o.instance, Publication: bundle.Identity().Publication, Identity: hex.EncodeToString(digest[:]), Phase: phase, ObservedAt: now.UTC(), ValidUntil: until.UTC(), BlockingEnabled: enabled, DisabledUntil: disabledUntil, Available: available, UnavailableReason: unavailableReason, AuthoritativeAvailable: available && authoritativeReason == "", AuthoritativeReason: authoritativeReason}, nil
+}
+
+// Only static admitted data can use this first authoritative proof. Runtime
+// transfers/signatures/expiring records need their own exact source deadlines;
+// until then they bypass rather than receive an invented renewable lease.
+func authoritativeCacheBypass(lease *serving.Lease, now time.Time) (string, error) {
+	b := lease.Bundle()
+	ov, _ := b.Component("objects")
+	objects, _ := ov.(*zonecache.Snapshot)
+	rv, _ := b.Component("runtime")
+	runtime, _ := rv.(*RuntimeOwner)
+	zv, _ := b.Component("zones")
+	zones, _ := zv.(*servingzones.Prepared)
+	if err := diagnosticOwners(objects, runtime, zones, b.Identity()); err != nil {
+		return "", err
+	}
+	view := diagnosticView{objects: objects.Objects, runtime: runtime, check: func() error {
+		if lease.Bundle() == nil {
+			return serving.ErrReleased
+		}
+		return nil
+	}}
+	set := zones.Zones(now)
+	// Check every original route before any authoritative-only refusal can
+	// mask a client ACL in another model. Desired primary policy can differ
+	// from the still-served committed policy in this exact publication.
+	for _, desired := range objects.Objects.Zones() {
+		apex := dns.CanonicalName(desired.Spec.ZoneName)
+		model := set.Match(apex)
+		if model == nil || model.Name() != apex || !model.QueryClientIndependent() {
+			return "zone-client-acl", nil
+		}
+	}
+	for _, records := range objects.Objects.RecordSets() {
+		for _, endpoint := range records.Spec.Endpoints {
+			if e := endpoint.Kudurru; e != nil {
+				if e.ExpiresAt != nil {
+					return "zone-expiry", nil
+				}
+				if e.View != "" && e.View != "public" {
+					return "zone-client-view", nil
+				}
+			}
+		}
+	}
+	for _, desired := range objects.Objects.Zones() {
+		if desired.Spec.Type != public.ZoneTypePrimary && desired.Spec.Type != public.ZoneTypeForward {
+			return "zone-runtime", nil
+		}
+		model, err := view.zoneFrom(set, desired.Name, now)
+		if err != nil {
+			return "zone-unavailable", nil
+		}
+		if reason := authoritativeModelBypass(model); reason != "" {
+			return reason, nil
+		}
+		if desired.Spec.DNSSEC != nil && desired.Spec.DNSSEC.Enabled {
+			return "signed-zone", nil
+		}
+		if !model.NextExpiry().IsZero() {
+			return "zone-expiry", nil
+		}
+		if runtime.primary.Coordinated(desired.Name) || desired.Spec.Type == public.ZoneTypePrimary {
+			status, ok := runtime.primary.CommittedPrimaryStatus(desired.Name)
+			if !ok {
+				return "zone-unavailable", nil
+			}
+			if !status.ExpiresAt.IsZero() {
+				return "zone-expiry", nil
+			}
+		}
+	}
+	return "", nil
+}
+
+func authoritativeModelBypass(model *zone.Zone) string {
+	if !model.QueryClientIndependent() {
+		return "zone-client-acl"
+	}
+	signed := model.HasSignatures()
+	// Imported primary signatures are raw data, not the transferred-model
+	// HasSignatures flag. Refuse those exact original RRsets as well.
+	model.RRsets(func(set *zone.RRset) bool {
+		signed = signed || set.Type == dns.TypeRRSIG || set.Type == dns.TypeSIG
+		return !signed
+	})
+	if signed {
+		return "signed-zone"
+	}
+	return ""
 }
 
 // cacheTimeline contains only detached original time boundaries. Compilation

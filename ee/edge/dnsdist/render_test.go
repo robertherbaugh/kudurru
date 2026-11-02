@@ -74,6 +74,21 @@ func goldenCases(t *testing.T) map[string]*edge.Topology {
 		if err != nil {
 			t.Fatal(err)
 		}
+		for i := range top.Pools {
+			if top.Pools[i].Name == edge.PoolResolver {
+				// Raw renderer fixture, not production authorization.
+				top.Pools[i].Cache = edge.DefaultResolverCache()
+			}
+		}
+		if o.AuthoritativeCache {
+			// Exercise raw renderer cache syntax explicitly. Production Build
+			// leaves this pool uncached pending supervised original proof.
+			for i := range top.Pools {
+				if top.Pools[i].Name == edge.PoolAuthoritative {
+					top.Pools[i].Cache = edge.AuthoritativeCache(o.AuthoritativeCacheTTL)
+				}
+			}
+		}
 		return top
 	}
 	static3, err := cluster.ParseStaticEndpoints("10.0.0.11:5353,10.0.0.12:5353,10.0.0.13:5353", 5353, 8082)
@@ -94,7 +109,7 @@ func goldenCases(t *testing.T) map[string]*edge.Topology {
 		"tls": build(edge.Options{ServerID: "node-a", ProxyProtocolSecret: goldenSecret,
 			CertFile: "/certs/tls.crt", KeyFile: "/certs/tls.key", Listen: []string{"0.0.0.0", "::"}},
 			[]edge.Backend{{Name: "node-a", Address: "10.0.0.11:5353"}, {Name: "node-b", Address: "10.0.0.12:5353"}}),
-		// edge.authoritativeCache: short cache, zones routed, flushed on serial change.
+		// Explicit raw topology: renderer syntax for a qualified short cache.
 		"authoritative-cache": build(edge.Options{ServerID: "node-a", ProxyProtocolSecret: goldenSecret,
 			AuthoritativeCache: true, AuthoritativeCacheTTL: 20,
 			AuthoritativeZones: []string{"Example.com", "10.in-addr.arpa.", "example.com.", "."},
