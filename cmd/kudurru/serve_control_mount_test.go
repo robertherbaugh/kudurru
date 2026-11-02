@@ -29,7 +29,7 @@ import (
 )
 
 // Every HTTP mutation is one attempt through a dedicated transport. Only DNS
-// startup observations poll; a refused settings command is never replayed.
+// and publication observations poll; a refused settings command is never replayed.
 func controlMountedRequest(t *testing.T, client *http.Client, base, method, path, csrf string, body any, want int, out any) {
 	t.Helper()
 	var encoded []byte
@@ -104,9 +104,27 @@ func awaitControlMountedSettings(t *testing.T, client *http.Client, base string)
 	}
 }
 
-// Serving readiness permits pending operational work. Wait for the fixture's
-// actual initial status and notification commits before its one-shot mutation.
+// Serving readiness and observedGeneration permit an unavailable primary whose
+// later Ready status and source alignment can supersede a captured command.
+// Wait for those actual commits before this fixture's one-shot mutations.
 // Each observation is read-only and leaves no connection across server restart.
+const controlMountedSourceQuery = `SELECT
+    (SELECT count(*) FROM objects WHERE kind IN ('DNSZone','DNSRecordSet','Policy','ClientGroup','BlockList') AND COALESCE(json_extract(data,'$.status.observedGeneration'),0) != generation),
+    (SELECT count(*) FROM objects WHERE kind='ZoneState' AND COALESCE(json_extract(data,'$.spec.notifySequence'),0) != 0),
+    (SELECT count(*) FROM objects WHERE kind='ZoneState'),
+    (SELECT count(*) FROM objects z WHERE z.kind='DNSZone' AND NOT EXISTS (
+        SELECT 1 FROM json_each(z.data,'$.status.conditions') c
+        WHERE json_extract(c.value,'$.type')='Ready' AND json_extract(c.value,'$.status')='True'
+            AND json_extract(c.value,'$.reason')='Serving'
+            AND json_extract(c.value,'$.observedGeneration')=z.generation)),
+    (SELECT count(*) FROM objects z WHERE z.kind='DNSZone' AND NOT EXISTS (
+        SELECT 1 FROM objects l WHERE l.kind='ZoneLifecycle'
+            AND json_extract(l.data,'$.spec.zone.objectName')=z.name
+            AND json_extract(l.data,'$.spec.zone.uid')=z.uid
+            AND json_extract(l.data,'$.spec.phase')='active'
+            AND json_extract(l.data,'$.spec.source.uid')=z.uid
+            AND json_extract(l.data,'$.spec.source.resourceVersion')=CAST(z.resource_version AS TEXT)))`
+
 func awaitControlMountedSource(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	dsn := (&url.URL{Scheme: "file", Path: filepath.Join(cfg.Node.DataDir, sqlite.FileName), RawQuery: "mode=ro"}).String()
@@ -116,20 +134,17 @@ func awaitControlMountedSource(t *testing.T, cfg *config.Config) {
 		if err != nil {
 			t.Fatal("control fixture source observation failed")
 		}
-		var pending, notify, heads int
-		err = db.QueryRowContext(t.Context(), `SELECT
-            (SELECT count(*) FROM objects WHERE kind IN ('DNSZone','DNSRecordSet','Policy','ClientGroup','BlockList') AND COALESCE(json_extract(data,'$.status.observedGeneration'),0) != generation),
-            (SELECT count(*) FROM objects WHERE kind='ZoneState' AND COALESCE(json_extract(data,'$.spec.notifySequence'),0) != 0),
-            (SELECT count(*) FROM objects WHERE kind='ZoneState')`).Scan(&pending, &notify, &heads)
+		var pending, notify, heads, unavailable, unaligned int
+		err = db.QueryRowContext(t.Context(), controlMountedSourceQuery).Scan(&pending, &notify, &heads, &unavailable, &unaligned)
 		closeErr := db.Close()
 		if err != nil || closeErr != nil {
 			t.Fatal("control fixture source read/close failed")
 		}
-		if pending == 0 && notify == 0 && heads == 1 {
+		if pending == 0 && notify == 0 && heads == 1 && unavailable == 0 && unaligned == 0 {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("control fixture source pending: statuses=%d notifications=%d heads=%d", pending, notify, heads)
+			t.Fatalf("control fixture source pending: statuses=%d notifications=%d heads=%d unavailable=%d unaligned=%d", pending, notify, heads, unavailable, unaligned)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -280,6 +295,16 @@ func TestRunServeSQLiteControlSettingsRestart(t *testing.T) {
 			}
 		}
 		awaitControlMountedSettings(t, client, base)
+		if restart == 0 {
+			controlMountedHeldSettings(t, client, base, login.CSRF, func() {
+				// This independent enrollment publishes a successor source while
+				// the original settings request is held before body decoding.
+				controlMountedRequest(t, client, base, http.MethodPost, "/auth/login", login.CSRF, api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, &login)
+			})
+			// The refused attempt must not change the successful command's
+			// controls; the next mount also verifies durable restart readback.
+			awaitControlMountedSettings(t, client, base)
+		}
 		// Controls must precede local records, a warm cache, and a new upstream
 		// lookup. Loopback bypasses only the network allowlist, never types.
 		before := calls.Load()
