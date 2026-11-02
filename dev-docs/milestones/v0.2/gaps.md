@@ -2171,3 +2171,22 @@ lifecycle passed 139.618s, and scoped lint passed with zero issues. Native,
 authenticated PROXYv2 and pinned dnsdist 2.1.3 UDP/TCP remain exercised. This
 proves held policy across inventory publication, not across file reconciliation;
 no production timeout, credential gate or refused request was relaxed/replayed.
+
+### Hosted journal restart fixture and merged cache checks
+
+On `c7f13a5`, hosted CI's second Go shard failed only
+`TestKeepalivedObservationJournalTransitionsAndRestart`: an intervening valid
+`source_ready` notice after `source_restart` reached the test before its next
+transition. The original test reproduced locally under the race detector.
+`cb838e0` explicitly observes that recovery notice before writing the next
+transition. The corrected case passed 100 repetitions (3.510s); the full VIP
+package race passed (1.372s). No observer, journal, deadline or API behavior
+changed. The failed hosted run is not retroactively green.
+
+Merged focused original-cache/publication, authenticated internal protocol,
+dnsdist controller and original-operation-proof races passed respectively
+8.117s, 1.305s, 4.196s and 9.403s. Hugo built the updated deployment diagram and
+operator contract. The root integration prerequisites preserve pre-queue inputs
+and recheck reads as well as writes after budget reservation. Public integration
+administration and webhook conformance remain F60c work in progress; helper
+qualification is not route/effect qualification.
