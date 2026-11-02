@@ -99,7 +99,8 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "response could not be encoded", http.StatusInternalServerError)
 		return
 	}
-	if out == nil {
+	defer out.Close()
+	if !out.current() {
 		// A pipeline drop: abort the exchange without a response (HTTP/2
 		// and HTTP/3 reset the stream, HTTP/1.1 closes the connection).
 		panic(http.ErrAbortHandler)

@@ -24,9 +24,10 @@ import (
 
 // TSIG (RFC 8945) on all DNS listeners.
 //
-// Every miekg server gets a TsigProvider backed by the node's TSIGKeyring,
-// so the signature of every signed request is verified before the
-// pipeline runs (with no keyring every key is unknown). A request whose
+// Legacy fixed-provider servers let miekg verify signatures before the
+// pipeline. Explicit captured-provider mode instead verifies original bytes
+// against one complete publication before entering that same pipeline. With
+// no keyring every key is unknown. A request whose
 // signature fails is answered here, NOTAUTH with the TSIG error BADKEY,
 // BADSIG or BADTIME (RFC 8945 §5.2), and never reaches the pipeline. A
 // verified request carries the key name in pipeline.Client.TSIGKey, and
@@ -38,10 +39,10 @@ import (
 
 // TSIGKeyring is the TSIG key provider seam: it returns the secret and the
 // algorithm of a key by name. Names are compared in canonical form
-// (lower-case, absolute). v0.1 implements it with StaticKeyring loaded
-// from the tsigKeys setting (KeyringFromConfig); the store-backed internal
-// TSIGKey kind (dev-docs/design-record.md §4.1, encrypted at rest) is a later
-// implementation of the same interface.
+// (lower-case, absolute). StaticKeyring is compiled from already admitted
+// file or encrypted stored-source input. Captured transports require the
+// immutable concrete provider; a mutable Lookup implementation cannot establish
+// original publication or credential incarnation ownership.
 type TSIGKeyring interface {
 	// Lookup returns the raw secret and the algorithm (a TSIG algorithm
 	// name such as "hmac-sha256.") of the named key.

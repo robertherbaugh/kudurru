@@ -15,6 +15,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/internal/testcert"
+	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
@@ -33,6 +34,10 @@ func (identityAnswer) Serve(r *pipeline.Request, _ pipeline.Next) (*pipeline.Res
 }
 
 func TestTransportClientIDsMakeEquivalentPolicyDecisions(t *testing.T) {
+	testTransportClientIDs(t, false)
+}
+func TestCapturedTransportClientIDs(t *testing.T) { testTransportClientIDs(t, true) }
+func testTransportClientIDs(t *testing.T, captured bool) {
 	cert, err := testcert.Write(t.TempDir(), "", "*.dot.example.com")
 	if err != nil {
 		t.Fatal(err)
@@ -41,10 +46,18 @@ func TestTransportClientIDsMakeEquivalentPolicyDecisions(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Name: "default"}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{CIDR: "0.0.0.0/0"}}}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "phone"}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{ClientID: "phone"}}}},
 	}}, policy.Options{})
-	f := startFixture(t, fixtureOpts{cert: cert, specs: []Spec{
+	identifier := identify.New(policy.Static{Idx: ix}, nil)
+	options := fixtureOpts{cert: cert, specs: []Spec{
 		{Protocol: ProtoDoT, ClientIDDomain: "dot.example.com"}, {Protocol: ProtoDoQ, ClientIDDomain: "dot.example.com"},
 		{Protocol: ProtoDoH, ClientIDs: true}, {Protocol: ProtoDoH3, ClientIDs: true},
-	}, stages: []pipeline.Stage{identify.New(policy.Static{Idx: ix}, nil), identityAnswer{}}})
+	}, stages: []pipeline.Stage{identifier, identityAnswer{}}}
+	if captured {
+		identifier.Capture = func(*pipeline.Request) (*policy.Index, error) { return ix, nil }
+		identifier.CaptureInventory = func(*pipeline.Request) (*inventory.Snapshot, error) { return nil, nil }
+		keys, _ := NewStaticKeyring()
+		options.handler = fixedTransportCapture(keys)
+	}
+	f := startFixture(t, options)
 	for _, id := range []string{"phone", "other"} {
 		want := dns.RcodeRefused
 		if id == "phone" {

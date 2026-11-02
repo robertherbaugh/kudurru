@@ -254,7 +254,8 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 		st.CancelWrite(DoQInternalError)
 		return
 	}
-	if out == nil {
+	defer out.Close()
+	if !out.current() {
 		// A pipeline drop: reset the stream without a response.
 		st.CancelRead(DoQRequestCancelled)
 		st.CancelWrite(DoQRequestCancelled)

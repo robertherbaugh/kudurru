@@ -324,6 +324,9 @@ func NewRegistry(opts Options) (*Registry, error) {
 	if opts.Handler == nil || opts.Handler.Chain == nil {
 		return nil, errors.New("dnsserver: Options.Handler with a Chain is required")
 	}
+	if opts.Handler.Capture != nil && opts.Handler.Keys == nil {
+		return nil, errors.New("dnsserver: captured mode requires immutable key selector")
+	}
 	logger := opts.Logger
 	if logger == nil {
 		logger = opts.Handler.logger()

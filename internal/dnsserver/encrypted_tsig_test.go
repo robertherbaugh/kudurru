@@ -217,12 +217,18 @@ func encryptedMACValid(t *testing.T, wire []byte, requestMAC string, secret []by
 	return err == nil && hmac.Equal(got, h.Sum(nil))
 }
 
-func TestEncryptedTSIGWireListeners(t *testing.T) {
+func TestEncryptedTSIGWireListeners(t *testing.T)         { testEncryptedWireListeners(t, false) }
+func TestCapturedEncryptedTSIGWireListeners(t *testing.T) { testEncryptedWireListeners(t, true) }
+func testEncryptedWireListeners(t *testing.T, captured bool) {
 	keys := testKeyring(t)
 	for _, proto := range []Protocol{ProtoDoH, ProtoDoQ, ProtoDoH3} {
 		t.Run(string(proto), func(t *testing.T) {
 			s := &encryptedAnswer{}
-			f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: proto}}, tsig: keys, stages: []pipeline.Stage{&ingress.Stage{}, s}})
+			options := fixtureOpts{specs: []Spec{{Protocol: proto}}, tsig: keys, stages: []pipeline.Stage{&ingress.Stage{}, s}}
+			if captured {
+				options.handler = fixedTransportCapture(keys)
+			}
+			f := startFixture(t, options)
 			for _, mode := range []string{"valid", "sha512", "unsigned", "unknown", "wrong", "expired", "future", "refused-query", "update", "notify", "status"} {
 				t.Run(mode, func(t *testing.T) {
 					m := query("example.org.")
@@ -334,12 +340,22 @@ func TestEncryptedTSIGWireListeners(t *testing.T) {
 }
 
 func TestEncryptedTSIGOriginalInstallationAndDeadline(t *testing.T) {
+	testEncryptedOriginalInstallationAndDeadline(t, false)
+}
+func TestCapturedEncryptedTSIGOriginalInstallationAndDeadline(t *testing.T) {
+	testEncryptedOriginalInstallationAndDeadline(t, true)
+}
+func testEncryptedOriginalInstallationAndDeadline(t *testing.T, captured bool) {
 	for _, proto := range []Protocol{ProtoDoH, ProtoDoQ, ProtoDoH3} {
 		for _, mode := range []string{"rotation", "deadline"} {
 			t.Run(string(proto)+"/"+mode, func(t *testing.T) {
 				keys := testKeyring(t)
 				s := &encryptedAnswer{block: true, entered: make(chan struct{}), resume: make(chan struct{})}
-				f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: proto}}, tsig: keys, stages: []pipeline.Stage{s}})
+				options := fixtureOpts{specs: []Spec{{Protocol: proto}}, tsig: keys, stages: []pipeline.Stage{s}}
+				if captured {
+					options.handler = fixedTransportCapture(keys)
+				}
+				f := startFixture(t, options)
 				release := sync.OnceFunc(func() { close(s.resume) })
 				t.Cleanup(release)
 				m := query("held.example.org.")

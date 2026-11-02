@@ -28,6 +28,19 @@ type encryptedSigner struct {
 type encryptedReply struct {
 	wire  []byte
 	cache string
+	close func()
+	check func() error
+}
+
+// Close releases original publication ownership after actual transport emission.
+func (r *encryptedReply) Close() {
+	if r != nil && r.close != nil {
+		r.close()
+	}
+}
+
+func (r *encryptedReply) current() bool {
+	return r != nil && (r.check == nil || r.check() == nil)
 }
 
 func packEncryptedReply(m *dns.Msg) (*encryptedReply, error) {
@@ -38,12 +51,51 @@ func packEncryptedReply(m *dns.Msg) (*encryptedReply, error) {
 // resolveEncrypted verifies the original bounded wire before resolving a
 // detached unsigned working message. Only the authenticated key name crosses
 // the pipeline seam; native mutation proof issuance is deliberately untouched.
-func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req *dns.Msg, client pipeline.Client) (*encryptedReply, error) {
+func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req *dns.Msg, client pipeline.Client) (reply *encryptedReply, resultErr error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, h.timeout())
-	defer cancel()
+	var capturedKeys *StaticKeyring
+	if h.Capture != nil {
+		captured, keys, cleanup, err := h.captureTransport(ctx, req, client, time.Now())
+		handedOff := false
+		defer func() {
+			if !handedOff {
+				cleanup()
+			}
+		}()
+		if err != nil {
+			expired := captured.Ctx.Err() != nil
+			cleanup()
+			if expired {
+				return nil, nil
+			}
+			return packEncryptedReply(servfail(req))
+		}
+		capturedKeys = keys
+		ctx = captured.Ctx
+		// The returned encoded reply keeps this SAME lease through socket write.
+		defer func() {
+			if reply != nil && resultErr == nil {
+				check := reply.check
+				reply.check = func() error {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					if check != nil {
+						return check()
+					}
+					return nil
+				}
+				reply.close = cleanup
+				handedOff = true
+			}
+		}()
+	} else {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, h.timeout())
+		defer cancel()
+	}
 	padding := paddingFor(req, client.Proto)
 	if !encryptedTSIGFrame(req, wire) {
 		m := new(dns.Msg).SetRcode(req, dns.RcodeFormatError)
@@ -52,7 +104,9 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 	var sig *encryptedSigner
 	if ts := req.IsTsig(); ts != nil {
 		provider := TSIGProvider(nil)
-		if e != nil {
+		if capturedKeys != nil {
+			provider = TSIGProvider(capturedKeys)
+		} else if e != nil {
 			if p, ok := e.tsig.(keyringProvider); ok {
 				// A Lookup-only provider can rotate during verification and has
 				// no installed generation to pin. Fail closed on encrypted paths.
@@ -118,7 +172,13 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 		m.SetTsig(t.Hdr.Name, t.Algorithm, tsigFudge, time.Now().Unix())
 		m = padding.apply(m)
 		out, _, err := dns.TsigGenerateWithProvider(m, sig.provider, t.MAC, false)
-		return &encryptedReply{wire: out, cache: "no-store"}, err
+		return &encryptedReply{wire: out, cache: "no-store", check: func() error {
+			now := time.Now()
+			if now.Before(sig.verifiedAt) || !now.Before(sig.deadline) {
+				return errOriginalDeadline
+			}
+			return nil
+		}}, err
 	}
 	out, err := encode(resp)
 	if err != nil {

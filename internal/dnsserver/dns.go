@@ -88,6 +88,10 @@ func (l *dnsListener) Bind() error {
 		TsigProvider:  l.env.tsigProvider(),
 		MsgAcceptFunc: acceptDNSMessage,
 	}
+	if l.env.handler.Capture != nil {
+		srv.TsigProvider = nil // explicit original-wire verification per message
+		srv.DecorateReader = func(reader dns.Reader) dns.Reader { return nativeReader{reader} }
+	}
 	proxied := l.env.proxy.Enabled()
 	switch l.spec.Protocol {
 	case ProtoUDP:
@@ -103,8 +107,14 @@ func (l *dnsListener) Bind() error {
 		for i, pc := range pcs {
 			s := l.socketServer(srv)
 			s.PacketConn = pc
+			if l.env.handler.Capture != nil {
+				s.PacketConn = preserveUDPSession(pc)
+			}
 			if proxied {
-				s.PacketConn = &proxyproto.PacketConn{PacketConn: pc, Policy: l.env.proxy}
+				s.PacketConn = &proxyproto.PacketConn{PacketConn: s.PacketConn, Policy: l.env.proxy}
+			}
+			if l.env.handler.Capture != nil {
+				s.PacketConn = &nativePacket{PacketConn: s.PacketConn}
 			}
 			srvs[i] = s
 		}
@@ -138,6 +148,9 @@ func (l *dnsListener) Bind() error {
 				lis = tls.NewListener(lis, l.tls)
 			}
 			s := l.socketServer(srv)
+			if l.env.handler.Capture != nil {
+				lis = nativeListener{Listener: lis}
+			}
 			s.Listener = lis
 			srvs[i] = s
 		}
@@ -290,6 +303,10 @@ func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 // (other queries pipelined on it are abandoned, as a client that is being
 // dropped deserves).
 func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg, clientIDDomain ...string) {
+	if h.Capture != nil {
+		serveCapturedNative(h, e, proto, w, r, clientIDDomain...)
+		return
+	}
 	padding := paddingFor(r, proto)
 	client := clientFrom(w.RemoteAddr(), proto)
 	if client.ClientID == "" && proto == pipeline.ProtoDoT && len(clientIDDomain) > 0 {

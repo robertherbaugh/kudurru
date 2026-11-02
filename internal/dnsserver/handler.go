@@ -27,6 +27,11 @@ type Handler struct {
 	// QueryTimeout bounds the pipeline for one query; zero means
 	// DefaultQueryTimeout.
 	QueryTimeout time.Duration
+	// Capture acquires a complete publication BEFORE signature verification.
+	// Keys selects only that request's immutable provider. Configure both once
+	// before listeners start. Nil Capture retains legacy fixed-provider mode.
+	Capture pipeline.Capture
+	Keys    func(*pipeline.Request) (*StaticKeyring, error)
 }
 
 func (h *Handler) logger() *slog.Logger {
@@ -84,22 +89,26 @@ func servfail(r *dns.Msg) *dns.Msg {
 // non-nil it yields every message of the answer, starting with the
 // returned one, and the caller writes those instead.
 func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) (*dns.Msg, iter.Seq[*dns.Msg], func()) {
-	timeout := h.timeout()
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	// The consumer owns cancellation through writing/streaming. In particular,
-	// do not cancel a transfer before its iterator has even been called.
+	req, _ := ctx.Value(transportRequestKey{}).(*pipeline.Request)
+	cancel := func() {}
+	if req == nil {
+		timeout := h.timeout()
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		received := time.Now()
+		req = &pipeline.Request{Ctx: ctx, Msg: r, Received: received, Deadline: received.Add(timeout), Client: client}
+	} else {
+		// Reuse the SAME pre-verification publication and absolute deadline.
+		req.Ctx, req.Msg, req.Client = ctx, r, client
+	}
 	handedOff := false
 	defer func() {
 		if !handedOff {
 			cancel()
 		}
 	}()
-
-	req := &pipeline.Request{Ctx: ctx, Msg: r, Received: time.Now(), Client: client}
-	req.Deadline = req.Received.Add(timeout)
 
 	resp, err := h.Chain.Serve(req)
 	var once sync.Once
@@ -165,6 +174,12 @@ func (h *Handler) resolveFreshID(ctx context.Context, r *dns.Msg, client pipelin
 // proxy that sent it becomes ProxiedFrom.
 func clientFrom(addr net.Addr, proto pipeline.Proto) pipeline.Client {
 	c := pipeline.Client{Proto: proto}
+	if frame, ok := addr.(*nativeFrame); ok {
+		addr = frame.Addr
+	}
+	if session, ok := addr.(*nativeSession); ok {
+		addr = session.Addr
+	}
 	if pa, ok := addr.(*proxyproto.Addr); ok {
 		c.Addr = pa.Client
 		c.ProxiedFrom = proxyproto.AddrPort(pa.Proxy).Addr()

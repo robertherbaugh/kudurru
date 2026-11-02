@@ -53,9 +53,19 @@ func signedUpdate() *dns.Msg {
 }
 
 func TestVerifiedUpdateProofNativeListeners(t *testing.T) {
+	testVerifiedUpdateProofNativeListeners(t, false)
+}
+func TestCapturedVerifiedUpdateProofNativeListeners(t *testing.T) {
+	testVerifiedUpdateProofNativeListeners(t, true)
+}
+func testVerifiedUpdateProofNativeListeners(t *testing.T, captured bool) {
 	keys := testKeyring(t)
 	stage := &proofStage{seen: make(chan proofRequest, 16)}
-	f := startFixture(t, fixtureOpts{specs: allSpecs(), tsig: keys, stages: []pipeline.Stage{&ingress.Stage{}, stage}})
+	options := fixtureOpts{specs: allSpecs(), tsig: keys, stages: []pipeline.Stage{&ingress.Stage{}, stage}}
+	if captured {
+		options.handler = fixedTransportCapture(keys)
+	}
+	f := startFixture(t, options)
 	for _, proto := range []Protocol{ProtoUDP, ProtoTCP, ProtoDoT} {
 		t.Run(string(proto), func(t *testing.T) {
 			c := &dns.Client{Net: string(proto), Timeout: time.Second, TsigProvider: TSIGProvider(keys)}

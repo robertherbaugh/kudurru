@@ -158,6 +158,7 @@ type fixtureOpts struct {
 	stages    []pipeline.Stage // replaces the default ingress/recorder/upstream chain
 	cert      *testcert.Pair
 	tsig      TSIGKeyring
+	handler   func(*Handler)  // configure immutable capture before Bind/Run
 	beforeRun func(*Registry) // install test observers before serving starts
 }
 
@@ -182,8 +183,12 @@ func startFixture(t *testing.T, o fixtureOpts) *fixture {
 		stages = []pipeline.Stage{&ingress.Stage{NodeID: "test-node", Version: "test"}, f.rec, fwd}
 	}
 	chain := pipeline.MustNew(stages...)
+	handler := &Handler{Chain: chain, Logger: quietLogger}
+	if o.handler != nil {
+		o.handler(handler)
+	}
 	reg, err := NewRegistry(Options{
-		Handler: &Handler{Chain: chain, Logger: quietLogger},
+		Handler: handler,
 		Logger:  quietLogger,
 		Proxy:   o.proxy,
 		Limits:  o.limits,
