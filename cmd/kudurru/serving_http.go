@@ -38,6 +38,7 @@ type servingHTTP struct {
 	adapter            *servinghttp.Adapter
 	mux                *http.ServeMux
 	ipLimit, userLimit *users.Limiter
+	cliPrepareLimit    *cliPreparationAdmission
 }
 
 func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {

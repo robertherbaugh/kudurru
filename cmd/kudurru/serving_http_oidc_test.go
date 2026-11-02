@@ -64,6 +64,9 @@ func newServingBrowserFixtureConfigured(t *testing.T, configure func(*servingBro
 	}
 	cfg.Auth.IdentityProviders = []map[string]any{{"id": "corp", "issuer": op.Issuer("corp"), "clientID": op.ClientID, "clientSecretFile": secretFile, "redirectURL": "https://kudurru.test/api/v1/auth/oidc/corp/callback",
 		"claimValidationRules": []any{map[string]any{"expression": "claims.groups.exists(g, g == 'dns')"}}}}
+	if op.cliPublic {
+		cfg.Auth.IdentityProviders[0]["cliClientID"] = "kudurru-cli"
+	}
 	cfg.Auth.ProviderResources = config.ProviderResources{AllowedOrigins: []string{op.Server.URL}, LocalOrigins: []string{op.Server.URL}, Algorithms: []string{"EdDSA"}, SystemTrust: false, CAFiles: []string{caFile}}
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

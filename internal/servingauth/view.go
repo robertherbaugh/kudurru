@@ -11,6 +11,7 @@ import (
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/browseroidc"
+	"github.com/robertherbaugh/kudurru/internal/auth/clioidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/totp"
@@ -43,6 +44,7 @@ type View struct {
 	tokenSealer        *session.Sealer
 	browserCodec       *browseroidc.Codec
 	logoutCodec        *browseroidc.LogoutCodec
+	cliCodec           *clioidc.Codec
 	released           atomic.Bool
 }
 
@@ -144,6 +146,10 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 	}
 	v := &View{cut: cut, license: deps.License, permissions: &permissions, grants: map[string]bool{}, floors: map[string]time.Time{}, accounts: map[AccountRef]time.Time{}, providers: map[string]time.Time{}, sessions: map[string]SessionRecord{}, sealer: sealer, hasher: deps.Hasher}
 	v.browserCodec, err = browseroidc.NewCodec(deps.CurrentKey, deps.PreviousKey)
+	if err != nil {
+		return nil, ErrDependency
+	}
+	v.cliCodec, err = clioidc.NewCodec(deps.CurrentKey, deps.PreviousKey)
 	if err != nil {
 		return nil, ErrDependency
 	}

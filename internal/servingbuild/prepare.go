@@ -45,6 +45,7 @@ type RuntimeOwner struct {
 	keyringIdentity string
 	current         func() bool
 	browser         func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
+	cli             func(servingauth.ProviderRef, string) (*providerresources.CLI, error)
 }
 
 // Primary returns an immutable owner for exact publication acknowledgment.
@@ -156,7 +157,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current, browser: deps.Browser}, deps.Release),
+		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current, browser: deps.Browser, cli: deps.CLI}, deps.Release),
 		component("control", owners.control, nil),
 		component("logging", owners.logging, nil),
 	}
@@ -166,4 +167,17 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	parts[8].Identity = owners.auth.DependencyIdentity()
 	transferred = true
 	return serving.Prepared{Components: parts, Current: deps.Current}, nil
+}
+
+// CLI selects only the retained runtime's exact public-client capability. This
+// is read-only correlation, never command or writer authority.
+func (r *RuntimeOwner) CLI(ref servingauth.ProviderRef, id string) (*providerresources.CLI, error) {
+	if r == nil || r.cli == nil || r.current == nil || !r.current() {
+		return nil, serving.ErrDependency
+	}
+	c, e := r.cli(ref, id)
+	if e != nil {
+		return nil, e
+	}
+	return c.BindCurrent(r.current)
 }

@@ -24,7 +24,7 @@ type fetchCache struct {
 type metadata struct {
 	issuer, authorization, token, jwksURL, endSession string
 	algorithms                                        []string
-	browser                                           bool
+	browser, cliBrowser                               bool
 	discovery, keys                                   fetchCache
 }
 type acquisition struct {
@@ -125,6 +125,9 @@ func metadataBinding(m metadata) string {
 		Algorithms                                  []string
 		Browser                                     bool
 	}{"provider-metadata/v2-browser", m.issuer, m.authorization, m.token, m.jwksURL, m.algorithms, m.browser})
+	if m.cliBrowser {
+		base = hash(struct{ Profile, Base string }{"provider-metadata/cli-public/v1", base})
+	}
 	if m.endSession == "" {
 		return base
 	}
@@ -223,7 +226,25 @@ func parseMetadata(raw []byte, issuer string, n *networkPolicy) (metadata, error
 			browser = browser && slices.Contains(values, requirement.value)
 		}
 	}
-	return metadata{issuer: got, authorization: auth, token: token, jwksURL: keys, endSession: endSession, algorithms: accepted, browser: browser}, nil
+	// Public support must be advertised explicitly; omitted auth methods default
+	// to client_secret_basic and do not establish public-client compatibility.
+	advertised := func(field, value string) bool {
+		raw, ok := fields[field]
+		if !ok {
+			return false
+		}
+		values, e := boundedStrings(raw, 64, 128)
+		return e == nil && slices.Contains(values, value)
+	}
+	cliBrowser := auth != "" && token != "" && advertised("token_endpoint_auth_methods_supported", "none") && advertised("code_challenge_methods_supported", "S256") && advertised("response_types_supported", "code")
+	if raw, ok := fields["grant_types_supported"]; ok {
+		values, e := boundedStrings(raw, 64, 128)
+		if e != nil {
+			return metadata{}, e
+		}
+		cliBrowser = cliBrowser && slices.Contains(values, "authorization_code")
+	}
+	return metadata{issuer: got, authorization: auth, token: token, jwksURL: keys, endSession: endSession, algorithms: accepted, browser: browser, cliBrowser: cliBrowser}, nil
 }
 
 func (o *Owner) fetch(ctx context.Context, client *http.Client, url string, cache fetchCache, limit int) (fetchCache, bool, error) {

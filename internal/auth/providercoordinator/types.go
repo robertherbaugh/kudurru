@@ -52,6 +52,7 @@ type Capture struct {
 	// Selection is pure; Exchange is explicit I/O outside all gates. A current
 	// handle is NOT writer admission. Release invalidates every borrowed handle.
 	Browser func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
+	CLI     func(servingauth.ProviderRef, string) (*providerresources.CLI, error)
 	Current func() bool
 	Release func()
 }

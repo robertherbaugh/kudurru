@@ -32,6 +32,7 @@ type Dependencies struct {
 	// Browser selects an exchange capability from this same retained provider
 	// cut. Nil denies browser login; it never triggers live provider acquisition.
 	Browser func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
+	CLI     func(servingauth.ProviderRef, string) (*providerresources.CLI, error)
 	Keys    *dnsserver.StaticKeyring
 	// KeyringIdentity names the local installation that supplied Keys, from the
 	// same KeyringCut. Equal key bytes after replacement do not reuse this ID.

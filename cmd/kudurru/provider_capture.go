@@ -69,6 +69,7 @@ func providerDependencyCapture(
 		d.Auth.Identity, d.Auth.ExpectedIdentity = p.Identity, p.Identity
 		d.Auth.ConfigProviders, d.Auth.ProviderResources = p.ConfigProviders, p.ProviderResources
 		d.Browser = p.Browser
+		d.CLI = p.CLI
 		d.Current = func() bool { return !released.Load() && baseCurrent() && p.Current() }
 		return d, nil
 	}, nil

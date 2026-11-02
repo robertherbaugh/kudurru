@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha512"
 	"crypto/tls"
@@ -41,6 +43,7 @@ type servingBrowserOP struct {
 	logoutRequests         atomic.Int64
 	logoutFailure          atomic.Bool
 	omitLogout             bool
+	cliPublic              bool
 	lastToken              string
 }
 type servingBrowserOPFlow struct {
@@ -50,19 +53,23 @@ type servingBrowserOPFlow struct {
 
 func newServingBrowserOP(t *testing.T) *servingBrowserOP {
 	t.Helper()
-	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := &servingBrowserOP{ClientID: "browser", ClientSecret: "browser-test-client-secret", key: key, flows: map[string]servingBrowserOPFlow{}}
 	cert := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "browser test CA"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}}
-	der, err := x509.CreateCertificate(rand.Reader, cert, cert, pub, key)
+	tlsKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal("TLS fixture key")
+	}
+	der, err := x509.CreateCertificate(rand.Reader, cert, cert, &tlsKey.PublicKey, tlsKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.CA = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	p.Server = httptest.NewUnstartedServer(http.HandlerFunc(p.serve))
-	p.Server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
+	p.Server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: tlsKey}}}
 	p.Server.StartTLS()
 	t.Cleanup(p.Server.Close)
 	return p
@@ -114,6 +121,10 @@ func (p *servingBrowserOP) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/.well-known/openid-configuration"):
 		metadata := map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"EdDSA"}, "code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"client_secret_basic"}}
+		if p.cliPublic {
+			metadata["token_endpoint_auth_methods_supported"] = []string{"client_secret_basic", "none"}
+			metadata["response_types_supported"] = []string{"code"}
+		}
 		p.mu.Lock()
 		omit := p.omitLogout
 		p.mu.Unlock()
@@ -126,7 +137,13 @@ func (p *servingBrowserOP) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/end"):
 		p.endSession(w, r, issuer)
 	case strings.HasSuffix(r.URL.Path, "/token"):
-		p.exchange(w, r, issuer)
+		if p.cliPublic && r.Header.Get("Authorization") == "" {
+			p.exchangeCLI(w, r, issuer)
+		} else {
+			p.exchange(w, r, issuer)
+		}
+	case strings.HasSuffix(r.URL.Path, "/authorize") && p.cliPublic:
+		p.authorizeCLI(w, r, issuer)
 	default:
 		w.WriteHeader(404)
 	}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -17,7 +18,9 @@ import (
 
 // newLoginCmd is `kudurru login`: verify credentials against a server and
 // save them as a context.
-func newLoginCmd(o *cliOpts) *cobra.Command {
+func newLoginCmd(o *cliOpts) *cobra.Command { return newLoginCmdWithOIDC(o, defaultLoginOIDC()) }
+
+func newLoginCmdWithOIDC(o *cliOpts, oidc loginOIDCOptions) *cobra.Command {
 	var (
 		name          string
 		username      string
@@ -36,6 +39,12 @@ func newLoginCmd(o *cliOpts) *cobra.Command {
 		Long: `Log in to a kudurru API server and save the endpoint as a named context in
 ~/.config/kudurru/config.yaml.
 
+Without local or token credentials, login uses the configured public OIDC client,
+a loopback callback on port 8000 or 18000 and S256 PKCE. The original OP ID token
+is stored as bearer; no Kudurru token or browser session is created. This mode
+requires verified HTTPS for the API and OP. Select --provider when necessary;
+--oidc-ca-file configures OP trust separately from the API --ca-file.
+
 With --token the API token is verified (GET /auth/me) and stored. With
 --username the local password is exchanged for a session (POST /auth/login),
 which then mints an API token for the CLI (POST /auth/tokens). Tokens go to
@@ -53,6 +62,9 @@ or automatic retries.`,
   echo "$PW" | kudurru login --server http://127.0.0.1:8080 --username admin --password-stdin --name local`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if oidc.provider != "" && (o.token != "" || username != "" || password != "" || passwordStdin || tokenStdin || totpPrompt || totpStdin || tokenName != "" || expiresIn != "") {
+				return errors.New("OIDC provider selection cannot be combined with local or API-token options")
+			}
 			factor := loginFactorOptions{username: username, password: password, token: o.token, passwordStdin: passwordStdin, tokenStdin: tokenStdin, prompt: totpPrompt, stdin: totpStdin}
 			if err := factor.validate(); err != nil {
 				return err
@@ -116,12 +128,13 @@ or automatic retries.`,
 					return errors.New("empty token on stdin")
 				}
 			}
-			if token == "" && username == "" {
+			if token == "" && username == "" && oidc.provider == "" {
 				token = o.getenv(cli.EnvToken)
 			}
 			errOut := cmd.ErrOrStderr()
 
 			var me *apiclient.Me
+			var oidcExpiry time.Time
 			switch {
 			case token != "" && username != "":
 				return errors.New("use either --token or --username, not both")
@@ -167,26 +180,39 @@ or automatic retries.`,
 					return loginStageError("verify the new token", err)
 				}
 			default:
-				return errors.New("pass --token kdr_… or --username (and --password, --password-stdin, or a prompt)")
+				if password != "" || passwordStdin || tokenName != "" || expiresIn != "" {
+					return errors.New("local password or token options require the matching credential mode")
+				}
+				token, me, oidcExpiry, err = o.browserLogin(cmd, r, oidc)
+				if err != nil {
+					return err
+				}
 			}
 
+			if !oidcExpiry.IsZero() && (cmd.Context().Err() != nil || !o.now().Before(oidcExpiry)) {
+				return errors.New("OIDC login proof expired before storage")
+			}
 			if prev, ok := cfg.Context(name); ok {
 				o.credentials().Forget(prev)
 			}
 			ctx.User = me.Principal.Name
 			where, warn := o.credentials().Store(&ctx, token)
 			if warn != nil {
-				if username != "" {
+				if username != "" || me != nil && token != "" && strings.Count(token, ".") == 2 {
 					// A credential-store error may reflect the token it was given.
 					_, _ = fmt.Fprintln(errOut, "warning: OS keyring unavailable; token stored in the 0600 config file")
 				} else {
 					_, _ = fmt.Fprintln(errOut, "warning:", warn)
 				}
 			}
+			if !oidcExpiry.IsZero() && (cmd.Context().Err() != nil || !o.now().Before(oidcExpiry)) {
+				o.credentials().Forget(&ctx)
+				return errors.New("OIDC login proof expired during storage")
+			}
 			cfg.Upsert(ctx)
 			cfg.CurrentContext = name
 			if err := cfg.Save(); err != nil {
-				if username != "" {
+				if username != "" || strings.Count(token, ".") == 2 {
 					return loginStageError("save login context", err)
 				}
 				return err
@@ -197,6 +223,8 @@ or automatic retries.`,
 		},
 	}
 	f := cmd.Flags()
+	f.StringVar(&oidc.provider, "provider", "", "configured public OIDC provider (default: the only eligible provider)")
+	f.StringVar(&oidc.caFile, "oidc-ca-file", "", "additional PEM roots for the OP, separate from API TLS")
 	f.StringVar(&name, "name", "", "context name (default: the server host)")
 	f.StringVarP(&username, "username", "u", "", "local account to log in with")
 	f.StringVarP(&password, "password", "p", "", "password (prefer the prompt or --password-stdin)")

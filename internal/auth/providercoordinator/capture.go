@@ -163,6 +163,16 @@ func (c *Coordinator) Capture(ctx context.Context, image *replication.Image) (_ 
 			}
 			return browser.BindCurrent(func() bool { return c.hostCurrent(h) })
 		},
+		CLI: func(ref servingauth.ProviderRef, id string) (*providerresources.CLI, error) {
+			if !c.hostCurrent(h) {
+				return nil, ErrStale
+			}
+			v, e := lease.CLI(ref, id)
+			if e != nil {
+				return nil, e
+			}
+			return v.BindCurrent(func() bool { return c.hostCurrent(h) })
+		},
 		Current: func() bool { return c.hostCurrent(h) && lease.Current() },
 		Release: func() { once.Do(func() { lease.Release(); releaseHost(h) }) }}, nil
 }

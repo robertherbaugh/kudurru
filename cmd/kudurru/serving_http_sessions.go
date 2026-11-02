@@ -23,6 +23,7 @@ import (
 )
 
 func (h *servingHTTP) register() {
+	h.registerCLILogin()
 	h.route("GET", "/auth/status", h.status)
 	h.route("POST", "/auth/login", h.login)
 	h.route("POST", "/auth/logout", h.logout)
