@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -187,6 +188,27 @@ func (r *Relay) Serve(ctx context.Context, ln net.Listener) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	srv := &http.Server{Handler: http.NewCrossOriginProtection().Handler(r), BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: relayTimeout, WriteTimeout: relayTimeout, IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10}
+	// net/http gives new connections five seconds to send their first request
+	// before treating them as idle. They have no handler to drain and must not
+	// consume our shorter graceful shutdown budget. Track only those sockets;
+	// active handlers retain the original cancellation and Shutdown behavior.
+	var connMu sync.Mutex
+	newConns := make(map[net.Conn]struct{})
+	stopping := false
+	srv.ConnState = func(conn net.Conn, state http.ConnState) {
+		connMu.Lock()
+		closeNew := state == http.StateNew && stopping
+		if state == http.StateNew && !stopping {
+			newConns[conn] = struct{}{}
+		} else {
+			delete(newConns, conn)
+		}
+		connMu.Unlock()
+		// An Accept already in progress can return after shutdown begins.
+		if closeNew {
+			_ = conn.Close()
+		}
+	}
 	defer func() { _ = srv.Close() }()
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(ln) }()
@@ -197,6 +219,14 @@ func (r *Relay) Serve(ctx context.Context, ln net.Listener) error {
 		received = true
 	}
 	cancel()
+	connMu.Lock()
+	stopping = true
+	pending := newConns
+	newConns = make(map[net.Conn]struct{})
+	connMu.Unlock()
+	for conn := range pending {
+		_ = conn.Close()
+	}
 	stop, release := context.WithTimeout(context.Background(), 2*time.Second)
 	defer release()
 	shutdownErr := srv.Shutdown(stop)
