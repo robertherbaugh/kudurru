@@ -248,7 +248,8 @@ func TestCorruptAuthorityRefusesOpenAndPromotionOverflow(t *testing.T) {
 
 func TestApplyClusterRejectsAmbiguousJSONDuplicateOwnersAndBounds(t *testing.T) {
 	ctx := context.Background()
-	s := openTemp(t, func(o *Options) { o.ReplicationLimits.MaxEntries = 1 })
+	// One physical anchor sentinel plus the original one-test-row allowance.
+	s := openTemp(t, func(o *Options) { o.ReplicationLimits.MaxEntries = 2 })
 	before := imageOf(t, s).Generation()
 	for _, sections := range [][]SectionChange{
 		{{Section: "security", Key: "dup", Data: json.RawMessage(`{"a":1,"a":2}`)}},

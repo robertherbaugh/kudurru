@@ -70,7 +70,8 @@ func TestSectionPrefixStagedReadsDetachedRowsAndOneCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := imageOf(t, s)
-	if after.Revision != before.Revision+1 || len(after.Payload.Runtime) != 2 || len(after.Payload.Security) != 1 || len(after.Payload.Objects) != 1 {
+	// Two surviving test rows compose with the physical anchor sentinel.
+	if after.Revision != before.Revision+1 || len(after.Payload.Runtime) != 3 || len(after.Payload.Security) != 1 || len(after.Payload.Objects) != 1 {
 		t.Fatal("prefix reads broke command atomicity", after.Revision)
 	}
 	if err := held.CheckSectionPrefixBounds(t.Context(), "runtime", "inventory/", 257, 64<<20); !errors.Is(err, ErrTransactionEnded) {

@@ -25,7 +25,9 @@ func TestSectionBoundsUseStagedBytesAndPoisonIgnoredFailure(t *testing.T) {
 		if err := tx.CheckSectionBounds(ctx, "security", 1, len(raw)); err != nil {
 			return err
 		}
-		if err := tx.CheckSectionBounds(ctx, "runtime", 0, 0); err != nil {
+		// Runtime now contains the physical anchor sentinel. Keep this an
+		// actually empty foreign-section check before the exact UTF-8 refusal.
+		if err := tx.CheckSectionBounds(ctx, "membership", 0, 0); err != nil {
 			return err
 		}
 		if err := tx.CheckSectionBounds(ctx, "security", 1, len(raw)-1); !errors.Is(err, replication.ErrTooLarge) {

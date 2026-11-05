@@ -16,6 +16,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,7 +30,7 @@ func openOwnerStore(t *testing.T, path string) *sqlite.Store {
 	for _, kind := range runtimekinds.Private() {
 		kinds = append(kinds, store.Kind(kind))
 	}
-	st, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, InternalKinds: kinds, ValidateReplicaEntry: ValidateEntry, ValidateReplicaImage: ValidateImage})
+	st, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, InternalKinds: kinds, Validator: anchorOwnerValidator(), ValidateReplicaEntry: ValidateEntry, ValidateReplicaImage: ValidateImage})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestMissingInventoryRootNeverReconstructsFromSourceAuthority(t *testing.T) 
 				t.Fatal("missing inventory adopted existing source authority", err)
 			}
 			after, err := st.ReadGeneration(t.Context())
-			if err != nil || !after.Generation().Same(before.Generation()) || len(after.Payload.Security) != 0 || len(after.Payload.Runtime) != 0 {
+			if err != nil || !after.Generation().Same(before.Generation()) || len(after.Payload.Security) != 0 || len(after.Payload.Runtime) != 1 || !accepted.IsAwaitingOwner(after.Payload.Runtime) {
 				t.Fatal("failure did not roll back every owner", err)
 			}
 		})

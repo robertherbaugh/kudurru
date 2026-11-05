@@ -14,6 +14,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
+	anchorpersistence "github.com/robertherbaugh/kudurru/internal/trustanchors/persistence"
 )
 
 // ValidateEntry checks each registered owner without granting completeness.
@@ -21,16 +23,22 @@ func ValidateEntry(section string, row replication.Entry) error {
 	if err := security.ValidateEntry(section, row); err != nil {
 		return err
 	}
-	return persistence.ValidateEntry(section, row)
+	if err := persistence.ValidateEntry(section, row); err != nil {
+		return err
+	}
+	return accepted.ValidateEntry(section, row)
 }
 
-// ValidateImage requires all security and global inventory manifests, including
+// ValidateImage requires security, inventory and root-anchor manifests, including
 // explicit empty owners. It never synthesizes missing history from client rows.
 func ValidateImage(image *replication.Image) error {
 	if err := security.ValidateImage(image); err != nil {
 		return err
 	}
-	return persistence.ValidateImage(image)
+	if err := persistence.ValidateImage(image); err != nil {
+		return err
+	}
+	return accepted.ValidateImage(image)
 }
 
 // Initialize stages all owner initialization/migration in one concrete command.
@@ -41,9 +49,25 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {
 	if tx == nil || at.IsZero() {
 		return persistence.ErrInvalid
 	}
+	// Retain the callback's already-admitted writer before any owner writes.
+	// Neither this composition nor the anchor helper samples a successor token.
+	original, err := anchorpersistence.CaptureInitialization(ctx)
+	if err != nil {
+		return err
+	}
 	if err := security.InitializeOwners(ctx, tx); err != nil {
 		return err
 	}
+	if err := initializeInventory(ctx, tx, at); err != nil {
+		return err
+	}
+	// Existing inventory must not bypass anchor validation on restart. Missing
+	// current-schema history is an error, never an invitation to initialize it.
+	_, err = anchorpersistence.InitializeDormant(ctx, tx, original)
+	return err // Staged is reusable only after the caller's entire Command commits.
+}
+
+func initializeInventory(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {
 	_, err := tx.GetSection(ctx, persistence.Section, persistence.RootKey)
 	if err == nil {
 		_, err = persistence.Load(ctx, tx, tx.Authority().ClusterID, at)
