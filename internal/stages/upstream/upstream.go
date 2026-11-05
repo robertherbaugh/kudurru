@@ -209,7 +209,7 @@ func recursiveSecurity(res *upstream.Result, plan *upstream.QueryPlan, cd bool, 
 	if !plan.Recursive() || cd || res.DNSSEC == recursor.SecUnknown {
 		return pipeline.Security{}
 	}
-	sec := pipeline.Security{State: pipeline.ValidationState(res.DNSSEC), ContextID: plan.Scope().ID, ValidatedAt: now}
+	sec := pipeline.Security{State: pipeline.ValidationState(res.DNSSEC), ContextID: plan.Scope().ID, ValidatedAt: now, ValidUntil: res.NativeValidation.ValidUntil}
 	for _, section := range [][]dns.RR{res.Msg.Answer, res.Msg.Ns} {
 		for _, rr := range section {
 			until := now.Add(time.Duration(rr.Header().Ttl) * time.Second)

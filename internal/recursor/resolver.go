@@ -81,6 +81,9 @@ type RRset struct {
 type Validation struct {
 	State    Security
 	Excepted []RRset
+	// ValidUntil retains an aggressive proof's original absolute deadline
+	// through delayed consumers and outer response caches. Zero means absent.
+	ValidUntil time.Time
 }
 
 // Excepts reports native operator-authorized provenance, never wire AD.
@@ -216,6 +219,7 @@ type Resolver struct {
 	set           atomic.Pointer[settings]
 	ex            Exchanger
 	cache         *lru
+	denials       *denialCache
 	infra         *infra
 	metrics       *Metrics
 	logger        *slog.Logger
@@ -261,6 +265,7 @@ func New(cfg Config, opts Options) (*Resolver, error) {
 		size = DefaultConfig().CacheSize
 	}
 	r.cache = newLRU(size) // fixed for the resolver's life
+	r.denials = newDenialCache()
 	if err := r.Reconfigure(cfg); err != nil {
 		return nil, err
 	}
@@ -268,7 +273,7 @@ func New(cfg Config, opts Options) (*Resolver, error) {
 }
 
 // Reconfigure applies cfg. Changing the trust anchors, root hints,
-// exceptions or validation drops the cached delegations and keys.
+// exceptions or validation drops cached delegations, keys and denial proofs.
 func (r *Resolver) Reconfigure(cfg Config) error {
 	if err := cfg.validate(r.now()); err != nil {
 		return err
@@ -312,6 +317,7 @@ func (r *Resolver) Reconfigure(cfg Config) error {
 			// old anchors or hints is read again.
 			s.gen++
 			r.cache.flush()
+			r.denials.flush()
 		}
 	}
 	r.set.Store(s)
@@ -345,8 +351,11 @@ func (r *Resolver) TrustContext() ([32]byte, time.Time) {
 	return r.set.Load().exceptions.Context(r.now())
 }
 
-// Flush drops every cached delegation, address and key.
-func (r *Resolver) Flush() { r.cache.flush() }
+// Flush drops every cached delegation, address, key and denial proof.
+func (r *Resolver) Flush() {
+	r.cache.flush()
+	r.denials.flush()
+}
 
 // CacheLen is the number of cached delegations, addresses and keys.
 func (r *Resolver) CacheLen() int { return r.cache.len() }
@@ -391,10 +400,12 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 	s := r.set.Load()
 	var a *answer
 	var excepted []RRset
+	var validUntil time.Time
 	if zone, ok := localZone(question.Name); ok {
 		a = localAnswer(zone, question)
 	} else {
 		q := r.newQuery(ctx, s)
+		q.st.noSynthesis = req.CheckingDisabled
 		switch question.Qtype {
 		case dns.TypeRRSIG, dns.TypeNSEC, dns.TypeNSEC3:
 			// Not RRsets of their own; returned unvalidated.
@@ -404,6 +415,25 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 			q.st.exceptionUntil = time.Time{}
 		}
 		a = q.resolve(question.Name, question.Qtype)
+		validUntil = q.st.denialUntil
+		if until := q.st.denialUntil; !until.IsZero() {
+			if err := ctx.Err(); err != nil {
+				return nil, Validation{}, err
+			}
+			if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+				return nil, Validation{}, context.DeadlineExceeded
+			}
+			now := r.now()
+			if now.Before(q.st.observed) || now.Before(q.st.denialObserved) || !now.Before(until) {
+				a.sec, a.ede, a.why = SecBogus, dns.ExtendedErrorCodeSignatureExpired, "cached denial expired during resolution"
+			}
+			left := uint32(min(max(0, until.Sub(now)/time.Second), 1<<32-1)) //nolint:gosec // clamped to uint32
+			for _, section := range [][]dns.RR{a.records, a.authority, a.proofs} {
+				for _, rr := range section {
+					rr.Header().Ttl = min(rr.Header().Ttl, left)
+				}
+			}
+		}
 		for set := range q.st.excepted {
 			excepted = append(excepted, set)
 		}
@@ -434,18 +464,24 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 	if s.cfg.DNSSEC {
 		r.metrics.validated(a.sec)
 	}
-	return reply(req, a), Validation{State: a.sec, Excepted: excepted}, nil
+	return reply(req, a), Validation{State: a.sec, Excepted: excepted, ValidUntil: validUntil}, nil
 }
 
 // clientState is shared by every nested lookup of one client query.
 type clientState struct {
-	budget         int
-	exceptionUntil time.Time
-	excepted       map[RRset]struct{}
-	sigBudget      int
-	hashBudget     int
-	inKeys         map[string]bool
-	tooDeep        bool // a lookup hit maxDepth
+	observed        time.Time
+	denialEpoch     uint64
+	denialUntil     time.Time
+	denialObserved  time.Time
+	noSynthesis     bool
+	synthesisBudget int // cumulative portion of hashBudget for all alias/nested cache probes
+	budget          int
+	exceptionUntil  time.Time
+	excepted        map[RRset]struct{}
+	sigBudget       int
+	hashBudget      int
+	inKeys          map[string]bool
+	tooDeep         bool // a lookup hit maxDepth
 }
 
 // query is one (possibly nested) lookup.
@@ -464,7 +500,7 @@ func (r *Resolver) newQuery(ctx context.Context, s *settings) *query {
 	return &query{
 		active: hex.EncodeToString(active[:]),
 		r:      r, s: s, ctx: ctx, validate: s.cfg.DNSSEC,
-		st: &clientState{exceptionUntil: until, budget: maxQueries, sigBudget: maxSigBudget, hashBudget: maxNSEC3Hashes, inKeys: map[string]bool{}},
+		st: &clientState{observed: r.now(), denialEpoch: r.denials.generation(), synthesisBudget: 16, exceptionUntil: until, budget: maxQueries, sigBudget: maxSigBudget, hashBudget: maxNSEC3Hashes, inKeys: map[string]bool{}},
 	}
 }
 
@@ -533,6 +569,21 @@ func (q *query) resolve(qname string, qtype uint16) *answer {
 			a.records = append(a.records, l.records...)
 			a.authority, a.rcode = l.authority, l.rcode
 			a.merge(l.sec, 0, "")
+			return a
+		}
+		if cached := q.cachedDenial(name, qtype); cached != nil {
+			a.records = append(a.records, cached.records...)
+			a.proofs = append(a.proofs, cached.proofs...)
+			if len(cached.records) > 0 && cached.records[0].Header().Rrtype == dns.TypeCNAME && qtype != dns.TypeCNAME {
+				name = canon(cached.records[0].(*dns.CNAME).Target)
+				hops++
+				if hops > maxCNAME || seen[name] {
+					return a.failed(errors.New("recursor: CNAME chain too long or looping"))
+				}
+				seen[name] = true
+				continue
+			}
+			a.authority, a.rcode = cached.authority, cached.rcode
 			return a
 		}
 		res, err := q.iterate(name, qtype)
@@ -607,9 +658,14 @@ func (q *query) addRRset(a *answer, rrset []dns.RR, msg *dns.Msg, zone string) {
 		v = q.validateRRset(rrset, sigs, zone)
 	}
 	if v.sec == SecSecure && v.wildcard != "" {
-		proof, ok := q.proveWildcard(h.Name, v.wildcard, v.signer, msg.Ns, zone)
+		proof, captured, ok := q.proveWildcardCaptured(h.Name, v.wildcard, v.signer, msg.Ns, zone)
 		if !ok {
 			v = vres{sec: SecBogus, ede: dns.ExtendedErrorCodeNSECMissing, why: "wildcard answer for " + h.Name + " without proof that the name does not exist"}
+		} else if captured != nil && v.signature != nil {
+			captured.observed = earlier(captured.observed, v.observed)
+			captured.wildcard = v.wildcard
+			captured.records = append(append([]dns.RR(nil), rrset...), v.signature)
+			q.rememberDenial(captured)
 		}
 		a.proofs = append(a.proofs, proof...)
 	}

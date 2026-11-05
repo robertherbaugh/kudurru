@@ -2428,3 +2428,43 @@ runServe races pass28 entries in90.345s, with no skips/failures. Frozen scoped
 lint reports zero issues; all nine source hashes remain unchanged. Initial
 failed commands remain recorded separately. F44b remains open for Kubernetes
 and final composed qualification.
+
+
+### F27 bounded authenticated denial reuse (D296)
+
+Recursive validation now retains complete validated NSEC/NSEC3 proof bundles
+from one response and signer, with only the signatures that actually verified.
+Covered NXDOMAIN, exact/wildcard NODATA and positive wildcard questions can
+avoid another authority exchange. Normal alias handling remains in force;
+opt-out, mixed or incomplete proofs and CD queries use ordinary recursion.
+No new resolver setting or public API operation is introduced.
+
+A separate cache bounds entries, encoded bytes, records, signer-context buckets
+and candidate probes. One cumulative synthesis hash allowance spans the original
+client query's aliases and nested lookups, preserving ordinary validation work.
+Original TTL/signature/SOA/exception deadlines and trust/flush identity survive
+copying, delayed consumers, outer-cache insertion and dump/load. Hits cannot
+renew proof validity. RFC 5011 automatic anchors remain a separate open item.
+
+Qualification uses actual signed UDP/TCP authorities, installed BIND signing
+and serving private root/child zones, independent synthesized-signature checks,
+and the native cache pipeline with delayed insertion and restore. The final
+full recursor, upstream-stage and upstream-package race command passed **209**
+named/subtest entries; only the existing opt-in live-Internet test was skipped.
+BIND was explicitly enabled and ran without skips. After test-only lint style
+corrections, the BIND race passed **11** entries (1.405s package time) and scoped
+lint reported **0 issues**. All production hashes were unchanged between these
+checks. This is scoped local evidence, not a final hosted/release result.
+
+Earlier failures remain part of the record: the first signed-peer fixture failed
+before queries because the helper did not support root NSEC3/wildcard signing;
+a private signed child fixed that setup. Independent review then found that
+per-lookup synthesis allowances could consume the normal validation reserve
+across aliases. Two controlled regressions failed before the cumulative fix,
+including an actual signed eight-response alias walk returning SERVFAIL. Both
+pass in the final full race command. Initial lint findings were corrected;
+no validation, expiry or work-bound assertion was relaxed.
+
+Hosted CI on the previously pushed `517ac93` separately failed
+`TestCombinedSourceCannotSampleSameGuardSuccessorFrame`; its diagnosis and
+correction remain pending. No full hosted-green claim is made here.

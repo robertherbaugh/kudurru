@@ -245,6 +245,8 @@ sequenceDiagram
     participant T as com server
     participant E as example.com server
     St->>G: www.example.com A, timeout 4s for the whole lookup
+    G->>C: reusable validated denial or wildcard proof?
+    C-->>G: no applicable proof in this example
     G->>C: closest known delegation?
     C-->>G: none yet: start at the root (primed from the built-in hints)
     G->>R: com A (minimized: one label below the root)
@@ -258,7 +260,10 @@ sequenceDiagram
     G-->>St: answer, DNSSEC secure, Upstream = "default/recursive"
 ```
 
-- **Start.** The resolver begins at the closest delegation it has cached.
+- **Start.** After local-name handling, the resolver checks its bounded
+  authenticated denial cache (RFC 8198). A complete proof can answer a new
+  covered name or type without network traffic. Otherwise, it begins at the
+  closest delegation it has cached.
   The root server addresses are built in (IANA's `named.root`, or
   `rootHints`) and refreshed from the roots at first use (priming,
   RFC 9609); the result is kept for at most 24 h.
@@ -442,6 +447,36 @@ remembered for 30 s. The answers to clients go through the response cache
 below like forwarded ones, with prefetch, serve-stale and coalescing, so a
 repeated name costs no outgoing query. A cold lookup takes a few round
 trips, typically 50 to 500 ms.
+
+A separate authenticated denial cache implements RFC 8198 for recursive
+validation. It keeps complete NSEC or NSEC3 proof bundles from one validated
+response and signer, including the exact signature that verified each RRset.
+Negative synthesis requires the validated zone SOA; positive wildcard synthesis
+requires the original wildcard RRset and a proof that the requested name cannot
+exist more specifically. Synthesized CNAMEs use the normal alias loop. Exact
+NODATA, wildcard NODATA, empty non-terminals, delegation boundaries and DNAMEs
+retain their DNSSEC proof rules. Opt-out ranges, mixed chains or parameters,
+incomplete proofs, CD and disabled validation fall back to ordinary resolution.
+
+Each resolver retains at most 1,024 bundles and 4 MiB of encoded proof records
+and index keys, with at most 48 records/16 KiB per bundle and 16 bundles per
+signer context. Each lookup examines at most 32 candidates. All cache probes across one
+original client query, including aliases and nested lookups, share a cumulative
+allowance of 16 NSEC3 hashes. Each probe also reserves at least half the
+remaining shared hash allowance for ordinary validation. These are conservative cache limits;
+a capacity or work limit causes a miss. Records from different responses are
+not combined into a new proof.
+
+The absolute deadline is the earliest original record TTL, signature original
+TTL/expiry, applicable SOA minimum, active exception expiry, or three hours.
+There is no five-second minimum, hit renewal or signature replacement. Each
+consumer receives copied records with aged TTLs. Native validation also carries
+the original absolute deadline into the outer response cache, so delayed
+insertion, configured minimum TTLs, stale serving and dump/load cannot extend
+it. Trust settings and active exception identity partition the cache. Flush
+advances a separate epoch, preventing work captured before the flush from
+refilling its successor. An alias walk rechecks its earliest proof deadline
+and original cancellation before returning.
 
 The group's single server follows the [health](#server-health) rules,
 with one difference: a lookup that times out counts against it only when
