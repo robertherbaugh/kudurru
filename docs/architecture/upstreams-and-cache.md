@@ -294,6 +294,33 @@ sequenceDiagram
   kudurru query hosts inside your network. Custom `rootHints` describe a
   private tree and allow them.
 
+### Automatic root-anchor lifecycle status
+
+Recursive serving currently uses its configured static trust anchors. The pure
+`internal/trustanchors` package implements the RFC 5011 state/evidence prerequisite;
+it is not yet mounted by the resolver or an automatic updater.
+
+Its immutable state retains explicit DS seeds, every actual authenticating
+supporter, original hold-down times and permanent bounded revocation tombstones.
+Only checkpointed monotonic progress in the same process session counts toward
+addition; restart or failover receives no unproved downtime credit. Addition also
+requires a fresh authenticated observation after the hold-down. Missing trusted
+keys remain trusted; self-revocation uses the received REVOKE flags and changed
+key tag. Loss of every anchor quarantines validation under the planned managed
+policy.
+
+Bootstrap and updates retain an opaque original observation bounded by received
+DNSKEY/RRSIG TTLs, signed original TTL and signature expiration. Final admission
+checks both wall and monotonic age without restamping. Encoding a proposed state
+does not commit its checkpoint or grant a writer. Durable CAS, accepted replica
+images and immutable complete-image resolver publication remain separate work.
+
+Managed activation also requires retirement of held answers at final local
+response admission and durable follower quarantine. The current remote cache
+eligibility lease cannot guarantee immediate retirement; managed pools need
+proven cache bypass installed before activation or a stronger per-hit protocol.
+These are pending prerequisites, not guarantees supplied by the pure package.
+
 ### Names that never leave the network
 
 The resolver answers these itself, so their queries never reach a root or

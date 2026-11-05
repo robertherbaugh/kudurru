@@ -2545,3 +2545,38 @@ failed result remains recorded. No production API/UI or mutation retry changed.
 The hosted run's BIND e2e job passed, including the new authenticated-denial
 case; one Go shard was still running at this checkpoint. Full hosted success
 remains unclaimed.
+
+### F28 pure trust-anchor lifecycle prerequisite (D297)
+
+Source `67abdb0` integrates as `3ed7dee`: five new `internal/trustanchors`
+files, with no runtime/configuration/store/resolver mount. Explicit DS bootstrap
+and every transition bind the original immutable state and authenticated DNSKEY
+observation. Actual signatures establish every supporter and own-key REVOKE
+identity. Candidate acceptance requires the original 30-day/first-TTL hold-down,
+only checkpointed same-session monotonic progress, and a fresh post-threshold
+observation. Missing keys remain trusted; revocations remain bounded permanent
+tombstones; all-anchor loss quarantines instead of falling back to insecure
+answers or shipped defaults.
+
+Review added original observation TTL/signature/monotonic consumption bounds
+and retained bootstrap evidence for the future initial durable CAS. Construction
+already refused expired evidence; the bootstrap correction makes that original
+proof available at final admission. The strict codec validates complete bounded
+history but proves neither a commit nor a writer. Proposed checkpoints become
+accepted only after a successful original-admission durable CAS.
+
+Final full pure-package race passes **62** named/subtest entries (1.271s), with
+no skips. Initial lint found a missing exported-block comment and deprecated
+elliptic point validation; the narrow comment and `crypto/ecdh` validation
+corrections preserve key bounds, pass the final race, and report **0 lint issues**.
+All committed source fingerprints match the final freeze. Earlier lint failure
+and ordinary passes remain separate evidence.
+
+This uses actual signatures with controlled private samples, not a 30-day live
+soak. The elected durable owner, feature negotiation/migration, replica install,
+scheduler and complete-image resolver mount remain open. Final local response
+admission must share retirement exclusion; an asynchronous flush is insufficient.
+The existing remote packet-cache lease also cannot prove immediate retirement,
+so managed activation requires proven preinstalled bypass or a stronger protocol.
+Follower quarantine must be durable and deny-only. None of those mount guarantees
+is claimed by this pure package.
