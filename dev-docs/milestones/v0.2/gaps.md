@@ -2773,3 +2773,27 @@ migration diagnostic replacement. `f873643` removes only that dead helper; the
 active original-step observer, 15-second journal wait and assertions are
 unchanged. The hosted lint failure is preserved; local scoped lint and fresh
 hosted qualification for the correction remain pending.
+
+### F28 immutable resolver input prerequisite
+
+Source `3a3718e` integrates as `e6e7a09`, adding exactly four unmounted
+`internal/trustanchors/resolverstate` files. Projection validates the complete
+structural owner, selects only Valid/Missing SHA-256 DS values, and retains
+permanent deny identities. Invalid, dormant and quarantined states provide no
+static/default fallback. Detached owner identity binds envelope and pure
+versions; identical keys or an expired historical observation cannot substitute
+for original durable admission or runtime authority.
+
+Ordinary qualification reports package success. Full package race reports
+**22 passing test entries**, zero failures/skips, and scoped installed lint
+reports zero issues on the same frozen source. Actual signatures, all four key
+states, self-revoke, distinct same-tag keys, bounds, detachment, held original
+expiry and identity framing are covered. Root verifies the integrated blobs
+and unchanged prerequisites without repeating those checks. Managed updater,
+accepted-image resolver publication, durable local denial, command/install and
+final-output retirement, edge bypass and recovery remain open.
+
+A later root-only cmd/webhook lint attempt stopped on disk headroom before any
+diagnostic; it supplies no lint result. Its raw termination and unchanged source
+freeze are preserved separately. Root startup/mount checks remain pending; the
+completed resolverstate qualification above is unchanged.

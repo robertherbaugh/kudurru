@@ -328,6 +328,13 @@ binaries refuse across the schema/feature boundary; there is no automatic image
 conversion or mixed-version replication promise. Managed transitions, the
 updater and immutable complete-image resolver publication remain unmounted.
 
+The unmounted `resolverstate` projection derives canonical SHA-256 DS records
+only from Valid/Missing keys. Dormant and quarantined histories yield explicit
+states with no fallback keys. Detached domain and owner identities bind history,
+policy, seed and both envelope and pure-state versions, including checkpoint-only
+changes. This structural input can also describe an uncommitted proposal; it
+does not authenticate an image, certify durable acceptance or permit serving.
+
 Planned managed mode also refuses an ordinary switch back to static/default
 anchors after managed history exists: a shipped seed could otherwise restore a
 permanently revoked key. Static-only installations retain their existing
