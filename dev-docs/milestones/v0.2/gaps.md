@@ -2334,3 +2334,52 @@ mechanical corrections. Pending cmd coordinator files were excluded from the
 commit and these checks. Production activation, background key use, management
 routes and broader Kubernetes rotation remain open; this is transport capability
 evidence, not a mounted stored-key completion claim.
+
+
+### F60c standalone webhook conformance (D295)
+
+`791b49e` adds `integrations webhook conformance` with an explicit target,
+trust roots and bearer or mTLS files. It does not resolve ambient API contexts,
+Kubernetes credentials or runtime providers. Original captured input bodies and
+one whole-run deadline govern version negotiation, advertised read probes and
+explicit opt-in mutation probes. Fresh HTTP/1 requests cannot redirect or replay
+bodies; uncertainty stops subsequent mutations without cleanup. Fixed reports
+separate passed checks from incomplete coverage and uncertain effects. This
+implements the standalone command, not the remaining Tier-B runtime lifecycle.
+
+Actual local TLS acceptance exercises the first-party external-dns server's
+read/create/identity-only delete path; Tier-B tests verify exact original event
+bytes, HMAC and documented delivery header, selected action and credential/file
+replacement. Tests cover mTLS, URL prefixes, 307/308/503/disconnect single-attempt
+behavior, null/duplicate/unknown/bounded JSON refusal, original cancellation and
+caller deadline across requests, and CLI ambient-token nonuse. Capture limits
+caller wait and outstanding workers; a blocked OS file call can retain the one
+worker slot until it returns, without sending a late request.
+
+Initial focused package/CLI tests pass 29 named/subtest entries with no skips
+(0.838s/0.054s). Focused races pass the same 29 entries (2.962s/1.217s).
+Initial lint found four local close/style/input-path diagnostics; the corrections
+retain all protocol and deadline behavior. Final scoped lint reports zero issues,
+and the post-style full new-package race passes in 2.866s (27 entries). These are scoped checks, not a
+full cmd or repository run. Merged generation, hosted CI, Tier-B provider runtime
+and the remaining all-driver/restart gates remain open.
+
+
+### Merged administration contracts, November 5
+
+Merged OpenAPI 3.1/3.0, Go client/dispatch, dashboard types and API/CLI references
+now contain 180 unique operations: the original 169 plus seven integration and
+four RoleBinding operations, with no original operation ID renamed or removed.
+Generation, dashboard typecheck and the Hugo documentation build pass. The
+user-owned built dashboard artifact is preserved.
+
+The first composed race command remains failed: API (5.661s), generated client
+(1.241s) and servingauth (11.366s) pass, while cmd (168.742s) has one failure in
+`TestServingHTTPRoleBindingsReviewedCRUD`; 264 other test/subtest entries pass,
+with no skips. Its stale-delete assertion received 503 instead of 409. A private
+unchanged-assertion diagnostic reproduces two failures in 20 independent race
+fixtures: both retain valid writer/base/dependencies but encounter publication
+3 changing to 4 at the original-publication check. The production refusal is
+preserved; deterministic fixture scheduling remains under review. Later
+Go generator/lint stages did not run after the composed command failed. No
+whole-command, fresh hosted CI or release completion is claimed.

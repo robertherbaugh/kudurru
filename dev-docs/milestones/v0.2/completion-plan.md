@@ -87,7 +87,7 @@ runners. Unit tests cannot substitute for those results.
 | F17 | `$important` / `$badfilter` | DNS and resolver | Implemented; final gates open |
 | F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Integrated 50773f9; generated schemas and composed mounted/publication races pass |
 | F18b | Reverse-PTR hostname cache | DNS and resolver | Integrated 83c1096; bounded async PTR, actual UDP and mounted SQLite policy/expiry races; scoped lint pass |
-| F18c | UniFi hostname source | DNS and resolver | Integrated 380f43f; actual TLS/SQLite/native/PROXYv2/dnsdist lifecycle races passed in isolation; merged held-CNAME deadline regression under investigation |
+| F18c | UniFi hostname source | DNS and resolver | Integrated 380f43f; actual TLS/SQLite/native/PROXYv2/dnsdist lifecycle races pass. Fixture correction 4337c79 retains the original five-second held-CNAME deadline; repeated focused and full mounted acceptance pass, with earlier failed commands retained in the ledger |
 | F19a | Durable replicated blocking toggle on complete SQLite path | Store and HA | Implemented; final gates open |
 | F19b | Kube runtime annotation publisher/watcher or equivalent cluster toggle | Store and HA | Queued: missing |
 | F20a | AdGuard black-box conformance implementation | DNS and resolver | Implemented; final gates open |
@@ -159,7 +159,7 @@ runners. Unit tests cannot substitute for those results.
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
 | F60b | `cluster status` / `promote` / `join-token` | Store and HA | Queued: missing |
-| F60c | `integrations …` CLI | Store and HA | Active D291: reviewed API/CLI integrated with real-provider/router races and lint; merged generation, webhook conformance and remaining driver/restart gates remain |
+| F60c | `integrations …` CLI | Store and HA | Active D291/D295: reviewed API/CLI and standalone webhook conformance integrated; real-provider/router and explicit TLS/mTLS protocol races plus scoped lint pass. Merged generation, Tier-B runtime and remaining driver/restart gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |

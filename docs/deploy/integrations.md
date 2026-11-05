@@ -184,7 +184,63 @@ advertise none. `integrations act NAME ACTION --uid UID --revision REVISION
 --params '{}'` cannot enable an unsupported provider action.
 
 These routes require complete SQLite runtime authority. Kubernetes execution
-and webhook conformance remain unsupported by this command tranche. List/get
+remains unsupported by this command tranche. List/get
 status is a local observation and can be unknown when the exact revision has no
 matching observation. Public previews omit credential references, fingerprints,
 private provider IDs and ledger receipts.
+
+## Check an external webhook
+
+`integrations webhook conformance` checks an explicitly selected external-dns
+or Tier-B webhook. It connects directly to that target using the supplied trust
+and credential files. Saved Kudurru API credentials, `--server`, proxies and
+Kubernetes contexts do not supply target credentials.
+
+```sh
+kudurru integrations webhook conformance https://webhook.example.test/provider \
+  --ca-file /run/secrets/provider-ca.pem \
+  --bearer-file /run/secrets/provider-token
+```
+
+HTTPS verifies the server certificate. `--ca-file` selects explicit trust roots;
+omit it to use system roots. Use `--client-cert` and `--client-key` instead of
+`--bearer-file` for mTLS. Plain HTTP is accepted only for literal loopback
+addresses. Target URLs cannot contain user information, a query or a fragment.
+A fixed path prefix is supported.
+
+The default probes negotiate the versioned protocol, read advertised records,
+clients, networks and actions, and normalize an empty endpoint array. An
+explicit `--endpoints-file` supplies a different normalization input. The JSON
+report contains fixed check names and outcomes without peer bodies or secrets.
+`passed: true` means the attempted checks passed. `complete: false` means an
+advertised mutation or another action remains untested; a successful read-only
+run is not full conformance evidence.
+
+Run mutation probes only against an intentionally selected disposable target.
+Each probe needs `--allow-mutations` and its explicit input:
+
+```sh
+kudurru integrations webhook conformance https://webhook.example.test/provider \
+  --ca-file /run/secrets/provider-ca.pem \
+  --bearer-file /run/secrets/provider-token \
+  --allow-mutations --changes-file reviewed-changes.json
+```
+
+`--changes-file` sends an external-dns Changes document. `--event-file` with
+`--hmac-file` sends the exact event bytes with HMAC-SHA256 and a fresh
+`X-Kudurru-Delivery` ID. `--action NAME --params-file FILE` invokes that exact
+advertised action once. The HMAC file contains 32–4096 raw bytes, not a hex
+encoding. Changes, event and parameter files are captured before any request.
+
+There are no automatic retries, redirect follows or cleanup writes. An
+`effect_uncertain` result means a mutation may have happened; later mutations
+stop. Inspect the target before intentionally running another command. Even a
+complete report describes protocol acknowledgments, not physical DNS
+publication, durable provider effects or activation of a Kudurru integration.
+
+The default whole-run timeout is one minute, with a maximum of five minutes;
+each request defaults to ten seconds within the original deadline. Responses
+and Changes/event inputs are capped at 32 MiB, with additional collection and
+nesting limits. Files are captured once. Cancellation bounds the caller's wait
+for filesystem access, but an OS file operation can remain blocked; it retains
+the single capture slot until it returns and cannot send a late request.

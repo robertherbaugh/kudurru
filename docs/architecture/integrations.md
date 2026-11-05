@@ -12,7 +12,7 @@ The schema, credential resolver, publication planner, durable ownership ledger,
 background host, Cloudflare SDK adapter and UniFi polling adapter are implemented.
 The SQLite serving runtime mounts the host, concrete fenced ledger/source commands,
 and complete-image inventory publication. Kubernetes execution, `Delete` cleanup,
-remaining providers, webhook conformance and dashboard controls remain parts of the full
+remaining providers and dashboard controls remain parts of the full
 [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ```mermaid
@@ -431,5 +431,44 @@ Qualification includes the real Cloudflare SDK and UniFi adapter against local
 TLS peers, production router and generated CLI, stale-plan refusal, committed
 writes, an applied-but-unreadable pending outcome, original cookie CSRF and
 scoped-token/writer/revocation refusals. It does not claim contact with production
-provider infrastructure. Webhook conformance, Kubernetes execution and remaining
+provider infrastructure. Kubernetes execution and remaining
 all-driver/restart release gates remain separate work.
+
+## Standalone webhook protocol checks
+
+`internal/integrationconformance` implements the explicitly invoked
+`integrations webhook conformance` command (D295). Its target is an external
+webhook, so it uses the versioned external-dns/Tier-B protocol directly. The
+ordinary integration administration commands continue to use generated Kudurru
+OpenAPI dispatch. This runner does not acquire a serving View, provider host,
+writer, local ledger or runtime integration authority.
+
+```mermaid
+flowchart LR
+    Input["Explicit URL, trust, credential and probe files"] --> Capture["One bounded capture; original run deadline"]
+    Capture --> Negotiate["Verified target; version and capability checks"]
+    Negotiate --> Reads["Bounded advertised read probes"]
+    Reads --> OptIn["Explicit mutation opt-in and selected inputs"]
+    OptIn --> Once["One attempt per selected mutation"]
+    Once --> Report["Sanitized acknowledgment or uncertain outcome"]
+```
+
+The target has no ambient API credential, proxy, cookie jar or Kubernetes
+lookup. CA, bearer or mTLS material and input bodies are detached before
+network work. Capture has one process-wide worker slot; a blocked filesystem
+call may retain it after caller cancellation, but cannot publish late inputs
+or create replacement workers. Every request retains the original run context
+and an earlier per-request bound.
+
+Each attempt uses a fresh HTTP/1 connection and a nonreplayable body. Redirects,
+automatic retries and cleanup mutations are disabled. Events use the exact
+captured body and documented signature/delivery headers. Unknown capabilities,
+duplicate JSON fields, invalid shapes and over-limit bodies refuse. Action
+selection is checked before any mutation. An uncertain effect stops all later
+mutation probes without interpreting a replacement response as success.
+
+The report records only fixed protocol check names and safe outcomes. Untested
+mutations and other advertised actions keep it incomplete. Successful responses
+do not prove persistence, provider lifecycle activation or external DNS effects.
+See the [operator guide](../deploy/integrations.md#check-an-external-webhook)
+for explicit inputs and limits.

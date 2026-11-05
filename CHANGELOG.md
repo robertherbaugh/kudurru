@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- CLI: standalone external-dns/Tier-B webhook conformance with explicit TLS
+  credentials, bounded protocol checks, opt-in mutation probes and sanitized
+  reports. Uncertain effects stop without automatic retries or cleanup.
+
 - Client identification: optional host-selected asynchronous reverse-PTR fallback
   with bounded workers/cache, strict answer validation, original TTL expiry and
   inventory/DHCP precedence.
