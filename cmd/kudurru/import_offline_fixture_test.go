@@ -12,17 +12,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
 )
 
-// offlineAcceptanceWaitRun observes the accepted job without repeating its
-// mutation. A stalled job fails the fixture deadline; partial/interrupted
-// results remain visible to the caller's ordinary CLI readback assertions.
-func offlineAcceptanceWaitRun(t *testing.T, f *servingCommandFixture, id, source string) {
-	t.Helper()
-	awaitServingRuntime(t, f.s, func() bool {
-		return offlineAcceptanceJournal(t, f, id, source).Spec.Status != "running"
-	})
-	adoptionWait(t, f)
-}
-
 // offlineAcceptanceWaitRecords waits for exact committed source evidence before
 // the one-shot DNS assertion. Zone admission alone can legitimately serve an
 // earlier head while a later desired RecordSet is still being reconciled.
