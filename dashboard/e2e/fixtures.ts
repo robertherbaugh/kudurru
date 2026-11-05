@@ -21,6 +21,8 @@ interface Fixtures {
   pageProblems: string[];
   /** Exact GET request targets (path plus query) allowed to report the pre-handler publication gate. */
   pendingReadPaths: Set<string>;
+  /** Exact GET targets allowed to report a committed zone awaiting serving publication. */
+  pendingZoneReadPaths: Set<string>;
 }
 
 /** The first lines of a message or stack (minified frames say little). */
@@ -40,23 +42,28 @@ export const test = base.extend<Fixtures, { workerState: string }>({
   },
   allowConsole: [null, { option: true }],
   pendingReadPaths: async ({}, use) => { await use(new Set<string>()); },
+  pendingZoneReadPaths: async ({}, use) => { await use(new Set<string>()); },
   pageProblems: [
-    async ({ page, allowConsole, pendingReadPaths }, use, testInfo) => {
+    async ({ page, allowConsole, pendingReadPaths, pendingZoneReadPaths }, use, testInfo) => {
       const problems: string[] = [];
       const pending: Promise<void>[] = [];
       const confirmed = new Map<string, number>();
       const candidates: { problem: string; url: string }[] = [];
       page.on('response', (response) => {
         const url = new URL(response.url());
+        const target = url.pathname + url.search;
         if (response.status() !== 503 || response.request().method() !== 'GET' ||
-            url.origin !== new URL(page.url()).origin || !pendingReadPaths.has(url.pathname + url.search)) return;
+            url.origin !== new URL(page.url()).origin || !pendingReadPaths.has(target) && !pendingZoneReadPaths.has(target)) return;
         pending.push((async () => {
           try {
             const headers = await response.allHeaders();
             const body = await response.body();
             if (body.length > 4096 || headers['set-cookie'] || headers.location) return;
-            const value = JSON.parse(body.toString()) as { error?: { key?: unknown } };
-            if (value.error?.key === 'generation_pending') confirmed.set(response.url(), (confirmed.get(response.url()) ?? 0) + 1);
+            const value = JSON.parse(body.toString()) as { error?: { key?: unknown; message?: unknown } };
+            const publication = pendingReadPaths.has(target) && value.error?.key === 'generation_pending';
+            const committedZone = pendingZoneReadPaths.has(target) && value.error?.key === 'unavailable' &&
+              value.error?.message === 'committed zone read: serving: generation pending';
+            if (publication || committedZone) confirmed.set(response.url(), (confirmed.get(response.url()) ?? 0) + 1);
           } catch { /* Unreadable or malformed errors remain failures. */ }
         })());
       });
@@ -74,8 +81,8 @@ export const test = base.extend<Fixtures, { workerState: string }>({
       });
       await use(problems);
       await Promise.all(pending);
-      // Only a verified middleware refusal on a test-declared read is expected.
-      // Handler errors, mutations and unrelated console exceptions still fail.
+      // Only the verified publication refusal declared by the test is expected.
+      // Other handler errors, mutations and console exceptions still fail.
       let observed = 0;
       for (const { problem, url } of candidates) {
         const count = confirmed.get(url) ?? 0;
