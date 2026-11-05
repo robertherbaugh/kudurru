@@ -678,8 +678,35 @@ message on the same connection captures independently. Encrypted transports
 retain the same original context and signature deadline through emission and
 still cannot issue native mutation proofs. Fixed-key mode remains supported.
 This transport capability has actual same-connection acceptance across all six
-protocols; stored-key coordinator/serve activation and background wiring are
-separate pending work. It does not imply stored keys are already mounted.
+protocols. The optional stored-key coordinator and background acquisition
+contracts are implemented; production serve activation remains separate work.
+Stored keys are not yet mounted by these prerequisites.
+
+The coordinator prepares complete encrypted sources outside request handling and
+installs them only under the original encryption and keyring owners. A failed
+prepare retains the prior coherent ring. Complete image capture and current
+transactions independently reject a ring whose original source no longer matches.
+Typed create, replace, revoke and reseal plans validate the original preimage,
+then the complete intended postimage in the same transaction. A final in-memory
+mutation-journal check refuses any later write to that private object kind,
+including an ABA change, without rereading storage after the transaction closes.
+These helpers do not yet expose management routes or permissions.
+
+Secondary and RPZ managers can capture one immutable key provider and receiver
+per scheduled job. Credential replacement cancels the old job and waits for it
+to finish before reusing its slot. Stored credential epochs bind persisted data;
+file credentials preserve their existing fingerprint format. The original whole
+job deadline covers network work, persistence and acceptance; RPZ cannot obtain
+a fresh timeout after its transfer returns.
+
+Acquisition acceptance pins original encryption and keys, checks the durable
+source, writes the local cache, checks source and time again, then publishes only
+in memory under the manager gate. Failed acceptance restores candidate scheduler
+fields. There is no fallible source read after publication. Local cache data and
+authoritative state live in different databases: an unsuccessful attempt may
+leave a cache artifact, which retains its original credential epoch and expiry.
+Complete serving admission still matches the actual source and acquired epoch;
+the artifact is not an authoritative command acknowledgment.
 
 Native UDP/TCP/DoT listeners now admit bounded UPDATE framing before TSIG
 verification. A successfully verified UPDATE using an immutable static keyring

@@ -64,7 +64,7 @@ runners. Unit tests cannot substitute for those results.
 | F05 | Cache parsed endpoints per record-set object | Zones and AD | Integrated eb20ac7; composed actual-driver and parser races pass |
 | F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Integrated c80c6f2/46d7641; actual sender and composed SQLite/Kubernetes schema races pass |
 | F06b | Per-zone `notifySource` | Zones and AD | Integrated c80c6f2/46d7641; actual source/refusal races and UI unit tests pass |
-| F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Active D292: encrypted source, same-transaction epoch checks and captured transport integrated; coordinator/production activation and final qualification remain |
+| F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Active D292: encrypted source, typed same-transaction postimage checks, captured transport and coordinator/acquisition prerequisites integrated; production activation, management and final driver qualification remain |
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Integrated a6bf8e1; actual encrypted wire and native mutation-refusal races pass; immutable installed keyrings |
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Integrated c46f8c9; authenticated SQLite native/CLI races pass; Kubernetes qualification remains open |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |

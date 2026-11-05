@@ -235,6 +235,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Secondary and RPZ acquisition now retain their original job deadline through
+  persistence and publication, preventing expired work from becoming fresh data.
+
 - Edge health: bypass dnsdist packet caching for the exact health-query name
   so a transient lameduck failure cannot keep a healthy VIP in FAULT after
   the draining backend has been removed.

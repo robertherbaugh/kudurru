@@ -2494,3 +2494,54 @@ entries (113.322s package), with no skips. Final host/cmd/objects scoped lint
 reported **0 issues**; all frozen Go fingerprints stayed unchanged. The original
 hosted failure remains recorded separately. The installed-BIND CI job now runs
 the F27 proof-reuse race explicitly; fresh hosted qualification is pending.
+
+
+### F07a coordinator and acquisition prerequisites (D292)
+
+Source commits `d5df9df` and `df79fc5` integrate as `28077a8` and `a694d3f`.
+Typed TSIG lifecycle plans preserve original UID/resourceVersion/source checks,
+validate the complete intended postimage in the same transaction, and reject
+later same-kind mutations through the final in-memory journal fence. Optional
+coordinator and acquisition interfaces retain original encryption, credential
+source and whole-job deadlines. Local cache persistence precedes a source/time
+postcheck and memory-only manager publication; the separate databases are not
+claimed atomic. File-backed acquisition fingerprints retain their prior format.
+
+The full seven-package ordinary regression passed **1,127** named/subtest entries
+(109.904s wall) with eight explicit opt-in skips. The later installed-BIND RPZ
+race enabled its opt-in and passed **23** entries (2.517s package), with no skips.
+Selected serving lifecycle/current-command races passed **20** entries (36.361s),
+with no skips. Initial scoped lint findings were corrected narrowly; affected
+kind-fence/mutation races passed **29** entries, then final six-package scoped
+lint reported **0 issues**. Earlier compile and fixture-readiness failures remain
+recorded independently. The fixture now waits for actual Live publication before
+its single reconciliation; no guard, time limit or mutation assertion was relaxed.
+
+These are source/helper/coordinator prerequisites. Production SQLite activation,
+management routes, Kubernetes startup capability and final mounted qualification
+remain open; no generated artifacts were copied or new routes advertised.
+
+Root merged coordinator/current-command races then passed **13** entries in
+13.244s (59.797s including compilation), with no skips and all tracked Go
+fingerprints unchanged. This verifies composition of the prerequisites; it
+does not qualify the separate uncommitted serve activation.
+
+### Hosted import-report publication refusals
+
+CI run `41958343910` on `fedef02` failed the dashboard background-import test's
+console check. The actual browser trace confirms two `generation_pending`
+HTTP 503 responses: the exact history GET with `limit=25` and the original
+run-detail GET. Functional import assertions passed. The fixture now declares
+those exact read targets, verifies the bounded refusal body, injects one refusal
+for each, and requires real durable report/history recovery with exactly one
+start POST. It retains all partial-success and skipped-object assertions.
+
+Dashboard typechecking passes. The selected background-import test passes
+locally (14.2s), followed by all three migration cases (25.5s), using the
+pre-existing October 31 embedded-dashboard binary. These are test-fixture
+results, not a newly built current-head server claim. The first local command
+stopped during setup because the root binary embeds the placeholder; that
+failed result remains recorded. No production API/UI or mutation retry changed.
+The hosted run's BIND e2e job passed, including the new authenticated-denial
+case; one Go shard was still running at this checkpoint. Full hosted success
+remains unclaimed.
