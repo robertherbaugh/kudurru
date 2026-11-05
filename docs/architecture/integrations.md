@@ -434,6 +434,29 @@ scoped-token/writer/revocation refusals. It does not claim contact with producti
 provider infrastructure. Kubernetes execution and remaining
 all-driver/restart release gates remain separate work.
 
+## Tier-B runtime client status
+
+The production factory currently supports Cloudflare and UniFi. The private
+`ee/integration/webhook` transport and negotiation are prerequisites for the
+Tier-B client; the package is not yet registered as a runnable provider.
+
+It captures named bearer or mTLS material and request bytes, then routes each
+bounded attempt through the original host request scope. Verified TLS, fresh
+HTTP/1 connections, no redirects/body replay/proxy/cookies and fixed method/path
+pairs keep one charge per actual attempt. Original cancellation and deadlines
+cover response-body reads, and stopping the transport cancels in-flight work.
+Status errors contain no peer bodies or credentials.
+
+A successful response is wire evidence. Managed record publication still needs
+remote ownership and durable partial-result handling through `Publisher`;
+inventory acceptance needs genuine observation time and fixed expiry through
+`Observer`. The transport supplies neither contract. Negotiation retains the
+exact versioned media, capabilities, manifest, filters and action schemas as one detached
+identity. It rejects malformed or ambiguous JSON, mismatched capabilities and
+credential echoes; a later peer declaration cannot silently replace the retained
+one. Action parameter semantics remain subject to host validation. Provider
+lifecycle and mounted qualification remain separate work.
+
 ## Standalone webhook protocol checks
 
 `internal/integrationconformance` implements the explicitly invoked

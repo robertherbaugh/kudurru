@@ -2580,3 +2580,46 @@ The existing remote packet-cache lease also cannot prove immediate retirement,
 so managed activation requires proven preinstalled bypass or a stronger protocol.
 Follower quarantine must be durable and deny-only. None of those mount guarantees
 is claimed by this pure package.
+
+### Tier-B runtime transport prerequisite (D298)
+
+`c8553ef` adds a private captured transport in `ee/integration/webhook`; no
+production factory registration or provider capability is enabled. Named bearer
+or mTLS material and request payloads are detached before the original host
+request gate. Every actual attempt is separately charged and retains original
+cancellation/deadline through body consumption. Verified TLS, literal-loopback
+HTTP restrictions, fresh HTTP/1, no proxy/jar/redirect/GetBody/retry and bounded
+methods, paths, headers and bodies apply.
+
+Full ordinary tests pass, followed by **18** race entries with no skips. Actual
+TLS/mTLS, original payload retention across a held host gate, refused host before
+peer I/O, redirect/4xx/5xx single attempts and in-flight body cancellation/deadline
+are covered. Two lint expression-style findings were corrected; the affected
+input/TLS race passes **5** entries and final scoped lint reports **0 issues**.
+The original failed lint output remains separate evidence.
+
+`685f53f` adds detached protocol negotiation: exact media, matching manifest and
+capabilities, filters and advertised action schemas form one retained identity.
+Ambiguous JSON, Unicode case aliases, malformed/null declarations, changed
+capabilities and credential echoes cannot produce a usable successor silently.
+Full ordinary and final package race each pass **35** entries with no skips;
+final scoped lint reports **0 issues**. Action schemas have structural bounds;
+the existing host still owns semantic parameter validation before invocation.
+
+Provider lifecycle is still being implemented. Record publication requires strong remote ownership and partial receipts; inventory
+requires genuine observation time and fixed expiry. Neither a legacy record
+list nor HTTP 204 supplies those guarantees. The existing standalone conformance
+command remains independent, and no Tier-B production completion is claimed.
+
+### Hosted zone-read fixture correction
+
+CI `41960281277` on `962bd1e` reports one dashboard failure and 153 passes.
+The trace shows the exact records GET returning `503/unavailable` with
+`committed zone read: serving: generation pending`, then recovering. The reviewed
+dry-run and single DELETE each returned 200; the console fixture failed.
+`13c914c` allows only that exact declared read refusal and injects it to prove
+record-table recovery before one deletion. Other errors remain failures.
+Selected local case passes (13.9s), zones plus migration pass all six (39.7s),
+and dashboard typecheck passes. These used the existing embedded-dashboard
+binary, not a newly built current-head server. Hosted confirmation remains
+pending; the full failed run is not relabeled green.
