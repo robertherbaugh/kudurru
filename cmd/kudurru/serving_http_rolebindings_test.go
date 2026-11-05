@@ -72,11 +72,6 @@ func TestServingHTTPRoleBindingsReviewedCRUD(t *testing.T) {
 		t.Fatal("read changed review")
 	}
 	before := roleBindingImage(t, f.s.opts.Store)
-	unchanged := roleBindingResponse(t, f.call(t, "PUT", "/iam/rolebindings/apps/managed-binding", roleBindingBody(t, api.ReplaceRoleBindingCommand{RoleBindingReview: roleBindingReview(read), Binding: in}), f.token, nil, ""), 200)
-	if unchanged.UID != read.UID || unchanged.ResourceVersion != read.ResourceVersion {
-		t.Fatal("unchanged replacement rewrote identity")
-	}
-	roleBindingUnchanged(t, f.s.opts.Store, before)
 	expectServingHTTPStatus(t, f.call(t, "POST", "/iam/rolebindings", roleBindingBody(t, in), f.token, nil, ""), 409)
 	for _, review := range []api.RoleBindingReview{{UID: "other", ResourceVersion: out.ResourceVersion}, {UID: string(out.UID), ResourceVersion: "stale"}} {
 		expectServingHTTPStatus(t, f.call(t, "PUT", "/iam/rolebindings/apps/managed-binding", roleBindingBody(t, api.ReplaceRoleBindingCommand{RoleBindingReview: review, Binding: in}), f.token, nil, ""), 409)
@@ -110,6 +105,22 @@ func TestServingHTTPRoleBindingsReviewedCRUD(t *testing.T) {
 	if len(localUsersState(t, f.s.opts.Store).GrantFloors) != 1 {
 		t.Fatal("regrant erased floor")
 	}
+}
+
+func TestServingHTTPRoleBindingsUnchangedReplacement(t *testing.T) {
+	f := newServingHTTPFixture(t, false)
+	in := roleBindingManifest("managed-binding", "viewer", "alice")
+	created := roleBindingResponse(t, f.call(t, "POST", "/iam/rolebindings", roleBindingBody(t, in), f.token, nil, ""), 201)
+	localUsersFresh(t, f)
+	before := roleBindingImage(t, f.s.opts.Store)
+	// A successful no-op still wakes the asynchronous publisher. Make it this
+	// fixture's final HTTP command so its new publication cannot invalidate an
+	// unrelated target-conflict request's original lease.
+	unchanged := roleBindingResponse(t, f.call(t, "PUT", "/iam/rolebindings/apps/managed-binding", roleBindingBody(t, api.ReplaceRoleBindingCommand{RoleBindingReview: roleBindingReview(created), Binding: in}), f.token, nil, ""), 200)
+	if unchanged.UID != created.UID || unchanged.ResourceVersion != created.ResourceVersion {
+		t.Fatal("unchanged replacement rewrote identity")
+	}
+	roleBindingUnchanged(t, f.s.opts.Store, before)
 }
 
 func TestServingHTTPRoleBindingsStrictInputOwnershipAndAliases(t *testing.T) {
