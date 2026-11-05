@@ -46,6 +46,14 @@ Current cluster `rolebindings.read`, `rolebindings.write` or
 Legacy and Kubernetes mutation runtimes return 503 after permission admission.
 Generic object aliases remain unavailable for these IAM mutations.
 
-This completes the public SQLite writer. File/inline loader revocation and
-Kubernetes durable accepted-authority work remain separate open items. The
+SQLite file and inline RoleBindings use the same durable grant-floor updates.
+Removing or narrowing a source grant invalidates earlier frozen credentials;
+recreating its original specification does not restore them. This also applies
+to the first startup load and to remove/regrant changes made while the process
+is stopped. Unchanged source reconciliation still checks the original writer
+and accepted source before succeeding. Invalid or unreadable sources retain
+their existing objects, and environment-installed inline objects retain their
+startup precedence.
+
+Kubernetes durable accepted-authority work remains open. The
 [Kubernetes offline migration](iam-upgrade.md) is not replaced by this API.

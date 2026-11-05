@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- SQLite file and inline RoleBinding removal now records durable grant history
+  before publication, so regranting the same binding cannot revive old cookies
+  or personal tokens, including across restart and replica state transfer.
+
 - CLI: standalone external-dns/Tier-B webhook conformance with explicit TLS
   credentials, bounded protocol checks, opt-in mutation probes and sanitized
   reports. Uncertain effects stop without automatic retries or cleanup.

@@ -47,9 +47,19 @@ Each command retains its original raw proof, view and writer while checking
 current authority, target identity and final time/cancellation. The object,
 grant floors and audit commit in the same security transaction. Dedicated CLI
 mutation transport disables redirects and body replay. Legacy/Kubernetes
-mutations explicitly refuse; ordinary IAM aliases remain unavailable. The
-file/inline source adapter and Kubernetes durable revocation boundary remain
-open, so this is not an all-driver completion claim.
+mutations explicitly refuse; ordinary IAM aliases remain unavailable.
+
+SQLite mounts a required RoleBinding source capability before the first file
+or inline load. Each loader pass retains its immutable accepted input, exact
+original target UID/revision/manager and original startup or elector writer.
+Create, change, delete and unchanged reconciliation all cross the same concrete
+security transaction; the revocation clock is sampled after acquiring its
+writer lock. Final source, writer, cancellation and clock checks apply even to
+no-ops. Removing and regranting a file-managed binding cannot revive the original
+frozen cookie or token. Installed inline/environment maps are detached once;
+watched configuration files are captured on each pass. Broken sources retain
+their objects. The input pin protects accepted loader passes, not concurrent
+native filesystem writes. Kubernetes durable revocation remains open.
 
 `internal/servingauth` prepares an immutable auth view from one complete SQLite
 replication image. Its input includes public ServiceAccount, RoleBinding and

@@ -2395,3 +2395,36 @@ entries in 41.351s without skips. Generator package checks pass (clientdispatch
 lint reports zero issues. Frozen test and user dashboard artifact hashes match.
 The original composed command remains failed; these are corrective scoped
 results. Fresh hosted CI and release qualification remain open.
+
+
+### F44b SQLite file and inline grant history
+
+Integrated `91443d7` mounts the required security capability before first load.
+The original accepted source pass and exact target UID/revision/manager stay
+pinned through a transaction using the original startup or elector writer.
+Both no-op paths cross the guard. Grant floors and object effects commit
+together, with revocation time observed after writer-lock acquisition; final
+clock/cancellation and source checks remain. Installed inline maps are detached
+using the existing decoder, preserving Go integers and load diagnoses. No
+ordinary CRUD fallback, successor writer or refused-operation retry is added.
+
+Controlled BEFORE evidence on both actual directory and inline sources showed
+the same original cookie/PAT regain operator authority after removal/regrant,
+with no operator floor. AFTER uses exact 200->401->401 responses and floor
+0->1->1 for both proofs/layouts; genuine later OP enrollment succeeds. Actual
+runServe first load and three process starts cover offline removal/regrant.
+Replica image installation/restart/promotion and follower refusal also pass.
+These prove stored state behavior, not native filesystem atomicity, a second
+replica HTTP runtime or Kubernetes accepted authority.
+
+The initial full ordinary command failed two fixture assumptions: a deliberate
+memory recorder advances RV on each Apply, and stopping an elector does not
+itself replace durable writer incarnation. Corrected fixtures review each
+original row and separately test original elector-context cancellation and an
+actual same-term incarnation replacement while retaining the old token. The
+corrective ordinary selection passes eight entries (objects0.120s/cmd0.928s).
+Full objects races pass43 entries in3.974s; selected source/adapter/actual OP/
+runServe races pass28 entries in90.345s, with no skips/failures. Frozen scoped
+lint reports zero issues; all nine source hashes remain unchanged. Initial
+failed commands remain recorded separately. F44b remains open for Kubernetes
+and final composed qualification.
