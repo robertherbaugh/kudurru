@@ -14,6 +14,7 @@ type Prepared struct {
 	source     *Source
 	keys       *dnsserver.StaticKeyring
 	encryption string
+	baseline   *dnsserver.StaticKeyring
 }
 
 // Prepare decrypts the entire bounded source before constructing any provider.
@@ -42,7 +43,7 @@ func (s *Source) Prepare(sealer *Sealer, baseline *dnsserver.StaticKeyring) (*Pr
 	if err != nil {
 		return nil, ErrInvalid
 	}
-	return &Prepared{source: s, keys: ring, encryption: sealer.Identity()}, nil
+	return &Prepared{source: s, keys: ring, encryption: sealer.Identity(), baseline: baseline}, nil
 }
 
 // Keys returns the original immutable provider, safe for held read requests.
