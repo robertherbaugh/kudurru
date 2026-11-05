@@ -43,11 +43,19 @@ var ErrStaticReadOnly = errors.New("objects: cluster.role is static; kudurru.io 
 type Options struct {
 	// Store receives the objects. Required.
 	Store store.Store
+	// RoleBindings stages file/inline RoleBinding effects with durable security
+	// history. Other kinds retain ordinary store behavior. SQLite serve must
+	// mount this capability before its first Load; refusal never falls back.
+	RoleBindings RoleBindingEffects
+	// RequireRoleBindings rejects a missing security capability at construction.
+	// Kubernetes and standalone import callers retain their separate contracts.
+	RequireRoleBindings bool
 	// Validator checks every document (ValidateUnstructured, strict unknown
 	// fields). Default: one shared validator built from the embedded CRDs on
 	// first use.
 	Validator *validator.Validator
 	// Inline are the objects embedded in kudurru.yaml (config.Config.Objects).
+	// New detaches this startup input; only InlineFile is read again on Load.
 	Inline []map[string]any
 	// InlineFile, when nonempty, re-reads the objects section of this node
 	// configuration file on every load instead of using Inline. An unreadable
@@ -109,6 +117,7 @@ type Loader struct {
 	m        *metrics
 	log      *slog.Logger
 	trigger  chan struct{}
+	inline   *source // detached startup-installed inline/environment input
 
 	loadMu sync.Mutex // serialises Load
 
@@ -122,6 +131,9 @@ type Loader struct {
 func New(opts Options) (*Loader, error) {
 	if opts.Store == nil {
 		return nil, errors.New("objects: Options.Store is required")
+	}
+	if opts.RequireRoleBindings && opts.RoleBindings == nil {
+		return nil, errors.New("objects: RoleBinding security effects are required")
 	}
 	if opts.Validator == nil {
 		v, err := sharedValidator()
@@ -151,6 +163,13 @@ func New(opts Options) (*Loader, error) {
 		log:     opts.Logger,
 		trigger: make(chan struct{}, 1),
 	}
+	if opts.InlineFile == "" && len(opts.Inline) > 0 {
+		// Use the existing decoder to detach koanf maps, including Go ints.
+		// Invalid installed input remains a load diagnosis, not a new startup
+		// validation contract. Watched files are captured anew by each Load.
+		l.inline = &source{name: opts.InlineSource, decoded: decodeInline(opts.InlineSource, opts.Inline)}
+	}
+	l.opts.Inline = nil // the caller's maps are not retained as authority
 	if opts.Dir != "" {
 		opts.Dir = filepath.Clean(opts.Dir)
 		l.opts.Dir = opts.Dir
@@ -160,13 +179,14 @@ func New(opts Options) (*Loader, error) {
 		}
 	}
 	l.rec = &reconciler{
-		st:        opts.Store,
-		v:         opts.Validator,
-		defaultNS: opts.DefaultNamespace,
-		manager:   store.ManagerFile,
-		fileMode:  true,
-		log:       opts.Logger,
-		seen:      map[store.Key]agreement{},
+		st:           opts.Store,
+		v:            opts.Validator,
+		defaultNS:    opts.DefaultNamespace,
+		manager:      store.ManagerFile,
+		fileMode:     true,
+		log:          opts.Logger,
+		seen:         map[store.Key]agreement{},
+		roleBindings: opts.RoleBindings,
 	}
 	l.status = Status{Dir: opts.Dir, APIReadOnly: opts.Static}
 	return l, nil
@@ -254,8 +274,8 @@ func (l *Loader) logReport(rep Report, diagsChanged bool) {
 func (l *Loader) readSources(ctx context.Context) (srcs []source, brokenPrefixes []string, diags []Diagnosis) {
 	if l.opts.InlineFile != "" {
 		srcs = append(srcs, l.readInlineFile(ctx))
-	} else if len(l.opts.Inline) > 0 {
-		srcs = append(srcs, source{name: l.opts.InlineSource, decoded: decodeInline(l.opts.InlineSource, l.opts.Inline)})
+	} else if l.inline != nil {
+		srcs = append(srcs, *l.inline)
 	}
 	if l.opts.Dir == "" {
 		return srcs, nil, nil

@@ -443,8 +443,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if slices.Contains(cfg.EnvLocked, "objects") {
 		inlineFile = "" // the process environment retains precedence over the file
 	}
+	var sourceBindings objects.RoleBindingEffects
+	if sql != nil {
+		sourceBindings = newSQLiteObjectSources(sql)
+	}
 	loader, err := objects.New(objects.Options{
 		Store: st, Validator: v, Logger: logger, Registerer: reg,
+		RoleBindings: sourceBindings, RequireRoleBindings: sql != nil,
 		Inline: cfg.Objects, InlineFile: inlineFile, InlineSource: inlineSource, Dir: cfg.ObjectsDir,
 	})
 	if err != nil {
@@ -454,6 +459,16 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	loadCancel := func() {}
 	if cfg.Store.Driver == "kube" {
 		loadCtx, loadCancel = context.WithTimeout(ctx, kubeStartupTimeout(cfg))
+	}
+	if sql != nil && bootstrapWritable {
+		// Initial source admission captures this startup writer ONCE, before
+		// reading manifests. Later loads inherit the actual elector's token.
+		token, err := sql.WriterToken()
+		if err != nil {
+			loadCancel()
+			return err
+		}
+		loadCtx = sqlite.WithWriterToken(loadCtx, token)
 	}
 	if bootstrapWritable {
 		if report := loader.Load(loadCtx); len(report.Diagnoses) > 0 {
