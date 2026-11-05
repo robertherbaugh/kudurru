@@ -164,6 +164,10 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | POST | `/api/v1/iam/external-users/{name}/logout` | Revoke all credentials of an external account | `users.write` (cluster) |
 | GET | `/api/v1/iam/identityproviders` | List identityproviders | `identityproviders.read` (cluster) |
 | GET | `/api/v1/iam/rolebindings` | List rolebindings | `rolebindings.read` (cluster) |
+| POST | `/api/v1/iam/rolebindings` | Create a public RoleBinding only if absent | `rolebindings.write` (cluster) |
+| GET | `/api/v1/iam/rolebindings/{namespace}/{name}` | Read a public RoleBinding and its current UID/resourceVersion | `rolebindings.read` (cluster) |
+| PUT | `/api/v1/iam/rolebindings/{namespace}/{name}` | Replace an explicitly reviewed public RoleBinding | `rolebindings.write` (cluster) |
+| DELETE | `/api/v1/iam/rolebindings/{namespace}/{name}` | Delete an explicitly reviewed public RoleBinding | `rolebindings.delete` (cluster) |
 | GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts | `serviceaccounts.read` (cluster) |
 | GET | `/api/v1/iam/users` | List users | `users.read` (cluster) |
 | POST | `/api/v1/iam/users` | Create an API-managed local user requiring a password change | `users.write` (cluster) |
@@ -183,6 +187,18 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | POST | `/api/v1/imports/runs/{id}/decommission` | Replace imported zone authority and record the results | `settings.write` (cluster) |
 | POST | `/api/v1/imports/runs/{id}/decommission/preview` | Preview replacing an imported zone's NS and SOA primary | `settings.write` (cluster) |
 | POST | `/api/v1/imports/start` | Start a reviewed migration in the background | `settings.write` (cluster) |
+
+## integrations
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| GET | `/api/v1/integrations` | List bounded integration status | `integrations.read` (cluster) |
+| GET | `/api/v1/integrations/{namespace}/{name}` | Read exact integration status | `integrations.read` (cluster) |
+| GET | `/api/v1/integrations/{namespace}/{name}/actions` | List original advertised actions | `integrations.read` (cluster) |
+| POST | `/api/v1/integrations/{namespace}/{name}/actions/{action}` | Invoke one reviewed advertised action | `integrations.act` (cluster) |
+| POST | `/api/v1/integrations/{namespace}/{name}/check` | Run a reviewed integration check | `integrations.check` (cluster) |
+| POST | `/api/v1/integrations/{namespace}/{name}/preview` | Run a reviewed integration preview | `integrations.read` (cluster) |
+| POST | `/api/v1/integrations/{namespace}/{name}/sync` | Run a reviewed integration sync | `integrations.sync` (cluster) |
 
 ## meta
 

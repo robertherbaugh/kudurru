@@ -373,6 +373,22 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.ListRoleBindings(ctx, editors...)
 		return response, true, err
 	}
+	if method == "POST" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "rolebindings" {
+		response, err := c.CreateRoleBindingWithBody(ctx, contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "DELETE" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "rolebindings" {
+		response, err := c.DeleteRoleBindingWithBody(ctx, parts[2], parts[3], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "rolebindings" {
+		response, err := c.GetRoleBinding(ctx, parts[2], parts[3], editors...)
+		return response, true, err
+	}
+	if method == "PUT" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "rolebindings" {
+		response, err := c.ReplaceRoleBindingWithBody(ctx, parts[2], parts[3], contentType, body, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "serviceaccounts" {
 		response, err := c.ListServiceAccounts(ctx, editors...)
 		return response, true, err
@@ -431,6 +447,34 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "info" && parts[1] == "messages" {
 		response, err := c.InfoMessages(ctx, editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 1 && parts[0] == "integrations" {
+		response, err := c.ListIntegrations(ctx, nil, editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 3 && parts[0] == "integrations" {
+		response, err := c.GetIntegration(ctx, parts[1], parts[2], editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 4 && parts[0] == "integrations" && parts[3] == "actions" {
+		response, err := c.ListIntegrationActions(ctx, parts[1], parts[2], nil, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 5 && parts[0] == "integrations" && parts[3] == "actions" {
+		response, err := c.InvokeIntegrationActionWithBody(ctx, parts[1], parts[2], parts[4], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "integrations" && parts[3] == "check" {
+		response, err := c.CheckIntegrationWithBody(ctx, parts[1], parts[2], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "integrations" && parts[3] == "preview" {
+		response, err := c.PreviewIntegrationWithBody(ctx, parts[1], parts[2], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "integrations" && parts[3] == "sync" {
+		response, err := c.SyncIntegrationWithBody(ctx, parts[1], parts[2], contentType, body, editors...)
 		return response, true, err
 	}
 	if method == "GET" && len(parts) == 1 && parts[0] == "license" {

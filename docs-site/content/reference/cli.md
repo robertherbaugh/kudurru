@@ -885,6 +885,71 @@ Read the admission state and journal resource version.
 kudurru iam migrate status
 ```
 
+### kudurru iam rolebindings
+
+Review and manage public RoleBindings through the complete SQLite API. Create requires an absent target. Replace and delete require the exact UID and resourceVersion from a separately reviewed get. No command refreshes or retries a refused mutation. Config/file-owned bindings cannot be adopted. Desired manifests contain apiVersion, kind, metadata (name, namespace, labels, annotations), and spec; server identity and lifecycle fields are not accepted.
+
+#### kudurru iam rolebindings create
+
+Create one absent RoleBinding.
+
+```text
+kudurru iam rolebindings create [flags]
+```
+
+Flags:
+
+```text
+  -f, --file string   required: one desired RoleBinding YAML/JSON file or - for stdin
+```
+
+#### kudurru iam rolebindings delete
+
+Delete one explicitly reviewed API-owned RoleBinding.
+
+```text
+kudurru iam rolebindings delete NAMESPACE NAME [flags]
+```
+
+Flags:
+
+```text
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
+#### kudurru iam rolebindings get
+
+Read an exact binding for operator review.
+
+```text
+kudurru iam rolebindings get NAMESPACE NAME
+```
+
+#### kudurru iam rolebindings list
+
+List bindings, including config sources.
+
+```text
+kudurru iam rolebindings list
+```
+
+#### kudurru iam rolebindings replace
+
+Replace one explicitly reviewed API-owned RoleBinding.
+
+```text
+kudurru iam rolebindings replace NAMESPACE NAME [flags]
+```
+
+Flags:
+
+```text
+  -f, --file string               required: one desired RoleBinding YAML/JSON file or - for stdin
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
 ## kudurru import
 
 Import data from other DNS servers.
@@ -1089,6 +1154,135 @@ Flags:
       --apply              track the reviewed previous imports
       --plan-file string   JSON candidate list to track (produce with -o json; remove unwanted
                            items before applying)
+```
+
+## kudurru integrations
+
+Review and run captured integration operations.
+
+### kudurru integrations act
+
+Invoke one advertised action without retry.
+
+```text
+kudurru integrations act NAME ACTION [flags]
+```
+
+Flags:
+
+```text
+      --params string     Bounded JSON action parameters (default "{}")
+      --revision string   Exact reviewed resource version
+      --uid string        Exact reviewed integration UID
+```
+
+### kudurru integrations actions
+
+List actions advertised by the reviewed provider.
+
+```text
+kudurru integrations actions NAME [flags]
+```
+
+Flags:
+
+```text
+      --revision string   Exact reviewed resource version
+      --uid string        Exact reviewed integration UID
+```
+
+### kudurru integrations check
+
+Check the reviewed provider connection.
+
+```text
+kudurru integrations check NAME [flags]
+```
+
+Flags:
+
+```text
+      --revision string   Exact reviewed resource version
+      --uid string        Exact reviewed integration UID
+```
+
+### kudurru integrations get
+
+Read integration identity and status for review.
+
+```text
+kudurru integrations get NAME
+```
+
+### kudurru integrations list
+
+List bounded integration status in one namespace.
+
+```text
+kudurru integrations list
+```
+
+### kudurru integrations preview
+
+Preview complete changes without applying them.
+
+```text
+kudurru integrations preview NAME [flags]
+```
+
+Flags:
+
+```text
+      --revision string   Exact reviewed resource version
+      --uid string        Exact reviewed integration UID
+```
+
+### kudurru integrations sync
+
+Run one reviewed publication or observation.
+
+```text
+kudurru integrations sync NAME [flags]
+```
+
+Flags:
+
+```text
+      --mode string             Explicit observe or publish mode
+      --preview-digest string   Exact aggregate digest from preview
+      --revision string         Exact reviewed resource version
+      --uid string              Exact reviewed integration UID
+```
+
+### kudurru integrations webhook
+
+Test an explicit external webhook protocol target.
+
+#### kudurru integrations webhook conformance
+
+Probe an explicit webhook URL and print a sanitized JSON report. Read probes run by default; untested mutations are reported skipped. Mutating probes require --allow-mutations and explicit input files. Use a disposable target: acknowledged or uncertain effects are never retried or cleaned up automatically. This command does not activate an integration or prove persistence.
+
+```text
+kudurru integrations webhook conformance URL [flags]
+```
+
+Flags:
+
+```text
+      --action string              Exact advertised action to invoke once
+      --allow-mutations            Permit only explicitly supplied mutation probes
+      --bearer-file string         Explicit target bearer token file (not the CLI API token)
+      --ca-file string             Explicit PEM trust roots for this target
+      --changes-file string        Exact external-dns Changes JSON to apply once
+      --client-cert string         Explicit PEM client certificate for mTLS
+      --client-key string          Explicit PEM client private key for mTLS
+      --endpoints-file string      Endpoint array for normalization (default empty array)
+      --event-file string          Exact event JSON to deliver once
+      --hmac-file string           Raw event HMAC-SHA256 key, 32 to 4096 bytes
+      --params-file string         Exact JSON object of action parameters
+      --request-timeout duration   Per-request deadline within the original run deadline
+                                   (default 10s)
+      --run-timeout duration       Whole run deadline, at most 5m (default 1m0s)
 ```
 
 ## kudurru lameduck

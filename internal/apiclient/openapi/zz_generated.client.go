@@ -659,6 +659,24 @@ func (e IdentityProviderInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for IntegrationReviewMode.
+const (
+	IntegrationReviewModeObserve IntegrationReviewMode = "observe"
+	IntegrationReviewModePublish IntegrationReviewMode = "publish"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationReviewMode enum.
+func (e IntegrationReviewMode) Valid() bool {
+	switch e {
+	case IntegrationReviewModeObserve:
+		return true
+	case IntegrationReviewModePublish:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MigrationRequestSource.
 const (
 	MigrationRequestSourcePihole     MigrationRequestSource = "pihole"
@@ -3518,6 +3536,96 @@ type ImportResult struct {
 	ZoneName string   `json:"zoneName"`
 }
 
+// IntegrationAction defines model for IntegrationAction.
+type IntegrationAction struct {
+	Name   string      `json:"name"`
+	Params interface{} `json:"params"`
+}
+
+// IntegrationExecutionResult defines model for IntegrationExecutionResult.
+type IntegrationExecutionResult struct {
+	Actions         *[]IntegrationAction `json:"actions,omitempty"`
+	Applied         int64                `json:"applied"`
+	Authenticated   *bool                `json:"authenticated,omitempty"`
+	Clients         int64                `json:"clients"`
+	Completed       bool                 `json:"completed"`
+	Conflicts       int64                `json:"conflicts"`
+	Pending         int64                `json:"pending"`
+	Preview         *IntegrationPreview  `json:"preview,omitempty"`
+	Reachable       *bool                `json:"reachable,omitempty"`
+	SourceCommitted bool                 `json:"sourceCommitted"`
+	SourcePublished bool                 `json:"sourcePublished"`
+	Uncertain       bool                 `json:"uncertain"`
+	Unchanged       int64                `json:"unchanged"`
+}
+
+// IntegrationListOutputBody defines model for IntegrationListOutputBody.
+type IntegrationListOutputBody struct {
+	Items []IntegrationSummary `json:"items"`
+}
+
+// IntegrationPlanConflict defines model for IntegrationPlanConflict.
+type IntegrationPlanConflict struct {
+	Domains []string `json:"domains"`
+	Name    string   `json:"name"`
+	Reason  string   `json:"reason"`
+	Type    string   `json:"type"`
+}
+
+// IntegrationPlanOperation defines model for IntegrationPlanOperation.
+type IntegrationPlanOperation struct {
+	Action  string             `json:"action"`
+	After   *IntegrationRecord `json:"after,omitempty"`
+	Before  *IntegrationRecord `json:"before,omitempty"`
+	Domains []string           `json:"domains"`
+	Name    string             `json:"name"`
+	Policy  string             `json:"policy"`
+	Type    string             `json:"type"`
+}
+
+// IntegrationPreview defines model for IntegrationPreview.
+type IntegrationPreview struct {
+	Conflicts  []IntegrationPlanConflict  `json:"conflicts"`
+	Digest     string                     `json:"digest"`
+	Operations []IntegrationPlanOperation `json:"operations"`
+	Unchanged  int64                      `json:"unchanged"`
+}
+
+// IntegrationRecord defines model for IntegrationRecord.
+type IntegrationRecord struct {
+	Name    string   `json:"name"`
+	Targets []string `json:"targets"`
+	Ttl     int64    `json:"ttl"`
+	Type    string   `json:"type"`
+}
+
+// IntegrationReview defines model for IntegrationReview.
+type IntegrationReview struct {
+	Mode          *IntegrationReviewMode `json:"mode,omitempty"`
+	Params        interface{}            `json:"params,omitempty"`
+	PreviewDigest *string                `json:"previewDigest,omitempty"`
+	Revision      string                 `json:"revision"`
+	Uid           string                 `json:"uid"`
+}
+
+// IntegrationReviewMode defines model for IntegrationReview.Mode.
+type IntegrationReviewMode string
+
+// IntegrationSummary defines model for IntegrationSummary.
+type IntegrationSummary struct {
+	LastSync    *time.Time `json:"lastSync,omitempty"`
+	Leader      bool       `json:"leader"`
+	Name        string     `json:"name"`
+	Namespace   string     `json:"namespace"`
+	Phase       string     `json:"phase"`
+	Reason      string     `json:"reason"`
+	Revision    string     `json:"revision"`
+	StatusKnown bool       `json:"statusKnown"`
+	Suspended   bool       `json:"suspended"`
+	Type        string     `json:"type"`
+	Uid         string     `json:"uid"`
+}
+
 // LatencySummary defines model for LatencySummary.
 type LatencySummary struct {
 	AvgMs float64 `json:"avg_ms"`
@@ -4382,6 +4490,13 @@ type RefreshBody struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// ReplaceRoleBindingCommand defines model for ReplaceRoleBindingCommand.
+type ReplaceRoleBindingCommand struct {
+	Binding         RoleBindingDesired `json:"binding"`
+	ResourceVersion string             `json:"resourceVersion"`
+	Uid             string             `json:"uid"`
+}
+
 // ReplicationStatus defines model for ReplicationStatus.
 type ReplicationStatus struct {
 	AppliedIndex  int64  `json:"appliedIndex"`
@@ -4435,6 +4550,29 @@ type Retention struct {
 	Rollup1m   string `json:"rollup_1m"`
 }
 
+// RoleBindingDesired defines model for RoleBindingDesired.
+type RoleBindingDesired struct {
+	ApiVersion string              `json:"apiVersion"`
+	Kind       string              `json:"kind"`
+	Metadata   RoleBindingMetadata `json:"metadata"`
+	Spec       RoleBindingFields   `json:"spec"`
+}
+
+// RoleBindingDocument defines model for RoleBindingDocument.
+type RoleBindingDocument struct {
+	ApiVersion string            `json:"apiVersion"`
+	Kind       string            `json:"kind"`
+	Metadata   ObjectMeta        `json:"metadata"`
+	Spec       RoleBindingFields `json:"spec"`
+}
+
+// RoleBindingFields defines model for RoleBindingFields.
+type RoleBindingFields struct {
+	Role     string            `json:"role"`
+	Scope    *BindingScope     `json:"scope,omitempty"`
+	Subjects *[]BindingSubject `json:"subjects"`
+}
+
 // RoleBindingInfo defines model for RoleBindingInfo.
 type RoleBindingInfo struct {
 	ManagedBy *string `json:"managedBy,omitempty"`
@@ -4450,6 +4588,20 @@ type RoleBindingInfo struct {
 
 // RoleBindingInfoSource defines model for RoleBindingInfo.Source.
 type RoleBindingInfoSource string
+
+// RoleBindingMetadata defines model for RoleBindingMetadata.
+type RoleBindingMetadata struct {
+	Annotations *map[string]string `json:"annotations,omitempty"`
+	Labels      *map[string]string `json:"labels,omitempty"`
+	Name        string             `json:"name"`
+	Namespace   string             `json:"namespace"`
+}
+
+// RoleBindingReview defines model for RoleBindingReview.
+type RoleBindingReview struct {
+	ResourceVersion string `json:"resourceVersion"`
+	Uid             string `json:"uid"`
+}
 
 // RollupBackfillDetail defines model for RollupBackfillDetail.
 type RollupBackfillDetail struct {
@@ -5740,6 +5892,17 @@ type ListMigrationRunsParams struct {
 	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
 }
 
+// ListIntegrationsParams defines parameters for ListIntegrations.
+type ListIntegrationsParams struct {
+	Namespace string `form:"namespace" json:"namespace"`
+}
+
+// ListIntegrationActionsParams defines parameters for ListIntegrationActions.
+type ListIntegrationActionsParams struct {
+	Uid      string `form:"uid" json:"uid"`
+	Revision string `form:"revision" json:"revision"`
+}
+
 // PatchNodeConfigJSONBody defines parameters for PatchNodeConfig.
 type PatchNodeConfigJSONBody map[string]interface{}
 
@@ -6275,6 +6438,15 @@ type EnableExternalUserJSONRequestBody = ExternalUserCommand
 // LogoutExternalUserJSONRequestBody defines body for LogoutExternalUser for application/json ContentType.
 type LogoutExternalUserJSONRequestBody = ExternalUserCommand
 
+// CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
+type CreateRoleBindingJSONRequestBody = RoleBindingDesired
+
+// DeleteRoleBindingJSONRequestBody defines body for DeleteRoleBinding for application/json ContentType.
+type DeleteRoleBindingJSONRequestBody = RoleBindingReview
+
+// ReplaceRoleBindingJSONRequestBody defines body for ReplaceRoleBinding for application/json ContentType.
+type ReplaceRoleBindingJSONRequestBody = ReplaceRoleBindingCommand
+
 // CreateLocalUserJSONRequestBody defines body for CreateLocalUser for application/json ContentType.
 type CreateLocalUserJSONRequestBody = CreateLocalUserRequest
 
@@ -6301,6 +6473,18 @@ type PreviewMigrationDecommissionJSONRequestBody = MigrationCutoverPreviewInputB
 
 // StartMigrationJSONRequestBody defines body for StartMigration for application/json ContentType.
 type StartMigrationJSONRequestBody = Plan
+
+// InvokeIntegrationActionJSONRequestBody defines body for InvokeIntegrationAction for application/json ContentType.
+type InvokeIntegrationActionJSONRequestBody = IntegrationReview
+
+// CheckIntegrationJSONRequestBody defines body for CheckIntegration for application/json ContentType.
+type CheckIntegrationJSONRequestBody = IntegrationReview
+
+// PreviewIntegrationJSONRequestBody defines body for PreviewIntegration for application/json ContentType.
+type PreviewIntegrationJSONRequestBody = IntegrationReview
+
+// SyncIntegrationJSONRequestBody defines body for SyncIntegration for application/json ContentType.
+type SyncIntegrationJSONRequestBody = IntegrationReview
 
 // PatchNodeConfigJSONRequestBody defines body for PatchNodeConfig for application/json ContentType.
 type PatchNodeConfigJSONRequestBody PatchNodeConfigJSONBody
@@ -7238,6 +7422,65 @@ type ClientInterface interface {
 	// Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
 	ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreateRoleBindingWithBody Create a public RoleBinding only if absent
+	//
+	// Complete SQLite runtime only. Requires current cluster rolebindings.write authority and cookie CSRF when applicable. Creates once; never adopts an existing binding. Only public operator metadata is accepted.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/rolebindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateRoleBinding Create a public RoleBinding only if absent
+	//
+	// Complete SQLite runtime only. Requires current cluster rolebindings.write authority and cookie CSRF when applicable. Creates once; never adopts an existing binding. Only public operator metadata is accepted.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/rolebindings (the `CreateRoleBinding` operationId).
+	CreateRoleBinding(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteRoleBindingWithBody Delete an explicitly reviewed public RoleBinding
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.delete authority. Only API-owned bindings may be deleted. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with DELETE /iam/rolebindings/{namespace}/{name} (the `DeleteRoleBinding` operationId).
+	DeleteRoleBindingWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteRoleBinding Delete an explicitly reviewed public RoleBinding
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.delete authority. Only API-owned bindings may be deleted. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with DELETE /iam/rolebindings/{namespace}/{name} (the `DeleteRoleBinding` operationId).
+	DeleteRoleBinding(ctx context.Context, namespace string, name string, body DeleteRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRoleBinding Read a public RoleBinding and its current UID/resourceVersion
+	//
+	// Corresponds with GET /iam/rolebindings/{namespace}/{name} (the `GetRoleBinding` operationId).
+	GetRoleBinding(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceRoleBindingWithBody Replace an explicitly reviewed public RoleBinding
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.write authority. Only API-owned bindings may be replaced. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /iam/rolebindings/{namespace}/{name} (the `ReplaceRoleBinding` operationId).
+	ReplaceRoleBindingWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceRoleBinding Replace an explicitly reviewed public RoleBinding
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.write authority. Only API-owned bindings may be replaced. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /iam/rolebindings/{namespace}/{name} (the `ReplaceRoleBinding` operationId).
+	ReplaceRoleBinding(ctx context.Context, namespace string, name string, body ReplaceRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListServiceAccounts List serviceaccounts
 	//
 	// Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
@@ -7409,6 +7652,77 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /info/messages (the `InfoMessages` operationId).
 	InfoMessages(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListIntegrations List bounded integration status
+	//
+	// Corresponds with GET /integrations (the `ListIntegrations` operationId).
+	ListIntegrations(ctx context.Context, params *ListIntegrationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIntegration Read exact integration status
+	//
+	// Corresponds with GET /integrations/{namespace}/{name} (the `GetIntegration` operationId).
+	GetIntegration(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListIntegrationActions List original advertised actions
+	//
+	// Corresponds with GET /integrations/{namespace}/{name}/actions (the `ListIntegrationActions` operationId).
+	ListIntegrationActions(ctx context.Context, namespace string, name string, params *ListIntegrationActionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InvokeIntegrationActionWithBody Invoke one reviewed advertised action
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/actions/{action} (the `InvokeIntegrationAction` operationId).
+	InvokeIntegrationActionWithBody(ctx context.Context, namespace string, name string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InvokeIntegrationAction Invoke one reviewed advertised action
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/actions/{action} (the `InvokeIntegrationAction` operationId).
+	InvokeIntegrationAction(ctx context.Context, namespace string, name string, action string, body InvokeIntegrationActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckIntegrationWithBody Run a reviewed integration check
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/check (the `CheckIntegration` operationId).
+	CheckIntegrationWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckIntegration Run a reviewed integration check
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/check (the `CheckIntegration` operationId).
+	CheckIntegration(ctx context.Context, namespace string, name string, body CheckIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewIntegrationWithBody Run a reviewed integration preview
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
+	PreviewIntegrationWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewIntegration Run a reviewed integration preview
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
+	PreviewIntegration(ctx context.Context, namespace string, name string, body PreviewIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SyncIntegrationWithBody Run a reviewed integration sync
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
+	SyncIntegrationWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SyncIntegration Run a reviewed integration sync
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
+	SyncIntegration(ctx context.Context, namespace string, name string, body SyncIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLicense License state, node limit and licensed features of this node
 	//
@@ -9936,6 +10250,135 @@ func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEdit
 	return c.Client.Do(req)
 }
 
+// CreateRoleBindingWithBody Create a public RoleBinding only if absent
+//
+// Complete SQLite runtime only. Requires current cluster rolebindings.write authority and cookie CSRF when applicable. Creates once; never adopts an existing binding. Only public operator metadata is accepted.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/rolebindings (the `CreateRoleBinding` operationId).
+func (c *Client) CreateRoleBindingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRoleBindingRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateRoleBinding Create a public RoleBinding only if absent
+//
+// Complete SQLite runtime only. Requires current cluster rolebindings.write authority and cookie CSRF when applicable. Creates once; never adopts an existing binding. Only public operator metadata is accepted.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/rolebindings (the `CreateRoleBinding` operationId).
+func (c *Client) CreateRoleBinding(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRoleBindingRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteRoleBindingWithBody Delete an explicitly reviewed public RoleBinding
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.delete authority. Only API-owned bindings may be deleted. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with DELETE /iam/rolebindings/{namespace}/{name} (the `DeleteRoleBinding` operationId).
+func (c *Client) DeleteRoleBindingWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteRoleBindingRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteRoleBinding Delete an explicitly reviewed public RoleBinding
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.delete authority. Only API-owned bindings may be deleted. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with DELETE /iam/rolebindings/{namespace}/{name} (the `DeleteRoleBinding` operationId).
+func (c *Client) DeleteRoleBinding(ctx context.Context, namespace string, name string, body DeleteRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteRoleBindingRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRoleBinding Read a public RoleBinding and its current UID/resourceVersion
+//
+// Corresponds with GET /iam/rolebindings/{namespace}/{name} (the `GetRoleBinding` operationId).
+func (c *Client) GetRoleBinding(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRoleBindingRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplaceRoleBindingWithBody Replace an explicitly reviewed public RoleBinding
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.write authority. Only API-owned bindings may be replaced. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /iam/rolebindings/{namespace}/{name} (the `ReplaceRoleBinding` operationId).
+func (c *Client) ReplaceRoleBindingWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceRoleBindingRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplaceRoleBinding Replace an explicitly reviewed public RoleBinding
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.write authority. Only API-owned bindings may be replaced. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /iam/rolebindings/{namespace}/{name} (the `ReplaceRoleBinding` operationId).
+func (c *Client) ReplaceRoleBinding(ctx context.Context, namespace string, name string, body ReplaceRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceRoleBindingRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListServiceAccounts List serviceaccounts
 //
 // Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
@@ -10338,6 +10781,187 @@ func (c *Client) StartMigration(ctx context.Context, body StartMigrationJSONRequ
 // Corresponds with GET /info/messages (the `InfoMessages` operationId).
 func (c *Client) InfoMessages(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewInfoMessagesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListIntegrations List bounded integration status
+//
+// Corresponds with GET /integrations (the `ListIntegrations` operationId).
+func (c *Client) ListIntegrations(ctx context.Context, params *ListIntegrationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIntegrationsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetIntegration Read exact integration status
+//
+// Corresponds with GET /integrations/{namespace}/{name} (the `GetIntegration` operationId).
+func (c *Client) GetIntegration(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIntegrationRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListIntegrationActions List original advertised actions
+//
+// Corresponds with GET /integrations/{namespace}/{name}/actions (the `ListIntegrationActions` operationId).
+func (c *Client) ListIntegrationActions(ctx context.Context, namespace string, name string, params *ListIntegrationActionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIntegrationActionsRequest(c.Server, namespace, name, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InvokeIntegrationActionWithBody Invoke one reviewed advertised action
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/actions/{action} (the `InvokeIntegrationAction` operationId).
+func (c *Client) InvokeIntegrationActionWithBody(ctx context.Context, namespace string, name string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInvokeIntegrationActionRequestWithBody(c.Server, namespace, name, action, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InvokeIntegrationAction Invoke one reviewed advertised action
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/actions/{action} (the `InvokeIntegrationAction` operationId).
+func (c *Client) InvokeIntegrationAction(ctx context.Context, namespace string, name string, action string, body InvokeIntegrationActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInvokeIntegrationActionRequest(c.Server, namespace, name, action, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckIntegrationWithBody Run a reviewed integration check
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/check (the `CheckIntegration` operationId).
+func (c *Client) CheckIntegrationWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckIntegrationRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckIntegration Run a reviewed integration check
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/check (the `CheckIntegration` operationId).
+func (c *Client) CheckIntegration(ctx context.Context, namespace string, name string, body CheckIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckIntegrationRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewIntegrationWithBody Run a reviewed integration preview
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
+func (c *Client) PreviewIntegrationWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewIntegrationRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewIntegration Run a reviewed integration preview
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
+func (c *Client) PreviewIntegration(ctx context.Context, namespace string, name string, body PreviewIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewIntegrationRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SyncIntegrationWithBody Run a reviewed integration sync
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
+func (c *Client) SyncIntegrationWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSyncIntegrationRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SyncIntegration Run a reviewed integration sync
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
+func (c *Client) SyncIntegration(ctx context.Context, namespace string, name string, body SyncIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSyncIntegrationRequest(c.Server, namespace, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -16103,6 +16727,195 @@ func NewListRoleBindingsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewCreateRoleBindingRequest calls the generic CreateRoleBinding builder with application/json body
+func NewCreateRoleBindingRequest(server string, body CreateRoleBindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateRoleBindingRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateRoleBindingRequestWithBody constructs an http.Request for the CreateRoleBinding method, with any body, and a specified content type
+func NewCreateRoleBindingRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/rolebindings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteRoleBindingRequest calls the generic DeleteRoleBinding builder with application/json body
+func NewDeleteRoleBindingRequest(server string, namespace string, name string, body DeleteRoleBindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteRoleBindingRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewDeleteRoleBindingRequestWithBody constructs an http.Request for the DeleteRoleBinding method, with any body, and a specified content type
+func NewDeleteRoleBindingRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/rolebindings/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetRoleBindingRequest constructs an http.Request for the GetRoleBinding method
+func NewGetRoleBindingRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/rolebindings/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReplaceRoleBindingRequest calls the generic ReplaceRoleBinding builder with application/json body
+func NewReplaceRoleBindingRequest(server string, namespace string, name string, body ReplaceRoleBindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplaceRoleBindingRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewReplaceRoleBindingRequestWithBody constructs an http.Request for the ReplaceRoleBinding method, with any body, and a specified content type
+func NewReplaceRoleBindingRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/rolebindings/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListServiceAccountsRequest constructs an http.Request for the ListServiceAccounts method
 func NewListServiceAccountsRequest(server string) (*http.Request, error) {
 	var err error
@@ -16695,6 +17508,392 @@ func NewInfoMessagesRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListIntegrationsRequest constructs an http.Request for the ListIntegrations method
+func NewListIntegrationsRequest(server string, params *ListIntegrationsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIntegrationRequest constructs an http.Request for the GetIntegration method
+func NewGetIntegrationRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListIntegrationActionsRequest constructs an http.Request for the ListIntegrationActions method
+func NewListIntegrationActionsRequest(server string, namespace string, name string, params *ListIntegrationActionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations/%s/%s/actions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "uid", params.Uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "revision", params.Revision, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewInvokeIntegrationActionRequest calls the generic InvokeIntegrationAction builder with application/json body
+func NewInvokeIntegrationActionRequest(server string, namespace string, name string, action string, body InvokeIntegrationActionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewInvokeIntegrationActionRequestWithBody(server, namespace, name, action, "application/json", bodyReader)
+}
+
+// NewInvokeIntegrationActionRequestWithBody constructs an http.Request for the InvokeIntegrationAction method, with any body, and a specified content type
+func NewInvokeIntegrationActionRequestWithBody(server string, namespace string, name string, action string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "action", action, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations/%s/%s/actions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCheckIntegrationRequest calls the generic CheckIntegration builder with application/json body
+func NewCheckIntegrationRequest(server string, namespace string, name string, body CheckIntegrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCheckIntegrationRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewCheckIntegrationRequestWithBody constructs an http.Request for the CheckIntegration method, with any body, and a specified content type
+func NewCheckIntegrationRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations/%s/%s/check", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewIntegrationRequest calls the generic PreviewIntegration builder with application/json body
+func NewPreviewIntegrationRequest(server string, namespace string, name string, body PreviewIntegrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewIntegrationRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewPreviewIntegrationRequestWithBody constructs an http.Request for the PreviewIntegration method, with any body, and a specified content type
+func NewPreviewIntegrationRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations/%s/%s/preview", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSyncIntegrationRequest calls the generic SyncIntegration builder with application/json body
+func NewSyncIntegrationRequest(server string, namespace string, name string, body SyncIntegrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSyncIntegrationRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewSyncIntegrationRequestWithBody constructs an http.Request for the SyncIntegration method, with any body, and a specified content type
+func NewSyncIntegrationRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations/%s/%s/sync", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -22081,6 +23280,67 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
 	ListRoleBindingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRoleBindingsResponse, error)
 
+	// CreateRoleBindingWithBodyWithResponse Create a public RoleBinding only if absent
+	//
+	// Complete SQLite runtime only. Requires current cluster rolebindings.write authority and cookie CSRF when applicable. Creates once; never adopts an existing binding. Only public operator metadata is accepted.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/rolebindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRoleBindingResponse, error)
+
+	// CreateRoleBindingWithResponse Create a public RoleBinding only if absent
+	//
+	// Complete SQLite runtime only. Requires current cluster rolebindings.write authority and cookie CSRF when applicable. Creates once; never adopts an existing binding. Only public operator metadata is accepted.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/rolebindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithResponse(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRoleBindingResponse, error)
+
+	// DeleteRoleBindingWithBodyWithResponse Delete an explicitly reviewed public RoleBinding
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.delete authority. Only API-owned bindings may be deleted. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /iam/rolebindings/{namespace}/{name} (the `DeleteRoleBinding` operationId).
+	DeleteRoleBindingWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteRoleBindingResponse, error)
+
+	// DeleteRoleBindingWithResponse Delete an explicitly reviewed public RoleBinding
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.delete authority. Only API-owned bindings may be deleted. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /iam/rolebindings/{namespace}/{name} (the `DeleteRoleBinding` operationId).
+	DeleteRoleBindingWithResponse(ctx context.Context, namespace string, name string, body DeleteRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteRoleBindingResponse, error)
+
+	// GetRoleBindingWithResponse Read a public RoleBinding and its current UID/resourceVersion
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /iam/rolebindings/{namespace}/{name} (the `GetRoleBinding` operationId).
+	GetRoleBindingWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetRoleBindingResponse, error)
+
+	// ReplaceRoleBindingWithBodyWithResponse Replace an explicitly reviewed public RoleBinding
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.write authority. Only API-owned bindings may be replaced. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /iam/rolebindings/{namespace}/{name} (the `ReplaceRoleBinding` operationId).
+	ReplaceRoleBindingWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceRoleBindingResponse, error)
+
+	// ReplaceRoleBindingWithResponse Replace an explicitly reviewed public RoleBinding
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.write authority. Only API-owned bindings may be replaced. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /iam/rolebindings/{namespace}/{name} (the `ReplaceRoleBinding` operationId).
+	ReplaceRoleBindingWithResponse(ctx context.Context, namespace string, name string, body ReplaceRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceRoleBindingResponse, error)
+
 	// ListServiceAccountsWithResponse List serviceaccounts
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -22264,6 +23524,83 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /info/messages (the `InfoMessages` operationId).
 	InfoMessagesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InfoMessagesResponse, error)
+
+	// ListIntegrationsWithResponse List bounded integration status
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /integrations (the `ListIntegrations` operationId).
+	ListIntegrationsWithResponse(ctx context.Context, params *ListIntegrationsParams, reqEditors ...RequestEditorFn) (*ListIntegrationsResponse, error)
+
+	// GetIntegrationWithResponse Read exact integration status
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /integrations/{namespace}/{name} (the `GetIntegration` operationId).
+	GetIntegrationWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetIntegrationResponse, error)
+
+	// ListIntegrationActionsWithResponse List original advertised actions
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /integrations/{namespace}/{name}/actions (the `ListIntegrationActions` operationId).
+	ListIntegrationActionsWithResponse(ctx context.Context, namespace string, name string, params *ListIntegrationActionsParams, reqEditors ...RequestEditorFn) (*ListIntegrationActionsResponse, error)
+
+	// InvokeIntegrationActionWithBodyWithResponse Invoke one reviewed advertised action
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/actions/{action} (the `InvokeIntegrationAction` operationId).
+	InvokeIntegrationActionWithBodyWithResponse(ctx context.Context, namespace string, name string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InvokeIntegrationActionResponse, error)
+
+	// InvokeIntegrationActionWithResponse Invoke one reviewed advertised action
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/actions/{action} (the `InvokeIntegrationAction` operationId).
+	InvokeIntegrationActionWithResponse(ctx context.Context, namespace string, name string, action string, body InvokeIntegrationActionJSONRequestBody, reqEditors ...RequestEditorFn) (*InvokeIntegrationActionResponse, error)
+
+	// CheckIntegrationWithBodyWithResponse Run a reviewed integration check
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/check (the `CheckIntegration` operationId).
+	CheckIntegrationWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckIntegrationResponse, error)
+
+	// CheckIntegrationWithResponse Run a reviewed integration check
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/check (the `CheckIntegration` operationId).
+	CheckIntegrationWithResponse(ctx context.Context, namespace string, name string, body CheckIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckIntegrationResponse, error)
+
+	// PreviewIntegrationWithBodyWithResponse Run a reviewed integration preview
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
+	PreviewIntegrationWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewIntegrationResponse, error)
+
+	// PreviewIntegrationWithResponse Run a reviewed integration preview
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
+	PreviewIntegrationWithResponse(ctx context.Context, namespace string, name string, body PreviewIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewIntegrationResponse, error)
+
+	// SyncIntegrationWithBodyWithResponse Run a reviewed integration sync
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
+	SyncIntegrationWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SyncIntegrationResponse, error)
+
+	// SyncIntegrationWithResponse Run a reviewed integration sync
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
+	SyncIntegrationWithResponse(ctx context.Context, namespace string, name string, body SyncIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*SyncIntegrationResponse, error)
 
 	// GetLicenseWithResponse License state, node limit and licensed features of this node
 	//
@@ -30756,6 +32093,387 @@ func (r ListRoleBindingsResponse) ContentType() string {
 	return ""
 }
 
+type CreateRoleBindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *RoleBindingDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON201() *RoleBindingDocument {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateRoleBindingResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateRoleBindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateRoleBindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateRoleBindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateRoleBindingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteRoleBindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteRoleBindingResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteRoleBindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteRoleBindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteRoleBindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteRoleBindingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRoleBindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RoleBindingDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRoleBindingResponse) GetJSON200() *RoleBindingDocument {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetRoleBindingResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetRoleBindingResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetRoleBindingResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetRoleBindingResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetRoleBindingResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetRoleBindingResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRoleBindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRoleBindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRoleBindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRoleBindingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReplaceRoleBindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RoleBindingDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON200() *RoleBindingDocument {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ReplaceRoleBindingResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ReplaceRoleBindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplaceRoleBindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplaceRoleBindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReplaceRoleBindingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListServiceAccountsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -32128,6 +33846,832 @@ func (r InfoMessagesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r InfoMessagesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListIntegrationsResponse200Headers the declared response headers of an HTTP 200 response for ListIntegrations
+type ListIntegrationsResponse200Headers struct {
+	CacheControl *string
+}
+
+type ListIntegrationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationListOutputBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListIntegrationsResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIntegrationsResponse) GetJSON200() *IntegrationListOutputBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListIntegrationsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListIntegrationsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListIntegrationsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListIntegrationsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ListIntegrationsResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r ListIntegrationsResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListIntegrationsResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListIntegrationsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r ListIntegrationsResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListIntegrationsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIntegrationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIntegrationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIntegrationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIntegrationsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetIntegrationResponse200Headers the declared response headers of an HTTP 200 response for GetIntegration
+type GetIntegrationResponse200Headers struct {
+	CacheControl *string
+}
+
+type GetIntegrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationSummary
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetIntegrationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetIntegrationResponse) GetJSON200() *IntegrationSummary {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetIntegrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetIntegrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetIntegrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetIntegrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetIntegrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r GetIntegrationResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetIntegrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetIntegrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r GetIntegrationResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetIntegrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetIntegrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIntegrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIntegrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetIntegrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListIntegrationActionsResponse200Headers the declared response headers of an HTTP 200 response for ListIntegrationActions
+type ListIntegrationActionsResponse200Headers struct {
+	CacheControl *string
+}
+
+type ListIntegrationActionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationExecutionResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListIntegrationActionsResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON200() *IntegrationExecutionResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListIntegrationActionsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIntegrationActionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIntegrationActionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIntegrationActionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIntegrationActionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// InvokeIntegrationActionResponse200Headers the declared response headers of an HTTP 200 response for InvokeIntegrationAction
+type InvokeIntegrationActionResponse200Headers struct {
+	CacheControl *string
+}
+
+type InvokeIntegrationActionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationExecutionResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *InvokeIntegrationActionResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON200() *IntegrationExecutionResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r InvokeIntegrationActionResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r InvokeIntegrationActionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InvokeIntegrationActionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InvokeIntegrationActionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InvokeIntegrationActionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CheckIntegrationResponse200Headers the declared response headers of an HTTP 200 response for CheckIntegration
+type CheckIntegrationResponse200Headers struct {
+	CacheControl *string
+}
+
+type CheckIntegrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationExecutionResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *CheckIntegrationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CheckIntegrationResponse) GetJSON200() *IntegrationExecutionResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CheckIntegrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CheckIntegrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CheckIntegrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CheckIntegrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CheckIntegrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r CheckIntegrationResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CheckIntegrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CheckIntegrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r CheckIntegrationResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CheckIntegrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CheckIntegrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckIntegrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckIntegrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CheckIntegrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PreviewIntegrationResponse200Headers the declared response headers of an HTTP 200 response for PreviewIntegration
+type PreviewIntegrationResponse200Headers struct {
+	CacheControl *string
+}
+
+type PreviewIntegrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationExecutionResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *PreviewIntegrationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON200() *IntegrationExecutionResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PreviewIntegrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewIntegrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewIntegrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewIntegrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewIntegrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SyncIntegrationResponse200Headers the declared response headers of an HTTP 200 response for SyncIntegration
+type SyncIntegrationResponse200Headers struct {
+	CacheControl *string
+}
+
+type SyncIntegrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationExecutionResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *SyncIntegrationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SyncIntegrationResponse) GetJSON200() *IntegrationExecutionResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SyncIntegrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SyncIntegrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r SyncIntegrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SyncIntegrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r SyncIntegrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r SyncIntegrationResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r SyncIntegrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r SyncIntegrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r SyncIntegrationResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r SyncIntegrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r SyncIntegrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SyncIntegrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SyncIntegrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SyncIntegrationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -40164,6 +42708,109 @@ func (c *ClientWithResponses) ListRoleBindingsWithResponse(ctx context.Context, 
 	return ParseListRoleBindingsResponse(rsp)
 }
 
+// CreateRoleBindingWithBodyWithResponse Create a public RoleBinding only if absent
+//
+// Complete SQLite runtime only. Requires current cluster rolebindings.write authority and cookie CSRF when applicable. Creates once; never adopts an existing binding. Only public operator metadata is accepted.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/rolebindings (the `CreateRoleBinding` operationId).
+func (c *ClientWithResponses) CreateRoleBindingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRoleBindingResponse, error) {
+	rsp, err := c.CreateRoleBindingWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRoleBindingResponse(rsp)
+}
+
+// CreateRoleBindingWithResponse Create a public RoleBinding only if absent
+//
+// Complete SQLite runtime only. Requires current cluster rolebindings.write authority and cookie CSRF when applicable. Creates once; never adopts an existing binding. Only public operator metadata is accepted.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/rolebindings (the `CreateRoleBinding` operationId).
+func (c *ClientWithResponses) CreateRoleBindingWithResponse(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRoleBindingResponse, error) {
+	rsp, err := c.CreateRoleBinding(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRoleBindingResponse(rsp)
+}
+
+// DeleteRoleBindingWithBodyWithResponse Delete an explicitly reviewed public RoleBinding
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.delete authority. Only API-owned bindings may be deleted. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /iam/rolebindings/{namespace}/{name} (the `DeleteRoleBinding` operationId).
+func (c *ClientWithResponses) DeleteRoleBindingWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteRoleBindingResponse, error) {
+	rsp, err := c.DeleteRoleBindingWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteRoleBindingResponse(rsp)
+}
+
+// DeleteRoleBindingWithResponse Delete an explicitly reviewed public RoleBinding
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.delete authority. Only API-owned bindings may be deleted. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /iam/rolebindings/{namespace}/{name} (the `DeleteRoleBinding` operationId).
+func (c *ClientWithResponses) DeleteRoleBindingWithResponse(ctx context.Context, namespace string, name string, body DeleteRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteRoleBindingResponse, error) {
+	rsp, err := c.DeleteRoleBinding(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteRoleBindingResponse(rsp)
+}
+
+// GetRoleBindingWithResponse Read a public RoleBinding and its current UID/resourceVersion
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /iam/rolebindings/{namespace}/{name} (the `GetRoleBinding` operationId).
+func (c *ClientWithResponses) GetRoleBindingWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetRoleBindingResponse, error) {
+	rsp, err := c.GetRoleBinding(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRoleBindingResponse(rsp)
+}
+
+// ReplaceRoleBindingWithBodyWithResponse Replace an explicitly reviewed public RoleBinding
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.write authority. Only API-owned bindings may be replaced. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /iam/rolebindings/{namespace}/{name} (the `ReplaceRoleBinding` operationId).
+func (c *ClientWithResponses) ReplaceRoleBindingWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceRoleBindingResponse, error) {
+	rsp, err := c.ReplaceRoleBindingWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceRoleBindingResponse(rsp)
+}
+
+// ReplaceRoleBindingWithResponse Replace an explicitly reviewed public RoleBinding
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion and current cluster rolebindings.write authority. Only API-owned bindings may be replaced. Object and grant revocation floors commit atomically. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /iam/rolebindings/{namespace}/{name} (the `ReplaceRoleBinding` operationId).
+func (c *ClientWithResponses) ReplaceRoleBindingWithResponse(ctx context.Context, namespace string, name string, body ReplaceRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceRoleBindingResponse, error) {
+	rsp, err := c.ReplaceRoleBinding(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceRoleBindingResponse(rsp)
+}
+
 // ListServiceAccountsWithResponse List serviceaccounts
 //
 // Returns a wrapper object for the known response body format(s).
@@ -40490,6 +43137,149 @@ func (c *ClientWithResponses) InfoMessagesWithResponse(ctx context.Context, reqE
 		return nil, err
 	}
 	return ParseInfoMessagesResponse(rsp)
+}
+
+// ListIntegrationsWithResponse List bounded integration status
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /integrations (the `ListIntegrations` operationId).
+func (c *ClientWithResponses) ListIntegrationsWithResponse(ctx context.Context, params *ListIntegrationsParams, reqEditors ...RequestEditorFn) (*ListIntegrationsResponse, error) {
+	rsp, err := c.ListIntegrations(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIntegrationsResponse(rsp)
+}
+
+// GetIntegrationWithResponse Read exact integration status
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /integrations/{namespace}/{name} (the `GetIntegration` operationId).
+func (c *ClientWithResponses) GetIntegrationWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetIntegrationResponse, error) {
+	rsp, err := c.GetIntegration(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIntegrationResponse(rsp)
+}
+
+// ListIntegrationActionsWithResponse List original advertised actions
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /integrations/{namespace}/{name}/actions (the `ListIntegrationActions` operationId).
+func (c *ClientWithResponses) ListIntegrationActionsWithResponse(ctx context.Context, namespace string, name string, params *ListIntegrationActionsParams, reqEditors ...RequestEditorFn) (*ListIntegrationActionsResponse, error) {
+	rsp, err := c.ListIntegrationActions(ctx, namespace, name, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIntegrationActionsResponse(rsp)
+}
+
+// InvokeIntegrationActionWithBodyWithResponse Invoke one reviewed advertised action
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/actions/{action} (the `InvokeIntegrationAction` operationId).
+func (c *ClientWithResponses) InvokeIntegrationActionWithBodyWithResponse(ctx context.Context, namespace string, name string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InvokeIntegrationActionResponse, error) {
+	rsp, err := c.InvokeIntegrationActionWithBody(ctx, namespace, name, action, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInvokeIntegrationActionResponse(rsp)
+}
+
+// InvokeIntegrationActionWithResponse Invoke one reviewed advertised action
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/actions/{action} (the `InvokeIntegrationAction` operationId).
+func (c *ClientWithResponses) InvokeIntegrationActionWithResponse(ctx context.Context, namespace string, name string, action string, body InvokeIntegrationActionJSONRequestBody, reqEditors ...RequestEditorFn) (*InvokeIntegrationActionResponse, error) {
+	rsp, err := c.InvokeIntegrationAction(ctx, namespace, name, action, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInvokeIntegrationActionResponse(rsp)
+}
+
+// CheckIntegrationWithBodyWithResponse Run a reviewed integration check
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/check (the `CheckIntegration` operationId).
+func (c *ClientWithResponses) CheckIntegrationWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckIntegrationResponse, error) {
+	rsp, err := c.CheckIntegrationWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckIntegrationResponse(rsp)
+}
+
+// CheckIntegrationWithResponse Run a reviewed integration check
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/check (the `CheckIntegration` operationId).
+func (c *ClientWithResponses) CheckIntegrationWithResponse(ctx context.Context, namespace string, name string, body CheckIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckIntegrationResponse, error) {
+	rsp, err := c.CheckIntegration(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckIntegrationResponse(rsp)
+}
+
+// PreviewIntegrationWithBodyWithResponse Run a reviewed integration preview
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
+func (c *ClientWithResponses) PreviewIntegrationWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewIntegrationResponse, error) {
+	rsp, err := c.PreviewIntegrationWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewIntegrationResponse(rsp)
+}
+
+// PreviewIntegrationWithResponse Run a reviewed integration preview
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
+func (c *ClientWithResponses) PreviewIntegrationWithResponse(ctx context.Context, namespace string, name string, body PreviewIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewIntegrationResponse, error) {
+	rsp, err := c.PreviewIntegration(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewIntegrationResponse(rsp)
+}
+
+// SyncIntegrationWithBodyWithResponse Run a reviewed integration sync
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
+func (c *ClientWithResponses) SyncIntegrationWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SyncIntegrationResponse, error) {
+	rsp, err := c.SyncIntegrationWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSyncIntegrationResponse(rsp)
+}
+
+// SyncIntegrationWithResponse Run a reviewed integration sync
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
+func (c *ClientWithResponses) SyncIntegrationWithResponse(ctx context.Context, namespace string, name string, body SyncIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*SyncIntegrationResponse, error) {
+	rsp, err := c.SyncIntegration(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSyncIntegrationResponse(rsp)
 }
 
 // GetLicenseWithResponse License state, node limit and licensed features of this node
@@ -48424,6 +51214,330 @@ func ParseListRoleBindingsResponse(rsp *http.Response) (*ListRoleBindingsRespons
 	return response, nil
 }
 
+// ParseCreateRoleBindingResponse parses an HTTP response from a CreateRoleBindingWithResponse call
+func ParseCreateRoleBindingResponse(rsp *http.Response) (*CreateRoleBindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateRoleBindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest RoleBindingDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteRoleBindingResponse parses an HTTP response from a DeleteRoleBindingWithResponse call
+func ParseDeleteRoleBindingResponse(rsp *http.Response) (*DeleteRoleBindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteRoleBindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRoleBindingResponse parses an HTTP response from a GetRoleBindingWithResponse call
+func ParseGetRoleBindingResponse(rsp *http.Response) (*GetRoleBindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRoleBindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RoleBindingDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplaceRoleBindingResponse parses an HTTP response from a ReplaceRoleBindingWithResponse call
+func ParseReplaceRoleBindingResponse(rsp *http.Response) (*ReplaceRoleBindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplaceRoleBindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RoleBindingDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListServiceAccountsResponse parses an HTTP response from a ListServiceAccountsWithResponse call
 func ParseListServiceAccountsResponse(rsp *http.Response) (*ListServiceAccountsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -49584,6 +52698,769 @@ func ParseInfoMessagesResponse(rsp *http.Response) (*InfoMessagesResponse, error
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseListIntegrationsResponse parses an HTTP response from a ListIntegrationsWithResponse call
+func ParseListIntegrationsResponse(rsp *http.Response) (*ListIntegrationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIntegrationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationListOutputBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListIntegrationsResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetIntegrationResponse parses an HTTP response from a GetIntegrationWithResponse call
+func ParseGetIntegrationResponse(rsp *http.Response) (*GetIntegrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIntegrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationSummary
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetIntegrationResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListIntegrationActionsResponse parses an HTTP response from a ListIntegrationActionsWithResponse call
+func ParseListIntegrationActionsResponse(rsp *http.Response) (*ListIntegrationActionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIntegrationActionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationExecutionResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListIntegrationActionsResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseInvokeIntegrationActionResponse parses an HTTP response from a InvokeIntegrationActionWithResponse call
+func ParseInvokeIntegrationActionResponse(rsp *http.Response) (*InvokeIntegrationActionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InvokeIntegrationActionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationExecutionResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers InvokeIntegrationActionResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCheckIntegrationResponse parses an HTTP response from a CheckIntegrationWithResponse call
+func ParseCheckIntegrationResponse(rsp *http.Response) (*CheckIntegrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckIntegrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationExecutionResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers CheckIntegrationResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePreviewIntegrationResponse parses an HTTP response from a PreviewIntegrationWithResponse call
+func ParsePreviewIntegrationResponse(rsp *http.Response) (*PreviewIntegrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewIntegrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationExecutionResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers PreviewIntegrationResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSyncIntegrationResponse parses an HTTP response from a SyncIntegrationWithResponse call
+func ParseSyncIntegrationResponse(rsp *http.Response) (*SyncIntegrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SyncIntegrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationExecutionResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers SyncIntegrationResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil
