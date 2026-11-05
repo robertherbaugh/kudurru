@@ -141,6 +141,11 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
 		return
 	}
+	syncEnabled, interval, err := syncSchedule(provider, instance.definition)
+	if err != nil {
+		h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
+		return
+	}
 	startCtx, err := h.scopedOriginal(ctx, j, originalFrame, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()})
 	if err != nil {
 		h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
@@ -151,21 +156,13 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 	go func() { defer close(startDone); started <- provider.Start(startCtx) }()
 	h.setLocal(j, "Running", "Provisioned", Result{}, true)
 	// Start must honor cancellation; Stop quiesces rather than spawning writes.
-	interval := instance.definition.Spec.Resync.Duration
-	if interval == 0 {
-		interval = 10 * time.Minute
+	var timer *time.Timer
+	var syncTick <-chan time.Time
+	if syncEnabled {
+		timer = time.NewTimer(0)
+		syncTick = timer.C
+		defer timer.Stop()
 	}
-	if u := instance.definition.Spec.UniFi; u != nil {
-		interval = u.Poll.Duration
-		if interval == 0 {
-			interval = time.Minute
-		}
-	}
-	if interval < time.Second {
-		interval = time.Second
-	}
-	timer := time.NewTimer(0)
-	defer timer.Stop()
 	var eventTick <-chan time.Time
 	if _, ok := provider.(DeliveryHook); ok {
 		events := time.NewTicker(h.opts.PollInterval)
@@ -174,6 +171,9 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 	}
 	var failures uint32
 	reset := func(delay time.Duration) {
+		if timer == nil {
+			return
+		}
 		if !timer.Stop() {
 			select {
 			case <-timer.C:
@@ -212,7 +212,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 				h.opts.Logger.Warn("integration event drain failed", "integration", j.key)
 			}
 			operationCancel()
-		case <-timer.C:
+		case <-syncTick:
 			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 			a := h.execute(operationCtx, j, command{kind: "sync"})
 			operationCancel()
@@ -290,6 +290,11 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 		p, err := h.preview(ctx, j, f, g)
 		return answer{preview: p, err: err}
 	case "sync":
+		if enabled, _, scheduleErr := syncSchedule(j.provider, f.instance.definition); scheduleErr != nil {
+			return answer{err: scheduleErr}
+		} else if !enabled {
+			return answer{err: ErrUnsupported}
+		}
 		var result *Result
 		_, observer := j.provider.(Observer)
 		if _, publisher := j.provider.(Publisher); publisher {
