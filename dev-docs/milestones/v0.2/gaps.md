@@ -2623,3 +2623,34 @@ Selected local case passes (13.9s), zones plus migration pass all six (39.7s),
 and dashboard typecheck passes. These used the existing embedded-dashboard
 binary, not a newly built current-head server. Hosted confirmation remains
 pending; the full failed run is not relabeled green.
+
+### Tier-B private lifecycle prerequisite
+
+`8195b5a` adds an unregistered action/event lifecycle. Provisioning resolves only
+named credentials and performs no network I/O. The first successful Check binds
+one declaration; a later observed change permanently fences that incarnation,
+including a return to the original declaration. Action schemas are detached and
+the host retains semantic validation/RBAC. Each action sends one POST. Events
+retain the host's original body/time/delivery ID and separate HMAC key; only the
+existing durable host delivery lane may attempt them again.
+
+Full package ordinary and race each pass **46** entries with no failures/skips;
+final installed scoped lint reports **0 issues**. An earlier mistyped lint binary
+path exited 127 before a scanner ran and remains recorded separately. Tests use
+actual TLS for credential retention, declaration replacement, single actions,
+signed stable deliveries and cancellation/stop. Record and inventory execution
+remain explicitly unsupported in this committed private lifecycle; no production
+factory or integration capability is enabled.
+
+### Matcher controlled regression checkpoint
+
+The original single performance process exited successfully but failed relative
+qualification. An exact-source overlay of pre-F20 `c6efeb8` and unchanged current
+source was then compared in two fresh processes on this VM, using the same 12
+original benchmark leaves and 65,536-name inputs. Both processes passed; suffix
+controls were stable, while current regex500/1000 misses were about **14.6×**
+slower and mixed-policy misses about **2.5–3.2×** slower. This is a material
+regression, not a passing performance gate. Unchanged compilation was about
+1.09×, so the much larger historical baseline delta cannot be assigned to F20
+from these observations. Safe literal filtering before dense dispatch is being
+corrected in the isolated worktree; baseline, budgets and gates remain unchanged.

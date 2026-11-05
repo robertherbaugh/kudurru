@@ -454,8 +454,11 @@ inventory acceptance needs genuine observation time and fixed expiry through
 exact versioned media, capabilities, manifest, filters and action schemas as one detached
 identity. It rejects malformed or ambiguous JSON, mismatched capabilities and
 credential echoes; a later peer declaration cannot silently replace the retained
-one. Action parameter semantics remain subject to host validation. Provider
-lifecycle and mounted qualification remain separate work.
+one. Action parameter semantics remain subject to host validation. A private lifecycle also retains named credentials, freezes the first accepted
+advertisement, and fences the instance after an observed change. It sends declared
+actions once and signs host-supplied stable event deliveries with a separate HMAC
+key; the durable host queue owns event retries. It remains unregistered while
+record/inventory adapters and mounted qualification are incomplete.
 
 ## Standalone webhook protocol checks
 
