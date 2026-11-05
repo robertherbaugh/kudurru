@@ -465,8 +465,15 @@ duplicate identities, partial/paginated results, credential echoes and mismatche
 network references refuse. `FixedIP` stays desired metadata and never becomes
 an observed address. The adapter emits no desired DNS or ClientGroup writes,
 and two remote lists do not establish an atomic remote snapshot. Production
-registration, capability-aware scheduling and mounted qualification remain
-pending; record publication remains unsupported.
+registration and mounted qualification remain pending; record publication remains
+unsupported. The host now accepts an optional negotiated observation schedule:
+actions-only peers disable inventory sync, while client polling has a one-minute
+maximum interval. A shorter `resync` wins; the generic ten-minute stored default
+cannot exceed the provider's cap. This never extends observation expiry.
+
+The signed delivery callback and durable host queue are also prerequisites.
+Automatic root event-topic production is not yet connected; enabling a factory
+alone would not establish working hook subscriptions.
 
 ## Standalone webhook protocol checks
 

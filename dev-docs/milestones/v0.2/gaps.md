@@ -2712,3 +2712,26 @@ handler cancellation/drain, original deadlines and actual errors remain intact.
 Seven relay race tests pass, scoped lint reports zero issues, and both original
 CLI tests pass under race with actual local Kubernetes envtest (no skips).
 The original failed BEFORE and hosted run remain distinct evidence.
+
+### Negotiated inventory scheduling and hosted checkpoint
+
+`3f144ed` adds capability-aware observation scheduling before a Tier-B factory
+mount. Actions-only providers disable inventory timers and reject manual sync
+without publishing empty observations. Client polling has a one-minute cap;
+shorter explicit Resync wins, including when a stored definition has the generic
+ten-minute default. Original observation expiry and existing provider scheduling
+remain intact. Full host/webhook races pass **258/67** entries without skips,
+and final scoped lint reports zero issues.
+
+`4ad694a` retains bounded safe migration-step diagnostics after three ordinary
+and five race repetitions passed both original AdGuard/Blocky cases. The race
+command passes **15** entries, no skips; original production, assertions and
+15-second journal deadline are unchanged. The initial diagnostic wrapper's
+postprocessing failure remains recorded separately. No stalled worker was
+reproduced and no migration production fix is claimed.
+
+Main CI `41964466507` on `e9f2324` is fully successful, including dashboard-e2e
+and both Go shards. That qualifies the pushed head, not later local commits.
+The earlier failed run remains failed. Automatic root hook-event production,
+strong record ownership, managed-anchor runtime mounts, TSIG activation and
+matcher performance remain open.
