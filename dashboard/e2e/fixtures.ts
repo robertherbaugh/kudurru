@@ -19,7 +19,7 @@ interface Fixtures {
   allowConsole: RegExp | null;
   /** Console errors and uncaught exceptions of the page (checked after the test). */
   pageProblems: string[];
-  /** Exact GET paths allowed to report the pre-handler publication gate. */
+  /** Exact GET request targets (path plus query) allowed to report the pre-handler publication gate. */
   pendingReadPaths: Set<string>;
 }
 
@@ -49,7 +49,7 @@ export const test = base.extend<Fixtures, { workerState: string }>({
       page.on('response', (response) => {
         const url = new URL(response.url());
         if (response.status() !== 503 || response.request().method() !== 'GET' ||
-            url.origin !== new URL(page.url()).origin || url.search || !pendingReadPaths.has(url.pathname)) return;
+            url.origin !== new URL(page.url()).origin || !pendingReadPaths.has(url.pathname + url.search)) return;
         pending.push((async () => {
           try {
             const headers = await response.allHeaders();

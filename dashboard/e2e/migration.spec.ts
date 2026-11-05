@@ -107,7 +107,7 @@ test('VIP cutover creates and serves generated nameserver addresses', async ({ p
   } finally { await api.del(`/zones/${name}`); }
 });
 
-test('wizard starts a selected background import with a durable partial-success report', async ({ page }) => {
+test('wizard starts a selected background import with a durable partial-success report', async ({ page, pendingReadPaths }) => {
   const api = await adminApi(page);
   const name = `background-${suffix()}`;
   const skipped = `${name}-skip`;
@@ -130,12 +130,37 @@ test('wizard starts a selected background import with a durable partial-success 
     await expect(dialog).toContainText('2 of 3 objects and 1 settings section selected.');
     await page.screenshot({ path: path.resolve('..', '.context', 'migration-selection.png') });
     await dialog.getByRole('checkbox', { name: 'I reviewed the configuration and migration warnings' }).check();
-    const started = page.waitForResponse((r) => r.url().endsWith('/api/v1/imports/start') && r.request().method() === 'POST');
+    let startRequests = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/imports/start') startRequests++;
+    });
+    const listTarget = '/api/v1/imports/runs?limit=25';
+    pendingReadPaths.add(listTarget);
+    const started = page.waitForResponse((r) => r.url().endsWith('/api/v1/imports/start') && r.request().method() === 'POST').then(async (response) => {
+      expect(response.status()).toBe(202);
+      expect(response.request().postData()).not.toContain('transient-source-token');
+      const run = await response.json() as MigrationRun;
+      pendingReadPaths.add(`/api/v1/imports/runs/${run.id}`);
+      return run;
+    });
+    const refusedReads = new Set<string>();
+    for (const pattern of [new URL(listTarget, page.url()).href, '**/api/v1/imports/runs/*']) {
+      await page.route(pattern, async (route) => {
+        if (route.request().method() !== 'GET') return route.continue();
+        // The real start response identifies the original report before either
+        // read is refused. Further reads reach the actual committed journal.
+        await started;
+        const url = new URL(route.request().url());
+        const target = url.pathname + url.search;
+        if (!pendingReadPaths.has(target) || refusedReads.has(target)) return route.continue();
+        refusedReads.add(target);
+        await route.fulfill({ status: 503, contentType: 'application/json', headers: { 'Retry-After': '1' }, json: {
+          error: { key: 'generation_pending', message: 'complete serving generation unavailable' }, took_ms: 0,
+        } });
+      });
+    }
     await dialog.getByRole('button', { name: 'Import configuration' }).click();
-    const response = await started;
-    expect(response.status()).toBe(202);
-    expect(response.request().postData()).not.toContain('transient-source-token');
-    const run = await response.json() as MigrationRun;
+    const run = await started;
     await expect(page).toHaveURL(new RegExp(`/tools/migrations/${run.id}$`));
     await expect(dialog).not.toBeVisible();
     await expect(page.getByText('Import completed with errors', { exact: true })).toBeVisible();
@@ -152,6 +177,8 @@ test('wizard starts a selected background import with a durable partial-success 
     await page.reload(); await settle(page);
     await expect(page.getByText('Import completed with errors', { exact: true })).toBeVisible();
     await expect(page.getByText(/1 succeeded, 1 failed, 0 unconfirmed, 1 not applied, 1 not selected/)).toBeVisible();
+    expect([...refusedReads].sort(), 'exercise both publication gates before durable report recovery').toEqual([...pendingReadPaths].sort());
+    expect(startRequests, 'the background import must be started exactly once').toBe(1);
     await page.setViewportSize({ width: 1280, height: 1400 });
     await page.screenshot({ path: path.resolve('..', '.context', 'migration-results.png'), fullPage: true });
   } finally { await api.del(`/zones/${name}`); }
