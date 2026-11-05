@@ -85,7 +85,8 @@ func TestOfflineCLIActualCurrentApplyAndSelection(t *testing.T) {
 	for _, source := range []string{"adguard", "blocky"} {
 		t.Run(source, func(t *testing.T) {
 			f := newServingCommandFixture(t)
-			s := migrationServingAPI(t, f, nil)
+			probe := newOfflineStepProbe()
+			s := migrationServingAPI(t, f, probe.wrap(f.s.MigrationCommand))
 			h, calls := offlineAcceptanceHarness(t, source, f, s)
 			before, err := f.s.opts.Store.ReadGeneration(t.Context())
 			if err != nil {
@@ -145,7 +146,7 @@ func TestOfflineCLIActualCurrentApplyAndSelection(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &applied); err != nil {
 				t.Fatal(err)
 			}
-			offlineAcceptanceWaitRun(t, f, applied.ID, source)
+			offlineProbeWaitRun(t, f, applied.ID, source, probe)
 			offlineAcceptanceWaitRecords(t, f, plan)
 			out, _, err = h.run("import", "runs", applied.ID, "-o", "json")
 			if err != nil {
