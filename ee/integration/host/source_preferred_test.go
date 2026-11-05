@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,9 @@ import (
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration"
+	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/internal/inventory"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -278,34 +281,102 @@ func TestCombinedPreferredSourcePendingAndCommittedErrorsRemainVisible(t *testin
 }
 
 func TestCombinedSourceCannotSampleSameGuardSuccessorFrame(t *testing.T) {
-	h, j, p, _, _ := engineFixture(t)
-	j.provider = &fakeObserver{fakePublisher: *p, observe: func(context.Context) (SourceSnapshot, error) {
-		t.Fatal("successor frame reached Observe")
-		return SourceSnapshot{}, nil
-	}}
-	h.opts.BeforeObserve = func(context.Context, context.Context, ExecutionGuard) (context.Context, func(), error) {
-		t.Fatal("binder sampled successor frame")
-		return nil, nil, nil
-	}
-	h.opts.ValidateSource = func(ExecutionGuard, SourceSnapshot) error { return nil }
-	h.opts.CommitSource = func(context.Context, ExecutionGuard, SourceSnapshot) (*Result, error) {
-		t.Fatal("successor frame reached source commit")
-		return nil, nil
-	}
-	observer := j.provider.(*fakeObserver)
-	observer.apply = func(_ context.Context, o *kinds.IntegrationOperation) (kinds.Receipt, error) {
-		h.mu.Lock()
-		copyInstance := *j.frame.instance
-		j.frame.instance = &copyInstance
-		h.mu.Unlock()
-		return confirmedReceipt(o, h.opts.Now()), nil
-	}
-	a := h.execute(context.Background(), j, command{kind: "sync"})
-	if !errors.Is(a.err, ErrFenced) || a.result == nil || a.result.Applied != 1 {
-		t.Fatal("outbound receipt hidden/source adopted new frame", a)
-	}
-	if s := h.Statuses()[0]; s.Phase != "Degraded" || !s.LastSync.IsZero() {
-		t.Fatal("partial command reported ready", s)
+	for _, confirmed := range []bool{false, true} {
+		name := "before_receipt"
+		if confirmed {
+			name = "after_confirm"
+		}
+		t.Run(name, func(t *testing.T) {
+			h, j, p, st, _ := engineFixture(t)
+			j.provider = &fakeObserver{fakePublisher: *p, observe: func(context.Context) (SourceSnapshot, error) {
+				t.Fatal("successor frame reached Observe")
+				return SourceSnapshot{}, nil
+			}}
+			h.opts.BeforeObserve = func(context.Context, context.Context, ExecutionGuard) (context.Context, func(), error) {
+				t.Fatal("binder sampled successor frame")
+				return nil, nil, nil
+			}
+			h.opts.ValidateSource = func(ExecutionGuard, SourceSnapshot) error {
+				t.Fatal("successor frame reached source validation")
+				return nil
+			}
+			h.opts.CommitSource = func(context.Context, ExecutionGuard, SourceSnapshot) (*Result, error) {
+				t.Fatal("successor frame reached source commit")
+				return nil, nil
+			}
+			replacements := 0
+			replace := func() {
+				h.mu.Lock()
+				defer h.mu.Unlock()
+				copyInstance := *j.frame.instance
+				j.frame.instance = &copyInstance
+				replacements++
+			}
+			var operation *kinds.IntegrationOperation
+			var receipt kinds.Receipt
+			observer := j.provider.(*fakeObserver)
+			observer.apply = func(_ context.Context, o *kinds.IntegrationOperation) (kinds.Receipt, error) {
+				operation = o.DeepCopy()
+				receipt = confirmedReceipt(o, h.opts.Now())
+				if !confirmed {
+					replace()
+				}
+				return receipt, nil
+			}
+			confirmations := 0
+			repo, err := ledger.New(ledger.Options{Reader: st, Now: h.opts.Now, Write: func(ctx context.Context, g ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+				var result store.Object
+				err := h.WithLease(ctx, g, func(ctx context.Context) error {
+					var err error
+					result, err = st.Apply(ctx, o, a)
+					return err
+				})
+				if err == nil {
+					if saved, ok := result.(*kinds.IntegrationLedger); ok && saved.Spec.Pending == nil && operation != nil && saved.Spec.LastOperationID == operation.Spec.OperationID {
+						confirmations++
+						// The original confirming write has committed and WithLease
+						// has released its RLock. Replace once before observation.
+						if confirmed && confirmations == 1 {
+							replace()
+						}
+					}
+				}
+				return result, err
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.opts.Ledger = repo
+			a := h.execute(t.Context(), j, command{kind: "sync"})
+			applied, pending := 0, 1
+			if confirmed {
+				applied, pending = 1, 0
+			}
+			if !errors.Is(a.err, ErrFenced) || a.result == nil || a.result.Applied != applied || a.result.Pending != pending {
+				t.Fatal("original frame refusal lost the actual outbound outcome")
+			}
+			if observer.calls != 1 || replacements != 1 || confirmations != applied || operation == nil {
+				t.Fatal("fixture did not cross exactly the selected boundary")
+			}
+			if s := h.Statuses()[0]; s.Phase != "Degraded" || !s.LastSync.IsZero() || s.Result.Applied != applied || s.Result.Pending != pending {
+				t.Fatal("partial command status lost the actual outbound outcome")
+			}
+			saved, err := repo.ReadOperation(t.Context(), operation.Spec.OperationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			baseline, err := repo.ReadLedger(t.Context(), operation.Spec.Record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if confirmed {
+				if !reflect.DeepEqual(saved.Spec.Receipt, &receipt) || baseline.Spec.Pending != nil || baseline.Spec.LastOperationID != operation.Spec.OperationID || baseline.Spec.ContentHash != operation.Spec.AfterHash || !baseline.Spec.LastApplied.Equal(receipt.ObservedAt) {
+					t.Fatal("confirmed outbound receipt or baseline was lost")
+				}
+			} else if saved.Spec.Receipt != nil || baseline.Spec.Pending == nil || baseline.Spec.Pending.OperationID != operation.Spec.OperationID || baseline.Spec.ContentHash != "" || baseline.Spec.LastOperationID != "" || !baseline.Spec.LastApplied.IsZero() {
+				t.Fatal("refused receipt changed pending intent or confirmed baseline")
+			}
+		})
 	}
 }
 
