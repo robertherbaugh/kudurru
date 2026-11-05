@@ -468,6 +468,18 @@ Each database carries a schema version. A file newer than the binary stops
 the process with an explanation; an older one is migrated in one
 transaction.
 
+Schema 7 reserves durable root-anchor history. Its physical migration writes
+only an initialization marker; the original writable startup command creates
+the dormant owner before serving. Existing reserved-prefix rows in an older
+database refuse migration, and missing history in a schema-7 database never
+means an empty owner. Complete replication requires `managed-root-anchors-v1`;
+older images and binaries are incompatible rather than silently converted.
+The shared version also advances the `local.db` object-schema marker, while its
+table layout stays at version 2. Old quarantined image bytes are preserved, but
+the current reader rejects their older feature set. Object-only snapshots do
+not back up managed-anchor history. Automatic managed resolver operation remains
+unmounted; configured static anchors continue to apply.
+
 Kubernetes forced whole-object takeover first validates the proposed replacement
 with a resource-version-guarded dry-run PATCH and bounds its encoded size before
 and after admission. Invalid schema, immutable transitions and oversize inputs

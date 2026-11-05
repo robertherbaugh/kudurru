@@ -314,14 +314,25 @@ DNSKEY/RRSIG TTLs, signed original TTL and signature expiration. Final admission
 checks both wall and monotonic age without restamping. Encoding a proposed state
 does not commit its checkpoint or grant a writer.
 
-The unmounted accepted-owner and SQLite adapters add bounded dormant/managed
+The accepted-owner and SQLite adapters add bounded dormant/managed
 history, envelope and state-version CAS, and original writer/context/evidence
 checks through commit. A section-prefix fence rejects any later actual owner
 mutation in the same command, including ABA; genuine no-ops and unrelated owners
 remain independent. A staged result is only a proposal until the outer command
-succeeds. Physical migration, required-feature negotiation, accepted replica
-installation and immutable complete-image resolver publication remain separate
-work.
+succeeds. Schema 7 creates a non-granting physical marker; the existing admitted
+startup command binds it once to a dormant owner. Restart validates retained
+history, including when inventory already exists. Complete image validation
+requires that owner and the `managed-root-anchors-v1` feature. Followers install
+the primary's complete history without initializing a local one. Old images and
+binaries refuse across the schema/feature boundary; there is no automatic image
+conversion or mixed-version replication promise. Managed transitions, the
+updater and immutable complete-image resolver publication remain unmounted.
+
+Planned managed mode also refuses an ordinary switch back to static/default
+anchors after managed history exists: a shipped seed could otherwise restore a
+permanently revoked key. Static-only installations retain their existing
+semantics. Recovery requires a separate explicit path that preserves revocation
+history; no reset or recovery path is mounted yet.
 
 Managed activation also requires retirement of held answers at final local
 response admission and durable follower quarantine. The current remote cache

@@ -2735,3 +2735,41 @@ and both Go shards. That qualifies the pushed head, not later local commits.
 The earlier failed run remains failed. Automatic root hook-event production,
 strong record ownership, managed-anchor runtime mounts, TSIG activation and
 matcher performance remain open.
+
+### F28 physical owner/schema prerequisite (D297)
+
+Source `7b4eacf` integrates as `54216ee`. Schema 7 creates only a non-granting
+root-anchor marker; the existing original startup command binds a dormant owner
+and validates it on restart. Existing inventory no longer bypasses the third
+owner. Complete images require the exact normal owner and mandatory
+`managed-root-anchors-v1` feature. Old schema/features refuse without received
+image conversion, history reset or same-revision divergence exceptions.
+Actual upgraded primary/follower fixtures preserve the old authority metadata
+and use the recomputed transitional follower base for the next complete install.
+Local.db keeps layout 2 while advancing its shared schema marker. Old quarantine
+bytes remain preserved but the current feature-checking reader refuses them.
+
+Initial selected ordinary qualification passes **60** entries. The expanded
+full SQLite run preserves **277 passes plus one failure**: the fixture's global
+one-entry limit was occupied by the new physical marker. Only its allowance
+changed to marker-plus-one-test-row; original ambiguous input, rollback and
+second-row refusal assertions remain. That corrected case passes separately.
+Full ordinary replication/localdb/runtimeowners pass **31/17/27** entries.
+Final focused races pass **25/8/1/27**, no skips, and four-package lint reports
+zero issues. The original failed full command is not relabeled or repeated.
+No managed updater, resolver, local output retirement, follower deny-only
+quarantine, edge-cache bypass or Kubernetes activation is included. Composed
+root startup qualification follows integration separately.
+
+The reviewed next prerequisite is an unmounted immutable resolver projection:
+Valid/Missing keys supply canonical DS values, quarantine supplies none, and
+identity includes both envelope and pure history. It grants no durable or runtime
+admission. Planned mode changes refuse ordinary static/default downgrade after
+managed history, preserving permanent revocations. This design is not a mounted
+updater or recovery path.
+
+Fresh CI `41967856451` on `3622013` exposes one unused test helper left by the
+migration diagnostic replacement. `f873643` removes only that dead helper; the
+active original-step observer, 15-second journal wait and assertions are
+unchanged. The hosted lint failure is preserved; local scoped lint and fresh
+hosted qualification for the correction remain pending.
