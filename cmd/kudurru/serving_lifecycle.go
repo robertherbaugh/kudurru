@@ -64,6 +64,9 @@ func (s *servingRuntime) Run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return s.publisher.Run(ctx) })
 	g.Go(func() error { return s.providers.Run(ctx) })
+	if s.opts.TSIG != nil {
+		g.Go(func() error { return s.opts.TSIG.Run(ctx) })
+	}
 	g.Go(func() error { return s.integrations.host.Run(ctx) })
 	g.Go(func() error { return s.catalog.Watch(ctx, s.publisher.Wake) })
 	g.Go(func() error { return s.opts.Transferred.Watch(ctx, s.publisher.Wake) })

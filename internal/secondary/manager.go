@@ -47,11 +47,20 @@ type Options struct {
 	ClusterID string
 	Keyring   dnsserver.TSIGKeyring
 	Receiver  Receiver
-	Now       func() time.Time
-	Logger    *slog.Logger
+	// CaptureKeys and ReceiverForKeys opt into immutable per-entry acquisition.
+	// Both must be supplied together. KeysChanged subscribes before capture;
+	// polling remains a bounded recovery hint, never a credential lookup.
+	CaptureKeys     func() dnsserver.AcquisitionKeys
+	ReceiverForKeys func(*dnsserver.StaticKeyring) Receiver
+	KeysChanged     func() <-chan struct{}
+	Now             func() time.Time
+	Logger          *slog.Logger
 	// PollInterval bounds scheduler latency; DNS checks expiry itself.
 	PollInterval  time.Duration
 	MaxConcurrent int
+	// Timeout includes primary failover, transfer and local cache acceptance.
+	// Earlier parent deadlines and the receiver's stricter limits still apply.
+	Timeout time.Duration
 }
 
 // Status describes this node only, never the shared DNSZone status.
@@ -97,8 +106,11 @@ type Manager struct {
 
 // New constructs a manager; invalid global dependencies are startup errors.
 func New(opts Options) (*Manager, error) {
-	if opts.Cache == nil || opts.Blobs == nil || opts.ClusterID == "" || opts.Receiver == nil {
+	if opts.Cache == nil || opts.Blobs == nil || opts.ClusterID == "" || (opts.Receiver == nil && opts.ReceiverForKeys == nil) {
 		return nil, errors.New("secondary: cache, persistence, cluster identity and receiver are required")
+	}
+	if (opts.CaptureKeys == nil) != (opts.ReceiverForKeys == nil) || (opts.KeysChanged != nil && opts.CaptureKeys == nil) {
+		return nil, errors.New("secondary: captured keys and receiver factory must be configured together")
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -108,6 +120,9 @@ func New(opts Options) (*Manager, error) {
 	}
 	if opts.PollInterval <= 0 {
 		opts.PollInterval = time.Second
+	}
+	if opts.Timeout <= 0 {
+		opts.Timeout = 30 * time.Second
 	}
 	if opts.MaxConcurrent <= 0 {
 		opts.MaxConcurrent = 4
@@ -238,6 +253,9 @@ type entry struct {
 	cancel         context.CancelFunc
 	notified       bool
 	lastAttempt    time.Time
+	acquisition    acquisition
+	jobCtx         context.Context
+	generation     uint64
 }
 
 type result struct {
@@ -261,11 +279,16 @@ func (m *Manager) Run(ctx context.Context) error {
 	active := 0
 	m.Wake()
 	for {
+		var keyChanged <-chan struct{}
+		if m.opts.KeysChanged != nil {
+			keyChanged = m.opts.KeysChanged()
+		}
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-m.wake:
 		case <-ticker.C:
+		case <-keyChanged:
 		case r := <-results:
 			active--
 			// Reconcile before committing a result: canceled or superseded
@@ -274,12 +297,28 @@ func (m *Manager) Run(ctx context.Context) error {
 			if entries[r.entry.id] == r.entry {
 				e := r.entry
 				e.busy = false
-				e.cancel()
-				e.cancel = nil
 				now := m.opts.Now()
 				if r.err == nil {
-					r.err = m.persist(ctx, e.id, r.data)
+					// The original context survives transfer completion through
+					// persistence. The outer key pin precedes manager/local DB gates.
+					r.err = e.acquisition.accept(e.jobCtx, func() error {
+						return m.persist(e.jobCtx, e.id, r.data)
+					}, func() error {
+						before := *e
+						e.data, e.z = r.data, r.z
+						e.credential = r.data.Credential
+						e.next = r.data.ConfirmedAt.Add(timer(r.z.SOA().Refresh))
+						e.status = Status{successes: e.status.successes + 1, failures: e.status.failures, Identity: e.id, Zone: e.dz.Name, Name: e.dz.Spec.ZoneName, Serial: r.z.Serial(), RecordCount: r.z.RecordCount(), Primary: r.primary,
+							ConfirmedAt: r.data.ConfirmedAt, ExpiresAt: r.data.ExpiresAt}
+						if err := m.publish(e.jobCtx, entries); err != nil {
+							*e = before
+							return err
+						}
+						return nil
+					})
 				}
+				e.cancel()
+				e.cancel, e.jobCtx = nil, nil
 				if r.err != nil {
 					e.status.failures++
 					e.status.Error = r.err.Error()
@@ -289,12 +328,6 @@ func (m *Manager) Run(ctx context.Context) error {
 					}
 					e.next = now.Add(delay)
 					m.opts.Logger.Warn("secondary refresh failed", "zone", e.dz.Name, "error", r.err)
-				} else {
-					e.data, e.z = r.data, r.z
-					e.credential = r.data.Credential
-					e.next = r.data.ConfirmedAt.Add(timer(r.z.SOA().Refresh))
-					e.status = Status{successes: e.status.successes + 1, failures: e.status.failures, Identity: e.id, Zone: e.dz.Name, Name: e.dz.Spec.ZoneName, Serial: r.z.Serial(), RecordCount: r.z.RecordCount(), Primary: r.primary,
-						ConfirmedAt: r.data.ConfirmedAt, ExpiresAt: r.data.ExpiresAt}
 				}
 			}
 		}
@@ -324,11 +357,11 @@ func (m *Manager) Run(ctx context.Context) error {
 					e.next = due
 				}
 			}
-			if e.busy || now.Before(e.next) {
+			if e.busy || e.status.ConfigurationError != "" || now.Before(e.next) {
 				continue
 			}
-			jobCtx, jobCancel := context.WithCancel(ctx)
-			e.busy, e.cancel = true, jobCancel
+			jobCtx, jobCancel := context.WithTimeout(ctx, m.opts.Timeout)
+			e.busy, e.cancel, e.jobCtx = true, jobCancel, jobCtx
 			e.notified, e.lastAttempt = false, now
 			active++
 			workers.Add(1)
@@ -362,15 +395,31 @@ func (m *Manager) reconcile(ctx context.Context, entries map[string]*entry) {
 		}
 		id := zone.SecondaryIdentity(dz)
 		want[id] = true
-		if entries[id] != nil {
-			continue
+		acquired, credential, captureErr := m.captureEntry(dz)
+		old := entries[id]
+		if old != nil && old.acquisition.current() && old.acquisition.identity() == acquired.identity() && old.credential == credential && old.status.ConfigurationError == errorText(captureErr) {
+			if !old.busy || old.generation == snap.Generation {
+				old.generation = snap.Generation
+				continue
+			}
 		}
-		e := &entry{dz: dz.DeepCopy(), id: id, status: Status{Identity: id, Zone: dz.Name, Name: dz.Spec.ZoneName}}
+		if captureErr == nil {
+			captureErr = m.prepareReceiver(&acquired)
+		}
+		if old != nil && old.cancel != nil {
+			old.cancel()
+		}
+		e := &entry{dz: dz.DeepCopy(), id: id, credential: credential, acquisition: acquired, generation: snap.Generation, status: Status{Identity: id, Zone: dz.Name, Name: dz.Spec.ZoneName, ConfigurationError: errorText(captureErr)}}
 		entries[id] = e
-		var err error
-		e.credential, err = m.credential(dz)
+		err := captureErr
 		if err == nil {
-			e.data, e.z, err = m.restore(ctx, e)
+			if old != nil && old.credential == credential {
+				// Resealing can retain the exact credential epoch and absolute
+				// expiry. Replacement/recreation cannot relabel acquired data.
+				e.data, e.z = old.data, old.z
+			} else {
+				e.data, e.z, err = m.restore(ctx, e)
+			}
 		}
 		if err != nil && !errors.Is(err, localdb.ErrNoBlob) {
 			e.status.Error = err.Error()
@@ -440,24 +489,15 @@ func timer(seconds uint32) time.Duration {
 }
 
 func (m *Manager) credential(dz *v1alpha1.DNSZone) (string, error) {
-	if dz.Spec.Secondary == nil || len(dz.Spec.Secondary.Primaries) == 0 {
-		return "", errors.New("secondary requires at least one primary")
+	_, credential, err := m.captureEntry(dz)
+	return credential, err
+}
+
+func errorText(err error) string {
+	if err != nil {
+		return err.Error()
 	}
-	if dz.Spec.Secondary.TSIGKeyRef == "" {
-		return "unsigned", nil
-	}
-	if m.opts.Keyring == nil {
-		return "", errors.New("secondary TSIG key is unavailable")
-	}
-	secret, alg, ok := m.opts.Keyring.Lookup(dnsserver.TSIGKeyName(dz.Spec.Secondary.TSIGKeyRef))
-	if !ok {
-		return "", errors.New("secondary TSIG key is unavailable")
-	}
-	h := sha256.New()
-	_, _ = h.Write([]byte(alg))
-	_, _ = h.Write([]byte{0})
-	_, _ = h.Write(secret)
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return ""
 }
 
 func (m *Manager) refresh(ctx context.Context, e *entry) result {
@@ -466,18 +506,33 @@ func (m *Manager) refresh(ctx context.Context, e *entry) result {
 		r.err = fmt.Errorf("invalid secondary configuration: %w", err)
 		return r
 	}
-	credential, err := m.credential(e.dz)
+	// Production entries already retained their exact provider and receiver;
+	// never recapture a successor between SOA and transfer.
+	keys := m.opts.Keyring
+	if e.acquisition.keys != nil {
+		keys = e.acquisition.keys.Keys()
+	}
+	credential, err := acquisitionCredential(e.dz, keys)
 	if err != nil {
 		r.err = err
 		return r
 	}
 	var errs []error
+	receiver := m.receiverFor(e)
+	if receiver == nil || !e.acquisition.current() {
+		r.err = errors.New("secondary: original acquisition is unavailable")
+		return r
+	}
+	if err := e.acquisition.withCurrent(ctx, func() error { return nil }); err != nil {
+		r.err = err
+		return r
+	}
 	for _, primary := range e.dz.Spec.Secondary.Primaries {
 		if ctx.Err() != nil {
 			r.err = ctx.Err()
 			return r
 		}
-		soa, err := m.opts.Receiver.SOA(ctx, e.dz, primary)
+		soa, err := receiver.SOA(ctx, e.dz, primary)
 		var records []dns.RR
 		if err == nil && soa == nil {
 			err = errors.New("primary returned no SOA")
@@ -491,14 +546,14 @@ func (m *Manager) refresh(ctx context.Context, e *entry) result {
 		} else if err == nil {
 			if baseline && soa.Serial != e.z.Serial() && soa.Serial-e.z.Serial() >= 1<<31 {
 				err = errors.New("primary SOA serial is older or ambiguous")
-			} else if receiver, ok := m.opts.Receiver.(incrementalReceiver); ok && baseline && credential == e.credential {
+			} else if incremental, ok := receiver.(incrementalReceiver); ok && baseline && credential == e.credential {
 				var base []dns.RR
 				base, err = e.data.records()
 				if err == nil {
-					records, err = receiver.IXFR(ctx, e.dz, primary, base)
+					records, err = incremental.IXFR(ctx, e.dz, primary, base)
 				}
 			} else {
-				records, err = m.opts.Receiver.AXFR(ctx, e.dz, primary)
+				records, err = receiver.AXFR(ctx, e.dz, primary)
 			}
 		}
 		if err == nil {

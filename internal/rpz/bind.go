@@ -1,8 +1,6 @@
 package rpz
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -26,8 +24,8 @@ func (b *BoundSnapshot) Select(lists []*public.BlockList, configurationAvailable
 // Bind uses only the supplied immutable provider and this captured snapshot.
 // Missing, rotated or metadata-less data stays unavailable, never omitted from
 // subsequent required selection. Nil keys is invalid; explicit empty is allowed.
-// Equality uses the existing durable fingerprint, not an acquisition epoch or
-// ABA proof. Identical restored key bytes can accept a valid unexpired copy;
+// File inputs preserve the legacy durable fingerprint; stored inputs include
+// their credential epoch, so identical bytes cannot revive old data;
 // root's outer credential-generation cursor fences pending publication.
 func (s *Snapshot) Bind(lists []*public.BlockList, keys *dnsserver.StaticKeyring) (*BoundSnapshot, error) {
 	if keys == nil || len(lists) > 100000 {
@@ -74,13 +72,5 @@ func boundCredential(ref string, keys *dnsserver.StaticKeyring) (string, bool) {
 	if ref == "" {
 		return "unsigned", true
 	}
-	secret, algorithm, ok := keys.Lookup(dnsserver.TSIGKeyName(ref))
-	if !ok || len(secret) == 0 {
-		return "", false
-	}
-	if _, ok := dnsserver.TSIGAlgorithm(algorithm); !ok {
-		return "", false
-	}
-	sum := sha256.Sum256(append(append([]byte(algorithm), 0), secret...))
-	return hex.EncodeToString(sum[:]), true
+	return dnsserver.AcquisitionFingerprint(keys, ref)
 }

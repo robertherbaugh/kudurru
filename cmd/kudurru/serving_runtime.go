@@ -32,6 +32,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/tsigkeys"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
 
@@ -52,6 +53,7 @@ type servingRuntimeOptions struct {
 	Upstreams   upstream.Options
 	Now         func() time.Time
 	Logging     *querylogRuntime
+	TSIG        *tsigRuntime
 }
 
 // servingRuntime owns the complete publisher and provider/primary workers.
@@ -80,6 +82,9 @@ type servingRuntime struct {
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {
 	if ctx == nil || o.Store == nil || o.Config == nil || o.Validator == nil || o.License == nil || o.AuthKeys == nil || o.Keyrings == nil || o.Catalog == nil || o.Transferred == nil || o.Lists == nil {
+		return nil, serving.ErrComponents
+	}
+	if o.TSIG != nil && (o.TSIG.store != o.Store || o.TSIG.encryption != o.AuthKeys || o.TSIG.rings != o.Keyrings) {
 		return nil, serving.ErrComponents
 	}
 	if o.Now == nil {
@@ -240,8 +245,31 @@ func (s *servingRuntime) captureHost(ctx context.Context, image *replication.Ima
 		return servingbuild.Dependencies{}, err
 	}
 	keys := s.opts.Keyrings.Capture()
+	encryptionCurrent := func() bool { return true }
+	if prepared := keys.Prepared(); prepared != nil {
+		cut := s.opts.AuthKeys.owner.Capture()
+		if !cut.Current() || cut.Value() == nil || prepared.Matches(ctx, image) != nil {
+			if host.Release != nil {
+				host.Release()
+			}
+			return servingbuild.Dependencies{}, serving.ErrDependency
+		}
+		sealer, err := tsigkeys.NewSealer(cut.Value().current, cut.Value().previous)
+		if err != nil || prepared.EncryptionIdentity() != sealer.Identity() {
+			if host.Release != nil {
+				host.Release()
+			}
+			return servingbuild.Dependencies{}, serving.ErrDependency
+		}
+		encryptionCurrent = cut.Current
+	} else if s.opts.TSIG != nil {
+		if host.Release != nil {
+			host.Release()
+		}
+		return servingbuild.Dependencies{}, serving.ErrDependency
+	}
 	id := sha256.Sum256([]byte("serving-host/v1/" + host.Identity + "/" + keys.Identity()))
-	return servingbuild.Dependencies{Identity: hex.EncodeToString(id[:]), Host: s.opts.Config, Auth: host.Auth, Keys: keys.Keys(), KeyringIdentity: keys.Identity(), Current: func() bool { return s.life.Err() == nil && host.Current() && keys.Current() }, Release: host.Release}, nil
+	return servingbuild.Dependencies{Identity: hex.EncodeToString(id[:]), Host: s.opts.Config, Auth: host.Auth, Keys: keys.Keys(), KeyringIdentity: keys.Identity(), Current: func() bool { return s.life.Err() == nil && host.Current() && keys.Current() && encryptionCurrent() }, Release: host.Release}, nil
 }
 
 // Close cancels both root lifetimes and joins before retiring owned resources.

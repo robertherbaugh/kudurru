@@ -10,15 +10,31 @@ import (
 )
 
 func (m *Manager) refresh(ctx context.Context, job transferJob) transferResult {
-	ctx, cancel := context.WithTimeout(ctx, m.opts.Timeout)
-	defer cancel()
+	if job.ctx != nil {
+		ctx = job.ctx
+	} else {
+		// Direct package-level acquisitions retain their own bound. Scheduled
+		// production jobs already own the context through final acceptance.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, m.opts.Timeout)
+		defer cancel()
+	}
 	r := transferResult{job: job}
+	receiver := m.receiverFor(job)
+	if receiver == nil || !job.acquisition.current() {
+		r.err = fmt.Errorf("rpz: original acquisition is unavailable")
+		return r
+	}
+	if err := job.acquisition.withCurrent(ctx, func() error { return nil }); err != nil {
+		r.err = err
+		return r
+	}
 	for _, primary := range job.dz.Spec.Secondary.Primaries {
 		if err := ctx.Err(); err != nil {
 			r.err = err
 			return r
 		}
-		soa, err := m.opts.Receiver.SOA(ctx, job.dz, primary)
+		soa, err := receiver.SOA(ctx, job.dz, primary)
 		if err != nil {
 			r.err = err
 			continue
@@ -36,16 +52,16 @@ func (m *Manager) refresh(ctx context.Context, job transferJob) transferResult {
 		usedBase := false
 		if baseline && sameSOA(soa, job.z.soa) {
 			records, usedBase = job.z.Records(), true
-		} else if incremental, ok := m.opts.Receiver.(incrementalReceiver); ok && baseline && soa.Serial != job.z.soa.Serial {
+		} else if incremental, ok := receiver.(incrementalReceiver); ok && baseline && soa.Serial != job.z.soa.Serial {
 			records, err = incremental.IXFR(ctx, job.dz, primary, job.z.Records())
 			usedBase = true
 		} else {
-			records, err = m.opts.Receiver.AXFR(ctx, job.dz, primary)
+			records, err = receiver.AXFR(ctx, job.dz, primary)
 		}
 		if err == nil && usedBase && !job.z.AvailableAt(m.opts.Now()) {
 			// Even an in-flight same-serial poll/IXFR must not renew an expired
 			// baseline. Recovery obtains a new complete authenticated transfer.
-			records, err = m.opts.Receiver.AXFR(ctx, job.dz, primary)
+			records, err = receiver.AXFR(ctx, job.dz, primary)
 		}
 		if err != nil {
 			r.err = err

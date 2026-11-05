@@ -2,10 +2,7 @@ package rpz
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"log/slog"
 	"slices"
 	"sync"
@@ -40,15 +37,21 @@ type BlobStore interface {
 
 // Options supplies node-local dependencies. Query readers only use snapshots.
 type Options struct {
-	Cache         *zonecache.Cache
-	Blobs         BlobStore
-	ClusterID     string
-	Keyring       dnsserver.TSIGKeyring
-	Receiver      Receiver
-	Now           func() time.Time
-	Logger        *slog.Logger
-	PollInterval  time.Duration
-	MaxConcurrent int
+	Cache     *zonecache.Cache
+	Blobs     BlobStore
+	ClusterID string
+	Keyring   dnsserver.TSIGKeyring
+	Receiver  Receiver
+	// CaptureKeys and ReceiverForKeys must be supplied together. Each entry
+	// retains the resulting immutable provider and one receiver; KeysChanged
+	// wakes reconciliation after installation without any DNS-path lookup.
+	CaptureKeys     func() dnsserver.AcquisitionKeys
+	ReceiverForKeys func(*dnsserver.StaticKeyring) Receiver
+	KeysChanged     func() <-chan struct{}
+	Now             func() time.Time
+	Logger          *slog.Logger
+	PollInterval    time.Duration
+	MaxConcurrent   int
 	// Timeout bounds the whole primary failover/transfer operation.
 	Timeout time.Duration
 }
@@ -128,8 +131,11 @@ type Manager struct {
 
 // New constructs a manager; startup dependency errors are explicit.
 func New(opts Options) (*Manager, error) {
-	if opts.Cache == nil || opts.Blobs == nil || opts.ClusterID == "" || opts.Receiver == nil {
+	if opts.Cache == nil || opts.Blobs == nil || opts.ClusterID == "" || (opts.Receiver == nil && opts.ReceiverForKeys == nil) {
 		return nil, errors.New("rpz: cache, durable blobs, cluster identity and receiver are required")
+	}
+	if (opts.CaptureKeys == nil) != (opts.ReceiverForKeys == nil) || (opts.KeysChanged != nil && opts.CaptureKeys == nil) {
+		return nil, errors.New("rpz: captured keys and receiver factory must be configured together")
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -239,26 +245,30 @@ func stringsCompare(a, b string) int {
 }
 
 type entry struct {
-	spec       Spec
-	dz         *v1alpha1.DNSZone
-	credential string
-	z          *Zone
-	data       *envelope
-	status     Status
-	next       time.Time
-	busy       bool
-	cancel     context.CancelFunc
-	generation uint64
+	spec        Spec
+	dz          *v1alpha1.DNSZone
+	credential  string
+	z           *Zone
+	data        *envelope
+	status      Status
+	next        time.Time
+	busy        bool
+	cancel      context.CancelFunc
+	generation  uint64
+	acquisition acquisition
 }
 
 type transferJob struct {
-	entry      *entry
-	config     *zonecache.Snapshot
-	spec       Spec
-	dz         *v1alpha1.DNSZone
-	credential string
-	z          *Zone
-	data       *envelope
+	entry       *entry
+	config      *zonecache.Snapshot
+	spec        Spec
+	dz          *v1alpha1.DNSZone
+	credential  string
+	z           *Zone
+	data        *envelope
+	acquisition acquisition
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 type transferResult struct {
@@ -295,6 +305,10 @@ func (m *Manager) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+		var keyChanged <-chan struct{}
+		if m.opts.KeysChanged != nil {
+			keyChanged = m.opts.KeysChanged()
+		}
 		config := m.opts.Cache.Snapshot()
 		m.reconcile(ctx, entries, config)
 		if pending != nil {
@@ -313,16 +327,18 @@ func (m *Manager) Run(ctx context.Context) error {
 				if active >= m.opts.MaxConcurrent || e.busy || e.status.ConfigurationError != "" || m.opts.Now().Before(e.next) {
 					continue
 				}
-				job := transferJob{e, config, e.spec, e.dz, e.credential, e.z, e.data}
-				jobCtx, cancel := context.WithCancel(ctx)
+				// One original whole-operation deadline includes persistence and
+				// acceptance; transfer completion never mints another timeout.
+				jobCtx, cancel := context.WithTimeout(ctx, m.opts.Timeout)
+				job := transferJob{entry: e, config: config, spec: e.spec, dz: e.dz, credential: e.credential, z: e.z, data: e.data, acquisition: e.acquisition, ctx: jobCtx, cancel: cancel}
 				e.busy, e.cancel = true, cancel
 				active++
 				workers.Go(func() {
-					defer cancel()
 					r := m.refresh(jobCtx, job)
 					select {
 					case results <- r:
 					case <-ctx.Done():
+						cancel()
 					}
 				})
 			}
@@ -338,6 +354,7 @@ func (m *Manager) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 		case <-m.wake:
+		case <-keyChanged:
 		case r := <-results:
 			pending = &r
 		}
@@ -361,17 +378,21 @@ func (m *Manager) reconcile(ctx context.Context, entries map[string]*entry, conf
 			}
 			wanted[id] = true
 			credential := ""
+			var acquired acquisition
 			if err == nil {
-				credential, err = m.credential(dz)
+				acquired, credential, err = m.captureEntry(dz)
 			}
 			old := entries[id]
-			if old != nil && old.credential == credential && old.status.ConfigurationError == errorText(err) {
+			if old != nil && old.acquisition.current() && old.acquisition.identity() == acquired.identity() && old.credential == credential && old.status.ConfigurationError == errorText(err) {
 				if !old.busy || old.generation == config.Generation {
 					old.generation = config.Generation
 					continue
 				}
 			}
-			e := &entry{spec: spec, dz: dz, credential: credential, generation: config.Generation,
+			if err == nil {
+				err = m.prepareReceiver(&acquired)
+			}
+			e := &entry{spec: spec, dz: dz, credential: credential, generation: config.Generation, acquisition: acquired,
 				status: Status{Identity: id, List: spec.List, Source: spec.Source, Origin: spec.Origin, ConfigurationError: errorText(err)}}
 			if old != nil && old.cancel != nil {
 				old.cancel()
@@ -404,6 +425,12 @@ func (m *Manager) reconcile(ctx context.Context, entries map[string]*entry, conf
 }
 
 func (m *Manager) complete(ctx context.Context, entries map[string]*entry, r transferResult) {
+	if r.job.cancel != nil {
+		defer r.job.cancel()
+	}
+	if r.job.ctx != nil {
+		ctx = r.job.ctx
+	}
 	e := entries[r.job.spec.Identity]
 	if e != r.job.entry {
 		return
@@ -413,37 +440,25 @@ func (m *Manager) complete(ctx context.Context, entries map[string]*entry, r tra
 		e.next = time.Time{}
 		return
 	}
-	if fingerprint, err := m.credential(e.dz); err != nil || fingerprint != r.job.credential {
+	if !m.jobCredentialsMatch(r.job) {
 		e.z, e.data = nil, nil
 		e.status.ConfigurationError = "RPZ credentials changed; awaiting fresh data."
 		return
 	}
 	if r.err == nil {
-		persistCtx, cancel := context.WithTimeout(ctx, m.opts.Timeout)
-		defer cancel()
-		r.err = m.persist(persistCtx, e.spec.Identity, r.data)
-		if m.opts.Cache.Snapshot() != r.job.config {
-			// Candidates cannot restore until a separate checksum-bound marker
-			// accepts them. No best-effort cleanup is needed at this boundary.
-			e.next = time.Time{}
-			return
-		}
-		if fingerprint, err := m.credential(e.dz); err != nil || fingerprint != r.job.credential {
-			e.z, e.data = nil, nil
-			e.status.ConfigurationError = "RPZ credentials changed during persistence."
-			return
-		}
-		if r.err == nil {
-			r.err = m.accept(persistCtx, e.spec.Identity, r.data)
-			if m.opts.Cache.Snapshot() != r.job.config || !m.credentialsMatch(e.dz, r.job.credential) {
-				if err := m.invalidateAcceptance(ctx, e.spec.Identity); err != nil {
-					e.status.Error = "RPZ configuration changed during acceptance; durable invalidation failed."
-				}
-				e.z, e.data = nil, nil
-				e.next = time.Time{}
-				return
+		r.err = r.job.acquisition.accept(ctx, func() error {
+			return m.persistAndAccept(ctx, e, r)
+		}, func() error {
+			before := *e
+			e.data, e.z, e.status.Error = r.data, r.z, ""
+			e.setDataStatus()
+			e.next = r.data.ConfirmedAt.Add(timer(r.z.soa.Refresh))
+			if err := m.publish(ctx, entries); err != nil {
+				*e = before
+				return err
 			}
-		}
+			return nil
+		})
 	}
 	if r.err != nil {
 		e.status.Error = r.err.Error()
@@ -454,9 +469,44 @@ func (m *Manager) complete(ctx context.Context, entries map[string]*entry, r tra
 		e.next = m.opts.Now().Add(retry)
 		return
 	}
-	e.data, e.z, e.status.Error = r.data, r.z, ""
-	e.setDataStatus()
-	e.next = r.data.ConfirmedAt.Add(timer(r.z.soa.Refresh))
+}
+
+// persistAndAccept holds the original key pin across the local two-slot cache
+// protocol. It confers no authoritative state.db transaction acknowledgment.
+func (m *Manager) persistAndAccept(ctx context.Context, e *entry, r transferResult) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	err := m.persist(ctx, e.spec.Identity, r.data)
+	if m.opts.Cache.Snapshot() != r.job.config {
+		// Candidates cannot restore until a separate checksum-bound marker
+		// accepts them. No best-effort cleanup is needed at this boundary.
+		e.next = time.Time{}
+		return errors.New("rpz: original configuration changed during persistence")
+	}
+	if !m.jobCredentialsMatch(r.job) {
+		e.z, e.data = nil, nil
+		e.status.ConfigurationError = "RPZ credentials changed during persistence."
+		return errors.New("rpz: original credentials changed during persistence")
+	}
+	if err == nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err = m.accept(ctx, e.spec.Identity, r.data)
+		if m.opts.Cache.Snapshot() != r.job.config || !m.jobCredentialsMatch(r.job) {
+			if err := m.invalidateAcceptance(ctx, e.spec.Identity); err != nil {
+				e.status.Error = "RPZ configuration changed during acceptance; durable invalidation failed."
+			}
+			e.z, e.data = nil, nil
+			e.next = time.Time{}
+			return errors.New("rpz: original configuration or credential changed during acceptance")
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 func (m *Manager) credentialsMatch(dz *v1alpha1.DNSZone, expected string) bool {
@@ -488,27 +538,8 @@ func (m *Manager) publish(ctx context.Context, entries map[string]*entry) error 
 }
 
 func (m *Manager) credential(dz *v1alpha1.DNSZone) (string, error) {
-	if dz == nil || dz.Spec.Secondary == nil {
-		return "", fmt.Errorf("rpz: invalid transfer configuration")
-	}
-	if dz.Spec.Secondary.TSIGKeyRef == "" {
-		return "unsigned", nil
-	}
-	if m.opts.Keyring == nil {
-		return "", fmt.Errorf("rpz: TSIG key unavailable")
-	}
-	secret, alg, ok := m.opts.Keyring.Lookup(dnsserver.TSIGKeyName(dz.Spec.Secondary.TSIGKeyRef))
-	if !ok {
-		return "", fmt.Errorf("rpz: TSIG key unavailable")
-	}
-	if _, ok := dnsserver.TSIGAlgorithm(alg); !ok || len(secret) == 0 {
-		return "", fmt.Errorf("rpz: invalid TSIG key or algorithm")
-	}
-	h := sha256.New()
-	_, _ = h.Write([]byte(alg))
-	_, _ = h.Write([]byte{0})
-	_, _ = h.Write(secret)
-	return hex.EncodeToString(h.Sum(nil)), nil
+	_, credential, err := m.captureEntry(dz)
+	return credential, err
 }
 
 func timer(seconds uint32) time.Duration { return max(time.Second, time.Duration(seconds)*time.Second) }
