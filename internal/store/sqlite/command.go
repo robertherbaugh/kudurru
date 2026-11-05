@@ -127,17 +127,18 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 // ordinary Apply/status/ownership/finalizer/audit semantics. Section rows share
 // this transaction, including a command's sealed dedup outcome.
 type CommandTx struct {
-	s            *Store
-	tx           *sql.Tx
-	q            cachedTx
-	authority    replication.Authority
-	active       atomic.Bool
-	failed       error
-	changed      bool
-	localChanged bool // node-local metadata, outside the canonical image
-	mutations    []*mutation
-	rvs          []uint64
-	checks       []func(context.Context) error
+	s             *Store
+	tx            *sql.Tx
+	q             cachedTx
+	authority     replication.Authority
+	active        atomic.Bool
+	failed        error
+	changed       bool
+	localChanged  bool // node-local metadata, outside the canonical image
+	mutations     []*mutation
+	rvs           []uint64
+	checks        []func(context.Context) error
+	sectionFences []*sectionPrefixFence // bounded by successful final-check registrations
 }
 
 func (t *CommandTx) valid(ctx context.Context) error {
@@ -374,6 +375,9 @@ func (t *CommandTx) PutSection(ctx context.Context, section string, entry replic
 	if err != nil {
 		return t.poison(err)
 	}
+	if n > 0 {
+		t.markSectionMutation(section, e.Key)
+	}
 	t.changed = t.changed || n > 0
 	return nil
 }
@@ -393,6 +397,9 @@ func (t *CommandTx) DeleteSection(ctx context.Context, section, key string) erro
 	n, err := result.RowsAffected()
 	if err != nil {
 		return t.poison(err)
+	}
+	if n > 0 {
+		t.markSectionMutation(section, key)
 	}
 	t.changed = t.changed || n > 0
 	return nil
