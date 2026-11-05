@@ -448,17 +448,25 @@ cover response-body reads, and stopping the transport cancels in-flight work.
 Status errors contain no peer bodies or credentials.
 
 A successful response is wire evidence. Managed record publication still needs
-remote ownership and durable partial-result handling through `Publisher`;
-inventory acceptance needs genuine observation time and fixed expiry through
-`Observer`. The transport supplies neither contract. Negotiation retains the
+remote ownership and durable partial-result handling through `Publisher`.
+Negotiation retains the
 exact versioned media, capabilities, manifest, filters and action schemas as one detached
 identity. It rejects malformed or ambiguous JSON, mismatched capabilities and
 credential echoes; a later peer declaration cannot silently replace the retained
 one. Action parameter semantics remain subject to host validation. A private lifecycle also retains named credentials, freezes the first accepted
 advertisement, and fences the instance after an observed change. It sends declared
 actions once and signs host-supplied stable event deliveries with a separate HMAC
-key; the durable host queue owns event retries. It remains unregistered while
-record/inventory adapters and mounted qualification are incomplete.
+key; the durable host queue owns event retries.
+
+The private inventory adapter requires complete bounded clients and networks
+lists under one original operation. Genuine `LastSeen` determines a fixed
+three-minute expiry; polling cannot renew an expired observation. Null rows,
+duplicate identities, partial/paginated results, credential echoes and mismatched
+network references refuse. `FixedIP` stays desired metadata and never becomes
+an observed address. The adapter emits no desired DNS or ClientGroup writes,
+and two remote lists do not establish an atomic remote snapshot. Production
+registration, capability-aware scheduling and mounted qualification remain
+pending; record publication remains unsupported.
 
 ## Standalone webhook protocol checks
 

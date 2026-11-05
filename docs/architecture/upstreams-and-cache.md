@@ -312,8 +312,16 @@ policy.
 Bootstrap and updates retain an opaque original observation bounded by received
 DNSKEY/RRSIG TTLs, signed original TTL and signature expiration. Final admission
 checks both wall and monotonic age without restamping. Encoding a proposed state
-does not commit its checkpoint or grant a writer. Durable CAS, accepted replica
-images and immutable complete-image resolver publication remain separate work.
+does not commit its checkpoint or grant a writer.
+
+The unmounted accepted-owner and SQLite adapters add bounded dormant/managed
+history, envelope and state-version CAS, and original writer/context/evidence
+checks through commit. A section-prefix fence rejects any later actual owner
+mutation in the same command, including ABA; genuine no-ops and unrelated owners
+remain independent. A staged result is only a proposal until the outer command
+succeeds. Physical migration, required-feature negotiation, accepted replica
+installation and immutable complete-image resolver publication remain separate
+work.
 
 Managed activation also requires retirement of held answers at final local
 response admission and durable follower quarantine. The current remote cache

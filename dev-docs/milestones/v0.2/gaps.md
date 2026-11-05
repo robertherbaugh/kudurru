@@ -2654,3 +2654,61 @@ regression, not a passing performance gate. Unchanged compilation was about
 1.09×, so the much larger historical baseline delta cannot be assigned to F20
 from these observations. Safe literal filtering before dense dispatch is being
 corrected in the isolated worktree; baseline, budgets and gates remain unchanged.
+
+### Tier-B private inventory prerequisite
+
+`29e6aa5` adds complete bounded client/network observations to the private provider.
+Original `LastSeen` fixes expiry at three minutes; later polling cannot renew
+stale devices. Fixed-IP metadata grants no observed address. Partial/paginated,
+null, duplicate, malformed, credential-echoing or cross-network inconsistent
+lists refuse. No desired DNS/ClientGroup writes are generated; two list requests
+make no remote snapshot atomicity claim. Full ordinary and race each pass
+**64** entries, no skips/failures, with **0 scoped lint issues** and matching
+frozen hashes. Production registration and capability-aware scheduling remain
+unmounted; strong record ownership/partial receipts remain open.
+
+### F28 accepted-owner and transaction prerequisite
+
+Driver source `3cf992e` integrates as `fe0b352`; adapter `a518992` integrates as
+`f8b79ed`. The bounded section-prefix postimage fence detects every later actual
+same-prefix change, including ABA, while allowing genuine no-ops and unrelated
+owners. Its final closure reads only private memory. Accepted-owner framing
+bounds complete dormant/managed histories, chunks and envelope/pure-state CAS.
+Persistence retains the original writer, context, clock and authenticated
+observation; a staged proposal cannot become authority before the outer command
+commits. No physical migration, feature registration, runtime or resolver mount
+is included.
+
+Frozen driver races pass **46** entries, accepted codecs **21**, persistence
+**94**, all without skips. Lint first found three private helper parameter-order
+issues. Only those signatures/calls changed; full persistence ordinary then
+passed **94** entries and final three-package lint reported **0 issues**. The
+prior test-file race freeze is preserved separately from corrected ordinary
+qualification. Driver/accepted/pure races were not needlessly repeated.
+Retirement through local command/replica admission, durable follower deny-only
+quarantine and preactivation managed edge-cache bypass remain open.
+
+### Matcher actual-path diagnostic
+
+The safe-literal correction passed its focused independent oracle but did not
+recover the original performance workload: regex500/1000 remain roughly
+**15–16×** slower than the exact same-VM preimage. A bounded instrumented overlay
+then used the original complete 65,536-name corpora and normal warmup. Both
+fixtures actually use fast `Regex`, with no `PatternSet` calls. Regex1000 executes
+all 16 mixed batches per name despite independent literal exclusion of 90% of
+rule/name pairs; every batch retains eligible members. Policy misses execute ten
+individual engines per name, already frozen after warmup. This establishes
+execution/count evidence, not timing qualification. Cache/batch redesign,
+unchanged performance gates and final qualification remain open.
+
+### External-dns relay shutdown correction
+
+The hosted CLI failure discarded its shutdown error, so its specific cause is
+not established. A controlled local BEFORE did reproduce a concrete edge:
+an accepted TCP socket awaiting its first HTTP request exhausts the relay's
+original two-second Shutdown budget. The relay now closes those sockets when
+stopping, including a socket returned by an accept already in progress. Active
+handler cancellation/drain, original deadlines and actual errors remain intact.
+Seven relay race tests pass, scoped lint reports zero issues, and both original
+CLI tests pass under race with actual local Kubernetes envtest (no skips).
+The original failed BEFORE and hosted run remain distinct evidence.
