@@ -137,7 +137,7 @@ runners. Unit tests cannot substitute for those results.
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Integrated e60001f; real pinned all-frontend leaf checks, held DoT, invalid-pair retention and child-restart acceptance pass |
 | F43c | Console spike (a) gates both changes | Edge and VIP | D275: actual dnsdist 2.1.3 YAML console, live DNS/cert/invalid-cert/PID/restart checks pass; established-connection limit recorded |
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |
-| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | D294 public SQLite RoleBinding API/CLI integrated c44b67d; actual TLS/router/replica focused races and lint pass. Merged generation, file/inline source and Kubernetes accepted-authority boundaries remain open |
+| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | D294 public SQLite RoleBinding API/CLI integrated c44b67d; actual TLS/router/replica focused races and lint pass. Merged 180-operation contracts and corrective router races pass; file/inline source and Kubernetes accepted-authority boundaries remain open |
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |
 | F45b | External per-user disable / log out everywhere administration | IAM and access | Implemented D289 on complete SQLite: exact UID/revision API/CLI/UI, atomic credential/audit revocation, actual TLS/router/restart/replica races, nine dashboard tests and lint/contracts pass; unsupported Stack explicitly refuses |
 | F46 | Share login lockout counters across replicas | IAM and access | Queued: missing |
@@ -159,7 +159,7 @@ runners. Unit tests cannot substitute for those results.
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
 | F60b | `cluster status` / `promote` / `join-token` | Store and HA | Queued: missing |
-| F60c | `integrations …` CLI | Store and HA | Active D291/D295: reviewed API/CLI and standalone webhook conformance integrated; real-provider/router and explicit TLS/mTLS protocol races plus scoped lint pass. Merged generation, Tier-B runtime and remaining driver/restart gates remain |
+| F60c | `integrations …` CLI | Store and HA | Active D291/D295: reviewed API/CLI and standalone webhook conformance integrated; real-provider/router and explicit TLS/mTLS protocol races plus scoped lint pass. Merged 180-operation contracts pass; Tier-B runtime and remaining driver/restart gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |

@@ -2380,6 +2380,18 @@ with no skips. Its stale-delete assertion received 503 instead of 409. A private
 unchanged-assertion diagnostic reproduces two failures in 20 independent race
 fixtures: both retain valid writer/base/dependencies but encounter publication
 3 changing to 4 at the original-publication check. The production refusal is
-preserved; deterministic fixture scheduling remains under review. Later
-Go generator/lint stages did not run after the composed command failed. No
-whole-command, fresh hosted CI or release completion is claimed.
+preserved. The fixture issued an unchanged PUT, which wakes the asynchronous
+publisher, before its later target-conflict commands. The diagnostic does not
+uniquely identify the wake caller, since startup signals may coalesce.
+
+The correction gives unchanged replacement its own fixture, with that PUT as
+the final HTTP operation. Exact 200/409 expectations, unchanged UID/revision and
+image assertions, and the explicit replaced-publication refusal test remain.
+No production guard, retry, sleep or broader accepted status was added. Both
+fixtures pass 20 independent race repetitions each (40 entries, 128.691s).
+The broader selected RoleBinding/router/CLI command separately passes all 18
+entries in 41.351s without skips. Generator package checks pass (clientdispatch
+0.502s, docsgen 0.042s), and final scoped API/client/servingauth/conformance/cmd
+lint reports zero issues. Frozen test and user dashboard artifact hashes match.
+The original composed command remains failed; these are corrective scoped
+results. Fresh hosted CI and release qualification remain open.
