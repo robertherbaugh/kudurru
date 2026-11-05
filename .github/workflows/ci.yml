@@ -313,6 +313,11 @@ jobs:
         env:
           KUDURRU_NAMED: /usr/sbin/named
         run: make e2e
+      - name: Recursive denial proof reuse against BIND
+        env:
+          KUDURRU_RECURSOR_BIND: "1"
+          GOMAXPROCS: "2"
+        run: go test -race -p 2 ./internal/recursor -run '^TestAggressiveBIND$' -count=1 -timeout=90s
       - name: OIDC login end to end against dex
         run: make test-auth-e2e
       - name: Blocking conformance against pinned AdGuard Home

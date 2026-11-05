@@ -2468,3 +2468,29 @@ no validation, expiry or work-bound assertion was relaxed.
 Hosted CI on the previously pushed `517ac93` separately failed
 `TestCombinedSourceCannotSampleSameGuardSuccessorFrame`; its diagnosis and
 correction remain pending. No full hosted-green claim is made here.
+
+
+### Hosted Integration frame-boundary fixture and composed checks
+
+On `517ac93`, all main CI jobs except Go shard 1 passed; that shard's observed
+failure was `TestCombinedSourceCannotSampleSameGuardSuccessorFrame`. The fixture
+replaced the instance inside outbound Apply, before receipt persistence, while
+asserting an already-confirmed effect. Original-frame admission correctly refused
+the receipt write. Independent review confirmed the boundary mismatch; no
+production change was warranted.
+
+The corrected fixture covers both timings using the actual fenced ledger writer.
+An in-flight effect remains pending with no saved receipt or confirmed baseline.
+Replacement after the exact durable confirmation retains Applied=1 and the
+original complete receipt. Both cases forbid binder, observer and source-commit
+calls and retain Degraded/zero-LastSync status. Replacement occurs only after
+the writer releases its lock, without sleeping, replaying or resampling a frame.
+Twenty race repetitions passed **60** named/subtest entries (2.496s package);
+the full host race suite passed **247** (11.620s), with no failures or skips.
+
+Root composition of the F44 file/inline startup and actual TLS grant-revival
+checks with recursive NTA reload and native cache flush/growth passed **9**
+entries (113.322s package), with no skips. Final host/cmd/objects scoped lint
+reported **0 issues**; all frozen Go fingerprints stayed unchanged. The original
+hosted failure remains recorded separately. The installed-BIND CI job now runs
+the F27 proof-reuse race explicitly; fresh hosted qualification is pending.
