@@ -218,7 +218,6 @@ func TestLifecycleUnsupportedCapabilitiesAndSecretEchoRefuse(t *testing.T) {
 		echo             bool
 	}{
 		{"records", "records", integration.CapRecordSink, false},
-		{"clients", "clients", integration.CapClientSource, false},
 		{"missing-hook-key", "hooks", integration.CapHook, false},
 		{"named-secret-echo", "hooks", integration.CapHook, true},
 	} {

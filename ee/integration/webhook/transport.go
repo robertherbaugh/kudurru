@@ -141,9 +141,10 @@ func (t *transport) close() {
 }
 
 type response struct {
-	body   []byte
-	status int
-	media  string
+	body    []byte
+	status  int
+	media   string
+	partial bool // explicit pagination is unsupported by complete-list adapters
 }
 
 // request is exactly one charged HTTP attempt. Redirects, body replay, ambient
@@ -239,7 +240,11 @@ func (t *transport) request(ctx context.Context, method, path, media string, bod
 		if err := bound.Err(); err != nil {
 			return err
 		}
-		out = response{body: b, status: resp.StatusCode, media: parseMedia(resp.Header.Get("Content-Type"))}
+		partial := false
+		for _, name := range []string{"Link", "Content-Range", "X-Next-Page", "X-Next-Cursor", "X-Continuation-Token", "X-Page", "X-Page-Count", "X-Total-Count"} {
+			partial = partial || len(resp.Header.Values(name)) != 0
+		}
+		out = response{body: b, status: resp.StatusCode, media: parseMedia(resp.Header.Get("Content-Type")), partial: partial}
 		return nil
 	})
 	if ctx.Err() != nil {

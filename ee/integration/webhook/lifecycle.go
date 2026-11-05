@@ -29,6 +29,7 @@ type provider struct {
 	cancel        context.CancelFunc
 	provisioning  bool
 	transport     *transport
+	owner         host.InstanceID
 	advertisement *advertisement
 	changed       bool
 	hmacKey       []byte
@@ -40,6 +41,7 @@ var (
 	_ integration.Integration    = (*provider)(nil)
 	_ integration.ActionProvider = (*provider)(nil)
 	_ host.DeliveryHook          = (*provider)(nil)
+	_ host.Observer              = (*provider)(nil)
 )
 
 func newProvider() *provider {
@@ -49,7 +51,7 @@ func newProvider() *provider {
 
 func (*provider) Manifest() integration.Manifest {
 	return integration.Manifest{Type: "webhook", DisplayName: "Webhook", Version: "1", IOClass: "local_push",
-		Capabilities: []integration.Capability{integration.CapHook, integration.CapActions},
+		Capabilities: []integration.Capability{integration.CapHook, integration.CapActions, integration.CapClientSource},
 		ConfigSchema: json.RawMessage(`{"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048},"timeout":{"type":"string"},"domains":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":253}},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]}}}`),
 	}
 }
@@ -73,7 +75,11 @@ func (p *provider) Provision(ctx context.Context, h integration.Host, raw json.R
 	stop := context.AfterFunc(p.life, cancel)
 	defer stop()
 	owner, ok := h.(host.OwnerHost)
-	if !ok || owner.IntegrationOwner().Validate() != nil {
+	if !ok {
+		return host.ErrUnsupported
+	}
+	originalOwner := owner.IntegrationOwner()
+	if originalOwner.Validate() != nil {
 		return host.ErrUnsupported
 	}
 	var config public.WebhookIntegration
@@ -120,7 +126,7 @@ func (p *provider) Provision(ctx context.Context, h integration.Host, raw json.R
 		}
 		return host.ErrUnavailable
 	}
-	p.transport, p.hmacKey, p.secrets = tr, key, captured
+	p.transport, p.hmacKey, p.secrets, p.owner = tr, key, captured, originalOwner
 	return nil
 }
 
@@ -179,7 +185,7 @@ func (p *provider) Check(ctx context.Context) (integration.Status, error) {
 		return integration.Status{}, host.ErrFenced
 	}
 	// The initial tranche cannot claim complete execution of these capabilities.
-	if a.has("records") || a.has("clients") || a.has("hooks") && len(p.hmacKey) == 0 {
+	if a.has("records") || a.has("hooks") && len(p.hmacKey) == 0 {
 		return integration.Status{}, host.ErrUnsupported
 	}
 	raw, err := json.Marshal(a.declaration)
