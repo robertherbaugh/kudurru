@@ -44,6 +44,7 @@ func newIntegrationsCmd(o *cliOpts) *cobra.Command {
 		})
 	}}
 	group.AddCommand(list)
+	group.AddCommand(newIntegrationWebhookCmd())
 	for _, command := range []string{"get", "check", "preview", "sync", "actions", "act"} {
 		var review api.IntegrationReview
 		var params string
