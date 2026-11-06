@@ -93,6 +93,10 @@ func TestHolderCapturePinsFullSQLiteCommandAndFinalCommitCheck(t *testing.T) {
 	for _, abort := range []bool{false, true} {
 		t.Run(map[bool]string{false: "commit", true: "cancel"}[abort], func(t *testing.T) {
 			s := catalogStore(t)
+			before, _, err := s.ReadServingCandidate(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
 			h := NewHolder(captureDocument(t, "A", "A"))
 			c, changed := h.Capture(), h.Changes()
 			ctx, cancel := context.WithCancel(t.Context())
@@ -141,7 +145,7 @@ func TestHolderCapturePinsFullSQLiteCommandAndFinalCommitCheck(t *testing.T) {
 			}
 			expectOpen(t, changed)
 			unblock()
-			err := <-done
+			err = <-done
 			if abort && !errors.Is(err, context.Canceled) || !abort && err != nil {
 				t.Fatal("command result", err)
 			}
@@ -153,12 +157,22 @@ func TestHolderCapturePinsFullSQLiteCommandAndFinalCommitCheck(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantRows := 1
-			if abort {
-				wantRows = 0
+			// Preserve every existing owner, including the schema sentinel, and
+			// compare the command's exact effect independently of that baseline.
+			want := make(map[string]string, len(before.Payload.Runtime)+1)
+			for _, row := range before.Payload.Runtime {
+				want[row.Key] = string(row.Data)
 			}
-			if len(image.Payload.Runtime) != wantRows {
+			if !abort {
+				want["catalog-pin"] = `{"captured":"A"}`
+			}
+			if len(image.Payload.Runtime) != len(want) {
 				t.Fatal("actual commit/rollback disagrees with callback result", len(image.Payload.Runtime))
+			}
+			for _, row := range image.Payload.Runtime {
+				if data, ok := want[row.Key]; !ok || string(row.Data) != data {
+					t.Fatal("command changed an unexpected runtime row")
+				}
 			}
 		})
 	}

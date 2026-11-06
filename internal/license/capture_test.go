@@ -120,6 +120,10 @@ func TestLicensePinSpansActualSQLiteCommitAndNoop(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = st.Close() }()
+			before, err := st.ReadGeneration(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
 			entered, release := make(chan struct{}), make(chan struct{})
 			done := make(chan error, 1)
 			var cut Cut
@@ -163,8 +167,23 @@ func TestLicensePinSpansActualSQLiteCommitAndNoop(t *testing.T) {
 				t.Fatal("replacement did not invalidate after complete command", err)
 			}
 			image, err := st.ReadGeneration(t.Context())
-			if err != nil || (len(image.Payload.Runtime) == 1) != mutate {
+			if err != nil {
 				t.Fatal("unexpected command state", err)
+			}
+			want := make(map[string]string, len(before.Payload.Runtime)+1)
+			for _, row := range before.Payload.Runtime {
+				want[row.Key] = string(row.Data)
+			}
+			if mutate {
+				want["test"] = `{}`
+			}
+			if len(image.Payload.Runtime) != len(want) {
+				t.Fatal("unexpected command runtime row count")
+			}
+			for _, row := range image.Payload.Runtime {
+				if data, ok := want[row.Key]; !ok || string(row.Data) != data {
+					t.Fatal("command changed an unexpected runtime row")
+				}
 			}
 		})
 	}

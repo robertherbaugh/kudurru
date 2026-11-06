@@ -200,6 +200,10 @@ func TestManagerCapturePinsFullSQLiteCommandIncludingCommitCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
+	before, _, err := s.ReadServingCandidate(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -243,8 +247,21 @@ func TestManagerCapturePinsFullSQLiteCommandIncludingCommitCheck(t *testing.T) {
 		t.Fatal("replacement after durable commit", err)
 	}
 	image, _, err := s.ReadServingCandidate(t.Context())
-	if err != nil || len(image.Payload.Runtime) != 1 {
+	if err != nil {
 		t.Fatal("actual command did not durably commit", err)
+	}
+	want := make(map[string]string, len(before.Payload.Runtime)+1)
+	for _, row := range before.Payload.Runtime {
+		want[row.Key] = string(row.Data)
+	}
+	want["capture-test"] = `{}`
+	if len(image.Payload.Runtime) != len(want) {
+		t.Fatal("command did not preserve the original runtime owners")
+	}
+	for _, row := range image.Payload.Runtime {
+		if data, ok := want[row.Key]; !ok || string(row.Data) != data {
+			t.Fatal("command changed an unexpected runtime row")
+		}
 	}
 	select {
 	case <-changed:
