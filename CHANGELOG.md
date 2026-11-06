@@ -273,6 +273,12 @@ branch. Inbound NOTIFY verifies the primary source
 and configured TSIG, schedules bounded local refreshes, and fans authenticated
 hints to peers so every replica transfers independently.
 
+### Security
+
+- Upgrade `golang.org/x/net` to v0.62.0 in the product and isolated AD
+  protocol spike to address CVE-2026-78661, together with its required Go
+  dependency versions.
+
 ## [0.1.0] - 2026-10-18
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or
