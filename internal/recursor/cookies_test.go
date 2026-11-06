@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -20,14 +21,25 @@ import (
 // All diagnostics describe counts/booleans, never cookie bytes or messages.
 func authoritySocket(t *testing.T, handler func(*dns.Msg, *dns.Msg, bool)) (netip.AddrPort, *atomic.Int64, *atomic.Int64) {
 	t.Helper()
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal("authority UDP fixture bind failed")
-	}
-	ln, err := net.Listen("tcp", pc.LocalAddr().String())
-	if err != nil {
+	var pc net.PacketConn
+	var ln net.Listener
+	// A UDP ephemeral reservation does not reserve the TCP port. Acquire the
+	// complete pair before starting either server or sending a query. Only a
+	// cross-protocol address collision permits another bounded setup attempt.
+	for attempt := 0; attempt < 16; attempt++ {
+		var err error
+		pc, err = net.ListenPacket("udp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("authority UDP fixture bind failed: %v", err)
+		}
+		ln, err = net.Listen("tcp", pc.LocalAddr().String())
+		if err == nil {
+			break
+		}
 		_ = pc.Close()
-		t.Fatal("authority TCP fixture bind failed")
+		if !errors.Is(err, syscall.EADDRINUSE) || attempt == 15 {
+			t.Fatalf("authority TCP fixture bind failed after %d setup attempts: %v", attempt+1, err)
+		}
 	}
 	udp, tcp, wireErrors := &atomic.Int64{}, &atomic.Int64{}, &atomic.Int64{}
 	h := dns.HandlerFunc(func(w dns.ResponseWriter, q *dns.Msg) {

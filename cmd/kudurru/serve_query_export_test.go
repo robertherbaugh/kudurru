@@ -45,7 +45,7 @@ func TestRunServeQueryExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := &contractClient{t: t, base: "http://" + cfg.Listeners.API.Address + "/api/v1", http: &http.Client{Jar: jar, Timeout: 10 * time.Second}}
-	awaitQueryExportHTTPPublication(t, client)
+	awaitQueryExportHTTPPublication(t, client, cfg.Listeners.Ops.Address)
 	var login api.SessionInfo
 	client.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, &login)
 	client.csrf = login.CSRF
@@ -67,9 +67,10 @@ func TestRunServeQueryExport(t *testing.T) {
 }
 
 // The settled source is not yet an acknowledgment that the complete HTTP
-// publication has been built. Observe only the public read endpoint before
-// submitting login once; no refused or ambiguous mutation is retried.
-func awaitQueryExportHTTPPublication(t *testing.T, client *contractClient) {
+// publication has been built. Observe both public reads and protected serving
+// readiness before submitting login once. These observations are not a writer
+// reservation; the original login still passes every independent final gate.
+func awaitQueryExportHTTPPublication(t *testing.T, client *contractClient, opsAddress string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
@@ -92,11 +93,34 @@ func awaitQueryExportHTTPPublication(t *testing.T, client *contractClient) {
 			if json.Unmarshal(body, &status) != nil || !status.LocalLogin || status.Session == nil {
 				t.Fatal("query export publication omitted local login capability")
 			}
-			return
-		}
-		var failure struct{ Error api.ErrorBody }
-		if response.StatusCode != http.StatusServiceUnavailable || json.Unmarshal(body, &failure) != nil || failure.Error.Key != "generation_pending" {
-			t.Fatalf("query export publication observation: unexpected status=%d", response.StatusCode)
+			// Auth status is a read capability and can be available while the
+			// complete publication is still being prepared for commands.
+			healthRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+opsAddress+"/healthz", nil)
+			if err != nil {
+				t.Fatal("query export readiness request construction failed")
+			}
+			healthResponse, err := client.http.Do(healthRequest)
+			if err != nil {
+				t.Fatal("query export readiness observation failed")
+			}
+			healthBody, readErr := io.ReadAll(io.LimitReader(healthResponse.Body, (64<<10)+1))
+			closeErr := healthResponse.Body.Close()
+			var health struct {
+				Components map[string]struct {
+					Ready bool `json:"ready"`
+				} `json:"components"`
+			}
+			if readErr != nil || closeErr != nil || len(healthBody) > 64<<10 || json.Unmarshal(healthBody, &health) != nil || (healthResponse.StatusCode != http.StatusOK && healthResponse.StatusCode != http.StatusServiceUnavailable) {
+				t.Fatal("query export readiness response invalid")
+			}
+			if serving, registered := health.Components["serving"]; registered && serving.Ready {
+				return
+			}
+		} else {
+			var failure struct{ Error api.ErrorBody }
+			if response.StatusCode != http.StatusServiceUnavailable || json.Unmarshal(body, &failure) != nil || failure.Error.Key != "generation_pending" {
+				t.Fatalf("query export publication observation: unexpected status=%d", response.StatusCode)
+			}
 		}
 		select {
 		case <-ctx.Done():
