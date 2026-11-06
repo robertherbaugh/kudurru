@@ -51,6 +51,12 @@ make generate     # controller-gen: deepcopy, CRDs, RBAC
 make sast         # Semgrep (Docker); make vulncheck, make trivy-fs, make trivy-images
 ```
 
+`make test` discovers the compiled command package's tests, examples and fuzz
+targets and runs them in disjoint batches of at most 100 top-level names. Every
+subtest and fuzz seed remains selected, with race detection and the same
+30-minute process timeout. Other packages keep their ordinary race invocation;
+a failed batch fails the suite without replaying it or omitting later batches.
+
 The security scans (`.github/workflows/security.yml`, and publish.yml's scan of a release candidate's pushed images, `make trivy-published`) fail on a finding. Fix it, or, for a false positive, add a `// nosemgrep: <rule> -- <reason>` comment above the line or an entry with its reason to `.trivyignore.yaml`.
 
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.

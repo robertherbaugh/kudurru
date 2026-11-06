@@ -103,7 +103,9 @@ jobs:
       - name: Test
         env:
           SHARD: ${{ matrix.shard }}
-        run: make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
+        run: |
+          python3 -m unittest discover -s hack -p test_go_test.py
+          make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
       # Only what this run used: go marks a cache entry used by touching it
       # (when it is over an hour old), so the cache does not grow forever.
       - name: Drop cache entries this run did not use (main)

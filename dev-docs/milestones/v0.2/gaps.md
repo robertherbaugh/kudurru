@@ -2852,3 +2852,30 @@ Exact freezes, failed and successful logs, raw numeric completion and corrected
 source backups remain in `.context/tierb-mount-qualification/`. Hooks/event
 production, remote record ownership, Delete lifecycle, Kubernetes atomic source
 admission and remaining restart/final release qualification are still open.
+
+### Local corrections after hosted CI 41967856451
+
+The query-export fixture now observes protected-serving health within its
+original ten-second setup budget, alongside the existing public auth-status
+read, before its one login. This supplies an omitted setup precondition; it
+does not reserve future writer authority or identify the earlier exact refusal
+branch. Its original mounted acceptance passes under race (one test, no skips).
+
+The cookie authority fixture acquires both ephemeral UDP/TCP sockets before
+starting servers. Only `EADDRINUSE` permits another setup attempt, at most 16;
+other errors and exhaustion fail with the actual bind error. No DNS request is
+retried by this setup. Cookie and held-trust-change races pass with **28 entries**,
+no failures/skips. The hosted bind failure omitted errno, so its cause remains
+unproved. Installed cmd/webhook/recursor lint reports zero issues.
+
+The command package had previously passed in 1,688.604 seconds, then exhausted
+its 1,800-second aggregate budget. `make test` now discovers the actual compiled
+Test/Example/Fuzz inventory and selects every top-level name in exactly one
+batch of at most 100. Each includes all descendants/seeds, race instrumentation,
+count 1 and the unchanged 30-minute deadline. A failure is retained and later
+batches still run. Four Python coverage/failure-propagation checks pass. Actual
+compiled discovery finds **467 names**, partitioned 94/94/93/93/93 with no
+duplicates/omissions; this is discovery evidence, not a full suite pass.
+
+Earlier hosted failures and local diagnostic failures remain preserved. Fresh
+hosted full CI/security evidence is still required on the pushed correction.
