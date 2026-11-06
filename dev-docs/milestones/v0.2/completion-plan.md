@@ -112,7 +112,7 @@ runners. Unit tests cannot substitute for those results.
 | F26d | Querylog enabled/sink hot reload | DNS and resolver | Integrated 08ee759/9a62eb4; captured sink/drain, mounted reload and disabled-restart history races pass |
 | F26e | Auth settings hot reload | IAM and access | Implemented D290 on complete SQLite: five controls, exact host locks and original-view cookies; mounted TLS/router/restart/current-command races pass. Legacy/Kubernetes and host inputs remain restart-bound |
 | F27 | RFC 8198 aggressive NSEC/NSEC3 cached synthesis | DNS and resolver | Implemented D296: bounded complete-proof reuse with original expiry and cumulative hash reserve; full affected races, actual BIND authority and delayed outer-cache acceptance pass. Final merged/release gates remain |
-| F28 | RFC 5011 automatic trust-anchor updates | DNS and resolver | Active D297: pure bounded state/evidence/codec integrated with 62 race entries and lint zero; durable owner, scheduler/resolver mount, retirement and follower/edge qualification remain |
+| F28 | RFC 5011 automatic trust-anchor updates | DNS and resolver | Active D297: pure state, durable schema/owner, structural resolver projection and bounded local retirement primitive integrated and scoped qualified; updater/resolver, command/install/final-output mounts, durable follower denial and edge qualification remain |
 | F29a | Expiring negative trust anchors for forwarded validation | DNS and resolver | Implemented; final gates open |
 | F29b | Negative trust anchors for recursive groups | DNS and resolver | Integrated ddc5f2d; native/socket, captured-publication and actual Kubernetes schema races pass |
 | F30 | DNSSEC validation of forwarded answers | DNS and resolver | Implemented; final gates open |

@@ -335,6 +335,17 @@ policy, seed and both envelope and pure-state versions, including checkpoint-onl
 changes. This structural input can also describe an uncommitted proposal; it
 does not authenticate an image, certify durable acceptance or permit serving.
 
+The unmounted `retirement` package adds bounded local read/write exclusion and
+a monotone owner cursor. Original contexts and deadlines bound admission;
+queued writers exclude new readers. Prepared confirmed effects retire the
+previous owner before release, even if cancellation follows the durable effect.
+An unresolved or ambiguous effect closes managed admission. Scope exit and
+cursor changes share one atomic state, so escaped operations cannot change a
+successor. `ReadScope.Check` is only an instantaneous check: output must finish
+or join within the synchronous read callback to retain exclusion. This primitive
+authenticates neither durable state nor the response it protects. Command,
+replica install, conflict resolution and final output callers are still unmounted.
+
 Planned managed mode also refuses an ordinary switch back to static/default
 anchors after managed history exists: a shipped seed could otherwise restore a
 permanently revoked key. Static-only installations retain their existing

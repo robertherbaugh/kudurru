@@ -2797,3 +2797,26 @@ A later root-only cmd/webhook lint attempt stopped on disk headroom before any
 diagnostic; it supplies no lint result. Its raw termination and unchanged source
 freeze are preserved separately. Root startup/mount checks remain pending; the
 completed resolverstate qualification above is unchanged.
+
+### F28 bounded retirement primitive prerequisite
+
+Source `4842a28` integrates as `49fc20c`: six standard-library-only files add
+bounded local exclusion and a monotone owner/floor cursor. One atomic state
+joins scope exit, original plan completion and prepared binding swaps. Confirmed
+effects can resolve after cancellation while the same scope remains held;
+ambiguous or unresolved effects close admission. An escaped scope cannot mutate
+a successor. A successful borrowed read check does not extend the callback's
+counted hold or authorize detached output.
+
+Final frozen ordinary and race runs each report **80 passing test entries**
+(31 top-level cases and subtests), no failures/skips; installed scoped lint
+reports zero issues. The original lint failure with nine style findings remains
+separate. Equivalent style corrections required no production behavior change.
+Root independently verified all six committed blobs and 23 unchanged root
+dependencies before integration. The four agent-local generated artifacts were
+preserved and excluded. No duplicate tests were run solely for the cherry-pick.
+
+This package is not mounted and supplies no durable, source or response
+authority. Actual elected updater, accepted-image resolver, mandatory command,
+InstallReplica/ResolveConflict and final-output exclusion, durable local denial,
+cache/restore coverage and installed edge bypass remain open.
