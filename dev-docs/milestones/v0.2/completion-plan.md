@@ -93,7 +93,7 @@ runners. Unit tests cannot substitute for those results.
 | F20a | AdGuard black-box conformance implementation | DNS and resolver | Implemented; final gates open |
 | F20b | Real AdGuard/container qualification and CI evidence | DNS and resolver | Integrated; final gates open |
 | F20c | Move benchgate to `hack/` | DNS and resolver | Integrated; final gates open |
-| F20d | Lazy-DFA regex engine | DNS and resolver | Active D293: bounded executor in isolated worktree; controlled same-VM comparison confirms material regex regression, narrow dispatch correction and final performance qualification remain |
+| F20d | Lazy-DFA regex engine | DNS and resolver | Active D293: grouped dispatch, bounded ASCII equivalence and public BeginText proof in isolated worktree; 19 focused tests pass, dense regex still 2.6–2.8× preimage in one diagnostic. Performance and final qualification remain open |
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Implemented; bounded canonical translation, refusal/ownership/restart and real mounted DNS routes pass |
 | F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated 157-operation client and API/reference contracts updated |
 | F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |

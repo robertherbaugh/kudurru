@@ -2879,3 +2879,65 @@ duplicates/omissions; this is discovery evidence, not a full suite pass.
 
 Earlier hosted failures and local diagnostic failures remain preserved. Fresh
 hosted full CI/security evidence is still required on the pushed correction.
+
+### Matcher grouped dispatch and BeginText diagnostic
+
+The isolated F20 worktree now groups indexed and unindexed rules while retaining
+original match/Visit order, charges an optional bounded ASCII-equivalence proof,
+and terminates an empty successor only when every member's public `StartCond`
+requires BeginText. The latter preserves collected tags and final cancellation.
+Corrected focused ordinary qualification passes **19 top-level tests / 118 test
+entries**, without failures/skips. Its first failed fixture incorrectly treated
+an empty rune language as the public no-match sentinel; the corrected fixture
+distinguishes both public compiler shapes. Production proof behavior did not
+change in that correction, and the failure remains separately preserved.
+
+Exactly one further original 12-leaf diagnostic completed with child/wrapper
+exit 0 and all 58 metrics on frozen source `faf33add`. Sparse regex100 miss is
+1,188 ns/op; mixed-policy Evaluate miss is 1,573 ns/op. Dense regex500/1000 miss
+is still **14,084 / 27,761 ns/op**, or **2.812× / 2.595×** the retained same-VM
+preimage. Seven observations exceed the original relative threshold and floor,
+including unchanged-compile allocations of 28 versus 22. The measured suffix
+p99 and Evaluate allocation ceilings were not exceeded; unselected gates remain
+unqualified. Shared-VM single samples do not establish fixed-class performance.
+
+No source is integrated from this worktree yet. Current dense-path attribution,
+the independently discovered regex-plus-CIDR parser gap, comparator/fuzz/races,
+full admission/peak memory, five-process performance and final CI gates remain
+open. Earlier failures, original workloads/budgets and the StageA wrapper failure
+with unknown numeric Go exit are retained unchanged.
+
+### x/net security update and schema-owner fixture corrections
+
+Hosted security run `42313409266` on `cf02b0a` reports CVE-2026-78661 in
+`golang.org/x/net` v0.60.0, in both module lockfiles and the four product images.
+`c9ab39f` updates the main and isolated AD spike modules to the reported fixed
+v0.62.0 plus required x/crypto, x/sys, x/term, x/text and x/sync versions.
+Module tidying also removes the unused koanf file-provider dependency and
+classifies the already-used pflag dependency as direct.
+
+The first affected-package race command retains its **exit 1**: parser, DHCP,
+DNS server, auth users and SQLite querylog packages pass; catalogue reports
+87 passing entries and three failed entries in one commit/cancel test. Its
+command/error/pin assertions pass, but total runtime-row expectations still
+assume no schema-7 sentinel. The run records 1,020 passing entries and five
+explicitly skipped opt-in measurements overall, not a green full command.
+
+`f86b161` changes only catalogue, secondary and license test fixtures: capture
+the original runtime rows, then require exact preservation plus the intended
+test row for a committed mutation, or exact preservation after cancellation or
+no-op. The two analogous secondary/license assertions were found by source
+review, not reported as reproduced failures. All original pin/error/timing
+assertions remain. Corrected focused races pass **7 entries**, no failures/skips;
+installed three-package lint reports **0 issues**. Passing unchanged packages
+were not repeated.
+
+The AD spike race suite passes **37 entries**, with its explicit MIT
+interoperability case skipped because the local KDC tools are unavailable.
+That is not Windows or MIT acceptance. The installed Trivy 0.76.0 filesystem
+scan exits 0 with **zero vulnerability, secret or misconfiguration findings**
+under the existing policy. Only generated/dependency/build output, Git metadata
+and private workspace artifacts are excluded; no product source is exempted.
+Raw receipts, the original failed fixture and scan output are retained under
+`.context/security-xnet-20261106/`. Fresh hosted image and full CI checks on the
+pushed correction remain required.
