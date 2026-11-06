@@ -2820,3 +2820,35 @@ This package is not mounted and supplies no durable, source or response
 authority. Actual elected updater, accepted-image resolver, mandatory command,
 InstallReplica/ResolveConflict and final-output exclusion, durable local denial,
 cache/restore coverage and installed edge bypass remain open.
+
+### F60c SQLite Tier-B clients/actions mount
+
+The registered webhook constructor and SQLite factory now support finite client
+inventory and declared actions. Public negotiation refuses hooks/records and
+does not acquire an unused HMAC key. The private delivery prerequisite remains
+separate. Original `LastSeen` determines expiry; complete polling cannot renew
+it or turn `FixedIP` into an observation. Host schema/RBAC and original caller,
+credential, writer and final source checks surround one action attempt.
+
+Final mounted TLS/router race reports **7 passing entries**, no failures/skips;
+full provider race reports **71 passing entries**, no failures/skips. Installed
+lint across cmd, webhook and recursor reports zero issues; this also qualifies
+the earlier dead migration-helper removal `f873643`. Root's original schema
+directory/inline startup/restart cases passed their earlier ordinary run.
+
+Preserved earlier failures are distinct: two new inventory assertions confused
+current serving admission with retained durable timestamps; the narrow diagnostic
+observed absent serving publication after credential rotation. Corrected focused
+ordinary tests passed. Early action races hit pre-admission publication refusals.
+An intermediate repeated provider preflight continuously charged budget writes
+and failed setup; separating that preflight restored three action cases. The
+viewer case then reported `generation_pending` with zero peer posts. The final
+new fixture excludes its inherited unrelated sample primary zone before startup,
+as existing current-command fixtures do, and retains the real SQLite writer,
+publisher, TLS peer and router. All action/observation assertions and single
+mutation attempts remain. No production admission guard or deadline changed.
+
+Exact freezes, failed and successful logs, raw numeric completion and corrected
+source backups remain in `.context/tierb-mount-qualification/`. Hooks/event
+production, remote record ownership, Delete lifecycle, Kubernetes atomic source
+admission and remaining restart/final release qualification are still open.

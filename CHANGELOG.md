@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- SQLite integrations: Tier-B webhook client inventory and declared actions,
+  with original observation expiry, named TLS credentials and single-attempt
+  action outcomes. Hooks and remote record publication remain unmounted.
+
 - Recursive DNS: bounded RFC 8198 NSEC/NSEC3 proof reuse answers covered
   names and wildcard questions without another authority query. Original proof
   expiry survives aliases and outer-cache storage; uncertain proofs fall back

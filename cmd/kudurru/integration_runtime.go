@@ -15,6 +15,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/ee/integration/plan"
 	"github.com/robertherbaugh/kudurru/ee/integration/unifi"
+	"github.com/robertherbaugh/kudurru/ee/integration/webhook"
 	"github.com/robertherbaugh/kudurru/internal/credentials"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
@@ -72,6 +73,8 @@ func newIntegrationRuntime(s *servingRuntime, schema *servingbuild.Schema, pin c
 			return cloudflare.New(), nil
 		case "unifi":
 			return unifi.NewWithOptions(unifi.Options{Allocations: r.allocate}), nil
+		case "webhook":
+			return webhook.New(), nil
 		default:
 			return nil, ih.ErrUnsupported
 		}

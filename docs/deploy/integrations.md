@@ -1,6 +1,6 @@
 # Background integrations on SQLite
 
-A licensed SQLite `serve` runtime runs persisted Cloudflare and UniFi
+A licensed SQLite `serve` runtime runs persisted Cloudflare, UniFi and webhook
 `Integration` objects in the background. Each instance has its own elected
 lease and serialized lifecycle. DNS queries use complete published snapshots;
 provider acquisition never runs on the query path. The host is joined during
@@ -12,9 +12,9 @@ This mount does not close every integration capability. Kubernetes execution is
 currently disabled: its per-object CAS cannot atomically admit source objects,
 allocations and global inventory. Native Kubernetes Secrets are not resolved by
 the SQLite host. `Retain` is supported; instances configured with `Delete` are
-refused before provider work pending cleanup/finalizer support. Tier-B webhook
-providers, optional UniFi mutations and integration management API/CLI/UI remain
-separate work. The external-dns webhook listener is a separate inbound feature.
+refused before provider work pending cleanup/finalizer support. Tier-B hooks and
+record publication, optional UniFi mutations and remaining management UI work
+remain separate. The external-dns webhook listener is a separate inbound feature.
 
 ## Credentials and permissions
 
@@ -43,6 +43,39 @@ SQLite writer at durable effects and final commit. Losing authority refuses the
 operation; it does not grant permission to replay a refused mutation. External
 provider effects cannot be atomic with the local receipt transaction: uncertain
 outcomes remain pending for ownership-aware recovery.
+
+## Tier-B webhook clients and actions
+
+Configure an HTTPS provider with explicit named credentials and trust:
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: Integration
+metadata: {name: inventory, namespace: default}
+spec:
+  type: webhook
+  credentials:
+    bearerToken: {file: /run/secrets/webhook-token}
+    ca: {file: /run/secrets/webhook-ca.pem}
+  webhook:
+    endpoint: https://inventory.example.com/provider
+    timeout: 10s
+  resync: 1m
+  deletionPolicy: Retain
+```
+
+Grant those exact files in `credentials.allowedFiles`. Mutual TLS uses named
+`clientCertificate` and `clientKey` references. The peer must speak the versioned
+Tier-B protocol and advertise supported clients/actions capabilities; peers
+requiring hooks or records are refused. Actions use the reviewed integration
+API/CLI and their advertised parameter schemas. An uncertain action is reported
+without automatically replaying it.
+
+Complete client/network polls publish finite inventory. A genuine `LastSeen`
+expires after three minutes; another poll cannot renew it. `FixedIP` does not
+establish an observed address. This adapter creates no desired DNS records or
+ClientGroup membership. Actions-only peers do not poll inventory. Client polling
+is capped at one minute, or the configured shorter resync interval.
 
 ## UniFi inventory
 

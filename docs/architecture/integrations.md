@@ -436,9 +436,10 @@ all-driver/restart release gates remain separate work.
 
 ## Tier-B runtime client status
 
-The production factory currently supports Cloudflare and UniFi. The private
-`ee/integration/webhook` transport and negotiation are prerequisites for the
-Tier-B client; the package is not yet registered as a runnable provider.
+The SQLite production factory supports Cloudflare, UniFi and Tier-B webhook
+clients/actions. The registered `ee/integration/webhook` constructor advertises
+only client inventory and actions. Peers requiring hooks or record publication
+refuse negotiation; the public constructor does not acquire an unused HMAC key.
 
 It captures named bearer or mTLS material and request bytes, then routes each
 bounded attempt through the original host request scope. Verified TLS, fresh
@@ -453,20 +454,22 @@ Negotiation retains the
 exact versioned media, capabilities, manifest, filters and action schemas as one detached
 identity. It rejects malformed or ambiguous JSON, mismatched capabilities and
 credential echoes; a later peer declaration cannot silently replace the retained
-one. Action parameter semantics remain subject to host validation. A private lifecycle also retains named credentials, freezes the first accepted
+one. Action parameter semantics remain subject to host validation. The lifecycle
+retains named credentials, freezes the first accepted
 advertisement, and fences the instance after an observed change. It sends declared
-actions once and signs host-supplied stable event deliveries with a separate HMAC
-key; the durable host queue owns event retries.
+actions once. A private delivery prerequisite signs host-supplied stable events
+with a separate HMAC key; it is excluded from the registered constructor.
 
-The private inventory adapter requires complete bounded clients and networks
+The inventory adapter requires complete bounded clients and networks
 lists under one original operation. Genuine `LastSeen` determines a fixed
 three-minute expiry; polling cannot renew an expired observation. Null rows,
 duplicate identities, partial/paginated results, credential echoes and mismatched
 network references refuse. `FixedIP` stays desired metadata and never becomes
 an observed address. The adapter emits no desired DNS or ClientGroup writes,
-and two remote lists do not establish an atomic remote snapshot. Production
-registration and mounted qualification remain pending; record publication remains
-unsupported. The host now accepts an optional negotiated observation schedule:
+and two remote lists do not establish an atomic remote snapshot. Mounted
+SQLite/TLS/router tests cover original observation expiry, credential rotation,
+action schema/scope refusals and uncertain single-attempt outcomes. Record
+publication remains unsupported. The host accepts a negotiated observation schedule:
 actions-only peers disable inventory sync, while client polling has a one-minute
 maximum interval. A shorter `resync` wins; the generic ten-minute stored default
 cannot exceed the provider's cap. This never extends observation expiry.

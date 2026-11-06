@@ -19,22 +19,23 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/credentials"
 )
 
-// provider is deliberately unregistered while record ownership and inventory
-// adapters are incomplete. The host owns pacing, schema/RBAC admission and
-// durable delivery retries; this lifecycle never starts a scheduler.
+// provider retains one negotiated incarnation. The host owns pacing,
+// schema/RBAC admission and durable delivery retries; this lifecycle never
+// starts a scheduler. Public construction excludes unmounted event sources.
 type provider struct {
-	mu            sync.RWMutex
-	checkSlot     chan struct{}
-	life          context.Context
-	cancel        context.CancelFunc
-	provisioning  bool
-	transport     *transport
-	owner         host.InstanceID
-	advertisement *advertisement
-	changed       bool
-	hmacKey       []byte
-	secrets       []string
-	now           func() time.Time
+	mu              sync.RWMutex
+	checkSlot       chan struct{}
+	life            context.Context
+	cancel          context.CancelFunc
+	provisioning    bool
+	transport       *transport
+	owner           host.InstanceID
+	advertisement   *advertisement
+	changed         bool
+	hmacKey         []byte
+	secrets         []string
+	now             func() time.Time
+	deliveryAllowed bool // immutable; private delivery prerequisite only
 }
 
 var (
@@ -46,15 +47,10 @@ var (
 
 func newProvider() *provider {
 	life, cancel := context.WithCancel(context.Background())
-	return &provider{life: life, cancel: cancel, now: time.Now, checkSlot: make(chan struct{}, 1)}
+	return &provider{life: life, cancel: cancel, now: time.Now, checkSlot: make(chan struct{}, 1), deliveryAllowed: true}
 }
 
-func (*provider) Manifest() integration.Manifest {
-	return integration.Manifest{Type: "webhook", DisplayName: "Webhook", Version: "1", IOClass: "local_push",
-		Capabilities: []integration.Capability{integration.CapHook, integration.CapActions, integration.CapClientSource},
-		ConfigSchema: json.RawMessage(`{"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048},"timeout":{"type":"string"},"domains":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":253}},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]}}}`),
-	}
-}
+func (p *provider) Manifest() integration.Manifest { return manifest(p.deliveryAllowed) }
 
 // Provision resolves only delegated names. A failed named resolution cannot
 // be interpreted as absence except for the resolver's explicit ErrDenied.
@@ -91,7 +87,11 @@ func (p *provider) Provision(ctx context.Context, h integration.Host, raw json.R
 	}
 	values := make(map[string][]byte)
 	var captured []string
-	for _, name := range []string{"bearerToken", "ca", "clientCertificate", "clientKey", "hmacKey"} {
+	names := []string{"bearerToken", "ca", "clientCertificate", "clientKey"}
+	if p.deliveryAllowed {
+		names = append(names, "hmacKey")
+	}
+	for _, name := range names {
 		value, err := secrets.Resolve(ctx, name)
 		if err != nil {
 			if errors.Is(err, credentials.ErrDenied) {
@@ -185,7 +185,7 @@ func (p *provider) Check(ctx context.Context) (integration.Status, error) {
 		return integration.Status{}, host.ErrFenced
 	}
 	// The initial tranche cannot claim complete execution of these capabilities.
-	if a.has("records") || a.has("hooks") && len(p.hmacKey) == 0 {
+	if a.has("records") || a.has("hooks") && (!p.deliveryAllowed || len(p.hmacKey) == 0) {
 		return integration.Status{}, host.ErrUnsupported
 	}
 	raw, err := json.Marshal(a.declaration)
