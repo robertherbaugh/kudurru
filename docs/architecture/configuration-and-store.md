@@ -1202,6 +1202,9 @@ not. Current DNS commands compare the exact retained durable rows inside the
 same transaction, including no-op and replay paths, so coordinator lag cannot
 supply current authority.
 
-These storage and transaction primitives are integrated. Production coordinator
-and transport activation are still in progress; they do not yet advertise a
-stored-key management API or hot Kubernetes rotation.
+SQLite startup mounts the coordinator and captured transport mode with the
+same owners used by secondary and RPZ acquisition. Listeners bind only after
+their capture hooks are configured. Without an initial complete prepared source,
+the file baseline supplies no complete serving or acquisition authority. Stored
+keys can be loaded from existing encrypted records, including across restart;
+there is not yet a stored-key management API or hot Kubernetes rotation.

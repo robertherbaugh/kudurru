@@ -76,7 +76,7 @@ func TestRunServeSQLiteStoredTSIGNativeUpdateTransferNotify(t *testing.T) {
 	// none reserves authority for this fixture's later single data mutation.
 	tsigMountedAwaitNativeReady(t, cfg, keys)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	before := tsigMountedNativeHead(t, ctx, cfg)
+	before := tsigMountedNativeHead(ctx, t, cfg)
 	cancel()
 	if before.Spec.Lifecycle != zk.LifecycleActive || before.Spec.NotifySequence != 0 || before.Spec.NotifySerial != 0 || notified.acknowledged.Load() != 0 {
 		t.Fatal("initialized native head did not retain its actual zero-intent baseline")
@@ -93,7 +93,7 @@ func TestRunServeSQLiteStoredTSIGNativeUpdateTransferNotify(t *testing.T) {
 	if err != nil || answer == nil || answer.Rcode != dns.RcodeSuccess || answer.IsTsig() == nil {
 		// Diagnostics borrow only the original UPDATE's remaining budget. They
 		// neither retry it nor manufacture current writer/publication authority.
-		tsigMountedNativeUpdateDiagnostics(t, ctx, cfg, query, answer, err, before)
+		tsigMountedNativeUpdateDiagnostics(ctx, t, cfg, query, answer, err, before)
 		cancel()
 		t.Fatal("one original stored-key UPDATE failed final admission or response verification")
 	}
@@ -309,7 +309,7 @@ func tsigMountedNotifyTarget(t *testing.T, keys *dnsserver.StaticKeyring) (strin
 
 // Each observation reads only the actual committed zone head, with the original
 // observation context; no extra authoritative writer or private key read.
-func tsigMountedNativeHead(t *testing.T, ctx context.Context, cfg *config.Config) zk.ZoneState {
+func tsigMountedNativeHead(ctx context.Context, t *testing.T, cfg *config.Config) zk.ZoneState {
 	t.Helper()
 	dsn := (&url.URL{Scheme: "file", Path: filepath.Join(cfg.Node.DataDir, sqlite.FileName), RawQuery: "mode=ro"}).String()
 	db, err := sql.Open("sqlite", dsn)
@@ -332,7 +332,7 @@ func tsigMountedAwaitNativeNotify(t *testing.T, cfg *config.Config, peer *tsigNa
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	for {
-		head := tsigMountedNativeHead(t, ctx, cfg)
+		head := tsigMountedNativeHead(ctx, t, cfg)
 		// The one data commit arms intent; one later metadata CAS clears it.
 		// Match the actual signed peer serial, original zone/policy, and changed
 		// data so the initial zero intent cannot masquerade as an acknowledgment.
@@ -393,7 +393,7 @@ func tsigNativeErrorClass(err error) string {
 	}
 }
 
-func tsigMountedNativeUpdateDiagnostics(t *testing.T, ctx context.Context, cfg *config.Config, query, answer *dns.Msg, exchangeErr error, before zk.ZoneState) {
+func tsigMountedNativeUpdateDiagnostics(ctx context.Context, t *testing.T, cfg *config.Config, query, answer *dns.Msg, exchangeErr error, before zk.ZoneState) {
 	t.Helper()
 	rcode, tsigError := -1, -1
 	signed, verified, idMatches := false, false, false
@@ -417,7 +417,7 @@ func tsigMountedNativeUpdateDiagnostics(t *testing.T, ctx context.Context, cfg *
 		}
 	}
 	t.Logf("native UPDATE original exchange: error_class=%s operation=%s context_class=%s response=%t rcode=%d tsig=%t tsig_error=%d tsig_verified=%t id_matches=%t baseline_sequence=%d baseline_serial=%d baseline_pending=%d", tsigNativeErrorClass(exchangeErr), operation, tsigNativeErrorClass(ctx.Err()), answer != nil, rcode, signed, tsigError, verified, idMatches, before.Spec.CommitSequence, before.Spec.Serial, before.Spec.NotifySequence)
-	tsigMountedNativeFailureSource(t, ctx, cfg, before)
+	tsigMountedNativeFailureSource(ctx, t, cfg, before)
 	// This later public health observation is not the failed request's lease.
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+cfg.Listeners.Ops.Address+"/healthz", nil)
 	if err != nil {
@@ -442,7 +442,7 @@ func tsigMountedNativeUpdateDiagnostics(t *testing.T, ctx context.Context, cfg *
 
 // A read-only snapshot observes persisted state after refusal; it supplies no
 // writer token, publication lease or original request admission capability.
-func tsigMountedNativeFailureSource(t *testing.T, ctx context.Context, cfg *config.Config, before zk.ZoneState) {
+func tsigMountedNativeFailureSource(ctx context.Context, t *testing.T, cfg *config.Config, before zk.ZoneState) {
 	t.Helper()
 	dsn := (&url.URL{Scheme: "file", Path: filepath.Join(cfg.Node.DataDir, sqlite.FileName), RawQuery: "mode=ro"}).String()
 	db, err := sql.Open("sqlite", dsn)

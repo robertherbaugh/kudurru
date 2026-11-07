@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- SQLite DNS: load encrypted stored TSIG keys into complete serving snapshots
+  and secondary/RPZ acquisition, retaining each request's original key through
+  its response. Stored-key administration and Kubernetes rotation remain pending.
+
 - SQLite integrations: Tier-B webhook client inventory and declared actions,
   with original observation expiry, named TLS credentials and single-attempt
   action outcomes. Hooks and remote record publication remain unmounted.

@@ -47,7 +47,7 @@ func TestRunServeSQLiteStoredTSIGBackgroundTLS(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, executable, "-test.run=^TestRunServeSQLiteStoredTSIGBackgroundTLS$", "-test.count=1", "-test.timeout=80s")
+	command := exec.CommandContext(ctx, executable, "-test.run=^TestRunServeSQLiteStoredTSIGBackgroundTLS$", "-test.count=1", "-test.timeout=80s") //nolint:gosec // G204: original test executable from os.Executable, with fixed arguments.
 	command.Env = append(os.Environ(), childEnv+"=1", "SSL_CERT_FILE="+files.CertFile, "KUDURRU_TEST_TSIG_TLS_KEY_FILE="+files.KeyFile)
 	// Keep child diagnostics private even if startup or signature checking fails.
 	outputDir := os.Getenv("KUDURRU_TEST_TSIG_ARTIFACT_DIR")

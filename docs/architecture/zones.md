@@ -677,10 +677,13 @@ write, signs with the original request MAC, and releases on errors. A later
 message on the same connection captures independently. Encrypted transports
 retain the same original context and signature deadline through emission and
 still cannot issue native mutation proofs. Fixed-key mode remains supported.
-This transport capability has actual same-connection acceptance across all six
-protocols. The optional stored-key coordinator and background acquisition
-contracts are implemented; production serve activation remains separate work.
-Stored keys are not yet mounted by these prerequisites.
+SQLite startup now mounts this captured mode across all six protocols before
+binding listeners. The serving coordinator, secondary manager and RPZ manager
+share the same original encryption and immutable keyring owners. The initial
+file baseline cannot authorize complete serving or acquisition until a complete
+stored source has been prepared. An unavailable first source or uninitialized
+follower retains listeners but refuses complete serving. Kubernetes continues
+to use its fixed startup keys; stored-key management remains separate work.
 
 The coordinator prepares complete encrypted sources outside request handling and
 installs them only under the original encryption and keyring owners. A failed
@@ -697,7 +700,8 @@ per scheduled job. Credential replacement cancels the old job and waits for it
 to finish before reusing its slot. Stored credential epochs bind persisted data;
 file credentials preserve their existing fingerprint format. The original whole
 job deadline covers network work, persistence and acceptance; RPZ cannot obtain
-a fresh timeout after its transfer returns.
+a fresh timeout after its transfer returns. SQLite startup supplies these
+capture callbacks and constructs each receiver from that job's captured ring.
 
 Acquisition acceptance pins original encryption and keys, checks the durable
 source, writes the local cache, checks source and time again, then publishes only

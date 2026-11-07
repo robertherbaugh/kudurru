@@ -2956,3 +2956,39 @@ with **4 actual pass entries**, no failures/skips; installed API/persistence
 lint reports **0 issues**. Frozen source identities match. Original hosted
 failures and pre-edit fixtures remain separate from these corrected results in
 `.context/schema7-followon-fixtures-20261106/`.
+
+### F07a SQLite stored-key activation (D292)
+
+`f725fdf` integrates the five-file activation from signed-off `80050f5`.
+SQLite startup shares the original encryption/keyring owners between complete
+serving and secondary/RPZ acquisition. Listener capture hooks are configured
+before binding; an initial file baseline cannot substitute for an unavailable
+complete stored source. Kubernetes remains on fixed startup keys, and no
+stored-key management route is added by this tranche.
+
+The isolated ordinary lifecycle, native UPDATE/NOTIFY/AXFR, six-transport
+restart and TCP/TLS acquisition selections pass on that worktree's frozen
+dependencies. Parent qualification on the merged x/net v0.62.0 tree separately
+passes all **7 selected top-level tests / 9 actual pass entries**, no failures
+or skips, under race detection. Package time is 132.465 seconds; outer time is
+201.563 seconds. The TCP test retains its real expiry wait; TLS acquisition
+retains its joined same-executable child. All 2,275 frozen source/module/artifact
+identities match. The first command-package lint exits 1 with three private
+test-helper context-order findings and one G204 warning for executing the
+original test binary with fixed arguments. The correction reorders only those
+helper parameters/calls and adds that exact subprocess rationale; production,
+contexts, deadlines and assertions are unchanged. The failed lint receipt is
+preserved. The two affected ordinary tests pass after that correction, with no
+failures/skips (package 2.145 seconds); installed command-package lint then
+passes with **0 issues** (19.044 seconds). Reversing only the argument reorder
+and removing only the subprocess comment reproduces the earlier test bytes.
+All other frozen sources are unchanged; the unchanged race selections were
+not repeated.
+
+The earlier isolated lifecycle and native failures remain preserved; a later
+successful readiness observation does not identify an earlier rejecting fence.
+Actual held-current-source behavior, initialized-follower restart/promotion,
+management and Kubernetes activation still require their named acceptance.
+Private merged receipts are in `.context/tsig-activation-merged-20261107/`;
+isolated scope and commit identities are recorded in
+`.context/tsig-sqlite-activation-integration-handoff.md`.

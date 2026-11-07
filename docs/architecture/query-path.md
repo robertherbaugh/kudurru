@@ -59,10 +59,13 @@ unknown keys and invalid signatures are refused before pipeline entry. An
 expired held exchange returns authenticated NOTAUTH/BADTIME without answer data.
 
 This authentication does not issue native UPDATE/NOTIFY capabilities: encrypted
-mutation requests still receive signed REFUSED. Keyrings are fixed at listener
-installation; replacement-listener rotation is qualified, live TSIG key reload
-is a separate requirement. Opaque mutable lookup providers fail closed on these
-transports because they cannot pin an installed credential generation.
+mutation requests still receive signed REFUSED. SQLite listeners capture the
+original complete serving publication before verification and retain its
+immutable keys through response emission; later messages capture independently.
+Kubernetes and explicit fixed-key mode retain their startup keyrings. Opaque
+mutable lookup providers fail closed on these transports because they cannot
+pin an installed credential generation. Stored-key administration remains
+separate from this transport mount.
 
 Native listeners share host-only `listeners.limits` settings, applied separately
 to each connection or listener at startup:
