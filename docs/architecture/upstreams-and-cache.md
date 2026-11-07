@@ -362,6 +362,18 @@ notice. Cancellation joins the original socket/wait before return. The scheduler
 is not mounted by the writer episode; installed edge activation admission and
 the remaining managed acceptance gates still precede that mount.
 
+A separate private follower adapter captures actual installed managed history,
+canonical policy and the local denial attempt before its own numeric TCP
+acquisition. The first complete frame receives that operation's opaque local
+stamp. Only an authenticated self-revoke can reach the deny-only transaction;
+normal observations cannot bootstrap, advance or checkpoint history. The adapter
+has no API for leader observations or supplied raw bytes. It refuses a changed
+original authority before acquisition, but a known revoke arriving during
+promotion still reaches the driver's original-cut check: a refused/unknown
+denial closes local admission without relabeling canonical progress. Durable
+local denial survives follower reopen. This one-shot adapter is not an automatic
+follower poll loop or production activation.
+
 The unmounted `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit
 states with no fallback keys. Detached domain and owner identities bind history,

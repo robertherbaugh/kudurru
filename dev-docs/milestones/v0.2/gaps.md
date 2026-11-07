@@ -3568,3 +3568,34 @@ require actual follower capture before the original primary source image read.
 Original lint EXIT1/12 findings remains separate; genuine uncertain completion
 (M16), whole-route late I/O (M17), remaining C/D/E/F authority axes, parent
 generated/CLI composition and Kubernetes remain open. F07a is incomplete.
+
+### F28 original follower socket acquisition prerequisite
+
+The private root follower adapter now captures one actual installed managed
+owner, canonical policy and driver denial attempt before opening its own numeric
+TCP socket. It retains a separate original follower clock and stamps the first
+complete raw arrival through the actual opaque receipt API. It exposes no input
+for leader/forwarded bytes, granting update, bootstrap or phase2. Normal responses
+retain the existing invalid-denial result and cannot advance canonical state.
+
+Default-race qualification passes **37 entries / 18 top-level cases**, zero
+failures/skips, including the unchanged updater/operation/wire selections and
+eight new follower entries. The actual schema8 follower is captured before the
+original primary image read. Real signed normal/self-revoke socket responses
+leave canonical payload, owner/checkpoint and authority unchanged; local denial
+invalidates source admission and survives actual Close/Open. No follower writer
+is acquired. Primary/unbounded/canceled/promoted/closed originals refuse before
+new acquisition. Promotion during a real response first establishes an eligible
+successor source; the authenticated old-follower revoke then closes admission
+through the driver's original-cut refusal without changing that promoted image.
+Each operation refuses a second acquisition. Scoped installed lint passes with
+zero issues; all 3,948 frozen identities match. Evidence:
+`.context/f28-parent-follower-wire-20261107/`.
+
+The source-currency checks do not claim a complete managed resolver/output
+publication. This is an unmounted one-shot adapter, not a follower polling loop;
+normal-observation scheduling still needs an explicit authenticated disposition,
+not inference from the generic invalid-denial error. Original installed-edge
+activation admission, elected/follower mounts, full frontend/cache retirement,
+recovery and interoperability remain open. No production activation or full
+F28/repository/release qualification is claimed.
