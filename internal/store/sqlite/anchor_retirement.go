@@ -25,6 +25,7 @@ var ErrAnchorUnavailable = errors.New("store/sqlite: anchor lifecycle unavailabl
 // It supplies neither serving authority nor a public retirement registration.
 // Binding is not a reset: proposals cannot arm or replace an existing source.
 type AnchorSource struct {
+	mode    *anchorMode
 	store   *Store
 	cursor  atomic.Pointer[anchorCursor]
 	closed  atomic.Bool
@@ -128,7 +129,7 @@ func (s *Store) BindAnchorLifecycle(ctx context.Context) (*AnchorSource, error) 
 			return nil, err
 		}
 	}
-	source := &AnchorSource{store: s, changed: make(chan struct{}, 1)}
+	source := &AnchorSource{store: s, mode: newAnchorMode(current.mark != (retirement.Mark{})), changed: make(chan struct{}, 1)}
 	source.cursor.Store(current)
 	s.anchors.Store(source)
 	return source, nil

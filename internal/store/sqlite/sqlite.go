@@ -409,9 +409,8 @@ func (s *Store) Close() error {
 		// Close after dropping wmu: retirement always precedes the SQL lock.
 		if source := s.anchors.Load(); source != nil {
 			source.closed.Store(true)
-			if cursor := source.cursor.Load(); cursor != nil && cursor.gate != nil {
-				cursor.gate.Close()
-			}
+			source.mode.closeMemory()
+			source.flushAnchorClose()
 		}
 		s.bus.close()
 		if _, cerr := s.w.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); cerr != nil {

@@ -3200,10 +3200,11 @@ poll prerequisite; hosted CI on that new head remains pending.
 
 ### F20 five-process sampling remains incomplete
 
-Three of five original performance processes and three of five original RSS
+Four of five original performance processes and three of five original RSS
 processes have completed once each, with all original source/workload identities
-unchanged. Performance samples report 35, 37 and 40 provisional regressions;
-all 35 first-sample failures still trigger in sample3. Available absolute ceilings
+unchanged. Performance samples report 35, 37, 40 and 20 provisional regressions;
+all 35 first-sample failures still trigger in sample3. Sample4's fewer triggers
+do not erase any prior observation. Available absolute ceilings
 are satisfied in those individual samples, without aggregate qualification.
 RSS1/RSS2/RSS3 steady values are 92.73/92.45/92.25MiB under the original
 150MiB ceiling; peaks are separately 139.4/141.0/139.5MiB. All three 3M compile
@@ -3239,3 +3240,35 @@ selection passes the three config tests and all 13 entries under default race.
 The root mode/caller draft remains uncommitted pending complete composition.
 Common static-to-managed drain, builder/root seal, final transports, cache
 insertion exclusion, installed edge bypass and elected updater remain open.
+
+### F28 common mode and first-transition drain prerequisite
+
+The parent Store now composes bounded Static/Managed/Closed mode exclusion with
+actual primary commands, follower installs, local denial and complete publication.
+First managed acceptance drains counted static callbacks before SQL mutation.
+Total active plus waiting admission is bounded to 256 readers and 16 writers;
+FIFO anti-barging preserves queued writers. Original lifetimes use private wait
+plumbing, and cancellation never releases another active callback's hold.
+Unresolved entered callbacks and uncertain completion close admission through
+the same CAS used by resolution. Static history creates no managed snapshot.
+
+Final full SQLite default race passes 649 entries (276 top-level), including all
+36 new mode cases/51 entries, with zero failures/skips/race diagnostics. Full
+persistence95, retirement104 and serving15 passed separately in an earlier
+aggregate that itself failed. Installed scoped lint passes with zero issues.
+Evidence: `.context/f28-parent-mode-20261107/`.
+
+Earlier failures remain explicit: an undersized three-minute full-package bound,
+two original compatibility failures, a zero-test unused-import compile failure,
+and an overbroad error-category correction. Final capture retains whether its
+original cursor had a retirement gate: stale initialized commands keep
+`ErrMismatch`; awaiting first-install races keep accepted-owner `ErrCAS`.
+The existing private postcommit-denial fixture now enters mode before R while
+preserving its exact actual Commit/cancel/Resolve boundary and every assertion.
+No nil-mode production bypass or old assertion relaxation was introduced.
+
+This qualifies counted mode/SQL composition. Actual transport writes, cache
+insertion, installed edge bypass, root seal and updater activation remain open.
+The previously pushed hosted run on `7649b8d` completed with a migration test
+clock race in Go shard1; shard2 passed. Its exact diagnostics and proposed
+test-only receiver correction remain separate from this mode evidence.

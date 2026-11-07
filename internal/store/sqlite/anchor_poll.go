@@ -97,6 +97,14 @@ func (s *Store) CaptureAnchorPoll(ctx context.Context, expected accepted.Version
 	if err != nil {
 		return nil, err
 	}
+	normalMode, err := captureAnchorMode(ctx, denial.source, denial.cursor, true)
+	if err != nil {
+		return nil, err
+	}
+	secondMode, err := captureAnchorMode(ctx, denial.source, denial.cursor, true)
+	if err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -106,8 +114,8 @@ func (s *Store) CaptureAnchorPoll(ctx context.Context, expected accepted.Version
 	if s.anchors.Load() != denial.source || denial.source.closed.Load() || s.anchorBlocked.Load() || denial.source.cursor.Load() != denial.cursor {
 		return nil, accepted.ErrCAS
 	}
-	normal := &anchorUpdate{source: denial.source, cursor: denial.cursor, original: ctx, writer: writer, attempt: ordinary, authorityCut: denial.authority, installed: &denial.installed}
-	phase2 := &AnchorUpdate{cell: &anchorUpdate{source: denial.source, cursor: denial.cursor, original: ctx, writer: writer, attempt: second, revoke: denial, authorityCut: denial.authority, installed: &denial.installed}}
+	normal := &anchorUpdate{source: denial.source, cursor: denial.cursor, original: ctx, writer: writer, attempt: ordinary, mode: normalMode, authorityCut: denial.authority, installed: &denial.installed}
+	phase2 := &AnchorUpdate{cell: &anchorUpdate{source: denial.source, cursor: denial.cursor, original: ctx, writer: writer, attempt: second, mode: secondMode, revoke: denial, authorityCut: denial.authority, installed: &denial.installed}}
 	return &AnchorPoll{cell: &anchorPoll{denial: denial, normal: normal, second: phase2}}, nil
 }
 
@@ -236,6 +244,7 @@ func verifyAnchorReceipt(c *anchorDenial, raw []byte, received AnchorReceiptStam
 	if err != nil {
 		if revoke {
 			c.source.store.closeAnchorSource(c.source)
+			c.source.flushAnchorClose()
 		}
 		return trustanchors.Observation{}, err
 	}

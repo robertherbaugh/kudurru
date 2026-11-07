@@ -384,10 +384,23 @@ carrier and a fresh input incarnation, including across equal-key checkpoints
 and Store reopen. The predicate and domain are available to the builder but do
 not yet protect cache insertion or transport output.
 
-These are publication prerequisites. The production builder does not yet supply
-managed resolver inputs or a complete serving seal. The common static-to-managed
-output barrier, final transport handoffs, cache retirement, installed edge bypass
-and elected updater remain unmounted. Managed recursive input will not alter
+The Store also owns a monotone Static/Managed/Closed mode. A real first primary
+bootstrap or follower installation takes its exclusive hold before retirement
+exclusion and the SQL writer lock, draining counted static callbacks first.
+Static input derives only from bound committed history and creates no managed
+snapshot. Admission bounds active plus waiting readers to 256 and writers to 16;
+FIFO queueing prevents barging behind an enqueued writer. Original finite
+contexts remain distinct from private queue cancellation. Canceling or closing
+never releases an active callback's hold before return. Actual SQL/publication
+disposition resolves the writer scope; an entered unresolved callback, panic or
+unknown completion closes admission. Scope exit and resolution use the same
+atomic state, so a late escaped resolution cannot reopen a closed scope.
+
+These are publication and exclusion prerequisites. The production runtime does
+not yet supply managed resolver inputs or a complete serving seal. The common
+mode is not yet mounted around actual transport output or cache insertion.
+Final transport handoffs, cache retirement, installed edge bypass and the
+elected updater remain unmounted. Managed recursive input will not alter
 forwarded DNSSEC's independent anchors and exception policy.
 
 Planned managed mode also refuses an ordinary switch back to static/default

@@ -27,6 +27,7 @@ type anchorUpdate struct {
 	original     context.Context
 	writer       WriterToken
 	attempt      *retirement.WriteAttempt
+	mode         *anchorModeAttempt
 	used         atomic.Bool
 	revoke       *anchorDenial
 	authorityCut string
@@ -69,7 +70,14 @@ func (s *Store) CaptureAnchorUpdate(ctx context.Context, expected accepted.Versi
 	if err != nil {
 		return nil, err
 	}
-	return &AnchorUpdate{cell: &anchorUpdate{source: source, cursor: cursor, original: ctx, writer: writer, attempt: attempt}}, nil
+	mode, err := captureAnchorMode(ctx, source, cursor, true)
+	if err != nil {
+		return nil, err
+	}
+	if source.cursor.Load() != cursor {
+		return nil, accepted.ErrCAS
+	}
+	return &AnchorUpdate{cell: &anchorUpdate{source: source, cursor: cursor, original: ctx, writer: writer, attempt: attempt, mode: mode}}, nil
 }
 
 // AnchorCommand enters original retirement exclusion BEFORE wmu and executes
@@ -94,19 +102,21 @@ func (s *Store) runAnchorCommand(cell *anchorUpdate, base *anchorCursor, fn func
 		return AnchorCommit{}, replication.ErrInvalid
 	}
 	operation := &anchorOperation{source: cell.source, before: base, authorityCut: cell.authorityCut, expectedInstalled: cell.installed, sql: anchorSQL{outcome: AnchorRolledBack}}
-	err := cell.cursor.gate.WithWrite(cell.attempt, func(scope *retirement.WriteScope) error {
-		change, err := scope.BeginChange()
-		if err != nil {
-			return err
-		}
-		operation.change = change
-		operation.scope = scope
-		result := s.command(cell.original, cell.writer.Term(), fn, operation)
-		resolveErr := operation.resolve()
-		if result != nil {
-			return result
-		}
-		return resolveErr
+	err := s.withAnchorMode(cell.mode, operation, func() error {
+		return cell.cursor.gate.WithWrite(cell.attempt, func(scope *retirement.WriteScope) error {
+			change, err := scope.BeginChange()
+			if err != nil {
+				return err
+			}
+			operation.change = change
+			operation.scope = scope
+			result := s.command(cell.original, cell.writer.Term(), fn, operation)
+			resolveErr := operation.resolve()
+			if result != nil {
+				return result
+			}
+			return resolveErr
+		})
 	})
 	return operation.receipt(), operation.completionError(err)
 }
@@ -132,6 +142,7 @@ type anchorOperation struct {
 	installed         replication.Generation // original installation baseline, zero for commands/static legacy
 	change            *retirement.Change
 	scope             *retirement.WriteScope
+	mode              *anchorModeScope
 	sql               anchorSQL
 	prepared          bool
 }
@@ -207,6 +218,11 @@ func (o *anchorOperation) prepare(next *anchorCursor) error {
 }
 
 func (o *anchorOperation) check() error {
+	if o.mode != nil {
+		if err := o.mode.check(); err != nil {
+			return err
+		}
+	}
 	if !o.prepared {
 		return ErrAnchorUnavailable
 	}

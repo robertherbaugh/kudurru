@@ -21,6 +21,7 @@ type anchorInstall struct {
 	original  context.Context
 	life      anchorOriginalLifetime
 	attempt   *retirement.WriteAttempt
+	mode      *anchorModeAttempt
 	installed replication.Generation
 	authority string
 	used      atomic.Bool
@@ -107,6 +108,10 @@ func (s *Store) CaptureAnchorInstall(ctx context.Context) (context.Context, erro
 	} else if !anchorAwaitingInstallCursor(cursor) {
 		return nil, ErrAnchorUnavailable
 	}
+	mode, err := captureAnchorMode(ctx, source, cursor, true)
+	if err != nil {
+		return nil, err
+	}
 	installed, authority, err := s.captureAnchorBase(ctx, cursor)
 	if err != nil {
 		return nil, err
@@ -114,7 +119,7 @@ func (s *Store) CaptureAnchorInstall(ctx context.Context) (context.Context, erro
 	if source != s.anchors.Load() || source.closed.Load() || source.cursor.Load() != cursor {
 		return nil, accepted.ErrCAS
 	}
-	return context.WithValue(ctx, anchorInstallKey{}, &anchorInstall{source: source, cursor: cursor, original: ctx, life: life, attempt: attempt, installed: installed, authority: authority}), nil
+	return context.WithValue(ctx, anchorInstallKey{}, &anchorInstall{source: source, cursor: cursor, original: ctx, life: life, attempt: attempt, mode: mode, installed: installed, authority: authority}), nil
 }
 
 // Managed/initialized captured lanes acquire R before wmu. The explicit
@@ -148,38 +153,41 @@ func (s *Store) withAnchorInstall(ctx context.Context, image replication.Image, 
 			return err
 		}
 		operation := &anchorOperation{source: cell.source, before: cell.cursor, installed: cell.installed, authorityCut: cell.authority, originalLife: &cell.life, sql: anchorSQL{outcome: AnchorRolledBack}}
-		gate, attempt := cell.cursor.gate, cell.attempt
-		if gate == nil {
-			if candidate.awaiting {
-				if cell.attempt != nil || !anchorAwaitingInstallCursor(cell.cursor) {
-					return ErrAnchorUnavailable
+		err = s.withAnchorMode(cell.mode, operation, func() error {
+			gate, attempt := cell.cursor.gate, cell.attempt
+			if gate == nil {
+				if candidate.awaiting {
+					if cell.attempt != nil || !anchorAwaitingInstallCursor(cell.cursor) {
+						return ErrAnchorUnavailable
+					}
+					operation.awaitingInstall = true
+					return fn(cell.original, operation)
 				}
-				operation.awaitingInstall = true
-				return operation.completionError(fn(cell.original, operation))
+				root := candidate.owner.Inspect()
+				gate, err = retirement.New(retirement.History{ClusterID: root.ClusterID, HistoryID: root.HistoryID}, [32]byte{}, 0)
+				if err != nil {
+					return err
+				}
+				attempt, err = gate.CaptureWrite(cell.original, retirement.Mark{})
+				if err != nil {
+					return err
+				}
 			}
-			root := candidate.owner.Inspect()
-			gate, err = retirement.New(retirement.History{ClusterID: root.ClusterID, HistoryID: root.HistoryID}, [32]byte{}, 0)
-			if err != nil {
-				return err
-			}
-			attempt, err = gate.CaptureWrite(cell.original, retirement.Mark{})
-			if err != nil {
-				return err
-			}
-		}
-		operation.installGate = gate
-		err = gate.WithWrite(attempt, func(scope *retirement.WriteScope) error {
-			change, err := scope.BeginChange()
-			if err != nil {
-				return err
-			}
-			operation.change, operation.scope = change, scope
-			result := fn(cell.original, operation)
-			resolveErr := operation.resolve()
-			if result != nil {
-				return result
-			}
-			return resolveErr
+			operation.installGate = gate
+			err = gate.WithWrite(attempt, func(scope *retirement.WriteScope) error {
+				change, err := scope.BeginChange()
+				if err != nil {
+					return err
+				}
+				operation.change, operation.scope = change, scope
+				result := fn(cell.original, operation)
+				resolveErr := operation.resolve()
+				if result != nil {
+					return result
+				}
+				return resolveErr
+			})
+			return err
 		})
 		return operation.completionError(err)
 	}

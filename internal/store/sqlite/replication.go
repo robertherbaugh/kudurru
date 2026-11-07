@@ -227,6 +227,11 @@ func (s *Store) InstallReplica(ctx context.Context, validated *replication.Valid
 }
 
 func (s *Store) installReplica(ctx context.Context, image replication.Image, opts replication.InstallOptions, operation *anchorOperation) (generation replication.Generation, result error) {
+	defer func() {
+		if operation.mode == nil {
+			s.flushAnchorSourceClosed()
+		}
+	}() // captured lanes flush after mode/R return
 	if (operation.scope != nil || operation.awaitingInstall) && !operation.installed.Same(opts.ExpectedInstalled) {
 		return replication.Generation{}, replication.ErrCAS
 	}
@@ -247,6 +252,7 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 			s.anchorBlocked.Store(true)
 			if operation.source != nil {
 				operation.source.closed.Store(true)
+				operation.source.mode.closeMemory()
 			}
 		}
 	}()

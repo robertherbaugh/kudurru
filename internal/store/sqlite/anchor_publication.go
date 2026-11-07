@@ -26,6 +26,7 @@ type anchorPublication struct {
 	original context.Context
 	life     anchorOriginalLifetime
 	attempt  *retirement.WriteAttempt
+	mode     *anchorModeAttempt
 	used     atomic.Bool
 	input    *AnchorResolverInput
 	call     atomic.Pointer[anchorPublicationCall]
@@ -52,6 +53,7 @@ type anchorPublicationCall struct {
 
 type anchorPublicationNodes struct {
 	binding  *retirement.Binding
+	mode     *anchorModeScope
 	armed    anchorPublicationCall
 	applying anchorPublicationCall
 	applied  anchorPublicationCall
@@ -110,6 +112,10 @@ func (s *Store) CaptureAnchorPublication(ctx context.Context, token GenerationTo
 	if err != nil {
 		return nil, err
 	}
+	mode, err := captureAnchorMode(ctx, source, cursor, true)
+	if err != nil {
+		return nil, err
+	}
 	generation, authority, err := s.captureAnchorBase(ctx, cursor)
 	if err != nil {
 		return nil, err
@@ -129,7 +135,7 @@ func (s *Store) CaptureAnchorPublication(ctx context.Context, token GenerationTo
 		return nil, err
 	}
 	input := &AnchorResolverInput{cell: &anchorResolverInput{source: source, cursor: cursor, projection: projection, cacheNonce: cacheNonce, cacheDomain: cacheDomain}}
-	return &AnchorPublication{cell: &anchorPublication{source: source, cursor: cursor, token: token, original: ctx, life: life, attempt: attempt, input: input}}, nil
+	return &AnchorPublication{cell: &anchorPublication{source: source, cursor: cursor, token: token, original: ctx, life: life, attempt: attempt, mode: mode, input: input}}, nil
 }
 
 func anchorPublicationCursor(cursor *anchorCursor) bool {
@@ -146,6 +152,9 @@ func anchorPublicationSource(source *AnchorSource, cursor *anchorCursor) error {
 		return accepted.ErrCAS
 	}
 	if !anchorPublicationCursor(cursor) {
+		return ErrAnchorUnavailable
+	}
+	if !source.mode.current(true) {
 		return ErrAnchorUnavailable
 	}
 	return nil
@@ -195,7 +204,10 @@ func (p *AnchorPublication) Apply() error {
 		if !c.call.CompareAndSwap(old, &n.applying) {
 			continue
 		}
-		result := anchorPublicationSource(c.source, c.cursor)
+		result := n.mode.check()
+		if result == nil {
+			result = anchorPublicationSource(c.source, c.cursor)
+		}
 		if result == nil {
 			result = n.binding.Apply()
 		}
@@ -222,32 +234,58 @@ func (s *Store) publishAnchorIfCurrent(ctx context.Context, token GenerationToke
 	if !token.generation.Same(c.token.generation) || !c.token.Matches(token.authority) {
 		return replication.ErrCAS
 	}
-	return c.cursor.gate.WithWrite(c.attempt, func(scope *retirement.WriteScope) error {
-		// R(write) -> wmu -> original callback. No query takes wmu or uses SQL.
-		s.wmu.Lock()
-		defer s.wmu.Unlock()
-		if err := c.life.check(); err != nil {
-			return err
+	defer func() {
+		// Run after mode/R/wmu unwind, including panic before invokePublication.
+		// Strict mode closure must also terminally close source admission; the
+		// bounded wake/notify work belongs here, outside locks and final hooks.
+		if state := c.source.mode.state.Load(); state != nil && state.closed {
+			s.closeAnchorSource(c.source)
 		}
-		if err := anchorPublicationSource(c.source, c.cursor); err != nil {
-			return err
-		}
-		generation, authority, err := s.captureAnchorBase(c.original, c.cursor)
-		if err != nil {
-			return err
-		}
-		if !generation.Same(c.token.generation) || authority != anchorAuthority(c.token.authority) {
-			return replication.ErrCAS
-		}
-		return s.publishIfCurrentLocked(ctx, token, opts, func() error {
-			binding, err := scope.PrepareBinding(retirement.Frame{Mark: c.cursor.mark, OwnerID: c.input.cell.projection.OwnerID()})
+		c.source.flushAnchorClose()
+	}()
+	return c.source.mode.withWrite(c.mode, func(mode *anchorModeScope) error {
+		result := c.cursor.gate.WithWrite(c.attempt, func(scope *retirement.WriteScope) error {
+			// mode(write) -> R(write) -> wmu -> original callback. No query takes wmu or uses SQL.
+			s.wmu.Lock()
+			defer s.wmu.Unlock()
+			if err := c.life.check(); err != nil {
+				return err
+			}
+			if err := anchorPublicationSource(c.source, c.cursor); err != nil {
+				return err
+			}
+			generation, authority, err := s.captureAnchorBase(c.original, c.cursor)
 			if err != nil {
 				return err
 			}
-			n := newAnchorPublicationNodes(binding)
-			c.call.Store(&n.armed)
-			return c.invokePublication(n, publish)
+			if !generation.Same(c.token.generation) || authority != anchorAuthority(c.token.authority) {
+				return replication.ErrCAS
+			}
+			return s.publishIfCurrentLocked(ctx, token, opts, func() error {
+				binding, err := scope.PrepareBinding(retirement.Frame{Mark: c.cursor.mark, OwnerID: c.input.cell.projection.OwnerID()})
+				if err != nil {
+					return err
+				}
+				n := newAnchorPublicationNodes(binding)
+				n.mode = mode
+				c.call.Store(&n.armed)
+				return c.invokePublication(n, publish)
+			})
 		})
+		// An ordinary refusal before the actual callback has no publication effect.
+		// invokePublication alone classifies actual Apply/return/panic disposition;
+		// its unknown/invalid result closes source before this independent mode
+		// resolution. No caller outcome or generic deferred success settles mode.
+		// A terminal R refusal also converges mode even if no callback began. A
+		// stale mark/owner refusal alone is NOT evidence of unknown publication.
+		if errors.Is(result, retirement.ErrClosed) {
+			s.closeAnchorSource(c.source)
+		}
+		resolution := mode.resolve(false, c.source.closed.Load())
+		if resolution != nil {
+			s.closeAnchorSource(c.source)
+		}
+		return errors.Join(result, resolution)
 	})
 }
 
@@ -346,6 +384,7 @@ type AnchorRead struct{ cell *anchorRead }
 type anchorRead struct {
 	input   *anchorResolverInput
 	attempt *retirement.ReadAttempt
+	mode    *anchorModeAttempt
 }
 
 // AnchorReadScope is a borrowed instantaneous predicate within WithRead only.
@@ -353,6 +392,7 @@ type anchorRead struct {
 type AnchorReadScope struct {
 	input *anchorResolverInput
 	scope retirement.ReadScope
+	mode  *anchorModeScope
 }
 
 // CaptureRead must precede the original query's work. Its context must already
@@ -373,31 +413,41 @@ func (i *AnchorResolverInput) CaptureRead(ctx context.Context) (*AnchorRead, err
 	if snapshot == nil {
 		return nil, ErrAnchorUnavailable
 	}
+	mode, err := captureAnchorMode(ctx, c.source, c.cursor, false)
+	if err != nil {
+		return nil, err
+	}
+	if !mode.managed {
+		return nil, ErrAnchorUnavailable
+	}
 	attempt, err := c.cursor.gate.CaptureRead(ctx, snapshot)
 	if err != nil {
 		return nil, err
 	}
-	return &AnchorRead{cell: &anchorRead{input: c, attempt: attempt}}, nil
+	return &AnchorRead{cell: &anchorRead{input: c, attempt: attempt, mode: mode}}, nil
 }
 
-// WithRead consumes the exact captured read and holds R through one synchronous
+// WithRead consumes the exact captured read and holds mode then R through one synchronous
 // bounded handoff. Root must independently check its original bundle/policy,
 // response proof, cluster and transport limits INSIDE fn. No Store calls, owner
 // release, acquisition or work escaping fn belongs there. Gate limits remain
-// 256 active/240 pending readers,16 FIFO writers, with writer preference.
+// 256 active/240 pending readers,16 FIFO writers, with writer preference. Mode
+// independently bounds TOTAL readers to256 and TOTAL FIFO writers to16.
 func (i *AnchorResolverInput) WithRead(read *AnchorRead, fn func(AnchorReadScope) error) error {
 	if i == nil || i.cell == nil || read == nil || read.cell == nil || read.cell.input != i.cell || fn == nil {
 		return replication.ErrInvalid
 	}
-	return i.cell.cursor.gate.WithRead(read.cell.attempt, func(scope retirement.ReadScope) error {
-		borrowed := AnchorReadScope{input: i.cell, scope: scope}
-		if err := borrowed.Check(); err != nil {
-			return err
-		}
-		if err := fn(borrowed); err != nil {
-			return err
-		}
-		return borrowed.Check()
+	return i.cell.source.mode.withRead(read.cell.mode, func(mode *anchorModeScope) error {
+		return i.cell.cursor.gate.WithRead(read.cell.attempt, func(scope retirement.ReadScope) error {
+			borrowed := AnchorReadScope{input: i.cell, scope: scope, mode: mode}
+			if err := borrowed.Check(); err != nil {
+				return err
+			}
+			if err := fn(borrowed); err != nil {
+				return err
+			}
+			return borrowed.Check()
+		})
 	})
 }
 
@@ -406,6 +456,9 @@ func (i *AnchorResolverInput) WithRead(read *AnchorRead, fn func(AnchorReadScope
 func (s AnchorReadScope) Check() error {
 	if s.input == nil {
 		return retirement.ErrScope
+	}
+	if err := s.mode.readCheck(); err != nil {
+		return err
 	}
 	if err := s.scope.Check(); err != nil {
 		return err

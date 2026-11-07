@@ -25,6 +25,7 @@ type anchorDenial struct {
 	life      anchorOriginalLifetime
 	clock     *trustanchors.SessionClock
 	attempt   *retirement.WriteAttempt
+	mode      *anchorModeAttempt
 	installed replication.Generation
 	authority string
 	input     atomic.Pointer[anchorReceiptInput]
@@ -91,6 +92,10 @@ func (s *Store) captureAnchorDenial(ctx context.Context, expected accepted.Versi
 	if err != nil {
 		return nil, err
 	}
+	mode, err := captureAnchorMode(ctx, source, cursor, true)
+	if err != nil {
+		return nil, err
+	}
 	installed, authority, err := s.captureAnchorBase(ctx, cursor)
 	if err != nil {
 		return nil, err
@@ -98,7 +103,7 @@ func (s *Store) captureAnchorDenial(ctx context.Context, expected accepted.Versi
 	if source != s.anchors.Load() || source.cursor.Load() != cursor || source.closed.Load() {
 		return nil, accepted.ErrCAS
 	}
-	return &anchorDenial{source: source, cursor: cursor, original: ctx, life: life, clock: clock, attempt: attempt, installed: installed, authority: authority}, nil
+	return &anchorDenial{source: source, cursor: cursor, original: ctx, life: life, clock: clock, attempt: attempt, mode: mode, installed: installed, authority: authority}, nil
 }
 
 // CaptureAnchorRevocation pre-captures BOTH attempts before a single original
@@ -120,7 +125,14 @@ func (s *Store) CaptureAnchorRevocation(ctx context.Context, expected accepted.V
 	if err != nil {
 		return nil, nil, err
 	}
-	update := &anchorUpdate{source: cell.source, cursor: cell.cursor, original: ctx, writer: writer, attempt: second, revoke: cell, authorityCut: cell.authority, installed: &cell.installed}
+	mode, err := captureAnchorMode(ctx, cell.source, cell.cursor, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cell.source.cursor.Load() != cell.cursor {
+		return nil, nil, accepted.ErrCAS
+	}
+	update := &anchorUpdate{source: cell.source, cursor: cell.cursor, original: ctx, writer: writer, attempt: second, mode: mode, revoke: cell, authorityCut: cell.authority, installed: &cell.installed}
 	return &AnchorDenial{cell: cell}, &AnchorUpdate{cell: update}, nil
 }
 
@@ -167,6 +179,7 @@ func (s *Store) CommitAnchorDenial(proof *AnchorVerifiedDenial) (AnchorCommit, *
 	}
 	p := proof.cell
 	c := p.original
+	defer c.source.flushAnchorClose()
 	if !c.committed.CompareAndSwap(false, true) {
 		return AnchorCommit{}, nil, retirement.ErrUsed
 	}
@@ -178,33 +191,41 @@ func (s *Store) CommitAnchorDenial(proof *AnchorVerifiedDenial) (AnchorCommit, *
 			s.closeAnchorSource(c.source)
 		}
 	}()
-	err := c.cursor.gate.WithWrite(c.attempt, func(scope *retirement.WriteScope) error {
-		withdrawal, err := scope.PrepareWithdrawal()
-		if err != nil {
-			return err
-		}
-		operation.scope = scope
-		result := s.writeAnchorDenial(c, p, operation, withdrawal, &after)
-		outcome := retirement.FailedOrUnknown
-		if operation.sql.outcome == AnchorCommitted || operation.sql.outcome == AnchorUnchanged {
-			outcome = retirement.ConfirmedDurableDeny
-		}
-		resolveErr := withdrawal.Resolve(outcome)
-		if outcome == retirement.ConfirmedDurableDeny && resolveErr == nil {
-			// Publish only after actual durable disposition AND confirmed resolution.
-			// No post-effect ctx/clock check can relabel this completed denial rollback.
-			if c.source.cursor.CompareAndSwap(c.cursor, after) {
-				confirmed = true
-				c.source.notify()
-			} else {
-				s.closeAnchorSource(c.source)
-				resolveErr = accepted.ErrCAS
+	err := s.withAnchorMode(c.mode, operation, func() error {
+		result := c.cursor.gate.WithWrite(c.attempt, func(scope *retirement.WriteScope) error {
+			withdrawal, err := scope.PrepareWithdrawal()
+			if err != nil {
+				return err
 			}
+			operation.scope = scope
+			result := s.writeAnchorDenial(c, p, operation, withdrawal, &after)
+			outcome := retirement.FailedOrUnknown
+			if operation.sql.outcome == AnchorCommitted || operation.sql.outcome == AnchorUnchanged {
+				outcome = retirement.ConfirmedDurableDeny
+			}
+			resolveErr := withdrawal.Resolve(outcome)
+			if outcome == retirement.ConfirmedDurableDeny && resolveErr == nil {
+				// Publish only after actual durable disposition AND confirmed resolution.
+				// No post-effect ctx/clock check can relabel this completed denial rollback.
+				if c.source.cursor.CompareAndSwap(c.cursor, after) {
+					confirmed = true
+					c.source.notify()
+				} else {
+					s.closeAnchorSource(c.source)
+					resolveErr = accepted.ErrCAS
+				}
+			}
+			if result != nil {
+				return result
+			}
+			return resolveErr
+		})
+		// Known denial cannot release the common mode writer with open admission
+		// after a failed/unknown withdrawal, even if SQL never began.
+		if !confirmed {
+			s.closeAnchorSource(c.source)
 		}
-		if result != nil {
-			return result
-		}
-		return resolveErr
+		return result
 	})
 	receipt := operation.receipt()
 	if !confirmed {
@@ -265,6 +286,9 @@ func (s *Store) writeAnchorDenial(c *anchorDenial, p *anchorVerifiedDenial, o *a
 		return err
 	}
 	if err := c.life.check(); err != nil {
+		return err
+	}
+	if err := o.mode.check(); err != nil {
 		return err
 	}
 	if err := w.CheckPrepared(); err != nil {

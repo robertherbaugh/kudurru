@@ -31,6 +31,11 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 }
 
 func (s *Store) command(ctx context.Context, expected replication.Term, fn func(context.Context, *CommandTx) error, anchor *anchorOperation) (result error) {
+	defer func() {
+		if anchor == nil {
+			s.flushAnchorSourceClosed()
+		}
+	}() // captured lanes flush after mode/R return
 	if fn == nil {
 		return replication.ErrInvalid
 	}
@@ -67,6 +72,7 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 				s.anchorBlocked.Store(true)
 				if operation.source != nil {
 					operation.source.closed.Store(true)
+					operation.source.mode.closeMemory()
 				}
 			}
 		}

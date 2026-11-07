@@ -100,6 +100,11 @@ func (s *Store) ResolveConflict(ctx context.Context, chosen *replication.Validat
 }
 
 func (s *Store) resolveConflict(ctx context.Context, image replication.Image, req replication.ResolveRequest, operation *anchorOperation) (authority replication.Authority, result error) {
+	defer func() {
+		if operation.mode == nil {
+			s.flushAnchorSourceClosed()
+		}
+	}() // captured lanes flush after mode/R return
 	if (operation.scope != nil || operation.awaitingInstall) && !operation.installed.Same(req.ExpectedInstalled) {
 		return replication.Authority{}, replication.ErrCAS
 	}
@@ -120,6 +125,7 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 			s.anchorBlocked.Store(true)
 			if operation.source != nil {
 				operation.source.closed.Store(true)
+				operation.source.mode.closeMemory()
 			}
 		}
 	}()

@@ -336,25 +336,29 @@ func TestAnchorLocalConfirmedDenyResolutionIgnoresPostCommitCancellation(t *test
 	c := d.cell
 	operation := &anchorOperation{source: source, before: c.cursor, authorityCut: c.authority, sql: anchorSQL{outcome: AnchorRolledBack}}
 	var after *anchorCursor
-	err = c.cursor.gate.WithWrite(c.attempt, func(scope *retirement.WriteScope) error {
-		w, err := scope.PrepareWithdrawal()
-		if err != nil {
-			return err
-		}
-		if err := s.writeAnchorDenial(c, p.cell, operation, w, &after); err != nil {
-			return err
-		}
-		if operation.sql.outcome != AnchorCommitted {
-			t.Fatal("fixture did not reach real commit")
-		}
-		cancel() // exact boundary AFTER SQL Commit, BEFORE original plan Resolve
-		if err := w.Resolve(retirement.ConfirmedDurableDeny); err != nil {
-			return err
-		}
-		if !source.cursor.CompareAndSwap(c.cursor, after) {
-			return accepted.ErrCAS
-		}
-		return nil
+	// Compose the actual outer mode hold while retaining this private fixture's
+	// exact post-Commit, pre-Resolve cancellation boundary and original R.
+	err = s.withAnchorMode(c.mode, operation, func() error {
+		return c.cursor.gate.WithWrite(c.attempt, func(scope *retirement.WriteScope) error {
+			w, err := scope.PrepareWithdrawal()
+			if err != nil {
+				return err
+			}
+			if err := s.writeAnchorDenial(c, p.cell, operation, w, &after); err != nil {
+				return err
+			}
+			if operation.sql.outcome != AnchorCommitted {
+				t.Fatal("fixture did not reach real commit")
+			}
+			cancel() // exact boundary AFTER SQL Commit, BEFORE original plan Resolve
+			if err := w.Resolve(retirement.ConfirmedDurableDeny); err != nil {
+				return err
+			}
+			if !source.cursor.CompareAndSwap(c.cursor, after) {
+				return accepted.ErrCAS
+			}
+			return nil
+		})
 	})
 	if err != nil || source.cursor.Load() != after || !sameAnchorLocal(after.local, anchorLocalTestRead(t, s)) {
 		t.Fatal("completed deny became rollback after cancellation", err)

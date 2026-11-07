@@ -318,9 +318,6 @@ func (s *Store) closeAnchorSource(source *AnchorSource) {
 	s.anchorBlocked.Store(true)
 	if source != nil {
 		source.closed.Store(true)
-		source.notify()
-		if current := source.cursor.Load(); current != nil && current.gate != nil {
-			current.gate.Close()
-		}
+		source.mode.closeMemory()
 	}
 }
