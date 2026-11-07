@@ -2939,5 +2939,20 @@ scan exits 0 with **zero vulnerability, secret or misconfiguration findings**
 under the existing policy. Only generated/dependency/build output, Git metadata
 and private workspace artifacts are excluded; no product source is exempted.
 Raw receipts, the original failed fixture and scan output are retained under
-`.context/security-xnet-20261106/`. Fresh hosted image and full CI checks on the
-pushed correction remain required.
+`.context/security-xnet-20261106/`. Hosted security run
+[`42315068174`](https://github.com/robertherbaugh/kudurru/actions/runs/42315068174)
+on `4b962e2` passes SAST, vulncheck, filesystem and all product/license-server
+image scans. Full CI remains separate and was still running at this checkpoint.
+
+Hosted CI `42313409142` also exposed two fixtures whose physical setup no
+longer represented their intended preimage after schema 7. The historical
+audit fixture now removes exactly the fresh anchor sentinel from the closed
+database before setting its schema-5 marker. The missing/orphan-owner fixture
+removes that exact sentinel from a stopped current-schema database, optionally
+inserts its original orphan, and reopens it. Both require exactly one deleted
+row; production migration, initialization, redaction and whole-image refusal
+assertions are unchanged. The two selected tests pass under race detection
+with **4 actual pass entries**, no failures/skips; installed API/persistence
+lint reports **0 issues**. Frozen source identities match. Original hosted
+failures and pre-edit fixtures remain separate from these corrected results in
+`.context/schema7-followon-fixtures-20261106/`.

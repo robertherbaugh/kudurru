@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -262,15 +263,36 @@ func TestSQLiteSentinelOnlyInitializationNoopAndRestart(t *testing.T) {
 func TestSQLiteMissingAndOrphanHistoryRefusesInitialization(t *testing.T) {
 	for _, orphan := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing", true: "orphan"}[orphan], func(t *testing.T) {
-			s := openStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Standalone, false)
-			ctx := carry(t.Context(), t, s)
+			path := filepath.Join(t.TempDir(), sqlite.FileName)
+			s := openStore(t, path, replication.Standalone, false)
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			// Corrupt only this stopped physical fixture. A current-schema
+			// missing owner must not be confused with the migration's sentinel,
+			// and public commands need not permit constructing invalid owners.
+			db, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			removed, err := db.Exec(`DELETE FROM replication_sections WHERE section=? AND key=? AND data=?`, accepted.Section, accepted.RootKey, accepted.AwaitingOwnerJSON)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n, err := removed.RowsAffected(); err != nil || n != 1 {
+				t.Fatal("missing-owner fixture did not remove the exact sentinel", err)
+			}
 			if orphan {
-				if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-					return tx.PutSection(ctx, accepted.Section, replication.Entry{Key: accepted.Prefix + "unknown", Data: json.RawMessage(`{}`)})
-				}); err != nil {
+				if _, err := db.Exec(`INSERT INTO replication_sections(section,key,data) VALUES(?,?,?)`, accepted.Section, accepted.Prefix+"unknown", `{}`); err != nil {
 					t.Fatal(err)
 				}
 			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			s = openStore(t, path, replication.Standalone, false)
+			ctx := carry(t.Context(), t, s)
 			before := imageOf(t, s)
 			original, err := persistence.CaptureInitialization(ctx)
 			if err != nil {

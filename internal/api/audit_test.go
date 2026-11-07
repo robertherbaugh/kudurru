@@ -18,6 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
 func TestAuditResponsesRedactHistoricalCredentials(t *testing.T) {
@@ -40,6 +41,15 @@ func TestAuditResponsesRedactHistoricalCredentials(t *testing.T) {
 		if _, err := legacy.Exec(`ALTER TABLE audit DROP COLUMN ` + column); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Schema 5 had no anchor owner. Remove only the fresh physical sentinel
+	// while the Store is closed, so migration 7 sees an actual legacy preimage.
+	removed, err := legacy.Exec(`DELETE FROM replication_sections WHERE section=? AND key=? AND data=?`, accepted.Section, accepted.RootKey, accepted.AwaitingOwnerJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := removed.RowsAffected(); err != nil || n != 1 {
+		t.Fatal("legacy fixture did not remove the exact fresh anchor sentinel", err)
 	}
 	if _, err := legacy.Exec(`UPDATE meta SET value='5' WHERE key='schema_version'; DELETE FROM meta WHERE key='audit_legacy_max_id'`); err != nil {
 		t.Fatal(err)
