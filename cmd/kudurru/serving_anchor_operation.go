@@ -215,8 +215,15 @@ func (op *anchorOperation) run() (result anchorCompletion, err error) {
 		return result, err
 	}
 	if op.poll == nil {
-		raw, received, err := acquireAnchorWire(op.wire, func() (trustanchors.Sample, error) { return op.clock.Sample(), nil })
+		arrived := false
+		raw, received, err := acquireAnchorWire(op.wire, func() (trustanchors.Sample, error) {
+			arrived = true
+			return op.clock.Sample(), nil
+		})
 		if err != nil {
+			if !arrived {
+				return result, &anchorAcquisitionFailure{err: err}
+			}
 			return result, err
 		}
 		message, err := unpackAnchorBootstrap(raw)
@@ -239,8 +246,15 @@ func (op *anchorOperation) run() (result anchorCompletion, err error) {
 		})
 		return result, err
 	}
-	raw, stamp, err := acquireAnchorWire(op.wire, op.poll.SampleReceipt)
+	arrived := false
+	raw, stamp, err := acquireAnchorWire(op.wire, func() (sqlite.AnchorReceiptStamp, error) {
+		arrived = true
+		return op.poll.SampleReceipt()
+	})
 	if err != nil {
+		if !arrived {
+			return result, &anchorAcquisitionFailure{err: err}
+		}
 		return result, err
 	}
 	receipt, err := op.poll.Receive(raw, stamp)

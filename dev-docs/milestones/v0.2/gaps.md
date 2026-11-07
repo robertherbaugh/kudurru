@@ -3484,3 +3484,31 @@ replacement, certificate/rollback composition, held managed frontend/follower
 retirement and interoperability remain open. Root managed input and automatic
 polling remain disabled; no startup-only downgrade or eventual-flush substitute
 is adopted. All prior F20, TSIG and external gates remain unchanged.
+
+### F28 bounded updater scheduler prerequisite
+
+The private scheduler now retains one original elected target, borrowed host and
+session clock, bounds each acquisition before capture, and rereads the committed
+owner after a successful actual receipt. Accepted `NextRefresh` controls polling;
+only incomplete transport acquisition gets a new-attempt cooldown, bound to the
+exact owner/policy/settings identity. Complete replies are terminal even when
+malformed or unauthenticated. Admission, SQL and completion refusals latch a
+terminal error without replay; independent denial/update dispositions remain
+available. Generation broadcasts avoid stealing the publisher's coalesced local
+notice, and bounded cancellation joins the original worker.
+
+Final default-race qualification passes **29 entries / 15 top-level tests**,
+zero failures/skips, across the updater, original operation and wire selections.
+Tests use real signed socket bootstrap and committed scheduling, incomplete TCP
+cooldown, foreign cooldown identity, malformed/authentication/host refusal and
+joined cancellation. Installed scoped lint passes with zero issues. The initial
+lint failure (unchecked cleanup error and an if-chain style finding) is preserved;
+the first race pass preceded the broadcast correction and is recorded separately.
+All 3,946 source identities match the final qualification freeze. Evidence:
+`.context/f28-parent-updater-20261107/`.
+
+The scheduler is deliberately unmounted. Root still does not enable managed
+builder input or automatic polling. Original installed-edge activation admission,
+elected lifecycle integration, full managed frontend/follower retirement, recovery
+and interoperability remain required. This is no release or full-F28 completion
+claim; all F20, TSIG and external gates remain open as previously recorded.

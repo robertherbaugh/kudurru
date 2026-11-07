@@ -343,10 +343,24 @@ The root wire helper captures up to three numeric endpoints and one finite
 operation before acquisition. Each endpoint has at most four seconds within the
 original 30-second lifetime. It samples the receipt synchronously at the first
 complete frame, before parsing or correlation; that response is terminal even
-when malformed, truncated or refused. The planned updater selects TCP upfront,
+when malformed, truncated or refused. The updater scheduler selects TCP upfront,
 without resolver lookup, cached responses or a second receipt after truncation.
 These helpers have local socket/signature and SQLite race coverage; they are
 prerequisites, not an elected updater or managed-serving activation.
+
+The private updater scheduler retains one original elected target, borrowed host
+and session clock. Each due acquisition has a fresh lifetime bounded to 30 seconds
+before capture. Successful completion schedules a new committed-state read;
+only that accepted owner's `NextRefresh` controls the next poll. Incomplete
+transport acquisition can schedule a new attempt using `RetryDue`, or the minimum
+refresh interval before bootstrap. Its cooldown binds the exact owner, policy and
+settings identity. A complete malformed response, authentication refusal, changed
+admission or SQL/completion error stops that scheduler permanently; actual denial
+and update dispositions remain separate from errors. Generation broadcasts and
+bounded checks wake scheduling without consuming the publisher's local-denial
+notice. Cancellation joins the original socket/wait before return. The scheduler
+is not mounted by the writer episode; installed edge activation admission and
+the remaining managed acceptance gates still precede that mount.
 
 The unmounted `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit
