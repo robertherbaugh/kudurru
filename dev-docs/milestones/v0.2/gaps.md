@@ -3272,3 +3272,17 @@ insertion, installed edge bypass, root seal and updater activation remain open.
 The previously pushed hosted run on `7649b8d` completed with a migration test
 clock race in Go shard1; shard2 passed. Its exact diagnostics and proposed
 test-only receiver correction remain separate from this mode evidence.
+
+### Hosted migration clock fixture correction
+
+Hosted run42325871280 on `7649b8d` found a race in the VIP-write migration
+rollback fixture: it replaced the running runtime's clock function while an
+integration worker read it. The two matching migration expiry/rollback fixtures
+now use a private, unmounted command receiver with the same actual Store,
+publisher, provider and primary capabilities. Only that receiver gets the
+controlled clock; no runtime mutex or worker is copied or replaced.
+Original credential, transaction, VIP/no-op and journal assertions are unchanged.
+The exact two cases/four entries pass default race, alongside the parent
+caller/builder selection; installed command-package lint passes with zero issues.
+Evidence: `.context/ci-7649b8d-final-20261107/`. Hosted failure logs remain intact;
+this local correction does not itself establish a new hosted green run.

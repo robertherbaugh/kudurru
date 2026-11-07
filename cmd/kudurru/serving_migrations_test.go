@@ -222,13 +222,16 @@ func TestServingMigrationInitialFinalExpiryRollsBackJournal(t *testing.T) {
 	f := newServingCommandFixture(t)
 	migrationShortCredential(t, f)
 	command := func(ctx context.Context, p *api.MigrationProgram) (api.MigrationNext, error) {
-		next, err := f.s.MigrationCommand(ctx, p)
+		// This unmounted receiver borrows the actual command machinery.
+		// Its controlled clock is never published to running workers.
+		receiver := &servingRuntime{opts: f.s.opts, primary: f.s.primary, publisher: f.s.publisher, providers: f.s.providers}
+		next, err := receiver.MigrationCommand(ctx, p)
 		if err != nil {
 			return nil, err
 		}
 		return func(ctx context.Context) error {
 			var calls atomic.Int32
-			f.s.opts.Now = func() time.Time {
+			receiver.opts.Now = func() time.Time {
 				if calls.Add(1) <= 3 {
 					return f.now
 				}
@@ -270,7 +273,10 @@ func TestServingMigrationStepRollbackIncludesVIPRecordsAndNoOp(t *testing.T) {
 				t.Fatal(err)
 			}
 			command := func(ctx context.Context, p *api.MigrationProgram) (api.MigrationNext, error) {
-				next, err := f.s.MigrationCommand(ctx, p)
+				// This unmounted receiver borrows the actual command machinery.
+				// Its controlled clock is never published to running workers.
+				receiver := &servingRuntime{opts: f.s.opts, primary: f.s.primary, publisher: f.s.publisher, providers: f.s.providers}
+				next, err := receiver.MigrationCommand(ctx, p)
 				if err != nil {
 					return nil, err
 				}
@@ -279,7 +285,7 @@ func TestServingMigrationStepRollbackIncludesVIPRecordsAndNoOp(t *testing.T) {
 					n++
 					if n == 2 {
 						var calls atomic.Int32
-						f.s.opts.Now = func() time.Time {
+						receiver.opts.Now = func() time.Time {
 							if calls.Add(1) <= 3 {
 								return f.now
 							}
