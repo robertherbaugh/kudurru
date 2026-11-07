@@ -3200,15 +3200,42 @@ poll prerequisite; hosted CI on that new head remains pending.
 
 ### F20 five-process sampling remains incomplete
 
-Three of five original performance processes and two of five original RSS
+Three of five original performance processes and three of five original RSS
 processes have completed once each, with all original source/workload identities
 unchanged. Performance samples report 35, 37 and 40 provisional regressions;
 all 35 first-sample failures still trigger in sample3. Available absolute ceilings
 are satisfied in those individual samples, without aggregate qualification.
-RSS1/RSS2 steady values are 92.73/92.45MiB under the original 150MiB ceiling;
-peaks are separately 139.4/141.0MiB. Both 3M compile times regress against the
-retained 2.412s baseline; RSS2 is exactly 4.913/2.412 = 2.036898839138 times.
+RSS1/RSS2/RSS3 steady values are 92.73/92.45/92.25MiB under the original
+150MiB ceiling; peaks are separately 139.4/141.0/139.5MiB. All three 3M compile
+times regress against the retained 2.412s baseline; RSS2 is exactly
+4.913/2.412 = 2.036898839138 times, and RSS3 is 4.252/2.412 = 1.762852404643 times.
 The earlier handoff arithmetic typo is corrected without changing metric values.
 No current five-process median, fixed-class pass, official Go gate or aggregate
 serving/held-old-plus-new RSS result is claimed. Prior adverse samples, CPU-class
 mismatch, missing zone keys and all earlier limitations remain open.
+
+### F28 source currency and cache identity prerequisite
+
+The Store-issued resolver input now observes exact source/local/cursor state and
+one immutable installed gate mark without requiring prior registration. This
+allows the first complete publication to check source currency before Apply;
+publication work cancellation never expires a successfully registered input.
+The fixed cache domain includes full accepted owner, canonical local carrier and
+fresh input incarnation. Equal-key checkpoints, local-only denial and reopen
+cannot silently reuse a successor's domain. Neither method grants publication,
+cache insertion or final output authority.
+
+Exact four-file parent composition passes 85 ordinary and 88 default-race test
+entries, no failures/skips/race diagnostics; the latter includes all three real
+publisher tests. Installed scoped lint passes with zero issues. All 2,303 frozen
+inputs match. The ordinary command's publisher prefix selected zero publisher
+tests, recorded separately rather than counted; the race selection includes them.
+Evidence is under `.context/f28-parent-current-cache-20261107/`. The original
+full SQLite/publisher 592-entry race remains earlier-source evidence.
+
+The separate root caller six cases pass default race. An initial combined
+selection compiled config but selected no config tests; a subsequent exact
+selection passes the three config tests and all 13 entries under default race.
+The root mode/caller draft remains uncommitted pending complete composition.
+Common static-to-managed drain, builder/root seal, final transports, cache
+insertion exclusion, installed edge bypass and elected updater remain open.

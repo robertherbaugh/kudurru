@@ -377,6 +377,12 @@ or imply rollback. Managed composition must opt into the publisher's original
 bounded preparation lifetime before the image read. A successful registration
 survives cancellation of preparation; each later read has its own finite original
 lifetime. The adapter exposes no raw retirement snapshot or claimed-outcome API.
+Its `Current` predicate observes the exact source, local carrier and installed
+gate mark even before first publication; it does not grant a read or retain the
+preparation lifetime. A fixed cache domain binds the full accepted owner, local
+carrier and a fresh input incarnation, including across equal-key checkpoints
+and Store reopen. The predicate and domain are available to the builder but do
+not yet protect cache insertion or transport output.
 
 These are publication prerequisites. The production builder does not yet supply
 managed resolver inputs or a complete serving seal. The common static-to-managed

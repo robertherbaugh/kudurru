@@ -2,6 +2,8 @@ package sqlite
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"sync/atomic"
 
@@ -115,13 +117,18 @@ func (s *Store) CaptureAnchorPublication(ctx context.Context, token GenerationTo
 	if !generation.Same(token.generation) || authority != anchorAuthority(token.authority) {
 		return nil, replication.ErrCAS
 	}
+	var cacheNonce [32]byte
+	if _, err := rand.Read(cacheNonce[:]); err != nil {
+		return nil, err
+	}
+	cacheDomain := anchorCacheDomain(projection.DomainID(), projection.OwnerID(), cursor.local.digest, cacheNonce)
 	if err := anchorPublicationSource(source, cursor); err != nil {
 		return nil, err
 	}
 	if err := life.check(); err != nil {
 		return nil, err
 	}
-	input := &AnchorResolverInput{cell: &anchorResolverInput{source: source, cursor: cursor, projection: projection}}
+	input := &AnchorResolverInput{cell: &anchorResolverInput{source: source, cursor: cursor, projection: projection, cacheNonce: cacheNonce, cacheDomain: cacheDomain}}
 	return &AnchorPublication{cell: &anchorPublication{source: source, cursor: cursor, token: token, original: ctx, life: life, attempt: attempt, input: input}}, nil
 }
 
@@ -283,10 +290,53 @@ func (c *anchorPublication) invokePublication(n *anchorPublicationNodes, publish
 type AnchorResolverInput struct{ cell *anchorResolverInput }
 
 type anchorResolverInput struct {
-	source     *AnchorSource
-	cursor     *anchorCursor
-	projection resolverstate.Projection
-	snapshot   atomic.Pointer[retirement.Snapshot]
+	source      *AnchorSource
+	cursor      *anchorCursor
+	projection  resolverstate.Projection
+	cacheNonce  [32]byte
+	cacheDomain [32]byte
+	snapshot    atomic.Pointer[retirement.Snapshot]
+}
+
+const anchorCacheDomainTag = "kudurru/managed-root-cache/v1\x00"
+
+// Fixed-width complete identities are hashed only during original capture,
+// never in a query/final hook. The nonce separates even equal-source inputs and
+// reopened Stores; same-frame Snapshot reuse does not imply cache-domain reuse.
+func anchorCacheDomain(domain, owner, local, nonce [32]byte) [32]byte {
+	var raw [len(anchorCacheDomainTag) + 4*sha256.Size]byte
+	offset := copy(raw[:], anchorCacheDomainTag)
+	offset += copy(raw[offset:], domain[:])
+	offset += copy(raw[offset:], owner[:])
+	offset += copy(raw[offset:], local[:])
+	copy(raw[offset:], nonce[:])
+	return sha256.Sum256(raw[:])
+}
+
+// Current is an instantaneous mechanical source/local/gate predicate, not a
+// publication, cache-insertion or output grant. It deliberately works before
+// Apply and remains independent of publication-work cancellation and deadline.
+// A compatible unpublished Input may return true; original publication/proof,
+// complete-bundle and independent root/runtime/cluster checks remain required.
+// It performs no allocation, lock, Store I/O, context call or registration.
+func (i *AnchorResolverInput) Current() bool {
+	if i == nil || i.cell == nil {
+		return false
+	}
+	c := i.cell
+	return anchorPublicationSource(c.source, c.cursor) == nil && c.cursor.gate.MatchesInstalled(c.cursor.mark)
+}
+
+// CacheDomain returns a fixed source label binding history/domain, FULL owner,
+// exact durable local carrier and this Input's fresh private incarnation. It
+// grants no cache/output authority and never changes to a successor's identity,
+// even after Current becomes false. Zero Input returns zero. Root must bind it
+// into managed recursive cache identity; forwarded DNSSEC remains independent.
+func (i *AnchorResolverInput) CacheDomain() [32]byte {
+	if i == nil || i.cell == nil {
+		return [32]byte{}
+	}
+	return i.cell.cacheDomain
 }
 
 // AnchorRead retains one input's original finite query context. Copies share

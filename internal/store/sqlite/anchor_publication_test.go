@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -875,5 +876,289 @@ func TestAnchorPublicationConcurrentApplyCannotResolveAsSafeRollback(t *testing.
 	})
 	if err == nil || successes.Load() > 1 || !source.closed.Load() || p.Input().cell.snapshot.Load() != nil {
 		t.Fatal("concurrent Apply produced authority or clean rollback", err)
+	}
+}
+
+func TestAnchorPublicationCurrentBeforeApplyAndAfterWorkCancellation(t *testing.T) {
+	s, _, _ := anchorLocalTestManaged(t)
+	ctx, cancel := context.WithCancel(anchorLocalTestFinite(t.Context(), t))
+	defer cancel()
+	token, p := anchorPublicationTestCapture(ctx, t, s)
+	input := p.Input()
+	domain := input.CacheDomain()
+	if !input.Current() || input.cell.snapshot.Load() != nil || domain == ([32]byte{}) {
+		t.Fatal("source Current required an applied publication")
+	}
+	if _, err := input.CaptureRead(ctx); !errors.Is(err, ErrAnchorUnavailable) {
+		t.Fatal("Current manufactured a registration", err)
+	}
+	err := s.PublishIfCurrent(ctx, token, PublicationOptions{Anchor: p}, func() error {
+		if !input.Current() {
+			return errors.New("fixture: first publication source predicate refused")
+		}
+		if err := p.Apply(); err != nil {
+			return err
+		}
+		cancel()
+		return nil
+	})
+	if err != nil || !input.Current() || input.CacheDomain() != domain {
+		t.Fatal("publication work cancellation expired/restamped current source", err)
+	}
+	anchorPublicationTestRead(anchorLocalTestFinite(t.Context(), t), t, input)
+}
+
+func TestAnchorPublicationCurrentIsSourceOnlyAfterUnpublishedOriginalExpires(t *testing.T) {
+	s, _, _ := anchorLocalTestManaged(t)
+	original, cancel := context.WithCancel(anchorLocalTestFinite(t.Context(), t))
+	token, p := anchorPublicationTestCapture(original, t, s)
+	input := p.Input()
+	cancel()
+	if !input.Current() || input.cell.snapshot.Load() != nil {
+		t.Fatal("source currency confused with work lifetime or publication")
+	}
+	called := false
+	err := s.PublishIfCurrent(context.WithoutCancel(original), token, PublicationOptions{Anchor: p}, func() error { called = true; return p.Apply() })
+	if !errors.Is(err, context.Canceled) || called || !input.Current() {
+		t.Fatal("source predicate renewed expired original or lost source", err)
+	}
+	if _, err := input.CaptureRead(anchorLocalTestFinite(t.Context(), t)); !errors.Is(err, ErrAnchorUnavailable) {
+		t.Fatal("unpublished Current became a read grant", err)
+	}
+}
+
+func TestAnchorPublicationCurrentIncludesGateOnlyClosure(t *testing.T) {
+	for _, unresolved := range []bool{false, true} {
+		t.Run(map[bool]string{false: "explicit-gate-close", true: "unresolved-plan"}[unresolved], func(t *testing.T) {
+			s, source, _ := anchorLocalTestManaged(t)
+			ctx := anchorLocalTestFinite(t.Context(), t)
+			_, p := anchorPublicationTestCapture(ctx, t, s)
+			input := p.Input()
+			domain := input.CacheDomain()
+			before := source.cursor.Load()
+			if unresolved {
+				attempt, err := before.gate.CaptureWrite(ctx, before.mark)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = before.gate.WithWrite(attempt, func(scope *retirement.WriteScope) error {
+					_, err := scope.BeginChange()
+					return err // actual unresolved scope-close, no driver flags
+				})
+				if !errors.Is(err, retirement.ErrClosed) {
+					t.Fatal("unresolved plan did not reach close", err)
+				}
+			} else {
+				before.gate.Close()
+			}
+			if source.closed.Load() || s.anchorBlocked.Load() || source.cursor.Load() != before {
+				t.Fatal("gate-only fixture also changed driver flags/cursor")
+			}
+			if input.Current() || input.CacheDomain() != domain {
+				t.Fatal("Current missed gate closure or identity restamped")
+			}
+		})
+	}
+}
+
+func TestAnchorPublicationCurrentRefusesSourceFlagsAndForeignCursor(t *testing.T) {
+	for _, kind := range []string{"write-blocked", "anchor-blocked", "source-closed", "foreign-source", "foreign-cursor"} {
+		t.Run(kind, func(t *testing.T) {
+			s, source, _ := anchorLocalTestManaged(t)
+			_, p := anchorPublicationTestCapture(anchorLocalTestFinite(t.Context(), t), t, s)
+			input := p.Input()
+			domain := input.CacheDomain()
+			switch kind {
+			case "write-blocked":
+				s.writeBlocked.Store(true)
+			case "anchor-blocked":
+				s.anchorBlocked.Store(true)
+			case "source-closed":
+				source.closed.Store(true)
+			case "foreign-source":
+				other, _, _ := anchorLocalTestManaged(t)
+				// Controlled private input substitution, never a public constructor.
+				input = &AnchorResolverInput{cell: &anchorResolverInput{source: other.anchors.Load(), cursor: source.cursor.Load(), cacheDomain: domain}}
+			case "foreign-cursor":
+				other, _, _ := anchorLocalTestManaged(t)
+				input = &AnchorResolverInput{cell: &anchorResolverInput{source: source, cursor: other.anchors.Load().cursor.Load(), cacheDomain: domain}}
+			}
+			if input.Current() || input.CacheDomain() != domain {
+				t.Fatal("invalid source became current or identity followed successor")
+			}
+		})
+	}
+	var absent *AnchorResolverInput
+	if absent.Current() || (&AnchorResolverInput{}).Current() || absent.CacheDomain() != ([32]byte{}) || (&AnchorResolverInput{}).CacheDomain() != ([32]byte{}) {
+		t.Fatal("zero input looked current/nonzero")
+	}
+}
+
+func TestAnchorPublicationCurrentAndDomainDoNoContextCallsOrAllocations(t *testing.T) {
+	s, _, _ := anchorLocalTestManaged(t)
+	original := &anchorPublicationTestContext{Context: anchorLocalTestFinite(t.Context(), t)}
+	_, p := anchorPublicationTestCapture(original, t, s)
+	input := p.Input()
+	domain := input.CacheDomain()
+	cursor := input.cell.cursor
+	local := anchorLocalTestRead(t, s)
+	original.final.Store(true)
+	allocations := testing.AllocsPerRun(100, func() {
+		if !input.Current() || input.CacheDomain() != domain {
+			panic("fixture: source observer changed")
+		}
+	})
+	original.final.Store(false)
+	if allocations != 0 || original.calls.Load() != 0 || input.cell.cursor != cursor || input.cell.snapshot.Load() != nil || !sameAnchorLocal(local, anchorLocalTestRead(t, s)) {
+		t.Fatal("source observers allocated/called context/mutated committed input", allocations)
+	}
+}
+
+func TestAnchorPublicationCacheDomainBindsFullCapturedOwnerLocalAndNonce(t *testing.T) {
+	s, _, _ := anchorLocalTestManaged(t)
+	_, p := anchorPublicationTestCapture(anchorLocalTestFinite(t.Context(), t), t, s)
+	input := p.Input()
+	projection := p.Projection()
+	domainID, ownerID := projection.DomainID(), projection.OwnerID()
+	local := anchorLocalTestRead(t, s)
+	// Independent specification encoding checks the actual capture wiring,
+	// including full accepted/local identities rather than only effective DS.
+	raw := []byte("kudurru/managed-root-cache/v1\x00")
+	raw = append(raw, domainID[:]...)
+	raw = append(raw, ownerID[:]...)
+	raw = append(raw, local.digest[:]...)
+	raw = append(raw, input.cell.cacheNonce[:]...)
+	if input.CacheDomain() != sha256.Sum256(raw) {
+		t.Fatal("cache domain omitted/substituted captured identity")
+	}
+	fields := [4][32]byte{domainID, ownerID, local.digest, input.cell.cacheNonce}
+	names := []string{"domain", "full-owner", "local-carrier", "input-nonce"}
+	for index, name := range names {
+		t.Run(name, func(t *testing.T) {
+			changed := fields
+			changed[index][0] ^= 1
+			digest := anchorCacheDomain(changed[0], changed[1], changed[2], changed[3])
+			if digest == input.CacheDomain() {
+				t.Fatal("complete field omitted from cache identity")
+			}
+		})
+	}
+	changedRecord := local.record
+	changedRecord.Revision++
+	changedLocal, err := encodeAnchorLocal(changedRecord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changedLocal.digest == local.digest || anchorCacheDomain(domainID, ownerID, changedLocal.digest, input.cell.cacheNonce) == input.CacheDomain() {
+		t.Fatal("same-owner local revision was reduced to accepted/DS identity")
+	}
+}
+
+func TestAnchorPublicationEqualOwnerInputsReceiveDistinctFixedCacheDomains(t *testing.T) {
+	s, _, _ := anchorLocalTestManaged(t)
+	ctx := anchorLocalTestFinite(t.Context(), t)
+	firstToken, first := anchorPublicationTestCapture(ctx, t, s)
+	secondToken, second := anchorPublicationTestCapture(ctx, t, s)
+	a, b := first.Input(), second.Input()
+	if a.cell.cursor != b.cell.cursor || first.Projection().OwnerID() != second.Projection().OwnerID() || !sameAnchorLocal(a.cell.cursor.local, b.cell.cursor.local) {
+		t.Fatal("equal-owner fixture changed source")
+	}
+	if a.cell.cacheNonce == b.cell.cacheNonce || a.CacheDomain() == b.CacheDomain() || a.CacheDomain() == ([32]byte{}) || b.CacheDomain() == ([32]byte{}) {
+		t.Fatal("equal-source captures reused cache incarnation")
+	}
+	domainA, domainB := a.CacheDomain(), b.CacheDomain()
+	if err := s.PublishIfCurrent(ctx, firstToken, PublicationOptions{Anchor: first}, first.Apply); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PublishIfCurrent(ctx, secondToken, PublicationOptions{Anchor: second}, second.Apply); err != nil {
+		t.Fatal(err)
+	}
+	if a.cell.snapshot.Load() != b.cell.snapshot.Load() || a.CacheDomain() != domainA || b.CacheDomain() != domainB || !a.Current() || !b.Current() {
+		t.Fatal("mechanical same-frame reuse conflated cache domains or changed source")
+	}
+}
+
+func TestAnchorPublicationCurrentAndCacheDomainRetainOriginalOnOwnerAdvance(t *testing.T) {
+	s, source, proof := anchorLocalTestManaged(t)
+	ctx := anchorTestContext(t.Context(), t, s)
+	_, old := anchorPublicationTestCapture(ctx, t, s)
+	before := old.Input().CacheDomain()
+	update, err := s.CaptureAnchorUpdate(ctx, proof.next.Version())
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := trustanchors.Verify(proof.state, anchorTestSigned(t, proof.key, proof.signer, false), proof.clock.Sample())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.AnchorCommand(update, func(ctx context.Context, tx *CommandTx) error {
+		return anchorLocalTestAdvance(ctx, tx, observation, proof)
+	})
+	if err != nil || result.Outcome() != AnchorCommitted {
+		t.Fatal(err)
+	}
+	_, current := anchorPublicationTestCapture(ctx, t, s)
+	if !reflect.DeepEqual(old.Projection().DS(), current.Projection().DS()) || old.Projection().OwnerID() == current.Projection().OwnerID() || source.cursor.Load().owner.Version() == proof.next.Version() {
+		t.Fatal("checkpoint-only fixture did not preserve keys/change full owner")
+	}
+	if old.Input().Current() || old.Input().CacheDomain() != before || !current.Input().Current() || current.Input().CacheDomain() == before {
+		t.Fatal("old input followed checkpoint successor")
+	}
+	fixedNonce := old.Input().cell.cacheNonce
+	oldSameNonce := anchorCacheDomain(old.Projection().DomainID(), old.Projection().OwnerID(), old.Input().cell.cursor.local.digest, fixedNonce)
+	newSameNonce := anchorCacheDomain(current.Projection().DomainID(), current.Projection().OwnerID(), current.Input().cell.cursor.local.digest, fixedNonce)
+	if oldSameNonce == newSameNonce {
+		t.Fatal("identity change depended only on random incarnation")
+	}
+}
+
+func TestAnchorPublicationLocalDenyMakesCurrentFalseWithoutCanonicalProgress(t *testing.T) {
+	s, source, proof := anchorLocalTestManaged(t)
+	ctx := anchorLocalTestFinite(t.Context(), t)
+	_, p := anchorPublicationTestCapture(ctx, t, s)
+	input := p.Input()
+	oldDomain := input.CacheDomain()
+	before := imageOf(t, s).Generation()
+	originalOwner := source.cursor.Load().owner.Version()
+	_, _, verified := anchorLocalTestRevoke(t, s, proof)
+	result, _, err := s.CommitAnchorDenial(verified)
+	if err != nil || result.Outcome() != AnchorCommitted {
+		t.Fatal(err)
+	}
+	if !before.Same(imageOf(t, s).Generation()) || source.cursor.Load().owner.Version() != originalOwner {
+		t.Fatal("deny fixture invented canonical progress")
+	}
+	if input.Current() || input.CacheDomain() != oldDomain {
+		t.Fatal("local-only deny missed by source predicate/restamped cache identity")
+	}
+	if anchorCacheDomain(p.Projection().DomainID(), p.Projection().OwnerID(), source.cursor.Load().local.digest, input.cell.cacheNonce) == oldDomain {
+		t.Fatal("cache domain omitted full local postimage")
+	}
+}
+
+func TestAnchorPublicationCacheDomainReopenSeparatesEqualDurableBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	s := openAt(t, path, internalOptions)
+	_, dormant := anchorLocalTestDormant(t, s)
+	anchorTestManaged(t, s, dormant)
+	original := anchorTestContext(t.Context(), t, s)
+	_, first := anchorPublicationTestCapture(original, t, s)
+	beforeLocal := anchorLocalTestRead(t, s)
+	beforeOwner := first.Projection().OwnerID()
+	firstDomain := first.Input().CacheDomain()
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := openAt(t, path, internalOptions)
+	nextOriginal := anchorTestContext(t.Context(), t, reopened)
+	if _, err := reopened.BindAnchorLifecycle(nextOriginal); err != nil {
+		t.Fatal(err)
+	}
+	_, second := anchorPublicationTestCapture(nextOriginal, t, reopened)
+	if second.Projection().OwnerID() != beforeOwner || !sameAnchorLocal(beforeLocal, anchorLocalTestRead(t, reopened)) {
+		t.Fatal("reopen fixture changed accepted/local bytes")
+	}
+	if first.Input().Current() || !second.Input().Current() || first.Input().CacheDomain() != firstDomain || second.Input().CacheDomain() == firstDomain {
+		t.Fatal("old Store/cache domain revived after reopen")
 	}
 }
