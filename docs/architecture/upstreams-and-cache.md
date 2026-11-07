@@ -365,8 +365,24 @@ successor. `ReadScope.Check` is only an instantaneous check: output must finish
 or join within the synchronous read callback to retain exclusion. This primitive
 authenticates neither durable state nor the response it protects. The SQLite
 command, replica installation and conflict-resolution paths enforce original
-admission and durable local denial around their actual transactions. Final
-response output, cache retirement and complete publication remain unmounted.
+admission and durable local denial around their actual transactions.
+
+The SQLite publication adapter captures an exact committed owner, local carrier
+and original complete-image token. The complete publisher can carry that opaque
+attempt through preparation, take retirement exclusion before the Store writer
+lock, and apply its preallocated registration immediately before the whole-bundle
+pointer swap. The driver resolves the actual callback disposition under the same
+exclusion. An error after a swap does not release the publisher's live reference
+or imply rollback. Managed composition must opt into the publisher's original
+bounded preparation lifetime before the image read. A successful registration
+survives cancellation of preparation; each later read has its own finite original
+lifetime. The adapter exposes no raw retirement snapshot or claimed-outcome API.
+
+These are publication prerequisites. The production builder does not yet supply
+managed resolver inputs or a complete serving seal. The common static-to-managed
+output barrier, final transport handoffs, cache retirement, installed edge bypass
+and elected updater remain unmounted. Managed recursive input will not alter
+forwarded DNSSEC's independent anchors and exception policy.
 
 Planned managed mode also refuses an ordinary switch back to static/default
 anchors after managed history exists: a shipped seed could otherwise restore a

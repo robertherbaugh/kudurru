@@ -83,6 +83,9 @@ func (s *Store) ReadServingCandidate(ctx context.Context) (*replication.Image, G
 // DNS alone. It never makes that cut eligible for auth, readiness or promotion.
 type PublicationOptions struct {
 	DNSOnly bool
+	// Anchor retains the original committed managed-root publication attempt.
+	// It supplies mechanical source evidence, never a complete-bundle seal.
+	Anchor *AnchorPublication
 }
 
 // PublishIfCurrent holds the writer barrier while validating the exact token
@@ -96,8 +99,17 @@ func (s *Store) PublishIfCurrent(ctx context.Context, t GenerationToken, opts Pu
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if opts.Anchor != nil {
+		return s.publishAnchorIfCurrent(ctx, t, opts, publish)
+	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
+	return s.publishIfCurrentLocked(ctx, t, opts, publish)
+}
+
+// publishIfCurrentLocked preserves the ordinary publication checks. The anchor
+// lane calls it only after taking R(write) before wmu; it never reenters Store.
+func (s *Store) publishIfCurrentLocked(ctx context.Context, t GenerationToken, opts PublicationOptions, publish func() error) error {
 	if s.isClosed() {
 		return store.ErrClosed
 	}

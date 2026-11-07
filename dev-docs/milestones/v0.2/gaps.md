@@ -3151,3 +3151,64 @@ NOTIFY test also passes in the 14-test default-race selection. Hosted
 confirmation remains a separate gate.
 Private final shard output is retained under
 `.context/hosted-cd72760-20261107/go-shard1-final.log`.
+
+### F28 captured poll and complete-publication prerequisites
+
+`21d0ed9` adds the opaque receipt-bound poll bridge and bounded numeric TCP/UDP
+wire helper. Combined ordinary and default-race selections pass 137 entries,
+including all 21 poll top-level cases; installed scoped SQLite and wire lint
+pass. The production elected updater, managed resolver, final output/cache
+retirement and installed edge bypass remain unmounted.
+
+The parent root caller draft separately retains the original complete settings
+identity, host, writer, clock and policy before network acquisition. Six actual
+caller tests pass ordinarily, including signed TCP bootstrap, normal refresh,
+two-phase self-revocation and denial before an expired original host predicate
+refuses granting work. That last case injects predicate loss; it does not claim
+an actual provider replacement or automatic worker activation. The draft mode
+and caller are uncommitted pending the complete serving composition.
+
+The reviewed publication adapter imports onto actual parent schema8. Store-issued
+attempts bind the committed owner/local carrier and original image token;
+retirement exclusion precedes the writer lock. The complete publisher applies
+registration immediately before its whole-pointer swap and retains an actually
+swapped bundle across an outer completion error. Preparation can opt into an
+original finite lifetime before reading its candidate. Focused ordinary passes
+43 entries (22 driver and three publisher top-level cases), with no failures or
+skips. The real publisher tests use test owner components and assert the actual
+pointer/resource boundary; they do not qualify the production resolver or output
+seal. Full SQLite/publisher default races then pass 592 entries with no failures,
+skips or race diagnostics (SQLite 289.909s, publisher 5.985s, outer 302.114s).
+All 2,301 frozen inputs remain unchanged. Final installed scoped lint passes with zero issues in 29.052s. Its first
+invocation found two issues confined to the separate uncommitted caller test
+helper; the corrected parameter order and explicit bounded length preserve the
+qualified publication sources. Exact evidence is retained under
+`.context/f28-parent-publication-20261107/`.
+
+### Hosted schema8 audit fixture correction
+
+On pushed `58aed1f`, Go shard1 passes and shard2 fails the historical audit
+credential-redaction fixture: constructing schema5 from schema8 left behind its
+private local-anchor carrier. Migration8 correctly refused that preexisting row.
+`7649b8d` deletes only the exact fresh migration-proven awaiting carrier while the
+fixture Store is closed, asserting one affected row. Historical audit data,
+redaction assertions and production migration guards remain unchanged. The exact
+fixture passes ordinary/default race; installed scoped lint passes. The first
+lint finding on an unrelated draft constant comment and a subsequent launcher
+path typo remain separate failed receipts. `7649b8d` is pushed with the qualified
+poll prerequisite; hosted CI on that new head remains pending.
+
+### F20 five-process sampling remains incomplete
+
+Three of five original performance processes and two of five original RSS
+processes have completed once each, with all original source/workload identities
+unchanged. Performance samples report 35, 37 and 40 provisional regressions;
+all 35 first-sample failures still trigger in sample3. Available absolute ceilings
+are satisfied in those individual samples, without aggregate qualification.
+RSS1/RSS2 steady values are 92.73/92.45MiB under the original 150MiB ceiling;
+peaks are separately 139.4/141.0MiB. Both 3M compile times regress against the
+retained 2.412s baseline; RSS2 is exactly 4.913/2.412 = 2.036898839138 times.
+The earlier handoff arithmetic typo is corrected without changing metric values.
+No current five-process median, fixed-class pass, official Go gate or aggregate
+serving/held-old-plus-new RSS result is claimed. Prior adverse samples, CPU-class
+mismatch, missing zone keys and all earlier limitations remain open.

@@ -45,6 +45,10 @@ type Options struct {
 	Required          []string
 	DependencyChanges func() <-chan struct{}
 	RetryInterval     time.Duration
+	// PreparationTimeout bounds the original candidate read, build and swap.
+	// Zero preserves the existing caller lifetime. Managed-root composition
+	// must choose a positive bound no greater than 30 seconds before Run.
+	PreparationTimeout time.Duration
 }
 
 // Publisher owns one complete serving pointer and a real promotion barrier.
@@ -87,6 +91,9 @@ func New(opts Options) (*Publisher, error) {
 	}
 	if opts.RetryInterval <= 0 {
 		opts.RetryInterval = time.Second
+	}
+	if opts.PreparationTimeout < 0 || opts.PreparationTimeout > 30*time.Second {
+		return nil, fmt.Errorf("serving: invalid preparation lifetime")
 	}
 	p := &Publisher{opts: opts, publication: make(chan struct{}, 1), stop: make(chan struct{}), initialized: make(chan struct{}), wake: make(chan struct{}, 1), changed: make(chan struct{}), reason: "no_bundle"}
 	p.publication <- struct{}{}
@@ -176,9 +183,16 @@ func (p *Publisher) publish(ctx context.Context, next *Bundle) error {
 		return err
 	}
 	var previous *Bundle
-	err := p.opts.Source.PublishIfCurrent(ctx, next.token, sqlite.PublicationOptions{DNSOnly: next.dnsOnly}, func() error {
+	swapped := false
+	err := p.opts.Source.PublishIfCurrent(ctx, next.token, sqlite.PublicationOptions{DNSOnly: next.dnsOnly, Anchor: next.anchor}, func() error {
+		if swapped {
+			return ErrComponents
+		}
 		if p.closed.Load() {
 			return ErrClosed
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if !dependenciesCurrent(next.current) {
 			return ErrDependency
@@ -186,23 +200,37 @@ func (p *Publisher) publish(ctx context.Context, next *Bundle) error {
 		if p.sequence == math.MaxUint64 {
 			return ErrClosed
 		}
-		p.sequence++
-		next.identity.Publication = p.sequence
+		sequence := p.sequence + 1
+		if next.anchor != nil {
+			if err := next.anchor.Apply(); err != nil {
+				return err
+			}
+		}
+		// No fallible work or external callback may separate registration from
+		// its matching complete pointer swap. Store resolves under the same R.
+		p.sequence = sequence
+		next.identity.Publication = sequence
 		previous = p.current.Swap(next)
+		swapped = true
 		return nil
 	})
 	p.unlock()
-	if err != nil {
+	if !swapped {
 		next.release()
+		if err == nil {
+			err = ErrComponents
+		}
 		return err
 	}
 	if previous != nil {
 		previous.release()
 	}
-	if !next.dnsOnly {
+	if err == nil && !next.dnsOnly {
 		p.initOnce.Do(func() { close(p.initialized) })
 	}
-	return nil
+	// An outer source wrapper may report an error AFTER an actual swap. Keep
+	// the publisher's live reference and actual disposition in that case.
+	return err
 }
 
 // Run subscribes before reading, cancels obsolete preparation and publishes only
@@ -223,7 +251,13 @@ func (p *Publisher) Run(ctx context.Context) error {
 		if p.opts.DependencyChanges != nil {
 			dependencies = p.opts.DependencyChanges()
 		}
-		work, cancel := context.WithCancel(ctx)
+		var work context.Context
+		var cancel context.CancelFunc
+		if p.opts.PreparationTimeout > 0 {
+			work, cancel = context.WithTimeout(ctx, p.opts.PreparationTimeout)
+		} else {
+			work, cancel = context.WithCancel(ctx)
+		}
 		result := make(chan attemptResult, 1)
 		go func() { result <- p.prepare(work) }()
 		var r attemptResult

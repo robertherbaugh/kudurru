@@ -57,6 +57,9 @@ type Component struct {
 type Prepared struct {
 	Components []Component
 	Current    func() bool
+	// Anchor is the original Store-issued managed input registration. It is
+	// applied only at the complete pointer swap, after every fallible check.
+	Anchor *sqlite.AnchorPublication
 }
 
 // Identity keeps canonical generation and local dependency publication distinct.
@@ -74,6 +77,7 @@ type Bundle struct {
 	dnsOnly    bool
 	components map[string]Component
 	current    func() bool
+	anchor     *sqlite.AnchorPublication
 	refs       atomic.Int64
 }
 
@@ -156,7 +160,7 @@ func newBundle(token sqlite.GenerationToken, prepared Prepared, required []strin
 		return nil, err
 	}
 	digest := sha256.Sum256(raw)
-	b := &Bundle{identity: Identity{Base: base, Dependencies: hex.EncodeToString(digest[:])}, token: token, dnsOnly: token.DNSOnly(), components: components, current: prepared.Current}
+	b := &Bundle{identity: Identity{Base: base, Dependencies: hex.EncodeToString(digest[:])}, token: token, dnsOnly: token.DNSOnly(), components: components, current: prepared.Current, anchor: prepared.Anchor}
 	b.refs.Store(1) // publisher reference (or candidate before publication)
 	return b, nil
 }
