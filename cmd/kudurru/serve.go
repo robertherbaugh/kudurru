@@ -575,11 +575,41 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
+	// SQLite shares these exact owners between background acquisition and
+	// complete serving. The baseline alone is not an admitted stored source:
+	// captureHost requires the coordinator's complete Prepared image first.
+	var authKeys *authKeyOwner
+	var rings *servingbuild.KeyringOwner
+	var tsigSource *tsigRuntime
+	if sql != nil {
+		authKeys, err = newAuthKeyOwner(ctx, encKeys)
+		if err != nil {
+			return err
+		}
+		rings, err = servingbuild.NewKeyringOwner(keyring)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rings.Close(context.Background()) }()
+		tsigSource, err = newTSIGRuntime(sql, authKeys, rings, keyring)
+		if err != nil {
+			return err
+		}
+	}
 	secondaryCluster := sha256.Sum256(append([]byte("kudurru/secondary/cluster/v1:"), encKey...))
-	secondaries, err := secondary.New(secondary.Options{
+	secondaryOptions := secondary.Options{
 		Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", secondaryCluster), Keyring: keyring,
 		Receiver: &secondary.TransferClient{Keyring: keyring}, Logger: logger,
-	})
+	}
+	if tsigSource != nil {
+		secondaryOptions.Keyring, secondaryOptions.Receiver = nil, nil
+		secondaryOptions.CaptureKeys = tsigSource.captureAcquisition
+		secondaryOptions.ReceiverForKeys = func(keys *dnsserver.StaticKeyring) secondary.Receiver {
+			return &secondary.TransferClient{Keyring: keys}
+		}
+		secondaryOptions.KeysChanged = rings.Changes
+	}
+	secondaries, err := secondary.New(secondaryOptions)
 	if err != nil {
 		return err
 	}
@@ -599,7 +629,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var feeds *rpz.Manager
 	if sql != nil {
 		rpzCluster := sha256.Sum256(append([]byte("kudurru/rpz/cluster/v1:"), encKey...))
-		feeds, err = rpz.New(rpz.Options{Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", rpzCluster), Keyring: keyring, Receiver: &secondary.TransferClient{Keyring: keyring}, Logger: logger})
+		feeds, err = rpz.New(rpz.Options{
+			Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", rpzCluster), Logger: logger,
+			CaptureKeys: tsigSource.captureAcquisition, KeysChanged: rings.Changes,
+			ReceiverForKeys: func(keys *dnsserver.StaticKeyring) rpz.Receiver {
+				return &secondary.TransferClient{Keyring: keys}
+			},
+		})
 		if err != nil {
 			return err
 		}
@@ -886,45 +922,6 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	tsigFailures := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "kudurru_dns_tsig_failures_total", Help: "Requests rejected for their TSIG (RFC 8945), by error."}, []string{"error"})
 	reg.MustRegister(tsigFailures)
 
-	// DNS listeners: udp/tcp/dot/doh/doq/doh3 with the shared certificate
-	// store and the authenticated PROXYv2 policy (D45, D56, D67).
-	proxyPolicy, err := dnsserver.PolicyFromConfig(cfg.Listeners)
-	if err != nil {
-		return err
-	}
-	if proxyPolicy != nil {
-		proxyPolicy.SetDropHook(func(r proxyproto.Reason) { dnsMetrics.Dropped.WithLabelValues(string(r)).Inc() })
-	}
-	registry, err := dnsserver.NewRegistry(dnsserver.Options{
-		Handler:       &dnsserver.Handler{Chain: chain, Logger: logger},
-		Logger:        logger,
-		Proxy:         proxyPolicy,
-		TSIG:          keyring,
-		OnTSIGFailure: func(reason string) { tsigFailures.WithLabelValues(reason).Inc() },
-		Sockets:       cfg.Listeners.Sockets,
-		Limits:        dnsserver.LimitsFromConfig(cfg.Listeners),
-	})
-	if err != nil {
-		return err
-	}
-	if err := registry.Add(dnsserver.SpecsFromConfig(cfg.Listeners)...); err != nil {
-		return err
-	}
-	if err := registry.Bind(); err != nil { // fail fast on port conflicts
-		return err
-	}
-	defer func() {
-		for _, listener := range registry.Listeners() {
-			_ = listener.Close()
-		}
-	}()
-	checker.Register("dns", registry.Ready)
-	if cfg.BlockPage.Enabled {
-		if err := blockPage.Listen(); err != nil { // fail fast on port conflicts
-			return err
-		}
-	}
-
 	// SQLite's lifecycle driver owns durable NOTIFY. The legacy notifier is
 	// retained only for the Kubernetes serving path.
 	var nt *notifier.Notifier
@@ -1025,18 +1022,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		authHandler = authMux
 	}
 	if sql != nil {
-		authKeys, err := newAuthKeyOwner(ctx, encKeys)
-		if err != nil {
-			return err
-		}
-		rings, err := servingbuild.NewKeyringOwner(keyring)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = rings.Close(context.Background()) }()
 		complete, err = newServingRuntime(ctx, servingRuntimeOptions{
 			Store: sql, Config: cfg, Validator: v, License: lic, AuthKeys: authKeys,
-			Keyrings: rings, Catalog: catalogs, Transferred: servingbuild.NewTransferredRuntime(secondaries, stubs, feeds),
+			Keyrings: rings, TSIG: tsigSource, Catalog: catalogs, Transferred: servingbuild.NewTransferredRuntime(secondaries, stubs, feeds),
 			Lists: lists, Namespace: namespace, Upstreams: upOpts, Logging: qlLogs,
 		})
 		if err != nil {
@@ -1112,6 +1100,53 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		domainCommand = complete.DomainCommand
 		zoneNotifyCommand = complete.ZoneNotifyCommand
 		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
+	}
+
+	// DNS listeners: udp/tcp/dot/doh/doq/doh3 with the shared certificate
+	// store and the authenticated PROXYv2 policy (D45, D56, D67).
+	proxyPolicy, err := dnsserver.PolicyFromConfig(cfg.Listeners)
+	if err != nil {
+		return err
+	}
+	if proxyPolicy != nil {
+		proxyPolicy.SetDropHook(func(r proxyproto.Reason) { dnsMetrics.Dropped.WithLabelValues(string(r)).Inc() })
+	}
+	dnsHandler := &dnsserver.Handler{Chain: chain, Logger: logger}
+	if complete != nil {
+		// Configure once before any listener binds: signature verification and
+		// emission retain the same original complete publication as the query.
+		dnsHandler.Capture = servingdns.Capture(complete.publisher)
+		dnsHandler.Keys = servingbuild.DNSKeys
+	}
+	registry, err := dnsserver.NewRegistry(dnsserver.Options{
+		Handler:       dnsHandler,
+		Logger:        logger,
+		Proxy:         proxyPolicy,
+		TSIG:          keyring,
+		OnTSIGFailure: func(reason string) { tsigFailures.WithLabelValues(reason).Inc() },
+		Sockets:       cfg.Listeners.Sockets,
+		Limits:        dnsserver.LimitsFromConfig(cfg.Listeners),
+	})
+	if err != nil {
+		return err
+	}
+	if err := registry.Add(dnsserver.SpecsFromConfig(cfg.Listeners)...); err != nil {
+		return err
+	}
+	if err := registry.Bind(); err != nil { // fail fast on port conflicts
+		return err
+	}
+	defer func() {
+		for _, listener := range registry.Listeners() {
+			_ = listener.Close()
+		}
+	}()
+	checker.Register("dns", registry.Ready)
+
+	if cfg.BlockPage.Enabled {
+		if err := blockPage.Listen(); err != nil { // fail fast on port conflicts
+			return err
+		}
 	}
 
 	// The optional central database (D158): opened here, connected and
