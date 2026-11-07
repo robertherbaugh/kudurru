@@ -22,6 +22,7 @@ import type { DomainEntry, DomainEntryType } from '../../api/types';
 import { formatDateTime, formatRelative } from '../../lib/format';
 import { actorName, ORIGIN_LABEL, refPath, shortRef, TYPE_LABEL } from '../../lib/domains';
 import { TextField } from '../fields/TextField';
+import { RegexImpactDialog } from './RegexImpactDialog';
 
 const TYPE_COLOR: Record<DomainEntryType, 'default' | 'blue' | 'purple'> = { exact: 'default', wildcard: 'blue', regex: 'purple' };
 
@@ -179,11 +180,18 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
 
 /** The value, what the entry overrides and why it is read-only. */
 function DomainCell({ e }: { e: DomainEntry }) {
+  const [inspect, setInspect] = useState(false);
   return (
     <VStack gap={0.5}>
       <Text type="code" wordBreak="break-all" hasStrikethrough={!e.enabled}>
         {e.value}
       </Text>
+      {e.type === 'regex' && e.kind !== 'exception' ? (
+        <>
+          <Button label="Test a domain" size="sm" variant="ghost" onClick={() => setInspect(true)} />
+          {inspect ? <RegexImpactDialog entry={e} onClose={() => setInspect(false)} /> : null}
+        </>
+      ) : null}
       {e.kind === 'exception' ? (
         e.stillMatchedBy.length ? (
           <Text type="supporting" size="sm">

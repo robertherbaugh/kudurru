@@ -11,10 +11,10 @@ rules:
   # Server-side apply needs create+patch; file-managed objects and
   # finalizers need delete (D77).
   - apiGroups: ["kudurru.io"]
-    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests", "dhcpscopes"]
+    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests", "dhcpscopes", "integrations", "kudurrus", "identityproviders", "rolebindings", "serviceaccounts"]
     verbs: ["get", "list", "watch", "create", "patch", "delete"]
   - apiGroups: ["kudurru.io"]
-    resources: ["dnszones/status", "dnsrecordsets/status", "blocklists/status", "clientgroups/status", "policies/status", "unblockrequests/status", "dhcpscopes/status"]
+    resources: ["dnszones/status", "dnsrecordsets/status", "blocklists/status", "clientgroups/status", "policies/status", "unblockrequests/status", "dhcpscopes/status", "integrations/status", "kudurrus/status", "identityproviders/status", "serviceaccounts/status"]
     verbs: ["update", "patch"]
   # DNSEndpoint compatibility watch (read-only, never owned, §5.1).
   - apiGroups: ["externaldns.k8s.io"]

@@ -45,8 +45,9 @@ func splitPath(p string) []string { return strings.Split(p, ".") }
 
 func upstreamValue(c *config.Config) any {
 	raw, _ := json.Marshal(c.Upstreams)
-	var v any
+	var v map[string]any
 	_ = json.Unmarshal(raw, &v)
+	delete(v, "importFile") // host source paths cannot become UI-owned declarations
 	return v
 }
 
@@ -280,7 +281,7 @@ func (m *Manager) yamlLocked(section string, proposed map[string]any) (string, e
 		}
 		flat := config.Flatten(c)
 		for _, key := range config.Schema {
-			if !strings.HasPrefix(key.Path, section+".") {
+			if !config.PublicClusterKey(key) || !strings.HasPrefix(key.Path, section+".") {
 				continue
 			}
 			v, ok := values[key.Path]

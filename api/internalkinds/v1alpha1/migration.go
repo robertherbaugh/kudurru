@@ -79,7 +79,7 @@ func (r *MigrationRun) Validate() error {
 		errs.add("spec.startedAt", "required")
 	}
 	switch r.Spec.Source {
-	case "technitium", "pihole", "manual", "existing":
+	case "technitium", "pihole", "adguard", "blocky", "manual", "existing":
 	default:
 		errs.add("spec.source", "unsupported source")
 	}

@@ -1,6 +1,7 @@
 package zone
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -9,6 +10,50 @@ import (
 
 	"github.com/miekg/dns"
 )
+
+func TestHostNamePreservesOctetsAndStablePresentation(t *testing.T) {
+	for _, name := range []string{
+		"\xff\x80Ä.EXAMPLE.",
+		`\070.EXAMPLE.`,
+		`\F.EXAMPLE.`,
+		`a\\F.EXAMPLE.`,
+		`a\.b.EXAMPLE.`,
+	} {
+		got, err := hostName(name)
+		if err != nil {
+			t.Fatal("valid presentation name rejected")
+		}
+		wantKey, err := canonicalKey(name)
+		if err != nil {
+			t.Fatal("invalid name fixture")
+		}
+		gotKey, err := canonicalKey(got)
+		if err != nil || gotKey != wantKey {
+			t.Fatal("host normalization changed DNS label octets")
+		}
+		wire := make([]byte, 255)
+		n, err := dns.PackDomainName(got, wire, 0, nil, false)
+		if err != nil {
+			t.Fatal("normalized name cannot pack")
+		}
+		back, _, err := dns.UnpackDomainName(wire[:n], 0)
+		if err != nil {
+			t.Fatal("normalized name cannot unpack")
+		}
+		second, err := hostName(back)
+		if err != nil || second != got {
+			t.Fatal("normalized presentation is not a fixed point")
+		}
+		packed := make([]byte, 255)
+		m, err := dns.PackDomainName(second, packed, 0, nil, false)
+		if err != nil || !bytes.Equal(wire[:n], packed[:m]) {
+			t.Fatal("presentation round trip changed wire bytes")
+		}
+	}
+	if got := fqdn("\xffÄEXAMPLE"); got != "\xffÄexample." {
+		t.Fatal("fqdn changed non-ASCII DNS octets")
+	}
+}
 
 func TestCanonicalKey(t *testing.T) {
 	for _, tc := range []struct {
@@ -209,7 +254,7 @@ func TestMailbox(t *testing.T) {
 		`hostmaster.example.com.`:  `hostmaster.example.com.`,
 		`\@.0.example.com.`:        `\@.0.example.com.`,
 		`a\@b@example.com`:         `a\@b.example.com.`,
-		`a\064b.example.com.`:      `a\064b.example.com.`,
+		`a\064b.example.com.`:      `a\@b.example.com.`, // canonical presentation of the same label
 		`first\.last.example.com.`: `first\.last.example.com.`,
 	} {
 		got, err := mailbox(in)

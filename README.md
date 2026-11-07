@@ -72,7 +72,7 @@ docker run -d --name kudurru --restart unless-stopped \
   -v "$PWD/secrets:/run/secrets:ro" \
   -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
   -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-  ghcr.io/robertherbaugh/kudurru:0.1.0 serve
+  ghcr.io/robertherbaugh/kudurru:0.2.0 serve
 dig @127.0.0.1 example.com
 ```
 
@@ -86,8 +86,8 @@ Kubernetes, starting with one replica and no license key:
 ```sh
 kubectl create namespace kudurru-system
 kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted
-helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
+helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.2.0
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.2.0 \
   --namespace kudurru-system --set replicaCount=1
 kubectl get dnszones
 ```
@@ -124,6 +124,7 @@ OIDC, scoped roles, long-term statistics, integrations and the edge need
 the corresponding license entitlements; a free eligible personal key
 unlocks them. Full milestones and planned features are in
 [dev-docs/design-record.md §13](dev-docs/design-record.md#13-roadmap).
+The [v0.2 implementation plan](dev-docs/milestones/v0.2/README.md) reconciles that scope with the current code and groups the remaining work by dependency and acceptance criteria.
 
 ## Documentation
 

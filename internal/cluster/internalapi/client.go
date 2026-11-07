@@ -61,7 +61,12 @@ func NewClient(creds *Credentials, opts ClientOptions) *Client {
 			IdleConnTimeout:       90 * time.Second,
 		}
 	}
-	return &Client{creds: creds, http: &http.Client{Transport: rt}, max: opts.MaxListBytes}
+	return &Client{creds: creds, http: &http.Client{
+		Transport: rt,
+		// Membership selects the peer. Redirects must not send its token or
+		// a write/hint body to a different endpoint.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}, max: opts.MaxListBytes}
 }
 
 // Status fetches GET /internal/status from addr (host:port).

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -89,13 +90,21 @@ func (s *RecordSetSelector) Admits(rs *v1alpha1.DNSRecordSet) bool {
 // conflicts). sets is not modified. A recordSetSelector that does not
 // compile admits nothing.
 func ServedRecordSets(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet) []*v1alpha1.DNSRecordSet {
+	return ServedRecordSetsCached(dz, sets, nil, time.Time{})
+}
+
+// ServedRecordSetsCached applies the same selection with optional parsed reuse.
+func ServedRecordSetsCached(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, cache *RecordCache, now time.Time) []*v1alpha1.DNSRecordSet {
+	if now.IsZero() {
+		now = time.Now()
+	}
 	sel, err := NewRecordSetSelector(dz)
 	if err != nil {
 		return nil
 	}
 	out := make([]*v1alpha1.DNSRecordSet, 0, len(sets))
 	for _, rs := range sets {
-		if sel.Admits(rs) && RecordSetValid(rs) {
+		if sel.Admits(rs) && cache.RecordSetValid(dz, rs, now) {
 			out = append(out, rs)
 		}
 	}

@@ -14,10 +14,10 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/metrics"
+	"github.com/robertherbaugh/kudurru/internal/nodehealth"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
-	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 )
 
 // RcodeNone is the rcode label of kudurru_dns_responses_total for queries
@@ -30,6 +30,9 @@ type Observer struct {
 	Node      string
 	Collector querylog.Collector
 	Metrics   *metrics.DNS
+	// Capture returns the logging owner from the original DNS serving lease.
+	// A missing/invalid capture never falls back to current operational state.
+	Capture func(*pipeline.Request) (querylog.Collector, error)
 }
 
 // Observe implements pipeline.Observer.
@@ -68,7 +71,17 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 	// The health name is probed every second by dnsdist and keepalived and
 	// is never logged.
 	// Synthetic requests (the API's built-in dig) are not client traffic.
-	if o.Collector == nil || req.Client.Synthetic || strings.EqualFold(q.Name, ingress.HealthName) {
+	collector := o.Collector
+	if o.Capture != nil {
+		var captureErr error
+		collector, captureErr = o.Capture(req)
+		if captureErr != nil {
+			return
+		}
+	} else if req.Serving != nil {
+		return
+	}
+	if collector == nil || req.Client.Synthetic || nodehealth.IsName(q.Name) {
 		return
 	}
 	ev := &querylog.Event{
@@ -117,6 +130,20 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 		ev.DNSSEC = querylog.DNSSECState(resp.DNSSEC) // same values
 	}
 	if resp != nil && resp.Msg != nil {
+		// The wire AD bit is neither necessary (DO=0 clients) nor
+		// sufficient (untrusted upstreams) evidence of local validation.
+		if !resp.Modified && (resp.Origin == pipeline.OriginForwarded || resp.Origin == pipeline.OriginFailure) {
+			switch resp.Security.State {
+			case pipeline.ValidationSecure:
+				ev.DNSSEC = querylog.DNSSECSecure
+			case pipeline.ValidationInsecure:
+				ev.DNSSEC = querylog.DNSSECInsecure
+			case pipeline.ValidationBogus:
+				ev.DNSSEC = querylog.DNSSECBogus
+			case pipeline.ValidationIndeterminate:
+				ev.DNSSEC = querylog.DNSSECIndeterminate
+			}
+		}
 		ev.Flags.TC = resp.Msg.Truncated
 		ev.Flags.AD = resp.Msg.AuthenticatedData
 		ev.ReplyType = replyType(q.Qtype, resp.Msg)
@@ -133,7 +160,7 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 	ev.Flags.Cached = status == pipeline.StatusCached || status == pipeline.StatusCachedStale
 	ev.Flags.Stale = status == pipeline.StatusCachedStale
 	ev.Flags.Prefetch = status == pipeline.StatusPrefetchRefresh
-	o.Collector.Enqueue(ev)
+	collector.Enqueue(ev)
 }
 
 // zoneName returns the name of the zone the authoritative stage matched

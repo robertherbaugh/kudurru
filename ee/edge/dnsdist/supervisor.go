@@ -59,8 +59,12 @@ type Config struct {
 	// APIKeyGID, when >= 0, is the group the key file is chowned to (the
 	// keepalived_script group of the keepalived image).
 	APIKeyGID int
-	// TLSDir is watched for certificate changes (restart); empty disables.
+	// TLSDir is watched for certificate changes; empty disables watching.
 	TLSDir string
+	// ConsoleTimeout bounds one upstream console client; UpdateTimeout bounds
+	// a membership mutation, HealthTimeout its automatic health qualification.
+	// PurgeDelay retains down backends for in-flight queries before removal.
+	ConsoleTimeout, UpdateTimeout, HealthTimeout, PurgeDelay time.Duration
 	// Debounce delays re-rendering after membership and certificate
 	// changes; default 5 s.
 	Debounce time.Duration
@@ -88,7 +92,7 @@ type Config struct {
 
 // Supervisor is `kudurru edge run`: render → `dnsdist --check-config` →
 // atomic swap → run dnsdist as a child, and on membership, zone or
-// certificate changes re-render and restart (v0.1, D17).
+// certificate changes use bounded console updates with validated restart recovery.
 type Supervisor struct {
 	cfg   Config
 	log   *slog.Logger
@@ -103,14 +107,28 @@ type Supervisor struct {
 	rendered  prometheus.Gauge
 	gatherer  prometheus.Gatherer
 
-	mu         sync.Mutex
-	status     *ServerStatus
-	statusAt   time.Time
-	statusErr  error
-	restarting bool
-	current    []File
-	endpoints  []cluster.Endpoint
-	zones      []string
+	mu                                                 sync.Mutex
+	status                                             *ServerStatus
+	statusAt                                           time.Time
+	statusErr                                          error
+	restarting                                         bool
+	current                                            []File
+	endpoints                                          []cluster.Endpoint
+	zones                                              []string
+	updateError                                        string
+	membershipError, certificateError                  string
+	statusEpoch                                        uint64
+	membershipMode                                     string
+	classifyBackend                                    func(context.Context, edge.Backend) (healthCapability, error) // unit fixture seam; nil uses authenticated direct probes
+	tlsState                                           *certificateState                                             // Run owns snapshots; never contains source credentials in status
+	cacheSourceEpoch, cacheChildEpoch                  uint64
+	cacheDesired                                       []cluster.Endpoint
+	cacheWatchFailed                                   bool
+	cacheWake                                          chan struct{}
+	cacheObservations                                  chan resolverObservation
+	cacheMode, cacheError                              string
+	cacheIdentity                                      string
+	authoritativeCacheMode, authoritativeCacheIdentity string
 }
 
 // New validates cfg and returns a Supervisor.
@@ -142,6 +160,18 @@ func New(cfg Config) (*Supervisor, error) {
 	if cfg.StatusPoll <= 0 {
 		cfg.StatusPoll = time.Second
 	}
+	if cfg.ConsoleTimeout <= 0 {
+		cfg.ConsoleTimeout = 3 * time.Second
+	}
+	if cfg.UpdateTimeout <= 0 {
+		cfg.UpdateTimeout = 30 * time.Second
+	}
+	if cfg.HealthTimeout <= 0 {
+		cfg.HealthTimeout = 15 * time.Second
+	}
+	if cfg.PurgeDelay <= 0 {
+		cfg.PurgeDelay = 5 * time.Second
+	}
 	if cfg.NewCredentials == nil {
 		cfg.NewCredentials = edge.NewCredentials
 	}
@@ -159,6 +189,7 @@ func New(cfg Config) (*Supervisor, error) {
 		cfg.Options.API = "127.0.0.1:8083"
 	}
 	s := &Supervisor{
+		cacheWake: make(chan struct{}, 1), cacheObservations: make(chan resolverObservation, 1),
 		cfg: cfg,
 		log: cfg.Logger.With("component", "edge"),
 		backendUp: prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -215,80 +246,127 @@ func candidateName(name string) string {
 // topology builds the topology for the given endpoints and zones.
 func (s *Supervisor) topology(eps []cluster.Endpoint, zones []string) (*edge.Topology, error) {
 	o := s.cfg.Options
+	if s.tlsState != nil {
+		o.CertFile = filepath.Join(s.tlsState.root, "current", "cert.pem")
+		o.KeyFile = filepath.Join(s.tlsState.root, "current", "key.pem")
+	}
 	o.AuthoritativeZones = append(slices.Clone(o.AuthoritativeZones), zones...)
 	bes := make([]edge.Backend, 0, len(eps))
 	for _, e := range eps {
 		bes = append(bes, edge.Backend{Name: e.Name, Address: e.Address, InternalAddress: e.InternalAddress})
 	}
-	return edge.Build(o, bes, s.creds)
+	t, err := edge.Build(o, bes, s.creds)
+	if err == nil {
+		// A supervisor starts/restarts uncached until every current
+		// source proves its original complete publication. Never restore an
+		// unqualified packet cache from a persisted restart configuration.
+		for i := range t.Pools {
+			if t.Pools[i].Name == edge.PoolResolver || t.Pools[i].Name == edge.PoolAuthoritative {
+				t.Pools[i].Cache = nil
+			}
+		}
+	}
+	return t, err
 }
 
-// render renders, writes candidates, validates them with dnsdist and
-// swaps them in. It reports whether the files changed.
-func (s *Supervisor) render(ctx context.Context, eps []cluster.Endpoint, zones []string) (bool, error) {
+// prepare validates candidates without changing the accepted restart target.
+func (s *Supervisor) prepare(ctx context.Context, eps []cluster.Endpoint, zones []string) ([]File, bool, error) {
 	top, err := s.topology(eps, zones)
 	if err != nil {
 		s.renders.WithLabelValues("invalid").Inc()
-		return false, err
+		return nil, false, err
 	}
 	files, err := s.cfg.Renderer.Render(top)
 	if err != nil {
 		s.renders.WithLabelValues("invalid").Inc()
-		return false, err
+		return nil, false, err
 	}
 	s.mu.Lock()
 	same := equalFiles(files, s.current)
 	s.mu.Unlock()
 	if same {
 		s.renders.WithLabelValues("unchanged").Inc()
-		return false, nil
+		return files, false, nil
 	}
 	if err := os.MkdirAll(s.cfg.ConfigDir, 0o750); err != nil {
-		return false, err
+		return nil, false, err
 	}
 	var main string
 	for _, f := range files {
-		p := filepath.Join(s.cfg.ConfigDir, candidateName(f.Name))
-		if err := edge.WriteFileAtomic(p, f.Data, 0o600); err != nil {
-			return false, err
+		path := filepath.Join(s.cfg.ConfigDir, candidateName(f.Name))
+		if err := edge.WriteFileAtomic(path, f.Data, 0o600); err != nil {
+			return nil, false, err
 		}
 		if f.Name == s.cfg.Renderer.Main() {
-			main = p
+			main = path
 		}
 	}
-	if out, err := edge.Check(ctx, s.cfg.Binary, "--check-config", "-C", main); err != nil {
+	if err := s.check(ctx, main); err != nil {
 		s.renders.WithLabelValues("check_failed").Inc()
-		return false, err
-	} else if out != "" {
-		s.log.Debug("dnsdist --check-config", "output", out)
+		return nil, false, err
 	}
-	// Siblings first, the main file last: a crash in between leaves the
-	// old main file, which never references a function that is missing.
+	return files, true, nil
+}
+
+func (s *Supervisor) ordered(files []File) []File {
 	order := slices.Clone(files)
 	slices.SortStableFunc(order, func(a, b File) int {
-		switch {
-		case a.Name == s.cfg.Renderer.Main():
+		if a.Name == s.cfg.Renderer.Main() {
 			return 1
-		case b.Name == s.cfg.Renderer.Main():
+		}
+		if b.Name == s.cfg.Renderer.Main() {
 			return -1
 		}
 		return 0
 	})
-	for _, f := range order {
-		if err := edge.SwapFile(filepath.Join(s.cfg.ConfigDir, candidateName(f.Name)), filepath.Join(s.cfg.ConfigDir, f.Name)); err != nil {
-			return false, err
+	return order
+}
+
+func (s *Supervisor) install(files []File, eps []cluster.Endpoint, zones []string) error {
+	s.mu.Lock()
+	old := slices.Clone(s.current)
+	oldEps, oldZones := s.endpoints, s.zones
+	s.mu.Unlock()
+	for _, f := range s.ordered(files) {
+		data := f.Data
+		// Keep the old validators until the main-file rename. Either main can
+		// then load its functions even if the supervisor stops between renames.
+		if f.Name == "dnsdist.lua" {
+			for _, prev := range old {
+				if prev.Name == f.Name {
+					data = append(slices.Clone(prev.Data), data...)
+				}
+			}
+		}
+		path := filepath.Join(s.cfg.ConfigDir, candidateName(f.Name))
+		if err := edge.WriteFileAtomic(path, data, 0o600); err != nil {
+			if restoreErr := s.restore(old, oldEps, oldZones); restoreErr != nil {
+				return restoreErr
+			}
+			return err
+		}
+		if err := edge.SwapFile(path, filepath.Join(s.cfg.ConfigDir, f.Name)); err != nil {
+			if restoreErr := s.restore(old, oldEps, oldZones); restoreErr != nil {
+				return restoreErr
+			}
+			return err
 		}
 	}
 	s.mu.Lock()
-	s.current = files
-	s.endpoints = eps
-	s.zones = zones
+	s.current, s.endpoints, s.zones = files, eps, zones
 	s.mu.Unlock()
-	s.rendered.Set(float64(len(top.Backends)))
+	s.wakeResolverCache()
+	s.rendered.Set(float64(len(eps)))
 	s.renders.WithLabelValues("ok").Inc()
-	s.log.Info("rendered dnsdist configuration", "file", s.MainPath(), "renderer", s.cfg.Renderer.Name(),
-		"backends", len(top.Backends), "authoritative_zones", len(top.Rules.AuthoritativeZones))
-	return true, nil
+	return nil
+}
+
+func (s *Supervisor) render(ctx context.Context, eps []cluster.Endpoint, zones []string) (bool, error) {
+	files, changed, err := s.prepare(ctx, eps, zones)
+	if err != nil || !changed {
+		return changed, err
+	}
+	return true, s.install(files, eps, zones)
 }
 
 func equalFiles(a, b []File) bool {
@@ -330,7 +408,10 @@ func (s *Supervisor) startChild() error {
 	s.mu.Lock()
 	s.child = c
 	s.status, s.statusErr = nil, nil
+	s.statusEpoch++
+	s.cacheChildEpoch++
 	s.mu.Unlock()
+	s.wakeResolverCache()
 	s.log.Info("started dnsdist", "pid", c.Pid(), "cmd", s.cfg.Binary+" "+strings.Join(s.Args(), " "))
 	return nil
 }
@@ -352,7 +433,7 @@ func errString(err error) string {
 	return err.Error()
 }
 
-// restart drains, stops and starts dnsdist (v0.1 membership change path).
+// restart drains, stops and starts dnsdist from the accepted configuration.
 func (s *Supervisor) restart(ctx context.Context, reason string) error {
 	s.mu.Lock()
 	s.restarting = true
@@ -401,6 +482,11 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		return fmt.Errorf("dnsdist: initial membership from %s: %w", s.cfg.Source.Name(), err)
 	}
 	eps = cluster.FilterServing(eps)
+	s.noteResolverSource(eps, false)
+	if err := s.initCertificates(); err != nil {
+		return err
+	}
+	defer s.closeCertificates()
 	if _, err := s.render(ctx, eps, nil); err != nil {
 		return err
 	}
@@ -421,13 +507,15 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	members := make(chan []cluster.Endpoint, 1)
 	wg.Go(func() {
 		err := s.cfg.Source.Watch(ctx, func(e []cluster.Endpoint) {
+			s.noteResolverSource(cluster.FilterServing(e), false)
 			select {
 			case <-members:
 			default:
 			}
 			members <- e
 		})
-		if err != nil && ctx.Err() == nil {
+		if ctx.Err() == nil {
+			s.noteResolverSource(nil, true)
 			s.log.Error("membership watch ended", "source", s.cfg.Source.Name(), "err", err)
 		}
 	})
@@ -437,21 +525,33 @@ func (s *Supervisor) Run(ctx context.Context) error {
 			s.log.Warn("certificate watch disabled", "dir", s.cfg.TLSDir, "err", err)
 		}
 	}
-	zones := make(chan []string, 1)
+	zones := make(chan zoneObservation, 1)
 	if s.cfg.Zones != nil {
 		wg.Go(func() { s.pollZones(ctx, zones) })
+		wg.Go(func() { s.runResolverCache(ctx) })
+	} else {
+		s.mu.Lock()
+		s.cacheMode = "bypass-unconfigured"
+		s.authoritativeCacheMode = "bypass-unconfigured"
+		if !s.cfg.Options.AuthoritativeCache {
+			s.authoritativeCacheMode = "disabled"
+		}
+		s.mu.Unlock()
 	}
 	wg.Go(func() { s.pollStatus(ctx) })
 
+	certPoll := time.NewTicker(5 * time.Second)
+	defer certPoll.Stop()
 	var (
-		pendingEps   []cluster.Endpoint
-		pendingZones []string
-		pendingCert  bool
-		haveEps      bool
-		haveZones    bool
-		timer        *time.Timer
-		timerC       <-chan time.Time
-		backoff      = 500 * time.Millisecond
+		pendingEps       []cluster.Endpoint
+		pendingZones     []string
+		pendingZoneFence resolverFence
+		pendingCert      bool
+		haveEps          bool
+		haveZones        bool
+		timer            *time.Timer
+		timerC           <-chan time.Time
+		backoff          = 500 * time.Millisecond
 	)
 	s.mu.Lock()
 	curZones := s.zones
@@ -473,51 +573,116 @@ func (s *Supervisor) Run(ctx context.Context) error {
 			pendingEps, haveEps = cluster.FilterServing(e), true
 			arm()
 		case z := <-zones:
-			pendingZones, haveZones = z, true
-			arm()
+			if s.resolverObservationCurrent(z.fence) {
+				pendingZones, pendingZoneFence, haveZones = z.names, z.fence, true
+				arm()
+			}
+		case <-certPoll.C:
+			if s.tlsState != nil {
+				pendingCert = true
+				arm()
+			}
 		case <-certs:
 			pendingCert = true
 			arm()
 		case <-timerC:
 			timer, timerC = nil, nil
+			if haveZones && !s.resolverObservationCurrent(pendingZoneFence) {
+				haveZones = false
+			}
 			s.mu.Lock()
-			nextEps, nextZones := s.endpoints, curZones
+			oldEps, oldZones := s.endpoints, s.zones
+			oldFiles := slices.Clone(s.current)
 			s.mu.Unlock()
+			nextEps, nextZones := oldEps, curZones
 			if haveEps {
 				nextEps = pendingEps
 			}
 			if haveZones {
 				nextZones = pendingZones
 			}
-			reason := "membership"
-			if haveZones && !haveEps {
-				reason = "zones"
-			}
+			zoneProof := haveZones
+			membershipEvent := haveEps || haveZones
 			haveEps, haveZones = false, false
-			changed, err := s.render(ctx, nextEps, nextZones)
+			files, changed, err := s.prepare(ctx, nextEps, nextZones)
+			if zoneProof && !s.resolverObservationCurrent(pendingZoneFence) {
+				// Configuration checking is external work. Never promote a zone
+				// reply whose original source/child changed during that work.
+				continue
+			}
 			if err != nil {
-				s.log.Error("re-render failed; dnsdist keeps the previous configuration", "err", err)
-				continue
-			}
-			curZones = nextZones
-			if !changed && !pendingCert {
-				continue
-			}
-			if !changed {
-				reason = "certificates"
-				// Certificates are read at start; check the unchanged
-				// file against the new pair before restarting.
-				if _, err := edge.Check(ctx, s.cfg.Binary, "--check-config", "-C", s.MainPath()); err != nil {
-					s.log.Error("certificate change failed --check-config; not restarting", "err", err)
-					pendingCert = false
-					continue
+				s.setMembershipError("configuration validation failed; retaining accepted configuration")
+			} else if changed {
+				oldTop, oldErr := s.topology(oldEps, oldZones)
+				nextTop, nextErr := s.topology(nextEps, nextZones)
+				applyErr := errRestartRequired
+				qualified := false
+				if oldErr == nil && nextErr == nil {
+					qualified, applyErr = s.applyMembership(ctx, oldTop, nextTop, func() error {
+						return s.install(files, nextEps, nextZones)
+					})
+				}
+				if errors.Is(applyErr, errValidatorRestart) {
+					qualified, applyErr = s.stageNamedMembership(ctx, oldTop, nextTop, oldEps, oldZones, func() error { return s.install(files, nextEps, nextZones) })
+				}
+				switch {
+				case applyErr == nil:
+					curZones = nextZones
+					s.invalidateStatus()
+					s.setMembershipError("")
+				case errors.Is(applyErr, errHealthProof):
+					// Classification precedes every runtime mutation. An ownership or
+					// capability proof failure leaves the accepted child untouched.
+					s.setMembershipError("membership node health proof failed; retaining accepted membership")
+					pendingEps, pendingZones, haveEps, haveZones = nextEps, nextZones, true, true
+					timer = time.NewTimer(max(s.cfg.Debounce, 5*time.Second))
+					timerC = timer.C
+				case errors.Is(applyErr, errRestartRequired):
+					s.mu.Lock()
+					s.membershipMode = "validated-restart"
+					s.mu.Unlock()
+					s.markUncertain()
+					if err := s.install(files, nextEps, nextZones); err != nil {
+						return err
+					}
+					curZones = nextZones
+					if err := s.restart(ctx, "configuration"); err != nil {
+						return err
+					}
+					s.setMembershipError("")
+				default:
+					s.markUncertain()
+					s.setMembershipError("membership console update failed; reconciling accepted configuration")
+					if qualified {
+						curZones = nextZones
+					} else {
+						if err := s.restore(oldFiles, oldEps, oldZones); err != nil {
+							return err
+						}
+						pendingEps, pendingZones, haveEps, haveZones = nextEps, nextZones, true, true
+						// Rejected health checks retry at a bounded rate, including tests
+						// with a short debounce. There is only one coalesced pending target.
+						timer = time.NewTimer(max(s.cfg.Debounce, 5*time.Second))
+						timerC = timer.C
+					}
+					if err := s.restart(ctx, "membership"); err != nil {
+						return err
+					}
 				}
 			}
-			pendingCert = false
-			s.log.Info("restarting dnsdist", "reason", reason)
-			if err := s.restart(ctx, reason); err != nil {
-				s.log.Error("restart failed", "err", err)
+			if err == nil && !changed && membershipEvent {
+				s.setMembershipError("")
 			}
+			if pendingCert {
+				pendingCert = false
+				if err := s.reloadCertificates(ctx); err != nil {
+					if errors.Is(err, errCertificateRecovery) {
+						return err
+					}
+					s.setCertificateError("certificate update rejected; retaining accepted certificate")
+				}
+			}
+
 		case <-childDone:
 			s.log.Error("dnsdist exited unexpectedly; restarting", "exit", errString(s.child.Err()), "backoff", backoff)
 			select {
@@ -584,17 +749,24 @@ func (s *Supervisor) pollStatus(ctx context.Context) {
 	t := time.NewTicker(s.cfg.StatusPoll)
 	defer t.Stop()
 	for {
+		s.mu.Lock()
+		epoch := s.statusEpoch
+		s.mu.Unlock()
 		rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		st, err := s.api.Status(rctx)
 		cancel()
 		s.mu.Lock()
+		if epoch != s.statusEpoch {
+			s.mu.Unlock()
+			continue
+		}
 		s.status, s.statusErr, s.statusAt = st, err, time.Now()
 		s.mu.Unlock()
 		s.backendUp.Reset()
 		if st != nil {
 			for _, b := range st.Servers {
 				v := 0.0
-				if b.Up() {
+				if b.Up() && b.Routed() {
 					v = 1
 				}
 				s.backendUp.WithLabelValues(b.Name).Set(v)
@@ -611,31 +783,37 @@ func (s *Supervisor) pollStatus(ctx context.Context) {
 // pollZones polls every backend's /internal/zones. A serial change
 // flushes the zone from the authoritative packet cache (when cached); a
 // change of the zone set is sent on ch so the routing rule is re-rendered.
-func (s *Supervisor) pollZones(ctx context.Context, ch chan []string) {
+func (s *Supervisor) pollZones(ctx context.Context, ch chan zoneObservation) {
 	t := time.NewTicker(s.cfg.ZonePoll)
 	defer t.Stop()
-	serials := map[string]map[string]uint32{} // backend address → zone → serial
+	serials := zoneSerialHistory{} // successful observations survive poll iterations
 	unsupported := map[string]bool{}
 	var lastSet []string
+	var lastFence resolverFence
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
+		fence, eps, eligible := s.resolverFence()
+		results, sent := s.readBackendZones(ctx, eps)
+		s.offerResolverObservation(resolverObservation{fence: fence, endpoints: eps, eligible: eligible, results: results, sent: sent})
+		if !eligible || !s.resolverObservationCurrent(fence) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+			continue
 		}
-		s.mu.Lock()
-		eps := slices.Clone(s.endpoints)
-		s.mu.Unlock()
+		live := map[string]bool{}
+		for _, e := range eps {
+			live[e.Address] = true
+		}
+		serials.retain(live, unsupported)
 		set := map[string]bool{}
 		flush := map[string]bool{}
 		polled := 0
-		for _, e := range eps {
-			if e.InternalAddress == "" {
-				continue
-			}
-			rctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			zl, err := s.cfg.Zones.Zones(rctx, e.InternalAddress)
-			cancel()
+		for _, result := range results {
+			e := result.endpoint
+			zl := result.zones
+			err := result.err
 			if err != nil {
 				if errors.Is(err, internalapi.ErrZonesUnsupported) {
 					if !unsupported[e.Address] {
@@ -648,7 +826,6 @@ func (s *Supervisor) pollZones(ctx context.Context, ch chan []string) {
 				continue
 			}
 			polled++
-			prev := serials[e.Address]
 			next := map[string]uint32{}
 			for _, z := range zl.Zones {
 				name := edge.NormalizeZones([]string{z.Name})
@@ -657,13 +834,17 @@ func (s *Supervisor) pollZones(ctx context.Context, ch chan []string) {
 				}
 				next[name[0]] = z.Serial
 				set[name[0]] = true
-				if old, ok := prev[name[0]]; ok && old != z.Serial {
-					flush[name[0]] = true
-				}
 			}
-			serials[e.Address] = next
+			for _, name := range serials.observe(e.Address, next) {
+				flush[name] = true
+			}
 		}
 		if polled == 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
 			continue
 		}
 		if s.cfg.Options.AuthoritativeCache {
@@ -684,13 +865,18 @@ func (s *Supervisor) pollZones(ctx context.Context, ch chan []string) {
 			names = append(names, z)
 		}
 		names = edge.NormalizeZones(names)
-		if !slices.Equal(names, lastSet) {
-			lastSet = names
+		if (!slices.Equal(names, lastSet) || lastFence != fence) && s.resolverObservationCurrent(fence) {
+			lastSet, lastFence = names, fence
 			select {
 			case <-ch:
 			default:
 			}
-			ch <- names
+			ch <- zoneObservation{fence: fence, names: names}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
 		}
 	}
 }
@@ -703,6 +889,8 @@ func (s *Supervisor) Ready() (bool, string) {
 	switch {
 	case s.restarting:
 		return false, "restarting dnsdist"
+	case s.cacheError != "":
+		return false, s.cacheError
 	case s.child == nil || !s.child.Running():
 		return false, "dnsdist is not running"
 	case s.statusErr != nil:
@@ -735,7 +923,10 @@ func (s *Supervisor) Handler() http.Handler {
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		ready, message := s.Ready()
 		s.mu.Lock()
-		body := map[string]any{"ready": ready, "message": message, "endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath()}
+		body := map[string]any{"ready": ready, "message": message, "endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath(), "updateError": s.updateError, "membershipUpdateMode": s.membershipMode, "membershipError": s.membershipError, "certificateError": s.certificateError}
+		body["resolverCacheMode"], body["resolverCacheError"] = s.cacheMode, s.cacheError
+		body["resolverCacheIdentity"] = s.cacheIdentity
+		body["authoritativeCacheMode"], body["authoritativeCacheIdentity"] = s.authoritativeCacheMode, s.authoritativeCacheIdentity
 		if s.status != nil {
 			body["dnsdist"] = s.status
 		}
@@ -764,4 +955,56 @@ func (s *Supervisor) Serve(ctx context.Context, addr string) error {
 		return err
 	}
 	return nil
+}
+
+// restore reinstalls the accepted files after a rejected/uncertain staged
+// update. This never reconstructs credentials or guesses runtime mutations.
+func (s *Supervisor) restore(files []File, eps []cluster.Endpoint, zones []string) error {
+	s.mu.Lock()
+	previous := slices.Clone(s.current)
+	s.mu.Unlock()
+	for _, f := range s.ordered(files) {
+		data := f.Data
+		if f.Name == "dnsdist.lua" {
+			for _, prev := range previous {
+				if prev.Name == f.Name {
+					data = append(slices.Clone(prev.Data), data...)
+				}
+			}
+		}
+		if err := edge.WriteFileAtomic(filepath.Join(s.cfg.ConfigDir, f.Name), data, 0o600); err != nil {
+			return fmt.Errorf("dnsdist: restore accepted configuration: %w", err)
+		}
+	}
+	s.mu.Lock()
+	s.current = files
+	s.endpoints = eps
+	s.zones = zones
+	s.mu.Unlock()
+	s.rendered.Set(float64(len(eps)))
+	return nil
+}
+
+func (s *Supervisor) refreshUpdateError() {
+	s.updateError = strings.Join(slices.DeleteFunc([]string{s.membershipError, s.certificateError}, func(v string) bool { return v == "" }), "; ")
+}
+func (s *Supervisor) setMembershipError(message string) {
+	s.mu.Lock()
+	s.membershipError = message
+	s.refreshUpdateError()
+	s.mu.Unlock()
+}
+func (s *Supervisor) setCertificateError(message string) {
+	s.mu.Lock()
+	s.certificateError = message
+	s.refreshUpdateError()
+	s.mu.Unlock()
+}
+func (s *Supervisor) invalidateStatus() { s.mu.Lock(); s.status = nil; s.statusEpoch++; s.mu.Unlock() }
+func (s *Supervisor) markUncertain() {
+	s.mu.Lock()
+	s.restarting = true
+	s.status = nil
+	s.statusEpoch++
+	s.mu.Unlock()
 }

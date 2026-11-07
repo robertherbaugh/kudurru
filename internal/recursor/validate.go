@@ -17,6 +17,10 @@ type vres struct {
 	wildcard string
 	// signer is the zone whose key verified a secure RRset.
 	signer string
+	// signature is the exact RRSIG that verified, never an untested sibling.
+	signature *dns.RRSIG
+	observed  time.Time
+	denial    *denialProof
 }
 
 func bogus(ede uint16, why string) vres { return vres{sec: SecBogus, ede: ede, why: why} }
@@ -43,6 +47,10 @@ func supportedDigest(t uint8) bool {
 // validateRRset checks rrset (from the servers of zone) against sigs.
 func (q *query) validateRRset(rrset []dns.RR, sigs []*dns.RRSIG, zone string) vres {
 	owner := rrset[0].Header().Name
+	if q.exception(owner) {
+		q.exceptRRset(owner, rrset[0].Header().Rrtype)
+		return vres{sec: SecInsecure}
+	}
 	if len(sigs) == 0 {
 		sec, ede, why := q.unsignedSecurity(owner, zone)
 		return vres{sec: sec, ede: ede, why: why}
@@ -94,7 +102,7 @@ func (q *query) validateRRset(rrset []dns.RR, sigs []*dns.RRSIG, zone string) vr
 					continue
 				}
 				clampTTL(rrset, sig, now)
-				res := vres{sec: SecSecure, signer: signer}
+				res := vres{sec: SecSecure, signer: signer, signature: sig, observed: now}
 				l := labels(owner)
 				if strings.HasPrefix(owner, "*.") {
 					l--
@@ -159,6 +167,9 @@ func (q *query) unsignedSecurity(owner, zone string) (Security, uint16, string) 
 // trust from the root as needed.
 func (q *query) keys(zone string) *keyState {
 	zone = canon(zone)
+	if q.exception(zone) {
+		return &keyState{sec: SecInsecure}
+	}
 	now := q.now()
 	if v, ok := q.r.cache.get(q.key(kKeys, zone), now); ok {
 		return v.(*keyState)
@@ -372,6 +383,14 @@ func (q *query) validateRRsetAbove(rrset []dns.RR, sigs []*dns.RRSIG, zone, name
 
 // validateNegative validates an NXDOMAIN or NODATA answer for name/qtype.
 func (q *query) validateNegative(res *response, name string, qtype uint16) (Security, uint16, string) {
+	if q.exception(name) {
+		for _, rr := range res.msg.Ns {
+			if sig, ok := rr.(*dns.RRSIG); ok {
+				q.exceptRRset(sig.Hdr.Name, sig.TypeCovered)
+			}
+		}
+		return SecInsecure, 0, ""
+	}
 	sec, _, ede, why := q.proveDenial(res.msg, res.zone, name, qtype, "")
 	if sec == SecSecure {
 		return SecSecure, 0, ""
@@ -428,10 +447,14 @@ func (q *query) proveDenial(m *dns.Msg, zone, name string, qtype uint16, above s
 		}
 		return SecBogus, false, dns.ExtendedErrorCodeNSECMissing, "no valid proof of " + what + " for " + name + " " + dns.TypeToString[qtype]
 	}
+	secure := func(cut bool) (Security, bool, uint16, string) {
+		q.rememberDenial(v.denial)
+		return SecSecure, cut, 0, ""
+	}
 	if len(nsecs) > 0 {
 		if nx {
 			if nsecProveNX(name, nsecs) {
-				return SecSecure, false, 0, ""
+				return secure(false)
 			}
 			return missing()
 		}
@@ -440,7 +463,7 @@ func (q *query) proveDenial(m *dns.Msg, zone, name string, qtype uint16, above s
 			ok, cut = true, false // a name that does not exist is no cut
 		}
 		if ok {
-			return SecSecure, cut, 0, ""
+			return secure(cut)
 		}
 		return missing()
 	}
@@ -462,7 +485,7 @@ func (q *query) proveDenial(m *dns.Msg, zone, name string, qtype uint16, above s
 		case optOut:
 			return SecInsecure, false, 0, ""
 		}
-		return SecSecure, false, 0, ""
+		return secure(false)
 	}
 	ok, cut, optOut := set.proveNoData(name, qtype)
 	if !ok && qtype == dns.TypeDS {
@@ -476,7 +499,7 @@ func (q *query) proveDenial(m *dns.Msg, zone, name string, qtype uint16, above s
 	case optOut && qtype != dns.TypeDS:
 		return SecInsecure, false, 0, ""
 	}
-	return SecSecure, cut, 0, ""
+	return secure(cut)
 }
 
 // denialSigner picks the zone whose denial records count for name: among
@@ -517,7 +540,8 @@ func (q *query) denialRecords(ns []dns.RR, signer, zone string) ([]*dns.NSEC, []
 	var nsecs []*dns.NSEC
 	var nsec3s []*dns.NSEC3
 	var proof []dns.RR
-	res := vres{sec: SecSecure}
+	captured := &denialProof{zone: signer, observed: q.now()}
+	res := vres{sec: SecSecure, denial: captured}
 	done := map[string]bool{}
 	for _, rr := range ns {
 		h := rr.Header()
@@ -548,15 +572,26 @@ func (q *query) denialRecords(ns []dns.RR, signer, zone string) ([]*dns.NSEC, []
 		if v.sec != SecSecure {
 			return nil, nil, nil, v
 		}
+		// Retain only the exact verifying signature and records usable by
+		// this signer. The public proof may include other RRSIGs, but those
+		// unverified siblings must never become cache authority or deadlines.
+		usable := h.Rrtype != dns.TypeSOA || equalName(h.Name, signer)
 		for _, x := range set {
 			switch r := x.(type) {
 			case *dns.NSEC:
 				if isSubOrEqual(signer, r.NextDomain) {
 					nsecs = append(nsecs, r)
+				} else {
+					usable = false
 				}
 			case *dns.NSEC3:
 				nsec3s = append(nsec3s, r)
 			}
+		}
+		if usable && v.signature != nil && v.wildcard == "" {
+			captured.authority = append(captured.authority, set...)
+			captured.authority = append(captured.authority, v.signature)
+			captured.soa = captured.soa || h.Rrtype == dns.TypeSOA
 		}
 		if h.Rrtype != dns.TypeSOA {
 			proof = append(proof, set...)
@@ -565,26 +600,57 @@ func (q *query) denialRecords(ns []dns.RR, signer, zone string) ([]*dns.NSEC, []
 			}
 		}
 	}
+	for _, rr := range captured.authority {
+		switch n := rr.(type) {
+		case *dns.NSEC:
+			captured.nsecs = append(captured.nsecs, n)
+		case *dns.NSEC3:
+			captured.nsec3s = append(captured.nsec3s, n)
+		}
+	}
 	return nsecs, nsec3s, proof, res
 }
 
 // proveWildcard checks that owner, answered from a wildcard at ce of
 // signer's zone, does not exist itself, and returns the proof records.
-func (q *query) proveWildcard(owner, ce, signer string, ns []dns.RR, zone string) ([]dns.RR, bool) {
+func (q *query) proveWildcardCaptured(owner, ce, signer string, ns []dns.RR, zone string) ([]dns.RR, *denialProof, bool) {
 	nsecs, nsec3s, proof, v := q.denialRecords(ns, signer, zone)
 	if v.sec != SecSecure {
-		return nil, false
+		return nil, nil, false
 	}
+	return proof, v.denial, wildcardProof(owner, ce, signer, nsecs, nsec3s, &q.st.hashBudget, false)
+}
+
+func wildcardProof(owner, ce, signer string, nsecs []*dns.NSEC, nsec3s []*dns.NSEC3, budget *int, rejectOptOut bool) bool {
 	for _, n := range nsecs {
 		if nsecCovers(n, owner) && !delegatesAbove(n, owner) && equalName(nsecClosestEncloser(owner, n), ce) {
-			return proof, true
+			return true
 		}
 	}
 	if len(nsec3s) > 0 {
-		set, insecure := newNSEC3Set(nsec3s, signer, &q.st.hashBudget)
-		if set != nil && !insecure && set.cover(childToward(ce, owner)) != nil {
-			return proof, true
+		set, insecure := newNSEC3Set(nsec3s, signer, budget)
+		if set != nil && !insecure {
+			if cover := set.cover(childToward(ce, owner)); cover != nil && (!rejectOptOut || cover.Flags&1 == 0) {
+				return true
+			}
 		}
 	}
-	return nil, false
+	return false
+}
+
+// exception records the authorization deadline on the whole alias/proof walk.
+// Each RRset/target is matched independently, so aliases cannot escape scope.
+func (q *query) exception(name string) bool {
+	until, ok := q.s.exceptions.Match(name, q.now())
+	if ok && (q.st.exceptionUntil.IsZero() || until.Before(q.st.exceptionUntil)) {
+		q.st.exceptionUntil = until
+	}
+	return ok
+}
+
+func (q *query) exceptRRset(name string, typ uint16) {
+	if q.st.excepted == nil {
+		q.st.excepted = make(map[RRset]struct{})
+	}
+	q.st.excepted[RRset{Name: canon(name), Type: typ}] = struct{}{}
 }

@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"reflect"
 	"sync"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	zonemodel "github.com/robertherbaugh/kudurru/internal/zone"
 )
 
 // cache is the controller's read model, fed only by Store.Watch: the
@@ -14,8 +16,9 @@ import (
 // controller-runtime cached client). Objects in the cache are shared and
 // must not be mutated; reconcilers deep-copy before writing.
 type cache struct {
-	mu   sync.RWMutex
-	objs map[store.Kind]map[store.Key]store.Object
+	records *zonemodel.RecordCache
+	mu      sync.RWMutex
+	objs    map[store.Kind]map[store.Key]store.Object
 	// rrsetsByZone maps a DNSZone object name to the record sets that
 	// reference it.
 	rrsetsByZone map[string]map[store.Key]struct{}
@@ -35,9 +38,8 @@ type cache struct {
 	views  map[string]*zoneView
 	viewAt map[string]uint64
 	// builds holds the latest zone-model build per zone and buildAt the
-	// zone version it was built at. Builds parse every record, so they are
-	// made by the zone reconcile (one at a time per zone, coalesced) and
-	// record-set reconciles read the latest one instead of rebuilding.
+	// zone version it was built at. Zone reconciles reuse per-record parsing;
+	// record-set reconciles read the latest build instead of rebuilding.
 	builds  map[string]*zoneBuild
 	buildAt map[string]uint64
 }
@@ -49,6 +51,7 @@ type pendingStatus struct {
 
 func newCache() *cache {
 	return &cache{
+		records:      &zonemodel.RecordCache{},
 		objs:         map[store.Kind]map[store.Key]store.Object{},
 		rrsetsByZone: map[string]map[store.Key]struct{}{},
 		owners:       map[string]map[string]map[store.Key]struct{}{},
@@ -162,7 +165,7 @@ func (c *cache) remove(key store.Key) store.Object {
 // status writes never invalidate them.
 func (c *cache) index(prev, next store.Object) {
 	if prev != nil && next != nil && prev.GetGeneration() == next.GetGeneration() &&
-		equalStringMaps(prev.GetLabels(), next.GetLabels()) {
+		equalStringMaps(prev.GetLabels(), next.GetLabels()) && sameBuildInput(prev, next) {
 		return
 	}
 	switch o := firstNonNil(prev, next).(type) {
@@ -326,7 +329,7 @@ func (c *cache) build(zone string) (cur, prev *zoneBuild) {
 	c.viewMu.Unlock()
 
 	z, rrsets, version := c.snapshotZone(zone)
-	b := buildZone(z, rrsets)
+	b := buildZoneCached(z, rrsets, c.records)
 	c.viewMu.Lock()
 	defer c.viewMu.Unlock()
 	prev = c.builds[zone]
@@ -348,4 +351,22 @@ func (c *cache) latestBuild(zone string) *zoneBuild {
 	}
 	b, _ = c.build(zone)
 	return b
+}
+
+// sameBuildInput excludes status-only echoes without hiding replacement objects
+// or spec edits whose producer reused a generation.
+func sameBuildInput(prev, next store.Object) bool {
+	if prev.GetUID() != next.GetUID() || !reflect.DeepEqual(prev.GetCreationTimestamp(), next.GetCreationTimestamp()) {
+		return false
+	}
+	switch p := prev.(type) {
+	case *v1alpha1.DNSZone:
+		n, ok := next.(*v1alpha1.DNSZone)
+		return ok && reflect.DeepEqual(p.Spec, n.Spec)
+	case *v1alpha1.DNSRecordSet:
+		n, ok := next.(*v1alpha1.DNSRecordSet)
+		return ok && reflect.DeepEqual(p.Spec, n.Spec)
+	default:
+		return true
+	}
 }

@@ -85,6 +85,9 @@ func TestWALLayoutAndPragmas(t *testing.T) {
 	}
 	for _, db := range []*sql.DB{s.w, s.r} {
 		pragmas := map[string]string{"journal_mode": "wal", "synchronous": "1", "foreign_keys": "1", "busy_timeout": "5000"}
+		if db == s.w {
+			pragmas["synchronous"] = "2"
+		}
 		for p, want := range pragmas {
 			var got string
 			if err := db.QueryRowContext(ctx, "PRAGMA "+p).Scan(&got); err != nil {
@@ -110,7 +113,7 @@ func TestWALLayoutAndPragmas(t *testing.T) {
 		tables = append(tables, n)
 	}
 	_ = rows.Close()
-	if got := strings.Join(tables, ","); got != "audit,changes,meta,objects" {
+	if got := strings.Join(tables, ","); got != "audit,changes,meta,objects,replication_quarantine,replication_sections" {
 		t.Errorf("tables = %s", got)
 	}
 	if err := s.Close(); err != nil {

@@ -1,0 +1,209 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+)
+
+// IntegrationAdministration is available only with the complete original
+// request/current-command runtime. A nil capability cannot launch a provider.
+type IntegrationAdministration interface {
+	IntegrationList(context.Context, string) ([]IntegrationSummary, error)
+	IntegrationGet(context.Context, string, string) (*IntegrationSummary, error)
+	IntegrationExecute(context.Context, IntegrationExecution) (*IntegrationExecutionResult, error)
+}
+
+// IntegrationSummary deliberately excludes credential references and private
+// provider/ledger identities. Known status must match this exact revision.
+type IntegrationSummary struct {
+	Namespace   string     `json:"namespace"`
+	Name        string     `json:"name"`
+	UID         string     `json:"uid"`
+	Revision    string     `json:"revision"`
+	Type        string     `json:"type"`
+	Suspended   bool       `json:"suspended"`
+	StatusKnown bool       `json:"statusKnown"`
+	Phase       string     `json:"phase"`
+	Reason      string     `json:"reason"`
+	Leader      bool       `json:"leader"`
+	LastSync    *time.Time `json:"lastSync,omitempty"`
+}
+
+// IntegrationReview is an operator's exact review, never a request to refresh.
+type IntegrationReview struct {
+	UID           string          `json:"uid" minLength:"1" maxLength:"128"`
+	Revision      string          `json:"revision" minLength:"1" maxLength:"256"`
+	Mode          string          `json:"mode,omitempty" enum:"publish,observe"`
+	PreviewDigest string          `json:"previewDigest,omitempty" maxLength:"64"`
+	Params        json.RawMessage `json:"params,omitempty"`
+}
+
+// IntegrationExecution selects a declared command; action is only an already
+// advertised provider capability. No endpoint or credential override is accepted.
+type IntegrationExecution struct {
+	Namespace, Name, Command, Action string
+	Review                           IntegrationReview
+}
+
+// IntegrationRecord is the DNS projection of a plan, without remote row IDs,
+// versions, provider-specific properties or raw response envelopes.
+type IntegrationRecord struct {
+	Name    string   `json:"name"`
+	Type    string   `json:"type"`
+	TTL     int64    `json:"ttl"`
+	Targets []string `json:"targets" nullable:"false"`
+}
+
+// IntegrationPlanOperation exposes one DNS change without remote ownership IDs.
+type IntegrationPlanOperation struct {
+	Domains []string           `json:"domains" nullable:"false"`
+	Name    string             `json:"name"`
+	Type    string             `json:"type"`
+	Action  string             `json:"action"`
+	Policy  string             `json:"policy"`
+	Before  *IntegrationRecord `json:"before,omitempty"`
+	After   *IntegrationRecord `json:"after,omitempty"`
+}
+
+// IntegrationPlanConflict identifies a conflicting DNS owner in public domains.
+type IntegrationPlanConflict struct {
+	Domains []string `json:"domains" nullable:"false"`
+	Name    string   `json:"name"`
+	Type    string   `json:"type"`
+	Reason  string   `json:"reason"`
+}
+
+// IntegrationPreview binds all bounded public changes to one exact review digest.
+type IntegrationPreview struct {
+	Digest     string                     `json:"digest"`
+	Operations []IntegrationPlanOperation `json:"operations" nullable:"false"`
+	Conflicts  []IntegrationPlanConflict  `json:"conflicts" nullable:"false"`
+	Unchanged  int                        `json:"unchanged"`
+}
+
+// IntegrationAction describes an action gated by integrations.act.
+type IntegrationAction struct {
+	Name   string          `json:"name"`
+	Params json.RawMessage `json:"params"`
+}
+
+// IntegrationExecutionResult reports acknowledged work only. On uncertain
+// failure, any confirmed partial outcome is attached to the error's safe hint.
+type IntegrationExecutionResult struct {
+	Completed       bool                `json:"completed"`
+	Uncertain       bool                `json:"uncertain"`
+	Reachable       bool                `json:"reachable,omitempty"`
+	Authenticated   bool                `json:"authenticated,omitempty"`
+	Preview         *IntegrationPreview `json:"preview,omitempty"`
+	Actions         []IntegrationAction `json:"actions,omitempty"`
+	Applied         int                 `json:"applied"`
+	Unchanged       int                 `json:"unchanged"`
+	Pending         int                 `json:"pending"`
+	Conflicts       int                 `json:"conflicts"`
+	Clients         int                 `json:"clients"`
+	SourceCommitted bool                `json:"sourceCommitted"`
+	SourcePublished bool                `json:"sourcePublished"`
+}
+
+type integrationListInput struct {
+	Namespace string `query:"namespace" required:"true" minLength:"1" maxLength:"63"`
+}
+type integrationListOutput struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         struct {
+		Items []IntegrationSummary `json:"items" nullable:"false"`
+	}
+}
+
+// IntegrationPath holds exported path fields for the request decoder.
+type IntegrationPath struct {
+	Namespace string `path:"namespace" minLength:"1" maxLength:"63"`
+	Name      string `path:"name" minLength:"1" maxLength:"253"`
+}
+type integrationGetOutput struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         *IntegrationSummary
+}
+type integrationCommandInput struct {
+	IntegrationPath
+	Body IntegrationReview
+}
+type integrationActionsInput struct {
+	IntegrationPath
+	UID      string `query:"uid" required:"true" minLength:"1" maxLength:"128"`
+	Revision string `query:"revision" required:"true" minLength:"1" maxLength:"256"`
+}
+type integrationActInput struct {
+	IntegrationPath
+	Action string `path:"action" minLength:"1" maxLength:"128"`
+	Body   IntegrationReview
+}
+type integrationExecutionOutput struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         *IntegrationExecutionResult
+}
+
+func (s *Server) registerIntegrations() {
+	read := perm{resource: "integrations", verb: "read"}
+	register(s, integrationOperation(http.MethodGet, "/integrations", "listIntegrations", "List bounded integration status", "integrations"), read, func(ctx context.Context, in *integrationListInput) (*integrationListOutput, error) {
+		if s.opts.Integrations == nil {
+			return nil, errUnavailable("complete integration administration unavailable")
+		}
+		items, err := s.opts.Integrations.IntegrationList(ctx, in.Namespace)
+		if err != nil {
+			return nil, err
+		}
+		out := &integrationListOutput{CacheControl: "no-store"}
+		out.Body.Items = items
+		return out, nil
+	})
+	base := "/integrations/{namespace}/{name}"
+	register(s, integrationOperation(http.MethodGet, base, "getIntegration", "Read exact integration status", "integrations"), read, func(ctx context.Context, in *IntegrationPath) (*integrationGetOutput, error) {
+		if s.opts.Integrations == nil {
+			return nil, errUnavailable("complete integration administration unavailable")
+		}
+		value, err := s.opts.Integrations.IntegrationGet(ctx, in.Namespace, in.Name)
+		if err != nil {
+			return nil, err
+		}
+		return &integrationGetOutput{CacheControl: "no-store", Body: value}, nil
+	})
+	for _, cmd := range []struct{ path, id, verb string }{{"check", "checkIntegration", "check"}, {"preview", "previewIntegration", "read"}, {"sync", "syncIntegration", "sync"}} {
+		op := integrationOperation(http.MethodPost, base+"/"+cmd.path, cmd.id, "Run a reviewed integration "+cmd.path, "integrations")
+		op.MaxBodyBytes = 4096
+		register(s, op, perm{resource: "integrations", verb: cmd.verb}, func(ctx context.Context, in *integrationCommandInput) (*integrationExecutionOutput, error) {
+			return s.executeIntegration(ctx, IntegrationExecution{Namespace: in.Namespace, Name: in.Name, Command: cmd.path, Review: in.Body})
+		})
+	}
+	register(s, integrationOperation(http.MethodGet, base+"/actions", "listIntegrationActions", "List original advertised actions", "integrations"), read, func(ctx context.Context, in *integrationActionsInput) (*integrationExecutionOutput, error) {
+		return s.executeIntegration(ctx, IntegrationExecution{Namespace: in.Namespace, Name: in.Name, Command: "actions", Review: IntegrationReview{UID: in.UID, Revision: in.Revision}})
+	})
+	op := integrationOperation(http.MethodPost, base+"/actions/{action}", "invokeIntegrationAction", "Invoke one reviewed advertised action", "integrations")
+	op.MaxBodyBytes = 64 << 10
+	register(s, op, perm{resource: "integrations", verb: "act"}, func(ctx context.Context, in *integrationActInput) (*integrationExecutionOutput, error) {
+		return s.executeIntegration(ctx, IntegrationExecution{Namespace: in.Namespace, Name: in.Name, Command: "act", Action: in.Action, Review: in.Body})
+	})
+}
+
+func (s *Server) executeIntegration(ctx context.Context, in IntegrationExecution) (*integrationExecutionOutput, error) {
+	if s.opts.Integrations == nil {
+		return nil, errUnavailable("complete integration administration unavailable")
+	}
+	result, err := s.opts.Integrations.IntegrationExecute(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return &integrationExecutionOutput{CacheControl: "no-store", Body: result}, nil
+}
+
+// Every integration route can reject bounded projections or unsupported host
+// capabilities. Execution reads also require the exact reviewed revision.
+func integrationOperation(method, path, id, summary string, tags ...string) huma.Operation {
+	op := operation(method, path, id, summary, tags...)
+	addErrorResponses(&op, http.StatusNotImplemented, http.StatusRequestEntityTooLarge, http.StatusConflict)
+	return op
+}

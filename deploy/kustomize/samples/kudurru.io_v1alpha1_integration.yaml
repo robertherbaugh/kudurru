@@ -1,0 +1,26 @@
+apiVersion: kudurru.io/v1alpha1
+kind: Integration
+metadata:
+  name: public-dns
+  namespace: default
+spec:
+  type: cloudflare
+  credentials:
+    apiToken:
+      secretRef:
+        name: cloudflare-token
+        key: token
+  cloudflare:
+    zones:
+      - zone: example.com
+        select:
+          labels:
+            kudurru.io/publish: cloudflare
+          types: [A, AAAA, CNAME, TXT, MX, SRV, CAA]
+        defaults:
+          proxied: false
+          ttl: 1
+        policy: sync
+  deletionPolicy: Retain
+  resync: 10m
+  suspend: true

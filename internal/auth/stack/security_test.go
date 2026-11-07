@@ -12,6 +12,15 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
+func TestDisabledBootstrapPreservesMigrationSources(t *testing.T) {
+	authtest.Drivers(t, func(t *testing.T, st store.Store) {
+		e := newEnv(t, st, testConfig, func(o *Options) { o.DisableBootstrap = true })
+		if len(e.s.Users().List()) != 0 || len(e.s.Tokens().ServiceAccounts().List()) != 0 || len(e.s.Tokens().List("")) != 0 {
+			t.Fatal("closed migration created a bootstrap identity")
+		}
+	})
+}
+
 // TestRecreatedUserDoesNotInheritCredentials is the regression test of the
 // M5 security finding "a re-created local account inherits the sessions and
 // API tokens of a deleted account with the same name": principals of local

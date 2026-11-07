@@ -241,6 +241,16 @@ vip:
     hmacSecret: ""
     # -- Existing Secret with the key vrrp-hmac.
     existingSecret: ""
+    # -- Explicit per-VRID Secret references (release namespace, at most 255).
+    # Nonempty requires EXACT coverage of every VIP VRID and forbids shared
+    # existingSecret/hmacSecret. Only selected keys are mounted, never values.
+    # Key material must be 1-4096 bytes; keepalived validates its syntax.
+    # Changes require coordinated restart, not seamless live key rotation.
+    hmacKeySecrets: []
+    # Example (create these Secrets separately):
+    # hmacKeySecrets:
+    #   - {vrid: 53, secretName: vrrp-a, key: hmac}
+    #   - {vrid: 54, secretName: vrrp-b, key: hmac}
     resources:
       requests:
         cpu: 10m
@@ -326,18 +336,25 @@ probes:
     failureThreshold: 3
 
 persistence:
-  # -- querylog.db on a PVC (never RWX/NFS: SQLite WAL). mode=kubernetes
-  # allows it only with replicaCount=1 because a Deployment's pods would share
-  # the claim; standalone uses a volumeClaimTemplate.
+  # -- enabled always retains the legacy shared data claim in Kubernetes
+  # mode. separate opts into a dedicated querylog directory/volume. Claims are
+  # per-pod StatefulSet templates, including with multiple Kubernetes replicas.
+  # SQLite requires compatible local/block storage, never RWX/NFS.
   querylog:
     enabled: false
+    # -- Opt in to /var/lib/kudurru-querylog. enabled=false uses an emptyDir;
+    # enabled=true adds its own claim without removing data. No files move.
+    separate: false
     storageClass: ""
     size: 10Gi
     accessModes: [ReadWriteOnce]
-  # -- local.db (last-good snapshot) on a PVC for "DNS before the control
-  # plane" clusters; same one-replica rule as querylog.
+  # -- local.db (last-good snapshot and cache) persistence. Legacy enabled
+  # selects data; separate opts into its own per-pod directory/volume.
   local:
     enabled: false
+    # -- Opt in to /var/lib/kudurru-local; enabled controls PVC vs emptyDir.
+    # Changing claim layout requires an offline migration, not a rolling move.
+    separate: false
     storageClass: ""
     size: 1Gi
     accessModes: [ReadWriteOnce]

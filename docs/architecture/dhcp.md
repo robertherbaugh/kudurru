@@ -366,6 +366,12 @@ its decision time; replay clamps backward leader time deterministically. Healthy
 synchronized host clocks are required: quorum cannot correct a clock jumping
 forward and expiring leases early.
 
+Offline-voter recovery follows Raft's log-replication retry schedule. In the
+currently pinned Raft v1.7.3, a failed log attempt can back off for 10.24 seconds;
+successful heartbeats do not reset that independent delay. Snapshot transfer
+and durable restore follow when the retained log no longer covers the voter.
+Current command deadlines remain separate from this recovery interval.
+
 ```mermaid
 flowchart LR
     client["DHCP clients / relay"] --> leader["Leader: validate and propose"]

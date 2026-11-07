@@ -7,6 +7,7 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Code } from '@astryxdesign/core/Code';
+import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Link } from '@astryxdesign/core/Link';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
@@ -145,6 +146,19 @@ export default function GroupDetailPage({ params }: PageProps) {
         onSave={async (d) => {
           await put({ ...group, spec: { ...group.spec, clients: cleanMatchers(d) } });
           notify.success(`Saved the members of ${name}`);
+        }}
+      />
+
+      <EditableSection<boolean>
+        title="UDP rate limit"
+        description="When several groups match at the winning identification tier, an exemption in any of them applies. DNS policies and access rules still apply."
+        value={group.spec.rateLimitExempt ?? false}
+        readOnlyReason={roReason}
+        view={<Text>{group.spec.rateLimitExempt ? 'Members are exempt from the UDP query rate limit.' : 'Members follow the configured UDP query rate limit and global exemptions.'}</Text>}
+        edit={(draft, setDraft) => <CheckboxInput label="Exempt members from the UDP rate limit" value={draft} onChange={setDraft} />}
+        onSave={async (rateLimitExempt) => {
+          await put({ ...group, spec: { ...group.spec, rateLimitExempt } });
+          notify.success(`Saved the UDP rate limit for ${name}`);
         }}
       />
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -90,6 +91,8 @@ func TestSettingsPatch(t *testing.T) {
 		{"/api/v1/settings", map[string]any{"log": map[string]any{"level": "debug"}}, http.StatusBadRequest, KeyInvalid},
 		{"/api/v1/settings", map[string]any{"querylog": map[string]any{"privacy": "everything"}}, http.StatusBadRequest, KeyInvalid},
 		{"/api/v1/node/config", map[string]any{"node": map[string]any{"dataDir": "/tmp/x"}}, http.StatusBadRequest, KeyHostOnly},
+		{"/api/v1/node/config", map[string]any{"blocking": map[string]any{"httpsOnly": false}}, http.StatusBadRequest, KeyHostOnly},
+		{"/api/v1/settings", map[string]any{"blocking": map[string]any{"httpsOnly": true}}, http.StatusBadRequest, KeyHostOnly},
 		{"/api/v1/node/config", map[string]any{"cache": map[string]any{"maxEntries": 1}}, http.StatusBadRequest, KeyInvalid},
 	}
 	for _, tc := range cases {
@@ -98,10 +101,11 @@ func TestSettingsPatch(t *testing.T) {
 			t.Errorf("PATCH %s %v: %d %s, want %d %s (%s)", tc.path, tc.patch, r.Code, r.errKey(), tc.code, tc.key, r.Body.String())
 		}
 	}
-	h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"level": "debug"}}).want(http.StatusOK).json(&body)
-	if body.Settings["log"].(map[string]any)["level"] != "debug" {
-		t.Fatalf("node config after patch %v", body.Settings["log"])
+	r := h.do(http.MethodPatch, "/api/v1/node/config", "admin", map[string]any{"log": map[string]any{"level": "debug"}}).want(http.StatusNotImplemented)
+	if r.errKey() != KeyReadOnly {
+		t.Fatal("legacy node write retained memory-only acceptance")
 	}
+
 	// Changes are audited with before/after.
 	var seen bool
 	for _, ev := range h.audit.Events() {
@@ -160,6 +164,37 @@ func TestSettingsSchemaMetadata(t *testing.T) {
 		t.Fatalf("conditional values %+v", c)
 	}
 
+	// Read real nested shapes through the HTTP serializer, including the
+	// existing field and selected-option help on the same schema response.
+	listener := byPath["listeners.dns"].Items
+	if listener == nil || len(listener.Fields) != 2 || listener.Fields[1].Items == nil {
+		t.Fatalf("listeners.dns items %+v", listener)
+	}
+	for _, tc := range []struct {
+		path string
+		got  string
+		want string
+	}{
+		{"listeners.dns[]", listener.Help, "One listening address and the DNS transports it serves."},
+		{"listeners.dns[].protocols[]", listener.Fields[1].Items.Help, "Choose one transport for this listener."},
+		{"upstreams.groups{key}", byPath["upstreams.groups"].Keys.Help, "Group name used by policies and conditional forwarding; keep a group named default."},
+		{"upstreams.groups{}", g.Help, "How this named group resolves queries."},
+		{"upstreams.groups{}.servers[]", servers.Items.Help, "One server address or URL; prefix name= to give it a display name."},
+		{"upstreams.conditional{key}", byPath["upstreams.conditional"].Keys.Help, "Domain suffix to route, such as corp.example, or a dnsmasq suffix list like [/corp.example/10.in-addr.arpa/]."},
+		{"upstreams.conditional{}", byPath["upstreams.conditional"].Values.Help, "Upstream group that receives queries for this suffix."},
+		{"ratelimit.ipv4{key}", byPath["ratelimit.ipv4"].Keys.Help, "IPv4 network prefix length: 32 limits one address; 24 limits a /24 network."},
+		{"ratelimit.ipv6{key}", byPath["ratelimit.ipv6"].Keys.Help, "IPv6 network prefix length: 128 limits one address; 64 limits a /64 network."},
+		{"ratelimit.ipv4{}", byPath["ratelimit.ipv4"].Values.Help, "Queries per minute for this prefix length; 0 disables this limit."},
+		{"ratelimit.ipv6{}", byPath["ratelimit.ipv6"].Values.Help, "Queries per minute for this prefix length; 0 disables this limit."},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s help = %q, want %q", tc.path, tc.got, tc.want)
+		}
+	}
+	if servers.Help == "" || listener.Fields[1].Help == "" || listener.Fields[1].Items.Enum[0].Help == "" {
+		t.Fatal("nested help lost existing field or option metadata")
+	}
+
 	for _, tc := range []struct {
 		patch       map[string]any
 		field, want string
@@ -213,5 +248,52 @@ func TestFlatSettingsCoversSchema(t *testing.T) {
 		if a, b := toJSON(flat[k.Path]), toJSON(back2[k.Path]); a != b {
 			t.Errorf("%s: %s != %s", k.Path, a, b)
 		}
+	}
+}
+
+// An object field already has its own help. Preserve its precedence when
+// flattening embedded shapes into JSON, and omit absent help for older clients.
+func TestSettingShapeHelpSerialization(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		fieldHelp string
+		shapeHelp string
+		want      string
+	}{
+		{"field wins", "Field help.", "Shape help.", "Field help."},
+		{"shape fallback", "", "Shape help.", "Shape help."},
+		{"legacy field", "Field help.", "", "Field help."},
+		{"optional", "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := config.Shape{Type: config.TypeObject, Fields: []config.Field{{
+				Name: "mode", Help: tc.fieldHelp,
+				Shape: config.Shape{Type: config.TypeString, Help: tc.shapeHelp,
+					Enum: []config.Option{{Value: "forward", Label: "Forward", Help: "Option help."}}},
+			}}}
+			data, err := json.Marshal(settingShape(&s))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got struct {
+				Fields []map[string]any `json:"fields"`
+			}
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatal(err)
+			}
+			field := got.Fields[0]
+			help, present := field["help"]
+			if tc.want == "" {
+				if present {
+					t.Errorf("absent help serialized as %v", help)
+				}
+			} else if help != tc.want {
+				t.Errorf("field help = %v, want %q", help, tc.want)
+			}
+			option := field["enum"].([]any)[0].(map[string]any)
+			if option["help"] != "Option help." {
+				t.Errorf("option help = %v", option["help"])
+			}
+		})
 	}
 }

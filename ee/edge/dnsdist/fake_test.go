@@ -8,18 +8,23 @@ package dnsdist
 // until SIGTERM. The real validator runs in `make edge-check`.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
+	"time"
 
+	"github.com/robertherbaugh/kudurru/ee/edge"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -100,10 +105,15 @@ func fakeLog(dir, format string, args ...any) {
 }
 
 func fakeDNSDist(args []string) int {
-	var cfgPath string
+	var cfgPath, command string
 	check, supervised := false, false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "-e":
+			i++
+			if i < len(args) {
+				command = args[i]
+			}
 		case "--check-config":
 			check = true
 		case "--supervised":
@@ -114,6 +124,33 @@ func fakeDNSDist(args []string) int {
 				cfgPath = args[i]
 			}
 		}
+	}
+	if command != "" && os.Getenv("KUDURRU_FAKE_CONSOLE_MODE") != "" {
+		marker := regexp.MustCompile(`KUDURRU_ACK_[a-f0-9]+`).FindString(command)
+		switch os.Getenv("KUDURRU_FAKE_CONSOLE_MODE") {
+		case "sleep":
+			time.Sleep(time.Minute)
+		case "overflow":
+			fmt.Print(strings.Repeat("x", maxConsoleOutput+1))
+			fmt.Print(marker)
+		case "stderr-overflow":
+			fmt.Fprint(os.Stderr, strings.Repeat("x", maxConsoleOutput+1))
+			fmt.Print(marker)
+		case "preamble":
+			fmt.Print("local configuration-only diagnostic\n" + marker)
+		case "trailing":
+			fmt.Print(marker + "\ncommand failed")
+		case "echo":
+			fmt.Print(command)
+		case "unacknowledged":
+			fmt.Print("sensitive test material")
+		case "failed":
+			fmt.Print(marker)
+			return 1
+		default:
+			fmt.Print(marker)
+		}
+		return 0
 	}
 	fc, err := parseFake(cfgPath)
 	if err != nil {
@@ -126,11 +163,78 @@ func fakeDNSDist(args []string) int {
 		fmt.Printf("Configuration '%s' OK!\n", cfgPath)
 		return 0
 	}
+	if command != "" {
+		req, _ := http.NewRequest("POST", "http://"+fc.apiAddr+"/test-console", strings.NewReader(command))
+		req.Header.Set("X-API-Key", fc.apiKey)
+		resp, err := http.DefaultClient.Do(req) //nolint:gosec // test fake API address is allocated on loopback by the harness
+		if err != nil {
+			return 1
+		}
+		defer func() { _ = resp.Body.Close() }()
+		_, _ = io.Copy(os.Stdout, resp.Body)
+		if resp.StatusCode != 200 {
+			return 1
+		}
+		return 0
+	}
 	if !supervised {
 		fmt.Fprintln(os.Stderr, "fake dnsdist: expected --supervised")
 		return 2
 	}
+	var stateMu sync.Mutex
+	backends := map[string]string{}
+	for _, name := range fc.backends {
+		backends[edge.BackendID(name)] = name
+	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /test-console", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-API-Key") != fc.apiKey {
+			w.WriteHeader(401)
+			return
+		}
+		data, _ := io.ReadAll(io.LimitReader(r.Body, maxConsoleCommand+1))
+		script := string(data)
+		stateMu.Lock()
+		defer stateMu.Unlock()
+		verb := "ping"
+		switch {
+		case strings.Contains(script, ":isUp()"):
+			verb = "health"
+		case strings.Contains(script, ":setAuto("):
+			verb = "activate"
+		case strings.Contains(script, "newServer("):
+			verb = "stage"
+			id := regexp.MustCompile(`id="([^"]+)"`).FindStringSubmatch(script)
+			name := regexp.MustCompile(`name="([^"]+)"`).FindStringSubmatch(script)
+			if len(id) == 2 && len(name) == 2 {
+				backends[id[1]] = name[1]
+			}
+		case strings.Contains(script, ":addPool("):
+			verb = "promote"
+		case strings.Contains(script, ":setDown("):
+			verb = "down"
+		case strings.Contains(script, "rmServer("):
+			verb = "remove"
+			id := regexp.MustCompile(`rmServer\("([^"]+)"\)`).FindStringSubmatch(script)
+			if len(id) == 2 {
+				delete(backends, id[1])
+			}
+		case strings.Contains(script, "reloadAllCertificates()"):
+			verb = "reload"
+		}
+		fakeLog(dir, "console %s", verb)
+		// Lost acknowledgment deliberately follows mutation, exercising recovery.
+		if _, err := os.Stat(filepath.Join(dir, "fail-"+verb)); err == nil { //nolint:gosec // bounded verb and owned fake fixture directory
+			return
+		}
+		if verb == "health" {
+			if _, err := os.Stat(filepath.Join(dir, "reject-health")); err == nil { //nolint:gosec // owned fake fixture fault file
+				return
+			}
+		}
+		marker := regexp.MustCompile(`KUDURRU_ACK_[a-f0-9]+`).Find(data)
+		_, _ = w.Write(bytes.Clone(marker))
+	})
 	mux.HandleFunc("/api/v1/servers/localhost", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-API-Key") != fc.apiKey {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -140,10 +244,12 @@ func fakeDNSDist(args []string) int {
 		if _, err := os.Stat(filepath.Join(dir, "fake-down")); err == nil { //nolint:gosec // test fake
 			state = "down"
 		}
+		stateMu.Lock()
 		servers := []map[string]any{}
-		for i, b := range fc.backends {
-			servers = append(servers, map[string]any{"id": i, "name": b, "address": b, "state": state})
+		for _, b := range backends {
+			servers = append(servers, map[string]any{"id": len(servers), "name": b, "address": b, "state": state})
 		}
+		stateMu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{"daemon_type": "dnsdist", "version": "fake", "servers": servers})
 	})
 	mux.HandleFunc("DELETE /api/v1/cache", func(w http.ResponseWriter, r *http.Request) {

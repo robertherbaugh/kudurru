@@ -37,12 +37,35 @@ func (s *Server) registerBlockPage() {
 		if s.opts.BlockPage == nil {
 			return nil, errUnavailable("the block page is not available on this node")
 		}
+		var document blockpage.Document
+		switch preview := s.opts.BlockPage.(type) {
+		case interface {
+			CapturedPreview(context.Context, string, netip.Addr) (blockpage.Document, error)
+		}:
+			var err error
+			document, err = preview.CapturedPreview(ctx, in.Domain, ClientIP(ctx))
+			if err != nil {
+				return nil, storeError(err)
+			}
+		case interface {
+			PreviewDocument(context.Context, string, netip.Addr) blockpage.Document
+		}:
+			if s.opts.CanonicalSettings != nil {
+				return nil, errUnavailable("captured block-page preview unavailable")
+			}
+			document = preview.PreviewDocument(ctx, in.Domain, ClientIP(ctx))
+		default:
+			if s.opts.CanonicalSettings != nil {
+				return nil, errUnavailable("captured block-page preview unavailable")
+			}
+			document = blockpage.Document{Body: preview.Preview(ctx, in.Domain, ClientIP(ctx)), CSP: blockpage.PreviewCSP}
+		}
 		return &blockPagePreviewOutput{
 			ContentType:  "text/html; charset=utf-8",
-			CSP:          blockpage.PreviewCSP,
+			CSP:          document.CSP,
 			FrameOptions: "SAMEORIGIN",
 			CacheControl: "no-store",
-			Body:         s.opts.BlockPage.Preview(ctx, in.Domain, ClientIP(ctx)),
+			Body:         document.Body,
 		}, nil
 	})
 }

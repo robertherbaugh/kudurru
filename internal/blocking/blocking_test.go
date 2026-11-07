@@ -139,8 +139,8 @@ func TestCompileStats(t *testing.T) {
 	}})
 	st := l.Stats()
 	want := Stats{
-		Entries: 6, RuleCount: 11, Exceptions: 1, Duplicates: 5,
-		Invalid: 1, Unsupported: 1, Ignored: 1, Regexes: 1, RegexUnindexed: 1,
+		Entries: 7, RuleCount: 12, Exceptions: 1, Duplicates: 5,
+		Invalid: 1, Unsupported: 0, Ignored: 1, Regexes: 1, RegexUnindexed: 1,
 	}
 	st.Bytes, st.CompileTime = 0, 0
 	if st != want {
@@ -150,7 +150,7 @@ func TestCompileStats(t *testing.T) {
 		t.Error("Bytes or CompileTime not set")
 	}
 	u := l.Unsupported()
-	if len(u) != 1 || u[0].Modifiers[0].Name != "important" {
+	if len(u) != 0 {
 		t.Errorf("Unsupported() = %+v", u)
 	}
 	if l.Name() != "s" || l.Mode() != ModeBlock {

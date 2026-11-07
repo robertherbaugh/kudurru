@@ -103,7 +103,9 @@ jobs:
       - name: Test
         env:
           SHARD: ${{ matrix.shard }}
-        run: make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
+        run: |
+          python3 -m unittest discover -s hack -p test_go_test.py
+          make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
       # Only what this run used: go marks a cache entry used by touching it
       # (when it is over an hour old), so the cache does not grow forever.
       - name: Drop cache entries this run did not use (main)
@@ -209,6 +211,9 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
       - name: Lint
@@ -310,8 +315,15 @@ jobs:
         env:
           KUDURRU_NAMED: /usr/sbin/named
         run: make e2e
+      - name: Recursive denial proof reuse against BIND
+        env:
+          KUDURRU_RECURSOR_BIND: "1"
+          GOMAXPROCS: "2"
+        run: go test -race -p 2 ./internal/recursor -run '^TestAggressiveBIND$' -count=1 -timeout=90s
       - name: OIDC login end to end against dex
         run: make test-auth-e2e
+      - name: Blocking conformance against pinned AdGuard Home
+        run: make test-adguard
   # Stock-client DHCP interoperability, entirely inside a disconnected outer
   # network namespace. Installing dhcpcd-base does not enable a host DHCP daemon.
   dhcp-acceptance:
@@ -428,6 +440,8 @@ jobs:
           key: deploy-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Render matrix, kustomize overlays, kubeconform
         run: make helm-check
+      - name: Release version references are current
+        run: make version-check
       - name: Generated deployment assets are current
         run: |
           make deploy-assets

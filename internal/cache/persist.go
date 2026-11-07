@@ -4,17 +4,20 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"time"
+
+	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
 // dumpMagic starts every dump; the byte after it is the format version.
 const (
 	dumpMagic   = "KDRC"
-	dumpVersion = 1
+	dumpVersion = 2
 	maxKeyLen   = 1024
 	maxWireLen  = 65535
 )
@@ -34,6 +37,8 @@ func (c *Cache) Dump(w io.Writer) error {
 
 // WriteDump is Dump that also returns how many entries it wrote.
 func (c *Cache) WriteDump(w io.Writer) (int, error) {
+	c.topology.RLock()
+	defer c.topology.RUnlock()
 	bw := bufio.NewWriter(w)
 	if _, err := bw.WriteString(dumpMagic); err != nil {
 		return 0, err
@@ -57,12 +62,20 @@ func (c *Cache) WriteDump(w io.Writer) (int, error) {
 		}
 		sh.mu.Unlock()
 		for _, e := range snap {
+			metadata, err := json.Marshal(e.metadata)
+			if err != nil {
+				return written, err
+			}
 			putU(uint64(len(e.key)))
 			_, _ = bw.WriteString(string(e.key))
 			_ = bw.WriteByte(byte(e.kind))
 			putI(e.stored)
 			putI(e.expires)
 			putI(e.staleUntil)
+			putU(uint64(len(metadata)))
+			if _, err := bw.Write(metadata); err != nil {
+				return written, err
+			}
 			putU(uint64(len(e.wire)))
 			if _, err := bw.Write(e.wire); err != nil {
 				return written, err
@@ -181,6 +194,21 @@ func (c *Cache) Load(r io.Reader) (int, error) {
 				return n, truncated(err)
 			}
 		}
+		mlen, err := binary.ReadUvarint(br)
+		if err != nil {
+			return n, truncated(err)
+		}
+		if mlen > 8192 {
+			return n, fmt.Errorf("%w: metadata length", ErrBadDump)
+		}
+		mb := make([]byte, mlen)
+		if _, err := io.ReadFull(br, mb); err != nil {
+			return n, truncated(err)
+		}
+		var metadata Metadata
+		if err := json.Unmarshal(mb, &metadata); err != nil {
+			return n, fmt.Errorf("%w: metadata", ErrBadDump)
+		}
 		wlen, err := binary.ReadUvarint(br)
 		if err != nil {
 			return n, truncated(err)
@@ -193,10 +221,16 @@ func (c *Cache) Load(r io.Reader) (int, error) {
 			return n, truncated(err)
 		}
 		stored, expires, staleUntil := times[0], times[1], times[2]
-		if now >= staleUntil || expires < stored || staleUntil < expires {
+		if now >= staleUntil || now < stored || expires < stored || staleUntil < expires || !metadata.Security.AvailableAt(time.Unix(0, now)) || metadata.Security.State > pipeline.ValidationInsecure {
 			continue
 		}
-		c.insert(&entry{key: Key(key), wire: wire, kind: Kind(kind), stored: stored, expires: expires, staleUntil: staleUntil, windowStart: now})
+		parts, valid := Key(key).Parts()
+		if !valid || parts.Scope != metadata.Scope {
+			continue
+		}
+		c.publication.RLock()
+		c.insert(&entry{metadata: metadata, restored: true, key: Key(key), wire: wire, kind: Kind(kind), stored: stored, expires: expires, staleUntil: staleUntil, windowStart: now})
+		c.publication.RUnlock()
 		n++
 	}
 }

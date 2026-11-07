@@ -22,6 +22,7 @@
 //
 // Routes:
 //
+//	GET /internal/health          {node, ready, health:<local /healthz document>}
 //	GET /internal/status          {node, version, leader, state, lists:[{name, digests}]}
 //	GET /internal/lists/{digest}  the cached list body whose sha256 is digest
 //

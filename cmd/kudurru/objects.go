@@ -48,10 +48,11 @@ func newGetCmd(o *cliOpts) *cobra.Command {
 			if all && len(args) > 1 && k.Namespaced {
 				return fmt.Errorf("a %s cannot be fetched by name across all namespaces; use -n", k.Kind)
 			}
-			c, r, err := o.client()
+			c, r, closeClient, err := o.objectClient(cmd)
 			if err != nil {
 				return err
 			}
+			defer closeClient()
 			ns := ""
 			if k.Namespaced && !all {
 				ns = o.nsFor(r)
@@ -128,10 +129,11 @@ func (o *cliOpts) completeObjects(cmd *cobra.Command, args []string, _ string) (
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	c, r, err := o.client()
+	c, r, closeClient, err := o.objectClient(cmd)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
+	defer closeClient()
 	ns := ""
 	if k.Namespaced {
 		ns = o.nsFor(r)
@@ -163,7 +165,10 @@ func newApplyCmd(o *cliOpts) *cobra.Command {
 		Long: `Create or update objects from manifests. Documents may be multi-document YAML,
 JSON objects, JSON arrays or a List. Every document is a whole object applied
 with manager "api" (POST /api/v1/apply); objects owned by a file or an
-integration are refused with "managed_by" and the owner.`,
+integration are refused with "managed_by" and the owner.
+With --transport kubernetes, public CRDs are applied directly with the selected
+kubeconfig credentials, manager "api", original version/absence preconditions
+and Kubernetes admission/RBAC. Force ownership is never implied.`,
 		Example: `  kudurru apply -f zones.yaml
   kudurru apply -f objects.d/ -R
   cat lists.yaml | kudurru apply -f -`,
@@ -188,10 +193,11 @@ func (o *cliOpts) applyManifests(cmd *cobra.Command, ms []cli.Manifest) error {
 	if len(ms) == 0 {
 		return errors.New("no objects found in the given manifests")
 	}
-	c, r, err := o.client()
+	c, r, closeClient, err := o.objectClient(cmd)
 	if err != nil {
 		return err
 	}
+	defer closeClient()
 	docs := make([]json.RawMessage, 0, len(ms))
 	for i := range ms {
 		m := &ms[i]
@@ -276,10 +282,11 @@ func newDeleteCmd(o *cliOpts) *cobra.Command {
 				ns, name string
 			}
 			var targets []target
-			c, r, err := o.client()
+			c, r, closeClient, err := o.objectClient(cmd)
 			if err != nil {
 				return err
 			}
+			defer closeClient()
 			switch {
 			case len(files) > 0 && len(args) > 0:
 				return errors.New("use either <kind> <name...> or -f, not both")
@@ -387,10 +394,11 @@ func newDescribeCmd(o *cliOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, r, err := o.client()
+			c, r, closeClient, err := o.objectClient(cmd)
 			if err != nil {
 				return err
 			}
+			defer closeClient()
 			ns := ""
 			if k.Namespaced {
 				ns = o.nsFor(r)
@@ -400,7 +408,7 @@ func newDescribeCmd(o *cliOpts) *cobra.Command {
 				return err
 			}
 			var diags []diagnosis
-			if msgs, err := diagnoses(cmd.Context(), c); err == nil {
+			if msgs, err := objectDiagnoses(cmd.Context(), c); err == nil {
 				for _, d := range msgs {
 					dk, dns, dn := d.ref()
 					if dn == args[1] && (dk == "" || strings.EqualFold(dk, k.Kind) || strings.EqualFold(dk, k.Resource)) && (dns == "" || dns == ns) {

@@ -107,6 +107,11 @@ type Options struct {
 	RequestsAllowed func() bool
 	// Settings are the initial page settings (Reconfigure replaces them).
 	Settings Settings
+	// Branding selects prepared presentation once per rendered request. The
+	// caller owns same-cut config/license admission. Nil, error or unavailable
+	// presentation uses the built-in brand. Prepared branding performs no I/O or
+	// license reads; callback acquisition must finish before return.
+	Branding func(context.Context) (*Branding, error)
 	// Registerer receives the metrics; nil leaves them unregistered.
 	Registerer prometheus.Registerer
 	Logger     *slog.Logger
@@ -335,22 +340,28 @@ func (s *Server) Handler(scheme string) http.Handler {
 			_, _ = w.Write([]byte(robots))
 			return
 		case "/favicon.ico":
-			h.Set("Content-Type", "image/x-icon")
+			brand := s.selectBranding(r.Context())
+			h.Set("Content-Type", brand.iconType)
 			h.Set("Cache-Control", "public, max-age=86400")
-			_, _ = w.Write(favicon)
+			if s.opts.Branding != nil {
+				h.Set("Cache-Control", "no-store")
+			}
+			if r.Method == http.MethodGet {
+				_, _ = w.Write(brand.icon)
+			}
 			return
 		}
 		domain := requestDomain(r)
-		body, reason := s.render(r.Context(), domain, client, r.URL.Query().Get(flashParam), false)
+		document, reason := s.render(r.Context(), domain, client, r.URL.Query().Get(flashParam), false)
 		h.Set("Content-Type", "text/html; charset=utf-8")
-		h.Set("Content-Security-Policy", CSP)
+		h.Set("Content-Security-Policy", document.CSP)
 		h.Set("X-Frame-Options", "DENY")
 		// The page differs per name and client: no shared caching, and a
 		// later allow must not keep showing it.
 		h.Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
 		if r.Method == http.MethodGet {
-			_, _ = w.Write(body) //nolint:gosec // Render escapes every value (TestHandlerHostileHost)
+			_, _ = w.Write(document.Body) //nolint:gosec // Render escapes every value (TestHandlerHostileHost)
 		}
 		kind := ""
 		if reason != nil {
@@ -365,12 +376,54 @@ func (s *Server) Handler(scheme string) http.Handler {
 // with an example reason. It reads neither the query log nor the policies,
 // so the preview reveals nothing the settings.read permission does not.
 func (s *Server) Preview(ctx context.Context, domain string, client netip.Addr) []byte {
+	return s.PreviewDocument(ctx, domain, client).Body
+}
+
+// PreviewDocument includes the CSP of the exact selected appearance. Complete
+// API adapters should use PreviewDocumentWithSettings with original owners.
+func (s *Server) PreviewDocument(ctx context.Context, domain string, client netip.Addr) Document {
 	d := normalizeDomain(domain)
 	if d == "" {
 		d = "blocked.example"
 	}
-	body, _ := s.render(ctx, d, client, "", true)
-	return body
+	document, _ := s.render(ctx, d, client, "", true)
+	return document
+}
+
+// PreviewDocumentWithSettings renders only the supplied original settings and
+// appearance. It never samples live settings, Branding, RequestsAllowed, request
+// storage, policy or query history. The caller projects Requests entitlement
+// into settings.Requests; the displayed preview form is always inert.
+func (s *Server) PreviewDocumentWithSettings(_ context.Context, domain string, client netip.Addr, settings Settings, branding *Branding) Document {
+	domain = normalizeDomain(domain)
+	if domain == "" {
+		domain = "blocked.example"
+	}
+	p := Page{Branding: branding, Title: settings.Title, Message: settings.Message, Domain: domain, Node: s.opts.Node, Time: s.opts.Now(), ShowDetails: settings.ShowDetails, Contact: settings.Contact, ContactURL: settings.ContactURL, Preview: true}
+	if client.IsValid() {
+		p.Client = client.String()
+	}
+	if settings.Requests {
+		p.Request = &RequestView{Action: RequestPath, Disabled: true, Form: true}
+	}
+	if settings.ShowDetails {
+		p.Reason = previewReason(domain)
+		if settings.DashboardURL != "" {
+			p.DashboardURL = settings.DashboardURL + "/queries?" + url.Values{"domain": {domain}}.Encode()
+		}
+	}
+	document, _ := RenderDocument(p)
+	return document
+}
+
+func (s *Server) selectBranding(ctx context.Context) *Branding {
+	if s.opts.Branding != nil {
+		brand, err := s.opts.Branding(ctx)
+		if err == nil {
+			return actualBranding(brand)
+		}
+	}
+	return builtInBranding
 }
 
 // previewReason is the example reason of the preview.
@@ -379,7 +432,7 @@ func previewReason(domain string) *Reason {
 }
 
 // render builds the page for domain and client.
-func (s *Server) render(ctx context.Context, domain string, client netip.Addr, flash string, preview bool) ([]byte, *Reason) {
+func (s *Server) render(ctx context.Context, domain string, client netip.Addr, flash string, preview bool) (Document, *Reason) {
 	st := s.settings.Load()
 	now := s.opts.Now()
 	p := Page{
@@ -413,14 +466,17 @@ func (s *Server) render(ctx context.Context, domain string, client netip.Addr, f
 			p.DashboardURL = st.DashboardURL + "/queries?" + url.Values{"domain": {domain}}.Encode()
 		}
 	}
-	body, err := RenderBytes(p)
+	// Select once after live detail lookups so entitlement is checked at the
+	// point of rendering, rather than before potentially slow request/history I/O.
+	p.Branding = s.selectBranding(ctx)
+	document, err := RenderDocument(p)
 	if err != nil {
 		// The template is static and every value is a string; this does
 		// not happen, but never serve a half page.
 		s.opts.Logger.Error("block page render failed", "err", err)
-		return []byte("blocked\n"), p.Reason
+		return Document{Body: []byte("blocked\n"), CSP: CSP}, p.Reason
 	}
-	return body, p.Reason
+	return document, p.Reason
 }
 
 // remoteAddr is the transport peer. Forwarded headers are ignored: the

@@ -99,8 +99,20 @@ After you set up a provider, the sign-in page shows one button for it.
 ### Local accounts
 
 The account `admin` is a local account. kudurru makes it at the first
-start. You set up other local accounts in files. The dashboard shows
-the local users on the tab **Identity**.
+start. The dashboard shows local users on the tab **Identity**.
+
+The v0.2 SQLite API also accepts `POST /api/v1/iam/users` for an ordinary
+API-managed account. An administrator supplies `name`, optional `displayName`
+and `password`. The user must change that password on first sign-in. Creation
+does not assign a role or enroll an authenticator.
+
+To reset one of these accounts, send `POST /api/v1/iam/users/{name}/password`
+with its exact `uid` and `resourceVersion` from the user inventory, plus
+`newPassword`. A 409 requires a fresh inventory read before a deliberate new
+request. Reset signs out the account and revokes its local personal tokens. It
+preserves its authenticator and disabled state, and requires another password
+change. Reset does not recover a lost authenticator. Built-in and file-managed
+accounts are excluded; Kubernetes returns 503 for these two API commands.
 
 To turn off the local sign-in when all your people use single sign-on, set
 `auth.localLogin` to `disabled`. The value `admins-only` allows the built-in

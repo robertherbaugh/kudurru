@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiClient, ApiError } from './client';
 import { endpoints, type Endpoints, type ScopeParams } from './endpoints';
 import type { Me } from './types';
+import { browserLogoutContinuation } from './logout';
 
 interface ApiContextValue {
   client: ApiClient;
@@ -88,12 +89,16 @@ export function useSession() {
   const { api, setCsrf } = useApiContext();
   const q = useQuery({
     queryKey: qk.me,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       try {
         const me = await api.auth.me();
+        // Query cancellation also retires this read's CSRF side effect, even
+        // when its HTTP response arrives after session cleanup.
+        signal.throwIfAborted();
         setCsrf(me.csrf);
         return me;
       } catch (err) {
+        if (signal.aborted) throw err;
         if (err instanceof ApiError && err.status === 401) {
           setCsrf(undefined);
           return null;
@@ -135,12 +140,15 @@ export function canAnyScope(me: Me, resource: string, verb: string): boolean {
 }
 
 export function useSignOut(): () => Promise<void> {
-  const { api, setCsrf } = useApiContext();
+  const { api, client, setCsrf } = useApiContext();
   const qc = useQueryClient();
   return useCallback(async () => {
+    let continuation: string | undefined;
     try {
-      await api.auth.logout();
+      const result = await api.auth.browserLogout();
+      continuation = browserLogoutContinuation(client.baseUrl, result?.continuePath, window.location.origin);
     } finally {
+      await qc.cancelQueries();
       setCsrf(undefined);
       // Signed out first, so the session gate renders the login page; then
       // drop every other cached answer. qc.clear() would also remove the
@@ -148,7 +156,8 @@ export function useSignOut(): () => Promise<void> {
       qc.setQueryData(qk.me, null);
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== qk.me[0] || q.queryKey[1] !== qk.me[1] });
     }
-  }, [api, qc, setCsrf]);
+    if (continuation) window.location.assign(continuation);
+  }, [api, client, qc, setCsrf]);
 }
 
 // ---------------------------------------------------------------------------

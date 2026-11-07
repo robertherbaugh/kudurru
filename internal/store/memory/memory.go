@@ -101,6 +101,9 @@ func (s *Store) Apply(_ context.Context, obj store.Object, opts store.ApplyOptio
 	}
 	key := store.KeyOf(obj)
 	prev, exists := s.objects[key]
+	if (opts.CreateOnly && exists) || (opts.ExpectedResourceVersion != "" && !exists) {
+		return nil, store.ErrConflict
+	}
 
 	// Apply writes the main resource only: status comes from the stored
 	// object (or stays empty on create), and generation moves only when the

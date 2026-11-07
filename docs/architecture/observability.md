@@ -13,6 +13,25 @@ Plus the **audit** trail of who changed what. Code: `internal/stages/log`,
 `internal/querylog/sqlitelog` (writer, rollups, retention, reader),
 `internal/metrics`, `internal/health`, `internal/audit`.
 
+SQLite exports `kudurru_cluster_fenced` from its current local authority, with
+no database read during a scrape. It is 1 for a higher-term fence, conflicting
+promotions, divergent images, or an in-memory fence when persistence fails.
+Persisted fences survive restart. Installing an accepted successor image as a
+follower or explicitly resolving a conflict clears the signal when the store
+transition succeeds. A healthy read-only follower or unenrolled mirror reports
+0; zero does not establish writable readiness. Valid last-good DNS can continue
+while fenced. Kubernetes nodes do not export this SQLite authority signal.
+The Grafana cluster/store row and immediate `KudurruClusterFenced` alert use it;
+inspect authority and storage errors before attempting explicit recovery.
+
+The human `GET /healthz` response includes `leader` and `snapshotAge` strings.
+`leader` is the locally observed controller holder, empty when unknown or when
+an old self identity has no active term. It does not resolve peer addresses or
+verify a remote holder's present authority. `snapshotAge` is the rounded duration
+since the currently served `local.db` snapshot was written, including stale
+snapshots; it is empty while serving live data or when no saved image is served.
+Both fields are local observations and do not change readiness or liveness.
+
 The Nodes page also polls `GET /api/v1/edge` every ten seconds. In Helm,
 the server discovers every separate edge pod through the headless
 `<release>-edge-status` Service's EndpointSlices, then reads `/status` on
@@ -30,6 +49,45 @@ keepalived runs alongside it, `KUDURRU_VIP_STATUS_URL` to the health
 listeners (for example, `http://127.0.0.1:8084` and port 8085). The Compose
 examples set these automatically.
 
+## Serving diagnostics
+
+SQLite `GET /info/messages` reads policy diagnoses, enabled-list readiness and
+secondary/stub coverage from the original authenticated HTTP installation.
+It observes absolute expiry once for the whole response, including required RPZ
+data. An unavailable copy produces a serving-unavailable message; the captured
+owners do not invent transfer-attempt history. Missing or inconsistent owners
+return 503 rather than consulting live policy, cache or transfer managers.
+The diagnoses entry in `/doctor` uses that same request context.
+
+Loader failures, node health, read-only process mode and central-database
+reachability are separately labeled current operational observations. They do
+not identify which configuration is serving. The combined response has bounded
+fields, count and aggregate size; overflow fails instead of silently omitting
+messages. Legacy Kubernetes diagnostics keep their existing sources.
+
+When `audit.store: auditlog` is selected, the Diagnosis page, `/doctor` and
+`kudurru doctor` include a separate current AuditLog observation for licensed
+`audit.read` users. The probe inherits the guarded Kubernetes transport and
+lists only metadata in the release namespace; it reads no batch contents and
+does not verify audit integrity or shipping. Permission, original credential
+expiry and the audit license are checked before acquisition and again before
+disclosure. Failure of the original captured diagnosis source does not invoke
+this probe as a fallback.
+
+The scan permits one active caller, 500 objects per page, at most 101 pages,
+2 MiB per decoded response and 64 MiB total, within three seconds. A complete
+coherent list reports an exact batch-object count up to 50,000. At 50,001 it
+stops and recommends central database storage or retention review, explicitly
+as a lower bound. Missing/denied endpoints, unavailable APIs, expired cursors,
+malformed responses and exhausted bounds have distinct nonhealthy results;
+there is no discovery, redirect or full-object fallback.
+
+The lazy probe can observe an API resource that was missing at startup. That
+observation does not activate the startup-disabled cluster audit reader or
+shipper: restart replicas after installing the CRD. DNS readiness remains
+independent. Doctor treats informational successful scans as OK rather than
+turning every nonempty diagnosis list into a warning.
+
 ## The query log pipeline
 
 ```mermaid
@@ -39,20 +97,58 @@ flowchart LR
     CH --> COL["collector (one goroutine)<br/>exclusions, privacy mode,<br/>stamp the ID"]
     COL --> TAIL["live tail<br/>ring of 65 536 + SSE subscribers"]
     COL --> BATCH["batch: 1000 events or 1 s"]
-    BATCH --> DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups, one transaction")]
+    PUB["original DNS publication<br/>enabled, sink, privacy owner"] -.-> OBS
+    BATCH -->|"captured SQLite sink"| DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups + domain/hour index, one transaction")]
+    BATCH -->|"captured slog sink"| SLOG["structured logger"]
     TAIL --> API["dashboard: live tail,<br/>block page reasons"]
-    DB --> API2["dashboard: query log,<br/>stats, top lists"]
+    DB --> API2["dashboard: query log,<br/>stats, top lists,<br/>bounded JSON export"]
 ```
+
+`GET /queries/export` delegates to the same scoped history reader as
+`GET /queries`, with `querylog.read` permission and the existing privacy,
+filter and cursor semantics. It buffers one page (default/max 1,000 rows,
+16 MiB output, 15-second operation context) before sending a JSON attachment
+with `Cache-Control: no-store`. Cancellation or encoding/size failure sends
+no partial attachment. Counts, continuation cursor, source and per-node partial
+errors remain in the file. It does not read the live tail, unredacted events,
+or automatically combine pages into a snapshot.
 
 The answer never waits for the log: when the channel is full, the event is
 dropped and counted. The health name and the dashboard's built-in dig are
 never logged.
 
+`querylog.enabled` and `querylog.sink` reload without restarting. One bounded
+queue, consumer and tail survive every toggle, including disabled startup.
+Complete SQLite requests use the enabled decision, destination and privacy of
+their original DNS publication through emission. Each queued item retains that
+owner; the consumer flushes before crossing destinations. Disabled successor
+requests collect nothing, while held enabled requests finish at their original
+sink. DNS admission never waits for sink preparation, writes or final drain.
+
+The root prepares sinks before accepting a complete publication. Failure keeps
+the previous coherent DNS/logging bundle and reports unavailable readiness.
+There is at most one slog sink and one lazily opened SQLite writer. Once opened,
+local history, purge, retention, maintenance and configured central shipping keep
+that writer through disabled/slog modes. A disabled or slog restart opens retained
+local history too; a missing database remains lazy unless enabled SQLite needs
+one. A rejected candidate cannot change its retention. The queue and tail keep their event-ID sequence across reloads.
+
+Shutdown stops admission and drains accepted records once under a bounded
+context, then closes SQLite after the consumer joins. A timed-out batch is
+canceled and counted, never replayed at a successor sink. The caller returns on
+its deadline even if an external slog handler ignores cancellation; that single
+pending consumer keeps its sink and is not replaced or closed underneath I/O.
+
 **Privacy is applied once, at the collector**, before anything is stored or
 shown: `full`, `anonymize_client` (a /24 or /48 prefix, or a daily
 pseudonym), `hide_domains`, `hide_domains_clients`, or `nothing` (only the
 per-minute totals). Changing the mode does not rewrite queries already
-logged.
+logged. Daily pseudonyms keep the same process-local key when a reload only
+changes exclusions or preserves the same anonymizing transform. The old filter
+and its replacement share midnight rotation, so an in-flight lookup agrees
+with ingestion. Changing the privacy mode or anonymization method starts a new
+key lifecycle; restarting the process also changes pseudonyms. Keys are never
+persisted, exported or derived from database values.
 
 ### What one event holds
 
@@ -69,9 +165,20 @@ answer in one line.
 | Table | Granularity | Kept |
 |---|---|---|
 | `query` (facts) | one row per query | `querylog.retention.raw` (720 h) and `maxDBBytes` (10 GiB) |
+| `query_domain_hour` | retained fact counts per hour/node/domain, plus source centrally | exactly the retained facts |
 | `rollup_1m`, `_client_1m`, `_qtype_1m`, `_upstream_1m` | minute | 35 days |
 | `rollup_1h`, `_client_1h`, `_qtype_1h`, `_upstream_1h`, `_domain_1h`, `_list_1h`, `_zone_1h` | hour | 400 days |
 | `rollup_1d`, `_client_1d`, `_domain_1d` | day | forever |
+
+Current-hour unique/top-domain queries use a transaction-maintained index,
+including above 100,000 distinct names. Whole domain/hour entries contribute
+exact totals; entries crossing a requested interval edge read their matching
+raw facts through the domain/time index. Conservative first/last timestamps
+after deletion may cause extra edge reads, never approximate counts. Space
+scales with retained domain/hour pairs; adversarial ragged intervals can still
+read every matching boundary fact. Local readers pin a real WAL snapshot while
+copying pending totals, after acquiring a reader connection and before releasing
+the writer lock. SQL facts, index cells and pending totals describe one cut.
 
 Names, clients, upstreams, zones, lists and policies are stored once in
 `dict_*` tables and referenced by ID. Charts read the rollups, so a 30-day
@@ -87,7 +194,8 @@ there, and **All nodes** reads the database instead
 flowchart LR
     QL[("querylog.db<br/>(written first)")] --> SH["query-log shipper<br/>facts by id every 1 s,<br/>rollups every 30 s"]
     SH -- "rows + cursor,<br/>one transaction" --> PG[("PostgreSQL<br/>same tables, every node,<br/>query partitioned by day")]
-    PG --> CR["central reader<br/>(the node reader's code,<br/>PostgreSQL dialect)"]
+    JAN["leader recovery and retention<br/>source hours/days, raw, rollups, dictionary sweep"] --> PG
+    PG --> CR["central reader<br/>(read-only repeatable-read,<br/>PostgreSQL dialect)"]
     CR --> API["GET /stats/*, /queries<br/>scope=cluster"]
     API --> HISTORY["dashboard history<br/>(central IDs)"]
     TAIL["active replicas' live tails"] --> STREAM["GET /queries/stream<br/>scope=cluster, SSE fan-out"]
@@ -96,12 +204,41 @@ flowchart LR
 
 A node keeps the rows it has not shipped, even past its own retention, so
 an outage of the database delays the cluster view but loses nothing the
-node still holds.
+node still holds. Dictionary hints are revalidated under row locks inside
+the shipping transaction; every fact and rollup dictionary reference also has
+a foreign key. After raw/rollup retention, the leader selects at most 256 IDs
+per dictionary per hourly pass and deletes only entries with no retained
+reference, including daily rollups from retired sources. Durable bounded
+keyset sweeps wrap and resume after restart. The two-second pass deadline
+bounds lock ownership; failed passes roll back deletions and sweep progress.
+Read-only repeatable-read snapshots retain matching dictionary data while a
+concurrent sweep commits. See the PostgreSQL guide for the schema 4/5 upgrade
+boundary and migration cost.
+
+Schema 5 retains per-file source ownership across all central rollup families.
+The leader synthesizes closed hours after two hours of inactivity and reconciles
+closed days, using bounded work and the same metric accumulators as local
+compaction. Official returns replace their own source contribution atomically.
+Pending input is retained. Legacy node-only cells keep NULL ownership and remain
+visibly partial until their absent provenance can be established; a new file
+cannot assume that ownership. Scoped status and evidence verification expose
+these gates without raw DNS data. The [source recovery contract](central-stopped-source-rollups.md)
+describes the schema, limits, exact-once receipts and unresolved legacy input.
 
 The live tail follows the active replicas directly, even with a central
 database. While enabled, the dashboard shows only incoming queries; it
 does not merge node IDs with central history. Stopping the tail refreshes
 history from the database.
+
+Central historical selection uses an immutable exact node selector. Every
+fact and rollup relation binds that node before grouping, counting or limiting;
+dictionary reads require a retained reference in the same scope. Progress,
+node metadata and rows come from one read-only repeatable-read snapshot.
+Explicit other-node history uses central storage even after membership retires
+the node. Unknown names return 404; central failures return 503 without a local
+or peer fallback. Live tails retain their separate membership transport. Query
+row actions keep the central ID namespace and pass only the selected immutable
+domain into the existing current command and its original authorization proof.
 
 ## Metrics
 
@@ -111,6 +248,7 @@ never client addresses or query names.
 | Family | Examples |
 |---|---|
 | DNS | `kudurru_dns_requests_total{proto,qtype}`, `kudurru_dns_responses_total{proto,rcode,status}`, `kudurru_dns_request_duration_seconds{proto,status_class}`, `kudurru_dns_dropped_total{reason}` |
+| Rate limiting | `kudurru_ratelimit_buckets`, `kudurru_ratelimit_slipped_total` (UDP TC=1 decisions, distinct from drops; no client labels) |
 | Upstreams, recursion and cache | see [upstreams and the cache](upstreams-and-cache.md#metrics) (`kudurru_upstream_*`, `kudurru_recursor_*`, `kudurru_cache_*`) |
 | Store and zonecache | `kudurru_store_operations_total`, `kudurru_store_snapshot_age_seconds`, `kudurru_zonecache_rebuild_duration_seconds`, `kudurru_zone_serial`, `kudurru_zone_records` |
 | Control plane | `kudurru_leader`, `kudurru_controller_reconcile_duration_seconds`, `kudurru_objects_diagnoses` |
@@ -149,9 +287,41 @@ stateDiagram-v2
 | `GET /healthz` | JSON roll-up with every component, for `kudurru health` and Docker's `HEALTHCHECK` |
 | `GET/POST/DELETE /lameduck` | read or set lameduck (writes from loopback only) |
 
+`GET /api/v1/nodes/{name}/health` requires `cluster.read` and returns the
+selected node's readiness plus its `/healthz` JSON document. Self reads use the
+local checker. Remote reads resolve the name only through cluster membership
+and call `GET /internal/health` over the existing TLS and cluster bearer-token
+transport; public caller credentials are not forwarded, and redirects are
+refused. The peer endpoint shares the internal listener's authentication and
+rate limit. It reports an unhealthy checker as a successful observation with
+`ready: false`, preserving that peer's component details without adding local
+components.
+
+Remote discovery and the request share a two-second deadline, and peer health
+responses are capped at 1 MiB. The response node must match membership; derived
+node certificates must also identify that member. Configured service
+certificates retain their configured TLS verification and use the response's
+node identity. An unknown member returns 404. Failed discovery, a missing
+internal client/address, an older peer without this endpoint, unreachable or
+slow peers, and malformed, oversized or mismatched responses return 503 with
+redacted messages. An unavailable peer does not report healthy. Check internal
+listener connectivity and cluster credentials when those reads fail.
+
+These readiness documents are current operational observations. They do not
+replace captured canonical objects or establish which publication served a
+configuration read. `GET /nodes` retains its separate peer-status behavior,
+including unknown readiness for failed or older peers.
+
 Upstream reachability is **never** a readiness condition: a node whose
 upstreams are down still answers its zones and its cache, and taking it out
 of rotation would make things worse.
+
+On SQLite, readiness requires an eligible complete publication and admitted,
+available committed routing for every desired primary and forward zone in that
+same publication, including the bootstrap root forwarder. A desired-only
+placeholder or a pending lifecycle cannot
+make the node ready. Secondary and stub acquisition failures remain local to
+their zones and do not make an otherwise healthy node unready.
 
 ## Audit
 
@@ -187,32 +357,98 @@ purges, NOTIFY and list refreshes.
 Token creation and revocation are actual `apitoken.create` and
 `apitoken.delete` store writes. Their audit documents keep an allowlist of
 the label, owner, expiry and scopes; the token and its hash are excluded.
-Kubernetes store events also carry the authenticated principal and HTTP
-request context. Admin-socket writes name the admitted local-root peer
+Both SQLite and Kubernetes store events carry request ID, client IP,
+User-Agent, method, path and the authorization path. SQLite stores these in
+separate columns authenticated by the row hash; they are never reconstructed
+from the human-readable reason. Existing external-event reason suffixes remain
+for compatibility. Admin-socket writes name the admitted local-root peer
 instead of falling back to `system`. The dashboard shows safe token
 details and offers an `APIToken` kind filter. Older events with no token
 document cannot recover that information after the token is revoked.
 
-Audit list and export responses redact historical token documents with the
-same allowlist and omit documents for other internal identity kinds. New
-SQLite identity mutations also omit those documents. Stored records and
-their hashes remain unchanged; verification reads the original store, not
-the redacted response. Exported hashes describe the original stored data
-and cannot be recomputed from redacted documents.
+New recordings use one document policy before persistence, size capping and
+hashing. Documents for every private runtime kind (identity/security, committed
+zones and integration execution/source carriers) are omitted, except for the
+existing token allowlist. Public and virtual-resource documents retain safe
+record fields and credential references, while credential-bearing fields,
+arbitrary annotations and managed fields are removed recursively. Malformed,
+ambiguous duplicate-key or excessively nested JSON is omitted. An incoming
+truncation marker cannot retain an untrusted raw prefix or digest. SQLite's
+4 KiB summary contains a prefix and SHA-256 of the **redacted** document only;
+spool and API-action summaries retain only its safe size. This is structural
+redaction, not inspection of arbitrary free text: never put credentials in
+record targets, labels, descriptions, reasons or other ordinary text fields.
+
+Schema 6 adds SQLite attribution and a versioned chain. Upgrading leaves every
+existing row, document and hash unchanged as version 1, and records the last
+legacy ID in metadata. All new rows use the domain-separated version 2 hash,
+which authenticates every attribution column. Verification checks the recorded
+transition boundary and supported version before hashing; it never tries a
+legacy algorithm after a version 2 failure. Invalid versions, unauthenticated
+legacy attribution and missing/invalid boundary metadata are integrity errors.
+The boundary survives pruning, and verification reads it with the rows in one
+SQLite snapshot. Older binaries refuse schema 6: restore a pre-upgrade backup
+to roll back, rather than changing the schema marker by hand.
+
+List and export responses apply the same redactor to historical documents.
+Previously retained raw credentials are **not retroactively removed** from the
+database, backups or existing shipped copies. Protect those files and let the
+normal retention policy retire evidence; upgrading does not erase it. Source
+shipping keeps original source bytes and hashes. New spool recordings and the
+independent central PostgreSQL chain redact before their own hash is generated;
+central rows retain the original source hashes. Historical verification always
+reads original stored bytes, never a redacted response or a newly prepared event.
+Exported hashes therefore describe the stored data and cannot necessarily be
+recomputed from redacted response documents. Attribution unavailable on old
+rows remains empty.
 
 The dashboard's separate **Audit Log** page supports newest/oldest order,
 cursor pagination and event details. `GET /api/v1/audit/verify` requires
 `audit.read` and the audit license, and checks the complete retained store
 with a 30-second deadline. It verifies the original SQLite chain, the central
 PostgreSQL chain including its retention anchor and head, or fresh Kubernetes
-batches and their available HMAC seals plus the local pending spool. The
+batches and their independent signatures plus the local pending spool. The
 response reports verification success or a generic integrity failure;
 storage errors and timeouts return 503 with a generic message, with details
-logged on the server. Concurrent requests share one scan, and every result
-(including unavailability) is cached for 30 seconds per serving process.
-Current and previous encryption keys verify batches retained across rotation.
-Keep the previous key until the old-sealed batches have been pruned before
-dropping it or rotating again; see [the rotation runbook](../deploy/runbooks.md#rotating-the-encryption-key).
+logged on the server. Concurrent requests under the same trust revision share
+one scan; scan results (including backend unavailability) are cached for 30
+seconds per serving process. Failed trust capture or a superseded trust cut
+returns unavailable without caching a successful assertion.
+Kubernetes AuditLog storage uses an operator-provisioned `audit.keySecret`
+(default `kudurru-audit-keys`) in the release namespace. Its bounded versioned
+`ring.json` contains a random trust domain, the original cluster UID and namespace,
+one independent Ed25519 seed, and at most 128 retained public keys. New seals
+bind those fields, the full public-key fingerprint and the original batch spec.
+Rotation discards the old private seed while retaining every public key; it does
+not rewrite source hashes or old batches. Revocation explicitly withdraws trust
+in affected history. Session/master rotations do not change AuditLog keys.
+
+The runtime performs bounded authenticated Secret GETs over the original
+cluster-pinned transport: no informer, full-Secret cache, redirect, automatic
+provisioning or master-derived fallback. Signing loads fresh trust for each
+batch. Verification captures an immutable ring without its active private seed.
+Cache and singleflight identities include the Secret UID, revision and ring
+content; each response checks that its original revision is still current.
+Supersession refuses that scan instead of repairing it from a successor. The
+existing 30-second scan budget includes trust capture and checks. Permission
+and license gates precede trust reads and cached responses. There is no network
+verification on the DNS query path.
+
+**AuditLog upgrades require explicit provisioning before shipping resumes.**
+Missing, unavailable, wrong-cluster or malformed trust suspends shipping and
+verification while DNS and local durable spooling remain available, subject to
+spool caps and retention. Later requests recover when valid trust appears.
+Historical HMAC batches require explicit purpose-key import and a fixed past
+cutover; only nonzero apiserver creation times strictly before it are admitted.
+Unknown/unsigned history cannot gain trust through an algorithm fallback.
+
+Back up the private ring Secret and AuditLog history separately: configuration
+backups and saved store snapshots contain neither. Recreating the identical ring
+in the same trusted cluster retains history and invalidates old cache cuts; new
+cluster UIDs never rebind automatically. Restoring legacy objects with new
+creation metadata may lose cutoff admission. Existing workload RBAC permits
+other Secret operations, so the ring is not isolated from a compromised signing
+pod or namespace administrator. See the [key lifecycle and upgrade runbook](../deploy/runbooks.md#auditlog-key-provisioning-and-upgrades).
 Hash chains provide
 tamper evidence, not protection from an administrator who can rewrite the
 entire database and its chain. External log copies or exports provide an

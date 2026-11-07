@@ -192,6 +192,9 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 	}
 	sanitizeDocument(u)
 	key := keyFor(k, u.GetNamespace(), u.GetName())
+	if s.opts.ObjectCommand != nil {
+		return s.commandWriteObject(ctx, req, manager, u, key)
+	}
 
 	existing := k.newObject()
 	if err := s.opts.Store.Get(ctx, key, existing); errors.Is(err, store.ErrNotFound) {
@@ -252,7 +255,7 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 			return writeResult{}, err
 		}
 	}
-	opts := store.ApplyOptions{Manager: manager, Force: force}
+	opts := store.ApplyOptions{Manager: manager, Force: force, CreateOnly: req.createOnly}
 	if existing != nil {
 		// Optimistic concurrency between the read above and the write.
 		opts.ExpectedResourceVersion = existing.GetResourceVersion()
@@ -276,6 +279,9 @@ func (s *Server) deleteObject(ctx context.Context, k kindInfo, existing store.Ob
 	}
 	key := store.KeyOf(existing)
 	key.Kind = k.kind
+	if s.opts.ObjectCommand != nil {
+		return s.commandDeleteObject(ctx, k, key, ifMatch)
+	}
 	owner := store.ManagedBy(existing)
 	if !apiMayDelete(owner) {
 		return errManagedBy(key, owner)

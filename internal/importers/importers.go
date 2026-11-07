@@ -36,10 +36,10 @@ type MigrationRequest struct {
 	Nameservers         []string `json:"nameservers,omitempty" maxItems:"16" doc:"Replace imported authoritative NS names and SOA primary with these kudurru DNS names; first name becomes SOA primary. Empty preserves source authority for a later cutover."`
 }
 
-// SourceInfo identifies the source without credentials or URL query parameters.
+// SourceInfo identifies the source without credentials. Offline formats have no URL.
 type SourceInfo struct {
-	Type string `json:"type" enum:"pihole,technitium"`
-	URL  string `json:"url"`
+	Type string `json:"type" enum:"pihole,technitium,adguard,blocky"`
+	URL  string `json:"url,omitempty"`
 }
 
 // ZoneAuthority preserves the source authority when the preview replaces it.

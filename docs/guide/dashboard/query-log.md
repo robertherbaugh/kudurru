@@ -22,6 +22,23 @@ Use **Status** to select **Blocked** or **Errors**. Use **Since** and **Until**
 to narrow the time. `*.example.com` matches subdomains in **Domain**.
 Click **Clear filters** to start again. The page URL preserves the filters.
 
+## Download matching history
+
+Select **Export up to 1,000 queries** to download the newest matching retained
+queries as JSON, using the current filters and node scope. The file includes
+pagination and scope information; `partial: true` identifies unavailable nodes,
+and `cursor_next` means more matching rows are available through the API.
+Exports preserve the privacy applied when the queries were recorded. Live-tail
+rows still waiting for disk persistence are not included. Narrow the filters
+or time range when you need a smaller download.
+
+The API endpoint is `GET /api/v1/queries/export`, with the same filters as
+`GET /api/v1/queries`. It accepts `limit` up to 1,000 and the returned cursor
+with the same filters and scope for another page. Each request is authorized
+independently; separate downloads are not a cross-page database snapshot.
+The output limit is 16 MiB and the read deadline is 15 seconds. A failed or
+canceled read returns an error before attachment headers are sent.
+
 ## Watch a retry
 
 1. Turn on **Live tail**.

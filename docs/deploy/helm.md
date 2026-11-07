@@ -15,8 +15,8 @@ Two charts (dev-docs/design-record.md §5.1, §5.2, §5.7). Minimum Kubernetes 1
 ```sh
 kubectl create namespace kudurru-system
 kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted
-helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
+helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.2.0
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.2.0 \
   --namespace kudurru-system --set replicaCount=1
 ```
 
@@ -36,6 +36,17 @@ but changes through the API and the dashboard answer `402 license_required`
 until you add a key (a free personal key covers 3 nodes) or set
 `replicaCount=1`. Changes with `kubectl` are not affected. See
 [License key](#license-key).
+
+### AuditLog trust
+
+When using the Kubernetes AuditLog store (`audit.store: auto` without a central
+database, or `audit.store: auditlog`), provision the independent
+`kudurru-audit-keys` Secret in the release namespace using the
+[AuditLog key runbook](runbooks.md#auditlog-key-provisioning-and-upgrades).
+Helm does not generate or rotate this trust root. Without it, DNS starts and
+local audit spooling continues, but cluster audit shipping and verification are
+unavailable. Existing installations must follow the legacy-cutover procedure
+before upgrading; session encryption keys no longer determine new audit seals.
 
 ### First login
 
@@ -167,6 +178,13 @@ switch the Deployment to a StatefulSet so every replica gets its own claim
 DaemonSet cannot have per-pod claims; use `extraVolumes` with a `hostPath`
 there.
 
+For independent `querylog.db` and `local.db` mounts, opt into
+`persistence.querylog.separate` / `persistence.local.separate`. Existing
+`enabled` values keep their shared `data` claim behavior. See
+[separate SQLite storage](sqlite-storage.md) for claim combinations and the
+required offline migration; changing StatefulSet claim templates is not a
+rolling file move.
+
 ### Audit log
 
 Events are always recorded and shipped; reading them (the Audit tab,
@@ -285,7 +303,9 @@ networking are outside Baseline).
 
 `vip.provider=keepalived` runs dnsdist and keepalived in one hostNetwork
 DaemonSet on the nodes labelled `kudurru.io/vip=true`. keepalived needs
-`NET_ADMIN`, `NET_RAW` and `NET_BROADCAST` as root: label the namespace
+`NET_ADMIN`, `NET_RAW` and `NET_BROADCAST` as root, plus `SETUID` and
+`SETGID` to run its existing health scripts as UID/GID 953. All other
+capabilities remain dropped. Label the namespace
 `pod-security.kubernetes.io/enforce=privileged`.
 
 For two VIPs with separate VRRP and address interfaces:
@@ -331,6 +351,12 @@ interface, so loss of either link puts its instance into FAULT and
 withdraws the address. Gratuitous ARP stays on the VIP's interface.
 Before migration, withdraw each address from MetalLB or kube-vip; only one
 provider may advertise an address at a time.
+
+For explicit keys per VRID, use `vip.keepalived.hmacKeySecrets` with one
+`{vrid, secretName, key}` reference for every VIP. The empty list keeps the
+existing shared key; partial or mixed shared/per-VRID choices refuse render.
+See [VRRP HMAC key files](vrrp-keys.md) for private mounts, limits and the
+required coordinated restart procedure for migration and rotation.
 
 The Nodes page's Edge panel polls supervisor readiness, backend health,
 and each node's VIP states every ten seconds. Separate edge workloads

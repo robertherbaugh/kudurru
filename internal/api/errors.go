@@ -40,6 +40,7 @@ const (
 	KeyReadOnly       = "read_only"
 	KeyHostOnly       = "host_only"
 	KeyEnvLocked      = "env_locked"
+	KeyHostLocked     = "host_locked"
 	KeyNotImplemented = "not_implemented"
 	KeyUnavailable    = "unavailable"
 	KeyInternal       = "internal"

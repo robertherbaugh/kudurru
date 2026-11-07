@@ -16,7 +16,7 @@ docker run -d --name kudurru --restart unless-stopped \
   -v "$PWD/secrets:/run/secrets:ro" \
   -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
   -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-  ghcr.io/robertherbaugh/kudurru:0.1.0 serve
+  ghcr.io/robertherbaugh/kudurru:0.2.0 serve
 dig @127.0.0.1 example.com
 ```
 
@@ -34,7 +34,7 @@ Without a mounted `kudurru.yaml` the built-in defaults apply: plain DNS on
 The image runs as uid 65532 and binds :53 because Docker starts the
 container's unprivileged port range at 0. With `--network host` the host's
 `net.ipv4.ip_unprivileged_port_start` applies instead: run the
-`-hostnetwork` image (`ghcr.io/robertherbaugh/kudurru:0.1.0-hostnetwork`,
+`-hostnetwork` image (`ghcr.io/robertherbaugh/kudurru:0.2.0-hostnetwork`,
 the same binary with the file capability `cap_net_bind_service=+ep`), set the
 sysctl to 53 on the host, or use the packages below. The `-hostnetwork`
 image needs `NET_BIND_SERVICE` among the container's capabilities (Docker's
@@ -77,11 +77,11 @@ first visit; set `listeners.api.tls.certFile`/`keyFile` for a trusted one.
   initial cluster settings (upstreams, cache, blocking, query log, rate
   limiting). `kudurru config schema` prints every key with its scope and
   flags; changes to keys flagged `R` need `docker compose restart kudurru`.
-- `KUDURRU_SETTINGS_FILE` (`/var/lib/kudurru/settings.yaml` in the compose
-  files): cluster settings changed in the UI, with `kudurru settings set` or
-  `PATCH /api/v1/settings` are written here and layered over `kudurru.yaml`;
-  the file is watched and hot keys apply without a restart. Without the
-  variable such changes live in memory only (`persisted: false`).
+- Cluster settings changed in the UI, with `kudurru settings set` or
+  `PATCH /api/v1/settings` are persisted in the canonical `Kudurru` object in
+  SQLite and survive restarts using the same data volume. The SQLite serving
+  path publishes those settings as one complete configuration. The legacy
+  `KUDURRU_SETTINGS_FILE` file overlay does not store SQLite cluster settings.
 - `objects.d/*.yaml`: zones, record sets, block lists, client groups and
   policies in the CRD format (`kubectl apply` YAML; examples in
   `deploy/kustomize/samples/`). They are file-managed (`managedBy: file:<path>`),
@@ -102,7 +102,7 @@ a license key with the edge entitlement (free for eligible personal use).
 
 ### Persistence and backups
 
-Everything lives in the `kudurru-data` volume: `state.db` (objects, users,
+By default everything lives in the `kudurru-data` volume: `state.db` (objects, users,
 tokens, audit), `querylog.db`, `local.db` (cache dump), `lists/` (blocklist
 cache). Back up with the container stopped:
 
@@ -112,6 +112,11 @@ docker run --rm -v kudurru_kudurru-data:/data -v "$PWD:/backup" busybox \
   tar -czf /backup/kudurru-data.tgz -C /data .
 docker compose start kudurru
 ```
+
+Optional `deploy/compose/storage-querylog.yml` and `storage-local.yml`
+overrides select independent named volumes. Follow
+[separate SQLite storage](sqlite-storage.md) to copy existing files offline
+before enabling them, and back up all selected volumes in one stopped window.
 
 `kudurru backup --out objects.yaml` exports the objects (zones, record sets,
 lists, client groups, policies) online and `kudurru restore -f objects.yaml`

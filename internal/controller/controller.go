@@ -102,6 +102,9 @@ type Options struct {
 	// ServicesChanged re-queues every Policy when the catalogue changes at
 	// runtime (catalogue.Holder.Subscribe); nil leaves it to the resync.
 	ServicesChanged <-chan struct{}
+	// CommittedPrimaryStatus replaces the primary serial/hash/readiness stamper
+	// with exact committed status admission. Nil preserves legacy behavior.
+	CommittedPrimaryStatus CommittedPrimaryStatus
 	// ReconcileHook, if set, is called after every reconcile with its
 	// duration and outcome (tracing and measurements).
 	ReconcileHook func(key store.Key, took time.Duration, wroteStatus bool, err error)
@@ -221,6 +224,10 @@ func (c *Controller) Run(ctx context.Context) error {
 		if ch := c.opts.ServicesChanged; ch != nil {
 			wg.Add(1)
 			go func() { defer wg.Done(); c.requeuePolicies(ctx, ch) }()
+		}
+		if capability := c.opts.CommittedPrimaryStatus; capability != nil {
+			wg.Add(1)
+			go func() { defer wg.Done(); c.requeueCommittedPrimaries(ctx, capability) }()
 		}
 	}
 	<-ctx.Done()

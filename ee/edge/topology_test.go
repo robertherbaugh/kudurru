@@ -23,8 +23,8 @@ func TestBuildDefaults(t *testing.T) {
 	}
 	r, _ := top.Pool(PoolResolver)
 	a, _ := top.Pool(PoolAuthoritative)
-	if r.Policy != "chashed" || r.Cache == nil || a.Policy != "leastOutstanding" || a.Cache != nil {
-		t.Errorf("pools %+v %+v (the authoritative pool is uncached by default)", r, a)
+	if r.Policy != "chashed" || r.Cache != nil || a.Policy != "leastOutstanding" || a.Cache != nil {
+		t.Errorf("pools %+v %+v (static builds have no original shared-cache proof)", r, a)
 	}
 	b := top.Backends[0]
 	if b.ID != BackendID("n1") || !b.ProxyProtocol || b.Weight != 100 || !slices.Equal(b.Pools, []string{PoolResolver, PoolAuthoritative}) {
@@ -64,8 +64,8 @@ func TestBuildTLSAndCache(t *testing.T) {
 	if !slices.Equal(doh, []string{"0.0.0.0:8443", "[::]:8443"}) {
 		t.Errorf("doh binds %v", doh)
 	}
-	if a, _ := top.Pool(PoolAuthoritative); a.Cache == nil || a.Cache.MaxTTL != 30 || a.Cache.Name != "authoritative-cache" {
-		t.Errorf("authoritative cache %+v", a.Cache)
+	if a, _ := top.Pool(PoolAuthoritative); a.Cache != nil {
+		t.Errorf("static build authorized an authoritative cache without original proof: %+v", a.Cache)
 	}
 	if _, err := Build(Options{Protocols: []Protocol{DoT}}, nil, testCreds); err == nil {
 		t.Error("DoT without a certificate")

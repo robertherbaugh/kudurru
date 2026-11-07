@@ -130,6 +130,17 @@ Takes (dict "root" $ "sidecar" bool).
 {{- if or (eq $m "deployment") (eq $m "daemonset") }}true{{ end -}}
 {{- end -}}
 
+{{/* Legacy data claim selection is independent of separate component mounts. */}}
+{{- define "kudurru.dataPersistence" -}}
+{{- if include "kudurru.standalone" . -}}
+{{- if .Values.persistence.standalone.enabled }}{{ toYaml .Values.persistence.standalone }}{{ end -}}
+{{- else if .Values.persistence.querylog.enabled -}}
+{{ toYaml .Values.persistence.querylog }}
+{{- else if .Values.persistence.local.enabled -}}
+{{ toYaml .Values.persistence.local }}
+{{- end -}}
+{{- end -}}
+
 {{/* Workload kind of the kudurru pods. */}}
 {{- define "kudurru.workloadKind" -}}
 {{- if include "kudurru.standalone" . -}}
@@ -245,8 +256,11 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- $_ := set $listeners "proxyProtocolFrom" .Values.edge.proxyProtocolFrom -}}
 {{- $_ := set $listeners "proxyProtocolSecretFile" "/etc/kudurru/secrets/proxy/proxy-protocol-secret" -}}
 {{- end -}}
+{{- $node := dict "dataDir" "/var/lib/kudurru" -}}
+{{- if .Values.persistence.querylog.separate }}{{ $_ := set $node "querylogDir" "/var/lib/kudurru-querylog" }}{{ end -}}
+{{- if .Values.persistence.local.separate }}{{ $_ := set $node "localDir" "/var/lib/kudurru-local" }}{{ end -}}
 {{- $base := dict
-    "node" (dict "dataDir" "/var/lib/kudurru")
+    "node" $node
     "listeners" $listeners
     "store" (dict "driver" (ternary "sqlite" "kube" (eq $standalone "true"))) -}}
 {{- if $standalone -}}
@@ -303,7 +317,13 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if not (has $v.edge.mode (list "deployment" "sidecar" "daemonset")) -}}
 {{- fail (printf "edge.mode must be deployment, sidecar or daemonset, not %q" $v.edge.mode) -}}
 {{- end -}}
+{{- $hmacRefs := $v.vip.keepalived.hmacKeySecrets -}}
+{{- if not (kindIs "slice" $hmacRefs) }}{{ fail "vip.keepalived.hmacKeySecrets must be a list of Secret references" }}{{ end -}}
+{{- if gt (len $hmacRefs) 255 }}{{ fail "vip.keepalived.hmacKeySecrets allows at most 255 references" }}{{ end -}}
+{{- if and $hmacRefs (ne $v.vip.provider "keepalived") }}{{ fail "vip.keepalived.hmacKeySecrets requires vip.provider=keepalived" }}{{ end -}}
+{{- if and $hmacRefs (or $v.vip.keepalived.existingSecret $v.vip.keepalived.hmacSecret) }}{{ fail "per-VRID HMAC references cannot be combined with shared existingSecret or hmacSecret" }}{{ end -}}
 {{- if eq $v.vip.provider "keepalived" -}}
+{{- if gt (len $v.vip.keepalived.vips) 255 }}{{ fail "keepalived allows at most 255 VIP VRIDs" }}{{ end -}}
 {{- if not $v.edge.enabled }}{{ fail "vip.provider=keepalived needs edge.enabled=true (the VIP owner must run dnsdist on :53, §5.4)" }}{{ end -}}
 {{- if eq $v.edge.mode "sidecar" }}{{ fail "vip.provider=keepalived cannot be combined with edge.mode=sidecar" }}{{ end -}}
 {{- $names := dict -}}
@@ -315,22 +335,45 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if not (contains "/" .address) }}{{ fail "keepalived VIP address must be in CIDR form (10.0.0.53/24)" }}{{ end -}}
 {{- if not .interface }}{{ fail "vip.keepalived.interface or a VIP interface is required with vip.provider=keepalived" }}{{ end -}}
 {{- if not (regexMatch "^[A-Za-z0-9_.:-]+$" .interface) }}{{ fail "keepalived VIP interface is invalid" }}{{ end -}}
-{{- if or (not (regexMatch "^[0-9]+$" (toString .vrid))) (lt (int .vrid) 1) (gt (int .vrid) 255) }}{{ fail "keepalived VIP vrid must be an integer in 1-255" }}{{ end -}}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .vrid))) (lt (atoi (toString .vrid)) 1) (gt (atoi (toString .vrid)) 255) }}{{ fail "keepalived VIP vrid must be an integer in 1-255" }}{{ end -}}
 {{- if or (not (regexMatch "^[0-9]+$" (toString .preemptDelay))) (gt (int .preemptDelay) 1000) }}{{ fail "keepalived VIP preemptDelay must be an integer in 0-1000" }}{{ end -}}
 {{- if hasKey $names .name }}{{ fail "keepalived VIP names must be unique" }}{{ end -}}
-{{- if hasKey $vrids (toString .vrid) }}{{ fail "keepalived VIP VRIDs must be unique" }}{{ end -}}
+{{- if hasKey $vrids (toString (atoi (toString .vrid))) }}{{ fail "keepalived VIP VRIDs must be unique" }}{{ end -}}
 {{/* Compare host text without the prefix length. Alternate IPv6 spellings
 are checked by the supervisor's parsed-address validation. */}}
 {{- $address := first (splitList "/" .address) -}}
 {{- if hasKey $addresses $address }}{{ fail "keepalived VIP addresses must be unique" }}{{ end -}}
 {{- $_ := set $names .name true -}}
-{{- $_ := set $vrids (toString .vrid) true -}}
+{{- $_ := set $vrids (toString (atoi (toString .vrid))) true -}}
 {{- $_ := set $addresses $address true -}}
 {{- end -}}
+{{- $mapped := dict -}}
+{{- range $hmacRefs -}}
+{{- if not (kindIs "map" .) }}{{ fail "hmacKeySecrets entries must be Secret references" }}{{ end -}}
+{{- range $field := keys . -}}
+{{- if not (has $field (list "vrid" "secretName" "key")) }}{{ fail "hmacKeySecrets entries accept only vrid, secretName and key; no key values" }}{{ end -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[1-9][0-9]{0,2}$" (toString .vrid))) (gt (atoi (toString .vrid)) 255) }}{{ fail "HMAC reference vrid must be an integer in 1-255" }}{{ end -}}
+{{- $id := toString (atoi (toString .vrid)) -}}
+{{- if hasKey $mapped $id }}{{ fail "HMAC reference VRIDs must be unique" }}{{ end -}}
+{{- if not (hasKey $vrids $id) }}{{ fail "HMAC reference VRID has no configured VIP" }}{{ end -}}
+{{- if not (kindIs "string" .secretName) }}{{ fail "HMAC reference secretName is required" }}{{ end -}}
+{{- if or (gt (len .secretName) 253) (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" .secretName)) }}{{ fail "HMAC reference secretName must be a valid Kubernetes Secret name" }}{{ end -}}
+{{- range (splitList "." .secretName) -}}
+{{- if gt (len .) 63 }}{{ fail "HMAC reference Secret name labels must be at most 63 characters" }}{{ end -}}
+{{- end -}}
+{{- if not (kindIs "string" .key) }}{{ fail "HMAC reference key is required" }}{{ end -}}
+{{- if or (gt (len .key) 253) (not (regexMatch "^[A-Za-z0-9._-]+$" .key)) }}{{ fail "HMAC reference key must be a valid Kubernetes Secret key" }}{{ end -}}
+{{- $_ := set $mapped $id true -}}
+{{- end -}}
+{{- if and $hmacRefs (ne (len $mapped) (len $vrids)) }}{{ fail "HMAC references must cover every configured VIP VRID" }}{{ end -}}
 {{- if and $v.vip.keepalived.vrrpInterface (not (regexMatch "^[A-Za-z0-9_.:-]+$" $v.vip.keepalived.vrrpInterface)) }}{{ fail "vip.keepalived.vrrpInterface is invalid" }}{{ end -}}
 {{- end -}}
 {{- if and (has $v.vip.provider (list "kube-vip" "metallb")) (not $v.vip.address) -}}
 {{- fail (printf "vip.address is required with vip.provider=%s" $v.vip.provider) -}}
+{{- end -}}
+{{- if and (has $v.vip.provider (list "kube-vip" "metallb")) (ne $v.service.dns.type "LoadBalancer") -}}
+{{- fail "Service-based vip.provider requires service.dns.type=LoadBalancer" -}}
 {{- end -}}
 {{- if include "kudurru.anyTLS" . -}}
 {{- if and $v.edge.enabled (not $v.edge.tlsSecretName) }}{{ fail "service.dot/doh/doq/doh3 with edge.enabled need edge.tlsSecretName (dnsdist terminates TLS)" }}{{ end -}}
@@ -341,6 +384,22 @@ are checked by the supervisor's parsed-address validation. */}}
 {{- end -}}
 {{- if and (eq $v.mode "kubernetes") $v.hostNetwork.enabled (or $v.persistence.querylog.enabled $v.persistence.local.enabled) -}}
 {{- fail "persistence.querylog/local need per-pod claims, which a hostNetwork DaemonSet cannot have; use extraVolumes (hostPath) instead" -}}
+{{- end -}}
+{{- range $name := list "querylog" "local" -}}
+{{- $p := index $v.persistence $name -}}
+{{- if $p.separate -}}
+{{- $path := printf "/var/lib/kudurru-%s" $name -}}
+{{- $key := printf "%sDir" $name -}}
+{{- $node := ($v.config.node.node | default dict) -}}
+{{- if and (hasKey $node $key) (ne (index $node $key) $path) -}}
+{{- fail (printf "persistence.%s.separate requires config.node.node.%s=%s" $name $key $path) -}}
+{{- end -}}
+{{- if $p.enabled -}}
+{{- if or (ne (len $p.accessModes) 1) (not (has (first $p.accessModes) (list "ReadWriteOnce" "ReadWriteOncePod"))) -}}
+{{- fail (printf "persistence.%s.separate requires ReadWriteOnce or ReadWriteOncePod; SQLite needs node-local compatible storage, never RWX/NFS" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if and $v.ingress.enabled (not $v.ingress.host) -}}
 {{- fail "ingress.host is required when ingress.enabled" -}}
@@ -436,4 +495,35 @@ hostNetwork pods cannot set namespaced sysctls (docs/deploy/helm.md).
 true
 {{- end -}}
 {{- end -}}
+{{- end -}}
+
+{{/* Fixed filenames only; no Secret metadata enters shell commands. */}}
+{{- define "kudurru.keepalived.hmacFiles" -}}
+{{- $files := list "vrrp-hmac" -}}
+{{- if .Values.vip.keepalived.hmacKeySecrets -}}
+{{- $files = list -}}
+{{- range .Values.vip.keepalived.hmacKeySecrets -}}
+{{- $files = append $files (printf "vrrp_hmac_%d" (atoi (toString .vrid))) -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $files -}}
+{{- end -}}
+
+{{/* DNS Service provider contract: ee/edge/vip.ServiceProvider, with render
+     parity tests in deploy. Explicit provider values override matching user
+     annotations; unrelated annotations are preserved. Preserve the historical
+     split-Service sharing key for provider=none (externally managed MetalLB). */}}
+{{- define "kudurru.dns.annotations" -}}
+{{- $svc := .Values.service.dns -}}
+{{- $ann := deepCopy ($svc.annotations | default dict) -}}
+{{- if eq .Values.vip.provider "kube-vip" -}}
+{{- $_ := set $ann "kube-vip.io/loadbalancerIPs" .Values.vip.address -}}
+{{- else if eq .Values.vip.provider "metallb" -}}
+{{- $_ := set $ann "metallb.io/loadBalancerIPs" .Values.vip.address -}}
+{{- if .Values.vip.metallbPool }}{{ $_ := set $ann "metallb.io/address-pool" .Values.vip.metallbPool }}{{ end -}}
+{{- end -}}
+{{- if and $svc.splitProtocols (has .Values.vip.provider (list "none" "metallb")) -}}
+{{- $_ := set $ann "metallb.io/allow-shared-ip" (include "kudurru.fullname" .) -}}
+{{- end -}}
+{{- toYaml $ann -}}
 {{- end -}}

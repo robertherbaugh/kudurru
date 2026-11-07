@@ -1,0 +1,12 @@
+apiVersion: kudurru.io/v1alpha1
+kind: IdentityProvider
+metadata:
+  name: corp
+spec:
+  issuer: https://sso.example.com/realms/home
+  clientID: kudurru
+  clientSecretRef:
+    secretRef:
+      name: oidc-client
+      key: secret
+  redirectURL: https://dns.example.com/api/v1/auth/oidc/corp/callback

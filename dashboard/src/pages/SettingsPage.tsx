@@ -18,6 +18,7 @@ import { useMemo, useState } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
 import type { SettingKey, SettingsBody } from '../api/types';
+import { BrandingSettings, isBrandingSetting } from '../components/BrandingSettings';
 import { AppearanceControls } from '../components/AppearanceButton';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { BlockPageIntro } from '../components/BlockPagePreview';
@@ -160,6 +161,8 @@ export default function SettingsPage() {
       : all;
   }, [schema.data, view, search]);
 
+  const showBranding = view === 'basic' || !search.trim() || keys.some((k) => isBrandingSetting(k.path));
+
   const [notice, setNotice] = useState<SaveNotice | null>(null);
 
   const onSave = async (k: SettingKey, value: unknown) => {
@@ -202,6 +205,7 @@ export default function SettingsPage() {
       ) : (
         <TextInput label="Search settings" isLabelHidden placeholder="Search all settings" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
       )}
+      {schema.data && cluster.data && showBranding ? <BrandingSettings settings={cluster.data.settings} schema={schema.data.items} canWrite={can('settings', 'write')} /> : null}
       {notice && !notice.persisted ? (
         <Banner
           status="warning"
@@ -225,7 +229,7 @@ export default function SettingsPage() {
       {schema.isLoading || cluster.isLoading ? <Loading /> : null}
       {schema.data && cluster.data ? (
         <SettingsList
-          keys={keys}
+          keys={keys.filter((k) => !isBrandingSetting(k.path))}
           cluster={cluster.data.settings}
           node={node.data?.settings}
           canWriteCluster={can('settings', 'write')}

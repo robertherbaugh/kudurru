@@ -17,6 +17,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/responsepolicy"
 )
 
 // Names of the bootstrap defaults (internal/bootstrap seeds them).
@@ -44,6 +45,9 @@ type Options struct {
 	DefaultNamespace string
 	// Hostnames feeds the hostname and nameGlob tier; nil in v0.1.
 	Hostnames HostnameResolver
+	// Inventory enables MAC and captured hostname matching supplied by the
+	// identify stage. It does not perform any inventory reads during Build.
+	Inventory bool
 	// ExceptionScope says which deny rules a @@ exception cancels; the
 	// default blocking.ScopeList matches list semantics D73.
 	ExceptionScope blocking.ExceptionScope
@@ -103,9 +107,27 @@ func EffectiveServices(spec *v1alpha1.PolicySpec, cat ServiceCatalogue) (ids, un
 	return ids, unknown
 }
 
+// MaxMACGrants bounds private captured source contributions independently of
+// public matchers. Exceeding it closes these contributions, never truncates them.
+const MaxMACGrants = 100000
+
+// MACGrant is a private, source-bound contribution to an existing public group.
+// It is compiled from one complete image, never persisted as a public matcher.
+// The original exclusive expiry is evaluated at the request's captured time.
+type MACGrant struct {
+	Group, GroupUID, MAC, Source string
+	ExpiresAt                    time.Time
+}
+type sourceMACGrant struct {
+	source     string
+	expires    time.Time
+	membership *Membership
+}
+
 // Input is the object set an Index is built from.
 type Input struct {
 	ClientGroups []*v1alpha1.ClientGroup
+	MACGrants    []MACGrant
 	Policies     []*v1alpha1.Policy
 	BlockLists   []*v1alpha1.BlockList
 	// Lists are the compiled lists; nil means none compiled yet.
@@ -159,9 +181,14 @@ type Membership struct {
 	// when no group (not even the default group) exists.
 	GroupIDs []string
 	// Tier is the identification tier that matched.
-	Tier Tier
-	set  *policySet
+	Tier            Tier
+	set             *policySet
+	rateLimitExempt bool
 }
+
+// RateLimitExempt reports the compiled exemption of the winning membership.
+// It is independent of policy priority/schedules and grants no authority.
+func (m *Membership) RateLimitExempt() bool { return m != nil && m.rateLimitExempt }
 
 // Diagnosis reasons.
 const (
@@ -212,19 +239,21 @@ func (d Diagnosis) String() string {
 // Index is the immutable identification and policy index of one snapshot.
 // It is safe for concurrent use.
 type Index struct {
-	generation uint64
-	groupIDs   []string // sorted; index = group number
-	groupSets  []*policySet
+	generation  uint64
+	groupIDs    []string // sorted; index = group number
+	groupSets   []*policySet
+	groupExempt []bool
 
-	ip       map[netip.Addr]*Membership
-	mac      map[string]*Membership
-	v4, v6   cidrTable
-	hostname map[string][]int
-	globs    []globMatcher
-	clientID map[string]*Membership
-	catch4   *Membership
-	catch6   *Membership
-	def      *Membership
+	ip        map[netip.Addr]*Membership
+	mac       map[string]*Membership
+	macGrants map[string][]sourceMACGrant
+	v4, v6    cidrTable
+	hostname  map[string][]int
+	globs     []globMatcher
+	clientID  map[string]*Membership
+	catch4    *Membership
+	catch6    *Membership
+	def       *Membership
 
 	hostnames HostnameResolver
 	hostOne   []*Membership // per group: hostname-tier membership of that group alone
@@ -234,13 +263,14 @@ type Index struct {
 	sets      map[string]*policySet // group-set key -> set
 	pols      []*compiledPolicy     // sorted by id
 	byGroup   [][]*compiledPolicy   // candidate policies per group
-	merge     func([]*compiledPolicy, bool) *Decision
+	merge     func([]*compiledPolicy, bool, []string) *Decision
 
-	fallback  *policySet
-	none      *Decision
-	lists     map[string]*ListInfo
-	notLoaded []string
-	diags     []Diagnosis
+	fallbackPolicy *compiledPolicy
+	fallback       *policySet
+	none           *Decision
+	lists          map[string]*ListInfo
+	notLoaded      []string
+	diags          []Diagnosis
 }
 
 type cidrTable struct {
@@ -350,6 +380,7 @@ func Build(in Input, opts Options) *Index {
 		generation: in.Generation,
 		ip:         map[netip.Addr]*Membership{},
 		mac:        map[string]*Membership{},
+		macGrants:  map[string][]sourceMACGrant{},
 		v4:         cidrTable{m: map[netip.Prefix]*Membership{}},
 		v6:         cidrTable{m: map[netip.Prefix]*Membership{}},
 		hostname:   map[string][]int{},
@@ -385,6 +416,7 @@ func Build(in Input, opts Options) *Index {
 	for i, g := range groups {
 		id := objectID(g.Namespace, g.Name)
 		ix.groupIDs = append(ix.groupIDs, id)
+		ix.groupExempt = append(ix.groupExempt, g.Spec.RateLimitExempt)
 		b.groupNum[id] = i
 	}
 
@@ -394,13 +426,28 @@ func Build(in Input, opts Options) *Index {
 		b.compileGroup(i, g)
 	}
 	b.intern()
-	if len(b.needHosts) > 0 && opts.Hostnames == nil {
+	if len(in.MACGrants) > MaxMACGrants {
+		b.diag("ClientGroup", "", ReasonInvalidMatcher, "private inventory MAC grant capacity exceeded")
+	} else {
+		for _, grant := range in.MACGrants {
+			n, present := b.groupNum[grant.Group]
+			mac, valid := normalizeMAC(grant.MAC)
+			if !opts.Inventory || !present || !valid || grant.Source == "" || len(grant.Source) > 256 || grant.ExpiresAt.IsZero() || string(groups[n].UID) != grant.GroupUID || grant.GroupUID == "" {
+				b.diag("ClientGroup", grant.Group, ReasonInvalidMatcher, "private inventory MAC grant is invalid or unavailable")
+				continue
+			}
+			ix.macGrants[mac] = append(ix.macGrants[mac], sourceMACGrant{source: grant.Source, expires: grant.ExpiresAt, membership: b.membership([]int{n}, TierMAC)})
+		}
+	}
+	if len(b.needHosts) > 0 && opts.Hostnames == nil && !opts.Inventory {
 		for _, id := range b.needHosts {
 			b.diag("ClientGroup", id, ReasonUnsupported, "hostname and nameGlob matchers need a hostname source; none is configured, so they never match")
 		}
 	}
-	for _, id := range b.needMAC {
-		b.diag("ClientGroup", id, ReasonUnsupported, "mac matchers need an inventory integration (v0.2); they match only when the transport supplies MAC addresses")
+	if !opts.Inventory {
+		for _, id := range b.needMAC {
+			b.diag("ClientGroup", id, ReasonUnsupported, "mac matchers need an inventory source; none is configured")
+		}
 	}
 	slices.SortStableFunc(ix.diags, func(a, b Diagnosis) int {
 		return cmp.Or(cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.Object, b.Object), cmp.Compare(a.Reason, b.Reason), cmp.Compare(a.Message, b.Message))
@@ -428,6 +475,9 @@ func (b *builder) compileLists(bls []*v1alpha1.BlockList, lists *blocking.Snapsh
 		// Inline: every enabled source is inline or structured entries
 		// (disabled ones contribute nothing to the compiled list).
 		info := &ListInfo{Name: name, Object: id, Mode: mode, Response: bl.Spec.Response}
+		for _, group := range bl.EffectiveClientGroupRefs() {
+			info.groups = append(info.groups, objectID(bl.Namespace, group))
+		}
 		for i := range bl.Spec.Sources {
 			s := &bl.Spec.Sources[i]
 			if !s.IsEnabled() {
@@ -508,6 +558,19 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 	for _, p := range pols {
 		id := objectID(p.Namespace, p.Name)
 		cp := &compiledPolicy{id: id, spec: &p.Spec, priority: p.Spec.Priority}
+		var specs []responsepolicy.RewriteSpec
+		for _, r := range p.Spec.Rewrites {
+			specs = append(specs, responsepolicy.RewriteSpec{Name: r.Name, Type: r.Type, CNAME: r.CNAME, Targets: r.Targets})
+		}
+		var responseErr error
+		cp.rewrites, responseErr = responsepolicy.CompileRewrites(specs)
+		if responseErr == nil && p.Spec.Response != nil {
+			cp.response, responseErr = responsepolicy.CompileOverrides(p.Spec.Response.DNS64Prefix, p.Spec.Response.FilterAAAA)
+		}
+		if responseErr != nil {
+			cp.responseInvalid = true
+			b.diag("Policy", id, "InvalidResponsePolicy", "%s", responseErr)
+		}
 		if p.Spec.Schedule != nil {
 			s, err := compileSchedule(p.Spec.Schedule)
 			if err != nil {
@@ -558,16 +621,19 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 		sortPolicies(ix.byGroup[g])
 	}
 	scope, infos := b.opts.ExceptionScope, ix.lists
-	ix.merge = func(active []*compiledPolicy, fb bool) *Decision {
-		return mergePolicies(active, fb, lists, scope, infos)
+	ix.merge = func(active []*compiledPolicy, fb bool, groups []string) *Decision {
+		return mergePolicies(active, fb, lists, scope, infos, groups)
+	}
+	ix.fallbackPolicy = fallback
+	if fallback != nil {
+		ix.fallback = newPolicySet([]*compiledPolicy{fallback}, true, func(active []*compiledPolicy, fb bool) *Decision {
+			return ix.merge(active, fb, nil)
+		})
 	}
 	ix.none = &Decision{lists: ix.lists}
 	ix.groupSets = make([]*policySet, len(ix.groupIDs))
 	for g := range ix.groupIDs {
 		ix.groupSets[g] = ix.policySetFor([]int{g})
-	}
-	if fallback != nil {
-		ix.fallback = newPolicySet([]*compiledPolicy{fallback}, true, ix.merge)
 	}
 }
 
@@ -578,11 +644,15 @@ func sortPolicies(ps []*compiledPolicy) {
 }
 
 // mergePolicies merges active (sorted by priority) into one Decision.
-func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snapshot, scope blocking.ExceptionScope, infos map[string]*ListInfo) *Decision {
+func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snapshot, scope blocking.ExceptionScope, infos map[string]*ListInfo, groups []string) *Decision {
 	top := active[0]
 	d := &Decision{Policy: top.id, Fallback: fallback, AllowOnly: top.spec.AllowOnly, lists: infos}
 	var allow, block []string
+	var responseOverrides []*responsepolicy.Overrides
 	for _, p := range active {
+		d.Rewrites = append(d.Rewrites, p.rewrites...)
+		d.ResponseInvalid = d.ResponseInvalid || p.responseInvalid
+		responseOverrides = append(responseOverrides, p.response)
 		d.Policies = append(d.Policies, p.id)
 		s := p.spec
 		if d.BlockMode == "" {
@@ -606,7 +676,14 @@ func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snap
 		allow = append(allow, p.allow...)
 		block = append(block, p.block...)
 	}
-	refs := slices.Concat(allow, block)
+	refs := slices.DeleteFunc(slices.Concat(allow, block), func(name string) bool {
+		info := infos[name]
+		if info == nil || len(info.groups) == 0 {
+			return false
+		}
+		return !slices.ContainsFunc(info.groups, func(group string) bool { return slices.Contains(groups, group) })
+	})
+	d.Response = responsepolicy.MergeOverrides(responseOverrides)
 	// Select keeps the first occurrence of each name and gives every list
 	// the role of its own mode; all names are known, so it cannot fail.
 	d.Selection, _ = lists.Select(refs, blocking.SelectOptions{AllowOnly: d.AllowOnly, ExceptionScope: scope})
@@ -631,7 +708,17 @@ func (ix *Index) policySetFor(groups []int) *policySet {
 		}
 	}
 	sortPolicies(pols)
-	ps := newPolicySet(pols, false, ix.merge)
+	// Bind both active and fallback selections to private copied identities,
+	// never the exported diagnostic Membership.GroupIDs or request fields.
+	ids := make([]string, len(groups))
+	for i, g := range groups {
+		ids[i] = ix.groupIDs[g]
+	}
+	merge := func(active []*compiledPolicy, fb bool) *Decision { return ix.merge(active, fb, ids) }
+	ps := newPolicySet(pols, false, merge)
+	if ix.fallbackPolicy != nil {
+		ps.defaultSet = newPolicySet([]*compiledPolicy{ix.fallbackPolicy}, true, merge)
+	}
 	ix.sets[key] = ps
 	return ps
 }
@@ -758,6 +845,7 @@ func (b *builder) membership(groups []int, tier Tier) *Membership {
 	m := &Membership{Tier: tier, set: b.ix.policySetFor(groups)}
 	for _, g := range groups {
 		m.GroupIDs = append(m.GroupIDs, b.ix.groupIDs[g])
+		m.rateLimitExempt = m.rateLimitExempt || b.ix.groupExempt[g]
 	}
 	b.members[key] = m
 	return m
@@ -871,7 +959,11 @@ func (ix *Index) NotLoaded() []string { return slices.Clone(ix.notLoaded) }
 // Identify finds the client's groups. It never returns nil and does not
 // allocate except for a hostname-tier match that joins several groups for
 // the first time.
-func (ix *Index) Identify(c pipeline.Client) *Membership {
+func (ix *Index) Identify(c pipeline.Client) *Membership { return ix.IdentifyAt(c, time.Now()) }
+
+// IdentifyAt evaluates private inventory grants against the ORIGINAL request
+// time and captured inventory source. No live holder or clock is consulted.
+func (ix *Index) IdentifyAt(c pipeline.Client, at time.Time) *Membership {
 	a := c.Addr.Addr()
 	valid := a.IsValid()
 	if valid {
@@ -880,16 +972,9 @@ func (ix *Index) Identify(c pipeline.Client) *Membership {
 			return m
 		}
 	}
-	if len(ix.mac) > 0 {
-		for _, raw := range c.MACs {
-			if m, ok := ix.mac[raw]; ok {
-				return m
-			}
-			if n, ok := normalizeMAC(raw); ok {
-				if m, ok := ix.mac[n]; ok {
-					return m
-				}
-			}
+	if len(ix.mac) > 0 || len(ix.macGrants) > 0 {
+		if m := ix.byMACs(c, at); m != nil {
+			return m
 		}
 	}
 	if valid {
@@ -900,8 +985,12 @@ func (ix *Index) Identify(c pipeline.Client) *Membership {
 		if m := t.lookup(a); m != nil {
 			return m
 		}
-		if ix.hostnames != nil && (len(ix.hostname) > 0 || len(ix.globs) > 0) {
-			if m := ix.byHostname(ix.hostnames.Hostnames(a)); m != nil {
+		if len(ix.hostname) > 0 || len(ix.globs) > 0 {
+			names := c.Names
+			if !c.IdentityCaptured && ix.hostnames != nil {
+				names = ix.hostnames.Hostnames(a)
+			}
+			if m := ix.byHostname(names); m != nil {
 				return m
 			}
 		}
@@ -920,6 +1009,50 @@ func (ix *Index) Identify(c pipeline.Client) *Membership {
 		}
 	}
 	return ix.def
+}
+
+func (ix *Index) byMACs(c pipeline.Client, at time.Time) *Membership {
+	var first *Membership
+	var groups []int
+	add := func(m *Membership) {
+		if m == nil || m == first {
+			return
+		}
+		if first == nil {
+			first = m
+			return
+		}
+		if groups == nil {
+			for _, id := range first.GroupIDs {
+				if n, ok := slices.BinarySearch(ix.groupIDs, id); ok {
+					groups = append(groups, n)
+				}
+			}
+		}
+		for _, id := range m.GroupIDs {
+			if n, ok := slices.BinarySearch(ix.groupIDs, id); ok && !slices.Contains(groups, n) {
+				groups = append(groups, n)
+			}
+		}
+	}
+	for _, raw := range c.MACs {
+		mac, valid := normalizeMAC(raw)
+		if !valid {
+			continue
+		}
+		add(ix.mac[mac])
+		if c.IdentityCaptured && c.InventorySource != "" && !at.IsZero() {
+			for _, grant := range ix.macGrants[mac] {
+				if grant.source == c.InventorySource && at.Before(grant.expires) {
+					add(grant.membership)
+				}
+			}
+		}
+	}
+	if groups == nil {
+		return first
+	}
+	return ix.joinMembership(groups, TierMAC)
 }
 
 // byHostname runs the hostname tier, then the nameGlob tier.
@@ -957,6 +1090,10 @@ func (ix *Index) byHostname(names []string) *Membership {
 		}
 		return ix.globOne[groups[0]]
 	}
+	return ix.joinMembership(groups, tier)
+}
+
+func (ix *Index) joinMembership(groups []int, tier Tier) *Membership {
 	slices.Sort(groups)
 	key := fmt.Sprintf("%d:%s", tier, groupKey(groups))
 	if m, ok := ix.dynamic.Load(key); ok {
@@ -965,6 +1102,7 @@ func (ix *Index) byHostname(names []string) *Membership {
 	m := &Membership{Tier: tier, set: ix.policySetFor(groups)}
 	for _, g := range groups {
 		m.GroupIDs = append(m.GroupIDs, ix.groupIDs[g])
+		m.rateLimitExempt = m.rateLimitExempt || ix.groupExempt[g]
 	}
 	actual, _ := ix.dynamic.LoadOrStore(key, m)
 	return actual.(*Membership)
@@ -977,6 +1115,12 @@ func (ix *Index) Select(m *Membership, now time.Time) *Decision {
 	if m != nil {
 		if d := m.set.decide(now); d != nil {
 			return d
+		}
+		if m.set != nil {
+			if d := m.set.defaultSet.decide(now); d != nil {
+				return d
+			}
+			return ix.none
 		}
 	}
 	if d := ix.fallback.decide(now); d != nil {

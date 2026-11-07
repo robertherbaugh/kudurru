@@ -121,23 +121,25 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	}
 }
 
-func newEdgeCmd() *cobra.Command {
+func newEdgeCmd(configPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edge",
 		Short: "dnsdist supervisor: render the configuration or run dnsdist (PID 1 of the kudurru-dnsdist image)",
 	}
 	var rf, uf edgeFlags
 	render := &cobra.Command{
-		Use:   "render",
-		Short: "Print the dnsdist configuration the supervisor would run (credentials are random per call)",
+		Use:     "render",
+		Short:   "Print the dnsdist configuration the supervisor would run (credentials are random per call)",
+		PreRunE: func(c *cobra.Command, _ []string) error { return rf.load(c, *configPath) },
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runEdgeRender(c, &rf)
 		},
 	}
 	rf.register(render, false)
 	run := &cobra.Command{
-		Use:   "run",
-		Short: "Render, check, exec and supervise dnsdist (dev-docs/design-record.md §3.6)",
+		Use:     "run",
+		Short:   "Render, check, exec and supervise dnsdist (dev-docs/design-record.md §3.6)",
+		PreRunE: func(c *cobra.Command, _ []string) error { return uf.load(c, *configPath) },
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runEdgeRun(c, &uf)
 		},

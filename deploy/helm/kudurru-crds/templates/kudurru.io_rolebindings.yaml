@@ -1,0 +1,109 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+    helm.sh/resource-policy: keep
+  name: rolebindings.kudurru.io
+spec:
+  group: kudurru.io
+  names:
+    kind: RoleBinding
+    listKind: RoleBindingList
+    plural: rolebindings
+    shortNames:
+    - krb
+    singular: rolebinding
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: RoleBinding grants a named role to the selected subjects and
+          scope.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RoleBindingSpec grants Role at Scope to Subjects.
+            properties:
+              role:
+                maxLength: 63
+                minLength: 1
+                type: string
+              scope:
+                description: BindingScope narrows a role binding (§8.5).
+                properties:
+                  kind:
+                    description: Kind is cluster, zone, zonegroup (v0.2) or clientgroup
+                      (reserved).
+                    enum:
+                    - cluster
+                    - zone
+                    - zonegroup
+                    - clientgroup
+                    type: string
+                  name:
+                    maxLength: 253
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: cluster scope has no name; other scopes require a name
+                  rule: '!has(self.kind) || self.kind == ''cluster'' ? !has(self.name)
+                    || self.name.size() == 0 : has(self.name) && self.name.size()
+                    > 0'
+              subjects:
+                items:
+                  description: BindingSubject is one party of a binding.
+                  properties:
+                    kind:
+                      description: Kind is User, Group or ServiceAccount.
+                      enum:
+                      - User
+                      - Group
+                      - ServiceAccount
+                      type: string
+                    name:
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                    namespace:
+                      maxLength: 63
+                      type: string
+                  required:
+                  - kind
+                  - name
+                  type: object
+                  x-kubernetes-validations:
+                  - message: only ServiceAccount subjects require a namespace
+                    rule: 'self.kind == ''ServiceAccount'' ? has(self.namespace) &&
+                      self.namespace.size() > 0 : !has(self.namespace) || self.namespace.size()
+                      == 0'
+                maxItems: 256
+                minItems: 1
+                type: array
+            required:
+            - role
+            - subjects
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true

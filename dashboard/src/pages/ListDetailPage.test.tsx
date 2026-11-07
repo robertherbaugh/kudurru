@@ -146,6 +146,39 @@ describe('ListDetailPage', () => {
     expect(await screen.findByText('Removed 1 entry from embedded')).toBeInTheDocument();
   });
 
+  it('retires continuation tokens before a source mutation and refreshes the first page', async () => {
+    let wrote = false;
+    let staleReads = 0;
+    let writes = 0;
+    server.use(
+      http.get(`${API}/blocklists/default/starter/sources/embedded/entries`, ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('continue');
+        if (wrote && cursor) {
+          staleReads++;
+          return HttpResponse.json({ error: { key: 'conflict', message: 'source pagination generation or query changed' } }, { status: 409 });
+        }
+        const start = cursor ? 25 : 0;
+        return HttpResponse.json({ kind: 'inline', total: wrote ? 61 : 60, matched: wrote ? 61 : 60, excluded: 0, staleExcludes: [], stale: false, items: Array.from({ length: 25 }, (_, i) => ({ value: `entry-${start + i}.example`, line: start + i + 1, enabled: true })), continue: 'original-generation' });
+      }),
+      http.patch(`${API}/blocklists/default/starter/sources/embedded/entries`, () => {
+        writes++;
+        wrote = true;
+        return HttpResponse.json({ added: ['new.example'] });
+      }),
+    );
+    renderList('starter');
+    fireEvent.click(await screen.findByRole('button', { name: /Browse the 2,852 inline entries of embedded/ }));
+    const browser = await screen.findByTestId('entries-browser');
+    expect(await within(browser).findByText('Showing 1–25 of 60')).toBeInTheDocument();
+    fireEvent.click(within(browser).getByRole('button', { name: 'Next page' }));
+    expect(await within(browser).findByText('Showing 26–50 of 60')).toBeInTheDocument();
+    fireEvent.change(within(browser).getByRole('textbox', { name: /^Add entries/ }), { target: { value: 'new.example' } });
+    fireEvent.click(within(browser).getByRole('button', { name: /^Add$/ }));
+    expect(await within(browser).findByText('Showing 1–25 of 61')).toBeInTheDocument();
+    expect(writes).toBe(1);
+    expect(staleReads).toBe(0);
+  });
+
   it('shows a file-managed list read-only with its owner', async () => {
     renderList('regex-trackers');
     expect(await screen.findByText('Read-only: managed by file:objects.d/lists.yaml')).toBeInTheDocument();
@@ -162,7 +195,8 @@ describe('ListDetailPage', () => {
     expect(within(browser).queryByRole('textbox', { name: /^Add entries/ })).toBeNull();
   });
 
-  it('saves the list settings with typed fields', async () => {
+  it('saves the list settings with typed fields and preserves group scope', async () => {
+    family()!.spec.clientGroupRefs = ['kids'];
     renderList('family');
     const response = await findSelector(/^Block response/);
     expect(valueOf(response)).toBe('nxdomain');
@@ -175,6 +209,7 @@ describe('ListDetailPage', () => {
     await waitFor(() => expect(family()?.spec.response).toBe('customIP'));
     expect(family()?.spec.customIP).toEqual({ v4: '192.0.2.80' });
     expect(family()?.spec.refreshInterval).toBe('168h');
+    expect(family()?.spec.clientGroupRefs).toEqual(['kids']);
     expect(family()?.metadata.annotations?.['kudurru.io/comment']).toBe('Kids and guests');
   });
 

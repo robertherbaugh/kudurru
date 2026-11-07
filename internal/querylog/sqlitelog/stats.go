@@ -32,7 +32,7 @@ func (r *Reader) summary(ctx context.Context, q SummaryQuery, merge bool) (*Summ
 	start := time.Now()
 	win := r.window(q.Window)
 	var out *SummaryShard
-	err := r.read(ctx, true, func(tx *rtx, s *snapshot) error {
+	scope, err := r.readScoped(ctx, true, start, func(tx *rtx, s *snapshot) error {
 		from, until := win.From.Unix(), win.Until.Unix()
 		res := &Summary{Window: win, Rcodes: map[string]int64{}, Protocols: map[string]int64{}, Types: map[string]int64{}}
 		series, approx, err := r.baseSeries(ctx, tx, s, from, until, 0)
@@ -70,7 +70,8 @@ func (r *Reader) summary(ctx context.Context, q SummaryQuery, merge bool) (*Summ
 			return err
 		}
 		res.Clients.Active = active
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM dict_client`).Scan(&res.Clients.Total); err != nil {
+		knownArgs := []any{}
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM dict_client WHERE 1=1`+tx.dictionaryWhere("dict_client", "dict_client.", &knownArgs), knownArgs...).Scan(&res.Clients.Total); err != nil {
 			return err
 		}
 		_, uniq, a3, err := r.keyed(ctx, tx, s, r.domainSource(s), from, until, 0, "", "", 0, true)
@@ -100,7 +101,7 @@ func (r *Reader) summary(ctx context.Context, q SummaryQuery, merge bool) (*Summ
 	if err != nil {
 		return nil, err
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }
 
@@ -173,7 +174,7 @@ func (r *Reader) Timeseries(ctx context.Context, q TimeseriesQuery) (*Timeseries
 	start := time.Now()
 	win := r.window(q.Window)
 	var out *Timeseries
-	err := r.read(ctx, false, func(tx *rtx, s *snapshot) error {
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, s *snapshot) error {
 		step := stepSeconds(q.Step, win, s.now)
 		from, until := floorTo(win.From.Unix(), step), win.Until.Unix()
 		series, approx, err := r.baseSeries(ctx, tx, s, from, until, step)
@@ -195,7 +196,7 @@ func (r *Reader) Timeseries(ctx context.Context, q TimeseriesQuery) (*Timeseries
 	if err != nil {
 		return nil, err
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }
 
@@ -213,7 +214,7 @@ func (r *Reader) top(ctx context.Context, dim string, q TopQuery, withHours bool
 	win := r.window(q.Window)
 	n := candidateN(q.N, q.Candidates)
 	var out *TopList
-	err := r.read(ctx, withHours, func(tx *rtx, s *snapshot) error {
+	scope, err := r.readScoped(ctx, withHours, start, func(tx *rtx, s *snapshot) error {
 		from, until := win.From.Unix(), win.Until.Unix()
 		// Aggregates spelt out: PostgreSQL does not see output aliases in
 		// HAVING or in ORDER BY expressions.
@@ -259,7 +260,7 @@ func (r *Reader) top(ctx context.Context, dim string, q TopQuery, withHours bool
 	if err != nil {
 		return nil, err
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }
 
@@ -296,7 +297,8 @@ func (r *Reader) names(table, col string) func(ctx context.Context, tx *rtx, ids
 		if len(ids) == 0 {
 			return out, nil
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id, `+col+` FROM `+table+` WHERE `+r.d.inIDs("id"), r.d.idsArg(ids)) //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
+		args := []any{r.d.idsArg(ids)}
+		rows, err := tx.QueryContext(ctx, `SELECT id, `+col+` FROM `+table+` WHERE `+r.d.inIDs("id")+tx.dictionaryWhere(table, table+".", &args), args...) //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 		if err != nil {
 			return nil, err
 		}
@@ -321,9 +323,13 @@ func (r *Reader) clientNames(ctx context.Context, tx *rtx, ids []int64) (map[int
 	// last_seen: the newer of the newest fact row (an index seek on
 	// query_client_ts) and the dictionary's last_seen, which lags by up to
 	// touchInterval but outlives raw retention and fact-less privacy modes.
-	rows, err := tx.QueryContext(ctx, `SELECT d.id, d.ip, coalesce(d.name,''), coalesce(d.grp,''), coalesce(d.last_seen,0),
-		coalesce((SELECT max(q.ts) FROM query q WHERE q.client = d.id),0)
-		FROM dict_client d WHERE `+r.d.inIDs("d.id"), r.d.idsArg(ids))
+	args := []any{}
+	seen := tx.clientSeen("d.", &args)
+	factWhere := tx.nodeWhere("q.", &args)
+	args = append(args, r.d.idsArg(ids))
+	rows, err := tx.QueryContext(ctx, `SELECT d.id, d.ip, coalesce(d.name,''), coalesce(d.grp,''), `+seen+`,
+  coalesce((SELECT max(q.ts) FROM query q WHERE q.client=d.id`+factWhere+`),0)
+  FROM dict_client d WHERE `+r.d.inIDs("d.id")+tx.dictionaryWhere("dict_client", "d.", &args), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +379,7 @@ func (r *Reader) UpstreamShard(ctx context.Context, q TopQuery) (*UpstreamShard,
 	win := r.window(q.Window)
 	n := candidateN(q.N, q.Candidates)
 	var out *UpstreamShard
-	err := r.read(ctx, false, func(tx *rtx, s *snapshot) error {
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, s *snapshot) error {
 		from, until := floorTo(win.From.Unix(), 60), win.Until.Unix()
 		segs := cover(from, until, []tier{
 			{table: "rollup_upstream_1h", res: 3600, done: s.hourDone, keep: HourRetention},
@@ -392,8 +398,8 @@ func (r *Reader) UpstreamShard(ctx context.Context, q TopQuery) (*UpstreamShard,
 			var parts []string
 			var args []any
 			for _, sg := range segs {
-				parts = append(parts, `SELECT upstream, `+strings.Join(upCols, ",")+` FROM `+sg.t.table+` WHERE ts>=? AND ts<?`)
 				args = append(args, sg.from, sg.until)
+				parts = append(parts, `SELECT upstream, `+strings.Join(upCols, ",")+` FROM `+sg.t.table+` WHERE ts>=? AND ts<?`+tx.nodeWhere("", &args))
 			}
 			rows, err := tx.QueryContext(ctx, `SELECT upstream, `+sumCols(upCols)+` FROM (`+strings.Join(parts, " UNION ALL ")+`) AS u GROUP BY upstream`, args...) //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 			if err != nil {
@@ -469,7 +475,7 @@ func (r *Reader) UpstreamShard(ctx context.Context, q TopQuery) (*UpstreamShard,
 	if err != nil {
 		return nil, err
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }
 
@@ -480,7 +486,7 @@ func (r *Reader) ClientTimeseries(ctx context.Context, q ClientTimeseriesQuery) 
 	win := r.window(q.Window)
 	n := candidateN(q.N, q.Candidates)
 	var out *ClientTimeseries
-	err := r.read(ctx, false, func(tx *rtx, s *snapshot) error {
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, s *snapshot) error {
 		step := stepSeconds(q.Step, win, s.now)
 		from, until := floorTo(win.From.Unix(), step), win.Until.Unix()
 		src := r.clientSource(s)
@@ -534,7 +540,7 @@ func (r *Reader) ClientTimeseries(ctx context.Context, q ClientTimeseriesQuery) 
 	if err != nil {
 		return nil, err
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }
 
@@ -544,12 +550,13 @@ func (r *Reader) RecentBlocked(ctx context.Context, n int) (*RecentBlocked, erro
 	start := time.Now()
 	n = topN(n)
 	var out *RecentBlocked
-	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, _ *snapshot) error {
 		var parts []string
 		var args []any
 		for st := pipeline.StatusBlockedList; st <= pipeline.StatusBlockedRateLimit; st++ {
-			parts = append(parts, `SELECT * FROM (SELECT id, ts, status, client, domain, list, node FROM query WHERE status=? ORDER BY ts DESC LIMIT ?) AS s`+strconv.Itoa(len(parts)))
-			args = append(args, int64(st), n)
+			args = append(args, int64(st))
+			parts = append(parts, `SELECT * FROM (SELECT id, ts, status, client, domain, list, node FROM query WHERE status=?`+tx.nodeWhere("", &args)+` ORDER BY ts DESC LIMIT ?) AS s`+strconv.Itoa(len(parts)))
+			args = append(args, n)
 		}
 		//nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 		// The row's node: one on a node's file, every node's in the
@@ -579,6 +586,6 @@ func (r *Reader) RecentBlocked(ctx context.Context, n int) (*RecentBlocked, erro
 	if err != nil {
 		return nil, err
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }

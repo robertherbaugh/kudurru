@@ -123,7 +123,7 @@ func TestUpgradeFromSchema1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, stmt := range []string{`ALTER TABLE query DROP COLUMN policy`, `DROP TABLE dict_policy`, `UPDATE meta SET value=1 WHERE key='schema_version'`} {
+	for _, stmt := range []string{`DROP TRIGGER query_domain_insert`, `DROP TRIGGER query_domain_delete`, `DROP TABLE query_domain_hour`, `ALTER TABLE query DROP COLUMN policy`, `DROP TABLE dict_policy`, `UPDATE meta SET value=1 WHERE key='schema_version'`} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
 		}
@@ -132,7 +132,7 @@ func TestUpgradeFromSchema1(t *testing.T) {
 
 	w2, _ := newWriter(t, t0.Add(time.Minute), opts)
 	meta, err := readMeta(context.Background(), w2.w)
-	if err != nil || meta[metaSchemaVersion] != "2" {
+	if err != nil || meta[metaSchemaVersion] != "3" {
 		t.Fatalf("schema version after upgrade %q, %v", meta[metaSchemaVersion], err)
 	}
 	mustWrite(t, w2, event(t0.Add(time.Minute), "10.0.0.1", "new.example", withPolicy("home/kids")))

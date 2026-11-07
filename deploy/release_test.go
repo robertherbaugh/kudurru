@@ -95,6 +95,20 @@ func TestGoreleaserConfig(t *testing.T) {
 	if !slices.Contains(list(mapOf(cfg["before"])["hooks"]), any("make dashboard-build")) {
 		t.Errorf("before hooks must run make dashboard-build, or the binaries embed the placeholder dashboard")
 	}
+	if !slices.Contains(list(mapOf(cfg["before"])["hooks"]), any("make release-manifests RELEASE_ARTIFACT_VERSION={{ .Version }}")) {
+		t.Error("release artifacts must use the actual GA, RC or snapshot version")
+	}
+	for _, a := range list(cfg["archives"]) {
+		archive := mapOf(a)
+		if archive["id"] == "compose" {
+			files := list(archive["files"])
+			if len(files) != 1 || dig(files[0], "src") != "bin/release/compose/**/*" {
+				t.Error("Compose archive must use staged release files")
+			} else if dig(files[0], "dst") != "compose" || dig(files[0], "strip_parent") != false {
+				t.Error("Compose archive must preserve nested paths under compose/")
+			}
+		}
+	}
 	for _, n := range list(cfg["nfpms"]) {
 		nm := mapOf(n)
 		for _, f := range []string{"deb", "rpm", "apk"} {
@@ -252,11 +266,11 @@ func TestDockerfile(t *testing.T) {
 	if !strings.Contains(kb, "ARG BASE_IMAGE="+base["kudurru"]+"\n") || !strings.Contains(kb, "USER 65532:65532") {
 		t.Errorf("images/base/Dockerfile must default BASE_IMAGE to %s and run as 65532", base["kudurru"])
 	}
-	// Every image has /var/lib/kudurru (0755) and /run/kudurru (1777) owned
+	// Every image has the three SQLite mount targets (0755) and /run/kudurru (1777) owned
 	// by 65532: a fresh named volume takes their owner and mode
 	// (hack/volume-check.sh runs the images).
 	for f, src := range map[string]string{"Dockerfile": s, "images/hostnetwork/Dockerfile": hn, "images/base/Dockerfile": kb} {
-		for _, want := range []string{"chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru", "chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru", " /out/var/lib/ /var/lib/\n", " /out/run/ /run/\n"} {
+		for _, want := range []string{"chmod 0755 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local && chmod 1777 /out/run/kudurru", "chown 65532:65532 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local /out/run/kudurru", " /out/var/lib/ /var/lib/\n", " /out/run/ /run/\n"} {
 			if !strings.Contains(src, want) {
 				t.Errorf("%s lacks %q (the writable directories)", f, want)
 			}
@@ -311,6 +325,23 @@ func TestVersionFile(t *testing.T) {
 	}
 	if !strings.Contains(string(readRepoFile(t, "Makefile")), "RELEASE_VERSION := $(shell tr -d '[:space:]' < VERSION") {
 		t.Errorf("the Makefile's RELEASE_VERSION must come from VERSION")
+	}
+	for _, path := range []string{"deploy/helm/kudurru/Chart.yaml", "deploy/helm/kudurru-crds/Chart.yaml"} {
+		var chart map[string]any
+		if err := yamlv3.Unmarshal(readRepoFile(t, path), &chart); err != nil {
+			t.Fatal(err)
+		}
+		if chart["version"] != v || chart["appVersion"] != v {
+			t.Errorf("%s must match VERSION=%s; run make version-sync", path, v)
+		}
+	}
+}
+
+func TestVersionSyncScript(t *testing.T) {
+	cmd := exec.Command("python3", "hack/test_sync_version.py")
+	cmd.Dir = repoRoot(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("version synchronization: %v\n%s", err, out)
 	}
 }
 

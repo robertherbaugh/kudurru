@@ -8,7 +8,7 @@
 export type Plan = 'personal' | 'business' | 'enterprise' | 'trial';
 
 /** A licensed feature. The list is open on the node: unknown names are ignored. */
-export type Feature = 'oidc' | 'edge' | 'integrations' | 'rbac' | 'audit' | 'longterm' | 'requests';
+export type Feature = 'oidc' | 'edge' | 'integrations' | 'rbac' | 'audit' | 'longterm' | 'requests' | 'branding';
 
 /** The iss claim of every key. */
 export const ISSUER = 'kudurru';
@@ -22,8 +22,8 @@ export const GRACE_SECONDS = GRACE_DAYS * 86_400;
 /** The node warns about expiry this many days ahead (web EXPIRY_WARNING_DAYS); the server's `expiring` state uses the same window. */
 export const EXPIRY_WARNING_DAYS = 30;
 
-// Policy. The portal's own rules for what it signs (the nodes know none of
-// them; a key is checked for its shape and its dates only). They change by
+// Policy. The portal's own rules for what it signs, in addition to the node's
+// shape, date and plan-specific feature checks. They change by
 // release, next to the public copy that promises them (website, LICENSING.md),
 // never by configuration.
 
@@ -151,7 +151,7 @@ export interface PlanInfo {
 
 /** The plans, in the order pickers list them. Portal labels; plan identifiers match the dashboard. */
 export const PLANS: readonly PlanInfo[] = [
-  { key: 'personal', label: 'Personal / nonprofit (free)', description: 'Free key for eligible personal, homelab, nonprofit or community-development use under the Community License. Up to 3 nodes, every feature.' },
+  { key: 'personal', label: 'Personal / nonprofit (free)', description: 'Free key for eligible personal, homelab, nonprofit or community-development use under the Community License. Up to 3 nodes, all features available to Personal. Custom branding requires Enterprise.' },
   { key: 'business', label: 'Business', description: 'A business key under a commercial agreement: nodes and features as agreed.' },
   { key: 'enterprise', label: 'Enterprise', description: 'Enterprise features authorized by an accepted commercial agreement and Order Form.' },
   { key: 'trial', label: 'Trial', description: 'A short evaluation key. Nodes keep it working for 30 days after it expires, like any key.' },
@@ -173,10 +173,11 @@ export const FEATURES: readonly FeatureInfo[] = [
   { key: 'requests', label: 'Unblock requests', unlocks: 'The request form on the block page and the Requests page. The block page itself is free.' },
   { key: 'edge', label: 'High-availability edge', unlocks: 'The dnsdist and keepalived supervisors and the floating address.' },
   { key: 'integrations', label: 'Integrations', unlocks: 'The external-dns webhook and other integrations.' },
+  { key: 'branding', label: 'Custom branding', unlocks: 'An organization name, logos, favicon and accent color on the dashboard, sign-in page and block page. Requires the Enterprise plan.' },
 ];
 
-/** The words for "no features list": the key grants every feature, including ones added later. */
-export const ALL_FEATURES_LABEL = 'All features, including ones added later';
+/** The words for "no features list": all features available to the plan, including later ones. */
+export const ALL_FEATURES_LABEL = 'All features available to the plan, including ones added later';
 
 export function isPlan(v: unknown): v is Plan {
   return typeof v === 'string' && PLANS.some((p) => p.key === v);

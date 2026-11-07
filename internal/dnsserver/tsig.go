@@ -22,25 +22,27 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
-// TSIG (RFC 8945) on the miekg/dns transports (udp, tcp, dot).
+// TSIG (RFC 8945) on all DNS listeners.
 //
-// Every miekg server gets a TsigProvider backed by the node's TSIGKeyring,
-// so the signature of every signed request is verified before the
-// pipeline runs (with no keyring every key is unknown). A request whose
+// Legacy fixed-provider servers let miekg verify signatures before the
+// pipeline. Explicit captured-provider mode instead verifies original bytes
+// against one complete publication before entering that same pipeline. With
+// no keyring every key is unknown. A request whose
 // signature fails is answered here, NOTAUTH with the TSIG error BADKEY,
 // BADSIG or BADTIME (RFC 8945 §5.2), and never reaches the pipeline. A
 // verified request carries the key name in pipeline.Client.TSIGKey, and
 // every message of its reply is signed with the same key: the first with
 // the request MAC, later messages of a transfer stream with the previous
-// MAC and the timers only (§5.3.1). DoH, DoQ and DoH3 do not verify TSIG;
-// a signed request on them is treated as unsigned.
+// MAC and the timers only (§5.3.1). DoH, DoQ and DoH3 verify original wire
+// bytes and sign one reply using encrypted_tsig.go. Their transport-local
+// signer never grants native UPDATE or NOTIFY mutation proof.
 
 // TSIGKeyring is the TSIG key provider seam: it returns the secret and the
 // algorithm of a key by name. Names are compared in canonical form
-// (lower-case, absolute). v0.1 implements it with StaticKeyring loaded
-// from the tsigKeys setting (KeyringFromConfig); the store-backed internal
-// TSIGKey kind (dev-docs/design-record.md §4.1, encrypted at rest) is a later
-// implementation of the same interface.
+// (lower-case, absolute). StaticKeyring is compiled from already admitted
+// file or encrypted stored-source input. Captured transports require the
+// immutable concrete provider; a mutable Lookup implementation cannot establish
+// original publication or credential incarnation ownership.
 type TSIGKeyring interface {
 	// Lookup returns the raw secret and the algorithm (a TSIG algorithm
 	// name such as "hmac-sha256.") of the named key.
@@ -77,11 +79,16 @@ type TSIGKey struct {
 	Algorithm string
 	// Secret is the raw (decoded) secret.
 	Secret []byte
+	// CredentialEpoch binds an explicitly stored credential incarnation. Empty
+	// preserves legacy file-backed content identity; this is never a key lookup.
+	CredentialEpoch string
 }
 
 // StaticKeyring is an immutable TSIGKeyring over a fixed set of keys.
 type StaticKeyring struct {
-	keys map[string]TSIGKey
+	keys     map[string]TSIGKey
+	versions map[string]string
+	version  string
 }
 
 var _ TSIGKeyring = (*StaticKeyring)(nil)
@@ -89,7 +96,7 @@ var _ TSIGKeyring = (*StaticKeyring)(nil)
 // NewStaticKeyring validates keys and returns a keyring. Names must be
 // unique (case-insensitively), algorithms supported and secrets non-empty.
 func NewStaticKeyring(keys ...TSIGKey) (*StaticKeyring, error) {
-	k := &StaticKeyring{keys: make(map[string]TSIGKey, len(keys))}
+	k := &StaticKeyring{keys: make(map[string]TSIGKey, len(keys)), versions: make(map[string]string, len(keys))}
 	var errs []error
 	for i, key := range keys {
 		name := TSIGKeyName(key.Name)
@@ -102,6 +109,10 @@ func NewStaticKeyring(keys ...TSIGKey) (*StaticKeyring, error) {
 			errs = append(errs, fmt.Errorf("tsig key %s: algorithm %q is not supported (%s, %s)", name, key.Algorithm, TSIGHMACSHA256, TSIGHMACSHA512))
 			continue
 		}
+		if len(key.CredentialEpoch) > 256 {
+			errs = append(errs, fmt.Errorf("tsig key %s: invalid credential epoch", name))
+			continue
+		}
 		if len(key.Secret) == 0 {
 			errs = append(errs, fmt.Errorf("tsig key %s: empty secret", name))
 			continue
@@ -110,21 +121,23 @@ func NewStaticKeyring(keys ...TSIGKey) (*StaticKeyring, error) {
 			errs = append(errs, fmt.Errorf("tsig key %s: defined twice", name))
 			continue
 		}
-		k.keys[name] = TSIGKey{Name: name, Algorithm: alg, Secret: append([]byte(nil), key.Secret...)}
+		k.keys[name] = TSIGKey{Name: name, Algorithm: alg, Secret: append([]byte(nil), key.Secret...), CredentialEpoch: key.CredentialEpoch}
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
+	k.sealVersions()
 	return k, nil
 }
 
-// Lookup implements TSIGKeyring. The returned secret must not be modified.
+// Lookup implements TSIGKeyring. The returned secret is a detached copy;
+// callers cannot mutate the provider generation used to verify requests.
 func (k *StaticKeyring) Lookup(name string) ([]byte, string, bool) {
 	if k == nil {
 		return nil, "", false
 	}
 	key, ok := k.keys[TSIGKeyName(name)]
-	return key.Secret, key.Algorithm, ok
+	return append([]byte(nil), key.Secret...), key.Algorithm, ok
 }
 
 // Names returns the key names, sorted.
@@ -177,7 +190,17 @@ func (p keyringProvider) mac(t *dns.TSIG) (hash.Hash, error) {
 	if p.k == nil {
 		return nil, dns.ErrSecret
 	}
-	secret, alg, ok := p.k.Lookup(t.Hdr.Name)
+	var secret []byte
+	var alg string
+	var ok bool
+	if static, immutable := p.k.(*StaticKeyring); immutable && static != nil {
+		// The private path avoids a per-message secret copy. Only this package
+		// can reach the immutable backing bytes, and hash constructors copy them.
+		key, found := static.keys[TSIGKeyName(t.Hdr.Name)]
+		secret, alg, ok = key.Secret, key.Algorithm, found
+	} else {
+		secret, alg, ok = p.k.Lookup(t.Hdr.Name)
+	}
 	if !ok {
 		return nil, dns.ErrSecret
 	}
@@ -235,6 +258,7 @@ const tsigReserve = 2*255 + 16 + 64 + 6
 // The zero value (unsigned request) does nothing.
 type signer struct {
 	key, alg string
+	proof    *VerifiedTSIG
 }
 
 func (s signer) signed() bool { return s.key != "" }
@@ -259,7 +283,7 @@ func verifyTSIG(h *Handler, e *env, w dns.ResponseWriter, r *dns.Msg, client *pi
 	err := w.TsigStatus()
 	if err == nil {
 		client.TSIGKey = TSIGKeyName(t.Hdr.Name)
-		return signer{key: t.Hdr.Name, alg: t.Algorithm}, true
+		return signer{key: t.Hdr.Name, alg: t.Algorithm, proof: captureVerifiedTSIG(e, r, *client, time.Now())}, true
 	}
 	reason, code := TSIGBadSig, uint16(dns.RcodeBadSig)
 	switch {
@@ -294,6 +318,7 @@ func verifyTSIG(h *Handler, e *env, w dns.ResponseWriter, r *dns.Msg, client *pi
 	m.Extra = append(m.Extra, rr)
 	// BADKEY and BADSIG replies are unsigned (RFC 8945 §5.3.2); miekg's
 	// writer leaves the MAC empty for them and signs BADTIME.
+	m = paddingFor(r, client.Proto).apply(m)
 	if err := w.WriteMsg(m); err != nil {
 		h.logger().Debug("write failed", "err", err)
 	}
@@ -306,10 +331,11 @@ func verifyTSIG(h *Handler, e *env, w dns.ResponseWriter, r *dns.Msg, client *pi
 // each chained to the previous MAC (RFC 8945 §5.3.1). At the first write
 // error (the client went away, or stopped reading past the per-message
 // write deadline) it closes the connection: the stream is cut mid-answer.
-func writeStream(h *Handler, w dns.ResponseWriter, msgs iter.Seq[*dns.Msg], sig signer) {
+func writeStream(h *Handler, w dns.ResponseWriter, msgs iter.Seq[*dns.Msg], sig signer, padding responsePadding) {
 	first := true
 	for m := range msgs {
 		sig.sign(m)
+		m = padding.apply(m)
 		if err := w.WriteMsg(m); err != nil {
 			h.logger().Debug("transfer write failed", "err", err)
 			_ = w.Close()

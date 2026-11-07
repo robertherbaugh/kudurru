@@ -34,9 +34,9 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 # owner and mode of the image's directory, and distroless has none, so the
 # volume would come up root-owned and unwritable for uid 65532. The same as
 # images/base/Dockerfile (the release images); hack/volume-check.sh.
-RUN mkdir -p /out/var/lib/kudurru /out/run/kudurru \
- && chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru \
- && chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru
+RUN mkdir -p /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local /out/run/kudurru \
+ && chmod 0755 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local && chmod 1777 /out/run/kudurru \
+ && chown 65532:65532 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local /out/run/kudurru
 
 # -debug variant: the same binary on distroless's busybox image (a shell and
 # nslookup for troubleshooting; dig is not part of distroless).

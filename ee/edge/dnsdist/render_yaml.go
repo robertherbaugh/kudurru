@@ -26,11 +26,20 @@ func (YAMLRenderer) Main() string { return "dnsdist.yml" }
 
 // Render implements Renderer.
 func (r YAMLRenderer) Render(in *edge.Topology) ([]File, error) {
+	return r.render(in, nil)
+}
+
+func (r YAMLRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]File, error) {
 	t, err := prepare(in)
 	if err != nil {
 		return nil, err
 	}
 	cfg := buildYAML(t)
+	for i := range cfg.Backends {
+		if initialDown[cfg.Backends[i].ID] {
+			cfg.Backends[i].HealthChecks.Mode = "down"
+		}
+	}
 	var buf bytes.Buffer
 	buf.WriteString("# " + header + "\n")
 	enc := yaml.NewEncoder(&buf)
@@ -164,6 +173,7 @@ type yRule struct {
 
 type ySelector struct {
 	Type      string      `yaml:"type"`
+	QName     string      `yaml:"qname,omitempty"`
 	Code      string      `yaml:"code,omitempty"`
 	QType     string      `yaml:"qtype,omitempty"`
 	Suffixes  []string    `yaml:"suffixes,omitempty"`
@@ -309,6 +319,13 @@ func yamlRules(t *edge.Topology) []yRule {
 			Action: yAction{Type: "SetAdditionalProxyProtocolValue", ProxyType: &pt, Value: t.ProxyProtocolSecret},
 		})
 	}
+	// Health can briefly SERVFAIL before active checks remove a draining
+	// backend. Never retain that failure after a healthy peer becomes usable.
+	rules = append(rules, yRule{
+		Name: ruleHealthNoCache, UUID: ruleUUID(ruleHealthNoCache),
+		Selector: ySelector{Type: "QName", QName: t.HealthCheck.QName},
+		Action:   yAction{Type: "SetSkipCache"},
+	})
 	if len(t.Rules.AuthoritativeZones) > 0 {
 		rules = append(rules, yRule{
 			Name: ruleAuthoritative, UUID: ruleUUID(ruleAuthoritative),

@@ -63,17 +63,21 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [totpCode, setTotpCode] = useState('');
   const [revokeTokens, setRevokeTokens] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const reset = () => {
     setCurrent('');
     setNext('');
     setConfirm('');
+    setTotpCode('');
     setRevokeTokens(false);
     setErrors({});
   };
   const m = useMutation({
-    mutationFn: () => api.auth.changePassword({ currentPassword: current, newPassword: next, ...(revokeTokens ? { revokeTokens: true } : {}) }),
+    mutationFn: () => api.auth.changePassword({ currentPassword: current, newPassword: next, ...(totpCode ? { totpCode } : {}), ...(revokeTokens ? { revokeTokens: true } : {}) }),
+    retry: false,
+    onSettled: () => setTotpCode(''),
     onSuccess: (me) => {
       // Every other session is revoked; this one comes back re-issued.
       if (me && typeof me === 'object' && 'principal' in me) {
@@ -93,6 +97,7 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
   });
   const submit = () => {
     const e = passwordProblems(current, next, confirm);
+    if (totpCode && !/^[0-9]{6}$/.test(totpCode)) e.totpCode = 'Enter the six-digit authenticator code';
     setErrors(e);
     if (!Object.keys(e).length) m.mutate();
   };
@@ -129,6 +134,15 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
         error={errors.next}
       />
       <TextField label="Confirm password" type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} error={errors.confirm} />
+      <TextField
+        label="Authenticator code"
+        value={totpCode}
+        onChange={setTotpCode}
+        autoComplete="one-time-code"
+        isOptional
+        help="Enter the six-digit code if you have enabled an authenticator."
+        error={errors.totpCode}
+      />
       <CheckboxField
         label="Also revoke my API tokens"
         value={revokeTokens}

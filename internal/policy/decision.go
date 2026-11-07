@@ -8,6 +8,7 @@ import (
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/responsepolicy"
 )
 
 // Decision is the merged policy that applies to one client at one moment.
@@ -43,6 +44,12 @@ type Decision struct {
 	SafeSearch *bool
 	// SafeSearchMode is strict, moderate or empty (strict).
 	SafeSearchMode string
+	// Rewrites are ordered by policy priority, then specificity within each
+	// policy. Response overrides inherit each highest-priority explicit field.
+	Rewrites []*responsepolicy.Rewrite
+	Response *responsepolicy.Overrides
+	// ResponseInvalid fails recursive queries closed until invalid response configuration is corrected.
+	ResponseInvalid bool
 
 	// Selection holds the policy's lists resolved against the compiled
 	// lists of the same snapshot; nil when no policy applies.
@@ -74,6 +81,10 @@ func (d *Decision) List(name string) *ListInfo {
 
 // ListInfo describes one BlockList as the blocking stage needs it.
 type ListInfo struct {
+	// groups is copied namespace-qualified scope from the accepted object.
+	// Empty permits every membership. Only private policy-set identities use it.
+	groups []string
+
 	// Name is the list's name in the compiled blocking.Snapshot.
 	Name string
 	// Object is the BlockList, "namespace/name".
@@ -108,7 +119,10 @@ type compiledPolicy struct {
 	sched    *schedule // nil: always active
 	// allow and block are the resolved snapshot names of allowListRefs and
 	// blockListRefs.
-	allow, block []string
+	allow, block    []string
+	rewrites        []*responsepolicy.Rewrite
+	response        *responsepolicy.Overrides
+	responseInvalid bool
 }
 
 // maxEagerSched bounds the scheduled policies of one set whose
@@ -122,12 +136,13 @@ const maxLazySched = 63
 // policySet is the ordered candidate policies of one group set plus the
 // precomputed decisions for every combination of its scheduled policies.
 type policySet struct {
-	pols     []*compiledPolicy // priority desc, id asc
-	sched    []int             // indexes into pols of scheduled policies
-	eager    []*Decision       // by mask, when len(sched) <= maxEagerSched
-	lazy     sync.Map          // uint64 mask -> *Decision
-	merge    func(active []*compiledPolicy, fallback bool) *Decision
-	fallback bool
+	pols       []*compiledPolicy // priority desc, id asc
+	sched      []int             // indexes into pols of scheduled policies
+	eager      []*Decision       // by mask, when len(sched) <= maxEagerSched
+	lazy       sync.Map          // uint64 mask -> *Decision
+	merge      func(active []*compiledPolicy, fallback bool) *Decision
+	fallback   bool
+	defaultSet *policySet // fallback bound to this same original membership
 }
 
 func newPolicySet(pols []*compiledPolicy, fallback bool, merge func([]*compiledPolicy, bool) *Decision) *policySet {

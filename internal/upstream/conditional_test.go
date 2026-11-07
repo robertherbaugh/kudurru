@@ -50,8 +50,6 @@ func TestImportDnsmasq(t *testing.T) {
 server=/corp.example/10.in-addr.arpa/10.0.0.5
 server=/lab.corp.example/10.0.0.6#5353
 server=/public.corp.example/#
-server=/local.lan/
-local=/home.arpa/
 server=9.9.9.9
 # dnsproxy / AdGuard style
 [/svc.example/]10.0.0.5
@@ -110,5 +108,16 @@ tls://1.1.1.1 https://dns.example/dns-query
 		if _, err := ImportDnsmasq(strings.NewReader(bad)); err == nil {
 			t.Errorf("%q should not parse", bad)
 		}
+	}
+}
+
+func TestImportUnsupportedDoesNotMerge(t *testing.T) {
+	unsupported, err := ImportDnsmasq(strings.NewReader("server=/supported.example/192.0.2.1\nlocal=/home.arpa/\nserver=/local.lan/\n"))
+	if err != nil || len(unsupported.Issues) != 2 {
+		t.Fatal("local-answer directives were not reported", err)
+	}
+	var untouched Config
+	if err := unsupported.Merge(&untouched); err == nil || untouched.Groups != nil || untouched.Conditional != nil {
+		t.Fatal("lossy import changed destination")
 	}
 }

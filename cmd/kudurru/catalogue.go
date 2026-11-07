@@ -41,8 +41,9 @@ func newCatalogueRefreshers(cfg *config.Config, h *catalogue.Holder, m cluster.M
 			Kind: kind, URL: url, RefreshInterval: c.RefreshInterval.Std(), Holder: h,
 			Dir:        filepath.Join(cfg.Node.DataDir, "catalogue"),
 			Membership: m, Pull: pull,
-			Client: listfetcher.HTTPClient(cfg.Blocking.AllowLocalListURLs),
-			Logger: logger,
+			Client:    listfetcher.HTTPClient(cfg.Blocking.AllowLocalListURLs),
+			HTTPSOnly: cfg.Blocking.HTTPSOnly,
+			Logger:    logger,
 		}
 	}
 	pull := func(get func(context.Context, string) (internalapi.CatalogueBody, error)) catalogue.PullFunc {

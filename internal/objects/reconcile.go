@@ -63,7 +63,8 @@ type reconciler struct {
 	// of the last pass that found them in agreement; a poll that sees both
 	// again skips validation and comparison. Only the Loader keeps a
 	// reconciler across passes; passes are serialised by its loadMu.
-	seen map[store.Key]agreement
+	seen         map[store.Key]agreement
+	roleBindings RoleBindingEffects
 }
 
 // agreement is a document (by hash) known to match the stored object at
@@ -92,6 +93,7 @@ type pass struct {
 	// completely; objects they own are neither deleted nor taken over.
 	brokenSources  map[string]bool
 	brokenPrefixes []string
+	cut            *sourceCut
 }
 
 // run reconciles srcs into the store and returns the report.
@@ -134,6 +136,10 @@ func (r *reconciler) run(ctx context.Context, srcs []source, brokenPrefixes []st
 		}
 	}
 
+	if r.roleBindings != nil {
+		p.cut = p.acceptSource(ctx, items)
+		defer p.cut.retire()
+	}
 	for _, it := range items {
 		if ctx.Err() != nil {
 			p.diag(Diagnosis{Severity: SeverityError, Reason: ReasonApplyFailed, Source: it.doc.source, Document: it.doc.index, Object: it.key.String(), Message: ctx.Err().Error()})
@@ -270,8 +276,9 @@ func (p *pass) apply(ctx context.Context, it item) {
 	}
 
 	// Fast path: the same document already matched this very stored object.
+	guardedBinding := it.key.Kind == v1alpha1.KindRoleBinding && p.r.roleBindings != nil
 	docHash := hashDocument(manager, it.key, d.obj)
-	if existing != nil && !force && store.ManagedBy(existing) == manager && p.r.seen != nil {
+	if !guardedBinding && existing != nil && !force && store.ManagedBy(existing) == manager && p.r.seen != nil {
 		if a, ok := p.r.seen[it.key]; ok && a.doc == docHash && a.rv == existing.GetResourceVersion() {
 			p.rep.Unchanged++
 			return
@@ -326,12 +333,27 @@ func (p *pass) apply(ctx context.Context, it item) {
 		return
 	}
 
-	if existing != nil && !force && store.ManagedBy(existing) == manager && sameContent(existing, obj, manager) {
+	unchanged := existing != nil && !force && store.ManagedBy(existing) == manager && sameContent(existing, obj, manager)
+	if !guardedBinding && unchanged {
 		p.rep.Unchanged++
 		p.r.remember(it.key, docHash, existing.GetResourceVersion())
 		return
 	}
-	written, err := p.r.st.Apply(ctx, obj, store.ApplyOptions{Manager: manager, Force: force})
+	var written store.Object
+	if guardedBinding {
+		var plan RoleBindingPlan
+		plan, err = roleBindingPlan(p.cut, it.key, existing, obj, manager, force, false)
+		if err == nil {
+			var binding *v1alpha1.RoleBinding
+			binding, err = p.r.roleBindings.ApplyRoleBinding(ctx, plan)
+			if err == nil && binding == nil {
+				err = ErrSourceChanged
+			}
+			written = binding
+		}
+	} else {
+		written, err = p.r.st.Apply(ctx, obj, store.ApplyOptions{Manager: manager, Force: force})
+	}
 	if err != nil {
 		var mb *store.ErrManagedBy
 		switch {
@@ -350,6 +372,10 @@ func (p *pass) apply(ctx context.Context, it item) {
 		return
 	}
 	p.r.remember(it.key, docHash, written.GetResourceVersion())
+	if unchanged {
+		p.rep.Unchanged++
+		return
+	}
 	if note != nil {
 		p.diag(*note)
 	}
@@ -438,7 +464,16 @@ func (p *pass) deleteIfOrphan(ctx context.Context, kind store.Kind, obj store.Ob
 	if p.sourceBroken(from) {
 		return
 	}
-	err := p.r.st.Delete(ctx, key, store.DeleteOptions{Manager: owner})
+	var err error
+	if kind == v1alpha1.KindRoleBinding && p.r.roleBindings != nil {
+		var plan RoleBindingPlan
+		plan, err = roleBindingPlan(p.cut, key, obj, nil, owner, false, true)
+		if err == nil {
+			err = p.r.roleBindings.DeleteRoleBinding(ctx, plan)
+		}
+	} else {
+		err = p.r.st.Delete(ctx, key, store.DeleteOptions{Manager: owner})
+	}
 	switch {
 	case err == nil:
 		p.rep.Deleted++

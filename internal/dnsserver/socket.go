@@ -8,7 +8,7 @@ import (
 )
 
 // Multi-socket listeners (dev-docs/design-record.md §13.1, an M1 carry-over). A
-// udp or tcp Spec binds N sockets on the same address with SO_REUSEPORT,
+// udp, tcp or dot Spec binds N sockets on the same address with SO_REUSEPORT,
 // each served by its own miekg/dns read loop sharing the Handler, so the
 // kernel spreads datagrams and connections over N receive queues instead
 // of one. The approach follows CoreDNS's multisocket plugin (Apache-2.0,
@@ -18,7 +18,7 @@ import (
 // option different semantics); elsewhere every listener binds one socket.
 
 // ReuseportSupported reports whether this platform binds more than one
-// socket per udp/tcp listener.
+// socket per UDP, TCP or DoT listener.
 const ReuseportSupported = reuseportSupported
 
 // SocketCount resolves Options.Sockets: zero or negative means

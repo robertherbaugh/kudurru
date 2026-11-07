@@ -76,8 +76,12 @@ The first command previews; `--apply` starts a background import on your selecte
 context and returns its run ID. Add `--wait` to wait for the final report, or run
 `kudurru import runs RUN_ID` later. Use `-n` for the namespace of your existing default policy. Matching
 object names and the default upstream group are replaced. Read every result:
-writes are not transactional, and settings change only after every selected object
-succeeds. Use repeatable `--select-object Kind/[namespace/]name` and
+the import can partially succeed across objects, and settings change only after
+every selected object succeeds. On SQLite, each object commits with its durable
+result; selected settings commit with the final report in one transaction.
+Settings errors leave settings unchanged. Review any restart requirements in
+the Settings result before restarting the destination. Use repeatable
+`--select-object Kind/[namespace/]name` and
 `--select-setting SECTION` flags to import only those items, or `--skip-settings`
 to import objects while leaving settings unchanged. Complete the validation and cutover checklist afterward. The
 sections below cover manual adjustments and features needing a separate plan.

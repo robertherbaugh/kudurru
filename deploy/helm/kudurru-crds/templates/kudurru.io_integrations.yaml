@@ -1,0 +1,472 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+    helm.sh/resource-policy: keep
+  name: integrations.kudurru.io
+spec:
+  group: kudurru.io
+  names:
+    kind: Integration
+    listKind: IntegrationList
+    plural: integrations
+    shortNames:
+    - intg
+    singular: integration
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .spec.suspend
+      name: Suspended
+      type: boolean
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Integration configures background publication, inventory, or
+          a webhook.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: IntegrationSpec is one independently elected background integration.
+            properties:
+              cloudflare:
+                description: CloudflareIntegration selects destinations for owned
+                  public records.
+                properties:
+                  zones:
+                    items:
+                      description: CloudflareZone configures one destination and its
+                        ownership policy.
+                      properties:
+                        adoptFrom:
+                          description: PublicationAdoption requires an explicit external-dns
+                            ownership identity.
+                          properties:
+                            externalDNSOwner:
+                              maxLength: 253
+                              minLength: 1
+                              type: string
+                          required:
+                          - externalDNSOwner
+                          type: object
+                        adoptUnowned:
+                          description: AdoptUnowned never permits overwriting a foreign
+                            ownership marker.
+                          type: boolean
+                        defaults:
+                          description: CloudflareDefaults supplies provider values
+                            absent from an endpoint.
+                          properties:
+                            comment:
+                              maxLength: 500
+                              type: string
+                            proxied:
+                              type: boolean
+                            ttl:
+                              default: 1
+                              description: TTL 1 means provider automatic TTL; proxied
+                                records always use it.
+                              format: int64
+                              maximum: 86400
+                              minimum: 1
+                              type: integer
+                          type: object
+                        policy:
+                          default: sync
+                          enum:
+                          - sync
+                          - upsert-only
+                          - create-only
+                          type: string
+                        select:
+                          description: |-
+                            PublicationSelection reads original desired records, including public-only
+                            endpoints withheld from the internal DNS view.
+                          properties:
+                            exclude:
+                              description: Exclude contains exact names or leading
+                                *. suffix patterns.
+                              items:
+                                maxLength: 253
+                                type: string
+                              maxItems: 256
+                              type: array
+                            labels:
+                              additionalProperties:
+                                type: string
+                              maxProperties: 64
+                              type: object
+                            types:
+                              items:
+                                type: string
+                              maxItems: 64
+                              type: array
+                              x-kubernetes-list-type: set
+                          type: object
+                        translate:
+                          additionalProperties:
+                            type: string
+                          description: Translate maps equal-sized IP prefixes before
+                            publication.
+                          maxProperties: 64
+                          type: object
+                        zone:
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        zoneID:
+                          pattern: ^[a-f0-9]{32}$
+                          type: string
+                      required:
+                      - zone
+                      type: object
+                    maxItems: 256
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - zone
+                    x-kubernetes-list-type: map
+                required:
+                - zones
+                type: object
+              credentials:
+                additionalProperties:
+                  description: |-
+                    CredentialReference selects one secret capability. File and Env are usable
+                    only when explicitly allowlisted by the node operator; a public object cannot
+                    acquire arbitrary filesystem or environment access. Values never enter spec.
+                  properties:
+                    env:
+                      maxLength: 128
+                      pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+                      type: string
+                    file:
+                      maxLength: 4096
+                      minLength: 1
+                      type: string
+                    secretRef:
+                      description: |-
+                        CredentialSecretRef names a key in the operator's credential namespace.
+                        Namespace selection belongs to host configuration, never to this reference.
+                      properties:
+                        key:
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        name:
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                  type: object
+                  x-kubernetes-validations:
+                  - message: exactly one credential reference is required
+                    rule: '[has(self.secretRef), has(self.file), has(self.env)].filter(x,
+                      x).size() == 1'
+                maxProperties: 16
+                type: object
+              deletionPolicy:
+                default: Retain
+                description: DeletionPolicy applies only to records proven owned by
+                  this instance.
+                enum:
+                - Retain
+                - Delete
+                type: string
+              resync:
+                default: 10m
+                type: string
+              suspend:
+                type: boolean
+              type:
+                enum:
+                - cloudflare
+                - unifi
+                - webhook
+                type: string
+              unifi:
+                description: UniFiIntegration configures inventory polling and explicitly
+                  enabled writes.
+                properties:
+                  endpoint:
+                    maxLength: 2048
+                    pattern: ^https://[^/]+.*$
+                    type: string
+                  groups:
+                    description: UniFiGroups selects the provider fields used for
+                      client group membership.
+                    properties:
+                      byNetwork:
+                        additionalProperties:
+                          type: string
+                        description: ByNetwork maps provider network names to desired
+                          ClientGroup names.
+                        maxProperties: 256
+                        type: object
+                      byNote:
+                        maxLength: 128
+                        type: string
+                    type: object
+                  inventory:
+                    description: UniFiInventory controls generated records independently
+                      of query-log traffic.
+                    properties:
+                      includeNetworks:
+                        items:
+                          maxLength: 253
+                          type: string
+                        maxItems: 256
+                        type: array
+                        x-kubernetes-list-type: set
+                      nameTemplate:
+                        description: |-
+                          NameTemplate uses the bounded inventory name formatter, never arbitrary
+                          Go template execution or filesystem/network functions.
+                        maxLength: 500
+                        type: string
+                      reverseZones:
+                        default: auto
+                        enum:
+                        - auto
+                        - disabled
+                        type: string
+                      ttl:
+                        default: 120
+                        format: int64
+                        maximum: 86400
+                        minimum: 1
+                        type: integer
+                      zoneRef:
+                        description: |-
+                          ObjectRef points at another kudurru object. Namespace is omitted for
+                          cluster-scoped kinds and for same-namespace references.
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                          namespace:
+                            type: string
+                        required:
+                        - name
+                        type: object
+                    required:
+                    - zoneRef
+                    type: object
+                  legacy:
+                    description: |-
+                      Legacy enables version-detected supplementary inventory endpoints and
+                      explicitly authorized legacy actions; it never enables them by default.
+                    type: boolean
+                  poll:
+                    default: 60s
+                    type: string
+                  push:
+                    description: UniFiPush defaults every external write to disabled.
+                    properties:
+                      dhcpDNSServers:
+                        type: boolean
+                      mirrorRecords:
+                        description: UniFiRecordMirror controls optional record publication
+                          to the gateway.
+                        properties:
+                          enabled:
+                            type: boolean
+                          types:
+                            items:
+                              enum:
+                              - A
+                              - CNAME
+                              type: string
+                            maxItems: 2
+                            type: array
+                            x-kubernetes-list-type: set
+                        type: object
+                    type: object
+                  site:
+                    default: default
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  tlsFingerprint:
+                    description: TLSFingerprint pins the provider certificate for
+                      a private CA deployment.
+                    pattern: ^sha256:[a-fA-F0-9]{64}$
+                    type: string
+                required:
+                - endpoint
+                type: object
+              webhook:
+                description: WebhookIntegration connects an independently deployed
+                  Tier-B provider.
+                properties:
+                  domains:
+                    items:
+                      maxLength: 253
+                      type: string
+                    maxItems: 256
+                    type: array
+                  endpoint:
+                    maxLength: 2048
+                    pattern: ^https?://[^/]+.*$
+                    type: string
+                  policy:
+                    default: sync
+                    enum:
+                    - sync
+                    - upsert-only
+                    - create-only
+                    type: string
+                  timeout:
+                    default: 10s
+                    type: string
+                required:
+                - endpoint
+                type: object
+            required:
+            - type
+            type: object
+            x-kubernetes-validations:
+            - message: cloudflare settings must match type
+              rule: has(self.cloudflare) == (self.type == 'cloudflare')
+            - message: unifi settings must match type
+              rule: has(self.unifi) == (self.type == 'unifi')
+            - message: webhook settings must match type
+              rule: has(self.webhook) == (self.type == 'webhook')
+            - message: cloudflare requires an apiToken credential reference
+              rule: self.type != 'cloudflare' || (has(self.credentials) && 'apiToken'
+                in self.credentials)
+            - message: unifi requires an apiKey credential reference
+              rule: self.type != 'unifi' || (has(self.credentials) && 'apiKey' in
+                self.credentials)
+          status:
+            description: IntegrationStatus reports observed execution without credential
+              values.
+            properties:
+              clients:
+                format: int64
+                type: integer
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              credentialFingerprints:
+                additionalProperties:
+                  type: string
+                description: CredentialFingerprints identify rotated secrets without
+                  revealing them.
+                maxProperties: 16
+                type: object
+              lastSyncTime:
+                format: date-time
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+              records:
+                description: IntegrationRecordCounts describes the last publication
+                  plan.
+                properties:
+                  conflicts:
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  drift:
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  managed:
+                    format: int64
+                    minimum: 0
+                    type: integer
+                required:
+                - conflicts
+                - drift
+                - managed
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

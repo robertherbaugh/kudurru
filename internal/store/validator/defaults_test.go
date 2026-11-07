@@ -77,7 +77,7 @@ func TestDefaultsUnstructured(t *testing.T) {
 		doc   string
 		check func(t *testing.T, u *unstructured.Unstructured)
 	}{
-		{"BlockList refreshInterval, mode and format", `
+		{"BlockList inherited refresh interval, mode and format", `
 apiVersion: kudurru.io/v1alpha1
 kind: BlockList
 metadata: {name: ads, namespace: dns}
@@ -86,7 +86,7 @@ spec:
 `, func(t *testing.T, u *unstructured.Unstructured) {
 			bl := &v1alpha1.BlockList{}
 			mustConvert(t, u, bl)
-			if bl.Spec.RefreshInterval.Duration != 24*time.Hour || bl.Spec.Mode != "block" || bl.Spec.Sources[0].Format != "auto" {
+			if bl.Spec.RefreshInterval.Duration != 0 || bl.Spec.Mode != "block" || bl.Spec.Sources[0].Format != "auto" {
 				t.Fatalf("got %+v", bl.Spec)
 			}
 		}},

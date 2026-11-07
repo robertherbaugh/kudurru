@@ -5,23 +5,27 @@ description: Compare Pi-hole, AdGuard Home, Technitium and kudurru, then migrate
 weight: 30
 ---
 
-Start with the DNS server you run today. These guides describe **kudurru
-v0.1.0**: working features, configuration differences and the checks to make
-before changing a network's DNS.
+Start with the DNS server you run today. These guides describe working
+features, configuration differences and the checks to make before changing
+a network's DNS. The comparison below covers v0.1.0; v0.2 adds the explicitly
+scoped offline configuration converters linked here.
 
 | Your current server | What the guide covers |
 |---|---|
 | [Pi-hole](/migrate/pihole/) | Teleporter backup, adlists, exact/wildcard/regex domains, groups, local DNS and a DHCP handoff |
 | [AdGuard Home](/migrate/adguard-home/) | Configuration backup, filter compatibility, exceptions, persistent clients, rewrites and encrypted DNS |
 | [Technitium](/migrate/technitium/) | Zone export/import, conditional forwarders, allowed/blocked zones, DNS Apps and features to retain elsewhere |
+| [Blocky](/migrate/blocky/) | Offline YAML conversion, client policy selection, suffix-wide local mappings and explicit conversion losses |
+| [Offline configuration conversion](/migrate/offline-config/) | AdGuard Home and Blocky preview, selection, tracked application and limits |
 | [Cutover and rollback checklist](/migrate/cutover/) | Parallel installation, CLI setup, client identity, real DNS tests, IPv4/IPv6 rollout and recovery |
 
 **Pi-hole v6 and Technitium have built-in API importers.** In **Tools**, choose
 **Import from DNS server** to connect, preview and import directly, or use
 `kudurru import pihole|technitium --source-url URL --apply`. Supported objects
 and upstreams transfer automatically; the preview reports unsupported features.
-kudurru cannot restore a Pi-hole Teleporter archive, `AdGuardHome.yaml` or a
-Technitium backup. `kudurru import bind` imports standard DNS zone files.
+In v0.2, `kudurru import adguard|blocky --file PATH` converts supported YAML
+settings offline; it is a partial conversion with a loss report. kudurru cannot
+restore a Pi-hole Teleporter archive, a product working directory or a Technitium backup. `kudurru import bind` imports standard DNS zone files.
 Migration time
 depends on your rules and services; a server that also provides DHCP,
 DNSSEC or app-specific behavior needs more preparation than a basic blocker.

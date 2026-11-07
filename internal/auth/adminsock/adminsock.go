@@ -331,6 +331,8 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 // User is one entry of list-users.
 type User struct {
 	Name               string     `json:"name"`
+	UID                string     `json:"uid"`
+	ResourceVersion    string     `json:"resourceVersion,omitempty"`
 	DisplayName        string     `json:"displayName,omitempty"`
 	BuiltinAdmin       bool       `json:"builtinAdmin"`
 	Disabled           bool       `json:"disabled"`
@@ -355,7 +357,7 @@ func (s *Server) listUsers(w http.ResponseWriter, _ *http.Request) {
 
 // UserOf renders a LocalUser without its password hash.
 func UserOf(u *internalv1.LocalUser) User {
-	out := User{Name: u.Name, DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled,
+	out := User{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled,
 		MustChangePassword: u.Spec.MustChangePassword, Groups: u.Spec.Groups}
 	if t := u.Status.LastLoginAt; t != nil {
 		v := t.UTC()

@@ -51,6 +51,12 @@ make generate     # controller-gen: deepcopy, CRDs, RBAC
 make sast         # Semgrep (Docker); make vulncheck, make trivy-fs, make trivy-images
 ```
 
+`make test` discovers the compiled command package's tests, examples and fuzz
+targets and runs them in disjoint batches of at most 100 top-level names. Every
+subtest and fuzz seed remains selected, with race detection and the same
+30-minute process timeout. Other packages keep their ordinary race invocation;
+a failed batch fails the suite without replaying it or omitting later batches.
+
 The security scans (`.github/workflows/security.yml`, and publish.yml's scan of a release candidate's pushed images, `make trivy-published`) fail on a finding. Fix it, or, for a false positive, add a `// nosemgrep: <rule> -- <reason>` comment above the line or an entry with its reason to `.trivyignore.yaml`.
 
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
@@ -58,6 +64,26 @@ Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo de
 ## Branches and releases
 
 Open pull requests against `main`; each push to one builds `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` for trying the branch. Releases are cut by merging `main` into `release-candidate` (tags `v<VERSION>-rc.<N>`, a GitHub pre-release) and `release-candidate` into `release` (tags `v<VERSION>`, moves `latest`), where `VERSION` is the file in the repository root. Never push release tags by hand. The steps and the checks around them are in [dev-docs/release-checklist.md](dev-docs/release-checklist.md#release-pipeline).
+
+After editing `VERSION`, run `make version-sync`. To set it and synchronize in
+one command, run `python3 hack/sync-version.py --version 0.3.0` (substitute the
+next version). `make version-check` reports drift without writing; CI runs it.
+These commands need Python 3.9+, Git, Go and Helm on `PATH` in a Git checkout.
+
+The script updates both charts, supervisor version defaults from their
+Dockerfiles, generated Kustomize manifests, Compose images, and current install
+references in the README and deployment/start guides. It adds a missing
+changelog section marked unreleased. Release notes, dates, feature claims and
+historical links still need editorial review; API/CRD versions, dependency
+versions, digest pins and development tags have independent lifecycles.
+Rendering finishes in a temporary directory before tracked files change.
+
+GoReleaser stages manifests and the Compose bundle with the exact GA or RC tag
+in `bin/release`, preserving tracked source. To inspect an RC bundle locally,
+run `make release-manifests RELEASE_ARTIFACT_VERSION=0.3.0-rc.1` with a base
+matching `VERSION`; this installs pinned kustomize if needed and publishes
+nothing. Only tracked deployment files enter the bundle, excluding local
+Compose secrets and data.
 
 ## Layout and seams
 

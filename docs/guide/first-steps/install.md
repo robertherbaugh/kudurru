@@ -32,7 +32,7 @@ If `systemd-resolved` uses port 53, follow the
      -v "$PWD/secrets:/run/secrets:ro" \
      -e KUDURRU_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
      -e KUDURRU_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-     ghcr.io/robertherbaugh/kudurru:0.1.0 serve
+     ghcr.io/robertherbaugh/kudurru:0.2.0 serve
    ```
 
 3. Keep a safe copy of both secret files.

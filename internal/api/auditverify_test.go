@@ -127,3 +127,97 @@ func TestAuditVerificationSharesScanAndSurvivesCanceledCaller(t *testing.T) {
 		t.Fatalf("%d scans, want one", calls.Load())
 	}
 }
+
+type snapshotVerificationReader struct {
+	verificationReader
+	snapshot func(context.Context) (audit.VerificationSnapshot, error)
+}
+
+func (r *snapshotVerificationReader) SnapshotVerification(ctx context.Context) (audit.VerificationSnapshot, error) {
+	return r.snapshot(ctx)
+}
+
+func TestAuditVerificationTrustCaptureAndCacheSupersession(t *testing.T) {
+	var revision atomic.Int32
+	revision.Store(1)
+	var scans, captures atomic.Int32
+	rd := &snapshotVerificationReader{}
+	rd.snapshot = func(ctx context.Context) (audit.VerificationSnapshot, error) {
+		captures.Add(1)
+		if err := ctx.Err(); err != nil {
+			return audit.VerificationSnapshot{}, err
+		}
+		original := revision.Load()
+		if original == 0 {
+			return audit.VerificationSnapshot{}, errors.New("private trust transport failure")
+		}
+		return audit.VerificationSnapshot{Identity: fmt.Sprint(original), Verifier: audit.VerifierFunc(func(context.Context) error { scans.Add(1); return nil }), Current: func(context.Context) error {
+			if revision.Load() != original {
+				return errors.New("superseded trust")
+			}
+			return nil
+		}}, nil
+	}
+	h := newHarness(t, func(o *Options) { o.AuditReader = rd })
+	for range 2 {
+		h.do(http.MethodGet, "/api/v1/audit/verify", "auditor", nil).want(http.StatusOK)
+	}
+	if scans.Load() != 1 || captures.Load() != 2 {
+		t.Fatal("cache did not capture current trust before reuse")
+	}
+	h.do(http.MethodGet, "/api/v1/audit/verify", "viewer", nil).want(http.StatusForbidden)
+	if captures.Load() != 2 {
+		t.Fatal("unauthorized caller read trust")
+	}
+	revision.Store(2)
+	h.do(http.MethodGet, "/api/v1/audit/verify", "auditor", nil).want(http.StatusOK)
+	if scans.Load() != 2 {
+		t.Fatal("successor shared stale singleflight/cache")
+	}
+	revision.Store(0)
+	response := h.do(http.MethodGet, "/api/v1/audit/verify", "auditor", nil).want(http.StatusServiceUnavailable)
+	if strings.Contains(response.Body.String(), "private") {
+		t.Fatal("exposed trust transport error")
+	}
+	if scans.Load() != 2 {
+		t.Fatal("scanned with unavailable trust")
+	}
+}
+
+func TestAuditVerificationHeldOriginalTrustRefusesReplacement(t *testing.T) {
+	var revision atomic.Int32
+	revision.Store(1)
+	started, release := make(chan struct{}), make(chan struct{})
+	var scans atomic.Int32
+	rd := &snapshotVerificationReader{}
+	rd.snapshot = func(context.Context) (audit.VerificationSnapshot, error) {
+		original := revision.Load()
+		return audit.VerificationSnapshot{Identity: fmt.Sprint(original), Verifier: audit.VerifierFunc(func(ctx context.Context) error {
+			scans.Add(1)
+			close(started)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-release:
+				return nil
+			}
+		}), Current: func(context.Context) error {
+			if revision.Load() != original {
+				return errors.New("superseded")
+			}
+			return nil
+		}}, nil
+	}
+	h := newHarness(t, func(o *Options) { o.AuditReader = rd })
+	done := make(chan error, 1)
+	go func() { _, err := h.srv.cachedAuditVerification(t.Context(), rd); done <- err }()
+	<-started
+	revision.Store(2)
+	close(release)
+	if err := <-done; err == nil || scans.Load() != 1 {
+		t.Fatal("replayed original scan under successor")
+	}
+	if _, ok := h.srv.auditVerification.cached(time.Now(), "1"); ok {
+		t.Fatal("published superseded trust result")
+	}
+}

@@ -16,7 +16,8 @@
 //     addressed by the zone's own glue or, for hosts outside the zone,
 //     through Options.Resolver,
 //
-// signed with the zone's first transferTSIGKeyRefs key when it names one.
+// signed with the zone's notifyTSIGKeyRef, or its first transferTSIGKeyRefs key
+// when the explicit NOTIFY key is empty.
 // Each target is tried up to Options.Attempts times (RFC 1996 §3.6: 5)
 // with exponential backoff while it stays silent; a definitive answer
 // (an error rcode, a TSIG failure) is not retried. A newer serial
@@ -80,7 +81,7 @@ type Resolver interface {
 type Options struct {
 	// Source is required.
 	Source Source
-	// Keyring holds the TSIG secrets named by transferTSIGKeyRefs. Nil
+	// Keyring holds the TSIG secrets selected by zone NOTIFY policy. Nil
 	// means no keys: zones that name one are not notified (result nokey).
 	Keyring dnsserver.TSIGKeyring
 	// SourceAddr is the local address NOTIFY is sent from (notify.source);
@@ -267,17 +268,21 @@ func (n *Notifier) notifyZone(ctx context.Context, z *zone.Zone) {
 	if len(targets) == 0 {
 		return
 	}
-	base := zone.Notify{Zone: z.Name(), Serial: z.Serial(), SOA: z.SOA(), Source: n.opts.SourceAddr, Timeout: n.opts.Timeout}
-	if keys := z.TransferKeys(); len(keys) > 0 {
-		_, alg, ok := n.lookup(keys[0])
+	source := z.NotifySource()
+	if !source.IsValid() {
+		source = n.opts.SourceAddr
+	}
+	base := zone.Notify{Zone: z.Name(), Serial: z.Serial(), SOA: z.SOA(), Source: source, Timeout: n.opts.Timeout}
+	if key := z.NotifyKey(); key != "" {
+		_, alg, ok := n.lookup(key)
 		if !ok {
-			n.log.Warn("zone names a TSIG key this node does not have; NOTIFY not sent", "zone", z.Name(), "key", keys[0])
+			n.log.Warn("zone names a TSIG key this node does not have; NOTIFY not sent", "zone", z.Name(), "key", key)
 			for range targets {
 				n.total.WithLabelValues(z.Name(), ResultNoKey).Inc()
 			}
 			return
 		}
-		base.KeyName, base.Algorithm, base.TSIG = keys[0], alg, dnsserver.TSIGProvider(n.opts.Keyring)
+		base.KeyName, base.Algorithm, base.TSIG = key, alg, dnsserver.TSIGProvider(n.opts.Keyring)
 	}
 	n.log.Debug("notifying", "zone", z.Name(), "serial", z.Serial(), "targets", len(targets))
 	var wg sync.WaitGroup

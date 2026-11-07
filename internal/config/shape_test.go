@@ -189,6 +189,9 @@ func TestSchemaEnumsRejectBogus(t *testing.T) {
 				t.Errorf("%s: %v does not list %v", k.Path, err, want)
 			}
 			for _, v := range want {
+				if k.Path == "vip.observation.provider" && v != "none" {
+					continue
+				} // provider-specific prerequisites are covered by observation tests
 				if v == "customIP" || v == "blockPage" || k.Path == "audit.store" && (v == "auditlog" || v == "database") {
 					continue // needs blocking.customIP.v4/v6, blockPage.enabled, store.driver kube, database.dsn
 				}

@@ -386,8 +386,6 @@ func (w *Writer) seedHours(ctx context.Context) error {
 		add func(h *hourAcc, k, a, b int64)
 	}
 	for _, s := range []q{
-		{`SELECT (ts/3600000000)*3600, domain, count(*), sum(status BETWEEN 16 AND 23) FROM query WHERE ts >= ? GROUP BY 1, 2`,
-			func(h *hourAcc, k, a, b int64) { h.addDomain(k, a, b) }},
 		{`SELECT (ts/3600000000)*3600, list, sum(status BETWEEN 16 AND 23), sum(status NOT BETWEEN 16 AND 23) FROM query WHERE ts >= ? AND list IS NOT NULL GROUP BY 1, 2`,
 			func(h *hourAcc, k, a, b int64) { addPair(h.lists, k, a, b) }},
 		{`SELECT (ts/3600000000)*3600, zone, count(*), 0 FROM query WHERE ts >= ? AND zone IS NOT NULL GROUP BY 1, 2`,
@@ -430,22 +428,28 @@ func (w *Writer) Reader() *Reader { return &Reader{w: w} }
 
 // Write implements querylog.Sink: one transaction per batch.
 func (w *Writer) Write(batch []*querylog.Event) error {
+	return w.WriteBatch(context.Background(), batch, w.privacy())
+}
+
+// WriteBatch preserves the original captured privacy mode and context through
+// the transaction. A successor's operational privacy cannot reclassify it.
+func (w *Writer) WriteBatch(ctx context.Context, batch []*querylog.Event, mode querylog.Mode) error {
 	if len(batch) == 0 {
 		return nil
 	}
-	w.mu.Lock()
+	if err := w.lockContext(ctx); err != nil {
+		return err
+	}
 	defer w.mu.Unlock()
 	if w.closed {
 		return ErrClosed
 	}
 	start := time.Now()
-	ctx := context.Background()
 	delta := newAccSet()
 	tx, err := w.w.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("sqlitelog: begin: %w", err)
 	}
-	mode := w.privacy()
 	facts := mode.StoresFacts()
 	ins := tx.StmtContext(ctx, w.ins)
 	maxID, first := w.maxID, w.firstTS
@@ -583,7 +587,6 @@ func (w *Writer) add(ctx context.Context, tx *sql.Tx, ins *sql.Stmt, ev *querylo
 	addPair(m.clients, clientID, 1, b)
 	if hour >= w.hourDone {
 		h := delta.hour(hour)
-		h.addDomain(domainID, 1, b)
 		if listID != 0 {
 			addPair(h.lists, listID, b, 1-b)
 		}
@@ -666,7 +669,15 @@ func (w *Writer) flushMinutes(ctx context.Context, cutoff int64) error {
 // Close implements querylog.Sink: flushes the accumulators, writes back
 // dictionary last_seen values, runs PRAGMA optimize and checkpoints the WAL.
 func (w *Writer) Close() error {
-	w.mu.Lock()
+	return w.CloseContext(context.Background())
+}
+
+// CloseContext performs final maintenance under the caller's original shutdown
+// deadline. The collector must join all writes before closing the owner.
+func (w *Writer) CloseContext(ctx context.Context) error {
+	if err := w.lockContext(ctx); err != nil {
+		return err
+	}
 	defer w.mu.Unlock()
 	if w.closed {
 		return nil
@@ -675,7 +686,6 @@ func (w *Writer) Close() error {
 	if w.w == nil {
 		return nil
 	}
-	ctx := context.Background()
 	var errs []error
 	errs = append(errs, w.flushMinutes(ctx, math.MaxInt64))
 	if tx, err := w.w.BeginTx(ctx, nil); err == nil {
@@ -694,6 +704,29 @@ func (w *Writer) Close() error {
 	}
 	w.closeDBs()
 	return errors.Join(errs...)
+}
+
+// lockContext bounds waiting behind maintenance or a reader snapshot as well
+// as the transaction itself. A timed-out batch is never resumed or replayed.
+func (w *Writer) lockContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if w.mu.TryLock() {
+		return nil
+	}
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+			if w.mu.TryLock() {
+				return nil
+			}
+		}
+	}
 }
 
 func (w *Writer) closeDBs() {
@@ -1052,3 +1085,7 @@ func nextRetentionTime(now time.Time, minute int) time.Time {
 	}
 	return t
 }
+
+// FactsAvailable reports whether the current irreversible privacy policy keeps
+// fact rows. Central recovery cannot reconstruct suppressed dimensions.
+func (w *Writer) FactsAvailable() bool { return w.privacy().StoresFacts() }

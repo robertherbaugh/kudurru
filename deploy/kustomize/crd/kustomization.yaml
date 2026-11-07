@@ -8,5 +8,10 @@ resources:
   - bases/kudurru.io_policies.yaml
   - bases/kudurru.io_unblockrequests.yaml
   - bases/kudurru.io_dhcpscopes.yaml
+  - bases/kudurru.io_integrations.yaml
+  - bases/kudurru.io_kudurrus.yaml
+  - bases/kudurru.io_identityproviders.yaml
+  - bases/kudurru.io_rolebindings.yaml
+  - bases/kudurru.io_serviceaccounts.yaml
   - audit/audit.kudurru.io_auditlogs.yaml
   - dhcp/dhcp.kudurru.io_dhcpleases.yaml

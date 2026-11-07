@@ -114,36 +114,89 @@ func (c *Client) Me(ctx context.Context) (*Me, error) {
 // session cookie lands in the client's cookie jar; Login then calls Me so
 // the CSRF token is set for the writes that follow.
 func (c *Client) Login(ctx context.Context, username, password string) (*Me, error) {
+	return c.login(ctx, username, password, "")
+}
+
+// LoginWithTOTP performs one local login with a six-digit authenticator code.
+// It never follows redirects or retries the credential POST. Leading zeros are
+// significant; code is neither normalized nor retained in the client.
+func (c *Client) LoginWithTOTP(ctx context.Context, username, password, code string) (*Me, error) {
+	if len(code) != 6 {
+		return nil, errors.New("apiclient: authenticator code must contain six ASCII digits")
+	}
+	for i := range len(code) {
+		if code[i] < '0' || code[i] > '9' {
+			return nil, errors.New("apiclient: authenticator code must contain six ASCII digits")
+		}
+	}
+	return c.login(ctx, username, password, code)
+}
+
+func (c *Client) login(ctx context.Context, username, password, code string) (*Me, error) {
 	if c.http.Jar == nil {
 		return nil, errors.New("apiclient: password login needs a cookie jar")
 	}
 	body := map[string]string{"username": username, "password": password}
+	if code != "" {
+		body["totpCode"] = code
+	}
 	var resp struct {
 		CSRF string `json:"csrf"`
 	}
-	if err := c.Do(ctx, http.MethodPost, "/auth/login", nil, body, &resp); err != nil {
+	if err := c.authPost(ctx, "/auth/login", body, &resp); err != nil {
 		return nil, err
 	}
 	if resp.CSRF != "" {
 		c.SetCSRF(resp.CSRF)
 	}
-	return c.Me(ctx)
+	me, err := c.Me(ctx)
+	return me, safeAuthError(err)
 }
 
 // Logout calls POST /auth/logout (clears the session cookie).
 func (c *Client) Logout(ctx context.Context) error {
-	return c.Post(ctx, "/auth/logout", nil, nil, nil)
+	return c.authPost(ctx, "/auth/logout", nil, nil)
 }
 
 // CreateToken mints an API token for the authenticated principal. The
 // returned Token carries the kdr_ secret, shown only once.
 func (c *Client) CreateToken(ctx context.Context, req CreateTokenRequest) (*Token, error) {
 	var out Token
-	if err := c.Post(ctx, "/auth/tokens", nil, req, &out); err != nil {
+	if err := c.authPost(ctx, "/auth/tokens", req, &out); err != nil {
 		return nil, err
 	}
 	if out.Secret == "" {
 		return nil, errors.New("apiclient: POST /auth/tokens returned no token secret")
 	}
 	return &out, nil
+}
+
+// authPost uses the common request path with a per-dispatch client policy. It
+// cannot guarantee delivery exactly once: a lost response may follow a commit.
+func (c *Client) authPost(ctx context.Context, path string, in, out any) error {
+	return safeAuthError(c.do(ctx, http.MethodPost, path, nil, in, out, true))
+}
+
+// safeAuthError never retains server or transport text that could reflect proof.
+func safeAuthError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	var original *Error
+	if errors.As(err, &original) {
+		key := "authentication_failed"
+		switch original.Key {
+		case "invalid", "unauthenticated", "forbidden", "not_found", "conflict", "rate_limited", "read_only", "generation_pending", "unavailable":
+			key = original.Key
+		}
+		retry := max(time.Duration(0), min(original.RetryAfter, 24*time.Hour))
+		return &Error{StatusCode: original.StatusCode, Key: key, Message: "authentication request failed; no automatic retry", RetryAfter: retry}
+	}
+	return errors.New("apiclient: authentication response unavailable or invalid; outcome may be unknown; no automatic retry")
 }

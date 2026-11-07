@@ -19,7 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -160,6 +159,10 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 	if s.isClosed() {
 		return store.ObjectList{}, store.ErrClosed
 	}
+	return s.list(ctx, s.rq, kind, opts)
+}
+
+func (s *Store) list(ctx context.Context, q queryer, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
 	ki, err := s.kinds.get(kind)
 	if err != nil {
 		return store.ObjectList{}, err
@@ -193,7 +196,7 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 		b.WriteString(` LIMIT ?`)
 		args = append(args, opts.Limit+1)
 	}
-	rows, err := s.rq.QueryContext(ctx, b.String(), args...)
+	rows, err := q.QueryContext(ctx, b.String(), args...)
 	if err != nil {
 		return store.ObjectList{}, fmt.Errorf("store/sqlite: list %s: %w", kind, err)
 	}
@@ -242,6 +245,11 @@ type mutation struct {
 // caller passed a resourceVersion precondition) such a race is
 // store.ErrConflict instead.
 func (s *Store) mutate(ctx context.Context, strict bool, plan func(q queryer) (*mutation, error)) (store.Object, error) {
+	var err error
+	ctx, err = s.writeContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for attempt := 1; ; attempt++ {
 		locked := attempt > optimisticAttempts
 		if locked {
@@ -249,6 +257,15 @@ func (s *Store) mutate(ctx context.Context, strict bool, plan func(q queryer) (*
 		}
 		m, err := plan(s.rq)
 		if err != nil || m.noop {
+			if err == nil {
+				if !locked {
+					s.wmu.Lock()
+				}
+				_, err = s.checkWriter(ctx, s.rq)
+				if !locked {
+					s.wmu.Unlock()
+				}
+			}
 			if locked {
 				s.wmu.Unlock()
 			}
@@ -297,6 +314,10 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := cachedTx{tx: tx, c: s.ws}
+	a, err := s.checkWriter(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
 
 	rvs := make([]uint64, len(ms))
 	for i, m := range ms {
@@ -305,6 +326,9 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 		}
 	}
 	rv := rvs[len(rvs)-1]
+	if err := advanceRevision(ctx, tx, &a); err != nil {
+		return nil, err
+	}
 
 	compactTo := uint64(0)
 	s.sinceCompacted += len(ms)
@@ -325,6 +349,8 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 		s.sinceCompacted = 0
 	}
 	s.head.Store(rv)
+	s.publishAuthorityLocked(a)
+	s.publishGenerationLocked()
 	out := make([]store.Object, len(ms))
 	for i, m := range ms {
 		s.bus.publish(change{seq: rvs[i], typ: m.typ, key: m.key, obj: m.obj})
@@ -420,26 +446,10 @@ func (s *Store) writeMutation(ctx context.Context, q cachedTx, m *mutation) (uin
 	if m.typ != store.Deleted {
 		entry.After = json.RawMessage(data)
 	}
-	if m.key.Kind == internalkinds.KindAPIToken {
-		entry.Before, entry.After = tokenAuditDocument(entry.Before), tokenAuditDocument(entry.After)
-	} else if internalkinds.IsInternal(string(m.key.Kind)) {
-		entry.Before, entry.After = nil, nil
-	}
 	if err := insertAudit(ctx, q, &entry); err != nil {
 		return 0, err
 	}
 	return rv, nil
-}
-
-func tokenAuditDocument(data json.RawMessage) json.RawMessage {
-	if data == nil {
-		return nil
-	}
-	var tok internalkinds.APIToken
-	if err := json.Unmarshal(data, &tok); err != nil {
-		return nil
-	}
-	return tok.AuditDocument()
 }
 
 // compactFeed drops change-feed rows at or below seq.
@@ -525,6 +535,9 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 		m.typ, m.action = store.Added, "create"
 	} else {
 		p := prev.obj
+		if opts.CreateOnly {
+			return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+		}
 		if opts.ExpectedResourceVersion != "" && opts.ExpectedResourceVersion != p.GetResourceVersion() {
 			return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, p.GetResourceVersion(), opts.ExpectedResourceVersion)
 		}
@@ -658,6 +671,10 @@ func (s *Store) DeleteMany(ctx context.Context, reqs []store.DeleteRequest) (err
 	if s.isClosed() {
 		return store.ErrClosed
 	}
+	ctx, err = s.writeContext(ctx)
+	if err != nil {
+		return err
+	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
 	var ms []*mutation
@@ -687,7 +704,8 @@ func (s *Store) DeleteMany(ctx context.Context, reqs []store.DeleteRequest) (err
 		}
 	}
 	if len(ms) == 0 {
-		return nil
+		_, err := s.checkWriter(ctx, s.rq)
+		return err
 	}
 	if _, err := s.commitAllLocked(ctx, ms); err != nil {
 		if errors.Is(err, errRaced) {
@@ -723,30 +741,35 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) (err error) 
 		if err != nil {
 			return nil, err
 		}
-		if prev == nil {
-			return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
-		}
-		if callerRV != "" && callerRV != prev.obj.GetResourceVersion() {
-			return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, prev.obj.GetResourceVersion(), callerRV)
-		}
-		in := obj.DeepCopyObject().(store.Object)
-		in.GetObjectKind().SetGroupVersionKind(ki.gvk)
-		if err := s.validateStatus(ctx, in, prev.obj); err != nil {
-			return nil, err
-		}
-		next := prev.obj.DeepCopyObject().(store.Object)
-		if err := copyStatus(next, in); err != nil {
-			return nil, err
-		}
-		m := &mutation{ki: ki, key: key, prev: prev, manager: store.ManagedBy(prev.obj), typ: store.Modified, obj: next, action: "status"}
-		if same, err := identical(next, prev); err != nil {
-			return nil, err
-		} else if same {
-			m.noop = true
-		}
-		return m, nil
+		return s.planStatus(ctx, ki, key, obj, prev)
 	})
 	return err
+}
+
+func (s *Store) planStatus(ctx context.Context, ki *kindInfo, key store.Key, obj store.Object, prev *stored) (*mutation, error) {
+	callerRV := obj.GetResourceVersion()
+	if prev == nil {
+		return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+	}
+	if callerRV != "" && callerRV != prev.obj.GetResourceVersion() {
+		return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, prev.obj.GetResourceVersion(), callerRV)
+	}
+	in := obj.DeepCopyObject().(store.Object)
+	in.GetObjectKind().SetGroupVersionKind(ki.gvk)
+	if err := s.validateStatus(ctx, in, prev.obj); err != nil {
+		return nil, err
+	}
+	next := prev.obj.DeepCopyObject().(store.Object)
+	if err := copyStatus(next, in); err != nil {
+		return nil, err
+	}
+	m := &mutation{ki: ki, key: key, prev: prev, manager: store.ManagedBy(prev.obj), typ: store.Modified, obj: next, action: "status"}
+	if same, err := identical(next, prev); err != nil {
+		return nil, err
+	} else if same {
+		m.noop = true
+	}
+	return m, nil
 }
 
 // storedTime is t as a stored document decodes it: metav1.Time encodes

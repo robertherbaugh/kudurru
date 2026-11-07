@@ -2,7 +2,9 @@ package upstream
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,11 +34,14 @@ type Options struct {
 	// reloads (with its caches) and applies Config.Recursion with
 	// Reconfigure; nil makes New build one the Set owns.
 	Recursor *recursor.Resolver
+	// RecursorMetrics are shared by resolvers owned by complete publications.
+	RecursorMetrics *recursor.Metrics
 }
 
 // Set is the immutable collection of groups built from one configuration.
 // Reloads build a new Set and retire the old one with CloseReplacedBy.
 type Set struct {
+	identity    [32]byte
 	groups      map[string]*Group
 	conditional *suffixMap
 	ecs         ECSConfig
@@ -55,6 +60,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 		return nil, err
 	}
 	cfg = cfg.withDefaults()
+	configWire, _ := json.Marshal(cfg)
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -65,7 +71,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 	}
 	quiet := slog.New(slog.DiscardHandler)
 
-	s := &Set{groups: make(map[string]*Group, len(cfg.Groups)), ecs: cfg.ECS, metrics: opts.Metrics}
+	s := &Set{identity: sha256.Sum256(configWire), groups: make(map[string]*Group, len(cfg.Groups)), ecs: cfg.ECS, metrics: opts.Metrics}
 	s.conditional, _ = newSuffixMap(cfg.Conditional, cfg.Groups) // validated above
 
 	var boot proxy.Resolver
@@ -106,7 +112,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 			if s.rec == nil {
 				s.rec = opts.Recursor
 				if s.rec == nil {
-					r, err := recursor.New(cfg.Recursion, recursor.Options{Logger: logger})
+					r, err := recursor.New(cfg.Recursion, recursor.Options{Logger: logger, Metrics: opts.RecursorMetrics})
 					if err != nil {
 						_ = s.Close()
 						return nil, fmt.Errorf("upstream: group %q: %w", name, err)

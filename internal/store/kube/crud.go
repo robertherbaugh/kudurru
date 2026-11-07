@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1validation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,12 +26,21 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
+
+// Reuse the embedded structural schemas for typed SSA decode normalization.
+// CRD schema/CEL admission still runs on the actual apiserver.
+var applyValidator = sync.OnceValues(validator.New)
 
 // writeError wraps a failed apiserver write. A refusal for size (413, or
 // etcd's "request is too large" passed through by the apiserver) wraps
 // store.ErrTooLarge, as the sqlite driver reports past MaxObjectBytes.
 func writeError(op string, key store.Key, err error) error {
+	if invalid, ok := validator.FromStatusError(err); ok {
+		invalid.Namespace = key.Namespace
+		return fmt.Errorf("store/kube: %s %s: %w", op, key, invalid)
+	}
 	if apierrors.IsRequestEntityTooLargeError(err) || strings.Contains(err.Error(), "request is too large") {
 		return fmt.Errorf("%w: store/kube: %s %s: %w", store.ErrTooLarge, op, key, err)
 	}
@@ -81,6 +92,10 @@ func (s *Store) Get(ctx context.Context, key store.Key, into store.Object) error
 // Continue map to the list call's limit and continue token. An expired
 // token (HTTP 410) is returned as an error; callers restart the listing.
 func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+	return s.list(ctx, kind, opts, nil)
+}
+
+func (s *Store) list(ctx context.Context, kind store.Kind, opts store.ListOptions, selector labels.Selector) (store.ObjectList, error) {
 	if s.isClosed() {
 		return store.ObjectList{}, store.ErrClosed
 	}
@@ -104,6 +119,9 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 	}
 	if len(opts.LabelSelector) > 0 {
 		lo = append(lo, client.MatchingLabels(opts.LabelSelector))
+	}
+	if selector != nil {
+		lo = append(lo, client.MatchingLabelsSelector{Selector: selector})
 	}
 	if opts.Limit > 0 {
 		lo = append(lo, client.Limit(int64(opts.Limit)))
@@ -181,6 +199,9 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		precondition := ""
 		switch {
 		case cur != nil:
+			if opts.CreateOnly {
+				return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+			}
 			if opts.ExpectedResourceVersion != "" && opts.ExpectedResourceVersion != cur.ResourceVersion {
 				return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, cur.ResourceVersion, opts.ExpectedResourceVersion)
 			}
@@ -189,7 +210,7 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 			}
 			precondition = cur.ResourceVersion
 			if opts.Force {
-				rv, err := s.takeOver(ctx, ki, key, cur, fieldManagerFor(opts.Manager))
+				rv, err := s.takeOver(ctx, ki, key, cur, obj, opts.Manager)
 				if err != nil {
 					if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
 						return nil, fmt.Errorf("store/kube: take over %s: %w", key, err)
@@ -207,6 +228,17 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		u, err := applyPayload(ki, obj, opts.Manager, precondition)
 		if err != nil {
 			return nil, err
+		}
+		if opts.CreateOnly {
+			// SSA can update an object created after the GET. POST is the
+			// apiserver's atomic absence precondition, including equal specs.
+			if err := s.c.Create(ctx, u, client.FieldOwner(fieldManagerFor(opts.Manager))); err != nil {
+				if apierrors.IsAlreadyExists(err) {
+					return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+				}
+				return nil, writeError("create", key, err)
+			}
+			return fromUnstructured(ki, u)
 		}
 		err = s.c.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), applyOpts...)
 		if err == nil {
@@ -232,6 +264,10 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 // an object with finalizers stays visible with a deletionTimestamp until
 // they are removed.
 func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOptions) error {
+	return s.delete(ctx, key, opts, applyRetries)
+}
+
+func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOptions, attempts int) error {
 	if s.isClosed() {
 		return store.ErrClosed
 	}
@@ -268,7 +304,7 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 			return nil
 		case apierrors.IsNotFound(err):
 			return fmt.Errorf("%w: %s", store.ErrNotFound, key)
-		case apierrors.IsConflict(err) && attempt < applyRetries:
+		case apierrors.IsConflict(err) && attempt < attempts:
 			continue
 		case apierrors.IsConflict(err):
 			return fmt.Errorf("%w: %s changed during delete", store.ErrConflict, key)
@@ -340,7 +376,8 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) error {
 // forced apply that follows then removes whatever fm does not specify.
 // Status (subresource) ownership is untouched. It returns the
 // resourceVersion to use as the apply's precondition.
-func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *metav1.PartialObjectMetadata, fm string) (string, error) {
+func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *metav1.PartialObjectMetadata, obj store.Object, manager string) (string, error) {
+	fm := fieldManagerFor(manager)
 	gv := ki.gvk.GroupVersion().String()
 	keep := make([]metav1.ManagedFieldsEntry, 0, len(cur.ManagedFields)+1)
 	owned := fieldpath.NewSet()
@@ -361,6 +398,9 @@ func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *
 	}
 	if !others {
 		return cur.ResourceVersion, nil
+	}
+	if err := s.validateTakeOver(ctx, ki, key, cur, obj, manager); err != nil {
+		return "", err
 	}
 	raw, err := owned.ToJSON()
 	if err != nil {
@@ -385,6 +425,52 @@ func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *
 		return "", err
 	}
 	return target.ResourceVersion, nil
+}
+
+// validateTakeOver admits the replacement before any durable managedFields
+// change. A dry-run PATCH uses the same CRD/CEL and patch permission as the
+// eventual write; its resourceVersion precondition binds validation to cur.
+// It does not make the later two-request takeover atomic against outages or
+// later concurrent changes. Those still return their original refusal.
+func (s *Store) validateTakeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *metav1.PartialObjectMetadata, obj store.Object, manager string) error {
+	next, err := applyPayload(ki, obj, manager, cur.ResourceVersion)
+	if err != nil {
+		return err
+	}
+	next.SetUID(cur.UID)
+	next.SetCreationTimestamp(cur.CreationTimestamp)
+	next.SetGeneration(cur.Generation)
+	next.SetDeletionTimestamp(cur.DeletionTimestamp)
+	next.SetDeletionGracePeriodSeconds(cur.DeletionGracePeriodSeconds)
+	// The status subresource restores stored status during admission.
+	data, err := json.Marshal(next.Object)
+	if err != nil {
+		return err
+	}
+	// Dry-run requests never reach etcd's size check. Bound the replacement
+	// explicitly before transferring ownership, as SQLite bounds its writes.
+	if len(data) > store.MaxObjectBytes {
+		return fmt.Errorf("%w: %s", store.ErrTooLarge, key)
+	}
+	patch, err := json.Marshal([]map[string]any{
+		{"op": "replace", "path": "", "value": next.Object},
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.c.Patch(ctx, next, client.RawPatch(types.JSONPatchType, patch), client.FieldOwner(fieldManagerFor(manager)), client.DryRunAll); err != nil {
+		return writeError("validate takeover", key, err)
+	}
+	// Admission restores stored status and applies defaults. Include those
+	// bytes before allowing the separate ownership mutation too.
+	data, err = json.Marshal(next.Object)
+	if err != nil {
+		return err
+	}
+	if len(data) > store.MaxObjectBytes {
+		return fmt.Errorf("%w: %s", store.ErrTooLarge, key)
+	}
+	return nil
 }
 
 // getMeta reads the object's metadata only, returning (nil, nil) when it
@@ -467,6 +553,13 @@ func applyPayload(ki *kindInfo, obj store.Object, manager, resourceVersion strin
 	u.SetAnnotations(ann)
 	if resourceVersion != "" {
 		u.SetResourceVersion(resourceVersion)
+	}
+	v, err := applyValidator()
+	if err != nil {
+		return nil, err
+	}
+	if err := v.PruneApplyNulls(u); err != nil {
+		return nil, err
 	}
 	return u, nil
 }

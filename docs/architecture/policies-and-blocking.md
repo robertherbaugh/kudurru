@@ -10,8 +10,9 @@ erDiagram
     Policy }o--o{ ClientGroup : "clientGroupRefs"
     Policy }o--o{ BlockList : "blockListRefs (mode block)"
     Policy }o--o{ BlockList : "allowListRefs (mode allow)"
+    BlockList }o--o{ ClientGroup : "optional clientGroupRefs scope"
     Policy }o--o{ CatalogueService : "blockedServices / blockedCategories"
-    BlockList ||--|{ Source : "sources[]: url | inline | configMapRef | entries"
+    BlockList ||--|{ Source : "sources[]: url | inline | configMapRef | entries | rpz"
     ClientMatcher {
         string ip
         string cidr
@@ -100,6 +101,14 @@ no weekdays means every day. A schedule that does not parse makes the policy
 `rewrites` is ignored (planned for v0.2).
 
 ## 3. Is this name blocked?
+
+The diagram below describes ordinary list evaluation. The transferred RPZ
+adapter inserts ordered feed evaluation after explicit allow/allow-only and
+before ordinary denies, rewrites and safe search. It uses one resolved response
+for both RPZ and ordinary answer inspection; required unavailable feeds fail
+closed. Production wiring remains open. See
+[transferred RPZ](block-lists.md#transferred-rpz-foundation) for that flow and
+its current implementation boundary.
 
 ```mermaid
 flowchart TD
@@ -191,6 +200,23 @@ keeps those lists attached to the right policies:
 Policies owned by files or integrations are never edited; they are reported
 as skipped.
 
+Attachment makes a list available to a policy; `BlockList.spec.clientGroupRefs`
+restricts it to the captured winning membership of the query. These optional
+namespace-local names form a set: any matching group permits the list, including
+ties in the winning tier. Lower tiers and groups from another namespace do not.
+The policy index copies this scope and filters list references before building
+its immutable selection, including fallback decisions. Serving never reads the
+store for scope, and a held request keeps its original complete publication.
+
+General lists without this field remain unrestricted. Reserved
+`ui-allow-<group>` and `ui-deny-<group>` names keep their exact group meaning for
+legacy objects too; dashboard and unblock writers materialize that scope on the
+list. Admission rejects an explicit scope that contradicts a reserved name.
+`ui-allow` and `ui-deny` retain their everyone meaning. A shared policy can
+therefore carry a group's allow or deny list without applying it to other groups.
+Content and regex caches stay shared behind the scoped selection; cached raw
+responses are inspected under the original request's selection.
+
 ## The block page and unblock requests
 
 With `blockMode: blockPage`, a blocked web site resolves to the block page
@@ -213,8 +239,9 @@ sequenceDiagram
     BP-->>U: "blocked by dns/ads: ||ads.example^" + request form
     U->>BP: POST /.kudurru/request (same origin, rate limited)
     BP->>S: Apply UnblockRequest ur-<HMAC(client, domain)> (Pending)
-    A->>S: approve (scope everyone or group, exact or subdomains, optional duration)
-    S->>S: add the entry to ui-allow[-group], attach it to the policies
+    A->>S: approve under original current proof and writer (scope, match, duration)
+    S->>S: one SQLite transaction: entry, policy references, request decision
+    Note over A,S: decide permission delegates only these derived effects; final credential and license checks
     Note over S,D: every node: list recompiles → new snapshot → allow list wins
     A->>D: the API flushes the name from this node's cache
     U->>D: A ads.example (after the old block TTL)
@@ -224,7 +251,9 @@ sequenceDiagram
 - One request object exists per (client, domain): the name is an HMAC of
   both, so repeated submissions update one object. The client address is
   stored according to `querylog.privacy`.
-- A leader janitor runs every minute: time-limited approvals expire (and
+- A leader janitor runs every minute: on SQLite its original elected writer
+  atomically applies current canonical retention/expiry policy. Time-limited
+  approvals expire (and
   their allow entry is removed), pending requests expire after 14 days, and
   decided requests are deleted after 30 days.
 - The block page finds the reason in the query log first. Under the
@@ -233,3 +262,57 @@ sequenceDiagram
 
 Next: [Block lists](block-lists.md) shows how the lists behind all of this
 are fetched and compiled.
+
+## Captured client identity
+
+The identify stage captures one immutable inventory snapshot before matching.
+It supplies normalized MACs, hostnames and tags to the policy and modifier
+engines. Group IDs are policy membership, not inventory tags. The fixed order
+is exact IP, MAC, longest nonzero CIDR, exact hostname, hostname glob, ClientID,
+catch-all CIDR, then default group. All matches within a tier join; in
+particular, multiple MAC addresses cannot make group selection depend on order.
+A known-empty inventory result stays empty for that query and its dependencies.
+
+Inventory producers replace complete bounded batches off the DNS query path.
+Observed and expiry timestamps describe the device observation, not a repeated
+poll. The newest IP claim wins; equal-time conflicting claims are ambiguous.
+Expired or removed claims do not expose an older device at a reassigned IP.
+Failures retain the previous batch only until its existing expiry. The holder
+is shared by integrations; queries never call a provider or perform PTR lookups.
+
+```mermaid
+flowchart LR
+    provider["Inventory producer"] --> batch["Validate complete source batch"]
+    batch --> snapshot["Immutable IP ownership snapshot"]
+    transport["Address and optional client ID"] --> identify["Capture inventory once"]
+    snapshot --> identify
+    dhcp["Current local DHCP names"] --> identify
+    ptr["Bounded asynchronous PTR cache"] -. "only if no inventory/DHCP name" .-> identify
+    identify --> tiers["D86 matching tiers"]
+    tiers --> policy["Client policy"]
+    identify --> modifiers["Client names and tags"]
+```
+
+### Optional reverse-PTR name fallback
+
+`clientNames.reversePTR.enabled` opts the host into background name acquisition.
+The operator must provide one to four unicast IP:port DNS servers and one to 32
+client CIDRs in `networks`. These node settings are host-only and require restart;
+API updates and null resets are refused. The default is disabled.
+
+Identification samples the memory cache only when captured inventory and local
+DHCP provide no name. A cold or expired lookup returns immediately and requests
+background work through a bounded nonblocking queue. Two workers and 4,096 cache
+entries are the defaults (limits: eight workers, 65,536 entries, 256 queued
+addresses). Exact IP, MAC and nonzero CIDR matching retain higher precedence.
+The resulting names and membership remain pinned to the original request and its
+dependencies. PTR is an operator-selected DNS observation, never authentication.
+
+Acquisition uses direct UDP with a single original timeout across configured
+sources. Only a direct, unambiguous PTR target with matching ID/question/owner,
+IN class and nonzero TTL is admitted. Truncated answers, CNAME chasing and invalid
+hostnames are refused. Positive lifetime starts at acquisition and is capped by
+`maxAge`; failed/negative acquisitions use `negativeTTL` backoff. No stale name is
+returned while refreshing. Shutdown cancels and joins the fixed workers and
+invalidates local observations. This source is independent of the resolver's
+ordinary DNS cache and never uses system name resolution or the query pipeline.

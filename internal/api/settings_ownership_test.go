@@ -105,3 +105,24 @@ func TestSettingsRevisionOnlyGuardsUpstreamEdits(t *testing.T) {
 		t.Fatal("unrelated cache edit lost the current upstream settings")
 	}
 }
+
+func TestCanonicalSettingsExcludeLegacyOwnership(t *testing.T) {
+	h, m := ownershipHarness(t)
+	cfg, err := config.FromFlat(config.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Cache.MaxEntries = 12345
+	h.srv.opts.CanonicalSettings = policyReadSettings{cfg: cfg}
+	before := m.Status()
+	var body SettingsBody
+	h.do(http.MethodGet, "/api/v1/settings", "admin", nil).want(http.StatusOK).json(&body)
+	if len(body.Sections) != 0 || body.Settings["cache"].(map[string]any)["maxEntries"] != float64(12345) {
+		t.Fatal("legacy ownership replaced canonical settings")
+	}
+	h.do(http.MethodPost, "/api/v1/settings/sections/upstreams/ownership/adopt", "admin", map[string]string{"revision": before.Sections["upstreams"].Revision}).want(http.StatusServiceUnavailable)
+	h.do(http.MethodPost, "/api/v1/settings/sections/upstreams/yaml", "admin", map[string]any{}).want(http.StatusServiceUnavailable)
+	if !reflect.DeepEqual(before, m.Status()) {
+		t.Fatal("canonical API mutated legacy ownership")
+	}
+}

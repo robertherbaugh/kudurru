@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
   name: kudurru
   namespace: kudurru-system
 ---
@@ -24,7 +24,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
     rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: kudurru-viewer
 rules:
@@ -62,7 +62,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
   name: kudurru-auditor
 rules:
   - apiGroups:
@@ -111,7 +111,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
     rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: kudurru-editor
 rules:
@@ -218,7 +218,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: kudurru-admin
 rules:
@@ -238,7 +238,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
   name: kudurru
 rules:
   - apiGroups:
@@ -251,6 +251,11 @@ rules:
       - policies
       - unblockrequests
       - dhcpscopes
+      - integrations
+      - kudurrus
+      - identityproviders
+      - rolebindings
+      - serviceaccounts
     verbs:
       - get
       - list
@@ -268,6 +273,10 @@ rules:
       - policies/status
       - unblockrequests/status
       - dhcpscopes/status
+      - integrations/status
+      - kudurrus/status
+      - identityproviders/status
+      - serviceaccounts/status
     verbs:
       - update
       - patch
@@ -332,7 +341,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
   name: kudurru
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -352,7 +361,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
   name: kudurru
   namespace: kudurru-system
 rules:
@@ -406,7 +415,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-rc.1
+    app.kubernetes.io/version: 0.2.0
   name: kudurru
   namespace: kudurru-system
 roleRef:

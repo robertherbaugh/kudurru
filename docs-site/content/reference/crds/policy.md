@@ -24,7 +24,7 @@ Columns of `kubectl get policies`:
 
 ## Spec
 
-PolicySpec binds client groups to lists and resolver behaviour.
+PolicySpec binds client groups to lists and resolver behavior.
 
 | Field | Type | Description |
 |---|---|---|
@@ -39,11 +39,14 @@ PolicySpec binds client groups to lists and resolver behaviour.
 | `spec.clientGroupRefs` | `[]string` |  |
 | `spec.priority` | `integer` | Priority breaks ties when several policies match; highest wins. |
 | `spec.queryLog` | `boolean` | QueryLog false excludes matching clients from the query log. |
-| `spec.rewrites` | `[]object` |  |
+| `spec.response` | `object` | PolicyResponse overrides selected global response processing for clients. Each field uses the highest-priority policy that explicitly sets it. |
+| `spec.response.dns64Prefix` | `string` | DNS64Prefix overrides response.dns64.prefix. An explicit empty string disables inherited DNS64; omitted inherits the next policy or global value.<br>Length: at most 64<br>Validation: must be empty or a canonical IPv6 /32, /40, /48, /56, /64 or /96 prefix (`size(self) == 0 \|\| (isCIDR(self) && cidr(self).ip().family() == 6 && cidr(self).ip().isGlobalUnicast() && cidr(self).prefixLength() in [32, 40, 48, 56, 64, 96] && cidr(self) == cidr(self).masked())`) |
+| `spec.response.filterAAAA` | `boolean` | FilterAAAA overrides response.filterAAAA. False explicitly disables it. |
+| `spec.rewrites` | `[]object` | Items: at most 128 |
 | `spec.rewrites[].cname` | `string` |  |
-| `spec.rewrites[].name` | `string` | **Required.** |
-| `spec.rewrites[].targets` | `[]string` |  |
-| `spec.rewrites[].type` | `string` |  |
+| `spec.rewrites[].name` | `string` | **Required.**<br>Length: 1 to 253 |
+| `spec.rewrites[].targets` | `[]string` | Items: at most 16 |
+| `spec.rewrites[].type` | `string` | One of: , `A`, `AAAA`, `CNAME`, `PTR`, `TXT`, `MX`, `SRV`, `HTTPS`, `SVCB`, `CAA`, `NS`, `NAPTR` |
 | `spec.safeSearch` | `boolean` | SafeSearch true answers the search engines' and YouTube's host names with their vendor's safe-search target (a CNAME to forcesafesearch.google.com, strict.bing.com, ...; see the catalogue). |
 | `spec.safeSearchMode` | `string` | SafeSearchMode is the level for engines that offer two: strict (the default) or moderate. Only YouTube has two levels (Strict or Moderate Restricted Mode); every other engine is always strict.<br>One of: `strict`, `moderate` |
 | `spec.schedule` | `object` | Schedule limits when a policy applies. |

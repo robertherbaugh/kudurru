@@ -159,6 +159,7 @@ func RecursionFrom(c config.Recursion) recursor.Config {
 		rc.IPv6 = recursor.IPv6Mode(c.IPv6)
 	}
 	rc.TrustAnchors = append([]string(nil), c.TrustAnchors...)
+	rc.NegativeTrustAnchors = c.NTAs()
 	rc.RootHints = append([]string(nil), c.RootHints...)
 	return rc
 }

@@ -82,9 +82,9 @@ export const kudurruTheme = {
     "--duration-slow-min": "525ms",
     "--duration-slow": "700ms",
     "--duration-slow-max": "935ms",
-    "--font-family-body": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
-    "--font-family-heading": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
-    "--font-family-code": "ui-monospace, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
+    "--font-family-body": "Inter, ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+    "--font-family-heading": "Inter, ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+    "--font-family-code": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
     "--color-syntax-keyword": "light-dark(#6b187c, #efa8ff)",
     "--color-syntax-string": "light-dark(#0b5615, #a4d6a3)",
     "--color-syntax-comment": "light-dark(#6a6a6a, #9e9e9e)",
@@ -552,20 +552,20 @@ export const kudurruTheme = {
         "ratio": 1.2
       },
       "body": {
-        "family": "ui-sans-serif",
-        "fallbacks": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
+        "family": "Inter",
+        "fallbacks": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
       },
       "heading": {
-        "family": "ui-sans-serif",
-        "fallbacks": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+        "family": "Inter",
+        "fallbacks": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
         "weights": {
           "3": "bold",
           "4": "bold"
         }
       },
       "code": {
-        "family": "ui-monospace",
-        "fallbacks": "\"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace"
+        "family": "JetBrains Mono",
+        "fallbacks": "ui-monospace, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace"
       }
     },
     "motion": {

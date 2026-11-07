@@ -11,9 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
+
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -21,6 +24,65 @@ import (
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
+
+func TestDNSSECReloadPinsTrustAndRoutesTogether(t *testing.T) {
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	set, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upstream.Options{Logger: logger})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = set.Close() }()
+	fwd := upstreamstage.NewStage(set)
+	v, err := cfg.DNSSEC.Validator(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fwd.SetValidation(v, false); err != nil {
+		t.Fatal(err)
+	}
+	query := func() *pipeline.Request {
+		m := new(dns.Msg)
+		m.SetQuestion("example.", dns.TypeA)
+		return &pipeline.Request{Msg: m}
+	}
+	oldReq := query()
+	oldPlan, err := fwd.Bind(oldReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r := config.NewReloadable(cfg)
+	subscribeReload(ctx, r, reloadTargets{logger: logger, upstreams: fwd, upOpts: upstream.Options{Logger: logger}})
+	next := *cfg
+	next.DNSSEC.Enabled = true
+	next.Upstreams.Groups = map[string]config.UpstreamGroup{"default": {Servers: []string{"192.0.2.1:53"}, Strategy: "strict"}}
+	r.Set(&next)
+	defer func() { _ = fwd.Set().Close() }()
+	newPlan, err := fwd.Bind(query())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if oldPlan.Validates() || !newPlan.Validates() || oldPlan.Current() || !newPlan.Current() || oldPlan.Scope() == newPlan.Scope() || fwd.Set().Identity() == set.Identity() {
+		t.Fatal("reload must atomically replace route/trust and fence cache publication by the old plan")
+	}
+	// An in-flight alias retains its original route and validation policy.
+	oldReq.Msg.Question[0].Name = "alias.example."
+	alias, err := fwd.Bind(oldReq)
+	if err != nil || alias.Validates() || alias.Scope().Epoch != oldPlan.Scope().Epoch {
+		t.Fatalf("in-flight alias observed the replacement configuration: %v", err)
+	}
+	// Returning to the same settings does not resurrect the retired epoch.
+	r.Set(cfg)
+	back, err := fwd.Bind(query())
+	if err != nil || back.Validates() || back.Scope().Epoch == oldPlan.Scope().Epoch || oldPlan.Current() {
+		t.Fatalf("A -> B -> A reused a retired validation/cache epoch: %v", err)
+	}
+}
 
 func TestSubscribeReloadAppliesHotKeys(t *testing.T) {
 	cfg, err := config.Load("", nil)

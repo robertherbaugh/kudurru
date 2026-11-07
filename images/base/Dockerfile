@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1.7
 # ghcr.io/robertherbaugh/kudurru-base:<version>[-debug]: the distroless base
-# of the ko release images with the two directories kudurru writes:
+# of the ko release images with the writable directories kudurru uses:
 #
 #   /var/lib/kudurru  0755 65532:65532  dataDir (state.db, querylog.db, ...)
+#   /var/lib/kudurru-querylog, /var/lib/kudurru-local
+#                    0755 65532:65532  opt-in separate SQLite mounts
 #   /run/kudurru      1777 65532:65532  admin socket, files shared with the
 #                                       edge containers (953)
 #
@@ -22,9 +24,9 @@ ARG BASE_IMAGE=gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c5
 
 # Only directories: the stage runs on the build platform for every target.
 FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS dirs
-RUN mkdir -p /out/var/lib/kudurru /out/run/kudurru \
- && chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru \
- && chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru
+RUN mkdir -p /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local /out/run/kudurru \
+ && chmod 0755 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local && chmod 1777 /out/run/kudurru \
+ && chown 65532:65532 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local /out/run/kudurru
 
 FROM ${BASE_IMAGE}
 # The parents' contents: COPY of a directory creates the target 0755 and

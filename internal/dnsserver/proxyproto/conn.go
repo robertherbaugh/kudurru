@@ -19,6 +19,8 @@ type Addr struct {
 	Client netip.AddrPort
 	// Proxy is the transport peer (dnsdist) the bytes arrived from.
 	Proxy net.Addr
+	// ClientID came from the authenticated private identity TLV.
+	ClientID string
 }
 
 // Network returns the network of the transport peer ("udp" or "tcp").
@@ -63,7 +65,8 @@ func (c *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		if err != nil {
 			return n, addr, err
 		}
-		payload, client, proxied, derr := c.Policy.Datagram(AddrPort(addr), b[:n])
+		var id string
+		payload, client, proxied, derr := c.Policy.Datagram(AddrPort(addr), b[:n], func(v string) { id = v })
 		if derr != nil {
 			// Returning the error would make the server loop exit; a forged
 			// datagram must cost the attacker, not the listener.
@@ -73,7 +76,7 @@ func (c *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 			n = copy(b, payload)
 		}
 		if proxied {
-			return n, &Addr{Client: client, Proxy: addr}, nil
+			return n, &Addr{Client: client, Proxy: addr, ClientID: id}, nil
 		}
 		return n, addr, nil
 	}
@@ -184,7 +187,8 @@ func (c *Conn) readHeader() {
 	}
 	_ = c.Conn.SetReadDeadline(d)
 
-	consumed, client, proxied, err := c.policy.Stream(AddrPort(peer), c.Conn)
+	var id string
+	consumed, client, proxied, err := c.policy.Stream(AddrPort(peer), c.Conn, func(v string) { id = v })
 
 	c.mu.Lock()
 	_ = c.Conn.SetReadDeadline(c.userDeadline)
@@ -196,6 +200,6 @@ func (c *Conn) readHeader() {
 	}
 	c.pending = consumed
 	if proxied {
-		c.remote = &Addr{Client: client, Proxy: peer}
+		c.remote = &Addr{Client: client, Proxy: peer, ClientID: id}
 	}
 }

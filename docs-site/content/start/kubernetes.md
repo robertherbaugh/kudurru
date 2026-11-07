@@ -23,8 +23,8 @@ covers the install, the first login, every deployment shape and the values;
 ```sh
 kubectl create namespace kudurru-system
 kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted
-helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
+helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.2.0
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.2.0 \
   --namespace kudurru-system --set replicaCount=1
 kubectl create namespace dns && kubectl create namespace apps   # the samples' namespaces
 kubectl apply -k deploy/kustomize/samples/

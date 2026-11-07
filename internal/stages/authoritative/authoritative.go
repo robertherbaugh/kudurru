@@ -15,7 +15,9 @@
 package authoritative
 
 import (
+	"context"
 	"net/netip"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -65,6 +67,13 @@ type TransferProvider interface {
 	Transfer(zone string, serial uint32) (<-chan []dns.RR, error)
 }
 
+// CapturedTransferProvider is the request-bound alternative. The caller holds
+// Request.Serving until it finishes reading the returned chunks and enforces
+// transfer authorization. It never consults the legacy live Source.
+type CapturedTransferProvider interface {
+	TransferCaptured(*pipeline.Request, string, uint32) (<-chan []dns.RR, error)
+}
+
 // Stage implements pipeline.Stage.
 type Stage struct {
 	// Source is required.
@@ -87,6 +96,12 @@ type Stage struct {
 	// wire size); zero means zone.DefaultChunkBytes (64 KiB minus room for
 	// the header, OPT and TSIG).
 	ChunkBytes int
+	// Now controls secondary expiry checks, including CNAME targets.
+	Now func() time.Time
+	// Capture optionally supplies one request-pinned serving view.
+	Capture func(*pipeline.Request) zone.Set
+	// StubQuery performs bounded exchanges to captured discovered IP endpoints.
+	StubQuery func(context.Context, *zone.Zone, *dns.Msg) (*dns.Msg, error)
 }
 
 var (
@@ -133,7 +148,12 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return next(req)
 	}
 
-	set := s.zones()
+	var set zone.Set
+	if s.Capture != nil {
+		set = s.Capture(req)
+	} else if req.Serving == nil {
+		set = s.zones()
+	}
 	if set == nil {
 		return s.unsynced(req, zone.GateUnsynced), nil
 	}
@@ -157,8 +177,12 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	if !z.QueryAllowed(client) {
 		r := pipeline.Reply(req, dns.RcodeRefused, pipeline.StatusRefusedACL)
 		r.Upstream = upstreamName(z)
+		r.Origin = pipeline.OriginFailure
 		s.finish(req, r.Msg)
 		return r, nil
+	}
+	if !z.RoutingAvailableAt(s.now()) {
+		return s.secondaryUnavailable(req, z), nil
 	}
 	if q.Qtype == dns.TypeAXFR || q.Qtype == dns.TypeIXFR {
 		return s.transfer(req, gate, z), nil
@@ -174,18 +198,23 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 			}
 		}
 		req.UpstreamGroup = z.UpstreamGroup()
+		req.DNSSECValidation = z.DNSSECValidation()
 		return next(req)
+	}
+	if z.Type() == v1alpha1.ZoneTypeStub {
+		if gate != zone.GateOpen {
+			return s.unsynced(req, gate), nil
+		}
+		return s.stubReply(req, set, z, next, 0)
 	}
 	if gate == zone.GateStale {
 		// Primary data older than maxAge is not served at all (§4.4).
 		return s.unsynced(req, gate), nil
 	}
 
-	var res zone.Result
-	if z.HasFallback() && gate == zone.GateOpen {
-		res = z.LookupStep(q.Name, q.Qtype, 0)
-	} else {
-		res = z.Lookup(q.Name, q.Qtype)
+	res, err := s.signedLookup(req, set, z, q.Name, q.Qtype, 0)
+	if err != nil {
+		return s.signedFailure(req, z), nil
 	}
 	if gate == zone.GateUnsynced && !res.Positive() {
 		return s.unsynced(req, gate), nil
@@ -198,7 +227,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	}
 	answer := res.Answer
 	if q.Qtype == dns.TypeANY && req.Client.Proto == pipeline.ProtoUDP {
-		answer = minimalANY(answer)
+		answer = minimalSignedANY(answer)
 	}
 	return s.reply(req, z, &res, answer), nil
 }
@@ -252,17 +281,22 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 	q := req.Msg.Question[0]
 	client := clientAddr(req)
 	answer := append([]dns.RR(nil), res.Answer...)
+	authority := append([]dns.RR(nil), res.Ns...)
 	last := &res
 	for {
 		target := last.Target
 		z2 := set.Match(target)
-		if z2 != nil && z2.Type() == v1alpha1.ZoneTypePrimary && z2.QueryAllowed(client) {
-			var r2 zone.Result
-			if z2.HasFallback() && set.Gate() == zone.GateOpen {
-				r2 = z2.LookupStep(target, q.Qtype, last.Hops)
-			} else {
-				r2 = z2.LookupFrom(target, q.Qtype, last.Hops)
+		if z2 != nil && z2.QueryAllowed(client) && !z2.RoutingAvailableAt(s.now()) {
+			return s.secondaryUnavailable(req, z2), nil
+		}
+		if z2 != nil && (z2.Type() == v1alpha1.ZoneTypePrimary || z2.Type() == v1alpha1.ZoneTypeSecondary) && z2.QueryAllowed(client) {
+			r2, err := s.signedLookup(req, set, z2, target, q.Qtype, last.Hops)
+			if err != nil {
+				return s.signedFailure(req, z2), nil
 			}
+			r2.Ns = appendSignedAuthority(authority, r2.Ns)
+			r2.Wildcard = r2.Wildcard || res.Wildcard
+			authority = r2.Ns
 			switch r2.Kind {
 			case zone.CNAME:
 				answer = append(answer, r2.Answer...)
@@ -278,18 +312,54 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 				return s.reply(req, z2, &r2, answer), nil
 			}
 		}
+		if z2 != nil && z2.Type() == v1alpha1.ZoneTypeStub && z2.QueryAllowed(client) {
+			if set.Gate() != zone.GateOpen {
+				return s.unsynced(req, set.Gate()), nil
+			}
+			sub := subRequest(req, target, q.Qtype, q.Qclass)
+			sub.Msg.RecursionDesired = req.Msg.RecursionDesired
+			resp, err := s.stubReply(sub, set, z2, next, last.Hops)
+			if err == nil && resp != nil && resp.Msg != nil && resp.Msg.Rcode == dns.RcodeServerFailure && len(resp.Msg.Answer) == 0 {
+				out := *resp
+				out.Msg = resp.Msg.Copy()
+				out.Msg.Id = req.Msg.Id
+				out.Msg.Question = append([]dns.Question(nil), req.Msg.Question...)
+				out.Msg.RecursionDesired, out.Msg.CheckingDisabled = req.Msg.RecursionDesired, req.Msg.CheckingDisabled
+				return &out, nil
+			}
+			return s.signedSplice(req, z, answer, authority, resp, err), nil
+		}
 		if !req.Msg.RecursionDesired || (z2 != nil && !z2.QueryAllowed(client)) {
 			// No recursion requested (or the target zone refuses this
 			// client): the partial chain is the answer.
-			return s.reply(req, z, last, answer), nil
+			partial := *last
+			partial.Ns = authority
+			return s.reply(req, z, &partial, answer), nil
 		}
 		sub := subRequest(req, target, q.Qtype, q.Qclass)
 		if z2 != nil && z2.Type() == v1alpha1.ZoneTypeForward {
 			sub.UpstreamGroup = z2.UpstreamGroup()
+			sub.DNSSECValidation = z2.DNSSECValidation()
 		}
 		resp, err := next(sub)
-		return s.splice(req, z, answer, resp, err), nil
+		return s.signedSplice(req, z, answer, authority, resp, err), nil
 	}
+}
+
+func (s *Stage) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+func (s *Stage) secondaryUnavailable(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
+	r := s.unsynced(req, zone.GateUnsynced)
+	r.Upstream = "secondary:unavailable:" + z.Name()
+	if z.Type() == v1alpha1.ZoneTypeStub {
+		r.Upstream = "stub:unavailable:" + z.Name()
+	}
+	return r
 }
 
 // subRequest builds the query for a chain target that leaves local data.
@@ -306,6 +376,7 @@ func subRequest(req *pipeline.Request, target string, qtype, qclass uint16) *pip
 	sub.Msg = m
 	sub.Zone = nil
 	sub.UpstreamGroup = ""
+	sub.DNSSECValidation = nil
 	return &sub
 }
 
@@ -314,8 +385,11 @@ func subRequest(req *pipeline.Request, target string, qtype, qclass uint16) *pip
 // data kudurru does not own) and takes the status of the inner answer.
 func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp *pipeline.Response, err error) *pipeline.Response {
 	if err != nil || resp == nil || resp.Msg == nil {
+		resp.Close()
 		r := pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusServfailUpstream)
 		r.Upstream = upstreamName(z)
+		r.Origin = pipeline.OriginFailure
+		r.Modified = len(chain) > 0
 		r.Msg.Answer = chain
 		s.finish(req, r.Msg)
 		return r
@@ -331,25 +405,42 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 	out.AuthenticatedData = false
 	out.RecursionAvailable = s.RecursionAvailable || in.RecursionAvailable
 	out.Answer = append(chain, in.Answer...)
+	// Keep upstream extended errors, but never copy a hop's TSIG signature
+	// onto the mixed client response.
+	extra := out.Extra[:0]
+	for _, rr := range out.Extra {
+		if rr.Header().Rrtype != dns.TypeTSIG {
+			extra = append(extra, rr)
+		}
+	}
+	out.Extra = extra
 	s.finish(req, out)
 	security := pipeline.DNSSECUnknown
 	if resp.DNSSEC == pipeline.DNSSECBogus {
 		security = pipeline.DNSSECBogus
 	}
-	return &pipeline.Response{
-		Msg:      out,
-		Status:   resp.Status,
-		Upstream: resp.Upstream,
-		List:     resp.List,
-		Rule:     resp.Rule,
-		DNSSEC:   security,
+	result := &pipeline.Response{
+		Msg:       out,
+		Status:    resp.Status,
+		Upstream:  resp.Upstream,
+		List:      resp.List,
+		Rule:      resp.Rule,
+		Origin:    pipeline.OriginMixed,
+		Modified:  true,
+		Security:  pipeline.Security{State: pipeline.ValidationUnknown},
+		Cacheable: false,
+		DNSSEC:    security,
 	}
+	result.AddCleanup(resp.Close)
+	return result
 }
 
 // reply renders a lookup result.
 func (s *Stage) reply(req *pipeline.Request, z *zone.Zone, res *zone.Result, answer []dns.RR) *pipeline.Response {
 	m := new(dns.Msg)
 	m.SetRcode(req.Msg, res.Rcode())
+	m.AuthenticatedData = false
+	m.CheckingDisabled = req.Msg.CheckingDisabled
 	m.Authoritative = res.Authoritative()
 	m.RecursionAvailable = s.RecursionAvailable
 	if res.Kind != zone.Loop {
@@ -357,8 +448,22 @@ func (s *Stage) reply(req *pipeline.Request, z *zone.Zone, res *zone.Result, ans
 		m.Ns = res.Ns
 		m.Extra = res.Extra
 	}
+	if signedResponseOverBudget(m) {
+		return s.signedFailure(req, z)
+	}
 	s.finish(req, m)
-	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z)}
+	modified := res.Wildcard || len(answer) != len(res.Answer)
+	hasDNAME, hasCNAME := false, false
+	for _, rr := range answer {
+		hasDNAME = hasDNAME || rr.Header().Rrtype == dns.TypeDNAME
+		hasCNAME = hasCNAME || rr.Header().Rrtype == dns.TypeCNAME
+	}
+	modified = modified || (hasDNAME && hasCNAME)
+	origin := pipeline.OriginAuthoritative
+	if res.Kind == zone.Loop {
+		origin = pipeline.OriginFailure
+	}
+	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z), Origin: origin, Modified: modified, Security: pipeline.Security{State: pipeline.ValidationUnknown}}
 }
 
 // unsynced is the answer while the zone cache cannot vouch for the data
@@ -366,6 +471,7 @@ func (s *Stage) reply(req *pipeline.Request, z *zone.Zone, res *zone.Result, ans
 // a local zone may own.
 func (s *Stage) unsynced(req *pipeline.Request, gate zone.Gate) *pipeline.Response {
 	r := pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusServfailUnsynced)
+	r.Origin = pipeline.OriginFailure
 	r.Upstream = UpstreamUnsynced
 	if gate == zone.GateStale {
 		r.Upstream = UpstreamStale

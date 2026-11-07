@@ -10,6 +10,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/robertherbaugh/kudurru/internal/nodehealth"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
@@ -29,6 +30,10 @@ type Stage struct {
 	// Limiter is the per-prefix QPM limiter (ratelimit.go); nil disables
 	// rate limiting.
 	Limiter *RateLimiter
+	// GroupExempt identifies an eligible UDP client from the request's captured
+	// policy and inventory owners. Nil grants no group exemption. The callback
+	// must retain that identification for the normal identify stage.
+	GroupExempt func(*pipeline.Request) (bool, error)
 	// Lameduck reports whether the node is draining (D51): the health name
 	// then answers SERVFAIL, so dnsdist's must-resolve health check takes
 	// the node out of every backend pool while it still serves the queries
@@ -39,15 +44,20 @@ type Stage struct {
 // Name implements pipeline.Stage.
 func (s *Stage) Name() string { return "ingress" }
 
+func (l *RateLimiter) requestExempt(req *pipeline.Request) bool {
+	if req.Client.Proto != pipeline.ProtoUDP || l.Exempt(req.Client.Addr.Addr()) {
+		return true
+	}
+	m := req.Msg
+	return m != nil && len(m.Question) == 1 && nodehealth.IsName(m.Question[0].Name)
+}
+
 // Check returns the limiter's verdict for req: UDP queries only, never for
 // exempt clients (loopback, ratelimit.exempt) or the health name. The
 // client is req.Client.Addr, the PROXYv2-attributed address when dnsdist
 // forwarded the query.
 func (l *RateLimiter) Check(req *pipeline.Request) Verdict {
-	if req.Client.Proto != pipeline.ProtoUDP || l.Exempt(req.Client.Addr.Addr()) {
-		return VerdictAllow
-	}
-	if m := req.Msg; m != nil && len(m.Question) == 1 && strings.EqualFold(m.Question[0].Name, HealthName) {
+	if l.requestExempt(req) {
 		return VerdictAllow
 	}
 	now := req.Received
@@ -62,7 +72,19 @@ func (l *RateLimiter) Check(req *pipeline.Request) Verdict {
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
 	if s.Limiter != nil {
-		switch s.Limiter.Check(req) {
+		exempt := false
+		if s.GroupExempt != nil && s.Limiter.Enabled() && !s.Limiter.requestExempt(req) {
+			var err error
+			exempt, err = s.GroupExempt(req)
+			if err != nil {
+				return nil, err
+			}
+		}
+		verdict := VerdictAllow
+		if !exempt {
+			verdict = s.Limiter.Check(req)
+		}
+		switch verdict {
 		case VerdictSlip:
 			r := pipeline.Reply(req, dns.RcodeSuccess, pipeline.StatusBlockedRateLimit)
 			r.Msg.Truncated = true
@@ -74,7 +96,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		}
 	}
 	m := req.Msg
-	if m.Opcode != dns.OpcodeQuery {
+	if m.Opcode != dns.OpcodeQuery && m.Opcode != dns.OpcodeNotify && m.Opcode != dns.OpcodeUpdate {
 		return pipeline.Reply(req, dns.RcodeNotImplemented, pipeline.StatusDropped), nil
 	}
 	if len(m.Question) != 1 {
@@ -87,6 +109,26 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return r, nil
 	}
 	q := m.Question[0]
+	if nodehealth.Reserved(q.Name) {
+		if q.Qclass == dns.ClassINET && s.Lameduck != nil && s.Lameduck() {
+			return pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusSpecialDomain), nil
+		}
+		if m.Opcode != dns.OpcodeQuery || q.Qclass != dns.ClassINET || q.Qtype != dns.TypeTXT || !nodehealth.Matches(q.Name, s.NodeID) {
+			response := pipeline.Reply(req, dns.RcodeRefused, pipeline.StatusSpecialDomain)
+			response.Msg.Authoritative = true
+			return response, nil
+		}
+		var epoch uint64
+		if s.Epoch != nil {
+			epoch = s.Epoch()
+		}
+		return s.txt(req, q, fmt.Sprintf("%s %d", s.NodeID, epoch)), nil
+	}
+	// Protocol operations must reach authoritative's dedicated handlers.
+	// Their SOA zone section is not a CHAOS/health/ANY query.
+	if m.Opcode != dns.OpcodeQuery {
+		return next(req)
+	}
 	if q.Qtype == dns.TypeANY {
 		return pipeline.Reply(req, dns.RcodeRefused, pipeline.StatusRefusedACL), nil
 	}

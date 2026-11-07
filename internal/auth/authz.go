@@ -65,6 +65,11 @@ func Authorize(ctx context.Context, az rbac.Authorizer, a rbac.Attributes) (rbac
 	if err != nil {
 		return d, &Error{Status: http.StatusInternalServerError, Key: "internal", Message: "authorization failed", Err: err}
 	}
+	// Delegated authorization can cross the original credential's exclusive
+	// expiry. Do not let its successful decision extend a held request proof.
+	if !p.credentialCurrent() {
+		return rbac.Decision{Path: rbac.PathNone}, Unauthenticated(nil)
+	}
 	if !d.Allowed {
 		m := a
 		if d.Missing != nil {

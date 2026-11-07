@@ -18,6 +18,9 @@ func IsUnavailable(err error) bool {
 	if err == nil {
 		return false
 	}
+	if errors.Is(err, errIdentityUnavailable) {
+		return true
+	}
 	var groups *discovery.ErrGroupDiscoveryFailed
 	if errors.As(err, &groups) {
 		if len(groups.Groups) == 0 {

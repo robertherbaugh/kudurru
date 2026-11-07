@@ -20,6 +20,7 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 	t.Run("ApplyCreatesWithManagedBy", func(t *testing.T) { testApplyCreate(t, factory(t)) })
 	t.Run("ApplyRejectsOtherManager", func(t *testing.T) { testManagedBy(t, factory(t)) })
 	t.Run("ApplyOptimisticConcurrency", func(t *testing.T) { testOptimistic(t, factory(t)) })
+	t.Run("ApplyCreateOnly", func(t *testing.T) { testCreateOnly(t, factory(t)) })
 	t.Run("DeleteAndNotFound", func(t *testing.T) { testDelete(t, factory(t)) })
 	t.Run("DeleteAllCascade", func(t *testing.T) { testDeleteAll(t, factory(t)) })
 	t.Run("ListFiltersByKindNamespaceLabels", func(t *testing.T) { testList(t, factory(t)) })

@@ -77,6 +77,7 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
   const [pageSize, setPageSize] = useState(25);
   // cursors[i] is the continue token of page i ("" for the first page).
   const [cursors, setCursors] = useState<string[]>(['']);
+  const [refresh, setRefresh] = useState(0);
   const page = cursors.length - 1;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState('');
@@ -99,7 +100,7 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
 
   const cursor = cursors[page] ?? '';
   const entriesKey = [...listKey(ns, name), 'entries', source] as const;
-  const pageKey = [...entriesKey, query, disabledOnly, pageSize, cursor];
+  const pageKey = [...entriesKey, query, disabledOnly, pageSize, cursor, refresh];
   const q = useQuery({
     queryKey: pageKey,
     queryFn: () =>
@@ -125,10 +126,14 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
     mutationFn: (body: ListEntriesPatch) => api.lists.patchEntries(ns, name, source, body),
     // Switches move at once and move back when the write fails.
     onMutate: async (body) => {
+      // A write changes the generation bound into every continuation token.
+      // Retire the old page before dispatch, including add/remove mutations.
+      await qc.cancelQueries({ queryKey: entriesKey });
+      setCursors(['']);
+      setSelected(new Set());
       const values = [...(body.enable ?? []), ...(body.disable ?? [])];
       if (!values.length) return { snapshot: [] as [readonly unknown[], SourceEntriesPage | undefined][] };
       setPending((p) => new Set([...p, ...values]));
-      await qc.cancelQueries({ queryKey: entriesKey });
       const snapshot = qc.getQueriesData<SourceEntriesPage>({ queryKey: entriesKey });
       if (body.enable?.length) setEnabledInCache(body.enable, true);
       if (body.disable?.length) setEnabledInCache(body.disable, false);
@@ -170,7 +175,15 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
           return next;
         });
       }
-      void qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
+      // React may not have committed the page reset yet. Never refetch an
+      // active old continuation during prefix invalidation; the new first-page
+      // key below performs the read once the reset is rendered.
+      void qc.invalidateQueries({ queryKey: entriesKey, refetchType: 'none' });
+      void qc.invalidateQueries({
+        queryKey: qk.objects('blocklists'),
+        predicate: ({ queryKey }) => !(queryKey[2] === ns && queryKey[3] === name && queryKey[4] === 'entries'),
+      });
+      setRefresh((value) => value + 1);
     },
   });
 

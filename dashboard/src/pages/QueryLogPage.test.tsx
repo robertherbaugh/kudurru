@@ -78,10 +78,21 @@ describe('QueryLogPage', () => {
     expect(seen[0]?.get('node')).toBe('kudurru-1');
     expect(valueOf(getSelector('Status'))).toBe('blocked');
     expect(valueOf(getSelector('Node scope'))).toBe('kudurru-1');
+    const download = new URL(screen.getByRole('link', { name: 'Export up to 1,000 queries' }).getAttribute('href')!, window.location.href);
+    expect(download.pathname).toBe('/api/v1/queries/export');
+    expect(download.searchParams.get('domain')).toBe('*.doubleclick.net');
+    expect(download.searchParams.get('status_class')).toBe('blocked');
+    expect(download.searchParams.get('node')).toBe('kudurru-1');
+    expect(download.searchParams.get('scope')).toBe('node');
+    expect(download.searchParams.get('limit')).toBe('1000');
+    expect(download.searchParams.get('cursor')).toBeNull();
     pick(getSelector('Node scope'), 'All');
     await waitFor(() => expect(seen.at(-1)?.get('scope')).toBe('cluster'));
     expect(seen.at(-1)?.get('node')).toBeNull();
     expect(seen.at(-1)?.get('domain')).toBe('*.doubleclick.net');
+    const clusterDownload = new URL(screen.getByRole('link', { name: 'Export up to 1,000 queries' }).getAttribute('href')!, window.location.href);
+    expect(clusterDownload.searchParams.get('scope')).toBe('cluster');
+    expect(clusterDownload.searchParams.get('node')).toBeNull();
   });
 
   it('expands the "why" row from the keyboard', async () => {
