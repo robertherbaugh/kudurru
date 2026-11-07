@@ -3011,3 +3011,29 @@ lint reports **0 issues**. All frozen identities match; the original sources
 and exact receipts are retained in `.context/parser-cidr-20261107/`.
 This is independent of the isolated F20 kernel and its performance failures;
 the count probe used its unchanged original parser/workload/module identities.
+
+### November 7 hosted migration-preview fixture
+
+On pushed `cd72760`, security, Compose, edge, AD and Kind/MetalLB workflows
+pass. The dashboard suite reports 153 passes and one DNS-name cutover failure;
+the Go CI shards are still pending at this checkpoint. The saved browser trace
+shows a successful preview followed by a 409: “A zone changed after the
+preview.” It establishes a stale reviewed resource version, without identifying
+the writer that changed it.
+
+The fixture now waits for the initial primary Ready status before obtaining
+its preview, using the same observed-generation predicate as the neighboring
+VIP case. Initial controller status publication is a real resource-version
+change. The original mutation remains a single submission, with explicit
+HTTP 200 and one-request assertions; guards and deadlines are unchanged.
+The focused actual browser case passes once (14.6 seconds; outer 15.436),
+including stored and served NS/SOA checks. Qualification uses committed
+`86d3d57` through an explicit source overlay and the hosted dashboard bundle;
+the independent schema8 drafts are excluded. All 2,981 frozen paths match.
+The first local invocation printed Bun usage and the second selected no tests;
+both receipts are retained and receive no test credit. No mutation was replayed.
+
+Hosted logs/artifacts are in `.context/hosted-cd72760-20261107/`; exact build,
+binary and browser receipts are in `.context/migration-browser-cd72760-20261107/`.
+The original hosted failure and final-head full CI gate remain open until a
+later successful hosted run.

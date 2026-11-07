@@ -14,6 +14,14 @@ test('migration history cuts over served NS and SOA through the dashboard', asyn
   });
   expect(result.items[0]?.result).toBe('created');
   try {
+    // Review the settled primary's original RV. Its initial Ready status write
+    // is a real object change and correctly invalidates an earlier preview.
+    await expect.poll(async () => {
+      const zone = await api.get<DNSZone>(`/objects/dnszones/${name}`);
+      if (zone.status !== 200) return false;
+      const { metadata, status } = zone.body;
+      return status?.observedGeneration === metadata.generation && status?.conditions?.some((c) => c.type === 'Ready' && c.status === 'True' && c.observedGeneration === metadata.generation) === true;
+    }).toBe(true);
     await page.goto('/tools'); await settle(page);
     await page.getByRole('button', { name: `Review migration ${result.runID}` }).click();
     await page.getByRole('button', { name: 'Decommission source nameservers' }).click();
@@ -28,9 +36,17 @@ test('migration history cuts over served NS and SOA through the dashboard', asyn
     await expect(dialog).toContainText('dns1.kudurru.test.');
     const screenshots = path.resolve('..', '.context'); fs.mkdirSync(screenshots, { recursive: true });
     await page.screenshot({ path: path.join(screenshots, 'migration-cutover.png') });
+    let cutoverRequests = 0;
+    const cutoverPath = `/api/v1/imports/runs/${result.runID}/decommission`;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === cutoverPath) cutoverRequests++;
+    });
+    const committed = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === cutoverPath);
     await dialog.getByRole('checkbox', { name: 'I reviewed the nameserver changes' }).check();
     await dialog.getByRole('button', { name: 'Update nameservers' }).click();
+    expect((await committed).status()).toBe(200);
     await expect(page.getByText('Nameservers updated', { exact: true })).toBeVisible();
+    expect(cutoverRequests, 'the original reviewed cutover is submitted exactly once').toBe(1);
     const zone = await api.get<DNSZone>(`/objects/dnszones/${name}`);
     expect(zone.body.spec.nameservers).toEqual(['dns1.kudurru.test.', 'dns2.kudurru.test.']);
     expect(zone.body.spec.soa?.mname).toBe('dns1.kudurru.test.');
