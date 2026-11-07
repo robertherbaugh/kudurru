@@ -89,10 +89,15 @@ cancellation tightens the deadline and joins before resource release. Partial
 output aborts, while an actual completed flush survives a later scope error.
 Direct guarded handler calls without this HTTP handoff refuse answer export.
 Raw-cache insertion and static restore have separate pre-acquisition attempts.
-Native/private cache admission and installed edge-cache bypass still need
-their own composition.
-Managed resolver activation and automatic polling remain disabled until those
-barriers are complete. The output mount also protects already-published static
+Native recursion retains that same original complete component and finite query
+lifetime. Each acquisition captures an independent one-shot cache attempt before
+network or nested lookup work. Validated response batches enter mode/retirement
+exclusion before taking native cache locks; delegation, key, address and private
+proof writes recheck expiry, deadline and flush epoch at the actual mutation.
+Managed builders require this source and reject a foreign cache domain.
+Installed edge-cache bypass still needs its own composition. Managed resolver
+activation and automatic polling remain disabled until the remaining barriers
+are complete. The output mount also protects already-published static
 responses when a first managed transition is attempted through the actual driver.
 
 Native listeners share host-only `listeners.limits` settings, applied separately

@@ -418,8 +418,26 @@ attempt's mode/retirement hold; insertion, security-failure deletion and
 failed-refresh metadata changes finish under that hold before releasing the
 lease. Queuing never renews the original TTL origin. Static restored promotion
 uses the same admission order; a dump cannot reconstruct a managed registration.
-Native resolver/private proof-cache admission, installed edge bypass and the complete
-retirement acceptance matrix remain required before activation. Managed recursive
+Native recursion captures a trusted mutation source from the original complete
+request immediately before exchange. It retains the private root component and
+finite query lifetime, never a replacement publication. Each child acquisition
+gets its own one-shot attempt under an equal or earlier deadline. Managed
+builders require the source and match its domain to the immutable resolver;
+a domain alone grants no authority. Standalone static callers retain their
+existing nil-source behavior.
+
+Priming, delegation/referral DS, address, DNSKEY, DS and authenticated denial or
+wildcard fills use pre-acquisition batches. Proof validation, copies and nested
+lookups finish outside exclusion. A response commits its bounded batch before
+following another alias; DS lookup batches its proof and DS state together.
+Final mutation takes mode/retirement exclusion before native cache locks, with
+no network, Store access or resource release inside. The single-primer busy
+flag is nonwaiting, avoiding a native mutex across admission. Entries retain
+their original absolute TTL expiry; actual cache locks protect checks of flush
+epoch, proof/exception expiry, cancellation and elapsed original deadline.
+
+Installed edge bypass and the complete retirement acceptance matrix remain
+required before activation. Managed recursive
 input will not alter forwarded DNSSEC's independent anchors and exception policy.
 
 Planned managed mode also refuses an ordinary switch back to static/default

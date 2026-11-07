@@ -191,6 +191,7 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 		// resolver receives effective keys from the actual committed owner.
 		upstreamConfig.Recursion.TrustAnchors = owners.anchor.Projection().DS()
 		upstreamOptions.RecursiveDomain = owners.anchor.Input().CacheDomain()
+		upstreamOptions.RequireRecursiveMutations = true
 	}
 	owners.upstreams, err = upstream.New(upstreamConfig, upstreamOptions)
 	if err != nil {

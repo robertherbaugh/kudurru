@@ -178,6 +178,11 @@ func (q *query) keys(zone string) *keyState {
 		q.st.tooDeep = q.st.tooDeep || q.depth > maxDepth
 		return &keyState{sec: SecBogus, ede: dns.ExtendedErrorCodeDNSKEYMissing, why: "chain of trust for " + zone + " loops"}
 	}
+	batch, err := q.captureMutations()
+	if err != nil {
+		return &keyState{sec: SecBogus, why: err.Error()}
+	}
+	defer batch.commit()
 	q.st.inKeys[zone] = true
 	defer delete(q.st.inKeys, zone)
 	sub := q.nested(true)
@@ -202,7 +207,7 @@ func (q *query) keys(zone string) *keyState {
 		ttl = failTTL
 	}
 	if st.sec != SecBogus || !q.limited() {
-		q.r.cache.set(q.key(kKeys, zone), st, ttl, now)
+		q.queueCacheSet(batch, q.key(kKeys, zone), st, ttl, now)
 	}
 	return st
 }
@@ -301,6 +306,11 @@ func (q *query) dsFor(name string) *dsResult {
 		q.st.tooDeep = q.st.tooDeep || q.depth > maxDepth
 		return &dsResult{sec: SecBogus, ede: dns.ExtendedErrorCodeDNSBogus, why: "DS lookup for " + name + " loops"}
 	}
+	batch, err := q.captureMutations()
+	if err != nil {
+		return &dsResult{sec: SecBogus, why: err.Error()}
+	}
+	defer batch.commit()
 	q.st.inKeys[guard] = true
 	defer delete(q.st.inKeys, guard)
 	var d *dsResult
@@ -310,7 +320,7 @@ func (q *query) dsFor(name string) *dsResult {
 		for i, rr := range ev.records {
 			recs[i] = dns.Copy(rr)
 		}
-		if r := q.dsFromResponse(name, dsAnswerFromReferral(&dns.Msg{Ns: recs}, ev.zone, name)); r.sec != SecBogus {
+		if r := q.dsFromResponse(name, dsAnswerFromReferral(&dns.Msg{Ns: recs}, ev.zone, name), batch); r.sec != SecBogus {
 			d = r
 		}
 	}
@@ -319,7 +329,7 @@ func (q *query) dsFor(name string) *dsResult {
 		if err != nil {
 			d = &dsResult{sec: SecBogus, ede: dns.ExtendedErrorCodeNoReachableAuthority, why: "DS of " + name + ": " + err.Error(), ttl: failTTL}
 		} else {
-			d = q.dsFromResponse(name, res)
+			d = q.dsFromResponse(name, res, batch)
 		}
 	}
 	ttl := d.ttl
@@ -327,13 +337,13 @@ func (q *query) dsFor(name string) *dsResult {
 		ttl = failTTL
 	}
 	if d.sec != SecBogus || !q.limited() {
-		q.r.cache.set(q.key(kDS, name), d, ttl, now)
+		q.queueCacheSet(batch, q.key(kDS, name), d, ttl, now)
 	}
 	return d
 }
 
 // dsFromResponse validates the parent's answer to name DS.
-func (q *query) dsFromResponse(name string, res *response) *dsResult {
+func (q *query) dsFromResponse(name string, res *response, batch *cacheMutationBatch) *dsResult {
 	m := res.msg
 	if set := rrsetOf(m.Answer, name, dns.TypeDS); len(set) > 0 {
 		v := q.validateRRsetAbove(set, sigsFor(m.Answer, name, dns.TypeDS), res.zone, name)
@@ -349,7 +359,7 @@ func (q *query) dsFromResponse(name string, res *response) *dsResult {
 		}
 		return &dsResult{sec: SecBogus, ede: v.ede, why: v.why}
 	}
-	sec, cut, ede, why := q.proveDenial(m, res.zone, name, dns.TypeDS, name)
+	sec, cut, ede, why := q.proveDenial(m, res.zone, name, dns.TypeDS, name, batch)
 	return &dsResult{sec: sec, cut: cut, ede: ede, why: why, ttl: ttlOf(m.Ns...)}
 }
 
@@ -391,7 +401,7 @@ func (q *query) validateNegative(res *response, name string, qtype uint16) (Secu
 		}
 		return SecInsecure, 0, ""
 	}
-	sec, _, ede, why := q.proveDenial(res.msg, res.zone, name, qtype, "")
+	sec, _, ede, why := q.proveDenial(res.msg, res.zone, name, qtype, "", res.mutations)
 	if sec == SecSecure {
 		return SecSecure, 0, ""
 	}
@@ -407,7 +417,7 @@ func (q *query) validateNegative(res *response, name string, qtype uint16) (Secu
 // name and lies at or below the answering servers' zone. Records signed by
 // any other zone are ignored, so a spoofed answer cannot borrow another
 // zone's signatures, NSEC3 chain or insecurity.
-func (q *query) proveDenial(m *dns.Msg, zone, name string, qtype uint16, above string) (Security, bool, uint16, string) {
+func (q *query) proveDenial(m *dns.Msg, zone, name string, qtype uint16, above string, batch *cacheMutationBatch) (Security, bool, uint16, string) {
 	nx := m.Rcode == dns.RcodeNameError
 	if above != "" && zone == above && above != "." {
 		zone = parentName(above)
@@ -448,7 +458,7 @@ func (q *query) proveDenial(m *dns.Msg, zone, name string, qtype uint16, above s
 		return SecBogus, false, dns.ExtendedErrorCodeNSECMissing, "no valid proof of " + what + " for " + name + " " + dns.TypeToString[qtype]
 	}
 	secure := func(cut bool) (Security, bool, uint16, string) {
-		q.rememberDenial(v.denial)
+		q.rememberDenialInto(v.denial, batch)
 		return SecSecure, cut, 0, ""
 	}
 	if len(nsecs) > 0 {

@@ -3390,3 +3390,44 @@ Managed builder input and automatic polling remain disabled. Native/private
 cache admission, installed edge bypass, elected updater, full retirement
 acceptance and interoperability remain required. F20 and TSIG received no new
 execution release; all earlier performance failures and external gates persist.
+
+### F28 native cache mutation admission
+
+The upstream stage retains the original complete root component and finite
+query lifetime for native recursion. Independent one-shot attempts precede
+priming, delegation/referral DS, address, DNSKEY, DS and private proof acquisition.
+Response batches finish validation and nested work before entering common
+mode/retirement exclusion, then take native cache locks for actual mutation.
+Managed builders require an exact-domain source. The nonwaiting priming flag
+avoids lock inversion; absolute TTL origin, flush epochs and original deadline
+checks survive queued writes. Legacy standalone static callers remain supported.
+
+Final production default-race evidence passes **228 entries** across recursor,
+upstream stage and upstream, with no failures and **two actual skips**:
+`TestAggressiveBIND` requires `KUDURRU_RECURSOR_BIND=1`; `TestLiveInternet`
+requires `KUDURRU_LIVE_DNS=1`. Neither external acceptance is inferred.
+Builder/root composition passes **28 entries / 18 top-level cases**, including
+the original mounted stored-TSIG transport/restart case. Root tests use the
+actual Store/private source and controlled native exchanger to prove refusal
+during acquisition and draining during an admitted write.
+
+An additional actual managed complete publisher, owned resolver and signed UDP
+authority test passes **three entries**. Positive validation reuses the DNSKEY
+cache; a held second acquisition authenticates and commits local self-revocation
+before release, leaves canonical generation unchanged, and cannot enter the
+original mutation callback. Its test adapter uses actual captured Store reads;
+the private root factory has separate composition coverage. This is not the
+complete managed frontend/follower/transport matrix.
+
+Installed scoped lint passes with zero issues. Earlier lint exits remain:
+two unchecked test cleanup errors, then a redundant blank channel assignment.
+Final cleanup joins a closed completion channel and checks the authority error;
+affected tests pass under default race, with production bytes unchanged. A
+relative-versus-absolute manifest preparation error and runner refusal before
+Go startup are preserved separately. All final 2,348 frozen identities match.
+Evidence: `.context/f28-parent-native-cache-20261107/`.
+
+Production managed input and polling remain disabled. Installed edge bypass,
+elected updater, full retirement/follower acceptance and interoperability remain
+open. Original tombstones/restart requirements, F20 failures, TSIG work and
+external release gates are unchanged.

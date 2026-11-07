@@ -11,7 +11,6 @@ import (
 	"net/netip"
 	"slices"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -182,6 +181,9 @@ type Options struct {
 	// trust source. It is a cache label, not a validation or output grant. Zero
 	// preserves static cache identity. Reconfigure never changes this domain.
 	TrustDomain [32]byte
+	// RequireCacheMutations rejects calls lacking the original mutation source.
+	// Complete managed resolvers require it; a cache domain alone grants nothing.
+	RequireCacheMutations bool
 }
 
 // Limits per client query.
@@ -221,18 +223,19 @@ type settings struct {
 // use and keeps its caches across Reconfigure calls that keep the trust
 // anchors and root hints.
 type Resolver struct {
-	set           atomic.Pointer[settings]
-	ex            Exchanger
-	cache         *lru
-	denials       *denialCache
-	infra         *infra
-	metrics       *Metrics
-	logger        *slog.Logger
-	now           func() time.Time
-	allowLoopback bool
-	trustDomain   [32]byte
-	primeMu       sync.Mutex
-	lastAnswer    atomic.Int64 // unix nanoseconds of the last answer from any name server
+	set                   atomic.Pointer[settings]
+	ex                    Exchanger
+	cache                 *lru
+	denials               *denialCache
+	infra                 *infra
+	metrics               *Metrics
+	logger                *slog.Logger
+	now                   func() time.Time
+	allowLoopback         bool
+	trustDomain           [32]byte
+	requireCacheMutations bool
+	priming               atomic.Bool
+	lastAnswer            atomic.Int64 // unix nanoseconds of the last answer from any name server
 }
 
 // reachableWindow is how recent an answer from a name server must be for
@@ -250,12 +253,13 @@ func (r *Resolver) Reachable() bool {
 // New builds a resolver. Nothing is sent until the first query.
 func New(cfg Config, opts Options) (*Resolver, error) {
 	r := &Resolver{
-		ex:            opts.Exchanger,
-		metrics:       opts.Metrics,
-		logger:        opts.Logger,
-		now:           opts.Now,
-		allowLoopback: opts.AllowLoopback,
-		trustDomain:   opts.TrustDomain,
+		ex:                    opts.Exchanger,
+		metrics:               opts.Metrics,
+		logger:                opts.Logger,
+		now:                   opts.Now,
+		allowLoopback:         opts.AllowLoopback,
+		trustDomain:           opts.TrustDomain,
+		requireCacheMutations: opts.RequireCacheMutations,
 	}
 	if r.logger == nil {
 		r.logger = slog.Default()
@@ -413,6 +417,10 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 		m.RecursionAvailable = true
 		return m, Validation{}, nil
 	}
+	source, err := r.mutationSource(ctx)
+	if err != nil {
+		return nil, Validation{}, err
+	}
 	s := r.set.Load()
 	var a *answer
 	var excepted []RRset
@@ -421,6 +429,7 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 		a = localAnswer(zone, question)
 	} else {
 		q := r.newQuery(ctx, s)
+		q.source = source
 		q.st.noSynthesis = req.CheckingDisabled
 		switch question.Qtype {
 		case dns.TypeRRSIG, dns.TypeNSEC, dns.TypeNSEC3:
@@ -431,6 +440,9 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 			q.st.exceptionUntil = time.Time{}
 		}
 		a = q.resolve(question.Name, question.Qtype)
+		if q.st.cacheErr != nil {
+			return nil, Validation{}, q.st.cacheErr
+		}
 		validUntil = q.st.denialUntil
 		if until := q.st.denialUntil; !until.IsZero() {
 			if err := ctx.Err(); err != nil {
@@ -485,6 +497,8 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 
 // clientState is shared by every nested lookup of one client query.
 type clientState struct {
+	cacheEpoch      uint64
+	cacheErr        error
 	observed        time.Time
 	denialEpoch     uint64
 	denialUntil     time.Time
@@ -502,6 +516,7 @@ type clientState struct {
 
 // query is one (possibly nested) lookup.
 type query struct {
+	source   CacheMutationSource
 	r        *Resolver
 	s        *settings
 	ctx      context.Context
@@ -513,16 +528,18 @@ type query struct {
 
 func (r *Resolver) newQuery(ctx context.Context, s *settings) *query {
 	active, until := s.exceptions.Context(r.now())
+	source, err := r.mutationSource(ctx)
 	return &query{
+		source: source,
 		active: hex.EncodeToString(active[:]),
 		r:      r, s: s, ctx: ctx, validate: s.cfg.DNSSEC,
-		st: &clientState{observed: r.now(), denialEpoch: r.denials.generation(), synthesisBudget: 16, exceptionUntil: until, budget: maxQueries, sigBudget: maxSigBudget, hashBudget: maxNSEC3Hashes, inKeys: map[string]bool{}},
+		st: &clientState{cacheEpoch: r.cache.generation(), cacheErr: err, observed: r.now(), denialEpoch: r.denials.generation(), synthesisBudget: 16, exceptionUntil: until, budget: maxQueries, sigBudget: maxSigBudget, hashBudget: maxNSEC3Hashes, inKeys: map[string]bool{}},
 	}
 }
 
 // nested returns a lookup one level deeper, sharing the budgets.
 func (q *query) nested(validate bool) *query {
-	return &query{r: q.r, s: q.s, ctx: q.ctx, st: q.st, depth: q.depth + 1, active: q.active, validate: validate && q.s.cfg.DNSSEC}
+	return &query{source: q.source, r: q.r, s: q.s, ctx: q.ctx, st: q.st, depth: q.depth + 1, active: q.active, validate: validate && q.s.cfg.DNSSEC}
 }
 
 func (q *query) now() time.Time { return q.r.now() }
@@ -537,7 +554,7 @@ func (q *query) key(prefix, name string) string {
 // about the names involved, so they are not cached for other queries.
 func (q *query) limited() bool {
 	st := q.st
-	return st.budget <= 0 || st.sigBudget <= 0 || st.hashBudget <= 0 || st.tooDeep || q.ctx.Err() != nil
+	return st.cacheErr != nil || st.budget <= 0 || st.sigBudget <= 0 || st.hashBudget <= 0 || st.tooDeep || q.ctx.Err() != nil
 }
 
 // answer is the outcome of a client query before it becomes a message.
@@ -610,8 +627,9 @@ func (q *query) resolve(qname string, qtype uint16) *answer {
 		cur := name
 		for {
 			if rrs := rrsetOf(msg.Answer, cur, qtype); len(rrs) > 0 {
-				q.addRRset(a, rrs, msg, res.zone)
+				q.addRRset(a, rrs, msg, res.zone, res.mutations)
 				a.rcode = dns.RcodeSuccess
+				res.mutations.commit()
 				return a
 			}
 			if qtype == dns.TypeCNAME {
@@ -620,28 +638,31 @@ func (q *query) resolve(qname string, qtype uint16) *answer {
 			// A DNAME above cur comes first: the CNAME beside it is
 			// synthesized and unsigned (RFC 6672 §5.3.1).
 			if dn := dnameFor(msg.Answer, cur); dn != nil && qtype != dns.TypeDNAME {
-				q.addRRset(a, rrsetOf(msg.Answer, dn.Hdr.Name, dns.TypeDNAME), msg, res.zone)
+				q.addRRset(a, rrsetOf(msg.Answer, dn.Hdr.Name, dns.TypeDNAME), msg, res.zone, res.mutations)
 				target, ok := substitute(cur, dn)
 				if !ok {
 					a.rcode = dns.RcodeYXDomain
+					res.mutations.commit()
 					return a
 				}
 				a.records = append(a.records, &dns.CNAME{Hdr: hdr(cur, dns.TypeCNAME, dn.Hdr.Ttl), Target: target})
 				cur = target
 			} else if cn := rrsetOf(msg.Answer, cur, dns.TypeCNAME); len(cn) > 0 {
-				q.addRRset(a, cn, msg, res.zone)
+				q.addRRset(a, cn, msg, res.zone, res.mutations)
 				cur = canon(cn[0].(*dns.CNAME).Target)
 			} else {
 				break
 			}
 			hops++
 			if hops > maxCNAME || seen[cur] {
+				res.mutations.commit()
 				return a.failed(errors.New("recursor: CNAME chain too long or looping"))
 			}
 			seen[cur] = true
 		}
 		if cur != name {
 			// The chain left what this response holds; resolve the target.
+			res.mutations.commit()
 			name = cur
 			continue
 		}
@@ -652,12 +673,13 @@ func (q *query) resolve(qname string, qtype uint16) *answer {
 			sec, ede, why := q.validateNegative(res, name, qtype)
 			a.merge(sec, ede, why)
 		}
+		res.mutations.commit()
 		return a
 	}
 }
 
 // addRRset appends rrset and its signatures to a and validates it.
-func (q *query) addRRset(a *answer, rrset []dns.RR, msg *dns.Msg, zone string) {
+func (q *query) addRRset(a *answer, rrset []dns.RR, msg *dns.Msg, zone string, batch *cacheMutationBatch) {
 	h := rrset[0].Header()
 	sigs := sigsFor(msg.Answer, h.Name, h.Rrtype)
 	a.records = append(a.records, rrset...)
@@ -681,7 +703,7 @@ func (q *query) addRRset(a *answer, rrset []dns.RR, msg *dns.Msg, zone string) {
 			captured.observed = earlier(captured.observed, v.observed)
 			captured.wildcard = v.wildcard
 			captured.records = append(append([]dns.RR(nil), rrset...), v.signature)
-			q.rememberDenial(captured)
+			q.rememberDenialInto(captured, batch)
 		}
 		a.proofs = append(a.proofs, proof...)
 	}
@@ -754,8 +776,9 @@ func substitute(name string, d *dns.DNAME) (string, bool) {
 
 // response is an authoritative answer for exactly the name and type asked.
 type response struct {
-	msg  *dns.Msg // scrubbed to the zone's bailiwick
-	zone string   // the zone cut whose servers answered
+	mutations *cacheMutationBatch
+	msg       *dns.Msg // scrubbed to the zone's bailiwick
+	zone      string   // the zone cut whose servers answered
 }
 
 // kind classifies a response from a zone's servers.
@@ -805,6 +828,10 @@ func (q *query) iterate(name string, qtype uint16) (*response, error) {
 			steps++
 		}
 		full := sendName == name && sendType == qtype
+		batch, err := q.captureMutations()
+		if err != nil {
+			return nil, err
+		}
 		resp, k, child, err := q.ask(cut, sendName, sendType)
 		if err != nil {
 			return nil, err
@@ -814,13 +841,19 @@ func (q *query) iterate(name string, qtype uint16) (*response, error) {
 			if qtype == dns.TypeDS && child == name {
 				// The parent delegated instead of answering DS itself:
 				// the referral's DS evidence is the answer.
-				return dsAnswerFromReferral(resp, cut.name, name), nil
+				res := dsAnswerFromReferral(resp, cut.name, name)
+				res.mutations = batch
+				return res, nil
 			}
-			cut = q.learnCut(resp, cut, child)
+			cut = q.learnCut(resp, cut, child, batch)
+			batch.commit()
+			if q.st.cacheErr != nil {
+				return nil, q.st.cacheErr
+			}
 			known = child
 		case kindAnswer, kindNoData:
 			if full {
-				return &response{msg: resp, zone: cut.name}, nil
+				return &response{msg: resp, zone: cut.name, mutations: batch}, nil
 			}
 			if len(rrsetOf(resp.Answer, sendName, dns.TypeCNAME)) > 0 || dnameFor(resp.Answer, sendName) != nil {
 				minimize = false // an alias has no children: ask for the name
@@ -829,7 +862,7 @@ func (q *query) iterate(name string, qtype uint16) (*response, error) {
 			known = sendName
 		case kindNXDomain:
 			if full {
-				return &response{msg: resp, zone: cut.name}, nil
+				return &response{msg: resp, zone: cut.name, mutations: batch}, nil
 			}
 			// Relaxed minimization: some servers deny empty non-terminals;
 			// ask once more with the full name.
@@ -895,13 +928,18 @@ func (q *query) rootCut() (*zoneCut, error) {
 	hints := q.s.hints
 	// One query primes; the others meanwhile start from the hints instead
 	// of waiting on its network round trip.
-	if !r.primeMu.TryLock() {
+	if !r.priming.CompareAndSwap(false, true) {
 		return hints, nil
 	}
-	defer r.primeMu.Unlock()
+	defer r.priming.Store(false)
 	if v, ok := r.cache.get(q.key(kCut, "."), q.now()); ok {
 		return v.(*zoneCut), nil
 	}
+	batch, err := q.captureMutations()
+	if err != nil {
+		return nil, err
+	}
+	defer batch.commit()
 	resp, k, _, err := q.ask(hints, ".", dns.TypeNS)
 	if err == nil && k == kindAnswer {
 		ns := rrsetOf(resp.Answer, ".", dns.TypeNS)
@@ -911,7 +949,7 @@ func (q *query) rootCut() (*zoneCut, error) {
 		}
 		addGlue(cut, resp.Extra, ".", hints.port())
 		if len(cut.glue) >= 2 {
-			r.cache.set(q.key(kCut, "."), cut, ttlOf(ns...), q.now())
+			q.queueCacheSet(batch, q.key(kCut, "."), cut, ttlOf(ns...), q.now())
 			return cut, nil
 		}
 	}
@@ -919,7 +957,7 @@ func (q *query) rootCut() (*zoneCut, error) {
 		return hints, nil
 	}
 	r.logger.Debug("recursor: root priming failed; using the root hints", "err", err)
-	r.cache.set(q.key(kCut, "."), hints, failTTL, q.now())
+	q.queueCacheSet(batch, q.key(kCut, "."), hints, failTTL, q.now())
 	return hints, nil
 }
 
@@ -972,7 +1010,7 @@ func addGlue(cut *zoneCut, extra []dns.RR, bailiwick string, port uint16) {
 
 // learnCut caches the delegation to child from a referral by parent's
 // servers, and keeps the referral's DS evidence for validation.
-func (q *query) learnCut(resp *dns.Msg, parent *zoneCut, child string) *zoneCut {
+func (q *query) learnCut(resp *dns.Msg, parent *zoneCut, child string, batch *cacheMutationBatch) *zoneCut {
 	ns := rrsetOf(resp.Ns, child, dns.TypeNS)
 	cut := &zoneCut{name: child, glue: map[string][]netip.AddrPort{}}
 	for _, rr := range ns {
@@ -980,7 +1018,7 @@ func (q *query) learnCut(resp *dns.Msg, parent *zoneCut, child string) *zoneCut 
 	}
 	addGlue(cut, resp.Extra, parent.name, parent.port())
 	now := q.now()
-	q.r.cache.set(q.key(kCut, child), cut, ttlOf(ns...), now)
+	q.queueCacheSet(batch, q.key(kCut, child), cut, ttlOf(ns...), now)
 	if q.s.cfg.DNSSEC {
 		var ev []dns.RR
 		for _, rr := range resp.Ns {
@@ -990,7 +1028,7 @@ func (q *query) learnCut(resp *dns.Msg, parent *zoneCut, child string) *zoneCut 
 			}
 		}
 		if len(ev) > 0 {
-			q.r.cache.set(q.key(kRefD, child), &referralDS{zone: parent.name, records: ev}, ttlOf(ns...), now)
+			q.queueCacheSet(batch, q.key(kRefD, child), &referralDS{zone: parent.name, records: ev}, ttlOf(ns...), now)
 		}
 	}
 	return cut
@@ -1000,6 +1038,9 @@ func (q *query) learnCut(resp *dns.Msg, parent *zoneCut, child string) *zoneCut 
 // answer, which it returns scrubbed and classified (with the child zone of
 // a referral).
 func (q *query) ask(cut *zoneCut, name string, qtype uint16) (*dns.Msg, kind, string, error) {
+	if q.st.cacheErr != nil {
+		return nil, kindLame, "", q.st.cacheErr
+	}
 	tried := map[netip.AddrPort]bool{}
 	lastErr := errNoAddrs
 	sent := 0
@@ -1146,6 +1187,11 @@ func (q *query) resolveAddrs(host string) addrSet {
 	if v, ok := q.r.cache.get(q.key(kAddr, host), now); ok {
 		return v.(addrSet)
 	}
+	batch, err := q.captureMutations()
+	if err != nil {
+		return nil
+	}
+	defer batch.commit()
 	sub := q.nested(false)
 	if sub.depth > maxDepth {
 		q.st.tooDeep = true
@@ -1184,11 +1230,11 @@ func (q *query) resolveAddrs(host string) addrSet {
 	}
 	if len(out) == 0 {
 		if !failed || !q.limited() {
-			q.r.cache.set(q.key(kAddr, host), addrSet(nil), failTTL, now)
+			q.queueCacheSet(batch, q.key(kAddr, host), addrSet(nil), failTTL, now)
 		}
 		return nil
 	}
-	q.r.cache.set(q.key(kAddr, host), out, ttl, now)
+	q.queueCacheSet(batch, q.key(kAddr, host), out, ttl, now)
 	return out
 }
 

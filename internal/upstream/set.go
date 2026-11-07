@@ -40,6 +40,8 @@ type Options struct {
 	// It grants no authority, never changes forwarded validation, and is not
 	// applied to a borrowed Recursor. Complete managed builders own a fresh one.
 	RecursiveDomain [32]byte
+	// RequireRecursiveMutations requires a caller-owned native cache source.
+	RequireRecursiveMutations bool
 }
 
 // Set is the immutable collection of groups built from one configuration.
@@ -116,7 +118,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 			if s.rec == nil {
 				s.rec = opts.Recursor
 				if s.rec == nil {
-					r, err := recursor.New(cfg.Recursion, recursor.Options{Logger: logger, Metrics: opts.RecursorMetrics, TrustDomain: opts.RecursiveDomain})
+					r, err := recursor.New(cfg.Recursion, recursor.Options{Logger: logger, Metrics: opts.RecursorMetrics, TrustDomain: opts.RecursiveDomain, RequireCacheMutations: opts.RequireRecursiveMutations})
 					if err != nil {
 						_ = s.Close()
 						return nil, fmt.Errorf("upstream: group %q: %w", name, err)

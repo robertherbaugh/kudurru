@@ -26,6 +26,9 @@ type Stage struct {
 	state atomic.Pointer[resolutionState]
 	// Capture supplies the immutable route/trust cut held by Request.Serving.
 	Capture func(*pipeline.Request) (*View, error)
+	// CaptureNative retains the original complete source for native cache fills.
+	// The source issues independent pre-acquisition attempts, never successors.
+	CaptureNative func(*pipeline.Request) (recursor.CacheMutationSource, error)
 
 	// Group, Servers and Timeout describe the group built by the
 	// convenience constructor New, for startup logging; they are empty for
@@ -180,6 +183,18 @@ func (s *Stage) Serve(req *pipeline.Request, _ pipeline.Next) (*pipeline.Respons
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(ctx, req.Deadline)
 		defer cancel()
+	}
+	if plan.Recursive() && s.CaptureNative != nil {
+		original := *req
+		original.Ctx = ctx
+		source, err := s.CaptureNative(&original)
+		if err != nil || source == nil {
+			if err == nil {
+				err = pipeline.ErrServingCapture
+			}
+			return s.failure(req, plan.Group(), err), nil
+		}
+		ctx = recursor.WithCacheMutations(ctx, source)
 	}
 	res, err := plan.Exchange(ctx, req.Msg)
 	if err != nil {

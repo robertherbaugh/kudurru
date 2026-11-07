@@ -1036,6 +1036,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 		cs.CaptureInsertion = captureRootAnchorInsertion
+		fwd.CaptureNative = captureRootNativeSource
 		loggingObserver.Capture = func(req *pipeline.Request) (querylog.Collector, error) {
 			return servingdns.Component[*querylog.Captured](req, "logging")
 		}

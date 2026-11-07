@@ -89,9 +89,13 @@ func (c *denialCache) remove(e *list.Element) {
 }
 
 func (c *denialCache) put(key string, epoch uint64, p *denialProof, size int) {
+	c.putIf(key, epoch, p, size, nil)
+}
+
+func (c *denialCache) putIf(key string, epoch uint64, p *denialProof, size int, admit func() bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.epoch != epoch {
+	if c.epoch != epoch || admit != nil && !admit() {
 		return // a query captured before Flush cannot refill its successor
 	}
 	if zone := c.zones[key]; len(zone) >= maxDenialPerZone {
@@ -129,7 +133,9 @@ func (c *denialCache) candidates(key string, epoch uint64, now time.Time, limit 
 
 // rememberDenial accepts a complete validated negative proof, or a validated
 // wildcard with its exclusion proof. It never saves a synthesized response.
-func (q *query) rememberDenial(p *denialProof) {
+func (q *query) rememberDenial(p *denialProof) { q.rememberDenialInto(p, nil) }
+
+func (q *query) rememberDenialInto(p *denialProof, batch *cacheMutationBatch) {
 	if p == nil || !q.validate || q.st.noSynthesis || q.limited() ||
 		(!p.soa && len(p.records) == 0) || len(p.nsecs)+len(p.nsec3s) == 0 ||
 		len(p.authority)+len(p.records) > maxDenialRecords {
@@ -189,7 +195,12 @@ func (q *query) rememberDenial(p *denialProof) {
 		return
 	}
 	key := q.key("denial|", p.zone)
-	q.r.denials.put(key, q.st.denialEpoch, copyProof, size+len(key))
+	q.queueMutation(batch, func() {
+		q.r.denials.putIf(key, q.st.denialEpoch, copyProof, size+len(key), func() bool {
+			now := q.now()
+			return q.mutationAlive(now) && !now.Before(p.observed) && now.Before(copyProof.until)
+		})
+	})
 }
 
 func earlier(a, b time.Time) time.Time {
