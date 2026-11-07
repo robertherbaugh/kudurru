@@ -18,10 +18,6 @@ import (
 
 func TestServingRuntimeFollowerFirstImageRecovery(t *testing.T) {
 	primary := newServingRuntimeFixture(t)
-	image, err := primary.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -47,28 +43,36 @@ func TestServingRuntimeFollowerFirstImageRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = peer.Close() })
-			if err := peer.Enroll(t.Context(), image.Term); err != nil {
+			if err := peer.Enroll(t.Context(), primary.opts.Store.Authority().Term); err != nil {
 				t.Fatal(err)
 			}
-			install := func(candidate replication.Image) replication.Generation {
+			install := func() replication.Generation {
 				t.Helper()
-				validated, err := peer.ValidateImage(t.Context(), candidate)
+				installCtx := captureServingReplica(t, peer)
+				image, err := primary.opts.Store.ReadGeneration(installCtx)
 				if err != nil {
 					t.Fatal(err)
 				}
-				installed, err := peer.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term})
+				candidate := *image
+				if malformed {
+					// Local corruption fixture, never a received image conversion.
+					candidate.Payload.Security = slices.DeleteFunc(slices.Clone(image.Payload.Security), func(row replication.Entry) bool { return row.Key == servingauth.RootKey })
+					if err := replication.Seal(&candidate); err != nil {
+						t.Fatal(err)
+					}
+				}
+				validated, err := peer.ValidateImage(installCtx, candidate)
+				if err != nil {
+					t.Fatal(err)
+				}
+				installed, err := peer.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term})
 				if err != nil {
 					t.Fatal(err)
 				}
 				return installed
 			}
 			if malformed {
-				bad := *image
-				bad.Payload.Security = slices.DeleteFunc(slices.Clone(image.Payload.Security), func(row replication.Entry) bool { return row.Key == servingauth.RootKey })
-				if err := replication.Seal(&bad); err != nil {
-					t.Fatal(err)
-				}
-				install(bad)
+				install()
 				if err := peer.Close(); err != nil {
 					t.Fatal(err)
 				}
@@ -127,7 +131,7 @@ func TestServingRuntimeFollowerFirstImageRecovery(t *testing.T) {
 			if _, err := peer.ReadGeneration(t.Context()); !errors.Is(err, replication.ErrReadOnly) || !reflect.DeepEqual(before, peer.Authority()) {
 				t.Fatal("pending follower initialized durable state", err)
 			}
-			installed := install(*image)
+			installed := install()
 			awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady })
 			lease, err := s.publisher.CaptureHTTP(t.Context())
 			if err != nil {

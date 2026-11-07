@@ -63,17 +63,21 @@ func cliRawRestartAndReplica(t *testing.T, mode string) {
 	f.st = openStore(t, f.path, replication.Standalone)
 	f.resources(t)
 	assert(f.view(t))
-	source := f.image(t)
 	peer := openStore(t, filepath.Join(t.TempDir(), "cli-follower.db"), replication.Follower)
-	if peer.Enroll(t.Context(), source.Term) != nil {
+	if peer.Enroll(t.Context(), f.st.Authority().Term) != nil {
 		t.Fatal("replica enrollment")
 	}
-	validated, e := peer.ValidateImage(t.Context(), *source)
+	installCtx := captureSchema8Install(t.Context(), t, peer)
+	source, e := f.st.ReadGeneration(installCtx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	validated, e := peer.ValidateImage(installCtx, *source)
 	if e != nil {
 		t.Fatal("replica validation")
 	}
 	a := peer.Authority()
-	if _, e = peer.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed}); e != nil {
+	if _, e = peer.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed}); e != nil {
 		t.Fatal("replica install")
 	}
 	image, e := peer.ReadGeneration(t.Context())

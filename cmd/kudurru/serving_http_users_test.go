@@ -618,10 +618,6 @@ func TestServingHTTPLocalUsersResetImageRestartPromotion(t *testing.T) {
 	if len(state.TOTP) != 1 || state.TOTP[0].Account != a || state.TOTP[0].SeedVersion != version || state.TOTP[0].SeedID != seedID || len(state.AccountFloors) != 1 {
 		t.Fatal("reset did not preserve exact replay/floor identity")
 	}
-	image, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -635,14 +631,19 @@ func TestServingHTTPLocalUsersResetImageRestartPromotion(t *testing.T) {
 		return st
 	}
 	follower := open()
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
+	if err := follower.Enroll(t.Context(), f.s.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	installCtx := captureServingReplica(t, follower)
+	image, err := f.s.opts.Store.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term})
+	validated, err := follower.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term})
 	if err != nil {
 		t.Fatal(err)
 	}

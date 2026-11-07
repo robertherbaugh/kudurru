@@ -87,7 +87,7 @@ func TestServingFollowerAuthorityOnlyFenceAndExplicitDNSOnly(t *testing.T) {
 	p := openTemp(t, internalOptions)
 	mustApply(t, p, zone("home", "home.example."), store.ManagerAPI)
 	s := mirror(t, p)
-	install(t, s, imageOf(t, p))
+	copyReplica(t, s, p)
 	_, old, err := s.ReadServingCandidate(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -156,13 +156,13 @@ func TestServingCandidateCutDuringWritesAndInstallInvalidation(t *testing.T) {
 	}
 	wg.Wait()
 	s := mirror(t, p)
-	install(t, s, imageOf(t, p))
+	copyReplica(t, s, p)
 	_, token, err := s.ReadServingCandidate(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mustApply(t, p, zone("replacement", "replacement.example."), store.ManagerAPI)
-	install(t, s, imageOf(t, p))
+	copyReplica(t, s, p)
 	if err := s.PublishIfCurrent(ctx, token, PublicationOptions{}, func() error { return nil }); !errors.Is(err, replication.ErrCAS) {
 		t.Fatalf("install did not invalidate token: %v", err)
 	}

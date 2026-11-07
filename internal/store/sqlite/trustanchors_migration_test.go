@@ -98,7 +98,7 @@ func TestTrustAnchorMigrationFreshAndLegacyPreserveBytes(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { _ = db.Close() })
-				if err := migrate(t.Context(), db, migrations, store.SchemaVersion, time.Now); err != nil {
+				if err := migrate(t.Context(), db, migrations[:7], 7, time.Now); err != nil {
 					t.Fatal(err)
 				}
 			} else {
@@ -140,7 +140,7 @@ func TestTrustAnchorMigrationFreshAndLegacyPreserveBytes(t *testing.T) {
 					}
 				}
 				before := anchorDBRows(t, db, false)
-				if err := migrate(t.Context(), db, migrations, store.SchemaVersion, time.Now); err != nil {
+				if err := migrate(t.Context(), db, migrations[:7], 7, time.Now); err != nil {
 					t.Fatal(err)
 				}
 				if !reflect.DeepEqual(before, anchorDBRows(t, db, true)) {
@@ -199,7 +199,7 @@ func TestTrustAnchorMigrationRollbackCancellationAndDowngrade(t *testing.T) {
 			switch stage {
 			case "after-insert":
 				refused := errors.New("fixture: physical upgrade refused")
-				steps := append(append([]migration(nil), migrations...), migration{version: 8, name: "fixture refusal", up: func(context.Context, *sql.Tx) error { return refused }})
+				steps := append(append([]migration(nil), migrations[:7]...), migration{version: 8, name: "fixture refusal", up: func(context.Context, *sql.Tx) error { return refused }})
 				err = migrate(t.Context(), db, steps, 8, time.Now)
 				if !errors.Is(err, refused) {
 					t.Fatal("post-sentinel failure not retained", err)

@@ -2,9 +2,11 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -13,35 +15,24 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/retirement"
 )
 
-// This fixture executes the actual unmounted migration helper + marker in one
-// SQLite transaction. It does NOT claim the parent's schema8 registration,
-// runtime feature, startup callers or old full-suite conversion are mounted.
-func anchorLocalTestPhysical(t *testing.T, s *Store) {
+// Fresh stores must already carry migration provenance. This assertion never
+// migrates, inserts, repairs, or resets owner/local history.
+func anchorLocalTestAwaiting(t *testing.T, s *Store) {
 	t.Helper()
-	tx, err := s.w.BeginTx(t.Context(), nil)
-	if err != nil {
-		t.Fatal(err)
+	requireAnchorSchema(t, s.r, "8")
+	local, err := loadAnchorLocal(t.Context(), s.r)
+	if err != nil || local == nil || local.record.Phase != "awaiting" || local.record.Revision != 1 || local.record.Owner != (accepted.Version{}) || local.record.RetiredThrough != 0 || len(local.record.Denied) != 0 {
+		t.Fatal("fresh store lacks exact migration provenance", err)
 	}
-	defer func() { _ = tx.Rollback() }()
-	if err := migrateAnchorLocal(t.Context(), tx); err != nil {
-		t.Fatal(err)
-	}
-	result, err := tx.ExecContext(t.Context(), `UPDATE meta SET value='8' WHERE key=? AND value='7'`, metaSchemaVersion)
-	if err != nil {
-		t.Fatal(err)
-	}
-	changed, err := result.RowsAffected()
-	if err != nil || changed != 1 {
-		t.Fatal("fixture did not advance exact marker", err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
+	rows, err := loadAnchorRows(t.Context(), s.r)
+	if err != nil || !accepted.IsAwaitingOwner(rows) {
+		t.Fatal("fresh store lacks exact physical sentinel", err)
 	}
 }
 
 func anchorLocalTestDormant(t *testing.T, s *Store) (*AnchorSource, accepted.Snapshot) {
 	t.Helper()
-	anchorLocalTestPhysical(t, s)
+	anchorLocalTestAwaiting(t, s)
 	source := anchorTestBind(t, s)
 	dormant, err := accepted.NewDormant(s.Authority().Term.ClusterID, strings.Repeat("c", 32), time.Now().UTC())
 	if err != nil {
@@ -204,7 +195,7 @@ func TestAnchorLocalUnknownNamespaceAndCurrentSchemaMissingRefuse(t *testing.T) 
 	for _, kind := range []string{"missing", "unknown", "extra", "oversized"} {
 		t.Run(kind, func(t *testing.T) {
 			s := openTemp(t)
-			anchorLocalTestPhysical(t, s)
+			anchorLocalTestAwaiting(t, s)
 			switch kind {
 			case "missing":
 				if _, err := s.w.ExecContext(t.Context(), `DELETE FROM meta WHERE key=?`, anchorLocalKey); err != nil {
@@ -269,25 +260,55 @@ func TestAnchorLocalCASNeverUpsertsOrAdoptsSuccessor(t *testing.T) {
 }
 
 func TestAnchorLocalStaticSchema7CompatibilityAndNakedManagedRefusal(t *testing.T) {
-	s := openTemp(t)
-	source := anchorTestBind(t, s)
-	dormant := anchorTestDormant(t, s)
-	if source.cursor.Load().local != nil {
-		t.Fatal("schema7 invented local provenance")
-	}
-	update, err := s.CaptureAnchorUpdate(anchorTestContext(t.Context(), t, s), dormant.Version())
-	if err != nil {
-		t.Fatal(err)
-	}
-	proof := anchorTestBootstrap(t, s, dormant)
-	result, err := s.AnchorCommand(update, func(ctx context.Context, tx *CommandTx) error { return anchorTestStage(ctx, tx, proof.next) })
-	if !errors.Is(err, ErrAnchorUnavailable) || result.Outcome() != AnchorRolledBack {
-		t.Fatal("naked managed schema7 inferred deny zero", err)
-	}
-	if source.cursor.Load().owner.Version() != dormant.Version() {
-		t.Fatal("failed bootstrap replaced source")
-	}
-	if _, err := s.CaptureAnchorInstall(t.Context()); !errors.Is(err, retirement.ErrInvalid) {
-		t.Fatal("unbounded original accepted", err)
+	for _, managed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "never-managed-upgrade", true: "naked-managed-refusal"}[managed], func(t *testing.T) {
+			db, path := anchorRuntimeLegacy(t)
+			dormant := anchorLocalLegacyOwner(t, db, managed)
+			before := anchorDBRows(t, db, false)
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			s, err := Open(path, testOptions())
+			if managed {
+				if s != nil {
+					_ = s.Close()
+					t.Fatal("naked managed schema7 opened")
+				}
+				if !errors.Is(err, ErrAnchorUnavailable) {
+					t.Fatal("naked managed schema7 inferred deny zero", err)
+				}
+				db, err := sql.Open("sqlite", dsn(path, time.Second, false))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = db.Close() }()
+				requireAnchorSchema(t, db, "7")
+				if !reflect.DeepEqual(before, anchorDBRows(t, db, false)) {
+					t.Fatal("refused Open changed original managed history")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = s.Close() }()
+			if !reflect.DeepEqual(before, anchorRuntimePreservedRows(t, s.r)) {
+				t.Fatal("upgrade changed static accepted bytes")
+			}
+			source := anchorTestBind(t, s)
+			if source.cursor.Load().owner.Version() != dormant.Version() || source.cursor.Load().local.record.Phase != "awaiting" {
+				t.Fatal("upgrade initialized without original startup")
+			}
+			ctx := anchorTestContext(t.Context(), t, s)
+			if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error { return tx.InitializeAnchorLocal(ctx) }); err != nil {
+				t.Fatal(err)
+			}
+			if source.cursor.Load().owner.Version() != dormant.Version() || source.cursor.Load().local.record.Phase != "dormant" {
+				t.Fatal("typed startup replaced original static owner")
+			}
+			if _, err := s.CaptureAnchorInstall(t.Context()); !errors.Is(err, retirement.ErrInvalid) {
+				t.Fatal("unbounded original accepted", err)
+			}
+		})
 	}
 }

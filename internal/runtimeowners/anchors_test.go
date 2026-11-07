@@ -115,17 +115,26 @@ func TestAnchorOwnerMissingHistoryRefusesEvenWithExistingInventory(t *testing.T)
 			if priorInventory {
 				initializeAnchorOwners(t, s)
 			}
-			if err := s.Command(t.Context(), s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-				return tx.DeleteSection(ctx, accepted.Section, accepted.RootKey)
-			}); err != nil {
-				t.Fatal(err)
-			}
 			if err := s.Close(); err != nil {
 				t.Fatal(err)
 			}
+			// Public commands protect this prefix. Corrupt the stopped database
+			// to exercise missing-history startup, independently of that guard.
+			db, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			removed, err := db.ExecContext(t.Context(), `DELETE FROM replication_sections WHERE section=? AND key=?`, accepted.Section, accepted.RootKey)
+			closeErr := db.Close()
+			if err != nil || closeErr != nil {
+				t.Fatal("prepare missing history", err, closeErr)
+			}
+			if count, err := removed.RowsAffected(); err != nil || count != 1 {
+				t.Fatal("fixture did not remove exact owner", err)
+			}
 			s = openOwnerStore(t, path) // Current schema must never re-create sentinel.
 			before := anchorOwnerImage(t, s)
-			err := s.Command(t.Context(), s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error { return Initialize(ctx, tx, time.Now().UTC()) })
+			err = s.Command(t.Context(), s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error { return Initialize(ctx, tx, time.Now().UTC()) })
 			if !errors.Is(err, accepted.ErrMissing) {
 				t.Fatal("startup reconstructed missing current-schema history", err)
 			}

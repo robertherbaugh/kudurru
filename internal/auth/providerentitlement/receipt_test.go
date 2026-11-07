@@ -284,7 +284,15 @@ func TestActualRestartFollowerInstallPromotionAndClosedStoreReadFreeHelpers(t *t
 	stage(t, s, []providerregistry.DesiredAuthority{}, f.at.Add(time.Second))
 	e = pending(t, s, p)
 	stage(t, s, receipts(t, s, e), f.at.Add(2*time.Second))
-	before := image(t, s)
+	peer := open(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
+	if err := peer.Enroll(t.Context(), s.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	installCtx := captureSchema8Install(t.Context(), t, peer)
+	before, err := s.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cluster := before.Term.ClusterID
 	path := s.Path()
 	if err := s.Close(); err != nil {
@@ -298,16 +306,12 @@ func TestActualRestartFollowerInstallPromotionAndClosedStoreReadFreeHelpers(t *t
 	if err != nil || len(state.ProviderFloors) != 2 {
 		t.Fatal("restart lost exact both-origin revocation floors", err)
 	}
-	peer := open(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
-	if err := peer.Enroll(t.Context(), before.Term); err != nil {
-		t.Fatal(err)
-	}
-	valid, err := peer.ValidateImage(t.Context(), *before)
+	valid, err := peer.ValidateImage(installCtx, *before)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := peer.Authority()
-	installed, err := peer.InstallReplica(t.Context(), valid, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed})
+	installed, err := peer.InstallReplica(installCtx, valid, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,4 +372,21 @@ func TestActualLicenseDeadlineRollsBackStagedActivationFloors(t *testing.T) {
 	if !errors.Is(err, pe.ErrContinuity) || !before.Generation().Same(image(t, s).Generation()) {
 		t.Fatal("expired captured license persisted activation or UID floors", err)
 	}
+}
+
+// captureSchema8Install retains one bounded original operation BEFORE any
+// source image is read. It never accepts an already-acquired image or recaptures
+// an expired/refused operation at the install boundary.
+func captureSchema8Install(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 30*time.Second)
+	t.Cleanup(cancel)
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
 }

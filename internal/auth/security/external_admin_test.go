@@ -105,10 +105,6 @@ func TestExternalAdminAtomicRevisionRevocationRestartPromotion(t *testing.T) {
 			f.st = openSecurityStore(t, f.path)
 		}
 		if state == "promoted" {
-			image, err := f.st.ReadGeneration(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
 			opts := sqlite.Options{Scheme: f.registry.Scheme, InitialMode: replication.Follower, ValidateReplicaEntry: servingauth.ValidateEntry}
 			for _, kind := range runtimekinds.Private() {
 				opts.InternalKinds = append(opts.InternalKinds, store.Kind(kind))
@@ -118,15 +114,20 @@ func TestExternalAdminAtomicRevisionRevocationRestartPromotion(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = follower.Close() })
-			if err := follower.Enroll(t.Context(), image.Term); err != nil {
+			if err := follower.Enroll(t.Context(), f.st.Authority().Term); err != nil {
 				t.Fatal(err)
 			}
-			validated, err := follower.ValidateImage(t.Context(), *image)
+			installCtx := captureSchema8Install(t.Context(), t, follower)
+			image, err := f.st.ReadGeneration(installCtx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			validated, err := follower.ValidateImage(installCtx, *image)
 			if err != nil {
 				t.Fatal(err)
 			}
 			authority := follower.Authority()
-			installed, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed})
+			installed, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed})
 			if err != nil {
 				t.Fatal(err)
 			}

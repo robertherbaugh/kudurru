@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -127,17 +128,21 @@ func TestPersistedRevocationRestartAndActualReplicaPromotion(t *testing.T) {
 	if _, err = restarted.Authenticate(t.Context(), Credential{Kind: Cookie, Value: cookie}, f.now); !errors.Is(err, ErrCredentials) {
 		t.Fatal("restart lost floor", err)
 	}
-	source := f.image(t)
 	follower := openStore(t, filepath.Join(t.TempDir(), "state.db"), replication.Follower)
-	if err = follower.Enroll(t.Context(), source.Term); err != nil {
+	if err = follower.Enroll(t.Context(), f.st.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *source)
+	installCtx := captureSchema8Install(t.Context(), t, follower)
+	source, err := f.st.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := follower.ValidateImage(installCtx, *source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := follower.Authority()
-	installed, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed})
+	installed, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,4 +223,21 @@ func TestResolveSessionCurrentCapturesStagedGrantsSettingsAndPrivateAdmin(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// captureSchema8Install retains one bounded original operation BEFORE any
+// source image is read. It never accepts an already-acquired image or recaptures
+// an expired/refused operation at the install boundary.
+func captureSchema8Install(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 30*time.Second)
+	t.Cleanup(cancel)
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
 }

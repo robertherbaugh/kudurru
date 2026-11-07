@@ -6,14 +6,69 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
-	"slices"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
+
+// Build genuine schema7 rows BEFORE the registered upgrade. No current marker
+// or carrier is removed to fabricate legacy provenance.
+func anchorLocalLegacyOwner(t *testing.T, db *sql.DB, managed bool) accepted.Snapshot {
+	t.Helper()
+	requireAnchorSchema(t, db, "7")
+	var cluster string
+	if err := db.QueryRowContext(t.Context(), `SELECT value FROM meta WHERE key=?`, metaClusterID).Scan(&cluster); err != nil {
+		t.Fatal(err)
+	}
+	// Physical migrations precede first-Open authority initialization. Supply
+	// the legacy writer's actual durable shape before taking preserved rows;
+	// otherwise current Open would legitimately add its first authority here.
+	meta, err := readMeta(t.Context(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch, err := strconv.ParseUint(meta[metaClusterEpoch], 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	term := replication.Term{ClusterID: cluster, Epoch: epoch, PrimaryID: "legacy-member", PrimaryName: "test-node", PromotionID: "legacy-promotion"}
+	authority := replication.Authority{MemberID: term.PrimaryID, Mode: replication.Standalone, Incarnation: 1, WatchLineage: "legacy-watch", MaxObservedEpoch: epoch, Term: term, Installed: replication.Generation{Term: term}}
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := writeAuthority(t.Context(), tx, authority); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	dormant, err := accepted.NewDormant(cluster, strings.Repeat("a", 32), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := dormant
+	if managed {
+		owner = anchorTestBootstrapForCluster(t, cluster, dormant).next
+	}
+	rows, err := accepted.EncodeRows(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO replication_sections(section,key,data) VALUES (?,?,?) ON CONFLICT(section,key) DO UPDATE SET data=excluded.data`, accepted.Section, row.Key, string(row.Data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dormant
+}
 
 func TestAnchorLocalMigrationFreshChainAndExactOldOwner(t *testing.T) {
 	t.Run("fresh-chain", func(t *testing.T) {
@@ -23,32 +78,39 @@ func TestAnchorLocalMigrationFreshChainAndExactOldOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer func() { _ = db.Close() }()
-		steps := append(slices.Clone(migrations), migration{version: 8, name: "fixture unmounted local-deny prerequisite", up: migrateAnchorLocal})
-		if err := migrate(t.Context(), db, steps, 8, time.Now); err != nil {
+		if err := migrate(t.Context(), db, migrations, 8, time.Now); err != nil {
 			t.Fatal(err)
 		}
+		requireAnchorSchema(t, db, "8")
+		requireAnchorSentinel(t, db)
 		local, err := loadAnchorLocal(t.Context(), db)
-		if err != nil || local == nil || local.record.Phase != "awaiting" {
+		if err != nil || local == nil || local.record.Phase != "awaiting" || local.record.Owner != (accepted.Version{}) {
 			t.Fatal("fresh chain lacks exact sentinel provenance", err)
 		}
 	})
 	t.Run("dormant-bytes", func(t *testing.T) {
-		s := openTemp(t)
-		anchorTestDormant(t, s)
-		before := imageOf(t, s)
-		anchorLocalTestPhysical(t, s)
-		if !before.Generation().Same(imageOf(t, s).Generation()) {
+		db, path := anchorRuntimeLegacy(t)
+		dormant := anchorLocalLegacyOwner(t, db, false)
+		before := anchorDBRows(t, db, false)
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		s := openAt(t, path)
+		if !reflect.DeepEqual(before, anchorRuntimePreservedRows(t, s.r)) {
 			t.Fatal("physical carrier migration changed accepted bytes")
 		}
+		// Schema8 framing has its own recomputed image identity. Keep it
+		// separate from the persisted schema7 authority/Installed receipt.
+		upgraded := imageOf(t, s).Generation()
 		source := anchorTestBind(t, s)
-		if source.cursor.Load().local.record.Phase != "awaiting" {
+		if source.cursor.Load().local.record.Phase != "awaiting" || source.cursor.Load().owner.Version() != dormant.Version() {
 			t.Fatal("Bind initialized without original startup command")
 		}
 		ctx := anchorTestContext(t.Context(), t, s)
 		if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error { return tx.InitializeAnchorLocal(ctx) }); err != nil {
 			t.Fatal(err)
 		}
-		if !before.Generation().Same(imageOf(t, s).Generation()) {
+		if !upgraded.Same(imageOf(t, s).Generation()) {
 			t.Fatal("unchanged-Dormant local initialization advanced canonical image")
 		}
 		local := anchorLocalTestRead(t, s)
@@ -61,61 +123,58 @@ func TestAnchorLocalMigrationFreshChainAndExactOldOwner(t *testing.T) {
 func TestAnchorLocalMigrationRefusesManagedMissingUnknownAndRepeat(t *testing.T) {
 	for _, kind := range []string{"missing-owner", "orphan-owner", "managed7", "unknown-local", "repeat"} {
 		t.Run(kind, func(t *testing.T) {
-			s := openTemp(t)
+			db, _ := anchorRuntimeLegacy(t)
+			wantErr := accepted.ErrCAS
 			switch kind {
 			case "missing-owner":
-				if _, err := s.w.ExecContext(t.Context(), `DELETE FROM replication_sections WHERE section=? AND key=?`, accepted.Section, accepted.RootKey); err != nil {
+				wantErr = accepted.ErrMissing
+				if _, err := db.ExecContext(t.Context(), `DELETE FROM replication_sections WHERE section=? AND key=?`, accepted.Section, accepted.RootKey); err != nil {
 					t.Fatal(err)
 				}
 			case "orphan-owner":
-				if _, err := s.w.ExecContext(t.Context(), `INSERT INTO replication_sections(section,key,data) VALUES (?,'trustanchors/v99/root','{}')`, accepted.Section); err != nil {
+				wantErr = accepted.ErrInvalid
+				if _, err := db.ExecContext(t.Context(), `INSERT INTO replication_sections(section,key,data) VALUES (?,'trustanchors/v99/root','{}')`, accepted.Section); err != nil {
 					t.Fatal(err)
 				}
 			case "managed7":
-				dormant := anchorTestDormant(t, s)
-				proof := anchorTestBootstrap(t, s, dormant)
-				rows, err := accepted.EncodeRows(proof.next)
-				if err != nil {
-					t.Fatal(err)
-				}
-				// Controlled physical legacy fixture, never a public-prefix bypass.
-				for _, row := range rows {
-					if _, err := s.w.ExecContext(t.Context(), `INSERT INTO replication_sections(section,key,data) VALUES (?,?,?) ON CONFLICT(section,key) DO UPDATE SET data=excluded.data`, accepted.Section, row.Key, string(row.Data)); err != nil {
-						t.Fatal(err)
-					}
-				}
+				wantErr = ErrAnchorUnavailable
+				anchorLocalLegacyOwner(t, db, true)
 			case "unknown-local":
-				if _, err := s.w.ExecContext(t.Context(), `INSERT INTO meta(key,value) VALUES ('trustanchors-local/v99/state','{}')`); err != nil {
+				if _, err := db.ExecContext(t.Context(), `INSERT INTO meta(key,value) VALUES ('trustanchors-local/v99/state','{}')`); err != nil {
 					t.Fatal(err)
 				}
 			case "repeat":
-				anchorLocalTestPhysical(t, s)
-			}
-			before, err := readMeta(t.Context(), s.r)
-			if err != nil {
-				t.Fatal(err)
-			}
-			tx, err := s.w.BeginTx(t.Context(), nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := migrateAnchorLocal(t.Context(), tx); err == nil {
-				t.Fatal("invalid physical history repaired")
-			}
-			if err := tx.Rollback(); err != nil {
-				t.Fatal(err)
-			}
-			after, err := readMeta(t.Context(), s.r)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(before) != len(after) {
-				t.Fatal("refused migration changed metadata")
-			}
-			for k, v := range before {
-				if after[k] != v {
-					t.Fatal("refused migration changed original bytes")
+				wantErr = ErrAnchorUnavailable
+				if err := migrate(t.Context(), db, migrations, 8, time.Now); err != nil {
+					t.Fatal(err)
 				}
+			}
+			before := anchorDBRows(t, db, false)
+			var err error
+			if kind == "repeat" {
+				tx, beginErr := db.BeginTx(t.Context(), nil)
+				if beginErr != nil {
+					t.Fatal(beginErr)
+				}
+				err = migrateAnchorLocal(t.Context(), tx)
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					t.Fatal(rollbackErr)
+				}
+				// Normal current-schema reopen/migrate skips the helper, and
+				// must preserve this carrier instead of rearming it.
+				if repeatErr := migrate(t.Context(), db, migrations, 8, time.Now); repeatErr != nil {
+					t.Fatal(repeatErr)
+				}
+				requireAnchorSchema(t, db, "8")
+			} else {
+				err = migrate(t.Context(), db, migrations, 8, time.Now)
+				requireAnchorSchema(t, db, "7")
+			}
+			if !errors.Is(err, wantErr) {
+				t.Fatal("invalid physical history repaired or wrong refusal", err)
+			}
+			if !reflect.DeepEqual(before, anchorDBRows(t, db, false)) {
+				t.Fatal("refused migration changed original persisted bytes")
 			}
 		})
 	}
@@ -125,7 +184,7 @@ func TestAnchorLocalStartupRequiresTypedBoundaryEvenUnchanged(t *testing.T) {
 	for _, kind := range []string{"missing-typed", "cancel-final", "refuse-final", "typed-noop"} {
 		t.Run(kind, func(t *testing.T) {
 			s := openTemp(t)
-			anchorLocalTestPhysical(t, s)
+			anchorLocalTestAwaiting(t, s)
 			source := anchorTestBind(t, s)
 			dormant, err := accepted.NewDormant(s.Authority().Term.ClusterID, strings.Repeat("b", 32), time.Now().UTC())
 			if err != nil {

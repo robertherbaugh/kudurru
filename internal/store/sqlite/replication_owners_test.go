@@ -85,7 +85,7 @@ func TestOwnerInventoryRevalidatedAtReplicaInstallAndPromotion(t *testing.T) {
 	if !reflect.DeepEqual(before, f.Authority()) {
 		t.Fatal("rejected install changed authority")
 	}
-	install(t, f, good)
+	copyReplica(t, f, p)
 	if _, err := f.Promote(t.Context(), replication.PromoteRequest{ExpectedTerm: good.Term, ExpectedInstalled: good.Generation(), RequestID: "complete"}); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,13 @@ func TestOwnerInventoryRevalidatedAtReplicaInstallAndPromotion(t *testing.T) {
 	if err := legacy.Enroll(t.Context(), p.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	install(t, legacy, &bad)
+	installCtx := captureReplica(t, legacy)
+	legacyBad := *imageOf(t, p)
+	legacyBad.Payload.Security = legacyBad.Payload.Security[:1]
+	if err := replication.Seal(&legacyBad); err != nil {
+		t.Fatal(err)
+	}
+	install(installCtx, t, legacy, &legacyBad)
 	if err := legacy.Close(); err != nil {
 		t.Fatal(err)
 	}

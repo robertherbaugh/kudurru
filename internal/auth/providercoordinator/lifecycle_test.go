@@ -93,7 +93,12 @@ func TestActualRestartFollowerInstallAndPromotionPreserveAdmittedAuthority(t *te
 	primary := newFixture(t, server)
 	accept(t, primary, candidates(t, primary, 1))
 	ready(t, primary, 1)
-	image, err := primary.store.ReadGeneration(t.Context())
+	followerStore := openStore(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
+	if err := followerStore.Enroll(t.Context(), primary.store.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	installCtx := captureSchema8Install(t.Context(), t, followerStore)
+	image, err := primary.store.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,16 +119,12 @@ func TestActualRestartFollowerInstallAndPromotionPreserveAdmittedAuthority(t *te
 	if resumed.registry(t).Digest() != digest || len(resumed.resources.TakeCandidates()) != 0 {
 		t.Fatal("restart fabricated or replaced admitted authority")
 	}
-	followerStore := openStore(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
-	if err := followerStore.Enroll(t.Context(), image.Term); err != nil {
-		t.Fatal(err)
-	}
-	validated, err := followerStore.ValidateImage(t.Context(), *image)
+	validated, err := followerStore.ValidateImage(installCtx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := followerStore.Authority()
-	installed, err := followerStore.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed})
+	installed, err := followerStore.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,4 +286,21 @@ func TestChangesBroadcastAndCompleteShadowUnavailableInventory(t *testing.T) {
 	if _, err := f.view(t).Authenticate(t.Context(), servingauth.Credential{Kind: servingauth.APIToken, Value: f.wire}, f.host.now()); err != nil {
 		t.Fatal("provider mismatch denied unrelated local token", err)
 	}
+}
+
+// captureSchema8Install retains one bounded original operation BEFORE any
+// source image is read. It never accepts an already-acquired image or recaptures
+// an expired/refused operation at the install boundary.
+func captureSchema8Install(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 30*time.Second)
+	t.Cleanup(cancel)
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
 }

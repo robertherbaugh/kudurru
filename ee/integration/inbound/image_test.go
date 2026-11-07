@@ -77,7 +77,9 @@ func openImageStore(t *testing.T, path string, mode replication.Mode, complete b
 	for _, kind := range runtimekinds.Private() {
 		private = append(private, store.Kind(kind))
 	}
-	s, err := sqlite.Open(path, sqlite.Options{InitialMode: mode, Scheme: opts.Scheme, InternalKinds: private, Validator: imageValidator(), Now: func() time.Time { return time.Unix(100000, 0).UTC().Add(72 * time.Hour) }, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: validate})
+	// Anchor initialization records actual time. Export images at actual time
+	// too; original source observations/expiry remain the historical fixture values.
+	s, err := sqlite.Open(path, sqlite.Options{InitialMode: mode, Scheme: opts.Scheme, InternalKinds: private, Validator: imageValidator(), Now: func() time.Time { return time.Now().UTC() }, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: validate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +89,21 @@ func openImageStore(t *testing.T, path string, mode replication.Mode, complete b
 
 func initializeImageStore(t *testing.T, s *sqlite.Store) {
 	t.Helper()
-	if err := s.Command(t.Context(), s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+	original, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	writer, err := s.WriterToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original = sqlite.WithWriterToken(original, writer)
+	if err := s.Command(original, writer.Term(), func(ctx context.Context, tx *sqlite.CommandTx) error {
+		// Current runtimeowners composes canonical Dormant and private local
+		// initialization in this SAME original writer transaction.
 		return runtimeowners.Initialize(ctx, tx, time.Unix(100000, 0).UTC())
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -438,7 +452,7 @@ func TestDecodeImageRejectsBoundsBeforeTypedCarrierValidation(t *testing.T) {
 			case "foreign full object bytes":
 				bad.Payload.Objects = []json.RawMessage{json.RawMessage(strings.Repeat("x", (replication.Limits{}).Defaults().MaxObjectBytes+1))}
 			case "section bytes":
-				bad.Payload.Runtime = []replication.Entry{{Key: "bad", Data: json.RawMessage(strings.Repeat("x", (replication.Limits{}).Defaults().MaxObjectBytes+1))}}
+				bad.Payload.Runtime = append(slices.Clone(bad.Payload.Runtime), replication.Entry{Key: "bad", Data: json.RawMessage(strings.Repeat("x", (replication.Limits{}).Defaults().MaxObjectBytes+1))})
 			}
 			if mode == "head count" || mode == "chunk count" || mode == "allocation count" || mode == "aggregate bytes" {
 				raw := json.RawMessage(`{"kind":"` + kind + `"}`)
@@ -493,14 +507,14 @@ func TestDecodeImagePermanentUnusedAllocationsAndOrphanChunks(t *testing.T) {
 	}
 }
 
-func installSourceGeneration(t *testing.T, s *sqlite.Store, image *replication.Image) {
+func installSourceGeneration(ctx context.Context, t *testing.T, s *sqlite.Store, image *replication.Image) {
 	t.Helper()
-	validated, err := s.ValidateImage(t.Context(), *image)
+	validated, err := s.ValidateImage(ctx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := s.Authority()
-	if _, err := s.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed}); err != nil {
+	if _, err := s.InstallReplica(ctx, validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -513,7 +527,21 @@ func TestDecodeImageActualSQLiteRestartInstallPromotionAndEmptyReplacement(t *te
 	if _, err := p.EnablePrimary(t.Context(), readSourceGeneration(t, p).Generation()); err != nil {
 		t.Fatal(err)
 	}
-	want := readSourceGeneration(t, p)
+	fpath := filepath.Join(t.TempDir(), sqlite.FileName)
+	f, _ := openImageStore(t, fpath, replication.Follower, true)
+	if err := f.Enroll(t.Context(), p.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	installCtx := captureImageInstall(t.Context(), t, f)
+	emptyFollower, emptyOpts := openImageStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Follower, true)
+	if err := emptyFollower.Enroll(t.Context(), p.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	emptyOriginal := captureImageInstall(t.Context(), t, emptyFollower)
+	want, err := p.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	before, err := DecodeImage(want, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -530,12 +558,7 @@ func TestDecodeImageActualSQLiteRestartInstallPromotionAndEmptyReplacement(t *te
 	if err != nil || !reflect.DeepEqual(before, restored) {
 		t.Fatal("restart changed source tokens/expiry/allocations", err)
 	}
-	fpath := filepath.Join(t.TempDir(), sqlite.FileName)
-	f, _ := openImageStore(t, fpath, replication.Follower, true)
-	if err := f.Enroll(t.Context(), want.Term); err != nil {
-		t.Fatal(err)
-	}
-	installSourceGeneration(t, f, want)
+	installSourceGeneration(installCtx, t, f, want)
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -586,12 +609,8 @@ func TestDecodeImageActualSQLiteRestartInstallPromotionAndEmptyReplacement(t *te
 	}); err != nil {
 		t.Fatal(err)
 	}
-	emptyFollower, emptyOpts := openImageStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Follower, true)
-	if err := emptyFollower.Enroll(t.Context(), p.Authority().Term); err != nil {
-		t.Fatal(err)
-	}
-	installSourceGeneration(t, emptyFollower, want)
-	installSourceGeneration(t, emptyFollower, readSourceGeneration(t, p))
+	installSourceGeneration(emptyOriginal, t, emptyFollower, want)
+	installFreshSourceGeneration(t, emptyFollower, p)
 	empty, err := DecodeImage(readSourceGeneration(t, emptyFollower), emptyOpts)
 	if err != nil || len(empty.Sources)+len(empty.Allocations) != 0 {
 		t.Fatal("empty full source replacement retained old authority", err)
@@ -602,7 +621,21 @@ func TestDecodeImageMalformedHistoricalRowsCannotInstallServeOrPromote(t *testin
 	p, opts := openImageStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Standalone, true)
 	initializeImageStore(t, p)
 	commitImageSource(t, p, true, "original")
-	good := readSourceGeneration(t, p)
+	f, _ := openImageStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Follower, true)
+	if err := f.Enroll(t.Context(), p.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	installCtx := captureImageInstall(t.Context(), t, f)
+	path := filepath.Join(t.TempDir(), sqlite.FileName)
+	legacy, _ := openImageStore(t, path, replication.Follower, false)
+	if err := legacy.Enroll(t.Context(), p.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	legacyCtx := captureImageInstall(t.Context(), t, legacy)
+	good, err := p.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bad := cloneSourceGeneration(t, good)
 	replaceImageCarrier(t, bad, kinds.KindIntegrationNameAllocation, func(v map[string]any) { v["metadata"].(map[string]any)["uid"] = "recreated" })
 	if err := replication.Seal(bad); err != nil {
@@ -612,24 +645,15 @@ func TestDecodeImageMalformedHistoricalRowsCannotInstallServeOrPromote(t *testin
 	if err != nil {
 		t.Fatal("test must be generically valid", err)
 	}
-	f, _ := openImageStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Follower, true)
-	if err := f.Enroll(t.Context(), bad.Term); err != nil {
-		t.Fatal(err)
-	}
 	before := f.Authority()
-	if _, err := f.InstallReplica(t.Context(), generic, replication.InstallOptions{ExpectedTerm: before.Term}); err == nil {
+	if _, err := f.InstallReplica(installCtx, generic, replication.InstallOptions{ExpectedTerm: before.Term}); err == nil {
 		t.Fatal("generic token bypassed local source association validator")
 	}
 	if !reflect.DeepEqual(before, f.Authority()) {
 		t.Fatal("failed install changed authority")
 	}
 	// Simulate historical data accepted by a binary with only the core owners.
-	path := filepath.Join(t.TempDir(), sqlite.FileName)
-	legacy, _ := openImageStore(t, path, replication.Follower, false)
-	if err := legacy.Enroll(t.Context(), bad.Term); err != nil {
-		t.Fatal(err)
-	}
-	installSourceGeneration(t, legacy, bad)
+	installSourceGeneration(legacyCtx, t, legacy, bad)
 	if err := legacy.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -768,4 +792,30 @@ func TestDecodeImagePreflightsWholeImageEscaping(t *testing.T) {
 	if _, err := DecodeImage(bad, opts); !errors.Is(err, replication.ErrTooLarge) {
 		t.Fatal("whole-image escaped allocation was not bounded", err)
 	}
+}
+
+// captureImageInstall precedes all source image acquisition; it never repairs a
+// received historical image with a late context/capture at installation.
+func captureImageInstall(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 30*time.Second)
+	t.Cleanup(cancel)
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
+}
+
+func installFreshSourceGeneration(t *testing.T, s, source *sqlite.Store) {
+	t.Helper()
+	ctx := captureImageInstall(t.Context(), t, s)
+	image, err := source.ReadGeneration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installSourceGeneration(ctx, t, s, image)
 }

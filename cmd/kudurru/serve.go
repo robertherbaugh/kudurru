@@ -183,19 +183,9 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		case err != nil:
 			return nil, nil, nil, err
 		}
-		// Seed explicit security and inventory manifests under the same persisted
-		// writer fence as commands. An enrolled follower receives it only from
-		// its complete primary image; missing or malformed history is not reset.
-		if s.Authority().Writable() {
-			if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-				if err := runtimeowners.Initialize(ctx, tx, time.Now().UTC()); err != nil {
-					return err
-				}
-				return initializeServingSettings(ctx, tx, cfg)
-			}); err != nil {
-				_ = s.Close()
-				return nil, nil, nil, fmt.Errorf("initialize runtime owners: %w", err)
-			}
+		if err := initializeSQLiteRuntime(ctx, s, cfg); err != nil {
+			_ = s.Close()
+			return nil, nil, nil, fmt.Errorf("initialize runtime owners: %w", err)
 		}
 		st = s
 	case "kube":

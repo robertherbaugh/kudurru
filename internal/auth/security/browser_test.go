@@ -326,22 +326,26 @@ func TestBrowserPendingReplicaInstallAndPromotionPreserveConsumption(t *testing.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = peer.Close() })
-	initial, _ := f.st.ReadGeneration(t.Context())
-	if err := peer.Enroll(t.Context(), initial.Term); err != nil {
+	if err := peer.Enroll(t.Context(), f.st.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	install := func(image *replication.Image) {
+	install := func() {
 		t.Helper()
-		validated, err := peer.ValidateImage(t.Context(), *image)
+		installCtx := captureSchema8Install(t.Context(), t, peer)
+		image, err := f.st.ReadGeneration(installCtx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		validated, err := peer.ValidateImage(installCtx, *image)
 		if err != nil {
 			t.Fatal(err)
 		}
 		authority := peer.Authority()
-		if _, err := peer.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed}); err != nil {
+		if _, err := peer.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	install(initial)
+	install()
 	if got := ownerState(t, peer); len(got.BrowserAttempts) != 1 || got.BrowserAttempts[0] != attempt {
 		t.Fatal("complete replica lost exact pending row")
 	}
@@ -355,8 +359,7 @@ func TestBrowserPendingReplicaInstallAndPromotionPreserveConsumption(t *testing.
 		_, err := IssueBrowser(ctx, tx, f.deps, attempt, proof, clock)
 		return err
 	})
-	consumed, _ := f.st.ReadGeneration(t.Context())
-	install(consumed)
+	install()
 	authority := peer.Authority()
 	if _, err := peer.Promote(t.Context(), replication.PromoteRequest{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed, RequestID: "browser-promotion"}); err != nil {
 		t.Fatal(err)
@@ -370,4 +373,21 @@ func TestBrowserPendingReplicaInstallAndPromotionPreserveConsumption(t *testing.
 		t.Fatal("promotion revived already consumed preauth", err)
 	}
 	unchangedBrowserImage(t, peer, before)
+}
+
+// captureSchema8Install retains one bounded original operation BEFORE any
+// source image is read. It never accepts an already-acquired image or recaptures
+// an expired/refused operation at the install boundary.
+func captureSchema8Install(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 30*time.Second)
+	t.Cleanup(cancel)
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
 }

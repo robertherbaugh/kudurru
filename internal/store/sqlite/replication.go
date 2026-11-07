@@ -227,7 +227,7 @@ func (s *Store) InstallReplica(ctx context.Context, validated *replication.Valid
 }
 
 func (s *Store) installReplica(ctx context.Context, image replication.Image, opts replication.InstallOptions, operation *anchorOperation) (generation replication.Generation, result error) {
-	if operation.scope != nil && !operation.installed.Same(opts.ExpectedInstalled) {
+	if (operation.scope != nil || operation.awaitingInstall) && !operation.installed.Same(opts.ExpectedInstalled) {
 		return replication.Generation{}, replication.ErrCAS
 	}
 	s.wmu.Lock()

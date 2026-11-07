@@ -348,10 +348,6 @@ func TestServingBlockingFollowerRestartPromotionPreservesAbsoluteStatus(t *testi
 	request := newBlockingCommandHTTP(t, f)
 	readBlockingResponse(t, request(http.MethodPost, `{"blocking":false,"timer":30}`))
 	original := blockingSettings(t, f.s.opts.Store)
-	image, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -365,14 +361,19 @@ func TestServingBlockingFollowerRestartPromotionPreservesAbsoluteStatus(t *testi
 		return st
 	}
 	follower := open()
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
+	if err := follower.Enroll(t.Context(), f.s.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	installCtx := captureServingReplica(t, follower)
+	image, err := f.s.opts.Store.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term})
+	validated, err := follower.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term})
 	if err != nil {
 		t.Fatal(err)
 	}

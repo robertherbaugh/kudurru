@@ -109,10 +109,6 @@ func TestServingZoneCommandFollowerRestartCompleteImage(t *testing.T) {
 	f := newServingCommandFixture(t)
 	srv := servingZoneAPI(t, f, nil)
 	servingZoneReadyRequest(t, f, srv, http.MethodPost, "/api/v1/zones/compound/import?origin=compound.test.", servingZoneFile(1500), http.StatusOK)
-	image, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -127,14 +123,19 @@ func TestServingZoneCommandFollowerRestartCompleteImage(t *testing.T) {
 	}
 	follower := open()
 	t.Cleanup(func() { _ = follower.Close() })
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
+	if err := follower.Enroll(t.Context(), f.s.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	installCtx := captureServingReplica(t, follower)
+	image, err := f.s.opts.Store.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term})
+	validated, err := follower.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,36 +164,37 @@ func TestServingZoneCommandFollowerRestartCompleteImage(t *testing.T) {
 	if _, err := follower.Promote(t.Context(), replication.PromoteRequest{ExpectedTerm: image.Term, ExpectedInstalled: installed, RequestID: "compound-import-promotion"}); err != nil {
 		t.Fatal(err)
 	}
-	servingZoneReadyRequest(t, f, srv, http.MethodDelete, "/api/v1/zones/compound", nil, http.StatusOK)
-	// A second follower proves complete replacement preserves deletions rather
-	// than merging the former multi-chunk import back into an empty image.
-	empty, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
+	// A second follower acquires the live imported cut, then a separately
+	// captured deletion cut, proving complete replacement rather than merging.
 	if err := follower.Close(); err != nil {
 		t.Fatal(err)
 	}
 	path = filepath.Join(t.TempDir(), "replacement-follower.db")
 	follower = open()
-	if err := follower.Enroll(t.Context(), empty.Term); err != nil {
+	if err := follower.Enroll(t.Context(), f.s.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
 	var expected replication.Generation
-	validateAndInstall := func(img replication.Image) {
+	acquireAndInstall := func() {
 		t.Helper()
-		v, err := follower.ValidateImage(t.Context(), img)
+		installCtx := captureServingReplica(t, follower)
+		img, err := f.s.opts.Store.ReadGeneration(installCtx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		g, err := follower.InstallReplica(t.Context(), v, replication.InstallOptions{ExpectedTerm: img.Term, ExpectedInstalled: expected})
+		v, err := follower.ValidateImage(installCtx, *img)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := follower.InstallReplica(installCtx, v, replication.InstallOptions{ExpectedTerm: img.Term, ExpectedInstalled: expected})
 		if err != nil {
 			t.Fatal(err)
 		}
 		expected = g
 	}
-	validateAndInstall(*image)
-	validateAndInstall(*empty)
+	acquireAndInstall()
+	servingZoneReadyRequest(t, f, srv, http.MethodDelete, "/api/v1/zones/compound", nil, http.StatusOK)
+	acquireAndInstall()
 	if err := follower.Get(t.Context(), store.Key{Kind: "DNSZone", Name: "compound"}, &z); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("replacement restored deleted zone", err)
 	}

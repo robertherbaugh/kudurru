@@ -109,10 +109,6 @@ func TestWholeBundleAfterActualFollowerInstallRestartAndPromotion(t *testing.T) 
 			t.Fatalf("replica changed original inventory evidence: %+v", got)
 		}
 	}
-	image, err := f.store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	path := filepath.Join(t.TempDir(), "follower.db")
 	var private []store.Kind
 	for _, kind := range runtimekinds.Private() {
@@ -126,14 +122,27 @@ func TestWholeBundleAfterActualFollowerInstallRestartAndPromotion(t *testing.T) 
 		return st
 	}
 	follower := open()
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
+	if err := follower.Enroll(t.Context(), f.store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	installCtx, cancelInstall := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancelInstall()
+	if _, err := follower.BindAnchorLifecycle(installCtx); err != nil {
+		t.Fatal(err)
+	}
+	installCtx, err := follower.CaptureAnchorInstall(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: follower.Authority().Term})
+	image, err := f.store.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := follower.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: follower.Authority().Term})
 	if err != nil {
 		t.Fatal(err)
 	}

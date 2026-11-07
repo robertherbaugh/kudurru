@@ -247,10 +247,6 @@ func TestServingCacheCommandFollowerAndMissingCapture(t *testing.T) {
 	if _, err := command(t.Context(), "target.example."); err == nil {
 		t.Fatal("missing original HTTP proof accepted")
 	}
-	image, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -260,14 +256,19 @@ func TestServingCacheCommandFollowerAndMissingCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = follower.Close() })
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
+	if err := follower.Enroll(t.Context(), f.s.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	installCtx := captureServingReplica(t, follower)
+	image, err := f.s.opts.Store.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term}); err != nil {
+	validated, err := follower.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term}); err != nil {
 		t.Fatal(err)
 	}
 	opts := f.s.opts

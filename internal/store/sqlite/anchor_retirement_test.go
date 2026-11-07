@@ -44,7 +44,12 @@ func anchorTestDormant(t *testing.T, s *Store) accepted.Snapshot {
 		t.Fatal(err)
 	}
 	ctx := anchorTestContext(t.Context(), t, s)
-	if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error { return anchorTestStage(ctx, tx, next) }); err != nil {
+	if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error {
+		if err := anchorTestStage(ctx, tx, next); err != nil {
+			return err
+		}
+		return tx.InitializeAnchorLocal(ctx)
+	}); err != nil {
 		t.Fatal(err)
 	}
 	return next
@@ -97,6 +102,11 @@ type anchorTestProof struct {
 
 func anchorTestBootstrap(t *testing.T, s *Store, dormant accepted.Snapshot) anchorTestProof {
 	t.Helper()
+	return anchorTestBootstrapForCluster(t, s.Authority().Term.ClusterID, dormant)
+}
+
+func anchorTestBootstrapForCluster(t *testing.T, cluster string, dormant accepted.Snapshot) anchorTestProof {
+	t.Helper()
 	clock, err := trustanchors.NewSessionClock()
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +118,7 @@ func anchorTestBootstrap(t *testing.T, s *Store, dormant accepted.Snapshot) anch
 	}
 	signer := private.(crypto.Signer)
 	message := anchorTestSigned(t, key, signer, false)
-	state, observation, err := trustanchors.Bootstrap(trustanchors.Seed{ClusterID: s.Authority().Term.ClusterID, PolicyID: "explicit-test-root", DS: []string{key.ToDS(dns.SHA256).String()}}, message, clock.Sample())
+	state, observation, err := trustanchors.Bootstrap(trustanchors.Seed{ClusterID: cluster, PolicyID: "explicit-test-root", DS: []string{key.ToDS(dns.SHA256).String()}}, message, clock.Sample())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,35 +222,60 @@ func TestAnchorLifecycleOriginalWriterAndFollower(t *testing.T) {
 }
 
 func TestAnchorLifecycleManagedReopenRequiresDurableDeny(t *testing.T) {
-	path := filepath.Join(t.TempDir(), FileName)
-	s := openAt(t, path)
-	source := anchorTestBind(t, s)
-	dormant := anchorTestDormant(t, s)
-	proof := anchorTestManaged(t, s, dormant)
-	before := source.cursor.Load()
-	if _, err := s.BindAnchorLifecycle(anchorTestContext(t.Context(), t, s)); !errors.Is(err, ErrAnchorUnavailable) {
-		t.Fatal("managed Bind inferred absent floor as zero", err)
+	for _, missing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "retained-local-deny", true: "missing-local-deny"}[missing], func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), FileName)
+			s := openAt(t, path)
+			source := anchorTestBind(t, s)
+			dormant := anchorTestDormant(t, s)
+			proof := anchorTestManaged(t, s, dormant)
+			before := source.cursor.Load()
+			bound, err := s.BindAnchorLifecycle(anchorTestContext(t.Context(), t, s))
+			if err != nil || bound != source || source.cursor.Load() != before {
+				t.Fatal("repeat Bind reset live managed cursor", err)
+			}
+			local := before.local.raw
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if missing {
+				db, err := sql.Open("sqlite", dsn(path, time.Second, true))
+				if err != nil {
+					t.Fatal(err)
+				}
+				removed, err := db.ExecContext(t.Context(), `DELETE FROM meta WHERE key=?`, anchorLocalKey)
+				closeErr := db.Close()
+				if err != nil || closeErr != nil {
+					t.Fatal("remove stopped local carrier", err, closeErr)
+				}
+				if n, err := removed.RowsAffected(); err != nil || n != 1 {
+					t.Fatal("missing carrier fixture did not remove exactly one row", err)
+				}
+			}
+			reopened := openAt(t, path)
+			restoredSource, err := reopened.BindAnchorLifecycle(anchorTestContext(t.Context(), t, reopened))
+			if missing {
+				if !errors.Is(err, ErrAnchorUnavailable) || restoredSource != nil {
+					t.Fatal("managed reopen inferred absent floor as zero", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatal("managed reopen refused retained durable deny", err)
+				}
+				if restoredSource.cursor.Load().local.raw != local || restoredSource.cursor.Load().owner.Version() != proof.next.Version() {
+					t.Fatal("managed reopen replaced durable cut")
+				}
+			}
+			rows, err := loadAnchorRows(t.Context(), reopened.r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			restored, err := accepted.DecodeRows(rows, reopened.Authority().Term.ClusterID)
+			if err != nil || restored.Version() != proof.next.Version() {
+				t.Fatal("reopen reset durable owner", err)
+			}
+		})
 	}
-	if source.cursor.Load() != before {
-		t.Fatal("repeat Bind reset live managed cursor")
-	}
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-	reopened := openAt(t, path)
-	if _, err := reopened.BindAnchorLifecycle(anchorTestContext(t.Context(), t, reopened)); !errors.Is(err, ErrAnchorUnavailable) {
-		t.Fatal("managed reopen bypassed durable deny prerequisite", err)
-	}
-	rows, err := loadAnchorRows(t.Context(), reopened.r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored, err := accepted.DecodeRows(rows, reopened.Authority().Term.ClusterID)
-	if err != nil || restored.Version() != proof.next.Version() {
-		t.Fatal("refusal reset durable owner", err)
-	}
-	// This refusal is NOT full managed restart/follower tombstone acceptance.
-	// The original persistence requirement remains pending durable-deny mounting.
 }
 
 func TestAnchorLifecycleBoundsBeforeOwnerAllocation(t *testing.T) {

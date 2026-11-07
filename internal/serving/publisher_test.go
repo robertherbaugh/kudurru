@@ -58,25 +58,26 @@ func applyPair(t *testing.T, s *sqlite.Store, label string) {
 
 func installImage(t *testing.T, s, p *sqlite.Store) replication.Generation {
 	t.Helper()
-	ctx := context.Background()
-	i, err := p.ReadGeneration(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	v, err := s.ValidateImage(ctx, *i)
-	if err != nil {
-		t.Fatal(err)
-	}
+	original, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	sourceTerm := p.Authority().Term
 	a := s.Authority()
-	if !a.Term.Same(i.Term) {
+	if !a.Term.Same(sourceTerm) {
 		if a.Mode == replication.Unenrolled {
-			if err := s.Enroll(ctx, i.Term); err != nil {
+			if err := s.Enroll(original, sourceTerm); err != nil {
 				t.Fatal(err)
 			}
-		} else if _, err := s.ObserveAuthority(ctx, i.Term); err != nil {
+		} else if _, err := s.ObserveAuthority(original, sourceTerm); err != nil {
 			t.Fatal(err)
 		}
 		a = s.Authority()
+	}
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
 	}
 	expected := a.Installed
 	if expected.Term.ClusterID != "" {
@@ -85,6 +86,17 @@ func installImage(t *testing.T, s, p *sqlite.Store) replication.Generation {
 			t.Fatal(err)
 		}
 		expected = local.Generation()
+	}
+	i, err := p.ReadGeneration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !i.Term.Same(sourceTerm) {
+		t.Fatal("source term changed after original capture")
+	}
+	v, err := s.ValidateImage(ctx, *i)
+	if err != nil {
+		t.Fatal(err)
 	}
 	g, err := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: expected})
 	if err != nil {

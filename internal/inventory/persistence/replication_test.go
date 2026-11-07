@@ -17,14 +17,19 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
-func installImage(t *testing.T, s *sqlite.Store, image *replication.Image) {
+func installImage(t *testing.T, s, source *sqlite.Store) {
 	t.Helper()
-	v, err := s.ValidateImage(t.Context(), *image)
+	ctx := captureSchema8Install(t.Context(), t, s)
+	image, err := source.ReadGeneration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.ValidateImage(ctx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := s.Authority()
-	if _, err := s.InstallReplica(t.Context(), v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed}); err != nil {
+	if _, err := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -43,9 +48,9 @@ func TestSQLiteFollowerRestartPromotionPreservesGlobalRemovalAndExpiry(t *testin
 	if err := f.Enroll(t.Context(), p.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	installImage(t, f, imageOf(t, p))
+	installImage(t, f, p)
 	current = stage(t, p, current, "source/newer-uid", 2, nil, testAt.Add(2*time.Minute))
-	installImage(t, f, imageOf(t, p))
+	installImage(t, f, p)
 	want := current.Version
 	// Both disk restarts preserve complete evidence, independent of live polls.
 	if err := p.Close(); err != nil {
@@ -107,7 +112,25 @@ func TestSQLiteRejectsHistoricalStateAtInstallServingAndPromotion(t *testing.T) 
 	p := newStore(t)
 	current := initialize(t, p)
 	current = stage(t, p, current, "source", 1, []inventory.Client{client("device", "192.0.2.1", testAt)}, testAt)
-	good := imageOf(t, p)
+	f := openStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Follower)
+	if err := f.Enroll(t.Context(), p.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	installCtx := captureSchema8Install(t.Context(), t, f)
+	path := filepath.Join(t.TempDir(), sqlite.FileName)
+	legacy, err := sqlite.Open(path, sqlite.Options{InitialMode: replication.Follower, Validator: sharedValidator()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = legacy.Close() })
+	if err := legacy.Enroll(t.Context(), p.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	legacyCtx := captureSchema8Install(t.Context(), t, legacy)
+	good, err := p.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	data, err := inventory.EncodeState(current.State)
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +146,15 @@ func TestSQLiteRejectsHistoricalStateAtInstallServingAndPromotion(t *testing.T) 
 		t.Fatal(err)
 	}
 	bad := *good
-	bad.Payload.Runtime = []replication.Entry{chunk, rootRow}
+	// Corrupt only this inventory owner. The legitimate physical anchor owner
+	// remains present so its independent admission cannot mask this target.
+	bad.Payload.Runtime = nil
+	for _, row := range good.Payload.Runtime {
+		if !strings.HasPrefix(row.Key, Prefix) {
+			bad.Payload.Runtime = append(bad.Payload.Runtime, row)
+		}
+	}
+	bad.Payload.Runtime = append(bad.Payload.Runtime, chunk, rootRow)
 	if err := replication.Seal(&bad); err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +164,8 @@ func TestSQLiteRejectsHistoricalStateAtInstallServingAndPromotion(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := openStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Follower)
-	if err := f.Enroll(t.Context(), good.Term); err != nil {
-		t.Fatal(err)
-	}
 	before := f.Authority()
-	if _, err := f.InstallReplica(t.Context(), generic, replication.InstallOptions{ExpectedTerm: before.Term}); err == nil {
+	if _, err := f.InstallReplica(installCtx, generic, replication.InstallOptions{ExpectedTerm: before.Term}); err == nil {
 		t.Fatal("generic token bypassed original State checks")
 	}
 	if !before.Term.Same(f.Authority().Term) || before.Installed != f.Authority().Installed {
@@ -146,15 +173,7 @@ func TestSQLiteRejectsHistoricalStateAtInstallServingAndPromotion(t *testing.T) 
 	}
 	// Historical bad rows already on disk remain inspectable for repair, but
 	// can neither acquire serving admission nor become writable on promotion.
-	path := filepath.Join(t.TempDir(), sqlite.FileName)
-	legacy, err := sqlite.Open(path, sqlite.Options{InitialMode: replication.Follower, Validator: sharedValidator()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := legacy.Enroll(t.Context(), good.Term); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := legacy.InstallReplica(t.Context(), generic, replication.InstallOptions{ExpectedTerm: legacy.Authority().Term}); err != nil {
+	if _, err := legacy.InstallReplica(legacyCtx, generic, replication.InstallOptions{ExpectedTerm: legacy.Authority().Term}); err != nil {
 		t.Fatal(err)
 	}
 	if err := legacy.Close(); err != nil {
@@ -211,4 +230,20 @@ func TestSQLitePrefixPreflightHistoricalRows(t *testing.T) {
 			}
 		})
 	}
+}
+
+// captureSchema8Install retains the original finite lifetime before source
+// acquisition. No received image can cause implicit capture at installation.
+func captureSchema8Install(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 30*time.Second)
+	t.Cleanup(cancel)
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
 }

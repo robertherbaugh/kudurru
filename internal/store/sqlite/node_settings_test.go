@@ -95,7 +95,7 @@ func TestNodeLogLocalCommitResetAndReplicaIsolation(t *testing.T) {
 	// primary observes that term and installs its image without adopting those
 	// preferences or losing its own original local settings.
 	successor := mirror(t, s)
-	g := install(t, successor, imageOf(t, s))
+	g := copyReplica(t, successor, s)
 	if _, err := successor.Promote(ctx, replication.PromoteRequest{ExpectedTerm: g.Term, ExpectedInstalled: g, RequestID: "node-log-promotion"}); err != nil {
 		t.Fatal(err)
 	}
@@ -103,12 +103,12 @@ func TestNodeLogLocalCommitResetAndReplicaIsolation(t *testing.T) {
 	if _, err := s.ObserveAuthority(ctx, successor.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	install(t, s, imageOf(t, successor))
+	copyReplica(t, s, successor)
 	if n = readLocalLog(t, s); n.Level == nil || *n.Level != "warn" {
 		t.Fatal("replica install replaced receiver local owner")
 	}
 	blank := mirror(t, successor)
-	install(t, blank, imageOf(t, successor))
+	copyReplica(t, blank, successor)
 	if n = readLocalLog(t, blank); n.Level != nil || n.Format != nil {
 		t.Fatal("replica imported sender node preferences")
 	}

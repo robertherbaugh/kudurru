@@ -350,7 +350,6 @@ func TestSQLiteObjectSourceWaitUsesActualEntryTime(t *testing.T) {
 
 func sourceReplicaRestart(t *testing.T, st *sqlite.Store, v *validator.Validator) {
 	t.Helper()
-	image := roleBindingImage(t, st)
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal("scheme")
@@ -364,14 +363,19 @@ func sourceReplicaRestart(t *testing.T, st *sqlite.Store, v *validator.Validator
 		return out
 	}
 	follower := open()
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
+	if err := follower.Enroll(t.Context(), st.Authority().Term); err != nil {
 		t.Fatal("source follower enrollment")
 	}
-	valid, err := follower.ValidateImage(t.Context(), *image)
+	installCtx := captureServingReplica(t, follower)
+	image, err := st.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid, err := follower.ValidateImage(installCtx, *image)
 	if err != nil {
 		t.Fatal("source image validation")
 	}
-	installed, err := follower.InstallReplica(t.Context(), valid, replication.InstallOptions{ExpectedTerm: image.Term})
+	installed, err := follower.InstallReplica(installCtx, valid, replication.InstallOptions{ExpectedTerm: image.Term})
 	if err != nil {
 		t.Fatal("source replica installation")
 	}

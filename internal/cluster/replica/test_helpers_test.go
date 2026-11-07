@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
@@ -50,16 +51,28 @@ func imageOf(t *testing.T, s *sqlite.Store) *replication.Image {
 func mirrorOf(t *testing.T, p *sqlite.Store) *sqlite.Store {
 	t.Helper()
 	s := openStore(t, replication.Follower)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
 	if e := s.Enroll(ctx, p.Authority().Term); e != nil {
 		t.Fatal(e)
 	}
-	i := imageOf(t, p)
+	if _, e := s.BindAnchorLifecycle(ctx); e != nil {
+		t.Fatal(e)
+	}
+	ctx, e := s.CaptureAnchorInstall(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	base := s.Authority().Installed
+	i, e := p.ReadGeneration(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
 	v, e := s.ValidateImage(ctx, *i)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: i.Term, ExpectedInstalled: s.Authority().Installed}); e != nil {
+	if _, e := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: i.Term, ExpectedInstalled: base}); e != nil {
 		t.Fatal(e)
 	}
 	return s

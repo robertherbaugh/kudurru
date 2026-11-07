@@ -100,7 +100,7 @@ func (s *Store) ResolveConflict(ctx context.Context, chosen *replication.Validat
 }
 
 func (s *Store) resolveConflict(ctx context.Context, image replication.Image, req replication.ResolveRequest, operation *anchorOperation) (authority replication.Authority, result error) {
-	if operation.scope != nil && !operation.installed.Same(req.ExpectedInstalled) {
+	if (operation.scope != nil || operation.awaitingInstall) && !operation.installed.Same(req.ExpectedInstalled) {
 		return replication.Authority{}, replication.ErrCAS
 	}
 	s.wmu.Lock()

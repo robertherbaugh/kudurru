@@ -235,10 +235,6 @@ func TestServingAdoptionActualHTTPPreservesDataRestartAndCutover(t *testing.T) {
 	if journal.Data.Source != "existing" || journal.Data.Status != "completed" || journal.Data.Zones[0].UID != string(before.UID) || journal.Data.Items[0].ResourceVersion != adopted.ResourceVersion {
 		t.Fatal("lost completed history", journal)
 	}
-	image, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Install the full image, restart the store, and promote it. The restarted
 	// current runtime must still read this run and execute its reviewed cutover.
 	scheme, err := runtimekinds.NewScheme()
@@ -254,14 +250,19 @@ func TestServingAdoptionActualHTTPPreservesDataRestartAndCutover(t *testing.T) {
 		return st
 	}
 	restarted := open()
-	if err := restarted.Enroll(t.Context(), image.Term); err != nil {
+	if err := restarted.Enroll(t.Context(), f.s.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := restarted.ValidateImage(t.Context(), *image)
+	installCtx := captureServingReplica(t, restarted)
+	image, err := f.s.opts.Store.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed, err := restarted.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term})
+	validated, err := restarted.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := restarted.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term})
 	if err != nil {
 		t.Fatal(err)
 	}

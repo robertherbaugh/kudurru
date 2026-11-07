@@ -64,7 +64,22 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {
 	// Existing inventory must not bypass anchor validation on restart. Missing
 	// current-schema history is an error, never an invitation to initialize it.
 	_, err = anchorpersistence.InitializeDormant(ctx, tx, original)
-	return err // Staged is reusable only after the caller's entire Command commits.
+	if err != nil {
+		return err
+	}
+	current, err := anchorpersistence.Load(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if current.Inspect().Phase == accepted.Dormant {
+		// The physical migration supplies provenance; the original admitted
+		// startup command binds this member's private carrier to the owner in
+		// the same transaction, including an unchanged dormant owner.
+		return tx.InitializeAnchorLocal(ctx)
+	}
+	// Managed startup never initializes or resets private history. The caller
+	// must bind and validate the actual committed owner plus local carrier.
+	return nil
 }
 
 func initializeInventory(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {

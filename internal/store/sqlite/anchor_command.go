@@ -111,8 +111,10 @@ func (s *Store) runAnchorCommand(cell *anchorUpdate, base *anchorCursor, fn func
 	return operation.receipt(), operation.completionError(err)
 }
 
-// anchorOperation is a private pre-held R permit. It never crosses an outward
-// callback, and only actual driver termination determines its completion.
+// anchorOperation retains private original admission. Managed/initialized
+// installs hold R; captured awaiting-to-awaiting installs have no history/gate
+// and can only preserve their exact non-granting owner and local provenance.
+// It never crosses an outward callback; actual SQL termination owns completion.
 type anchorOperation struct {
 	source            *AnchorSource
 	before            *anchorCursor
@@ -126,6 +128,7 @@ type anchorOperation struct {
 	authorityCut      string
 	expectedInstalled *replication.Generation
 	originalLife      *anchorOriginalLifetime
+	awaitingInstall   bool                   // explicitly captured pre-owner lane, never a managed permit
 	installed         replication.Generation // original installation baseline, zero for commands/static legacy
 	change            *retirement.Change
 	scope             *retirement.WriteScope
@@ -177,12 +180,18 @@ func (o *anchorOperation) prepare(next *anchorCursor) error {
 	if o.prepared {
 		return retirement.ErrUsed
 	}
+	if o.awaitingInstall && (!anchorAwaitingInstallCursor(o.before) || next == nil || !next.awaiting || next.gate != nil || next.mark != (retirement.Mark{}) || next.owner.Version() != (accepted.Version{})) {
+		return ErrAnchorUnavailable
+	}
 	if next == o.before {
 		copyNext := *next
 		next = &copyNext
 	}
 	if err := o.stageLocal(next); err != nil {
 		return err
+	}
+	if o.awaitingInstall && !sameAnchorLocal(o.before.local, next.local) {
+		return accepted.ErrCAS
 	}
 	if sameAnchorCursor(o.before, next) && sameAnchorLocal(o.before.local, next.local) {
 		next = o.before
@@ -204,6 +213,14 @@ func (o *anchorOperation) check() error {
 	if o.originalLife != nil {
 		if err := o.originalLife.check(); err != nil {
 			return err
+		}
+	}
+	if o.awaitingInstall {
+		// Pre-held wmu excludes SQL interposition through this final handoff.
+		// Only retained immutable identities/atomic flags are checked here: no
+		// context methods, SQL, JSON, gate construction or serving registration.
+		if o.source == nil || o.source.closed.Load() || o.source.store.anchorBlocked.Load() || o.source.store.anchors.Load() != o.source || o.source.cursor.Load() != o.before || !anchorAwaitingInstallCursor(o.before) || o.target != o.before || o.originalLife == nil || o.scope != nil || o.change != nil || o.installGate != nil || o.localChanged {
+			return ErrAnchorUnavailable
 		}
 	}
 	if o.change != nil && o.target.mark != (retirement.Mark{}) {

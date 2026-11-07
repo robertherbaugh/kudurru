@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/persistence"
+	"github.com/robertherbaugh/kudurru/internal/trustanchors/retirement"
 )
 
 var sharedValidator = sync.OnceValue(func() *validator.Validator {
@@ -31,6 +33,9 @@ var sharedValidator = sync.OnceValue(func() *validator.Validator {
 
 func openStore(t *testing.T, path string, mode replication.Mode, registered bool) *sqlite.Store {
 	t.Helper()
+	if store.SchemaVersion != 8 {
+		t.Fatal("fixture requires the parent's actual schema8 composition")
+	}
 	opts := sqlite.Options{Identity: "anchor-fixture", InitialMode: mode, Validator: sharedValidator()}
 	if registered {
 		opts.ValidateReplicaEntry, opts.ValidateReplicaImage = accepted.ValidateEntry, accepted.ValidateImage
@@ -45,25 +50,121 @@ func openStore(t *testing.T, path string, mode replication.Mode, registered bool
 
 func carry(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
 	t.Helper()
+	original := finite(ctx, t)
 	token, err := s.WriterToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sqlite.WithWriterToken(ctx, token)
+	return sqlite.WithWriterToken(original, token)
+}
+
+// finite begins the fixture's original bounded work BEFORE any capture or
+// acquisition. It never wraps/rescues a previously captured operation.
+func finite(ctx context.Context, t *testing.T) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 10*time.Second)
+	t.Cleanup(cancel)
+	return original
+}
+
+func bind(ctx context.Context, t *testing.T, s *sqlite.Store) {
+	t.Helper()
+	if _, err := s.BindAnchorLifecycle(ctx); err != nil {
+		t.Fatal("bind actual committed owner and local carrier", err)
+	}
+}
+
+func captureUpdate(ctx context.Context, t *testing.T, s *sqlite.Store, current accepted.Snapshot) *sqlite.AnchorUpdate {
+	t.Helper()
+	update, err := s.CaptureAnchorUpdate(ctx, current.Version())
+	if err != nil {
+		t.Fatal("capture original mounted update before acquisition", err)
+	}
+	return update
+}
+
+// runOwnerCommand accepts only a caller's already captured update. Nil is an
+// explicit ordinary initialization/no-op boundary, never a managed fallback.
+// Adapter-only negative read commands below are separate prewrite API probes.
+func runOwnerCommand(ctx context.Context, s *sqlite.Store, update *sqlite.AnchorUpdate, fn func(context.Context, *sqlite.CommandTx) error) error {
+	if update != nil {
+		_, err := s.AnchorCommand(update, fn)
+		return err
+	}
+	writer, ok := sqlite.WriterTokenFromContext(ctx)
+	if !ok {
+		return persistence.ErrOriginal
+	}
+	return s.Command(ctx, writer.Term(), fn)
+}
+
+// initializeOwner mirrors the parent's startup composition in the SAME
+// original writer command. Managed history is validated unchanged; only Dormant
+// may bind migration provenance, including the unchanged-Dormant no-op path.
+func initializeOwner(ctx context.Context, tx *sqlite.CommandTx, original persistence.Original) (persistence.Staged, error) {
+	staged, err := persistence.InitializeDormant(ctx, tx, original)
+	if err != nil {
+		return staged, err
+	}
+	current, err := persistence.Load(ctx, tx)
+	if err != nil {
+		return staged, err
+	}
+	if current.Inspect().Phase == accepted.Dormant {
+		err = tx.InitializeAnchorLocal(ctx)
+	}
+	return staged, err
+}
+
+// corruptClosed changes only a stopped real schema8 database, preserving its
+// schema marker. Public reserved-prefix guards cannot mask the intended load
+// or initialization failure, and no proposal is bound before that failure.
+func corruptClosed(ctx context.Context, t *testing.T, s *sqlite.Store, path string, change func(context.Context, *sql.Tx) error) {
+	t.Helper()
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var marker string
+	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='schema_version'`).Scan(&marker); err != nil || marker != "8" {
+		t.Fatal("corruption fixture is not actual current schema8", err)
+	}
+	if err := change(ctx, tx); err != nil {
+		t.Fatal(err)
+	}
+	var after string
+	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='schema_version'`).Scan(&after); err != nil || after != marker {
+		t.Fatal("controlled corruption changed schema provenance", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func seedStore(t *testing.T) (*sqlite.Store, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), sqlite.FileName)
-	// Qualification only: emulate the proposed non-granting physical migration
-	// without changing migrations or weakening registered owner validation.
+	// The parent's actual schema8 migration creates sentinel + private awaiting
+	// provenance. This fixture adds only its independent foreign-owner witness.
 	s := openStore(t, path, replication.Standalone, false)
+	if !accepted.IsAwaitingOwner(imageOf(t, s).Payload.Runtime) {
+		t.Fatal("fresh schema8 Store lacks physical owner sentinel")
+	}
 	ctx := carry(t.Context(), t, s)
 	if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		if err := tx.PutSection(ctx, accepted.Section, replication.Entry{Key: "foreign/state", Data: json.RawMessage(`{"preserved":true}`)}); err != nil {
-			return err
-		}
-		return tx.PutSection(ctx, accepted.Section, replication.Entry{Key: accepted.RootKey, Data: json.RawMessage(accepted.AwaitingOwnerJSON)})
+		return tx.PutSection(ctx, accepted.Section, replication.Entry{Key: "foreign/state", Data: json.RawMessage(`{"preserved":true}`)})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +182,12 @@ func initialize(t *testing.T, s *sqlite.Store) accepted.Snapshot {
 		t.Fatal(err)
 	}
 	if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		_, err := persistence.InitializeDormant(ctx, tx, original)
+		_, err := initializeOwner(ctx, tx, original)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
+	bind(ctx, t, s) // Only committed owner/local rows can arm the source.
 	return load(t, s)
 }
 
@@ -184,10 +286,11 @@ func proposal(t *testing.T, s *sqlite.Store, key signer, clock *trustanchors.Ses
 func bootstrap(t *testing.T, s *sqlite.Store, dormant accepted.Snapshot, key signer, clock *trustanchors.SessionClock) accepted.Snapshot {
 	t.Helper()
 	ctx := carry(t.Context(), t, s)
+	update := captureUpdate(ctx, t, s, dormant)
 	original := capture(ctx, t, dormant, clock) // BEFORE network/proof acquisition.
 	state, observation := proposal(t, s, key, clock, 3600)
 	var staged persistence.Staged
-	if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+	if err := runOwnerCommand(ctx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		var err error
 		staged, err = persistence.Bootstrap(ctx, tx, original, state, observation)
 		return err
@@ -205,6 +308,7 @@ func bootstrap(t *testing.T, s *sqlite.Store, dormant accepted.Snapshot, key sig
 func advance(t *testing.T, s *sqlite.Store, current accepted.Snapshot, key signer, clock *trustanchors.SessionClock, revoke bool) accepted.Snapshot {
 	t.Helper()
 	ctx := carry(t.Context(), t, s)
+	update := captureUpdate(ctx, t, s, current)
 	original := capture(ctx, t, current, clock)
 	state, err := current.State()
 	if err != nil {
@@ -214,7 +318,7 @@ func advance(t *testing.T, s *sqlite.Store, current accepted.Snapshot, key signe
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+	if err := runOwnerCommand(ctx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		_, err := persistence.Advance(ctx, tx, original, observation)
 		return err
 	}); err != nil {
@@ -247,6 +351,7 @@ func TestSQLiteSentinelOnlyInitializationNoopAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	s = openStore(t, path, replication.Standalone, true)
+	bind(carry(t.Context(), t, s), t, s)
 	if load(t, s).Version() != first.Version() {
 		t.Fatal("restart minted owner history")
 	}
@@ -265,32 +370,20 @@ func TestSQLiteMissingAndOrphanHistoryRefusesInitialization(t *testing.T) {
 		t.Run(map[bool]string{false: "missing", true: "orphan"}[orphan], func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), sqlite.FileName)
 			s := openStore(t, path, replication.Standalone, false)
-			if err := s.Close(); err != nil {
-				t.Fatal(err)
-			}
-			// Corrupt only this stopped physical fixture. A current-schema
-			// missing owner must not be confused with the migration's sentinel,
-			// and public commands need not permit constructing invalid owners.
-			db, err := sql.Open("sqlite", path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = db.Close() })
-			removed, err := db.Exec(`DELETE FROM replication_sections WHERE section=? AND key=? AND data=?`, accepted.Section, accepted.RootKey, accepted.AwaitingOwnerJSON)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if n, err := removed.RowsAffected(); err != nil || n != 1 {
-				t.Fatal("missing-owner fixture did not remove the exact sentinel", err)
-			}
-			if orphan {
-				if _, err := db.Exec(`INSERT INTO replication_sections(section,key,data) VALUES(?,?,?)`, accepted.Section, accepted.Prefix+"unknown", `{}`); err != nil {
-					t.Fatal(err)
+			corruptClosed(t.Context(), t, s, path, func(ctx context.Context, tx *sql.Tx) error {
+				result, err := tx.ExecContext(ctx, `DELETE FROM replication_sections WHERE section=? AND key=?`, accepted.Section, accepted.RootKey)
+				if err != nil {
+					return err
 				}
-			}
-			if err := db.Close(); err != nil {
-				t.Fatal(err)
-			}
+				if n, err := result.RowsAffected(); err != nil || n != 1 {
+					t.Fatal("fixture did not remove exact physical sentinel", err)
+				}
+				if orphan {
+					_, err := tx.ExecContext(ctx, `INSERT INTO replication_sections(section,key,data) VALUES (?,?,?)`, accepted.Section, accepted.Prefix+"unknown", `{}`)
+					return err
+				}
+				return nil
+			})
 			s = openStore(t, path, replication.Standalone, false)
 			ctx := carry(t.Context(), t, s)
 			before := imageOf(t, s)
@@ -298,10 +391,15 @@ func TestSQLiteMissingAndOrphanHistoryRefusesInitialization(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			entered := false
 			err = s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				entered = true
 				_, err := persistence.InitializeDormant(ctx, tx, original)
 				return err
 			})
+			if !entered {
+				t.Fatal("initialization fixture failed before intended missing/orphan adapter target", err)
+			}
 			if err == nil {
 				t.Fatal("missing or unknown history reset")
 			}
@@ -316,6 +414,9 @@ func TestSQLiteBootstrapAdvanceExactEnvelopeAndPureCAS(t *testing.T) {
 	key, clock := newSigner(t), newClock(t)
 	managed := bootstrap(t, s, dormant, key, clock)
 	ctx := carry(t.Context(), t, s)
+	// Adapter-only prewrite probes below retain deliberately invalid/stale
+	// Originals. They do not mutate through an uncaptured managed lane or
+	// recapture/rescue a stale mounted update; driver stale refusal is separate.
 	original := capture(ctx, t, managed, clock)
 	state, err := managed.State()
 	if err != nil {
@@ -380,6 +481,43 @@ func TestSQLiteBootstrapAdvanceExactEnvelopeAndPureCAS(t *testing.T) {
 	unchanged(t, s, before)
 }
 
+// The mounted original driver fence is a different boundary from the exact
+// adapter-only accepted.ErrCAS checks above. Each operation below is captured
+// once before its own proof acquisition; the refused original is never rescued
+// or replayed with a new target, token, context or observation.
+func TestSQLiteCapturedDriverStaleOwnerRefusesBeforeAdapter(t *testing.T) {
+	s, _ := seedStore(t)
+	dormant := initialize(t, s)
+	key, clock := newSigner(t), newClock(t)
+	managed := bootstrap(t, s, dormant, key, clock)
+	ctx := carry(t.Context(), t, s)
+	update := captureUpdate(ctx, t, s, managed)
+	original := capture(ctx, t, managed, clock)
+	state, err := managed.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := trustanchors.Verify(state, signed(t, key, 3600, false), clock.Sample())
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := advance(t, s, managed, key, clock, false) // Independent admitted effect.
+	before := imageOf(t, s)
+	called := false
+	result, err := s.AnchorCommand(update, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		called = true
+		_, err := persistence.Advance(ctx, tx, original, observation)
+		return err
+	})
+	if !errors.Is(err, retirement.ErrMismatch) || called || result.Outcome() != sqlite.AnchorRolledBack {
+		t.Fatal("mounted stale original crossed the driver cursor fence", err)
+	}
+	if load(t, s).Version() != next.Version() {
+		t.Fatal("stale driver refusal displaced actual accepted successor")
+	}
+	unchanged(t, s, before)
+}
+
 func TestSQLiteOuterFailureNeverAcceptsStagedCheckpoint(t *testing.T) {
 	for _, failure := range []string{"callback", "final-source", "original-cancel", "original-deadline"} {
 		t.Run(failure, func(t *testing.T) {
@@ -396,11 +534,12 @@ func TestSQLiteOuterFailureNeverAcceptsStagedCheckpoint(t *testing.T) {
 			}
 			defer cancel()
 			original := capture(base, t, dormant, clock)
+			update := captureUpdate(commandCtx, t, s, dormant)
 			state, observation := proposal(t, s, key, clock, 3600)
 			before := imageOf(t, s)
 			var staged persistence.Staged
 			refusal := errors.New("fixture: original source refused")
-			err := s.Command(commandCtx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			err := runOwnerCommand(commandCtx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 				// All independent transaction work/check registration precedes the
 				// adapter's terminal postimage operation, matching its caller contract.
 				if err := tx.PutSection(ctx, accepted.Section, replication.Entry{Key: "source/head", Data: json.RawMessage(`{"generation":"1"}`)}); err != nil {
@@ -444,6 +583,7 @@ func TestSQLiteOriginalBootstrapExpiryAtEntryAndFinal(t *testing.T) {
 			dormant := initialize(t, s)
 			key, clock := newSigner(t), newClock(t)
 			ctx := carry(t.Context(), t, s)
+			update := captureUpdate(ctx, t, s, dormant)
 			original := capture(ctx, t, dormant, clock)
 			state, observation := proposal(t, s, key, clock, 1)
 			before := imageOf(t, s)
@@ -451,7 +591,7 @@ func TestSQLiteOriginalBootstrapExpiryAtEntryAndFinal(t *testing.T) {
 				waitOriginalExpiry(t, observation)
 			}
 			staged := false
-			err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			err := runOwnerCommand(ctx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 				_, err := persistence.Bootstrap(ctx, tx, original, state, observation)
 				if err != nil {
 					return err
@@ -476,6 +616,7 @@ func TestSQLiteOriginalAdvanceExpiryAndClockBinding(t *testing.T) {
 	key, clock := newSigner(t), newClock(t)
 	managed := bootstrap(t, s, dormant, key, clock)
 	ctx := carry(t.Context(), t, s)
+	update := captureUpdate(ctx, t, s, managed)
 	original := capture(ctx, t, managed, clock)
 	state, err := managed.State()
 	if err != nil {
@@ -486,7 +627,7 @@ func TestSQLiteOriginalAdvanceExpiryAndClockBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := imageOf(t, s)
-	err = s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+	err = runOwnerCommand(ctx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		if _, err := persistence.Advance(ctx, tx, original, observation); err != nil {
 			return err
 		}

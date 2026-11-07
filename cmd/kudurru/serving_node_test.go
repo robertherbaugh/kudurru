@@ -426,10 +426,6 @@ func TestServingNodeCommandActualPostcommitCancellationIsTruthful(t *testing.T) 
 func TestServingNodeCommandActualFollowerUnavailable(t *testing.T) {
 	n := newServingNodeFixture(t)
 	defer n.f.stop()
-	image, err := n.f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -439,14 +435,19 @@ func TestServingNodeCommandActualFollowerUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = follower.Close() })
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
+	if err := follower.Enroll(t.Context(), n.f.s.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	installCtx := captureServingReplica(t, follower)
+	image, err := n.f.s.opts.Store.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term}); err != nil {
+	validated, err := follower.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term}); err != nil {
 		t.Fatal(err)
 	}
 	options := n.f.s.opts

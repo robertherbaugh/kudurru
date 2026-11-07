@@ -32,6 +32,17 @@ type anchorOriginalLifetime struct {
 	at       time.Time
 }
 
+// anchorAwaitingInstallCursor recognizes only an actual decoded migration cut.
+// Its fixed fields are memory-only checks, also used in final admission. It
+// creates no synthetic history, registration, accepted Version or live gate.
+func anchorAwaitingInstallCursor(cursor *anchorCursor) bool {
+	if cursor == nil || !cursor.awaiting || cursor.gate != nil || cursor.mark != (retirement.Mark{}) || cursor.owner.Version() != (accepted.Version{}) || cursor.local == nil {
+		return false
+	}
+	r := cursor.local.record
+	return r.Format == 1 && r.Provenance == anchorLocalProvenance && anchorLocalHex(r.Carrier, 32) && r.Revision == 1 && r.Phase == "awaiting" && r.Member == "" && r.Cluster == "" && r.History == "" && r.Domain == "" && r.Owner == (accepted.Version{}) && r.RetiredThrough == 0 && r.Denied != nil && len(r.Denied) == 0 && !r.Terminal
+}
+
 func captureAnchorLifetime(ctx context.Context) (anchorOriginalLifetime, error) {
 	if err := requireAnchorAcquisitionLifetime(ctx); err != nil {
 		return anchorOriginalLifetime{}, err
@@ -93,7 +104,7 @@ func (s *Store) CaptureAnchorInstall(ctx context.Context) (context.Context, erro
 		if err != nil {
 			return nil, err
 		}
-	} else if !cursor.awaiting || cursor.local == nil || cursor.local.record.Phase != "awaiting" {
+	} else if !anchorAwaitingInstallCursor(cursor) {
 		return nil, ErrAnchorUnavailable
 	}
 	installed, authority, err := s.captureAnchorBase(ctx, cursor)
@@ -106,9 +117,11 @@ func (s *Store) CaptureAnchorInstall(ctx context.Context) (context.Context, erro
 	return context.WithValue(ctx, anchorInstallKey{}, &anchorInstall{source: source, cursor: cursor, original: ctx, life: life, attempt: attempt, installed: installed, authority: authority}), nil
 }
 
-// The captured lane acquires R before wmu. A first-bind candidate is private,
-// unregistered, and never published before atomic owner+local commit AND plan
-// resolution. Exact source/local/installed CAS arbitrates competing candidates.
+// Managed/initialized captured lanes acquire R before wmu. The explicit
+// awaiting-to-awaiting exception has no history/gate and retains only exact
+// non-granting provenance under wmu. A first-bind candidate remains private
+// until atomic owner+local commit AND plan resolution. Source/local/base CAS
+// arbitrates all competing captures; projection bytes mint no serving permit.
 func (s *Store) withAnchorInstall(ctx context.Context, image replication.Image, fn func(context.Context, *anchorOperation) error) error {
 	if ctx == nil {
 		return replication.ErrInvalid
@@ -138,7 +151,11 @@ func (s *Store) withAnchorInstall(ctx context.Context, image replication.Image, 
 		gate, attempt := cell.cursor.gate, cell.attempt
 		if gate == nil {
 			if candidate.awaiting {
-				return ErrAnchorUnavailable
+				if cell.attempt != nil || !anchorAwaitingInstallCursor(cell.cursor) {
+					return ErrAnchorUnavailable
+				}
+				operation.awaitingInstall = true
+				return operation.completionError(fn(cell.original, operation))
 			}
 			root := candidate.owner.Inspect()
 			gate, err = retirement.New(retirement.History{ClusterID: root.ClusterID, HistoryID: root.HistoryID}, [32]byte{}, 0)
@@ -227,8 +244,26 @@ func (o *anchorOperation) enterInstall(ctx context.Context, s *Store, tx queryer
 	if err := o.captureLocalTx(ctx, s, tx, current); err != nil {
 		return err
 	}
-	if current.local != nil && o.scope == nil {
+	if current.local != nil && o.scope == nil && !o.awaitingInstall {
 		return ErrAnchorUnavailable
+	}
+	if o.awaitingInstall {
+		if o.source == nil || o.originalLife == nil || o.scope != nil || o.change != nil || !anchorAwaitingInstallCursor(o.before) || !anchorAwaitingInstallCursor(current) {
+			return ErrAnchorUnavailable
+		}
+		// ResolveConflict's RequestID no-op also needs the actual original
+		// baseline before its early return, even though no R scope exists.
+		sqlTx, ok := tx.(*sql.Tx)
+		if !ok {
+			return replication.ErrInvalid
+		}
+		installed, err := installedID(ctx, s, sqlTx, a)
+		if err != nil {
+			return err
+		}
+		if !installed.Same(o.installed) {
+			return replication.ErrCAS
+		}
 	}
 	if o.before == nil {
 		o.before = current

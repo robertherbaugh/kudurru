@@ -53,20 +53,16 @@ func TestClusterFencedMetricsTransitions(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := imageOf(t, p)
-	install(t, s, first)
+	copyReplica(t, s, p)
 	assertFencedMetric(t, m, 0)
 	if _, err := s.Promote(ctx, replication.PromoteRequest{ExpectedTerm: first.Term, ExpectedInstalled: first.Generation(), RequestID: "metrics-promotion"}); err != nil {
 		t.Fatal(err)
 	}
 	assertFencedMetric(t, m, 0)
-	winner := *first
-	winner.Term.Epoch = s.Authority().Term.Epoch + 1
-	winner.Term.PrimaryID, winner.Term.PromotionID = "winner", "winning-promotion"
-	winner.Parent = nil
-	if err := replication.Seal(&winner); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.ObserveAuthority(ctx, winner.Term); err != nil {
+	winningTerm := first.Term
+	winningTerm.Epoch = s.Authority().Term.Epoch + 1
+	winningTerm.PrimaryID, winningTerm.PromotionID = "winner", "winning-promotion"
+	if _, err := s.ObserveAuthority(ctx, winningTerm); err != nil {
 		t.Fatal(err)
 	}
 	assertFencedMetric(t, m, 1)
@@ -76,7 +72,13 @@ kudurru_cluster_fenced 1
 `), "kudurru_cluster_fenced"); err != nil {
 		t.Fatal(err)
 	}
-	install(t, s, &winner)
+	installCtx := captureReplica(t, s)
+	winner := *first
+	winner.Term, winner.Parent = winningTerm, nil
+	if err := replication.Seal(&winner); err != nil {
+		t.Fatal(err)
+	}
+	install(installCtx, t, s, &winner)
 	assertFencedMetric(t, m, 0)
 	if s.Authority().Writable() {
 		t.Fatal("following the new primary must remain read only")

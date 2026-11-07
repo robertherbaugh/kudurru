@@ -17,14 +17,14 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
-func install(t *testing.T, s *sqlite.Store, im *replication.Image) replication.Generation {
+func installCaptured(ctx context.Context, t *testing.T, s *sqlite.Store, im *replication.Image) replication.Generation {
 	t.Helper()
-	v, err := s.ValidateImage(t.Context(), *im)
+	v, err := s.ValidateImage(ctx, *im)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := s.Authority()
-	g, err := s.InstallReplica(t.Context(), v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed})
+	g, err := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,15 @@ func TestActualRestartFollowerRecoveryLossAndPromotion(t *testing.T) {
 	addObject(t, primary, "object", spec())
 	e0 := reset(t, primary)
 	accept(t, primary, e0)
-	im0 := image(t, primary.s)
+	peer := openStore(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
+	if err := peer.Enroll(t.Context(), primary.s.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	installCtx := captureSchema8Install(t.Context(), t, peer)
+	im0, err := primary.s.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	path := primary.s.Path()
 	primary.stop()
 	_ = primary.host.Close(t.Context())
@@ -51,11 +59,7 @@ func TestActualRestartFollowerRecoveryLossAndPromotion(t *testing.T) {
 		t.Fatal("primary restart reused disk activation")
 	}
 	cold.Release()
-	peer := openStore(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
-	if err := peer.Enroll(t.Context(), im0.Term); err != nil {
-		t.Fatal(err)
-	}
-	install(t, peer, im0)
+	installCaptured(installCtx, t, peer, im0)
 	follower := start(t, peer, primary.f, staticInput(t))
 	observe(t, follower)
 	before := image(t, peer)
@@ -78,7 +82,7 @@ func TestActualRestartFollowerRecoveryLossAndPromotion(t *testing.T) {
 	if e1 == e0 {
 		t.Fatal("restart did not rotate actual E")
 	}
-	install(t, peer, image(t, reopened))
+	installSource(t, peer, reopened)
 	observe(t, follower)
 	h := capture(t, follower)
 	if !h.Auth.License.Providers || h.Identity == "" {
@@ -106,7 +110,7 @@ func TestActualRestartFollowerRecoveryLossAndPromotion(t *testing.T) {
 	h.Release()
 	e2 := reset(t, resumed)
 	accept(t, resumed, e2)
-	installed := install(t, peer, image(t, reopened))
+	installed := installSource(t, peer, reopened)
 	observe(t, follower)
 	recovered := capture(t, follower)
 	if !recovered.Auth.License.Providers {
@@ -141,17 +145,16 @@ func TestActualRestartFollowerRecoveryLossAndPromotion(t *testing.T) {
 func TestInstalledForeignStaleMissingRootsAndUnknownEmptyHistoryDeny(t *testing.T) {
 	primary := newFixture(t, staticInput(t))
 	peer := openStore(t, filepath.Join(t.TempDir(), "empty-follower.db"), replication.Follower)
-	im := image(t, primary.s)
-	if err := peer.Enroll(t.Context(), im.Term); err != nil {
+	if err := peer.Enroll(t.Context(), primary.s.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	install(t, peer, im)
+	installSource(t, peer, primary.s)
 	follower := start(t, peer, primary.f, staticInput(t))
 	observe(t, follower)
 	addObject(t, primary, "object", spec())
 	e1 := reset(t, primary)
 	accept(t, primary, e1)
-	install(t, peer, image(t, primary.s))
+	installSource(t, peer, primary.s)
 	observe(t, follower)
 	h := capture(t, follower)
 	if h.Auth.License.Providers {
@@ -164,7 +167,7 @@ func TestInstalledForeignStaleMissingRootsAndUnknownEmptyHistoryDeny(t *testing.
 	}
 	e2 := reset(t, primary)
 	accept(t, primary, e2)
-	install(t, peer, image(t, primary.s))
+	installSource(t, peer, primary.s)
 	observe(t, follower)
 	ready := capture(t, follower)
 	if !ready.Auth.License.Providers {
@@ -204,16 +207,15 @@ func TestFollowerTaintBaselinesInstalledButUnobservedActivation(t *testing.T) {
 			e0 := reset(t, primary)
 			accept(t, primary, e0)
 			peer := openStore(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
-			im := image(t, primary.s)
-			if err := peer.Enroll(t.Context(), im.Term); err != nil {
+			if err := peer.Enroll(t.Context(), primary.s.Authority().Term); err != nil {
 				t.Fatal(err)
 			}
-			install(t, peer, im)
+			installSource(t, peer, primary.s)
 			follower := start(t, peer, primary.f, staticInput(t))
 			observe(t, follower)
 			e1 := reset(t, primary)
 			accept(t, primary, e1)
-			install(t, peer, image(t, primary.s))
+			installSource(t, peer, primary.s)
 			observe(t, follower)
 			h := capture(t, follower)
 			if !h.Auth.License.Providers {
@@ -224,7 +226,7 @@ func TestFollowerTaintBaselinesInstalledButUnobservedActivation(t *testing.T) {
 			// immutable host cursor still remembers E1. E2 is not recovery.
 			e2 := reset(t, primary)
 			accept(t, primary, e2)
-			install(t, peer, image(t, primary.s))
+			installSource(t, peer, primary.s)
 			before := image(t, peer).Generation()
 			if change == "static" {
 				in := staticInput(t)
@@ -262,7 +264,7 @@ func TestFollowerTaintBaselinesInstalledButUnobservedActivation(t *testing.T) {
 			}
 			e3 := reset(t, primary)
 			accept(t, primary, e3)
-			install(t, peer, image(t, primary.s))
+			installSource(t, peer, primary.s)
 			observe(t, follower)
 			recovered := capture(t, follower)
 			if !recovered.Auth.License.Providers {
@@ -354,4 +356,32 @@ func TestBoundedFollowerHistoryAndGenerationOverflow(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// captureSchema8Install retains the original finite lifetime before source
+// acquisition. No received image can cause implicit capture at installation.
+func captureSchema8Install(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 30*time.Second)
+	t.Cleanup(cancel)
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
+}
+
+// installSource owns the acquisition after its original capture. Historical
+// pre-restart bytes use installCaptured with an explicitly earlier capture.
+func installSource(t *testing.T, s, source *sqlite.Store) replication.Generation {
+	t.Helper()
+	ctx := captureSchema8Install(t.Context(), t, s)
+	image, err := source.ReadGeneration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return installCaptured(ctx, t, s, image)
 }

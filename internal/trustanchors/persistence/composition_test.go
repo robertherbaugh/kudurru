@@ -18,7 +18,7 @@ import (
 
 type ownerStager func(context.Context, *sqlite.CommandTx) (persistence.Staged, error)
 
-func prepareOwnerStage(t *testing.T, mode string) (*sqlite.Store, context.Context, ownerStager) {
+func prepareOwnerStage(t *testing.T, mode string) (*sqlite.Store, context.Context, ownerStager, *sqlite.AnchorUpdate) {
 	t.Helper()
 	s, _ := seedStore(t)
 	if mode == "initialize" {
@@ -28,8 +28,8 @@ func prepareOwnerStage(t *testing.T, mode string) (*sqlite.Store, context.Contex
 			t.Fatal(err)
 		}
 		return s, ctx, func(ctx context.Context, tx *sqlite.CommandTx) (persistence.Staged, error) {
-			return persistence.InitializeDormant(ctx, tx, original)
-		}
+			return initializeOwner(ctx, tx, original)
+		}, nil
 	}
 	dormant := initialize(t, s)
 	if mode == "unchanged dormant" {
@@ -39,28 +39,30 @@ func prepareOwnerStage(t *testing.T, mode string) (*sqlite.Store, context.Contex
 			t.Fatal(err)
 		}
 		return s, ctx, func(ctx context.Context, tx *sqlite.CommandTx) (persistence.Staged, error) {
-			return persistence.InitializeDormant(ctx, tx, original)
-		}
+			return initializeOwner(ctx, tx, original)
+		}, nil
 	}
 	key, clock := newSigner(t), newClock(t)
 	if mode == "bootstrap" {
 		ctx := carry(t.Context(), t, s)
+		update := captureUpdate(ctx, t, s, dormant)
 		original := capture(ctx, t, dormant, clock)
 		state, observation := proposal(t, s, key, clock, 3600)
 		return s, ctx, func(ctx context.Context, tx *sqlite.CommandTx) (persistence.Staged, error) {
 			return persistence.Bootstrap(ctx, tx, original, state, observation)
-		}
+		}, update
 	}
 	managed := bootstrap(t, s, dormant, key, clock)
 	ctx := carry(t.Context(), t, s)
+	update := captureUpdate(ctx, t, s, managed)
 	if mode == "unchanged managed" {
 		original, err := persistence.CaptureInitialization(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return s, ctx, func(ctx context.Context, tx *sqlite.CommandTx) (persistence.Staged, error) {
-			return persistence.InitializeDormant(ctx, tx, original)
-		}
+			return initializeOwner(ctx, tx, original)
+		}, update
 	}
 	if mode != "advance" {
 		t.Fatal("unknown controlled fixture operation")
@@ -76,7 +78,7 @@ func prepareOwnerStage(t *testing.T, mode string) (*sqlite.Store, context.Contex
 	}
 	return s, ctx, func(ctx context.Context, tx *sqlite.CommandTx) (persistence.Staged, error) {
 		return persistence.Advance(ctx, tx, original, observation)
-	}
+	}, update
 }
 
 func ownerRootRow(ctx context.Context, tx *sqlite.CommandTx) (replication.Entry, error) {
@@ -114,10 +116,10 @@ func TestSQLiteOwnerPostimageFenceRejectsLaterMutationAndABA(t *testing.T) {
 		t.Run(operation, func(t *testing.T) {
 			for _, tail := range []string{"delete root", "replace history", "orphan chunk", "put ABA", "delete ABA", "chunk insert delete ABA", "second registration"} {
 				t.Run(tail, func(t *testing.T) {
-					s, commandCtx, stage := prepareOwnerStage(t, operation)
+					s, commandCtx, stage, update := prepareOwnerStage(t, operation)
 					before := imageOf(t, s)
 					staged := false
-					err := s.Command(commandCtx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+					err := runOwnerCommand(commandCtx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 						if _, err := stage(ctx, tx); err != nil {
 							return err
 						}
@@ -179,9 +181,9 @@ func TestSQLiteOwnerPostimageFencePermitsForeignCompositionAndTrueNoops(t *testi
 		t.Run(operation, func(t *testing.T) {
 			for _, tail := range []string{"identical root put", "absent owned delete", "foreign runtime prefix", "same prefix other section"} {
 				t.Run(tail, func(t *testing.T) {
-					s, commandCtx, stage := prepareOwnerStage(t, operation)
+					s, commandCtx, stage, update := prepareOwnerStage(t, operation)
 					var staged persistence.Staged
-					err := s.Command(commandCtx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+					err := runOwnerCommand(commandCtx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 						var err error
 						staged, err = stage(ctx, tx)
 						if err != nil {
@@ -218,10 +220,10 @@ func TestSQLiteOwnerPostimageFencePermitsForeignCompositionAndTrueNoops(t *testi
 func TestSQLiteOwnerFenceRegistrationFailureRollsBackAndPoisonsIgnoredError(t *testing.T) {
 	for _, operation := range []string{"initialize", "unchanged dormant", "unchanged managed", "bootstrap", "advance"} {
 		t.Run(operation, func(t *testing.T) {
-			s, commandCtx, stage := prepareOwnerStage(t, operation)
+			s, commandCtx, stage, update := prepareOwnerStage(t, operation)
 			before := imageOf(t, s)
 			var adapterErr error
-			err := s.Command(commandCtx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			err := runOwnerCommand(commandCtx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 				// Leave exactly one check for the original proof/context hook. The
 				// required postimage fence cannot fit after that, even on init no-op.
 				for range sqlite.MaxCommitChecks - 1 {

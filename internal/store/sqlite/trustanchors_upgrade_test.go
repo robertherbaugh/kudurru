@@ -172,16 +172,29 @@ func TestTrustAnchorActualSchema6FollowerUsesRecomputedBase(t *testing.T) {
 func TestTrustAnchorUpgradeHistoricalBaseAndOldImagesRefuse(t *testing.T) {
 	for _, stage := range []string{"historical-base", "old-image", "foreign-validated", "same-revision"} {
 		t.Run(stage, func(t *testing.T) {
-			p, f, old, next := upgradedAnchorPair(t)
+			p, f, old, _ := upgradedAnchorPair(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			if _, err := f.BindAnchorLifecycle(ctx); err != nil {
+				t.Fatal(err)
+			}
+			ctx, err := f.CaptureAnchorInstall(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Acquire this operation's source image only after its receiver cut.
+			next, err := p.ReadGeneration(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
 			before, authority := upgradeImage(t, f), f.Authority()
-			var err error
 			switch stage {
 			case "historical-base":
-				validated, e := f.ValidateImage(t.Context(), *next)
+				validated, e := f.ValidateImage(ctx, *next)
 				if e != nil {
 					t.Fatal(e)
 				}
-				_, err = f.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: next.Term, ExpectedInstalled: old.Generation()})
+				_, err = f.InstallReplica(ctx, validated, replication.InstallOptions{ExpectedTerm: next.Term, ExpectedInstalled: old.Generation()})
 			case "old-image":
 				source := &anchorUpgradeSource{image: &old, want: before.Generation().ETag()}
 				puller := follower.Puller{Mirror: f, Source: source}
@@ -199,19 +212,19 @@ func TestTrustAnchorUpgradeHistoricalBaseAndOldImagesRefuse(t *testing.T) {
 					t.Fatal(err)
 				}
 				generic := openUpgradeStore(t, filepath.Join(t.TempDir(), sqlite.FileName), replication.Standalone, false)
-				validated, e := generic.ValidateImage(t.Context(), image)
+				validated, e := generic.ValidateImage(ctx, image)
 				if e != nil {
 					t.Fatal("generic fixture invalid", e)
 				}
-				_, err = f.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: next.Term, ExpectedInstalled: before.Generation()})
+				_, err = f.InstallReplica(ctx, validated, replication.InstallOptions{ExpectedTerm: next.Term, ExpectedInstalled: before.Generation()})
 			case "same-revision":
 				image := *next
 				image.Revision = before.Revision
-				validated, e := p.ValidateImage(t.Context(), image)
+				validated, e := p.ValidateImage(ctx, image)
 				if e != nil {
 					t.Fatal(e)
 				}
-				_, err = f.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: next.Term, ExpectedInstalled: before.Generation()})
+				_, err = f.InstallReplica(ctx, validated, replication.InstallOptions{ExpectedTerm: next.Term, ExpectedInstalled: before.Generation()})
 			}
 			want := replication.ErrCAS
 			if stage == "old-image" {

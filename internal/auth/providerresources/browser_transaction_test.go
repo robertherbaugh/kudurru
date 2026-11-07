@@ -73,7 +73,12 @@ func TestBrowserActualSQLiteReceiptFloorsRestartReplicaAndPromotion(t *testing.T
 	mustCommand(t, s, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		return security.AcceptProviderAuthorities(ctx, tx, []providerregistry.DesiredAuthority{c.Receipt()}, f.now().Add(time.Second))
 	})
-	image, err := s.ReadGeneration(t.Context())
+	follower := resourceStore(t, filepath.Join(t.TempDir(), "browser-follower.db"), replication.Follower)
+	if err := follower.Enroll(t.Context(), s.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	installCtx := captureSchema8Install(t.Context(), t, follower)
+	image, err := s.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,15 +93,11 @@ func TestBrowserActualSQLiteReceiptFloorsRestartReplicaAndPromotion(t *testing.T
 		t.Fatal(err)
 	}
 	restarted := resourceStore(t, path, replication.Standalone)
-	follower := resourceStore(t, filepath.Join(t.TempDir(), "browser-follower.db"), replication.Follower)
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
-		t.Fatal(err)
-	}
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	validated, err := follower.ValidateImage(installCtx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term})
+	installed, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,7 +25,7 @@ func anchorLocalTestFinite(ctx context.Context, t *testing.T) context.Context {
 func anchorLocalTestFollower(t *testing.T, primary *Store) (*Store, *AnchorSource) {
 	t.Helper()
 	follower := mirror(t, primary)
-	anchorLocalTestPhysical(t, follower)
+	anchorLocalTestAwaiting(t, follower)
 	source, err := follower.BindAnchorLifecycle(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -33,14 +33,18 @@ func anchorLocalTestFollower(t *testing.T, primary *Store) (*Store, *AnchorSourc
 	return follower, source
 }
 
-func anchorLocalTestInstall(ctx context.Context, t *testing.T, follower *Store, image replication.Image) error {
+func anchorLocalTestInstall(ctx context.Context, t *testing.T, follower, primary *Store) error {
 	t.Helper()
 	captured, err := follower.CaptureAnchorInstall(ctx)
 	if err != nil {
 		return err
 	}
 	cell := captured.Value(anchorInstallKey{}).(*anchorInstall)
-	validated, err := follower.ValidateImage(captured, image)
+	image, err := primary.ReadGeneration(captured)
+	if err != nil {
+		return err
+	}
+	validated, err := follower.ValidateImage(captured, *image)
 	if err != nil {
 		return err
 	}
@@ -76,7 +80,7 @@ func anchorLocalTestAdvance(ctx context.Context, tx *CommandTx, observation trus
 func TestAnchorLocalFollowerDenyRequiresNoPrimaryAndChangesNoCanonicalState(t *testing.T) {
 	primary, _, proof := anchorLocalTestManaged(t)
 	follower, source := anchorLocalTestFollower(t, primary)
-	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, *imageOf(t, primary)); err != nil {
+	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, primary); err != nil {
 		t.Fatal(err)
 	}
 	original := source.cursor.Load()
@@ -430,7 +434,7 @@ func TestAnchorLocalFirstInstallPrivateCandidatesRaceAndExactReceiver(t *testing
 func TestAnchorLocalInstallRetainsDenyAndRequiresTombstoneCoverage(t *testing.T) {
 	primary, _, proof := anchorLocalTestManaged(t)
 	follower, source := anchorLocalTestFollower(t, primary)
-	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, *imageOf(t, primary)); err != nil {
+	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, primary); err != nil {
 		t.Fatal(err)
 	}
 	denial, err := follower.CaptureAnchorDenial(anchorLocalTestFinite(t.Context(), t), proof.next.Version(), proof.clock)
@@ -457,7 +461,7 @@ func TestAnchorLocalInstallRetainsDenyAndRequiresTombstoneCoverage(t *testing.T)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, *imageOf(t, primary)); err != nil {
+	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, primary); err != nil {
 		t.Fatal(err)
 	}
 	current := source.cursor.Load()
@@ -473,7 +477,7 @@ func TestAnchorLocalInstallRetainsDenyAndRequiresTombstoneCoverage(t *testing.T)
 	}
 	// Byte-exact no-op must retain local denial and never grant/credit progress.
 	before := current
-	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, *imageOf(t, primary)); err != nil {
+	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, primary); err != nil {
 		t.Fatal(err)
 	}
 	if source.cursor.Load() != before {
@@ -484,7 +488,7 @@ func TestAnchorLocalInstallRetainsDenyAndRequiresTombstoneCoverage(t *testing.T)
 func TestAnchorLocalInstallCannotOmitPendingDeny(t *testing.T) {
 	primary, _, proof := anchorLocalTestManaged(t)
 	follower, source := anchorLocalTestFollower(t, primary)
-	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, *imageOf(t, primary)); err != nil {
+	if err := anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, primary); err != nil {
 		t.Fatal(err)
 	}
 	denial, err := follower.CaptureAnchorDenial(anchorLocalTestFinite(t.Context(), t), proof.next.Version(), proof.clock)
@@ -513,7 +517,7 @@ func TestAnchorLocalInstallCannotOmitPendingDeny(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	err = anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, *imageOf(t, primary))
+	err = anchorLocalTestInstall(anchorLocalTestFinite(t.Context(), t), t, follower, primary)
 	if !errors.Is(err, accepted.ErrCAS) {
 		t.Fatal("newer image erased pending durable denial", err)
 	}

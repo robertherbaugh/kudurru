@@ -16,7 +16,7 @@ import (
 
 func anchorTestStaticPair(t *testing.T) (*Store, *Store, *replication.Image) {
 	t.Helper()
-	primary := openTemp(t)
+	primary := openTemp(t, internalOptions)
 	anchorTestBind(t, primary)
 	anchorTestDormant(t, primary)
 	follower := mirror(t, primary)
@@ -27,8 +27,7 @@ func anchorTestStaticPair(t *testing.T) (*Store, *Store, *replication.Image) {
 	if !source.cursor.Load().awaiting {
 		t.Fatal("fresh follower invented owner")
 	}
-	base := imageOf(t, primary)
-	install(t, follower, base)
+	base := anchorTestCopy(t.Context(), t, primary, follower)
 	if source.cursor.Load().awaiting || source.cursor.Load().gate == nil {
 		t.Fatal("actual static install did not bind committed history")
 	}
@@ -46,11 +45,37 @@ func anchorTestInstallContext(ctx context.Context, t *testing.T, s *Store) conte
 	return captured
 }
 
-func TestAnchorInstallStaticLegacyAndCapturedNoop(t *testing.T) {
+// Capture the receiver before the original source image is acquired. This
+// helper never accepts an already-fetched image or replaces a failed capture.
+func anchorTestCopy(ctx context.Context, t *testing.T, primary, follower *Store) *replication.Image {
+	t.Helper()
+	captured := anchorTestInstallContext(ctx, t, follower)
+	image, err := primary.ReadGeneration(captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := follower.ValidateImage(captured, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cell := captured.Value(anchorInstallKey{}).(*anchorInstall)
+	if _, err := follower.InstallReplica(captured, validated, replication.InstallOptions{ExpectedTerm: image.Term, ExpectedInstalled: cell.installed}); err != nil {
+		t.Fatal(err)
+	}
+	return image
+}
+
+func TestAnchorInstallStaticRequiresCaptureAndCapturedNoop(t *testing.T) {
 	_, follower, base := anchorTestStaticPair(t)
 	before := follower.anchors.Load().cursor.Load()
-	// Static no-op remains compatible without a fabricated finite context.
-	install(t, follower, base)
+	// A schema8 carrier requires original capture even for an exact no-op.
+	uncaptured, err := follower.ValidateImage(t.Context(), *base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := follower.InstallReplica(t.Context(), uncaptured, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()}); !errors.Is(err, ErrAnchorUnavailable) {
+		t.Fatal("schema8 no-op bypassed original capture", err)
+	}
 	ctx := anchorTestInstallContext(t.Context(), t, follower)
 	validated, err := follower.ValidateImage(ctx, *base)
 	if err != nil {
@@ -115,8 +140,7 @@ func TestAnchorInstallCannotAdoptSuccessorBaseline(t *testing.T) {
 	primary, follower, base := anchorTestStaticPair(t)
 	ctx := anchorTestInstallContext(t.Context(), t, follower) // BEFORE later source change.
 	mustApply(t, primary, zone("later", "later.example."), store.ManagerAPI)
-	later := imageOf(t, primary)
-	install(t, follower, later) // Independent static source event, not a refused retry.
+	later := anchorTestCopy(t.Context(), t, primary, follower) // Independent captured source event.
 	validated, err := follower.ValidateImage(ctx, *later)
 	if err != nil {
 		t.Fatal(err)
@@ -131,16 +155,18 @@ func TestAnchorInstallCannotAdoptSuccessorBaseline(t *testing.T) {
 }
 
 func TestAnchorInstallManagedNeedsDurableLocalDeny(t *testing.T) {
-	primary := openTemp(t)
-	anchorTestBind(t, primary)
-	dormant := anchorTestDormant(t, primary)
-	follower := mirror(t, primary)
-	static := imageOf(t, primary)
-	install(t, follower, static)
-	if _, err := follower.BindAnchorLifecycle(t.Context()); err != nil {
+	primary, follower, _ := anchorTestStaticPair(t)
+	dormant := primary.anchors.Load().cursor.Load().owner
+	ctx := anchorTestInstallContext(t.Context(), t, follower)
+	// Lose the actual durable carrier after original capture. The cached
+	// source cannot substitute for missing durable denial evidence at install.
+	removed, err := follower.w.ExecContext(t.Context(), `DELETE FROM meta WHERE key=?`, anchorLocalKey)
+	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := anchorTestInstallContext(t.Context(), t, follower)
+	if n, err := removed.RowsAffected(); err != nil || n != 1 {
+		t.Fatal("fixture did not remove actual carrier", err)
+	}
 	anchorTestManaged(t, primary, dormant)
 	managed := imageOf(t, primary)
 	validated, err := follower.ValidateImage(ctx, *managed)
@@ -159,12 +185,10 @@ func TestAnchorInstallManagedNeedsDurableLocalDeny(t *testing.T) {
 	if _, err := unarmed.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: managed.Term, ExpectedInstalled: unarmed.Authority().Installed}); !errors.Is(err, ErrAnchorUnavailable) {
 		t.Fatal("unarmed follower installed managed history", err)
 	}
-	// Retain original complete managed restart/tombstone acceptance as PENDING.
-	// This negative case cannot substitute for that required future acceptance.
 }
 
 func TestAnchorInstallUnknownVersionRefusesWithoutOwnerValidators(t *testing.T) {
-	primary := openTemp(t)
+	primary := openTemp(t, internalOptions)
 	follower := mirror(t, primary)
 	image := *imageOf(t, primary)
 	image.Payload.Runtime = append(slices.Clone(image.Payload.Runtime), replication.Entry{Key: "trustanchors/v99/root", Data: json.RawMessage(`{}`)})
@@ -204,16 +228,17 @@ func TestAnchorApplyClusterReservedPrefixNeverBypasses(t *testing.T) {
 func TestAnchorResolveConflictPreservesStaticOwnerAndMetadataEffect(t *testing.T) {
 	_, follower, base := anchorTestStaticPair(t)
 	cursor := follower.anchors.Load().cursor.Load()
+	divergeCtx := anchorTestInstallContext(t.Context(), t, follower)
 	different := *base
 	different.Payload.Runtime = append(slices.Clone(base.Payload.Runtime), replication.Entry{Key: "foreign/branch", Data: json.RawMessage(`{"selected":true}`)})
 	if err := replication.Seal(&different); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), different)
+	validated, err := follower.ValidateImage(divergeCtx, different)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()})
+	_, err = follower.InstallReplica(divergeCtx, validated, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()})
 	var completed *AnchorCompletionError
 	if !errors.Is(err, replication.ErrDivergent) || !errors.As(err, &completed) || completed.Completion().Outcome() != AnchorCommitted {
 		t.Fatal("durable divergence effect reclassified", err)
@@ -237,9 +262,11 @@ func TestAnchorResolveConflictPreservesStaticOwnerAndMetadataEffect(t *testing.T
 	if err != nil || !quarantined.Generation().Same(base.Generation()) {
 		t.Fatal("successful resolution lost exact old branch quarantine", err)
 	}
-	// Existing static dedup remains a no-op; this is a dedicated idempotence
-	// assertion, not runtime replay of a refused mutation.
-	again, err := follower.ResolveConflict(t.Context(), validated, req)
+	// A separately captured idempotence check uses its current installed
+	// baseline; it never renews an earlier refused operation.
+	replayCtx := anchorTestInstallContext(t.Context(), t, follower)
+	req.ExpectedInstalled = replayCtx.Value(anchorInstallKey{}).(*anchorInstall).installed
+	again, err := follower.ResolveConflict(replayCtx, validated, req)
 	if err != nil || !again.Term.Same(resolved.Term) {
 		t.Fatal("static RequestID no-op changed", err)
 	}
@@ -249,21 +276,23 @@ func TestAnchorResolveCapturedRequestNoopRequiresOriginalInstalledBaseline(t *te
 	for _, kind := range []string{"zero", "stale", "successor", "exact"} {
 		t.Run(kind, func(t *testing.T) {
 			_, follower, base := anchorTestStaticPair(t)
+			divergeCtx := anchorTestInstallContext(t.Context(), t, follower)
 			chosen := *base
 			chosen.Payload.Runtime = append(slices.Clone(base.Payload.Runtime), replication.Entry{Key: "foreign/branch", Data: json.RawMessage(`{}`)})
 			if err := replication.Seal(&chosen); err != nil {
 				t.Fatal(err)
 			}
-			validated, err := follower.ValidateImage(t.Context(), chosen)
+			validated, err := follower.ValidateImage(divergeCtx, chosen)
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()})
+			_, err = follower.InstallReplica(divergeCtx, validated, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()})
 			if !errors.Is(err, replication.ErrDivergent) {
 				t.Fatal("fixture did not durably diverge", err)
 			}
 			req := replication.ResolveRequest{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation(), ExpectedDivergence: follower.Authority().Divergence, RequestID: "original-selected-branch"}
-			resolved, err := follower.ResolveConflict(t.Context(), validated, req)
+			resolveCtx := anchorTestInstallContext(t.Context(), t, follower)
+			resolved, err := follower.ResolveConflict(resolveCtx, validated, req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -298,16 +327,17 @@ func TestAnchorResolveCapturedRequestNoopRequiresOriginalInstalledBaseline(t *te
 func TestAnchorResolveRollbackKeepsDivergenceAndNoQuarantine(t *testing.T) {
 	_, follower, base := anchorTestStaticPair(t)
 	cursor := follower.anchors.Load().cursor.Load()
+	divergeCtx := anchorTestInstallContext(t.Context(), t, follower)
 	chosen := *base
 	chosen.Payload.Runtime = append(slices.Clone(base.Payload.Runtime), replication.Entry{Key: "foreign/branch", Data: json.RawMessage(`{}`)})
 	if err := replication.Seal(&chosen); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), chosen)
+	validated, err := follower.ValidateImage(divergeCtx, chosen)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()})
+	_, err = follower.InstallReplica(divergeCtx, validated, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()})
 	if !errors.Is(err, replication.ErrDivergent) {
 		t.Fatal("fixture did not durably diverge", err)
 	}

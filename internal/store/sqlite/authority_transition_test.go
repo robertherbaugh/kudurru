@@ -7,6 +7,7 @@ import (
 	"math"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -76,10 +77,11 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := imageOf(t, p)
-	install(t, s, base)
+	copyReplica(t, s, p)
 	assertFencedMetric(t, m, 0)
+	divergeCtx := captureReplica(t, s)
 	bad := *base
-	bad.Payload.Runtime = []replication.Entry{{Key: "blocking", Data: json.RawMessage(`{"mode":"disabled"}`)}}
+	bad.Payload.Runtime = append(slices.Clone(base.Payload.Runtime), replication.Entry{Key: "blocking", Data: json.RawMessage(`{"mode":"disabled"}`)})
 	if err := replication.Seal(&bad); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +89,7 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()})
+	_, err = s.InstallReplica(divergeCtx, v, replication.InstallOptions{ExpectedTerm: base.Term, ExpectedInstalled: base.Generation()})
 	if !errors.Is(err, replication.ErrDivergent) || s.Authority().Divergence == nil {
 		t.Fatalf("divergence: %v", err)
 	}
@@ -105,8 +107,11 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := s.Authority()
-	if _, err := s.ResolveConflict(ctx, v, req); err == nil {
-		t.Fatal("failed resolution succeeded")
+	faultCtx := captureReplica(t, s)
+	_, faultErr := s.ResolveConflict(faultCtx, v, req)
+	var constraint interface{ Code() int }
+	if !errors.As(faultErr, &constraint) || constraint.Code() != 1811 {
+		t.Fatal("resolution did not reach injected SQL constraint", faultErr)
 	}
 	assertFencedMetric(t, m, 1)
 	if !reflect.DeepEqual(before, s.Authority()) || !imageOf(t, s).Generation().Same(base.Generation()) {
@@ -118,7 +123,8 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 	if _, err := s.w.Exec(`DROP TRIGGER reject_resolution`); err != nil {
 		t.Fatal(err)
 	}
-	a, err := s.ResolveConflict(ctx, v, req)
+	resolveCtx := captureReplica(t, s)
+	a, err := s.ResolveConflict(resolveCtx, v, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +132,9 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 	if !a.Writable() || a.Term.Epoch != base.Term.Epoch+1 || a.Parent == nil || !a.Parent.Same(bad.Generation()) {
 		t.Fatal("resolution did not allocate new chosen branch")
 	}
-	again, err := s.ResolveConflict(ctx, v, req)
+	replayCtx := captureReplica(t, s)
+	req.ExpectedInstalled = replayCtx.Value(anchorInstallKey{}).(*anchorInstall).installed
+	again, err := s.ResolveConflict(replayCtx, v, req)
 	if err != nil || !again.Term.Same(a.Term) {
 		t.Fatalf("resolution retry: %v", err)
 	}
@@ -134,7 +142,7 @@ func TestDivergencePersistsAndExplicitResolutionIsAtomic(t *testing.T) {
 	if err != nil || !old.Generation().Same(base.Generation()) {
 		t.Fatalf("losing branch not recoverable: %v", err)
 	}
-	if len(imageOf(t, s).Payload.Runtime) != 1 {
+	if len(imageOf(t, s).Payload.Runtime) != 2 {
 		t.Fatal("chosen extension rows lost")
 	}
 }
@@ -145,24 +153,26 @@ func TestHigherBranchWithLowerRVQuarantinesAndReplaces(t *testing.T) {
 	mustApply(t, p, zone("home", "home.example."), store.ManagerAPI)
 	s := mirror(t, p)
 	first := imageOf(t, p)
-	install(t, s, first)
+	copyReplica(t, s, p)
 	req := replication.PromoteRequest{ExpectedTerm: first.Term, ExpectedInstalled: first.Generation(), RequestID: "promote"}
 	if _, err := s.Promote(ctx, req); err != nil {
 		t.Fatal(err)
 	}
 	mustApply(t, s, zone("losing", "losing.example."), store.ManagerAPI)
 	losing := imageOf(t, s)
+	winningTerm := first.Term
+	winningTerm.Epoch = losing.Term.Epoch + 1
+	winningTerm.PrimaryID, winningTerm.PromotionID = "winner", "winning-promotion"
+	if _, err := s.ObserveAuthority(ctx, winningTerm); err != nil {
+		t.Fatal(err)
+	}
+	installCtx := captureReplica(t, s)
 	winner := *first
-	winner.Term.Epoch = losing.Term.Epoch + 1
-	winner.Term.PrimaryID, winner.Term.PromotionID = "winner", "winning-promotion"
-	winner.Parent = nil
+	winner.Term, winner.Parent = winningTerm, nil
 	if err := replication.Seal(&winner); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ObserveAuthority(ctx, winner.Term); err != nil {
-		t.Fatal(err)
-	}
-	install(t, s, &winner)
+	install(installCtx, t, s, &winner)
 	if s.Authority().Mode != replication.Follower || s.ResourceVersion() != "1" {
 		t.Fatal("source RV compared across terms")
 	}
@@ -227,7 +237,7 @@ func TestCorruptAuthorityRefusesOpenAndPromotionOverflow(t *testing.T) {
 	}
 	p := openTemp(t, internalOptions)
 	m := mirror(t, p)
-	install(t, m, imageOf(t, p))
+	copyReplica(t, m, p)
 	a = m.Authority()
 	a.MaxObservedEpoch = math.MaxUint64
 	tx, err := m.w.BeginTx(ctx, nil)

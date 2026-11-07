@@ -33,23 +33,55 @@ func mirror(t *testing.T, primary *Store) *Store {
 	}
 	return s
 }
-func install(t *testing.T, s *Store, image *replication.Image) replication.Generation {
+
+// Capture before source acquisition, including exact no-ops. The helper only
+// binds committed receiver evidence and retains one finite original operation.
+func captureReplica(t *testing.T, s *Store) context.Context {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	if s.Authority().Writable() {
+		token, err := s.WriterToken()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx = WithWriterToken(ctx, token)
+	}
+	if _, err := s.BindAnchorLifecycle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
+}
+
+func install(ctx context.Context, t *testing.T, s *Store, image *replication.Image) replication.Generation {
+	t.Helper()
 	v, err := s.ValidateImage(ctx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := s.Authority()
-	expected := a.Installed
-	if expected.Term.ClusterID != "" {
-		expected = imageOf(t, s).Generation()
+	cell, ok := ctx.Value(anchorInstallKey{}).(*anchorInstall)
+	if !ok {
+		t.Fatal("fixture did not retain original install capture")
 	}
-	g, err := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: expected})
+	g, err := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: image.Term, ExpectedInstalled: cell.installed})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return g
+}
+
+func copyReplica(t *testing.T, receiver, primary *Store) replication.Generation {
+	t.Helper()
+	ctx := captureReplica(t, receiver)
+	image, err := primary.ReadGeneration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return install(ctx, t, receiver, image)
 }
 
 func TestReplicaCompleteReplacementPreservesPrivateStatusAndMetadata(t *testing.T) {
@@ -68,7 +100,7 @@ func TestReplicaCompleteReplacementPreservesPrivateStatusAndMetadata(t *testing.
 	}
 	s := mirror(t, p)
 	first := imageOf(t, p)
-	install(t, s, first)
+	copyReplica(t, s, p)
 	got := imageOf(t, s)
 	left, _ := json.Marshal(got.Payload)
 	right, _ := json.Marshal(first.Payload)
@@ -85,7 +117,7 @@ func TestReplicaCompleteReplacementPreservesPrivateStatusAndMetadata(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	install(t, s, imageOf(t, p))
+	copyReplica(t, s, p)
 	var gone internals.LocalUser
 	if err := s.Get(ctx, store.Key{Kind: "LocalUser", Name: "alice"}, &gone); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("deleted user survived: %v", err)
@@ -118,7 +150,7 @@ func TestReplicaPublicIAMWithoutStatusSubresource(t *testing.T) {
 	}
 	follower := mirror(t, primary)
 	source := imageOf(t, primary)
-	install(t, follower, source)
+	copyReplica(t, follower, primary)
 	var got v1alpha1.RoleBinding
 	if err := follower.Get(ctx, store.KeyOf(binding), &got); err != nil || got.UID != binding.GetUID() || got.Spec.Role != "admin" {
 		t.Fatalf("binding lost across replica installation: %v", err)
@@ -164,7 +196,7 @@ func TestReplicaInstallRollbackCASIdempotenceAndWatchLineage(t *testing.T) {
 	s := mirror(t, p)
 	mustApply(t, p, zone("home", "home.example."), store.ManagerAPI)
 	first := imageOf(t, p)
-	install(t, s, first)
+	copyReplica(t, s, p)
 	w, err := s.Watch(ctx, "DNSZone", store.WatchOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -177,25 +209,28 @@ func TestReplicaInstallRollbackCASIdempotenceAndWatchLineage(t *testing.T) {
 	}
 	a := s.Authority()
 	beforeSeq := a.InstallSequence
-	install(t, s, first)
+	copyReplica(t, s, p)
 	if s.Authority().InstallSequence != beforeSeq {
 		t.Fatal("idempotent install advanced local sequence")
 	}
 	mustApply(t, p, zone("new", "new.example."), store.ManagerAPI)
+	missingCtx := captureReplica(t, s)
+	faultCtx := captureReplica(t, s)
 	second := imageOf(t, p)
-	v, err := s.ValidateImage(ctx, *second)
+	v, err := s.ValidateImage(missingCtx, *second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: replication.Generation{}}); !errors.Is(err, replication.ErrCAS) {
+	if _, err := s.InstallReplica(missingCtx, v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: replication.Generation{}}); !errors.Is(err, replication.ErrCAS) {
 		t.Fatalf("missing CAS accepted: %v", err)
 	}
 	if _, err := s.w.Exec(`CREATE TRIGGER reject_replica BEFORE INSERT ON objects WHEN NEW.name='new' BEGIN SELECT RAISE(ABORT,'injected'); END`); err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: first.Generation()})
-	if err == nil {
-		t.Fatal("injected install succeeded")
+	_, err = s.InstallReplica(faultCtx, v, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: first.Generation()})
+	var constraint interface{ Code() int }
+	if !errors.As(err, &constraint) || constraint.Code() != 1811 {
+		t.Fatal("install did not reach actual injected SQL constraint", err)
 	}
 	if !imageOf(t, s).Generation().Same(first.Generation()) || !reflect.DeepEqual(s.Authority(), a) {
 		t.Fatal("failed install changed rows/authority")
@@ -203,7 +238,7 @@ func TestReplicaInstallRollbackCASIdempotenceAndWatchLineage(t *testing.T) {
 	if _, err := s.w.Exec(`DROP TRIGGER reject_replica`); err != nil {
 		t.Fatal(err)
 	}
-	install(t, s, second)
+	copyReplica(t, s, p)
 	select {
 	case <-w.(*watcher).exited:
 	case <-time.After(time.Second):
@@ -327,7 +362,7 @@ func TestPromotionConflictDynamicElectionAndCAS(t *testing.T) {
 	defer cancel()
 	p := openTemp(t, internalOptions)
 	s := mirror(t, p)
-	install(t, s, imageOf(t, p))
+	copyReplica(t, s, p)
 	e := s.Elector("controller")
 	started, stopped := make(chan context.Context, 1), make(chan struct{}, 1)
 	done := make(chan error, 1)
@@ -385,14 +420,15 @@ func TestReplicationRejectsWrongClusterStaleAndFutureSchemas(t *testing.T) {
 	s := mirror(t, p)
 	mustApply(t, p, zone("home", "home.example."), store.ManagerAPI)
 	first := imageOf(t, p)
-	install(t, s, first)
+	copyReplica(t, s, p)
 	mustApply(t, p, zone("new", "new.example."), store.ManagerAPI)
-	install(t, s, imageOf(t, p))
-	v, err := s.ValidateImage(ctx, *first)
+	copyReplica(t, s, p)
+	staleCtx := captureReplica(t, s)
+	v, err := s.ValidateImage(staleCtx, *first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: s.Authority().Term, ExpectedInstalled: imageOf(t, s).Generation()})
+	_, err = s.InstallReplica(staleCtx, v, replication.InstallOptions{ExpectedTerm: s.Authority().Term, ExpectedInstalled: imageOf(t, s).Generation()})
 	if !errors.Is(err, replication.ErrStale) {
 		t.Fatalf("stale: %v", err)
 	}
@@ -414,7 +450,7 @@ func TestReplicaRejectsIncompleteMetadataAndSameTermCounterRollback(t *testing.T
 	mustApply(t, p, zone("home", "home.example."), store.ManagerAPI)
 	s := mirror(t, p)
 	image := imageOf(t, p)
-	install(t, s, image)
+	copyReplica(t, s, p)
 	for _, field := range []string{"uid", "generation", "creationTimestamp"} {
 		bad := *imageOf(t, p)
 		var doc map[string]any
@@ -430,6 +466,7 @@ func TestReplicaRejectsIncompleteMetadataAndSameTermCounterRollback(t *testing.T
 			t.Fatalf("missing %s: %v", field, err)
 		}
 	}
+	staleCtx := captureReplica(t, s)
 	bad := *imageOf(t, p)
 	bad.Revision++
 	bad.ObjectResourceVersion = 0
@@ -441,7 +478,7 @@ func TestReplicaRejectsIncompleteMetadataAndSameTermCounterRollback(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.InstallReplica(ctx, v, replication.InstallOptions{ExpectedTerm: image.Term, ExpectedInstalled: image.Generation()}); !errors.Is(err, replication.ErrStale) {
+	if _, err := s.InstallReplica(staleCtx, v, replication.InstallOptions{ExpectedTerm: image.Term, ExpectedInstalled: image.Generation()}); !errors.Is(err, replication.ErrStale) {
 		t.Fatalf("source rv rolled back within term: %v", err)
 	}
 }

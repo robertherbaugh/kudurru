@@ -65,7 +65,25 @@ func TestPrivateRuntimeCarrierReplicationAndSafeExport(t *testing.T) {
 			}
 		}
 	}
-	image, err := primary.ReadGeneration(ctx)
+	follower := open(replication.Follower)
+	if err := follower.Enroll(ctx, primary.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	capture := func() context.Context {
+		t.Helper()
+		original, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		t.Cleanup(cancel)
+		if _, err := follower.BindAnchorLifecycle(original); err != nil {
+			t.Fatal(err)
+		}
+		captured, err := follower.CaptureAnchorInstall(original)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return captured
+	}
+	installCtx := capture()
+	image, err := primary.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,15 +92,11 @@ func TestPrivateRuntimeCarrierReplicationAndSafeExport(t *testing.T) {
 			t.Fatalf("missing explicit private manifest %s", k)
 		}
 	}
-	follower := open(replication.Follower)
-	if err := follower.Enroll(ctx, primary.Authority().Term); err != nil {
-		t.Fatal(err)
-	}
-	validated, err := follower.ValidateImage(ctx, *image)
+	validated, err := follower.ValidateImage(installCtx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := follower.InstallReplica(ctx, validated, replication.InstallOptions{ExpectedTerm: follower.Authority().Term}); err != nil {
+	if _, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: follower.Authority().Term}); err != nil {
 		t.Fatal(err)
 	}
 	var restored zone.ZoneChunk
@@ -112,7 +126,8 @@ func TestPrivateRuntimeCarrierReplicationAndSafeExport(t *testing.T) {
 		}
 	}
 	installed := image.Generation()
-	image, err = primary.ReadGeneration(ctx)
+	installCtx = capture()
+	image, err = primary.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,11 +136,11 @@ func TestPrivateRuntimeCarrierReplicationAndSafeExport(t *testing.T) {
 			t.Fatal("deleted source kind missing explicit empty manifest", kind)
 		}
 	}
-	validated, err = follower.ValidateImage(ctx, *image)
+	validated, err = follower.ValidateImage(installCtx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := follower.InstallReplica(ctx, validated, replication.InstallOptions{ExpectedTerm: follower.Authority().Term, ExpectedInstalled: installed}); err != nil {
+	if _, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: follower.Authority().Term, ExpectedInstalled: installed}); err != nil {
 		t.Fatal(err)
 	}
 	for _, kind := range integration.SourceKinds {

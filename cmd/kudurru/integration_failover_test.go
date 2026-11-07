@@ -164,10 +164,6 @@ func TestIntegrationRuntimeActualReplicaPromotionFencesHeldObservation(t *testin
 	result := make(chan error, 1)
 	go func() { _, err := primary.integrations.host.Sync(t.Context(), owner, ""); result <- err }()
 	integrationAwaitSignal(t, entered)
-	image, err := primary.opts.Store.ReadGeneration(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -177,14 +173,19 @@ func TestIntegrationRuntimeActualReplicaPromotionFencesHeldObservation(t *testin
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	if err = st.Enroll(t.Context(), image.Term); err != nil {
+	if err = st.Enroll(t.Context(), primary.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := st.ValidateImage(t.Context(), *image)
+	installCtx := captureServingReplica(t, st)
+	image, err := primary.opts.Store.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed, err := st.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: image.Term})
+	validated, err := st.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := st.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: image.Term})
 	if err != nil {
 		t.Fatal(err)
 	}

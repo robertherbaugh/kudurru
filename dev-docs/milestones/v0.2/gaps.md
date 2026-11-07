@@ -3037,3 +3037,117 @@ Hosted logs/artifacts are in `.context/hosted-cd72760-20261107/`; exact build,
 binary and browser receipts are in `.context/migration-browser-cd72760-20261107/`.
 The original hosted failure and final-head full CI gate remain open until a
 later successful hosted run.
+
+
+### F28 durable denial and schema8 composition in progress
+
+Exact driver/local-denial source16 from `7058351` integrates as `af6cd63`.
+The isolated ordinary and race selections each pass 66 entries; final scoped
+lint passes with zero issues after the exact unused-parameter rename. The
+first compile failure, first ordinary fixture failures and first lint failure
+remain preserved. An early rollback child passed before reaching its SQL target
+and receives no injected-rollback credit; the corrected fixture proves actual
+SQLite constraints and disposition through the private driver body.
+
+Parent composition registers schema8 and mandatory managed-root-runtime-v1,
+initializes Dormant/local state in one original startup Command, and binds only
+committed evidence. Genuine schema7 migration, feature/schema and localdb
+selections pass 8/16/3 entries; corrected full runtimeowners passes 27. The first
+runtimeowners command failed because its corruption fixture used a newly
+protected public deletion; stopped-database corruption now reaches the original
+missing-history refusal without weakening that guard.
+
+The captured awaiting lane imports the reviewed five source files and grants
+no history, gate or serving permit. Combined parent anchor ordinary passes
+186 entries without skips, including the original driver cases, local denial,
+genuine legacy upgrades, first-install CAS, exact no-ops and actual SQL fault
+boundaries. Earlier compile and fixture failures are separate: a test passed a
+DB instead of a transaction, a missing-owner case expected the wrong category,
+legacy setup lacked authority metadata, and a primary/mirror kind registry
+mismatch refused before install. Corrections preserve source guards and original
+assertions; no prior failed command is relabeled. Full parent persistence
+ordinary now passes 95 entries, including the original positive managed restart,
+follower image, canonical tombstone and quarantine acceptance. Follower ordinary
+passes 12 entries, retaining original pre-fetch authority through 304 and
+interposed installations. An initial follower fixture incorrectly reused an
+operation in its independent winner; the corrected winner has its own lifetime.
+
+The first full SQLite ordinary run passes 482 entries and fails two upgrade
+children plus their parent: uncaptured installs stop before the intended stale
+baseline/divergence checks. Explicit capture before source acquisition restores
+all eight upgrade-selection passes without changing their expected errors or
+durable divergence assertions. That failed full run remains separate evidence.
+Combined default races now pass all six packages: 677 entries with no failures,
+skips or race diagnostics (SQLite package 265.201s, outer 277.075s). Downstream
+fixture/startup qualification now passes the 13 selected top-level command
+tests (17 entries), while runtimekinds/cluster-replica/TSIG source pass 64 entries
+and servingbuild passes 202. The first servingbuild command compiled no tests
+because an introduced context name collided with a later local declaration;
+the fixture-only rename and successful rerun are retained separately. The remaining17 fixture source files also pass default races across11packages:
+all80 intended top-level names and144 entries, no missing/unexpected cases,
+failures or skips (outer105.387s). This includes hosted inbound DecodeImage
+failures, with actual image metadata time and original historical observation/
+expiry assertions. The final 14 selected startup/follower/NOTIFY top-level tests
+also pass default races: 18 entries, no failures/skips, package 110.850s and
+outer 160.485s, with all 2,324 frozen identities unchanged. Installed scoped lint
+initially reports two tagged-switch style findings in one awaiting-install test.
+Only those branch forms changed; the affected test then passes all five entries
+and the same 23-package lint passes with zero issues (outer 6.616s). Production
+bytes remain identical to the successful race freeze; earlier failures remain
+separate evidence. Private receipts retain exact freezes under
+`.context/f28-parent-*-20261107/`.
+
+### F20 indexed-lane final-source qualification in progress
+
+The isolated current owner adds an exact selected-gram absence guard before
+safe dense indexed scans. Focused ordinary passes 24 top-level tests/171 entries.
+One original 200ms diagnostic reports dense 500/1000 regex misses at 851.6/1818ns,
+about 0.17 times the retained preimage; policy hit/p50 still flag relative
+arithmetic, and prior dense/compile failures remain retained. This single
+shared-VM sample does not close official performance gates.
+
+The unchanged original 10k modifier workload admits all entries, reserves
+103,375,626 bytes under the unchanged 128MiB cap, and preserves complete-candidate
+refusal/rollback. Eight fresh constructor helpers retain their original expected
+acceptance/refusal outcomes. Reservations, isolated constructor peak and full
+serving RSS remain distinct metrics.
+
+Current default core races pass 385 entries with two explicit skips: the
+standalone memory helper and the then-unconfigured comparator. A separate actual
+pinned AdGuardHome v0.107.79 run passes all 46 comparator entries with no skips;
+the actual daemon was observed. Captured API default race passes four entries
+with no skips. All current23 and original-workload identities match. Independent
+fuzz has since passed one bounded 20s run: baseline 97/97, 5,933 coordinator
+executions and 30 new interesting inputs. The count reached its final value by
+reported second 3, then stayed unchanged through second 21; no sustained
+throughput or count of valid-language comparisons is inferred. The unchanged
+69-case diagnostic now completes all 291 original metric keys, with zero bytes
+and allocations reported in this process. Five latency comparisons exceed the
+original 20% plus 25ns floor: unindexed 50 warm, dense 500 early warm, dense 1000
+early/late warm and long 256 warm. Unindexed cold and saturated modes remain
+slower than the same-process standard-library reference; prior parallel 6B/op
+and other failed samples remain evidence. This is no official performance pass.
+Five fresh full benchmark/RSS processes, fixed-class performance,
+scoped lint/SAST and final merged CI remain open. Original StageA wrapper failure
+and unavailable numeric child outcome remain unavailable, not reconstructed.
+
+
+### Hosted cd72760 final Go shard findings
+
+The final hosted Go shard fails the mounted manual NOTIFY restart/rearm case
+with HTTP 503 outside the explicitly retryable prehandler pending response,
+and seven inbound integration DecodeImage cases (eight failed entries including
+a child) on invalid anchor-owner fixtures. The existing dashboard failure is
+independent. The complete hosted run remains failed; root is composing the
+inbound fixtures with actual schema8 owner initialization and investigating
+NOTIFY readiness without replaying admitted intents or weakening final fences.
+The mounted NOTIFY fixture now observes existing read-only Ready/status and
+lifecycle source alignment before capturing each original intent head. The
+focused ordinary test passes (package 5.095s, outer 11.224s); its exact original
+restart, serial/content/sequence and response-category assertions remain. The
+hosted log did not identify which final dependency refused, so the source-based
+readiness diagnosis is not presented as a reproduced causal trace. The mounted
+NOTIFY test also passes in the 14-test default-race selection. Hosted
+confirmation remains a separate gate.
+Private final shard output is retained under
+`.context/hosted-cd72760-20261107/go-shard1-final.log`.

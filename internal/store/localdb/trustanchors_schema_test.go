@@ -6,20 +6,29 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 func TestTrustAnchorSharedSchemaUpgradePreservesLocalLayoutAndBytes(t *testing.T) {
+	for _, version := range []int{6, 7} {
+		t.Run(strconv.Itoa(version), func(t *testing.T) { trustAnchorSharedSchemaUpgrade(t, version) })
+	}
+}
+
+func trustAnchorSharedSchemaUpgrade(t *testing.T, version int) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), FileName)
 	db, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	// Build the actual existing schema6/layout2 tables, before opening the new
+	// Build the actual existing schema6/7 layout2 tables, before opening the new
 	// snapshot store. This owner has no trust-anchor rows or managed capability.
 	if _, err := db.ExecContext(t.Context(), schemaV1); err != nil {
 		t.Fatal(err)
@@ -27,7 +36,7 @@ func TestTrustAnchorSharedSchemaUpgradePreservesLocalLayoutAndBytes(t *testing.T
 	if _, err := db.ExecContext(t.Context(), schemaV2Blobs); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO meta(key,value) VALUES ('schema_version','6'),('layout_version','2')`); err != nil {
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO meta(key,value) VALUES ('schema_version',?),('layout_version','2')`, strconv.Itoa(version)); err != nil {
 		t.Fatal(err)
 	}
 	object := testObjects()[0]
@@ -55,7 +64,7 @@ func TestTrustAnchorSharedSchemaUpgradePreservesLocalLayoutAndBytes(t *testing.T
 	}
 	s := open(t, path)
 	var schema, layout string
-	if err := s.db.QueryRowContext(t.Context(), `SELECT value FROM meta WHERE key='schema_version'`).Scan(&schema); err != nil || schema != "7" {
+	if err := s.db.QueryRowContext(t.Context(), `SELECT value FROM meta WHERE key='schema_version'`).Scan(&schema); err != nil || schema != strconv.Itoa(store.SchemaVersion) {
 		t.Fatal("shared local schema marker not advanced", err)
 	}
 	if err := s.db.QueryRowContext(t.Context(), `SELECT value FROM meta WHERE key='layout_version'`).Scan(&layout); err != nil || layout != "2" {
@@ -74,9 +83,9 @@ func TestTrustAnchorSharedSchemaUpgradePreservesLocalLayoutAndBytes(t *testing.T
 		t.Fatal("shared schema upgrade reset local snapshot", err)
 	}
 	// Exercise the production greater-than refusal without a helper that
-	// duplicates its guard. Existing schema6 readers have the same guard with
-	// a supported maximum of 6; this is not a compiled old-binary execution.
-	if _, err := s.db.ExecContext(t.Context(), `UPDATE meta SET value='8' WHERE key='schema_version'`); err != nil {
+	// duplicates its guard. This is not a compiled old-binary execution.
+	future := strconv.Itoa(store.SchemaVersion + 1)
+	if _, err := s.db.ExecContext(t.Context(), `UPDATE meta SET value=? WHERE key='schema_version'`, future); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -93,7 +102,7 @@ func TestTrustAnchorSharedSchemaUpgradePreservesLocalLayoutAndBytes(t *testing.T
 	if err := raw.QueryRowContext(t.Context(), `SELECT body FROM kube_snapshot_objects WHERE kind='DNSZone'`).Scan(&restored); err != nil || !bytes.Equal(restored, body) {
 		t.Fatal("refused local reopen changed old bytes", err)
 	}
-	if err := raw.QueryRowContext(t.Context(), `SELECT value FROM meta WHERE key='schema_version'`).Scan(&schema); err != nil || schema != "8" {
+	if err := raw.QueryRowContext(t.Context(), `SELECT value FROM meta WHERE key='schema_version'`).Scan(&schema); err != nil || schema != future {
 		t.Fatal("refused local reopen changed schema", err)
 	}
 }

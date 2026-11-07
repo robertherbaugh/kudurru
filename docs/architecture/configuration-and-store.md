@@ -468,17 +468,37 @@ Each database carries a schema version. A file newer than the binary stops
 the process with an explanation; an older one is migrated in one
 transaction.
 
-Schema 7 reserves durable root-anchor history. Its physical migration writes
-only an initialization marker; the original writable startup command creates
-the dormant owner before serving. Existing reserved-prefix rows in an older
-database refuse migration, and missing history in a schema-7 database never
-means an empty owner. Complete replication requires `managed-root-anchors-v1`;
-older images and binaries are incompatible rather than silently converted.
-The shared version also advances the `local.db` object-schema marker, while its
-table layout stays at version 2. Old quarantined image bytes are preserved, but
-the current reader rejects their older feature set. Object-only snapshots do
-not back up managed-anchor history. Automatic managed resolver operation remains
-unmounted; configured static anchors continue to apply.
+Schema 7 reserves durable root-anchor history with a non-granting physical
+marker. Schema 8 adds a private receiver-local denial carrier in the same
+migration transaction. Only an exact marker or valid never-managed dormant
+owner can upgrade; existing managed history without that local evidence refuses
+rather than inferring a zero retirement floor. The original writable startup
+command initializes the dormant owner and its local binding together. Managed
+restart validates existing evidence and never initializes or resets it.
+
+Complete replication requires both `managed-root-anchors-v1` and
+`managed-root-runtime-v1`, independently of the schema number. Old images and
+binaries refuse without received-image conversion. Receiver-local denial rows
+are excluded from replicated images and object-only backups. They survive
+canonical row replacement; accepted owner changes and local denial updates
+share the actual SQLite transaction. Uncertain commit completion closes local
+admission rather than granting rollback or mutation-replay credit.
+
+Replica pulls retain one finite original context, committed receiver source,
+local evidence, authority and installed baseline before source reads or network
+acquisition. A higher authenticated term still fences the receiver, but cannot
+renew that original capture. Even a 304 response passes through the captured
+no-op installation boundary. Exact awaiting-to-awaiting raw-driver installs
+preserve their original marker and local carrier without constructing managed
+history or a serving permit. Complete-runtime validators continue to reject
+that marker until explicit owner initialization.
+
+The shared version advances the `local.db` object-schema marker while its table
+layout stays at version 2. Old quarantined bytes remain preserved, but the
+current reader rejects older image features. These durable and installation
+boundaries do not activate managed resolution: elected updater, explicit mode,
+accepted resolver publication, final transport output, cache retirement and
+installed edge bypass still require their separate composition and evidence.
 
 Kubernetes forced whole-object takeover first validates the proposed replacement
 with a resource-version-guarded dry-run PATCH and bounds its encoded size before

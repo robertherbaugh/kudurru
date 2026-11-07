@@ -1,10 +1,12 @@
 package persistence_test
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	"database/sql"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -28,7 +30,7 @@ func TestSQLiteNoopInitializationStillChecksOriginalLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = s.Command(commandCtx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		if _, err := persistence.InitializeDormant(ctx, tx, original); err != nil {
+		if _, err := initializeOwner(ctx, tx, original); err != nil {
 			return err
 		}
 		cancel() // callback context remains live; ORIGINAL startup work stopped.
@@ -53,7 +55,7 @@ func TestSQLiteFailedInitializationPreservesExactSentinel(t *testing.T) {
 		if err := tx.RequireCommitCheck(func(context.Context) error { return refusal }); err != nil {
 			return err
 		}
-		_, err := persistence.InitializeDormant(ctx, tx, original)
+		_, err := initializeOwner(ctx, tx, original)
 		return err
 	})
 	if !errors.Is(err, refusal) {
@@ -70,6 +72,7 @@ func TestSQLiteOriginalWriterSameTermReplacementRefused(t *testing.T) {
 	dormant := initialize(t, s)
 	key, clock := newSigner(t), newClock(t)
 	ctx := carry(t.Context(), t, s)
+	update := captureUpdate(ctx, t, s, dormant)
 	original := capture(ctx, t, dormant, clock)
 	state, observation := proposal(t, s, key, clock, 3600)
 	beforeAuthority := s.Authority()
@@ -81,7 +84,7 @@ func TestSQLiteOriginalWriterSameTermReplacementRefused(t *testing.T) {
 	}
 	before := imageOf(t, s)
 	called := false
-	err := s.Command(ctx, beforeAuthority.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+	err := runOwnerCommand(ctx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		called = true
 		_, err := persistence.Bootstrap(ctx, tx, original, state, observation)
 		return err
@@ -89,7 +92,8 @@ func TestSQLiteOriginalWriterSameTermReplacementRefused(t *testing.T) {
 	if !errors.Is(err, replication.ErrFenced) || called {
 		t.Fatal("Store admitted old incarnation", err)
 	}
-	// A currently admitted outer command cannot replace this original writer.
+	// Separate adapter-only prewrite probe: a currently admitted outer command
+	// cannot replace this original writer. It never reuses the consumed update.
 	err = s.Command(carry(t.Context(), t, s), s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		_, err := persistence.Bootstrap(ctx, tx, original, state, observation)
 		return err
@@ -105,16 +109,17 @@ func TestSQLiteOriginalTermReplacementRefused(t *testing.T) {
 	dormant := initialize(t, s)
 	key, clock := newSigner(t), newClock(t)
 	ctx := carry(t.Context(), t, s)
+	update := captureUpdate(ctx, t, s, dormant)
 	original := capture(ctx, t, dormant, clock)
 	state, observation := proposal(t, s, key, clock, 3600)
-	next := s.Authority().Term
+	next := originalTerm(ctx, t)
 	next.Epoch++
 	next.PrimaryID, next.PromotionID = "successor-primary", "successor-promotion"
 	if _, err := s.ObserveAuthority(t.Context(), next); err != nil {
 		t.Fatal(err)
 	}
 	before := imageOf(t, s)
-	err := s.Command(ctx, originalTerm(ctx, t), func(ctx context.Context, tx *sqlite.CommandTx) error {
+	err := runOwnerCommand(ctx, s, update, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		_, err := persistence.Bootstrap(ctx, tx, original, state, observation)
 		return err
 	})
@@ -138,6 +143,8 @@ func TestSQLiteBootstrapCannotReseedManagedOrReplaceOriginalEvidence(t *testing.
 	dormant := initialize(t, s)
 	key, clock := newSigner(t), newClock(t)
 	ctx := carry(t.Context(), t, s)
+	// These independent adapter-only prewrite probes deliberately supply bad
+	// proof/phase inputs; no refused mounted operation is retried or rescued.
 	original := capture(ctx, t, dormant, clock)
 	_, observation := proposal(t, s, key, clock, 3600)
 	otherState, _ := proposal(t, s, newSigner(t), clock, 3600)
@@ -178,6 +185,10 @@ func TestSQLiteRestartAndFollowerImagePreserveTombstonesQuarantine(t *testing.T)
 		t.Fatal(err)
 	}
 	doc := state.Inspect()
+	canonicalState, err := trustanchors.Encode(state)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !doc.Quarantined || len(doc.Keys) != 1 || doc.Keys[0].Status != trustanchors.Revoked {
 		t.Fatal("actual self-revoke did not retain permanent deny/quarantine")
 	}
@@ -189,13 +200,22 @@ func TestSQLiteRestartAndFollowerImagePreserveTombstonesQuarantine(t *testing.T)
 	if err := follower.Enroll(t.Context(), primary.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	image := imageOf(t, primary)
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	originalInstall := finite(t.Context(), t)
+	bind(originalInstall, t, follower) // Read-only actual awaiting owner/carrier.
+	installCtx, err := follower.CaptureAnchorInstall(originalInstall)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := follower.Authority()
-	if _, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed}); err != nil {
+	a := follower.Authority() // Exact never-installed baseline, before acquisition.
+	image, err := primary.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := follower.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := follower.WriterToken(); !errors.Is(err, replication.ErrReadOnly) {
@@ -213,7 +233,15 @@ func TestSQLiteRestartAndFollowerImagePreserveTombstonesQuarantine(t *testing.T)
 	primary = openStore(t, primaryPath, replication.Primary, true)
 	follower = openStore(t, followerPath, replication.Follower, true)
 	for _, s := range []*sqlite.Store{primary, follower} {
+		original := finite(t.Context(), t)
+		if s.Authority().Writable() {
+			original = carry(original, t, s)
+		}
+		bind(original, t, s) // Actual Store.Open/restart restores its durable denial.
 		i := imageOf(t, s)
+		if !i.Generation().Same(image.Generation()) || !reflect.DeepEqual(i.Payload.Runtime, image.Payload.Runtime) {
+			t.Fatal("restart/install changed canonical runtime rows or source generation")
+		}
 		restored, err := accepted.DecodeRows(i.Payload.Runtime, i.Term.ClusterID)
 		if err != nil {
 			t.Fatal(err)
@@ -226,6 +254,10 @@ func TestSQLiteRestartAndFollowerImagePreserveTombstonesQuarantine(t *testing.T)
 			t.Fatal(err)
 		}
 		got := state.Inspect()
+		encoded, err := trustanchors.Encode(state)
+		if err != nil || !bytes.Equal(encoded, canonicalState) || !reflect.DeepEqual(got, doc) {
+			t.Fatal("restart/install changed exact pure state, permanent tombstones or elapsed checkpoint", err)
+		}
 		if !got.Quarantined || got.Keys[0].Status != trustanchors.Revoked || got.Checkpoint != doc.Checkpoint {
 			t.Fatal("restart/install invented progress or removed quarantine")
 		}
@@ -240,26 +272,26 @@ func TestSQLiteRestartAndFollowerImagePreserveTombstonesQuarantine(t *testing.T)
 func TestSQLitePrefixBoundsBeforeDecodeAndNoRepair(t *testing.T) {
 	path := filepath.Join(t.TempDir(), sqlite.FileName)
 	s := openStore(t, path, replication.Standalone, false)
-	if err := s.Command(carry(t.Context(), t, s), s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+	corruptClosed(t.Context(), t, s, path, func(ctx context.Context, tx *sql.Tx) error {
 		for i := 0; i < accepted.MaxRows+1; i++ {
 			key := accepted.Prefix + "unknown/" + string(rune('A'+i))
-			if err := tx.PutSection(ctx, accepted.Section, replication.Entry{Key: key, Data: json.RawMessage(`{}`)}); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO replication_sections(section,key,data) VALUES (?,?,?)`, accepted.Section, key, `{}`); err != nil {
 				return err
 			}
 		}
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
+	})
 	s = openStore(t, path, replication.Standalone, true)
 	before := imageOf(t, s)
+	entered := false
 	err := s.Command(carry(t.Context(), t, s), s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		entered = true
 		_, err := persistence.Load(ctx, tx)
 		return err
 	})
+	if !entered {
+		t.Fatal("oversized fixture failed before intended adapter bounds check", err)
+	}
 	if !errors.Is(err, replication.ErrTooLarge) {
 		t.Fatal("prefix allocation not refused before decode", err)
 	}

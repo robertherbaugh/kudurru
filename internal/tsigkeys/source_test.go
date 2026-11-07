@@ -150,23 +150,32 @@ func TestActualSourceReplicaPromotionAndPrivateBackup(t *testing.T) {
 			backup.Write(b.Bytes())
 		}
 	}
-	image, err := s.ReadGeneration(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cut, err := FromImage(ctx, image)
-	if err != nil || cut.Len() != 1 {
-		t.Fatal("image source unavailable", err)
-	}
 	f := openSourceStore(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
 	if err := f.Enroll(ctx, s.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := f.ValidateImage(ctx, *image)
+	installCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, err := f.BindAnchorLifecycle(installCtx); err != nil {
+		t.Fatal(err)
+	}
+	installCtx, err := f.CaptureAnchorInstall(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.InstallReplica(ctx, validated, replication.InstallOptions{ExpectedTerm: f.Authority().Term}); err != nil {
+	image, err := s.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cut, err := FromImage(installCtx, image)
+	if err != nil || cut.Len() != 1 {
+		t.Fatal("image source unavailable", err)
+	}
+	validated, err := f.ValidateImage(installCtx, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: f.Authority().Term}); err != nil {
 		t.Fatal(err)
 	}
 	copied, err := Read(ctx, f, f.Info().ClusterID)

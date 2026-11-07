@@ -402,17 +402,21 @@ func TestExternalFloorsRestartInstallPromotionAndCurrentStagedRollback(t *testin
 	if _, err = f.view(t).CookieSession(cookie, f.now); !errors.Is(err, ErrCredentials) {
 		t.Fatal("restart lost floor", err)
 	}
-	source := f.image(t)
 	follower := openStore(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
-	if err = follower.Enroll(t.Context(), source.Term); err != nil {
+	if err = follower.Enroll(t.Context(), f.st.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *source)
+	installCtx := captureSchema8Install(t.Context(), t, follower)
+	source, err := f.st.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := follower.ValidateImage(installCtx, *source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	authority := follower.Authority()
-	installed, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed})
+	installed, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed})
 	if err != nil {
 		t.Fatal(err)
 	}

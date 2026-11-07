@@ -67,17 +67,21 @@ func TestAuthControlsCapturedCutRestartFollowerAndRevocation(t *testing.T) {
 	if _, err := restarted.CookieSession(cookie, f.now); !errors.Is(err, ErrCredentials) {
 		t.Fatal("restart revived revoked session")
 	}
-	image := f.image(t)
 	follower := openStore(t, filepath.Join(t.TempDir(), "follower.db"), replication.Follower)
-	if err := follower.Enroll(t.Context(), image.Term); err != nil {
+	if err := follower.Enroll(t.Context(), f.st.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
-	validated, err := follower.ValidateImage(t.Context(), *image)
+	installCtx := captureSchema8Install(t.Context(), t, follower)
+	image, err := f.st.ReadGeneration(installCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := follower.ValidateImage(installCtx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
 	authority := follower.Authority()
-	if _, err := follower.InstallReplica(t.Context(), validated, replication.InstallOptions{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed}); err != nil {
+	if _, err := follower.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: authority.Term, ExpectedInstalled: authority.Installed}); err != nil {
 		t.Fatal(err)
 	}
 	f.st = follower

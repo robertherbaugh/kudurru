@@ -319,14 +319,16 @@ history, envelope and state-version CAS, and original writer/context/evidence
 checks through commit. A section-prefix fence rejects any later actual owner
 mutation in the same command, including ABA; genuine no-ops and unrelated owners
 remain independent. A staged result is only a proposal until the outer command
-succeeds. Schema 7 creates a non-granting physical marker; the existing admitted
-startup command binds it once to a dormant owner. Restart validates retained
-history, including when inventory already exists. Complete image validation
-requires that owner and the `managed-root-anchors-v1` feature. Followers install
-the primary's complete history without initializing a local one. Old images and
-binaries refuse across the schema/feature boundary; there is no automatic image
-conversion or mixed-version replication promise. Managed transitions, the
-updater and immutable complete-image resolver publication remain unmounted.
+succeeds. Schema 7 creates a non-granting physical marker; schema 8 adds a
+private local-denial carrier. The admitted startup command initializes dormant
+history and its local binding in one transaction, then binds committed evidence.
+Managed restart validates retained history and local denial without resetting
+either. Complete images require both `managed-root-anchors-v1` and
+`managed-root-runtime-v1`. Followers capture their original receiver state before
+source acquisition, then install the primary's history without initializing a
+new one. Old images and binaries refuse across the schema/feature boundary;
+received images are never converted. The elected updater and immutable
+complete-image resolver publication remain unmounted.
 
 The unmounted `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit
@@ -335,7 +337,7 @@ policy, seed and both envelope and pure-state versions, including checkpoint-onl
 changes. This structural input can also describe an uncommitted proposal; it
 does not authenticate an image, certify durable acceptance or permit serving.
 
-The unmounted `retirement` package adds bounded local read/write exclusion and
+The `retirement` package adds bounded local read/write exclusion and
 a monotone owner cursor. Original contexts and deadlines bound admission;
 queued writers exclude new readers. Prepared confirmed effects retire the
 previous owner before release, even if cancellation follows the durable effect.
@@ -343,8 +345,10 @@ An unresolved or ambiguous effect closes managed admission. Scope exit and
 cursor changes share one atomic state, so escaped operations cannot change a
 successor. `ReadScope.Check` is only an instantaneous check: output must finish
 or join within the synchronous read callback to retain exclusion. This primitive
-authenticates neither durable state nor the response it protects. Command,
-replica install, conflict resolution and final output callers are still unmounted.
+authenticates neither durable state nor the response it protects. The SQLite
+command, replica installation and conflict-resolution paths enforce original
+admission and durable local denial around their actual transactions. Final
+response output, cache retirement and complete publication remain unmounted.
 
 Planned managed mode also refuses an ordinary switch back to static/default
 anchors after managed history exists: a shipped seed could otherwise restore a

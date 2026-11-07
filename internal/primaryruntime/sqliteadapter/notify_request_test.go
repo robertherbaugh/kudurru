@@ -332,15 +332,16 @@ func TestRequestNotifyTxReplicaRestartPromotionAndOldAckCAS(t *testing.T) {
 	if err := s.Enroll(f.ctx(), f.fence.Term); err != nil {
 		t.Fatal(err)
 	}
-	image, err := f.s.ReadGeneration(f.ctx())
+	installCtx := captureSchema8Install(f.ctx(), t, s)
+	image, err := f.s.ReadGeneration(installCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	validated, err := s.ValidateImage(f.ctx(), *image)
+	validated, err := s.ValidateImage(installCtx, *image)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.InstallReplica(f.ctx(), validated, replication.InstallOptions{ExpectedTerm: s.Authority().Term}); err != nil {
+	if _, err := s.InstallReplica(installCtx, validated, replication.InstallOptions{ExpectedTerm: s.Authority().Term}); err != nil {
 		t.Fatal(err)
 	}
 	read := func() *zk.ZoneState {
@@ -411,4 +412,21 @@ func TestRequestNotifyTxReplicaRestartPromotionAndOldAckCAS(t *testing.T) {
 	if err != nil || r.Changed || !reflect.DeepEqual(r.Head, intent.Head) {
 		t.Fatal("new episode did not recover exact pending intent", err)
 	}
+}
+
+// captureSchema8Install retains one bounded original operation BEFORE any
+// source image is read. It never accepts an already-acquired image or recaptures
+// an expired/refused operation at the install boundary.
+func captureSchema8Install(ctx context.Context, t *testing.T, s *sqlite.Store) context.Context {
+	t.Helper()
+	original, cancel := context.WithTimeout(ctx, 30*time.Second)
+	t.Cleanup(cancel)
+	if _, err := s.BindAnchorLifecycle(original); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := s.CaptureAnchorInstall(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return captured
 }

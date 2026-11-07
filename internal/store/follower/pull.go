@@ -61,6 +61,17 @@ func (p *Puller) remember(g replication.Generation, err error, contact bool) {
 
 // Pull fetches and installs one image after checking authority and image identity.
 func (p *Puller) Pull(ctx context.Context) (err error) {
+	if ctx == nil {
+		return replication.ErrInvalid
+	}
+	// Establish the original operation budget before queueing, source capture,
+	// or transport work. A shorter caller deadline remains authoritative.
+	timeout := p.Timeout
+	if timeout <= 0 || timeout > 30*time.Second {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	p.pullMu.Lock()
 	defer p.pullMu.Unlock()
 	defer func() {
@@ -75,8 +86,20 @@ func (p *Puller) Pull(ctx context.Context) (err error) {
 	if a.Writable() {
 		return replication.ErrReadOnly
 	}
+	// Bind only committed receiver-local evidence, then retain its original
+	// owner, authority, installed baseline and lifetime BEFORE source I/O.
+	// Observing a higher authenticated term below may invalidate this capture;
+	// it never authorizes recapture or installation under the successor.
+	if _, err := p.Mirror.BindAnchorLifecycle(ctx); err != nil {
+		return err
+	}
+	ctx, err = p.Mirror.CaptureAnchorInstall(ctx)
+	if err != nil {
+		return err
+	}
 	current := a.Installed
 	etag := ""
+	var retained *replication.Image
 	if current.Term.ClusterID != "" {
 		i, e := p.Mirror.ReadGeneration(ctx)
 		if e != nil {
@@ -84,6 +107,7 @@ func (p *Puller) Pull(ctx context.Context) (err error) {
 		}
 		current = i.Generation()
 		etag = current.ETag()
+		retained = i
 	}
 	resp, err := p.Source.Fetch(ctx, etag)
 	if err != nil {
@@ -96,8 +120,10 @@ func (p *Puller) Pull(ctx context.Context) (err error) {
 		if resp.Image != nil || etag == "" || resp.ETag != etag || !resp.Term.Same(current.Term) {
 			return replication.ErrInvalid
 		}
-		p.remember(current, nil, true)
-		return nil
+		// Revalidate the originally retained local image through the same
+		// captured no-op boundary before recording an accepted 304 contact.
+		// No source reread or replacement acquisition occurs here.
+		resp.Image = retained
 	}
 	if resp.Image == nil || !resp.Image.Term.Same(resp.Term) || (resp.ETag != "" && resp.ETag != resp.Image.Generation().ETag()) {
 		return replication.ErrInvalid
@@ -121,18 +147,12 @@ func (p *Puller) Run(ctx context.Context) error {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
-	timeout := p.Timeout
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
 	delay := interval
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		attempt, cancel := context.WithTimeout(ctx, timeout)
-		err := p.Pull(attempt)
-		cancel()
+		err := p.Pull(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 				return nil
