@@ -217,6 +217,19 @@ func (s *Store) InstallReplica(ctx context.Context, validated *replication.Valid
 	if _, err := s.ValidateImage(ctx, image); err != nil {
 		return replication.Generation{}, err
 	}
+	var installed replication.Generation
+	err := s.withAnchorInstall(ctx, image, func(original context.Context, operation *anchorOperation) error {
+		var result error
+		installed, result = s.installReplica(original, image, opts, operation)
+		return result
+	})
+	return installed, err
+}
+
+func (s *Store) installReplica(ctx context.Context, image replication.Image, opts replication.InstallOptions, operation *anchorOperation) (generation replication.Generation, result error) {
+	if operation.scope != nil && !operation.installed.Same(opts.ExpectedInstalled) {
+		return replication.Generation{}, replication.ErrCAS
+	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
 	if s.isClosed() {
@@ -226,9 +239,22 @@ func (s *Store) InstallReplica(ctx context.Context, validated *replication.Valid
 	if err != nil {
 		return replication.Generation{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
+	boundary := anchorSQL{tx: tx}
+	defer func() {
+		boundary.finish(&result)
+		operation.sql = boundary
+		if boundary.outcome == AnchorUnknown {
+			s.anchorBlocked.Store(true)
+			if operation.source != nil {
+				operation.source.closed.Store(true)
+			}
+		}
+	}()
 	a, err := readAuthority(ctx, tx)
 	if err != nil {
+		return replication.Generation{}, err
+	}
+	if err := operation.enterInstall(ctx, s, tx, a.Term.ClusterID); err != nil {
 		return replication.Generation{}, err
 	}
 	if image.Term.ClusterID != a.Term.ClusterID {
@@ -265,9 +291,15 @@ func (s *Store) InstallReplica(ctx context.Context, validated *replication.Valid
 				if a.Incarnation < math.MaxUint64 {
 					a.Incarnation++
 				}
-				err := writeAuthority(ctx, tx, a)
+				err := operation.prepareCurrent()
 				if err == nil {
-					err = tx.Commit()
+					err = operation.check()
+				}
+				if err == nil {
+					err = writeAuthority(ctx, tx, a)
+				}
+				if err == nil {
+					err = boundary.commit()
 				}
 				s.publishAuthorityLocked(a)
 				if err != nil {
@@ -276,6 +308,13 @@ func (s *Store) InstallReplica(ctx context.Context, validated *replication.Valid
 				s.writeBlocked.Store(false)
 				return replication.Generation{}, replication.ErrDivergent
 			}
+			if err := operation.prepareCurrent(); err != nil {
+				return replication.Generation{}, err
+			}
+			if err := operation.check(); err != nil {
+				return replication.Generation{}, err
+			}
+			boundary.unchanged = true
 			return current, nil
 		}
 	}
@@ -286,6 +325,9 @@ func (s *Store) InstallReplica(ctx context.Context, validated *replication.Valid
 		if err := s.quarantine(ctx, tx); err != nil {
 			return replication.Generation{}, err
 		}
+	}
+	if err := operation.prepareInstall(image); err != nil {
+		return replication.Generation{}, err
 	}
 	if err := s.replaceReplicaRows(ctx, tx, image); err != nil {
 		return replication.Generation{}, err
@@ -304,9 +346,13 @@ func (s *Store) InstallReplica(ctx context.Context, validated *replication.Valid
 	if err := writeAuthority(ctx, tx, a); err != nil {
 		return replication.Generation{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := operation.check(); err != nil {
 		return replication.Generation{}, err
 	}
+	if err := boundary.commit(); err != nil {
+		return replication.Generation{}, err
+	}
+	operation.publish(s)
 	s.head.Store(image.ObjectResourceVersion)
 	s.compacted.Store(image.ObjectResourceVersion)
 	s.sinceCompacted = 0
@@ -399,6 +445,11 @@ func (s *Store) ApplyCluster(ctx context.Context, objects []store.Object, opts s
 	l := s.opts.ReplicationLimits.Defaults()
 	if len(objects) > l.MaxObjects || len(sections) > l.MaxEntries {
 		return nil, replication.ErrTooLarge
+	}
+	for _, change := range sections {
+		if anchorKey(change.Section, change.Key) {
+			return nil, ErrAnchorUnavailable
+		}
 	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()

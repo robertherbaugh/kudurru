@@ -27,6 +27,10 @@ type commandTxKey struct{}
 // Callbacks are synchronous; do not retain/use a tx concurrently or perform
 // external effects. Do not reenter Store methods, even with a different context.
 func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(context.Context, *CommandTx) error) error {
+	return s.command(ctx, expected, fn, nil)
+}
+
+func (s *Store) command(ctx context.Context, expected replication.Term, fn func(context.Context, *CommandTx) error, anchor *anchorOperation) (result error) {
 	if fn == nil {
 		return replication.ErrInvalid
 	}
@@ -46,7 +50,27 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
+	sqlBoundary := anchorSQL{tx: tx}
+	var t *CommandTx
+	defer func() {
+		sqlBoundary.finish(&result)
+		operation := anchor
+		if t != nil && t.anchor != nil {
+			operation = t.anchor
+		}
+		if operation == nil && t != nil && t.anchorInit != nil {
+			operation = &anchorOperation{source: s.anchors.Load()}
+		}
+		if operation != nil {
+			operation.sql = sqlBoundary
+			if sqlBoundary.outcome == AnchorUnknown {
+				s.anchorBlocked.Store(true)
+				if operation.source != nil {
+					operation.source.closed.Store(true)
+				}
+			}
+		}
+	}()
 	a, err := s.checkWriter(ctx, tx)
 	if err != nil {
 		return err
@@ -54,7 +78,12 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 	if !a.Term.Same(expected) {
 		return replication.ErrCAS
 	}
-	t := &CommandTx{s: s, tx: tx, q: cachedTx{tx: tx, c: s.ws}, authority: a}
+	t = &CommandTx{s: s, tx: tx, q: cachedTx{tx: tx, c: s.ws}, authority: a, anchor: anchor}
+	if anchor != nil {
+		if err := anchor.enter(ctx, s, tx, a.Term.ClusterID); err != nil {
+			return err
+		}
+	}
 	t.active.Store(true)
 	defer t.active.Store(false)
 	ctx = context.WithValue(ctx, commandTxKey{}, t)
@@ -65,6 +94,9 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 	}
 	if t.failed != nil {
 		return t.failed
+	}
+	if err := t.prepareAnchor(ctx); err != nil {
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -77,11 +109,23 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 		if err := t.checkCommit(ctx); err != nil {
 			return err
 		}
+		if t.anchor != nil {
+			if err := t.anchor.check(); err != nil {
+				return err
+			}
+		}
 		if t.localChanged {
 			// Local metadata shares the original admission/rollback boundary,
 			// without advancing or publishing the canonical replicated image.
-			return tx.Commit()
+			if err := sqlBoundary.commit(); err != nil {
+				return err
+			}
+			if t.anchor != nil {
+				t.anchor.publish(s)
+			}
+			return nil
 		}
+		sqlBoundary.unchanged = true
 		return nil
 	}
 	if err := advanceRevision(ctx, tx, &a); err != nil {
@@ -104,8 +148,16 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 	if err := t.checkCommit(ctx); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if t.anchor != nil {
+		if err := t.anchor.check(); err != nil {
+			return err
+		}
+	}
+	if err := sqlBoundary.commit(); err != nil {
 		return err
+	}
+	if t.anchor != nil {
+		t.anchor.publish(s)
 	}
 	if len(t.rvs) > 0 {
 		s.head.Store(t.rvs[len(t.rvs)-1])
@@ -127,18 +179,22 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 // ordinary Apply/status/ownership/finalizer/audit semantics. Section rows share
 // this transaction, including a command's sealed dedup outcome.
 type CommandTx struct {
-	s             *Store
-	tx            *sql.Tx
-	q             cachedTx
-	authority     replication.Authority
-	active        atomic.Bool
-	failed        error
-	changed       bool
-	localChanged  bool // node-local metadata, outside the canonical image
-	mutations     []*mutation
-	rvs           []uint64
-	checks        []func(context.Context) error
-	sectionFences []*sectionPrefixFence // bounded by successful final-check registrations
+	s               *Store
+	tx              *sql.Tx
+	q               cachedTx
+	authority       replication.Authority
+	active          atomic.Bool
+	failed          error
+	changed         bool
+	localChanged    bool // node-local metadata, outside the canonical image
+	mutations       []*mutation
+	rvs             []uint64
+	checks          []func(context.Context) error
+	sectionFences   []*sectionPrefixFence // bounded by successful final-check registrations
+	anchor          *anchorOperation      // only a private original pre-held retirement scope
+	anchorInit      *anchorCursor         // narrow sentinel -> Dormant proposal, never durable authority
+	anchorTouched   bool                  // monotonic actual-change marker, including ABA
+	anchorLocalInit *anchorLocal          // typed migration-proven unchanged-Dormant local initialization
 }
 
 func (t *CommandTx) valid(ctx context.Context) error {
@@ -362,6 +418,9 @@ func (t *CommandTx) PutSection(ctx context.Context, section string, entry replic
 	if err != nil {
 		return t.poison(err)
 	}
+	if err := t.rawAnchorWrite(ctx, section, e.Key, e.Data, false); err != nil {
+		return err
+	}
 	if t.s.opts.ValidateReplicaEntry != nil {
 		if err := t.s.opts.ValidateReplicaEntry(section, replication.Entry{Key: e.Key, Data: append(json.RawMessage(nil), e.Data...)}); err != nil {
 			return t.poison(err)
@@ -377,6 +436,7 @@ func (t *CommandTx) PutSection(ctx context.Context, section string, entry replic
 	}
 	if n > 0 {
 		t.markSectionMutation(section, e.Key)
+		t.anchorTouched = t.anchorTouched || anchorKey(section, e.Key)
 	}
 	t.changed = t.changed || n > 0
 	return nil
@@ -390,6 +450,9 @@ func (t *CommandTx) DeleteSection(ctx context.Context, section, key string) erro
 	if replication.Section(&replication.Payload{}, section) == nil || key == "" || len(key) > 512 {
 		return t.poison(replication.ErrInvalid)
 	}
+	if err := t.rawAnchorWrite(ctx, section, key, nil, true); err != nil {
+		return err
+	}
 	result, err := t.tx.ExecContext(ctx, `DELETE FROM replication_sections WHERE section=? AND key=?`, section, key)
 	if err != nil {
 		return t.poison(err)
@@ -400,6 +463,7 @@ func (t *CommandTx) DeleteSection(ctx context.Context, section, key string) erro
 	}
 	if n > 0 {
 		t.markSectionMutation(section, key)
+		t.anchorTouched = t.anchorTouched || anchorKey(section, key)
 	}
 	t.changed = t.changed || n > 0
 	return nil

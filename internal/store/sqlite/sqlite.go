@@ -218,9 +218,11 @@ type Store struct {
 	clusterID         string
 	epoch             uint64
 	authority         atomic.Pointer[replication.Authority]
-	authorityChanged  chan struct{} // replaced/closed under wmu
-	generationChanged chan struct{} // coalesced complete-image notifications
-	writeBlocked      atomic.Bool   // fail closed if persisting a fence fails
+	authorityChanged  chan struct{}                // replaced/closed under wmu
+	generationChanged chan struct{}                // coalesced complete-image notifications
+	writeBlocked      atomic.Bool                  // fail closed if persisting a fence fails
+	anchors           atomic.Pointer[AnchorSource] // explicit committed-owner lifecycle, never serving authority
+	anchorBlocked     atomic.Bool                  // terminal uncertain anchor effect for this Store instance
 
 	bus *broadcaster
 
@@ -404,6 +406,13 @@ func (s *Store) Close() error {
 		close(s.authorityChanged)
 		close(s.generationChanged)
 		s.wmu.Unlock()
+		// Close after dropping wmu: retirement always precedes the SQL lock.
+		if source := s.anchors.Load(); source != nil {
+			source.closed.Store(true)
+			if cursor := source.cursor.Load(); cursor != nil && cursor.gate != nil {
+				cursor.gate.Close()
+			}
+		}
 		s.bus.close()
 		if _, cerr := s.w.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); cerr != nil {
 			s.log.Warn("state.db checkpoint on close failed", "err", cerr)

@@ -79,8 +79,29 @@ func (s *Store) ResolveConflict(ctx context.Context, chosen *replication.Validat
 		return replication.Authority{}, replication.ErrInvalid
 	}
 	image := chosen.Image()
+	if req.ExpectedConflict != nil {
+		term := *req.ExpectedConflict
+		req.ExpectedConflict = &term
+	}
+	if req.ExpectedDivergence != nil {
+		generation := *req.ExpectedDivergence
+		req.ExpectedDivergence = &generation
+	}
 	if _, err := s.ValidateImage(ctx, image); err != nil {
 		return replication.Authority{}, err
+	}
+	var authority replication.Authority
+	err := s.withAnchorInstall(ctx, image, func(original context.Context, operation *anchorOperation) error {
+		var result error
+		authority, result = s.resolveConflict(original, image, req, operation)
+		return result
+	})
+	return authority, err
+}
+
+func (s *Store) resolveConflict(ctx context.Context, image replication.Image, req replication.ResolveRequest, operation *anchorOperation) (authority replication.Authority, result error) {
+	if operation.scope != nil && !operation.installed.Same(req.ExpectedInstalled) {
+		return replication.Authority{}, replication.ErrCAS
 	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
@@ -91,15 +112,35 @@ func (s *Store) ResolveConflict(ctx context.Context, chosen *replication.Validat
 	if err != nil {
 		return replication.Authority{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
+	boundary := anchorSQL{tx: tx}
+	defer func() {
+		boundary.finish(&result)
+		operation.sql = boundary
+		if boundary.outcome == AnchorUnknown {
+			s.anchorBlocked.Store(true)
+			if operation.source != nil {
+				operation.source.closed.Store(true)
+			}
+		}
+	}()
 	a, err := readAuthority(ctx, tx)
 	if err != nil {
+		return a, err
+	}
+	if err := operation.enterInstall(ctx, s, tx, a.Term.ClusterID); err != nil {
 		return a, err
 	}
 	if image.Term.ClusterID != a.Term.ClusterID {
 		return a, replication.ErrWrongCluster
 	}
 	if a.Mode == replication.Primary && a.LastResolutionRequest == req.RequestID && a.Parent != nil && a.Parent.Same(image.Generation()) {
+		if err := operation.prepareCurrent(); err != nil {
+			return a, err
+		}
+		if err := operation.check(); err != nil {
+			return a, err
+		}
+		boundary.unchanged = true
 		return a, nil
 	}
 	if s.writeBlocked.Load() {
@@ -130,6 +171,9 @@ func (s *Store) ResolveConflict(ctx context.Context, chosen *replication.Validat
 			return a, err
 		}
 	}
+	if err := operation.prepareInstall(image); err != nil {
+		return a, err
+	}
 	if err := s.replaceReplicaRows(ctx, tx, image); err != nil {
 		return a, err
 	}
@@ -151,9 +195,13 @@ func (s *Store) ResolveConflict(ctx context.Context, chosen *replication.Validat
 	if err := writeAuthority(ctx, tx, a); err != nil {
 		return a, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := operation.check(); err != nil {
 		return a, err
 	}
+	if err := boundary.commit(); err != nil {
+		return a, err
+	}
+	operation.publish(s)
 	s.head.Store(image.ObjectResourceVersion)
 	s.compacted.Store(image.ObjectResourceVersion)
 	s.sinceCompacted = 0
