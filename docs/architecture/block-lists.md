@@ -213,6 +213,12 @@ for 3 M entries ([spike](../../dev-docs/spikes/blocking.md)); `make bench` guard
 | `/regex/` | regex (at most 1000 per list) |
 | `$dnstype`, `$dnsrewrite`, `$client`, `$ctag`, `$important`, `$badfilter`, `$denyallow`, mid-pattern wildcards | complete contextual rule stream; unknown modifiers remain counted and ignored |
 
+Regex modifiers begin after the closing `/`, for example
+`/^ads[.]example$/$client=192.0.2.0/24,dnstype=AAAA`. CIDR slashes and quoted
+client-selector slashes remain part of their modifier values. Escaped slashes,
+character classes and RE2 literal quoting retain their regex meaning; scoped
+exceptions and `$badfilter` use the complete original rule identity.
+
 ## Compile and swap
 
 ```mermaid

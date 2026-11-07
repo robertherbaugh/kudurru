@@ -26,6 +26,79 @@ func selectionFor(t testing.TB, lines ...string) *Selection {
 	}
 	return sel
 }
+
+func TestRegexCIDRModifierContextAndBadfilter(t *testing.T) {
+	for _, tc := range []struct {
+		name, clients string
+		inside        []string
+		outside       []string
+	}{
+		{"ipv4", "192.0.2.0/24", []string{"192.0.2.5", "192.0.2.250"}, []string{"192.0.3.5", "2001:db8::5"}},
+		{"ipv6", "2001:db8::/32", []string{"2001:db8::5", "2001:db8:ffff::250"}, []string{"2001:db9::5", "192.0.2.5"}},
+		{"mixed", "192.0.2.0/24|2001:db8::/32", []string{"192.0.2.5", "2001:db8::5"}, []string{"192.0.3.5", "2001:db9::5"}},
+		{"exact-ip", "192.0.2.5", []string{"192.0.2.5"}, []string{"192.0.2.250", "2001:db8::5"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const pattern = `/^client[.]example$/`
+			line := pattern + "$client=" + tc.clients + ",dnstype=AAAA"
+			sel := selectionFor(t, line)
+			original := sel.block[0]
+			if stats := original.Stats(); stats.Entries != 1 || stats.Invalid != 0 || stats.Unsupported != 0 || stats.RegexDropped != 0 {
+				t.Fatalf("regex/CIDR baseline dropped its rule: %+v", stats)
+			}
+			for _, address := range tc.inside {
+				question := Context{Name: "client.example", Type: dns.TypeAAAA, ClientIP: netip.MustParseAddr(address)}
+				if decision := sel.EvaluateContext(question); !decision.Blocked() || decision.Rule() != line || decision.List != "rules" {
+					t.Fatalf("original in-prefix rule/provenance lost for %s: %+v", address, decision)
+				}
+				question.Type = dns.TypeA
+				if sel.EvaluateContext(question).Blocked() {
+					t.Fatal("regex/CIDR rule lost its question-type condition")
+				}
+				question.Type, question.Name = dns.TypeAAAA, "other.example"
+				if sel.EvaluateContext(question).Blocked() {
+					t.Fatal("regex/CIDR rule lost its regex condition")
+				}
+			}
+			for _, address := range tc.outside {
+				if sel.EvaluateContext(Context{Name: "client.example", Type: dns.TypeAAAA, ClientIP: netip.MustParseAddr(address)}).Blocked() {
+					t.Fatal("regex/CIDR rule broadened outside its client scope")
+				}
+			}
+			// Modifier order is immaterial to badfilter identity, while client
+			// and question scope remain part of that identity.
+			cancel := pattern + "$dnstype=AAAA,client=" + tc.clients + ",badfilter"
+			canceled := selectionFor(t, line, cancel)
+			if stats := canceled.block[0].Stats(); stats.Invalid != 0 || stats.Unsupported != 0 || stats.RegexDropped != 0 {
+				t.Fatalf("badfilter was dropped instead of canceling: %+v", stats)
+			}
+			question := Context{Name: "client.example", Type: dns.TypeAAAA, ClientIP: netip.MustParseAddr(tc.inside[0])}
+			if canceled.EvaluateContext(question).Blocked() {
+				t.Fatal("regex/CIDR badfilter left a serving rule")
+			}
+			if !selectionFor(t, line, pattern+"$dnstype=A,client="+tc.clients+",badfilter").EvaluateContext(question).Blocked() {
+				t.Fatal("badfilter canceled a different question scope")
+			}
+			exception := "@@" + line
+			excepted := selectionFor(t, "||example^", exception)
+			if decision := excepted.EvaluateContext(question); decision.Action != ActionAllow || decision.Rule() != exception {
+				t.Fatalf("regex/CIDR exception lost original identity: %+v", decision)
+			}
+			question.ClientIP = netip.MustParseAddr(tc.outside[0])
+			if !excepted.EvaluateContext(question).Blocked() {
+				t.Fatal("regex/CIDR exception broadened client scope")
+			}
+			question.ClientIP = netip.MustParseAddr(tc.inside[0])
+			if !selectionFor(t, "||example^", exception, "@@"+cancel).EvaluateContext(question).Blocked() {
+				t.Fatal("badfilter failed to cancel the exact scoped exception")
+			}
+			if decision := sel.EvaluateContext(question); !decision.Blocked() || decision.Rule() != line || sel.block[0] != original {
+				t.Fatal("later exception or cancellation changed the original list")
+			}
+		})
+	}
+}
+
 func TestModifierContextConditions(t *testing.T) {
 	base := Context{Name: "ads.example.", Type: dns.TypeA, Class: dns.ClassINET, ClientIP: netip.MustParseAddr("192.0.2.5"), ClientID: "device-id", ClientNames: []string{"Frank's laptop", "with,comma|pipe"}, Tags: []string{"device_pc", "user_child"}}
 	for _, tc := range []struct {

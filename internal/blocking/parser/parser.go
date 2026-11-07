@@ -449,7 +449,7 @@ func (p *state) hostsLine(n int, line string, addr netip.Addr, rest string) erro
 
 // regexRule handles "/re/" and "/re/$modifiers" in adblock-style lists.
 func (p *state) regexRule(n int, line, s string, exception bool) error {
-	last := strings.LastIndexByte(s, '/')
+	last := regexDelimiter(s)
 	if last <= 1 {
 		p.invalid(n, line, ReasonInvalidRegex, "empty or unterminated /regex/")
 		return nil
@@ -482,6 +482,59 @@ func (p *state) regexRule(n int, line, s string, exception bool) error {
 		return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: s[:last+1], Modifiers: mods})
 	}
 	return p.rule(Rule{Kind: KindRegex, Syntax: SyntaxRegex, Pattern: re, Exception: exception, Line: n})
+}
+
+// regexDelimiter finds the modifier boundary before inspecting modifier values,
+// which may themselves contain slashes (CIDRs and quoted client selectors).
+// Escapes, character classes and RE2 literal quoting keep /$ inside the pattern.
+// Bare expressions retain their existing final-slash delimiter and validation.
+func regexDelimiter(s string) int {
+	inClass, quoted := false, false
+	classFirst := 0
+	for i := 1; i+1 < len(s); i++ {
+		if quoted {
+			if s[i] == '\\' && s[i+1] == 'E' {
+				quoted = false
+				i++
+			}
+			continue
+		}
+		if s[i] == '\\' {
+			if !inClass && s[i+1] == 'Q' {
+				quoted = true
+			}
+			i++
+			continue
+		}
+		if inClass {
+			if s[i] == ']' && i > classFirst {
+				inClass = false
+			} else if s[i] == '[' && s[i+1] == ':' {
+				// A POSIX class's closing bracket does not close its outer class.
+				end := strings.Index(s[i+2:], ":]")
+				if end < 0 {
+					// Leave malformed classes to syntax.Parse without rescanning
+					// this suffix for each further opening bracket.
+					return strings.LastIndexByte(s, '/')
+				}
+				i += end + 3
+			}
+			continue
+		}
+		switch s[i] {
+		case '[':
+			inClass = true
+			classFirst = i + 1
+			if s[classFirst] == '^' {
+				classFirst++
+			}
+		case '/':
+			if s[i+1] == '$' {
+				return i
+			}
+		}
+	}
+	return strings.LastIndexByte(s, '/')
 }
 
 // regexExtensions are Pi-hole regex-list options that change the meaning

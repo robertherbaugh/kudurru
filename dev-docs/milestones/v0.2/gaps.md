@@ -2992,3 +2992,22 @@ management and Kubernetes activation still require their named acceptance.
 Private merged receipts are in `.context/tsig-activation-merged-20261107/`;
 isolated scope and commit identities are recorded in
 `.context/tsig-sqlite-activation-integration-handoff.md`.
+
+### Regex/CIDR modifier delimiter correction
+
+The separately discovered parser gap is corrected at the regex/modifier
+boundary. A rule such as
+`/^client[.]example$/$client=192.0.2.0/24,dnstype=AAAA` previously selected the
+CIDR slash as its delimiter and was discarded as an invalid URL. The parser
+now finds the modifier boundary before interpreting its values, respecting
+regex escapes, classes and literal quoting in one bounded scan. Existing bare
+regex validation and modifier routing remain intact.
+
+The complete parser ordinary suite passes **144 entries**, no failures/skips.
+Focused contextual-rule races pass **35 entries**, including actual IPv4/IPv6
+and mixed-prefix selection, question type, original rule identity, exceptions,
+badfilter cancellation and retained-list independence. Installed two-package
+lint reports **0 issues**. All frozen identities match; the original sources
+and exact receipts are retained in `.context/parser-cidr-20261107/`.
+This is independent of the isolated F20 kernel and its performance failures;
+the count probe used its unchanged original parser/workload/module identities.

@@ -243,6 +243,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Blocking: preserve regex rules with IPv4/IPv6 CIDR client modifiers instead
+  of mistaking the CIDR slash for the regex delimiter and discarding the rule.
+
 - Secondary and RPZ acquisition now retain their original job deadline through
   persistence and publication, preventing expired work from becoming fresh data.
 
