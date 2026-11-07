@@ -15,6 +15,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
@@ -57,6 +58,11 @@ type Options struct {
 	Upstreams  upstream.Options
 	ZoneLimits zonestate.Limits
 	MaxZones   int
+	// AnchorStore supplies original committed managed input for this candidate.
+	// Nil permits only never-managed static history. The publisher must bound
+	// its original preparation context before reading the candidate. This does
+	// not install root output/cache exclusion or activate an updater.
+	AnchorStore *sqlite.Store
 	// PrepareLogging binds an immutable collector to this candidate's exact
 	// settings. Local sink preparation must honor cancellation and never adopt
 	// the candidate operationally. Nil is explicit no logging infrastructure.

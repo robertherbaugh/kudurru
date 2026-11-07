@@ -2,6 +2,7 @@ package recursor
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -177,6 +178,10 @@ type Options struct {
 	// AllowLoopback lets the resolver ask servers on loopback addresses,
 	// which it otherwise never does (tests).
 	AllowLoopback bool
+	// TrustDomain binds this resolver incarnation to its caller's immutable
+	// trust source. It is a cache label, not a validation or output grant. Zero
+	// preserves static cache identity. Reconfigure never changes this domain.
+	TrustDomain [32]byte
 }
 
 // Limits per client query.
@@ -225,6 +230,7 @@ type Resolver struct {
 	logger        *slog.Logger
 	now           func() time.Time
 	allowLoopback bool
+	trustDomain   [32]byte
 	primeMu       sync.Mutex
 	lastAnswer    atomic.Int64 // unix nanoseconds of the last answer from any name server
 }
@@ -249,6 +255,7 @@ func New(cfg Config, opts Options) (*Resolver, error) {
 		logger:        opts.Logger,
 		now:           opts.Now,
 		allowLoopback: opts.AllowLoopback,
+		trustDomain:   opts.TrustDomain,
 	}
 	if r.logger == nil {
 		r.logger = slog.Default()
@@ -345,10 +352,19 @@ func (r *Resolver) Config() Config {
 	return c
 }
 
-// TrustContext captures active recursive exceptions and the next absolute expiry.
-// It performs no I/O and never consults forwarded validation configuration.
+// TrustContext captures this native trust domain, active recursive exceptions
+// and the next absolute expiry. It never consults forwarded validation settings.
 func (r *Resolver) TrustContext() ([32]byte, time.Time) {
-	return r.set.Load().exceptions.Context(r.now())
+	active, until := r.set.Load().exceptions.Context(r.now())
+	if r.trustDomain == ([32]byte{}) {
+		return active, until
+	}
+	const tag = "kudurru/native-trust-domain/v1\x00"
+	var raw [len(tag) + 2*sha256.Size]byte
+	offset := copy(raw[:], tag)
+	offset += copy(raw[offset:], r.trustDomain[:])
+	copy(raw[offset:], active[:])
+	return sha256.Sum256(raw[:]), until
 }
 
 // Flush drops every cached delegation, address, key and denial proof.

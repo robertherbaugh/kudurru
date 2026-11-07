@@ -26,6 +26,7 @@ import (
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
@@ -52,6 +53,8 @@ type semanticOwners struct {
 	auth       *servingauth.View
 	upstreams  *upstream.Set
 	lists      string
+	anchor     *sqlite.AnchorPublication
+	current    func() bool
 
 	unblockRequests []*public.UnblockRequest
 }
@@ -106,6 +109,10 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 		document[key] = value
 	}
 	owners.config, _, err = config.ApplyClusterDocument(deps.Host, document)
+	if err != nil {
+		return nil, err
+	}
+	owners.anchor, err = prepareAnchorInput(ctx, candidate, owners.config, opts.AnchorStore)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +184,15 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	// and let a reload change an older request's trust and root-hint configuration.
 	upstreamOptions := opts.Upstreams
 	upstreamOptions.Recursor = nil
-	owners.upstreams, err = upstream.New(upstream.ConfigFrom(owners.config.Upstreams), upstreamOptions)
+	upstreamOptions.RecursiveDomain = [32]byte{}
+	upstreamConfig := upstream.ConfigFrom(owners.config.Upstreams)
+	if owners.anchor != nil {
+		// Canonical configuration retains explicit bootstrap seeds. Only this
+		// resolver receives effective keys from the actual committed owner.
+		upstreamConfig.Recursion.TrustAnchors = owners.anchor.Projection().DS()
+		upstreamOptions.RecursiveDomain = owners.anchor.Input().CacheDomain()
+	}
+	owners.upstreams, err = upstream.New(upstreamConfig, upstreamOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -190,8 +205,10 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	// cannot become eligible merely because configuration bytes match again.
 	current := func() bool {
 		authority, blocked := opts.Authority()
-		return !blocked && candidate.Token.Matches(authority) && deps.Current()
+		return !blocked && candidate.Token.Matches(authority) && deps.Current() &&
+			(owners.anchor == nil || owners.anchor.Input().Current())
 	}
+	owners.current = current
 	owners.resolution, err = upstreamstage.NewView(owners.upstreams, validator, owners.config.DNSSEC.Enabled, current)
 	if err != nil {
 		return nil, err
@@ -200,7 +217,11 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	if err != nil {
 		return nil, err
 	}
-	owners.cache, err = cachestage.NewView(cachestage.SettingsFrom(owners.config.Cache), owners.config.Cache.MaxEntries == 0, current)
+	if owners.anchor != nil {
+		owners.cache, err = cachestage.NewManagedView(cachestage.SettingsFrom(owners.config.Cache), owners.config.Cache.MaxEntries == 0, current, owners.anchor.Input().CacheDomain())
+	} else {
+		owners.cache, err = cachestage.NewView(cachestage.SettingsFrom(owners.config.Cache), owners.config.Cache.MaxEntries == 0, current)
+	}
 	if err != nil {
 		return nil, err
 	}

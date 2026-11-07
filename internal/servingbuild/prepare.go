@@ -141,7 +141,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	if err := ctx.Err(); err != nil {
 		return serving.Prepared{}, err
 	}
-	if !deps.Current() {
+	if !owners.current() {
 		return serving.Prepared{}, serving.ErrDependency
 	}
 	component := func(name string, value any, release func()) serving.Component {
@@ -157,7 +157,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current, browser: deps.Browser, cli: deps.CLI}, deps.Release),
+		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: owners.current, browser: deps.Browser, cli: deps.CLI}, deps.Release),
 		component("control", owners.control, nil),
 		component("logging", owners.logging, nil),
 	}
@@ -171,7 +171,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	}
 	parts = append(parts, component("edge-cache", timeline, nil))
 	transferred = true
-	return serving.Prepared{Components: parts, Current: deps.Current}, nil
+	return serving.Prepared{Components: parts, Current: owners.current, Anchor: owners.anchor}, nil
 }
 
 // CLI selects only the retained runtime's exact public-client capability. This

@@ -84,13 +84,16 @@ type Subnetter interface {
 // Stage implements pipeline.Stage.
 type Stage struct {
 	// Capture supplies immutable cache settings from Request.Serving.
-	Capture  func(*pipeline.Request) (*View, error)
-	c        *cache.Cache
-	set      atomic.Pointer[Settings]
-	disabled atomic.Bool
-	ecs      Subnetter
-	bg       sync.WaitGroup
-	rebound  sync.Map
+	Capture func(*pipeline.Request) (*View, error)
+	// CaptureInsertion binds a separate mutation attempt to the original
+	// complete publication before detached acquisition or restored promotion.
+	CaptureInsertion func(*pipeline.Request) (Insertion, error)
+	c                *cache.Cache
+	set              atomic.Pointer[Settings]
+	disabled         atomic.Bool
+	ecs              Subnetter
+	bg               sync.WaitGroup
+	rebound          sync.Map
 }
 
 // New returns the stage over c. ecs may be nil when ECS is never sent.
@@ -146,8 +149,8 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 			return next(req)
 		}
 		scope := view.scope(p.Scope())
-		if _, loaded := s.rebound.LoadOrStore(scope, true); !loaded {
-			s.c.RebindRestored(scope)
+		if err := s.rebind(req, view, scope); err != nil {
+			return nil, err
 		}
 	}
 	if req.Serving != nil {
@@ -262,6 +265,10 @@ func (s *Stage) fetch(k cache.Key, req *pipeline.Request, next pipeline.Next) <-
 		defer cancel()
 		fr.Ctx = ctx
 		fr.Deadline, _ = ctx.Deadline()
+		insertion, err := s.captureInsertion(&fr)
+		if err != nil {
+			return nil, err
+		}
 		resp, err := next(&fr)
 		if resp != nil {
 			defer resp.Close()
@@ -269,22 +276,31 @@ func (s *Stage) fetch(k cache.Key, req *pipeline.Request, next pipeline.Next) <-
 				return nil, pipeline.ErrServingCapture
 			}
 		}
-		current := view.current()
-		if p, ok := fr.Resolution.(*upstream.QueryPlan); ok {
-			current = current && p.Current()
+		var mutate func()
+		if refreshed(resp, err) {
+			// Packing and allocation precede admission and cache locks.
+			if p, ok := fr.Resolution.(*upstream.QueryPlan); !ok || resp.CacheScope == p.Scope() {
+				out := *resp
+				out.CacheScope = view.scope(resp.CacheScope)
+				mutate = s.prepareStore(k, &out, generation, &view.settings)
+			}
+		} else if securityFailure(resp) {
+			mutate = func() { s.c.Delete(k) }
+		} else {
+			mutate = func() { s.c.MarkRefreshFailed(k, view.settings.StaleAnswerTTL) }
 		}
-		if current {
-			if refreshed(resp, err) {
-				// Verify the original resolver scope before binding cache settings.
-				if p, ok := fr.Resolution.(*upstream.QueryPlan); !ok || resp.CacheScope == p.Scope() {
-					out := *resp
-					out.CacheScope = view.scope(resp.CacheScope)
-					s.storeWithSettings(k, &out, generation, &view.settings)
+		if mutate != nil {
+			if admissionErr := applyInsertion(insertion, func() error {
+				current := view.current()
+				if p, ok := fr.Resolution.(*upstream.QueryPlan); ok {
+					current = current && p.Current()
 				}
-			} else if securityFailure(resp) {
-				s.c.Delete(k)
-			} else {
-				s.c.MarkRefreshFailed(k, view.settings.StaleAnswerTTL)
+				if current {
+					mutate()
+				}
+				return nil
+			}); admissionErr != nil {
+				return nil, admissionErr
 			}
 		}
 		// Shared results must not refer to resources released at fetch completion.
@@ -483,8 +499,16 @@ func storedDNSSEC(m *dns.Msg) pipeline.DNSSEC {
 
 // storeWithSettings packs a cacheable response using the pinned settings.
 func (s *Stage) storeWithSettings(k cache.Key, resp *pipeline.Response, generation uint64, settings *Settings) {
+	if mutate := s.prepareStore(k, resp, generation, settings); mutate != nil {
+		mutate()
+	}
+}
+
+// prepareStore finishes encoding before acquiring insertion admission. The
+// returned function only takes cache locks and applies the original mutation.
+func (s *Stage) prepareStore(k cache.Key, resp *pipeline.Response, generation uint64, settings *Settings) func() {
 	if !resp.Cacheable || resp.Msg == nil || resp.Msg.Truncated || resp.Modified || resp.Security.State == pipeline.ValidationBogus || resp.Security.State == pipeline.ValidationIndeterminate || resp.Origin != pipeline.OriginForwarded {
-		return
+		return nil
 	}
 	m := resp.Msg
 	var kind cache.Kind
@@ -494,7 +518,7 @@ func (s *Stage) storeWithSettings(k cache.Key, resp *pipeline.Response, generati
 	case m.Rcode == dns.RcodeSuccess || m.Rcode == dns.RcodeNameError:
 		kind = cache.Negative
 	default:
-		return
+		return nil
 	}
 	out := &dns.Msg{MsgHdr: m.MsgHdr, Compress: true}
 	out.Id = 0
@@ -516,7 +540,7 @@ func (s *Stage) storeWithSettings(k cache.Key, resp *pipeline.Response, generati
 		ttl = min(ttl, resp.Security.ValidUntil.Sub(s.c.Now()))
 	}
 	if ttl <= 0 {
-		return
+		return nil
 	}
 	if resp.DNSSEC != pipeline.DNSSECUnknown {
 		// Kept in a private EDNS option of the stored copy, so cached
@@ -527,13 +551,15 @@ func (s *Stage) storeWithSettings(k cache.Key, resp *pipeline.Response, generati
 	}
 	wire, err := out.Pack()
 	if err != nil {
-		return
+		return nil
 	}
 	parts, ok := k.Parts()
 	if !ok || parts.Scope != resp.CacheScope {
-		return
+		return nil
 	}
-	s.c.SetIfGeneration(k, wire, kind, ttl, cache.Metadata{Scope: resp.CacheScope, Security: resp.Security, Upstream: resp.Upstream}, generation)
+	metadata := cache.Metadata{Scope: resp.CacheScope, Security: resp.Security, Upstream: resp.Upstream}
+	stored := s.c.Now()
+	return func() { s.c.SetAtIfGeneration(k, wire, kind, ttl, metadata, generation, stored) }
 }
 
 // Authenticated data may be shortened, never raised to MinTTL.

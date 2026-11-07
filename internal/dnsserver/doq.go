@@ -249,7 +249,27 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 
 	client := clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ)
 	client.ClientID = clientid.FromSNI(conn.ConnectionState().TLS.ServerName, l.spec.ClientIDDomain)
-	out, err := l.env.handler.resolveEncrypted(st.Context(), l.env, wire, req, client)
+	// quic.Stream.Context is the SEND-side lifetime: even our successful FIN
+	// cancels it. Preserve connection/reset cancellation independently, while
+	// letting our own successful completion leave the original query valid
+	// through its final admission check. No deadline is replaced or renewed.
+	requestCtx, cancelRequest := context.WithCancelCause(conn.Context())
+	var ownFIN atomic.Bool
+	bridgeDone := make(chan struct{})
+	stopBridge := context.AfterFunc(st.Context(), func() {
+		defer close(bridgeDone)
+		cause := context.Cause(st.Context())
+		if cause != context.Canceled || !ownFIN.Load() {
+			cancelRequest(cause)
+		}
+	})
+	defer func() {
+		if !stopBridge() {
+			<-bridgeDone
+		}
+		cancelRequest(context.Canceled)
+	}()
+	out, err := l.env.handler.resolveEncrypted(requestCtx, l.env, wire, req, client)
 	if err != nil {
 		st.CancelWrite(DoQInternalError)
 		return
@@ -264,13 +284,40 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 	buf := make([]byte, 2+len(out.wire))
 	binary.BigEndian.PutUint16(buf, uint16(len(out.wire))) //nolint:gosec // Pack never exceeds 65535 bytes
 	copy(buf[2:], out.wire)
-	_ = st.SetWriteDeadline(time.Now().Add(lim.WriteTimeout))
-	if _, err := st.Write(buf); err != nil {
-		st.CancelWrite(DoQInternalError)
+	finCompleted := false
+	if err := out.emit(func() error {
+		deadline := time.Now().Add(lim.WriteTimeout)
+		if !out.deadline.IsZero() && out.deadline.Before(deadline) {
+			deadline = out.deadline
+		}
+		if err := st.SetWriteDeadline(deadline); err != nil {
+			return err
+		}
+		if _, err := st.Write(buf); err != nil {
+			return err
+		}
+		// STREAM FIN belongs to the same admission as the framed response.
+		ownFIN.Store(true)
+		if err := st.Close(); err != nil {
+			cancelRequest(err)
+			return err
+		}
+		finCompleted = true
+		// Observe any already reported peer reset synchronously as well as
+		// through the joined cancellation bridge.
+		if cause := context.Cause(st.Context()); cause != nil && cause != context.Canceled {
+			cancelRequest(cause)
+			return cause
+		}
+		return nil
+	}); err != nil {
+		// A later context/admission error cannot undo bytes plus FIN already
+		// handed off. Resetting then can corrupt the completed peer response.
+		if !finCompleted {
+			st.CancelWrite(DoQInternalError)
+		}
 		return
 	}
-	// STREAM FIN: no more data on this stream (RFC 9250 §4.2).
-	_ = st.Close()
 }
 
 // protocolError closes the connection with DOQ_PROTOCOL_ERROR (RFC 9250

@@ -20,6 +20,7 @@ var nextScope atomic.Uint64
 type View struct {
 	settings Settings
 	disabled bool
+	managed  bool
 	epoch    uint64
 	current  func() bool
 	identity [32]byte
@@ -42,6 +43,23 @@ func NewView(settings Settings, disabled bool, current func() bool) (*View, erro
 		return nil, err
 	}
 	return &View{settings: settings, disabled: disabled, epoch: nextView.Add(1), current: current, identity: sha256.Sum256(raw)}, nil
+}
+
+// NewManagedView partitions every route by the exact managed owner/local
+// domain, including forwarded and CD answers. It never promotes disk entries.
+func NewManagedView(settings Settings, disabled bool, current func() bool, domain [32]byte) (*View, error) {
+	if domain == ([32]byte{}) {
+		return nil, fmt.Errorf("cache: managed view requires an exact domain")
+	}
+	v, err := NewView(settings, disabled, current)
+	if err != nil {
+		return nil, err
+	}
+	var raw [64]byte
+	copy(raw[:32], v.identity[:])
+	copy(raw[32:], domain[:])
+	v.identity, v.managed = sha256.Sum256(raw[:]), true
+	return v, nil
 }
 
 func (v *View) scope(base pipeline.CacheScope) pipeline.CacheScope {

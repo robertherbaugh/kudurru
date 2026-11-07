@@ -45,6 +45,17 @@ func (h *Handler) captureTransport(ctx context.Context, msg *dns.Msg, client pip
 	if lease == nil {
 		return req, nil, cleanup, pipeline.ErrServingCapture
 	}
+	if h.Output != nil {
+		output, err := h.Output(req)
+		if err != nil {
+			return req, nil, cleanup, err
+		}
+		if output == nil {
+			return req, nil, cleanup, pipeline.ErrServingCapture
+		}
+		ctx = context.WithValue(ctx, transportOutputKey{}, output)
+		req.Ctx = ctx
+	}
 	keys, err := h.Keys(req)
 	if err != nil || keys == nil {
 		return req, nil, cleanup, pipeline.ErrServingCapture
@@ -52,6 +63,7 @@ func (h *Handler) captureTransport(ctx context.Context, msg *dns.Msg, client pip
 	if err := ctx.Err(); err != nil {
 		return req, nil, cleanup, err
 	}
+	ctx = context.WithValue(ctx, transportResponseKey{}, &transportResponse{})
 	req.Ctx = context.WithValue(ctx, transportRequestKey{}, req)
 	return req, keys, cleanup, nil
 }

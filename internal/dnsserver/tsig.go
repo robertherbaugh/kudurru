@@ -333,7 +333,21 @@ func verifyTSIG(h *Handler, e *env, w dns.ResponseWriter, r *dns.Msg, client *pi
 // write deadline) it closes the connection: the stream is cut mid-answer.
 func writeStream(h *Handler, w dns.ResponseWriter, msgs iter.Seq[*dns.Msg], sig signer, padding responsePadding) {
 	first := true
-	for m := range msgs {
+	next, stop := iter.Pull(msgs)
+	defer stop()
+	for {
+		if !first {
+			if captured, ok := w.(*capturedNativeWriter); ok && captured.output != nil {
+				if err := captured.output.Next(); err != nil {
+					_ = w.Close()
+					return
+				}
+			}
+		}
+		m, more := next()
+		if !more {
+			return
+		}
 		sig.sign(m)
 		m = padding.apply(m)
 		if err := w.WriteMsg(m); err != nil {

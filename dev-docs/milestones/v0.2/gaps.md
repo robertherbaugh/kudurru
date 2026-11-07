@@ -3286,3 +3286,71 @@ The exact two cases/four entries pass default race, alongside the parent
 caller/builder selection; installed command-package lint passes with zero issues.
 Evidence: `.context/ci-7649b8d-final-20261107/`. Hosted failure logs remain intact;
 this local correction does not itself establish a new hosted green run.
+
+### F20 completed five-process measurements retain failed aggregate
+
+All five original performance processes and five fresh RSS helpers completed
+once on unchanged source23 `cd36732f` and original workloads. All 123 five-value
+vectors, 615 values and 121 original full-baseline findings are preserved.
+The bounded collector exits 1, its control wrapper exits 1, and independent
+control integrity is valid. Full arithmetic has 36 measured regressions plus
+20 missing zone keys; scoped arithmetic retains all 36 measured failures.
+There are 51 unchanged, five improved and nine new modifier metrics, with no
+absolute-limit violations. CPU class 2.50GHz/GOMAXPROCS2 versus 2.90GHz/6 and
+absence of original Go benchgate qualification remain explicit.
+
+Median steady RSS is 92.45MiB versus the original 150MiB ceiling; separate
+peak is 141.0MiB. The 3M suffix/exact fixture does not qualify regex, aggregate
+serving or held-old-plus-new RSS. Median compile time is 4.493s versus 2.412s.
+Unchanged-list compilation remains 508,879,489ns/25 allocations versus the
+committed 62,725,199ns/eight, with policy and regex tail regressions retained.
+All earlier individual failures, six-byte parallel observation, StageA missing
+numeric outcome, fuzz plateau and report-generation failure remain recorded.
+Evidence: `.context/f20d-current-five-process-aggregate-result.md`
+(SHA256 `c5cd48a7a5b890f3cf7c4fef5146a895337d7f73ab72eaffb79ae04898f4d22a`).
+
+Source review traces the million-line full parser fingerprint to contextual
+modifier support before F20. This explains structural work, not CPU attribution
+or permission to waive the gate. The authorized isolated two-file lazy-budget
+preparation changes only list.go and program_budget_test.go; it is unformatted,
+uncompiled and unqualified. It retains full parsing/fingerprint serialization
+and exact reservation checks. Dedicated fingerprint streaming and sparse batch
+dispatch remain separate proposals. No further F20 execution is inferred.
+
+### F28 root output and raw-cache admission composition
+
+The parent binds an actual complete private root component with independent
+finite query attempts. Native UDP/TCP/DoT writes, HTTP1/2/3 header/body flush,
+and DoQ Write+FIN finish under original mode/retirement admission. Actual
+completion remains distinct from later errors; a completed transport is not
+reset merely because scope exit observes a later refusal. Full DNS-server
+default race passes344 entries with four unchanged opt-in measurement skips;
+root integration passes17 with zero failures/skips. Subsequent style-only
+corrections pass installed scoped lint with zero issues. Earlier ordinary,
+race, lint and preparation failures remain preserved under
+`.context/f28-parent-output-20261107/`; race and final lint freezes are distinct.
+
+Detached raw-cache leaders capture a separate insertion attempt from the
+original complete lease before acquisition. Final cache mutation holds
+mode/retirement exclusion before cache locks, after encoding and before
+resource release. Actual insert/delete/failed-refresh paths share admission.
+Queued insertion retains the original TTL origin. Every managed raw scope
+includes the exact owner/local domain, including forwarded and CD data;
+managed dumps are not promoted. Static restored promotion uses admission.
+
+Package-specific race evidence: underlying cache34, corrected full cache
+stage45, root/bootstrap plus original transport/restart3, and final
+cache/builder selection31 (15 stage/16 builder). Scoped installed lint passes
+zero issues on all2,336 frozen inputs. The two earlier commands failed: a new
+stale fixture was clamped by default minTTL, and the first restore helper
+over-rejected an existing held CNAME read. Their original sources/receipts
+remain; the final unchanged CNAME assertion passes after retired semantic
+currency skips mutation without refusing the library read. Root admission
+still refuses actual retired sources. No single all-green aggregate is claimed.
+Evidence: `.context/f28-parent-raw-cache-20261107/`.
+
+Production managed input and updater remain disabled. These cases do not
+complete the native/private cache, API dig, installed edge bypass, full
+transport retirement/interposition or external interoperability obligations.
+The exact original accepted-owner, restart, follower and tombstone requirements
+remain; no reset, static fallback or acceptance waiver is introduced.

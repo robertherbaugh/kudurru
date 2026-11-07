@@ -26,10 +26,12 @@ type encryptedSigner struct {
 // encryptedReply couples the serialized reply with its HTTP freshness policy;
 // unsigned HTTP responses do not need another DNS decode to recover their TTL.
 type encryptedReply struct {
-	wire  []byte
-	cache string
-	close func()
-	check func() error
+	wire     []byte
+	cache    string
+	close    func()
+	check    func() error
+	output   Output
+	deadline time.Time
 }
 
 // Close releases original publication ownership after actual transport emission.
@@ -41,6 +43,25 @@ func (r *encryptedReply) Close() {
 
 func (r *encryptedReply) current() bool {
 	return r != nil && (r.check == nil || r.check() == nil)
+}
+
+func (r *encryptedReply) emit(fn func() error) error {
+	write := func() error {
+		if !r.current() {
+			return errOriginalDeadline
+		}
+		if err := fn(); err != nil {
+			return err
+		}
+		if !r.current() {
+			return errOriginalDeadline
+		}
+		return nil
+	}
+	if r != nil && r.output != nil {
+		return r.output.Emit(write)
+	}
+	return write()
 }
 
 func packEncryptedReply(m *dns.Msg) (*encryptedReply, error) {
@@ -67,7 +88,7 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 		if err != nil {
 			expired := captured.Ctx.Err() != nil
 			cleanup()
-			if expired {
+			if expired || h.Output != nil {
 				return nil, nil
 			}
 			return packEncryptedReply(servfail(req))
@@ -77,15 +98,21 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 		// The returned encoded reply keeps this SAME lease through socket write.
 		defer func() {
 			if reply != nil && resultErr == nil {
+				reply.output, _ = ctx.Value(transportOutputKey{}).(Output)
+				if deadline, finite := ctx.Deadline(); finite && (reply.deadline.IsZero() || deadline.Before(reply.deadline)) {
+					reply.deadline = deadline
+				}
 				check := reply.check
 				reply.check = func() error {
 					if err := ctx.Err(); err != nil {
 						return err
 					}
 					if check != nil {
-						return check()
+						if err := check(); err != nil {
+							return err
+						}
 					}
-					return nil
+					return checkTransportResponse(ctx)
 				}
 				reply.close = cleanup
 				handedOff = true
@@ -172,7 +199,7 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 		m.SetTsig(t.Hdr.Name, t.Algorithm, tsigFudge, time.Now().Unix())
 		m = padding.apply(m)
 		out, _, err := dns.TsigGenerateWithProvider(m, sig.provider, t.MAC, false)
-		return &encryptedReply{wire: out, cache: "no-store", check: func() error {
+		return &encryptedReply{wire: out, cache: "no-store", deadline: sig.deadline, check: func() error {
 			now := time.Now()
 			if now.Before(sig.verifiedAt) || !now.Before(sig.deadline) {
 				return errOriginalDeadline

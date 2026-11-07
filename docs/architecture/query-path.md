@@ -67,6 +67,25 @@ mutable lookup providers fail closed on these transports because they cannot
 pin an installed credential generation. Stored-key administration remains
 separate from this transport mount.
 
+SQLite composition also captures a private root component from that same complete
+publication before signature verification and query work. Each response consumes
+its original finite output attempt under the Store's Static/Managed exclusion;
+managed inputs additionally hold retirement exclusion. The callback includes the
+actual native framed/socket write, HTTP headers/body and explicit flush, or DoQ
+write and FIN. Transfer continuations capture from the same original component
+and lifetime before pulling the next frame. They cannot renew a failed frame.
+Original query, signature and validation deadlines survive encoding and queueing;
+shared UDP writes cannot wait beyond the original bound. A successful local
+flush or FIN remains an actual effect even if a later admission check reports an
+error. It is not reset, replayed or presented as evidence of remote receipt.
+
+The guarded handler's bare `Resolve` method refuses answer export because it has
+no synchronous serialization handoff. API dig, native/outer cache insertion and
+restore, and installed edge-cache bypass still need their own composition.
+Managed resolver activation and automatic polling remain disabled until those
+barriers are complete. The output mount also protects already-published static
+responses when a first managed transition is attempted through the actual driver.
+
 Native listeners share host-only `listeners.limits` settings, applied separately
 to each connection or listener at startup:
 

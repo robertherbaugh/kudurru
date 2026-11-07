@@ -23,6 +23,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime/currentguard"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -66,6 +67,8 @@ type servingRuntime struct {
 	host         *providerhost.Owner
 	resources    *providerresources.Owner
 	primary      *primaryRuntime
+	anchorPin    currentguard.PinFunc
+	anchors      *rootAnchorOwner
 	status       *servingbuild.PrimaryStatus
 	integrations *integrationRuntime
 	catalog      *servingbuild.CatalogRuntime
@@ -120,6 +123,10 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 			_ = s.Close(context.Background())
 		}
 	}()
+	s.anchors, err = newRootAnchorOwner(ctx, o.Store, &host)
+	if err != nil {
+		return nil, err
+	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		return nil, err
@@ -189,7 +196,9 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
-	s.publisher, err = serving.New(serving.Options{Source: source, Prepare: builder.Prepare, Required: serving.CompleteManifest(), DependencyChanges: func() <-chan struct{} { return s.providers.Changes() }})
+	s.publisher, err = serving.New(serving.Options{Source: source, Prepare: func(ctx context.Context, candidate serving.Candidate) (serving.Prepared, error) {
+		return s.anchors.prepare(ctx, candidate, builder)
+	}, Required: append(serving.CompleteManifest(), recursiveRootComponent), PreparationTimeout: 30 * time.Second, DependencyChanges: func() <-chan struct{} { return s.providers.Changes() }})
 	if err != nil {
 		return nil, err
 	}
@@ -207,6 +216,7 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
+	s.anchorPin = pin
 	var notifySource netip.Addr
 	if host.Notify.Source != "" {
 		notifySource, err = netip.ParseAddr(host.Notify.Source)

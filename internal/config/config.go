@@ -236,6 +236,8 @@ type RecursiveNegativeTrustAnchor struct {
 type Recursion struct {
 	// DNSSEC validates answers along the chain of trust from the root.
 	DNSSEC bool `koanf:"dnssec" json:"dnssec"`
+	// AnchorMode selects static roots or retained RFC 5011 managed history.
+	AnchorMode RootAnchorMode `koanf:"anchorMode" json:"anchorMode"`
 	// QNAMEMinimization sends each name server only the labels it needs
 	// (RFC 9156).
 	QNAMEMinimization bool `koanf:"qnameMinimization" json:"qnameMinimization"`
@@ -1015,6 +1017,9 @@ func (u Upstreams) validate() []error {
 		if _, err := recursor.ParseTrustAnchors(u.Recursion.TrustAnchors); err != nil {
 			errs = append(errs, fmt.Errorf("upstreams.recursion.trustAnchors: %w", err))
 		}
+	}
+	if _, err := u.Recursion.RootAnchorPolicy(); err != nil {
+		errs = append(errs, err)
 	}
 	return errs
 }

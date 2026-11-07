@@ -914,6 +914,17 @@ spec:
                         type: object
                       recursion:
                         properties:
+                          anchorMode:
+                            description: Static uses the configured roots or shipped
+                              defaults. Managed requires explicit root DS seeds and
+                              DNSSEC, retains accepted rollover history and revocations,
+                              and refuses static fallback after initialization. Applies
+                              only to recursive groups.
+                            enum:
+                            - static
+                            - managed
+                            maxLength: 8192
+                            type: string
                           dnssec:
                             description: Check DNSSEC signatures on answers from recursive
                               groups, from the root trust anchors down. Forged or
@@ -972,12 +983,12 @@ spec:
                               groups only.'
                             type: boolean
                           rootHints:
-                            description: 'Addresses of the root servers recursive
-                              groups start from, e.g. 198.41.0.4; empty (the default)
-                              uses the built-in IANA list. Only for a private root
-                              or a lab: with custom hints, name servers on private
-                              and link-local addresses are asked too, which the public
-                              tree never allows.'
+                            description: 'Numeric addresses of the root servers recursive
+                              groups start from, e.g. 198.41.0.4 or 192.0.2.53:5353;
+                              empty (the default) uses the built-in IANA list. Only
+                              for a private root or a lab: with custom hints, name
+                              servers on private and link-local addresses are asked
+                              too, which the public tree never allows.'
                             items:
                               maxLength: 8192
                               type: string

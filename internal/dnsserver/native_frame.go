@@ -2,6 +2,7 @@ package dnsserver
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"net"
 	"sync/atomic"
@@ -14,8 +15,11 @@ import (
 // They never acquire serving leases: rejected or ignored frames cannot leak one.
 type nativeFrame struct {
 	net.Addr
-	wire     []byte
-	received time.Time
+	wire             []byte
+	received         time.Time
+	deadline         time.Time
+	setWriteDeadline func(time.Time) error
+	writeCtx         context.Context
 }
 
 type nativeSession struct {
@@ -51,7 +55,10 @@ func preserveUDPSession(pc net.PacketConn) net.PacketConn {
 	return pc
 }
 
-type nativePacket struct{ net.PacketConn }
+type nativePacket struct {
+	net.PacketConn
+	writeGate chan struct{}
+}
 
 func (c *nativePacket) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, addr, err := c.PacketConn.ReadFrom(b)
@@ -61,8 +68,36 @@ func (c *nativePacket) ReadFrom(b []byte) (int, net.Addr, error) {
 	return n, &nativeFrame{Addr: addr, wire: bytes.Clone(b[:n]), received: time.Now()}, nil
 }
 func (c *nativePacket) WriteTo(b []byte, addr net.Addr) (int, error) {
+	deadline := time.Now().Add(DefaultQueryTimeout)
+	var ctx context.Context
 	if frame, ok := addr.(*nativeFrame); ok {
+		ctx = frame.writeCtx
+		if !frame.deadline.IsZero() && frame.deadline.Before(deadline) {
+			deadline = frame.deadline
+		}
 		addr = frame.Addr
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	select {
+	case c.writeGate <- struct{}{}:
+		defer func() { <-c.writeGate }()
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	case <-timer.C:
+		return 0, context.DeadlineExceeded
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if !time.Now().Before(deadline) {
+		return 0, context.DeadlineExceeded
+	}
+	if err := c.SetWriteDeadline(deadline); err != nil {
+		return 0, err
 	}
 	return c.PacketConn.WriteTo(b, addr)
 }
@@ -102,7 +137,7 @@ func (r nativeReader) ReadTCP(conn net.Conn, timeout time.Duration) ([]byte, err
 	if framed, ok := conn.(*nativeConn); ok {
 		framed.frame.Store(nil)
 		if err == nil {
-			framed.frame.Store(&nativeFrame{Addr: framed.Conn.RemoteAddr(), wire: bytes.Clone(wire), received: time.Now()})
+			framed.frame.Store(&nativeFrame{Addr: framed.Conn.RemoteAddr(), wire: bytes.Clone(wire), received: time.Now(), setWriteDeadline: framed.SetWriteDeadline})
 		}
 	}
 	return wire, err

@@ -40,6 +40,8 @@ const (
 	FormatIP   Format = "ip"
 	FormatIPv4 Format = "ipv4"
 	FormatIPv6 Format = "ipv6"
+	// FormatIPPort is a numeric IP address with an optional nonzero port.
+	FormatIPPort Format = "ipport"
 	// FormatCIDR is a CIDR prefix or a single address (10.0.0.0/8,
 	// 192.0.2.1).
 	FormatCIDR Format = "cidr"
@@ -492,6 +494,13 @@ func checkFormat(f Format, v string) string {
 	case FormatIP:
 		if a, err := netip.ParseAddr(v); err != nil || a.Zone() != "" {
 			return "is not an IP address"
+		}
+	case FormatIPPort:
+		if a, err := netip.ParseAddr(v); err == nil && a.Zone() == "" {
+			return ""
+		}
+		if a, err := netip.ParseAddrPort(v); err != nil || a.Addr().Zone() != "" || a.Port() == 0 {
+			return "is not a numeric IP address with an optional nonzero port"
 		}
 	case FormatIPv4:
 		if a, err := netip.ParseAddr(v); err != nil || !a.Is4() {

@@ -21,11 +21,45 @@ type capturedNativeWriter struct {
 	mac                           string
 	timersOnly                    bool
 	status                        error
+	output                        Output
+	frame                         *nativeFrame
 	verifiedAt, signatureDeadline time.Time
 }
 
 func (w *capturedNativeWriter) TsigStatus() error         { return w.status }
 func (w *capturedNativeWriter) TsigTimersOnly(value bool) { w.timersOnly = value }
+
+func (w *capturedNativeWriter) Write(wire []byte) (n int, err error) {
+	write := func() error {
+		if err := w.current(); err != nil {
+			return err
+		}
+		deadline, _ := w.ctx.Deadline()
+		if signature := w.signatureDeadline; !signature.IsZero() && (deadline.IsZero() || signature.Before(deadline)) {
+			deadline = signature
+		}
+		if w.frame != nil {
+			w.frame.deadline = deadline
+			w.frame.writeCtx = w.ctx
+			if set := w.frame.setWriteDeadline; set != nil {
+				if err := set(deadline); err != nil {
+					return err
+				}
+			}
+		}
+		n, err = w.ResponseWriter.Write(wire)
+		if err != nil {
+			return err
+		}
+		return w.current()
+	}
+	if w.output != nil {
+		err = w.output.Emit(write)
+	} else {
+		err = write()
+	}
+	return n, err
+}
 func (w *capturedNativeWriter) current() error {
 	if err := w.ctx.Err(); err != nil {
 		return err
@@ -36,7 +70,7 @@ func (w *capturedNativeWriter) current() error {
 			return errOriginalDeadline
 		}
 	}
-	return nil
+	return checkTransportResponse(w.ctx)
 }
 func (w *capturedNativeWriter) WriteMsg(message *dns.Msg) error {
 	if err := w.current(); err != nil {
@@ -88,12 +122,13 @@ func serveCapturedNative(h *Handler, e *env, proto pipeline.Proto, w dns.Respons
 	request, keys, cleanup, err := h.captureTransport(context.Background(), r, client, frame.received)
 	defer cleanup()
 	if err != nil {
-		if request.Ctx.Err() == nil {
+		if h.Output == nil && request.Ctx.Err() == nil {
 			_ = w.WriteMsg(servfail(r))
 		}
 		return
 	}
-	writer := &capturedNativeWriter{ResponseWriter: w, provider: TSIGProvider(keys), ctx: request.Ctx}
+	output, _ := request.Ctx.Value(transportOutputKey{}).(Output)
+	writer := &capturedNativeWriter{ResponseWriter: w, provider: TSIGProvider(keys), ctx: request.Ctx, output: output, frame: frame}
 	localEnv := env{}
 	if e != nil {
 		localEnv = *e
@@ -152,5 +187,8 @@ func serveCapturedNative(h *Handler, e *env, proto pipeline.Proto, w dns.Respons
 	sig.sign(message)
 	if err := writer.WriteMsg(padding.apply(message)); err != nil {
 		h.logger().Debug("write failed", "err", err, "proto", proto.String())
+		if proto != pipeline.ProtoUDP {
+			_ = w.Close()
+		}
 	}
 }

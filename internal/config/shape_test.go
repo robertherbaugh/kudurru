@@ -195,8 +195,19 @@ func TestSchemaEnumsRejectBogus(t *testing.T) {
 				if v == "customIP" || v == "blockPage" || k.Path == "audit.store" && (v == "auditlog" || v == "database") {
 					continue // needs blocking.customIP.v4/v6, blockPage.enabled, store.driver kube, database.dsn
 				}
-				if err := validateWith(t, k.Path, v); err != nil {
-					t.Errorf("%s=%s rejected: %v", k.Path, v, err)
+				var validErr error
+				if k.Path == "upstreams.recursion.anchorMode" && v == "managed" {
+					// Exercise the enum with its required explicit seed. The
+					// dedicated managed-policy cases still reject missing seeds.
+					flat := Defaults()
+					flat[k.Path] = v
+					flat["upstreams.recursion.trustAnchors"] = []string{"12345 15 2 " + strings.Repeat("AB", 32)}
+					_, validErr = FromFlat(flat)
+				} else {
+					validErr = validateWith(t, k.Path, v)
+				}
+				if validErr != nil {
+					t.Errorf("%s=%s rejected: %v", k.Path, v, validErr)
 				}
 			}
 		}

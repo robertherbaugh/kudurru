@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -116,9 +117,39 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Shared HTTP caches must never reuse one client's answer for another.
 	hdr.Set("Cache-Control", "private, "+out.cache)
 	hdr.Set("Content-Length", strconv.Itoa(len(out.wire)))
-	w.WriteHeader(http.StatusOK)
-	if r.Method != http.MethodHead {
-		_, _ = w.Write(out.wire) //nolint:gosec // G705: a packed DNS message served as application/dns-message, never HTML
+	flushed := false
+	if err := out.emit(func() error {
+		controller := http.NewResponseController(w)
+		if out.output != nil {
+			deadline := out.deadline
+			if d.env != nil && d.env.limits.WriteTimeout > 0 {
+				if bound := time.Now().Add(d.env.limits.WriteTimeout); bound.Before(deadline) {
+					deadline = bound
+				}
+			}
+			if err := controller.SetWriteDeadline(deadline); err != nil {
+				return err
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			if _, err := w.Write(out.wire); err != nil { //nolint:gosec // G705: packed DNS served as application/dns-message, never HTML
+				return err
+			}
+		}
+		// Small bodies and HEAD headers may still be buffered. The explicit
+		// flush is part of the same final admission as body/header emission.
+		if err := controller.Flush(); err != nil {
+			return err
+		}
+		flushed = true
+		return nil
+	}); err != nil {
+		// Keep actual completion distinct from a later admission error. An
+		// abort after a successful flush can reset already delivered bytes.
+		if !flushed {
+			panic(http.ErrAbortHandler)
+		}
 	}
 }
 

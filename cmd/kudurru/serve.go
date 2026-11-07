@@ -1034,6 +1034,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		if err := servingbuild.BindDNS(complete.publisher, servingbuild.DNSStages{Chain: chain, Control: controlStage, Identify: idStage, Authority: auth, Blocking: bs, Cache: cs, Response: post, Resolution: fwd}, time.Now); err != nil {
 			return err
 		}
+		cs.CaptureInsertion = captureRootAnchorInsertion
 		loggingObserver.Capture = func(req *pipeline.Request) (querylog.Collector, error) {
 			return servingdns.Component[*querylog.Captured](req, "logging")
 		}
@@ -1107,6 +1108,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		// emission retain the same original complete publication as the query.
 		dnsHandler.Capture = servingdns.Capture(complete.publisher)
 		dnsHandler.Keys = servingbuild.DNSKeys
+		dnsHandler.Output = captureRootAnchorOutput
 	}
 	registry, err := dnsserver.NewRegistry(dnsserver.Options{
 		Handler:       dnsHandler,

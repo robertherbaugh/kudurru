@@ -32,6 +32,8 @@ type Handler struct {
 	// before listeners start. Nil Capture retains legacy fixed-provider mode.
 	Capture pipeline.Capture
 	Keys    func(*pipeline.Request) (*StaticKeyring, error)
+	// Output is the root-owned final write guard, captured before work.
+	Output CaptureOutput
 }
 
 func (h *Handler) logger() *slog.Logger {
@@ -62,6 +64,11 @@ func (h *Handler) timeout() time.Duration {
 // and doh/doh3 abort the HTTP exchange. Resolve itself, which must return
 // a message, answers SERVFAIL.
 func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
+	// A returned message has no synchronous serialization handoff. Guarded
+	// callers must use a transport that completes emission under its scope.
+	if h.Output != nil {
+		return servfail(r)
+	}
 	m, _, cleanup := h.resolve(ctx, r, client)
 	defer cleanup()
 	if m != nil {
@@ -127,6 +134,9 @@ func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 			h.logger().Debug("pipeline error", "err", err, "q", req.Question().Name, "proto", client.Proto.String())
 		}
 		return servfail(r), nil, cleanup
+	}
+	if retained, _ := ctx.Value(transportResponseKey{}).(*transportResponse); retained != nil {
+		retained.security = resp.Security
 	}
 	m := resp.Msg
 	m.Id = r.Id

@@ -381,8 +381,10 @@ Its `Current` predicate observes the exact source, local carrier and installed
 gate mark even before first publication; it does not grant a read or retain the
 preparation lifetime. A fixed cache domain binds the full accepted owner, local
 carrier and a fresh input incarnation, including across equal-key checkpoints
-and Store reopen. The predicate and domain are available to the builder but do
-not yet protect cache insertion or transport output.
+and Store reopen. The builder puts this full domain in every managed raw-cache
+partition, including forwarded and CD answers, and disables managed disk-entry
+promotion. Transport output uses the private
+root component and a separately captured original read attempt.
 
 The Store also owns a monotone Static/Managed/Closed mode. A real first primary
 bootstrap or follower installation takes its exclusive hold before retirement
@@ -396,12 +398,26 @@ disposition resolves the writer scope; an entered unresolved callback, panic or
 unknown completion closes admission. Scope exit and resolution use the same
 atomic state, so a late escaped resolution cannot reopen a closed scope.
 
-These are publication and exclusion prerequisites. The production runtime does
-not yet supply managed resolver inputs or a complete serving seal. The common
-mode is not yet mounted around actual transport output or cache insertion.
-Final transport handoffs, cache retirement, installed edge bypass and the
-elected updater remain unmounted. Managed recursive input will not alter
-forwarded DNSSEC's independent anchors and exception policy.
+Root composition binds the actual Store source and requires a private complete
+root component after concrete builder preparation. Its original preparation is
+bounded before the image read; published inputs survive preparation cancellation.
+A joined source notice worker wakes rebuilding without granting admission.
+SQLite DNS listeners capture that component before work and hold common mode
+(and retirement exclusion for a managed input) through actual synchronous output.
+Native writes, HTTP body/header flush and DoQ FIN retain the original deadlines;
+late errors preserve actual completed effects. A bare guarded Resolve call
+refuses to export answer data outside a final handoff.
+
+Production still does not enable managed builder input or automatic polling.
+Detached raw-cache leaders capture a separate finite insertion attempt from
+their original cloned complete lease before fetching. Encoding precedes the
+attempt's mode/retirement hold; insertion, security-failure deletion and
+failed-refresh metadata changes finish under that hold before releasing the
+lease. Queuing never renews the original TTL origin. Static restored promotion
+uses the same admission order; a dump cannot reconstruct a managed registration.
+Native resolver/private proof-cache admission, API dig, installed edge bypass and the complete
+retirement acceptance matrix remain required before activation. Managed recursive
+input will not alter forwarded DNSSEC's independent anchors and exception policy.
 
 Planned managed mode also refuses an ordinary switch back to static/default
 anchors after managed history exists: a shipped seed could otherwise restore a

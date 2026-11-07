@@ -114,7 +114,7 @@ func (l *dnsListener) Bind() error {
 				s.PacketConn = &proxyproto.PacketConn{PacketConn: s.PacketConn, Policy: l.env.proxy}
 			}
 			if l.env.handler.Capture != nil {
-				s.PacketConn = &nativePacket{PacketConn: s.PacketConn}
+				s.PacketConn = &nativePacket{PacketConn: s.PacketConn, writeGate: make(chan struct{}, 1)}
 			}
 			srvs[i] = s
 		}
@@ -184,11 +184,34 @@ func (l writeDeadlineListener) Accept() (net.Conn, error) {
 
 type writeDeadlineConn struct {
 	net.Conn
-	timeout time.Duration
+	timeout               time.Duration
+	deadlineMu            sync.Mutex
+	originalWriteDeadline time.Time
+}
+
+func (c *writeDeadlineConn) SetWriteDeadline(deadline time.Time) error {
+	c.deadlineMu.Lock()
+	defer c.deadlineMu.Unlock()
+	c.originalWriteDeadline = deadline
+	return c.Conn.SetWriteDeadline(deadline)
+}
+
+func (c *writeDeadlineConn) SetDeadline(deadline time.Time) error {
+	c.deadlineMu.Lock()
+	defer c.deadlineMu.Unlock()
+	c.originalWriteDeadline = deadline
+	return c.Conn.SetDeadline(deadline)
 }
 
 func (c *writeDeadlineConn) Write(b []byte) (int, error) {
-	if err := c.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
+	c.deadlineMu.Lock()
+	deadline := time.Now().Add(c.timeout)
+	if original := c.originalWriteDeadline; !original.IsZero() && original.Before(deadline) {
+		deadline = original
+	}
+	err := c.Conn.SetWriteDeadline(deadline)
+	c.deadlineMu.Unlock()
+	if err != nil {
 		return 0, err
 	}
 	return c.Conn.Write(b)

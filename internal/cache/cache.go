@@ -351,6 +351,19 @@ func (c *Cache) SetWithMetadata(k Key, wire []byte, kind Kind, ttl time.Duration
 
 // SetIfGeneration fences Flush/delete against detached writes.
 func (c *Cache) SetIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata, generation uint64) {
+	c.setAtIfGeneration(k, wire, kind, ttl, metadata, generation, time.Time{})
+}
+
+// SetAtIfGeneration preserves the original TTL origin when final admission
+// waits before insertion. A future origin or already expired entry is refused.
+func (c *Cache) SetAtIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata, generation uint64, stored time.Time) {
+	if stored.IsZero() {
+		return
+	}
+	c.setAtIfGeneration(k, wire, kind, ttl, metadata, generation, stored)
+}
+
+func (c *Cache) setAtIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata, generation uint64, stored time.Time) {
 	c.publication.RLock()
 	defer c.publication.RUnlock()
 	if generation != c.Generation() || !metadata.Security.AvailableAt(c.now()) {
@@ -360,14 +373,21 @@ func (c *Cache) SetIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration
 		return
 	}
 	now := c.nanos()
-	exp := now + int64(ttl)
+	origin := now
+	if !stored.IsZero() {
+		origin = stored.UnixNano()
+		if origin > now || now-origin >= int64(ttl) {
+			return
+		}
+	}
+	exp := origin + int64(ttl)
 	stale := exp + c.staleTTL.Load()
 	if !metadata.Security.ValidUntil.IsZero() {
 		deadline := metadata.Security.ValidUntil.UnixNano()
 		exp = min(exp, deadline)
 		stale = min(stale, deadline)
 	}
-	c.insert(&entry{metadata: metadata, key: k, wire: wire, kind: kind, stored: now, expires: exp, staleUntil: stale, windowStart: now})
+	c.insert(&entry{metadata: metadata, key: k, wire: wire, kind: kind, stored: origin, expires: exp, staleUntil: stale, windowStart: now})
 }
 
 // insert adds or replaces e and evicts beyond capacity.
