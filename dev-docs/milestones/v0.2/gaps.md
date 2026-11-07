@@ -3312,10 +3312,10 @@ Evidence: `.context/f20d-current-five-process-aggregate-result.md`
 Source review traces the million-line full parser fingerprint to contextual
 modifier support before F20. This explains structural work, not CPU attribution
 or permission to waive the gate. The authorized isolated two-file lazy-budget
-preparation changes only list.go and program_budget_test.go; it is unformatted,
-uncompiled and unqualified. It retains full parsing/fingerprint serialization
-and exact reservation checks. Dedicated fingerprint streaming and sparse batch
-dispatch remain separate proposals. No further F20 execution is inferred.
+preparation changes only list.go and program_budget_test.go. Its subsequent parent
+qualification is recorded below; full parsing/fingerprint serialization and exact
+reservation checks remain. Dedicated fingerprint streaming and sparse batch
+dispatch remain separate proposals.
 
 ### F28 root output and raw-cache admission composition
 
@@ -3512,3 +3512,59 @@ builder input or automatic polling. Original installed-edge activation admission
 elected lifecycle integration, full managed frontend/follower retirement, recovery
 and interoperability remain required. This is no release or full-F28 completion
 claim; all F20, TSIG and external gates remain open as previously recorded.
+
+
+### F20 isolated lazy-budget correctness qualification
+
+Root reviewed and formatted only the two prepared isolated paths, preserving
+the exact original source archive, all original workloads and failure receipts.
+Reuse retains explicit list-ceiling/nonnegative checks and atomic ancestor
+reservation. Badfilter validation allocates its existing proof-disabled budget
+only for an actual nonexcluded directive; rebuild rollback remains unchanged.
+No parser, module, kernel, proof-work, baseline or capacity changes were made.
+
+Focused ordinary qualification passes **56 entries / 10 top-level tests**,
+including the unchanged original 10k workload and aggregate candidate refusal.
+Full blocking/listfetcher default race passes **207 entries / 98 top-level
+tests** with two actual skips: the BenchmarkMemory helper and external AdGuard
+binary test. Scoped installed lint passes with zero issues. All 3,878 frozen
+source/evidence identities match. These results cover the isolated tree, not
+parent source composition or a new comparator/RSS qualification.
+
+One unchanged original 1M reuse diagnostic reports **514,127,698ns / 66,820B /
+29 allocations** with two measured iterations. It does not demonstrate an
+allocation reduction against the historical current median 25 allocations.
+Current CPU reports 2.90GHz, whereas the earlier aggregate reported 2.50GHz;
+GOMAXPROCS remains 2 versus baseline 6. No controlled timing pair, speedup,
+fixed-class performance or completed gate is inferred. The committed baseline
+62,725,199ns/eight allocations and all 36 measured regressions plus 20 missing
+zone keys remain. No rerun, preimage replacement or threshold change occurred.
+Evidence: `.context/f20d-parent-small-budget-20261107/result.md`
+(SHA256 `21defdc41455d0cf3fb2a0a572c82a5ff58b86c317a2c8b08039b49bd6751ce1`).
+The isolated source remains uncommitted and unimported; no further agent command
+is released by this checkpoint.
+
+
+### F07a isolated management A/B/Q qualification
+
+Root executed the exact prepared five-file formatting and one four-name ordinary
+selection in the existing isolated activation tree. All **10 entries / four
+top-level tests / six children** passed (eight leaves), zero failures/skips or
+missing/unexpected names. Package time was 4.592s, process wall 42.004s and
+minimum free disk 10,263,027,712B. Raw numeric outcomes preceded enrichment;
+all owned children were reaped and the slot yielded before separate final
+classification. All formatted45/other40, historical440, tool and path guards
+match. No source correction, rerun, extra race/lint, module sync or import occurred.
+
+The held follower request rejects promoted authority without changing durable
+credential/image/audit. Create/replace/revoke/reseal retain confirmed encrypted
+effects and exact safe audit/receipt bindings without acknowledgment. Original
+observer expiry/cancellation/deadline cases pass only their observed private
+receiver premises; they do not establish actual-route quiet causality or a
+timer census. Evidence: `.context/tsig-management-abq-ordinary-result.md`.
+
+This remains isolated schema6/x-net0.60 evidence. Parent schema8/fixed dependencies
+require actual follower capture before the original primary source image read.
+Original lint EXIT1/12 findings remains separate; genuine uncertain completion
+(M16), whole-route late I/O (M17), remaining C/D/E/F authority axes, parent
+generated/CLI composition and Kubernetes remain open. F07a is incomplete.
