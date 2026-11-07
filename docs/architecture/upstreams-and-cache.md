@@ -330,6 +330,24 @@ new one. Old images and binaries refuse across the schema/feature boundary;
 received images are never converted. The elected updater and immutable
 complete-image resolver publication remain unmounted.
 
+The SQLite poll bridge captures the normal update, local denial and paired
+post-denial update from one committed owner/authority cut before acquisition.
+One opaque receipt stamp binds the original clock sample to that operation;
+copies share consumption, and matching timestamps cannot substitute ownership.
+Raw verification authenticates once and chooses either the normal or self-revoke
+branch. Self-revocation commits local denial before any granting policy pins;
+only its own confirmed effect can admit the paired update. A completion error
+preserves its actual commit disposition but supplies no continuation.
+
+The root wire helper captures up to three numeric endpoints and one finite
+operation before acquisition. Each endpoint has at most four seconds within the
+original 30-second lifetime. It samples the receipt synchronously at the first
+complete frame, before parsing or correlation; that response is terminal even
+when malformed, truncated or refused. The planned updater selects TCP upfront,
+without resolver lookup, cached responses or a second receipt after truncation.
+These helpers have local socket/signature and SQLite race coverage; they are
+prerequisites, not an elected updater or managed-serving activation.
+
 The unmounted `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit
 states with no fallback keys. Detached domain and owner identities bind history,

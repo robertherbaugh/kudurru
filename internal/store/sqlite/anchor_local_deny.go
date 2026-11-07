@@ -27,7 +27,7 @@ type anchorDenial struct {
 	attempt   *retirement.WriteAttempt
 	installed replication.Generation
 	authority string
-	verified  atomic.Bool
+	input     atomic.Pointer[anchorReceiptInput]
 	committed atomic.Bool
 }
 
@@ -133,7 +133,7 @@ func (d *AnchorDenial) Verify(message *dns.Msg) (*AnchorVerifiedDenial, error) {
 		return nil, replication.ErrInvalid
 	}
 	c := d.cell
-	if !c.verified.CompareAndSwap(false, true) {
+	if !c.input.CompareAndSwap(nil, anchorReceiptTerminal) {
 		return nil, retirement.ErrUsed
 	}
 	if err := c.original.Err(); err != nil {
