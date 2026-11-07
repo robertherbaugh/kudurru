@@ -51,6 +51,16 @@ func TestAuditResponsesRedactHistoricalCredentials(t *testing.T) {
 	if n, err := removed.RowsAffected(); err != nil || n != 1 {
 		t.Fatal("legacy fixture did not remove the exact fresh anchor sentinel", err)
 	}
+	// The schema-8 receiver-local carrier did not exist in schema 5 either.
+	// Remove only this fresh unbound migration record while the Store is closed;
+	// retained managed denial must never be reset by a production migration.
+	removed, err = legacy.Exec(`DELETE FROM meta WHERE key='trustanchors-local/v1/state' AND json_extract(value,'$.provenance')='physical-schema-8' AND json_extract(value,'$.phase')='awaiting' AND json_extract(value,'$.revision')='1'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := removed.RowsAffected(); err != nil || n != 1 {
+		t.Fatal("legacy fixture did not remove the exact fresh local anchor carrier", err)
+	}
 	if _, err := legacy.Exec(`UPDATE meta SET value='5' WHERE key='schema_version'; DELETE FROM meta WHERE key='audit_legacy_max_id'`); err != nil {
 		t.Fatal(err)
 	}
