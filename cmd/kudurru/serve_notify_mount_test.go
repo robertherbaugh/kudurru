@@ -123,6 +123,9 @@ func TestRunServeSQLiteManualNotifyRestartAndRearm(t *testing.T) {
 		client.csrf = login.CSRF
 		// NOTIFY itself uses a direct transport: never retry an admitted intent.
 		client.http.Transport = http.DefaultTransport
+		// DNS availability can precede the final Ready/source-alignment writes.
+		// Observe those real commits before capturing the one-shot intent head.
+		awaitControlMountedSource(t, cfg)
 		path := filepath.Join(cfg.Node.DataDir, sqlite.FileName)
 		if restart == 0 {
 			before := awaitMountedNotifyHead(t, path, func(head zk.ZoneState) bool { return head.Spec.NotifySequence == 0 })
@@ -209,7 +212,7 @@ func mountedManualNotify(t *testing.T, client *contractClient, target string) {
 		}
 		_ = json.Unmarshal(body, &failure)
 		if response.StatusCode != http.StatusServiceUnavailable || failure.Error.Key != "generation_pending" || len(response.Header.Values("Set-Cookie")) != 0 || response.Header.Get("Location") != "" || time.Now().After(deadline) {
-			t.Fatalf("manual NOTIFY refused: HTTP %d prehandler_pending=%t", response.StatusCode, failure.Error.Key == "generation_pending")
+			t.Fatalf("manual NOTIFY refused: HTTP %d error_key=%.64q prehandler_pending=%t", response.StatusCode, failure.Error.Key, failure.Error.Key == "generation_pending")
 		}
 		// This explicit middleware refusal precedes the handler and transaction.
 		time.Sleep(100 * time.Millisecond)
