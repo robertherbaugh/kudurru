@@ -406,7 +406,10 @@ SQLite DNS listeners capture that component before work and hold common mode
 (and retirement exclusion for a managed input) through actual synchronous output.
 Native writes, HTTP body/header flush and DoQ FIN retain the original deadlines;
 late errors preserve actual completed effects. A bare guarded Resolve call
-refuses to export answer data outside a final handoff.
+refuses to export answer data outside a final handoff. API dig retains its
+original lease and response through bounded typed serialization, then writes
+and explicitly flushes HTTP output inside its pre-pipeline root attempt.
+Request cancellation and earlier proof expiry bound that actual write.
 
 Production still does not enable managed builder input or automatic polling.
 Detached raw-cache leaders capture a separate finite insertion attempt from
@@ -415,7 +418,7 @@ attempt's mode/retirement hold; insertion, security-failure deletion and
 failed-refresh metadata changes finish under that hold before releasing the
 lease. Queuing never renews the original TTL origin. Static restored promotion
 uses the same admission order; a dump cannot reconstruct a managed registration.
-Native resolver/private proof-cache admission, API dig, installed edge bypass and the complete
+Native resolver/private proof-cache admission, installed edge bypass and the complete
 retirement acceptance matrix remain required before activation. Managed recursive
 input will not alter forwarded DNSSEC's independent anchors and exception policy.
 

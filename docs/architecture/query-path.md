@@ -80,8 +80,17 @@ flush or FIN remains an actual effect even if a later admission check reports an
 error. It is not reset, replayed or presented as evidence of remote receipt.
 
 The guarded handler's bare `Resolve` method refuses answer export because it has
-no synchronous serialization handoff. API dig, native/outer cache insertion and
-restore, and installed edge-cache bypass still need their own composition.
+no synchronous serialization handoff. SQLite API dig captures its original
+output attempt before pipeline work, retains its response and serving lease
+through typed serialization into a bounded 4 MiB buffer, and writes the actual
+HTTP status, headers, body and explicit flush inside that attempt. The original
+five-second-or-earlier request bound and proof expiry constrain the write;
+cancellation tightens the deadline and joins before resource release. Partial
+output aborts, while an actual completed flush survives a later scope error.
+Direct guarded handler calls without this HTTP handoff refuse answer export.
+Raw-cache insertion and static restore have separate pre-acquisition attempts.
+Native/private cache admission and installed edge-cache bypass still need
+their own composition.
 Managed resolver activation and automatic polling remain disabled until those
 barriers are complete. The output mount also protects already-published static
 responses when a first managed transition is attempted through the actual driver.

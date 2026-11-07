@@ -982,6 +982,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		settingsManager = nil
 	}
 	var dnsQueryCapture pipeline.Capture
+	var dnsQueryOutput func(*pipeline.Request) (api.DNSQueryEmission, error)
 	var canonicalSettings api.CanonicalSettings
 	var integrationAdmin api.IntegrationAdministration
 	var brandingReads api.BrandingReadSource
@@ -1063,6 +1064,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			lease, err := servinghttp.CloneLease(req.Ctx)
 			return servingdns.Wrap(lease), err
 		}
+		dnsQueryOutput = captureRootAnchorQueryOutput
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
 		brandingReads = complete.Branding
 		blockPagePreview = servingBrandingPreview{runtime: complete, server: blockPage, cache: &brandCache}
@@ -1261,7 +1263,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
-		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, CacheInspect: newCacheInspector(cs, fwd, dnsQueryCapture), Chain: chain, DNSQueryCapture: dnsQueryCapture,
+		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, CacheInspect: newCacheInspector(cs, fwd, dnsQueryCapture), Chain: chain, DNSQueryCapture: dnsQueryCapture, DNSQueryOutput: dnsQueryOutput,
 		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
 		Lists: listResolver, Notifier: manualNotify,

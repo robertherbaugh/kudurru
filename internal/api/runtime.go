@@ -146,7 +146,11 @@ func (s *Server) registerRuntime() {
 		perm{resource: "blocking", verb: "toggle"}, s.setBlocking)
 	register(s, operation(http.MethodPost, "/cache/flush", "flushCache", "Flush the response cache (or one name)", "runtime"),
 		perm{resource: "cache", verb: "flush"}, s.flushCache)
-	register(s, operation(http.MethodPost, "/dns/query", "dnsQuery", "Run one query through the pipeline in-process (built-in dig)", "runtime"),
+	op := operation(http.MethodPost, "/dns/query", "dnsQuery", "Run one query through the pipeline in-process (built-in dig)", "runtime")
+	if s.opts.DNSQueryOutput != nil {
+		op.Middlewares = append(op.Middlewares, s.dnsQueryEmissionMW)
+	}
+	register(s, op,
 		perm{resource: "stats", verb: "read"}, s.dnsQuery)
 }
 
@@ -282,7 +286,14 @@ var protoByName = map[string]pipeline.Proto{
 }
 
 func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutput, error) {
-	complete := s.opts.DNSQueryCapture != nil || s.opts.ObjectReads != nil || s.opts.CanonicalSettings != nil
+	var handoff *dnsQueryHandoff
+	if s.opts.DNSQueryOutput != nil {
+		handoff, _ = ctx.Value(dnsQueryHandoffKey{}).(*dnsQueryHandoff)
+		if handoff == nil {
+			return nil, errUnavailable("the DNS output handoff is unavailable")
+		}
+	}
+	complete := s.opts.DNSQueryOutput != nil || s.opts.DNSQueryCapture != nil || s.opts.ObjectReads != nil || s.opts.CanonicalSettings != nil
 	if complete && (s.opts.DNSQueryCapture == nil || s.opts.Chain == nil) {
 		return nil, errUnavailable("the original DNS serving generation is unavailable")
 	}
@@ -319,10 +330,15 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 	m.RecursionDesired = true
 	m.SetEdns0(1232, req.DNSSEC)
 	qctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	if handoff != nil {
+		handoff.ctx, handoff.cancel = qctx, cancel
+	} else {
+		defer cancel()
+	}
 	start := time.Now()
+	deadline, _ := qctx.Deadline()
 	preq := &pipeline.Request{
-		Ctx: qctx, Msg: m, Received: start, Deadline: start.Add(5 * time.Second),
+		Ctx: qctx, Msg: m, Received: start, Deadline: deadline,
 		CollectExclusions: s.allowed(ctx, "blocklists", "read", clusterScope),
 		// Synthetic: the caller chooses the client address, so the log
 		// stage must not record this as that client's traffic.
@@ -331,15 +347,30 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 	if s.opts.DNSQueryCapture != nil {
 		lease, err := s.opts.DNSQueryCapture(preq)
 		if lease != nil {
-			defer lease.Release() // response cleanup below must finish first
+			if handoff != nil {
+				handoff.lease = lease
+			} else {
+				defer lease.Release() // response cleanup below must finish first
+			}
 		}
 		if err != nil || lease == nil {
 			return nil, errUnavailable("the original DNS serving generation is unavailable")
 		}
 		preq.Serving = lease
 	}
+	if handoff != nil {
+		emission, err := s.opts.DNSQueryOutput(preq)
+		if err != nil || emission == nil {
+			return nil, errUnavailable("the original DNS output generation is unavailable")
+		}
+		handoff.emission = emission
+	}
 	resp, err := s.opts.Chain.Serve(preq)
-	defer func() { resp.Close() }() // nil-safe, including error and unused stream responses
+	if handoff != nil {
+		handoff.response = resp
+	} else {
+		defer func() { resp.Close() }() // nil-safe, including error and unused stream responses
+	}
 	out := &DNSQueryResult{
 		Name: name, Type: dns.TypeToString[qtype], Client: client.String(), Node: s.opts.NodeName,
 		Answer: []string{}, Authority: []string{}, Additional: []string{},

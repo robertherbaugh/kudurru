@@ -3354,3 +3354,39 @@ complete the native/private cache, API dig, installed edge bypass, full
 transport retirement/interposition or external interoperability obligations.
 The exact original accepted-owner, restart, follower and tombstone requirements
 remain; no reset, static fallback or acceptance waiver is introduced.
+
+
+### F28 API dig final HTTP handoff
+
+The complete SQLite API mount now captures its original private root output
+attempt before pipeline work. Typed Huma output stays unchanged; a bounded
+4 MiB buffer holds serialization until the actual status/header/body write and
+explicit flush enter the original mode/retirement scope. Response and cloned
+lease remain alive until that handoff finishes. The earliest request/proof
+bound controls the actual write; cancellation interrupts pending output and
+joins at callback completion. An actual completed flush survives later
+cancellation/scope errors; partial writes abort. Guarded direct handler calls
+refuse answer export.
+
+Final API default-race selection passes **36 entries / 14 top-level cases**,
+including real TLS HTTP/1 and HTTP/2 peers, postflush cancellation, original
+deadlines, refused/oversized/partial output and original query/capture/exclusion
+cases. The final production root package passes **4 entries / 2 top-level
+cases** using actual authenticated HTTP and precaptured Store bootstrap:
+retirement during acquisition refuses the original answer, while retirement
+during actual flush waits. Installed API/cmd lint reports **zero issues**.
+
+Earlier failures remain explicit: the initial oversized writer error produced
+500 instead of expected 503 (no answer exported); a new root fixture used an
+unsupported pipeline stage name; the postflush test extension initially omitted
+its cancel-function setup. Each was corrected with original assertions intact.
+The combined final-race01 command remains EXIT1 despite its root package PASS;
+only the API test fixture changed before the final API PASS. There is no claimed
+single all-green aggregate. Original mounted transport/bundle/insertion/output
+passes are retained separately. Evidence and exact source comparisons are in
+`.context/f28-parent-api-output-20261107/`.
+
+Managed builder input and automatic polling remain disabled. Native/private
+cache admission, installed edge bypass, elected updater, full retirement
+acceptance and interoperability remain required. F20 and TSIG received no new
+execution release; all earlier performance failures and external gates persist.

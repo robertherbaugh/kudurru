@@ -105,6 +105,14 @@ func (w *statusWriter) Flush() {
 	}
 }
 
+// FlushError preserves transport failures for scoped final HTTP handoffs.
+func (w *statusWriter) FlushError() error {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return http.NewResponseController(w.ResponseWriter).Flush()
+}
+
 func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if h, ok := w.ResponseWriter.(http.Hijacker); ok {
 		return h.Hijack()

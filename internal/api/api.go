@@ -262,6 +262,9 @@ type Options struct {
 	// synthetic query. Ownership transfers even when a lease accompanies an
 	// error. Complete mounts require it; nil preserves legacy query capture.
 	DNSQueryCapture pipeline.Capture
+	// DNSQueryOutput captures the root-owned final HTTP emission attempt before
+	// pipeline work. When set, the query lease survives serialization and flush.
+	DNSQueryOutput func(*pipeline.Request) (DNSQueryEmission, error)
 	// Config is the effective configuration (settings routes, listener);
 	// Settings persists PATCH /settings (cluster scope). Node PATCH requires
 	// the separate durable NodeConfigCommand; otherwise it is read-only.
