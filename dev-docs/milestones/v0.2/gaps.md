@@ -3431,3 +3431,56 @@ Production managed input and polling remain disabled. Installed edge bypass,
 elected updater, full retirement/follower acceptance and interoperability remain
 open. Original tombstones/restart requirements, F20 failures, TSIG work and
 external release gates are unchanged.
+
+### F28 immutable installed edge-cache bypass prerequisite
+
+The host-only `edge.managedCacheBypass` / `--managed-cache-bypass` option fixes
+both pools uncached for every child of a supervisor. YAML and Lua emit a global
+continuing skip-cache rule after transfer refusal and PROXY setup, before all
+routes. Topology validation rejects attached caches. The sole dynamic worker
+cannot attach either pool, regardless of old eligible observations. A bounded
+console command checks the running managed marker and synchronously detaches
+both pools before acknowledgment; installed readiness binds the exact child
+and membership epoch. Unknown completion retires only that child. Backend
+managed projections deny both remote eligibility leases, with actual local-only
+denial refusing the old publisher projection without canonical progress.
+
+The broad edge/config default-race command passes **423 entries / one opt-in
+skip** before the installed-command correction. The skip is the existing
+`TestConsoleLiveSupervisor` requiring `KUDURRU_F43_LIVE=1`. Builder composition
+passes its selected cases, including actual managed publication/local denial;
+the combined command remains EXIT1 for three new CLI layer entries. Correcting
+the omitted host-file/environment load assignment makes the CLI's three entries
+pass, preserving the original assertions.
+
+Pinned actual dnsdist `sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e`
+passes both YAML and Lua under race. Each fixture first warms and hits actual
+static resolver and authoritative caches, including a CNAME crossing the suffix
+route, then stops and joins that child before starting the bypass supervisor.
+Repeated identical DNS requests reach the backend independently; real API pool
+observations show both caches absent. Old observations, membership-source epoch
+ABA, child crash/restart and actual post-effect lost acknowledgment preserve
+bypass. The final live command passes **three entries**, zero failures/skips,
+in 16.429s. Final installed scoped lint passes with zero issues. The preceding
+focused six-entry managed run and test-only bounded-answer corrections remain
+separate receipts.
+
+The initial live command failed both renderer children: dnsdist exposes even
+an absent cache as Lua userdata, so comparing `getCache()` to nil was invalid.
+The correction uses actual acknowledged detachments; verification reads real
+API state and backend wire counts without a corrective console command. Earlier
+path diagnostics, the mistyped lint executable's startup failure and
+four test-fixture security-lint findings are retained. The integer conversion
+now has an explicit bound; private fixture paths, executable wrapper and exact
+owned-container cleanup have documented scope. The existing isolated Docker
+daemon was restored from retained storage, with the pinned image unchanged and
+no pulls, rebuilds or pruning. Evidence:
+`.context/f28-parent-edge-bypass-20261107/`.
+
+This qualifies the local edge policy and installed acknowledgment, not the
+backend activation protocol. That protocol must retain the original exact
+edge/membership authority; `/status` readiness is not a grant. Full membership
+replacement, certificate/rollback composition, held managed frontend/follower
+retirement and interoperability remain open. Root managed input and automatic
+polling remain disabled; no startup-only downgrade or eventual-flush substitute
+is adopted. All prior F20, TSIG and external gates remain unchanged.

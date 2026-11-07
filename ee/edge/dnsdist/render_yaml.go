@@ -54,6 +54,9 @@ func (r YAMLRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]
 	if v := luaValidators(t); v != "" {
 		lua += "\n" + v
 	}
+	if t.ManagedCacheBypass {
+		lua += "\n" + luaManagedCacheBypass + "\n"
+	}
 	return []File{{Name: r.Main(), Data: buf.Bytes()}, {Name: "dnsdist.lua", Data: []byte(lua)}}, nil
 }
 
@@ -326,6 +329,12 @@ func yamlRules(t *edge.Topology) []yRule {
 		Selector: ySelector{Type: "QName", QName: t.HealthCheck.QName},
 		Action:   yAction{Type: "SetSkipCache"},
 	})
+	if t.ManagedCacheBypass {
+		rules = append(rules, yRule{
+			Name: ruleManagedNoCache, UUID: ruleUUID(ruleManagedNoCache),
+			Selector: ySelector{Type: "All"}, Action: yAction{Type: "SetSkipCache"},
+		})
+	}
 	if len(t.Rules.AuthoritativeZones) > 0 {
 		rules = append(rules, yRule{
 			Name: ruleAuthoritative, UUID: ruleUUID(ruleAuthoritative),

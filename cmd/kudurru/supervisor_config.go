@@ -45,6 +45,7 @@ var edgeSettings = map[string]string{
 	"transfer-sources":           "edge.transferSources",
 	"acl":                        "edge.acl",
 	"cache-size":                 "edge.cacheSize",
+	"managed-cache-bypass":       "edge.managedCacheBypass",
 	"dynblocks":                  "edge.dynblocks",
 	"dynblocks-qps":              "edge.dynblocksQPS",
 	"dynblocks-nxdomain-rate":    "edge.dynblocksNXDomainRate",
@@ -230,6 +231,7 @@ func (f *edgeFlags) load(cmd *cobra.Command, path string) error {
 	f.transferSources = e.TransferSources
 	f.acl = e.ACL
 	f.resolverCacheSize = e.CacheSize
+	f.managedCacheBypass = e.ManagedCacheBypass
 	f.dynblocks = e.Dynblocks
 	f.dynQPS = e.DynblocksQPS
 	f.dynNX = e.DynblocksNXDomainRate

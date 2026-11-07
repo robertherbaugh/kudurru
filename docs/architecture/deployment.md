@@ -141,7 +141,12 @@ flowchart TD
     CHK -- "ok" --> SWAP["swap files atomically,<br/>write the API key to /run/kudurru"]
     SWAP --> EXEC["start dnsdist --supervised"]
     EXEC --> LOOP{"event<br/>(debounced 5 s)"}
-    EXEC --> PULL["bounded authenticated backend pulls<br/>original publication and cache eligibility"]
+    EXEC --> MODE{"immutable managed-cache bypass?"}
+    MODE -- "no" --> PULL["bounded authenticated backend pulls<br/>original publication and cache eligibility"]
+    MODE -- "yes" --> FIXED["global skip-cache rule<br/>both pools stay detached"]
+    FIXED --> ACK["bounded console acknowledgment<br/>exact running child and source fence"]
+    ACK -- "unknown" --> RETIRE["retire captured child<br/>replacement starts with bypass"]
+    RETIRE --> FIXED
     PULL --> CACHE{"all original proofs current?"}
     CACHE -- "eligible pool" --> FRESH["attach fresh cache with configured limits"]
     CACHE -- "missing, changed or unsafe" --> BYPASS["detach affected cache; report bypass"]
@@ -176,6 +181,23 @@ original expiry. One serial controller replaces or detaches only the two fixed
 local pool caches. Missing, legacy, failed or expired evidence causes visible
 bypass; a resolver grant never implies an authoritative grant. Unconfigured
 polling and Kubernetes backends without this complete evidence remain uncached.
+
+`edge.managedCacheBypass` (`--managed-cache-bypass`) is a host-only startup
+option for edges that can reach managed root-anchor backends. It fixes bypass
+for every child of that supervisor: both renderers emit an unconditional
+`SetSkipCache` rule after transfer refusal and PROXY setup, before all pool
+routes. Topology validation rejects cache attachments. The sole cache worker
+ignores remote eligibility in this mode, including queued old observations,
+and cannot attach either pool. Zone discovery continues independently.
+
+Readiness additionally requires a bounded console acknowledgment of the loaded
+managed marker and synchronous detachment of both pools. It binds the exact
+running child and source epoch; source loss, replacement, restart or unknown
+completion cannot retain it. Unknown acknowledgment retires only the captured
+child. `/status` distinguishes configured and installed bypass. These local
+observations are not backend activation grants: managed backend activation is
+still disabled pending the coordinator's original, exact edge admission.
+An existing eligibility lease or eventual flush cannot replace that gate.
 
 Shared packet caching is eligible only when the captured served model proves
 client-independent behavior. Per-client rate limits (including the default),

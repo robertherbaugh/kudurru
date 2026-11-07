@@ -14,6 +14,7 @@ import (
 	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/rpz"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingzones"
@@ -334,6 +335,10 @@ func sharedCacheBypass(owners *semanticOwners) string {
 	}
 	cfg := owners.config
 	switch {
+	case owners.anchor != nil || cfg.Upstreams.Recursion.AnchorMode == config.RootAnchorsManaged:
+		// This status prevents fresh leases. Previously leased remote hits
+		// still require installed child-lifetime bypass before activation.
+		return "managed-anchors"
 	case cfg.ClientNames.ReversePTR.Enabled:
 		return "async-ptr"
 	case cfg.DHCP.Enabled || len(cfg.DHCP.Scopes) != 0:

@@ -96,6 +96,9 @@ func (r LuaRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]F
 		w("-- health-check response validators (dnsdist 2.1)")
 		b.WriteString(v)
 	}
+	if t.ManagedCacheBypass {
+		w("%s", luaManagedCacheBypass)
+	}
 	w("")
 	w("-- backends")
 	hc := t.HealthCheck
@@ -130,6 +133,9 @@ func (r LuaRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]F
 	}
 	w("addAction(QNameRule(%s), SetSkipCacheAction(), {name=%s, uuid=%s})",
 		luaString(t.HealthCheck.QName), luaString(ruleHealthNoCache), luaString(ruleUUID(ruleHealthNoCache)))
+	if t.ManagedCacheBypass {
+		w("addAction(AllRule(), SetSkipCacheAction(), {name=%s, uuid=%s})", luaString(ruleManagedNoCache), luaString(ruleUUID(ruleManagedNoCache)))
+	}
 	if len(t.Rules.AuthoritativeZones) > 0 {
 		w("addAction(QNameSuffixRule(%s), PoolAction(%s), {name=%s, uuid=%s})",
 			luaStrings(t.Rules.AuthoritativeZones), luaString(edge.PoolAuthoritative), luaString(ruleAuthoritative), luaString(ruleUUID(ruleAuthoritative)))

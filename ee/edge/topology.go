@@ -237,6 +237,9 @@ type EBPF struct {
 // Topology is everything a dnsdist configuration needs. Both renderers
 // consume it; nothing else in the rendered file is configurable.
 type Topology struct {
+	// ManagedCacheBypass forbids packet cache attachments and emits a global
+	// skip-cache rule. A rendered target is not proof of an installed child.
+	ManagedCacheBypass bool
 	// ServerID is general.server_id (the edge node or pod name).
 	ServerID string
 	// ACL lists client prefixes allowed to query.
@@ -454,6 +457,9 @@ func (t *Topology) Validate() error {
 		}
 		if p.Cache != nil && p.Cache.Size <= 0 {
 			add("pool %q: packet cache size must be positive", p.Name)
+		}
+		if t.ManagedCacheBypass && p.Cache != nil {
+			add("pool %q: managed bypass forbids packet cache attachment", p.Name)
 		}
 	}
 	if !pools[PoolResolver] {

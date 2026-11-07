@@ -51,6 +51,7 @@ const (
 	ruleRefuseTransfers = "kudurru-refuse-xfr-notify-update"
 	ruleProxySecret     = "kudurru-proxy-protocol-secret" //nolint:gosec // a rule name, not a credential
 	ruleHealthNoCache   = "kudurru-health-no-cache"
+	ruleManagedNoCache  = "kudurru-managed-no-cache"
 	ruleAuthoritative   = "kudurru-authoritative-zones"
 	ruleResolver        = "kudurru-resolver-default"
 )

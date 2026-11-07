@@ -129,6 +129,8 @@ type Supervisor struct {
 	cacheMode, cacheError                              string
 	cacheIdentity                                      string
 	authoritativeCacheMode, authoritativeCacheIdentity string
+	cacheBypassChild                                   *edge.Child
+	cacheBypassFence                                   resolverFence
 }
 
 // New validates cfg and returns a Supervisor.
@@ -528,6 +530,8 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	zones := make(chan zoneObservation, 1)
 	if s.cfg.Zones != nil {
 		wg.Go(func() { s.pollZones(ctx, zones) })
+	}
+	if s.cfg.Zones != nil || s.cfg.Options.ManagedCacheBypass {
 		wg.Go(func() { s.runResolverCache(ctx) })
 	} else {
 		s.mu.Lock()
@@ -893,6 +897,8 @@ func (s *Supervisor) Ready() (bool, string) {
 		return false, s.cacheError
 	case s.child == nil || !s.child.Running():
 		return false, "dnsdist is not running"
+	case s.cfg.Options.ManagedCacheBypass && !s.managedBypassInstalledLocked():
+		return false, "waiting for installed managed cache bypass"
 	case s.statusErr != nil:
 		return false, "dnsdist API: " + s.statusErr.Error()
 	case s.status == nil:
@@ -927,6 +933,8 @@ func (s *Supervisor) Handler() http.Handler {
 		body["resolverCacheMode"], body["resolverCacheError"] = s.cacheMode, s.cacheError
 		body["resolverCacheIdentity"] = s.cacheIdentity
 		body["authoritativeCacheMode"], body["authoritativeCacheIdentity"] = s.authoritativeCacheMode, s.authoritativeCacheIdentity
+		body["managedCacheBypassConfigured"] = s.cfg.Options.ManagedCacheBypass
+		body["managedCacheBypassInstalled"] = s.managedBypassInstalledLocked()
 		if s.status != nil {
 			body["dnsdist"] = s.status
 		}

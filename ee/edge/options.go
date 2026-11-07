@@ -31,6 +31,9 @@ type Options struct {
 	// ResolverCacheSize sizes a supervised, qualified resolver cache; default
 	// 200000. Static rendering has no original proof and leaves it uncached.
 	ResolverCacheSize int
+	// ManagedCacheBypass permanently bypasses both shared caches for every
+	// child of this supervisor. It must precede managed backend activation.
+	ManagedCacheBypass bool
 	// AuthoritativeCache requests supervised qualification of a short cache
 	// with AuthoritativeCacheTTL seconds of max TTL (default 30). Static
 	// rendering has no original publication proof and leaves this pool uncached.
@@ -87,6 +90,7 @@ func Build(o Options, backends []Backend, creds Credentials) (*Topology, error) 
 		o.Threads = 2
 	}
 	t := &Topology{
+		ManagedCacheBypass:  o.ManagedCacheBypass,
 		ServerID:            o.ServerID,
 		ACL:                 o.ACL,
 		Console:             Console{Address: o.Console},

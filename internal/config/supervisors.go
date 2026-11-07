@@ -40,6 +40,7 @@ type Edge struct {
 	TransferSources         []string `koanf:"transferSources" json:"transferSources"`
 	ACL                     []string `koanf:"acl" json:"acl"`
 	CacheSize               int      `koanf:"cacheSize" json:"cacheSize"`
+	ManagedCacheBypass      bool     `koanf:"managedCacheBypass" json:"managedCacheBypass"`
 	Dynblocks               bool     `koanf:"dynblocks" json:"dynblocks"`
 	DynblocksQPS            int      `koanf:"dynblocksQPS" json:"dynblocksQPS"`
 	DynblocksNXDomainRate   int      `koanf:"dynblocksNXDomainRate" json:"dynblocksNXDomainRate"`

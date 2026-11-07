@@ -49,6 +49,7 @@ type edgeFlags struct {
 	authCacheTTL                    int
 	authZones, transferSources, acl []string
 	resolverCacheSize               int
+	managedCacheBypass              bool
 	dynblocks                       bool
 	dynQPS, dynNX                   int
 	ebpf                            bool
@@ -93,6 +94,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringSliceVar(&f.transferSources, "transfer-sources", nil, "addresses/prefixes allowed to send AXFR/IXFR/NOTIFY/UPDATE through the edge")
 	fl.StringSliceVar(&f.acl, "acl", nil, "client prefixes allowed to query (default: private and loopback ranges)")
 	fl.IntVar(&f.resolverCacheSize, "cache-size", 200000, "resolver pool packet cache entries")
+	fl.BoolVar(&f.managedCacheBypass, "managed-cache-bypass", false, "bypass both packet caches for this supervisor's lifetime; required before managed root-anchor backends activate")
 	fl.BoolVar(&f.dynblocks, "dynblocks", false, "enable dnsdist dynamic blocking")
 	fl.IntVar(&f.dynQPS, "dynblocks-qps", 50, "per-client query rate (qps over 10 s) that triggers a dynamic block")
 	fl.IntVar(&f.dynNX, "dynblocks-nxdomain-rate", 20, "per-client NXDOMAIN rate that triggers a dynamic block; 0 disables")
@@ -155,6 +157,7 @@ func (f *edgeFlags) options() (edge.Options, error) {
 		ServerID: f.serverID, Listen: f.listen,
 		PoolResolver: f.poolResolver, PoolAuthoritative: f.poolAuthoritative,
 		ResolverCacheSize:  f.resolverCacheSize,
+		ManagedCacheBypass: f.managedCacheBypass,
 		AuthoritativeCache: f.authCache, AuthoritativeCacheTTL: f.authCacheTTL,
 		API: f.api, Console: f.console,
 		ACL: f.acl, TransferSources: f.transferSources, AuthoritativeZones: f.authZones,

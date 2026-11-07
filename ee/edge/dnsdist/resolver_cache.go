@@ -181,7 +181,7 @@ func resolverTarget(o resolverObservation, now time.Time, histories map[string]*
 		if !st.Available {
 			mode = "bypass-input-unavailable"
 			switch st.UnavailableReason {
-			case "async-ptr", "dhcp-runtime", "client-scope", "rule-client-scope", "zone-client-acl", "client-acl", "ecs", "rebinding-client-scope", "rate-limit":
+			case "async-ptr", "dhcp-runtime", "client-scope", "rule-client-scope", "zone-client-acl", "client-acl", "ecs", "rebinding-client-scope", "rate-limit", "managed-anchors":
 				mode = "bypass-" + st.UnavailableReason
 			}
 			continue
@@ -212,7 +212,7 @@ func resolverTarget(o resolverObservation, now time.Time, histories map[string]*
 }
 
 func (s *Supervisor) resolverCacheCommand(enabled bool) string {
-	if !enabled {
+	if !enabled || s.cfg.Options.ManagedCacheBypass {
 		return `getPool("resolver"):unsetCache()`
 	}
 	c := edge.DefaultResolverCache()
@@ -251,7 +251,7 @@ func authoritativeTarget(o resolverObservation, key, mode string, enabled bool) 
 }
 
 func (s *Supervisor) authoritativeCacheCommand(enabled bool) string {
-	if !enabled {
+	if !enabled || s.cfg.Options.ManagedCacheBypass {
 		return `getPool("authoritative"):unsetCache()`
 	}
 	c := edge.AuthoritativeCache(s.cfg.Options.AuthoritativeCacheTTL)
@@ -263,6 +263,10 @@ type packetCacheKeys struct{ resolver, authoritative string }
 // runResolverCache is the sole remote packet-cache mutator for both fixed
 // pools. One bounded console acknowledgment covers every changed target.
 func (s *Supervisor) runResolverCache(ctx context.Context) {
+	if s.cfg.Options.ManagedCacheBypass {
+		s.runManagedCacheBypass(ctx)
+		return
+	}
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	histories := map[string]*resolverHistory{}

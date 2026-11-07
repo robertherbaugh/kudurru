@@ -436,8 +436,17 @@ flag is nonwaiting, avoiding a native mutex across admission. Entries retain
 their original absolute TTL expiry; actual cache locks protect checks of flush
 epoch, proof/exception expiry, cancellation and elapsed original deadline.
 
-Installed edge bypass and the complete retirement acceptance matrix remain
-required before activation. Managed recursive
+The edge now has an immutable host option, `edge.managedCacheBypass`, that emits
+an unconditional skip-cache rule before every pool and prevents its sole cache
+worker from attaching either pool. Readiness binds a concrete console
+acknowledgment of the loaded policy and both synchronous detachments to the
+running child and original membership epoch. Old observations cannot reattach;
+unknown acknowledgment retires that child. Managed backend projections refuse
+both fresh remote cache leases, including before a local-denial rebuild.
+
+The coordinator must still bind backend activation to the installed edge's
+original evidence, and the complete retirement acceptance matrix remains
+required before activation. A status boolean is not this authority. Managed recursive
 input will not alter forwarded DNSSEC's independent anchors and exception policy.
 
 Planned managed mode also refuses an ordinary switch back to static/default
@@ -450,7 +459,8 @@ Managed activation also requires retirement of held answers at final local
 response admission and durable follower quarantine. The current remote cache
 eligibility lease cannot guarantee immediate retirement; managed pools need
 proven cache bypass installed before activation or a stronger per-hit protocol.
-These are pending prerequisites, not guarantees supplied by the pure package.
+The local installed-policy prerequisite has real dnsdist coverage; its backend
+activation admission is still pending. Neither is supplied by the pure package.
 
 ### Names that never leave the network
 
