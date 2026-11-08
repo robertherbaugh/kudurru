@@ -17,12 +17,14 @@ import (
 // follower worker must create its finite lifetime before capture; it cannot
 // feed leader-received, held or forwarded bytes into this socket-only adapter.
 type anchorFollowerDenial struct {
-	runtime *servingRuntime
-	ctx     context.Context
-	token   sqlite.GenerationToken
-	wire    *anchorWirePlan
-	denial  *sqlite.AnchorDenial
-	used    atomic.Bool
+	runtime  *servingRuntime
+	ctx      context.Context
+	token    sqlite.GenerationToken
+	wire     *anchorWirePlan
+	denial   *sqlite.AnchorDenial
+	owner    accepted.Snapshot
+	identity anchorRetrySource
+	used     atomic.Bool
 }
 
 func (s *servingRuntime) captureAnchorFollowerDenial(ctx context.Context, clock *trustanchors.SessionClock, offset uint64) (*anchorFollowerDenial, error) {
@@ -79,7 +81,9 @@ func (s *servingRuntime) captureAnchorFollowerDenial(ctx context.Context, clock 
 	if err != nil {
 		return nil, err
 	}
-	op := &anchorFollowerDenial{runtime: s, ctx: ctx, token: token, wire: wire, denial: denial}
+	op := &anchorFollowerDenial{runtime: s, ctx: ctx, token: token, wire: wire, denial: denial, owner: owner,
+		identity: anchorRetrySource{owner: owner.Version(), policyID: policy.PolicyID, seeds: policy.SeedDigest,
+			settingsUID: string(settings.UID), settingsVersion: settings.ResourceVersion}}
 	// Close image-read -> local driver capture interposition with an inert
 	// callback. No source I/O or additional pin is acquired under Store wmu.
 	if err := s.opts.Store.PublishIfCurrent(ctx, token, sqlite.PublicationOptions{}, func() error { return nil }); err != nil {
@@ -109,23 +113,52 @@ func (op *anchorFollowerDenial) checkOriginal() error {
 }
 
 func (op *anchorFollowerDenial) run() (sqlite.AnchorCommit, error) {
+	result, err := op.observe()
+	// Preserve the original one-shot denial contract. The poller consumes the
+	// explicit authenticated normal branch through observe instead.
+	if err == nil && result.branch == sqlite.AnchorPollNormal {
+		err = replication.ErrInvalid
+	}
+	return result.completion, err
+}
+
+type anchorFollowerCompletion struct {
+	branch     sqlite.AnchorPollBranch
+	completion sqlite.AnchorCommit
+}
+
+func (op *anchorFollowerDenial) observe() (result anchorFollowerCompletion, err error) {
 	if op == nil || !op.used.CompareAndSwap(false, true) {
-		return sqlite.AnchorCommit{}, errAnchorPolicy
+		return result, errAnchorPolicy
 	}
 	if err := op.checkOriginal(); err != nil {
-		return sqlite.AnchorCommit{}, err
+		return result, err
 	}
-	raw, stamp, err := acquireAnchorWire(op.wire, op.denial.SampleReceipt)
+	arrived := false
+	raw, stamp, err := acquireAnchorWire(op.wire, func() (sqlite.AnchorReceiptStamp, error) {
+		arrived = true
+		return op.denial.SampleReceipt()
+	})
 	if err != nil {
-		return sqlite.AnchorCommit{}, err
+		if !arrived {
+			if refusal := op.checkOriginal(); refusal != nil {
+				return result, refusal
+			}
+			return result, &anchorAcquisitionFailure{err: err}
+		}
+		return result, err
 	}
-	verified, err := op.denial.VerifyReceived(raw, stamp)
+	branch, verified, err := op.denial.ObserveReceived(raw, stamp)
 	if err != nil {
-		return sqlite.AnchorCommit{}, err
+		return result, err
+	}
+	result.branch = branch
+	if branch == sqlite.AnchorPollNormal {
+		return result, op.checkOriginal()
 	}
 	// Do not suppress known authenticated denial with a late granting-policy
 	// check. The driver enforces the original local/authority/installed cut;
 	// failed or unknown persistence closes admission and preserves disposition.
-	completion, _, err := op.runtime.opts.Store.CommitAnchorDenial(verified)
-	return completion, err
+	result.completion, _, err = op.runtime.opts.Store.CommitAnchorDenial(verified)
+	return result, err
 }

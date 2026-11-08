@@ -186,17 +186,34 @@ func (p *AnchorPoll) Receive(raw []byte, received AnchorReceiptStamp) (*AnchorPo
 // new receipt at dequeue. It shares input consumption with legacy parsed Verify
 // and cannot grant follower checkpoint/key progress from a normal observation.
 func (d *AnchorDenial) VerifyReceived(raw []byte, received AnchorReceiptStamp) (*AnchorVerifiedDenial, error) {
-	if d == nil {
-		return nil, replication.ErrInvalid
-	}
-	observation, err := verifyAnchorReceipt(d.cell, raw, received)
+	branch, proof, err := d.ObserveReceived(raw, received)
 	if err != nil {
 		return nil, err
 	}
-	if len(observation.Revocations()) == 0 {
+	if branch != AnchorPollRevoke {
 		return nil, replication.ErrInvalid
 	}
-	return &AnchorVerifiedDenial{cell: &anchorVerifiedDenial{original: d.cell, observation: observation}}, nil
+	return proof, nil
+}
+
+// ObserveReceived authenticates one original follower receipt without advancing
+// canonical trust. A normal result carries no proof and permits only scheduling
+// a new independent acquisition. A revoke result carries the original deny-only
+// proof. Every error returns Invalid, never a normal outcome inferred from error
+// identity. It shares exact stamp ownership and consumption with VerifyReceived
+// and legacy parsed Verify; callers cannot replace a failed or normal input.
+func (d *AnchorDenial) ObserveReceived(raw []byte, received AnchorReceiptStamp) (AnchorPollBranch, *AnchorVerifiedDenial, error) {
+	if d == nil {
+		return AnchorPollInvalid, nil, replication.ErrInvalid
+	}
+	observation, err := verifyAnchorReceipt(d.cell, raw, received)
+	if err != nil {
+		return AnchorPollInvalid, nil, err
+	}
+	if len(observation.Revocations()) == 0 {
+		return AnchorPollNormal, nil, nil
+	}
+	return AnchorPollRevoke, &AnchorVerifiedDenial{cell: &anchorVerifiedDenial{original: d.cell, observation: observation}}, nil
 }
 
 func verifyAnchorReceipt(c *anchorDenial, raw []byte, received AnchorReceiptStamp) (trustanchors.Observation, error) {

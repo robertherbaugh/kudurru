@@ -3599,3 +3599,33 @@ not inference from the generic invalid-denial error. Original installed-edge
 activation admission, elected/follower mounts, full frontend/cache retirement,
 recovery and interoperability remain open. No production activation or full
 F28/repository/release qualification is claimed.
+
+
+### F28 private follower poller and explicit normal disposition
+
+The root follower loop now retains one actual member/term/incarnation and local
+clock. Each bounded original acquisition captures before network I/O. Explicit
+normal authentication schedules only a local minimum-refresh cooldown, with no
+canonical progress. Only incomplete transport uses accepted RetryDue. Exact
+owner/policy/settings identity binds both schedules. Complete-input,
+authentication, authority/admission and completion errors latch; confirmed local
+denial stops the worker. Normal/incomplete acquisition rechecks original
+authority, while known denial still reaches the driver without a late granting
+check. Caller/runtime cancellation joins original sockets and bounded broadcast
+waits; the publisher's single-consumer denial channel remains separate.
+
+Default race passes **128 SQLite entries / 51 top-level** and **50 root entries /
+23 top-level**, zero failures/skips. Original tests remain unchanged. New tests
+cover explicit normal/revoke classification, zero-TTL known-denial closure,
+foreign/substituted stamp refusal and shared legacy consumption, actual socket
+cadence/retry/terminal failures, durable denial/reopen, promotion and shutdown.
+Focused go vet passes. The recorded installed lint executable disappeared from
+the build cache: its existence-check launcher exited 1 before any lint process.
+No replacement installed copy was found and no tool was rebuilt; configured lint
+remains pending. This is not a lint pass. Evidence:
+`.context/f28-parent-follower-poller-20261108/result.md`.
+
+The poller remains unmounted, as does the elected updater. Root does not enable
+managed AnchorStore. Backend-to-edge activation authority, joined elected and
+follower mounts, complete frontend/cache retirement, recovery/interoperability,
+all F20 failures, TSIG gaps and external acceptance remain open.

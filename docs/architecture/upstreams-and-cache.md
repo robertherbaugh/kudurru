@@ -371,8 +371,21 @@ has no API for leader observations or supplied raw bytes. It refuses a changed
 original authority before acquisition, but a known revoke arriving during
 promotion still reaches the driver's original-cut check: a refused/unknown
 denial closes local admission without relabeling canonical progress. Durable
-local denial survives follower reopen. This one-shot adapter is not an automatic
-follower poll loop or production activation.
+local denial survives follower reopen. The legacy one-shot denial API still
+refuses a normal response. A separate explicit authenticated-normal result lets
+the private follower poller schedule a new independent acquisition without
+creating accepted progress.
+
+That poller retains one member, authority term and local incarnation, plus its
+own session clock. Its first observation is immediate; a normal receipt imposes
+only a local one-hour minimum refresh cadence. Incomplete transport uses the
+accepted state's retry interval. Both cooldowns bind the exact owner, policy and
+settings identity. Authentication, complete-input, admission, completion or
+promotion refusal stops the loop; confirmed local denial also stops it.
+Generation/authority broadcasts and bounded waits preserve the publisher's
+separate denial notice. Caller and runtime cancellation join the original socket
+and wait. The follower poller and elected updater remain unmounted; these
+prerequisites do not enable production managed serving.
 
 The unmounted `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit
