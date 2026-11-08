@@ -5496,3 +5496,41 @@ fixture setup now settles both independently owned zones inside the original
 suite passes 29 entries in 47.298 seconds, with the sole separately enabled Knot
 catalog skip; scoped configured lint passes in 6.822 seconds with zero issues.
 No production source, transfer retry or comparator assertion was weakened.
+
+### G04/G21 shared-settings ownership and API fixtures, November 8
+
+Hosted shard 2 on 9cc2ae04 exposed two independent regressions. Upstream
+ownership serialized node-only managed topology/edge identities into the shared
+section; the backend correctly refused them. Shared persistence/export now
+filters every non-public upstream schema key while preserving effective public
+values. Original node declarations and schema defaults survive replacement even
+when stale shared sections are malformed or carry foreign host fields. Invalid
+original host declarations still refuse. Actual file-backed release/adopt and
+two-node restart retain independent direct/edge topology and deployment identity.
+
+The audit schema-5 fixture now removes only the exact fresh schema-9 enrollment
+sentinel while the database is closed, just as it already removed the later
+anchor sentinels. Current production migration admission is unchanged.
+
+The first composed race run remains failed/incomplete: 818 test passes, one
+settings failure, one PostgreSQL skip, then a diagnostic SIGQUIT of the owned API
+test after its flush-cancellation fixture blocked on an unbounded channel receive.
+The captured stack confirms query_output_test.go:376. The mocked flush previously
+returned on context cancellation before its cancellation callback necessarily
+ran; stopping that callback after I/O returned is legal. The fixture now keeps
+the simulated transport pending until the actual deadline interrupt, with bounded
+observation waits. Production output behavior is unchanged.
+
+Final source03 focused race passes 16 entries without failures/skips. Full
+settings/config/API race passes 1,037 entries, no failures, in 194.904 seconds,
+with PostgreSQL enabled (exact local image retained in the receipt). Its sole
+Kubernetes asset skip is subsequently executed with actual 1.37.0 control-plane
+assets: one race pass, no skips, 10.822 seconds. Every frozen identity matches.
+An initial lint invocation could not find the executable on PATH; the installed
+lint then found one test-owned file-read annotation. Those failed receipts remain.
+Evidence: `.context/settings-scope-20261108/`. Hosted final-head qualification
+and all unrelated feature/release gates remain open.
+
+Final source04 configured scoped lint passes with zero issues in 3.208 seconds.
+Source04 changes from the race-qualified source03 are documentation and the
+exact temporary-file annotation only; no behavioral change followed the races.

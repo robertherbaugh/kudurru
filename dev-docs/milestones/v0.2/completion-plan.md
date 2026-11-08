@@ -449,3 +449,10 @@ reviewed upstream fixture warnings. Patched pins and narrowly documented scan
 findings pass local configured Semgrep/Trivy; exact evidence is in gaps.md.
 Fresh CI's BIND denial-zone readiness failure is reproduced locally and remains
 under investigation. Historical green runs do not qualify this new candidate.
+
+The November 8 hosted settings/audit failures are corrected without migration or
+host-scope relaxations. Full affected races pass 1,037 entries; the sole asset
+skip passes separately on the actual Kubernetes control plane. The first failed
+run and diagnosed flush-test deadlock remain recorded in gaps.md. The BIND
+readiness correction also passes the full local comparator suite; fresh hosted
+CI/security and remaining implementation/release qualification are still open.

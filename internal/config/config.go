@@ -527,8 +527,8 @@ func Load(path string, environ []string) (*Config, error) {
 	return LoadWithSections(path, environ, nil)
 }
 
-// SectionLoader returns complete UI-owned sections before validation. A section
-// replaces every lower-layer key, including defaults; environment locks still win.
+// SectionLoader returns complete UI-owned public sections before validation.
+// Local host declarations survive replacement; environment locks still win.
 type SectionLoader func(*Config) (map[string]any, error)
 
 // LoadWithSections reads the normal layers, then replaces owned sections before
@@ -602,6 +602,7 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 	}
 	settingsPath := settingsFilePath(k, overrides, environ)
 	var sections map[string]any
+	localSections := map[string]any{}
 	if owned != nil {
 		// Decode only node identity and storage here: stale UI-owned section
 		// declarations must not fail decoding before they can be replaced.
@@ -627,6 +628,22 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 		for section := range sections {
 			if section != "upstreams" {
 				return nil, fmt.Errorf("config: unsupported UI-owned section %q", section)
+			}
+		}
+		// Read host fields from the original node document, before any stale
+		// shared section can erase them or inject its own values. An absent
+		// host field retains its schema default even when the public section
+		// is malformed and will be replaced as a whole below.
+		for _, key := range Schema {
+			parts := strings.Split(key.Path, ".")
+			if _, replaced := sections[parts[0]]; !replaced || PublicClusterKey(key) {
+				continue
+			}
+			localSections[key.Path] = key.Default
+			if parent, ok := subMap(nodeFile, parts[:len(parts)-1]...); ok {
+				if value, present := parent[parts[len(parts)-1]]; present {
+					localSections[key.Path] = value
+				}
 			}
 		}
 	}
@@ -666,8 +683,6 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 		return nil, err
 	}
 	fileHash := fmt.Sprintf("%x", sha256.Sum256(fileBytes))
-	managedTopology := k.Get("upstreams.recursion.managedTopology")
-	managedEdges := k.Get("upstreams.recursion.managedEdges")
 	for section, value := range sections {
 		k.Delete(section)
 		if err := k.Load(confmap.Provider(map[string]any{section: value}, "."), nil); err != nil {
@@ -676,7 +691,7 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 	}
 	// Host source and topology declarations survive replacement of the public
 	// section. The later environment layer still has its original precedence.
-	if err := k.Load(confmap.Provider(map[string]any{"upstreams.importFile": importPath, "upstreams.recursion.managedTopology": managedTopology, "upstreams.recursion.managedEdges": managedEdges}, "."), nil); err != nil {
+	if err := k.Load(confmap.Provider(localSections, "."), nil); err != nil {
 		return nil, err
 	}
 	// Supervisor collections replace whole lower values, including maps. Delete

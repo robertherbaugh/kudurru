@@ -72,3 +72,49 @@ func TestManagedTopologySurvivesUISectionOwnership(t *testing.T) {
 		})
 	}
 }
+
+func TestOwnedUpstreamsRetainOriginalHostFields(t *testing.T) {
+	defaults, err := FromFlat(Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	load := func(*Config) (map[string]any, error) {
+		return map[string]any{"upstreams": ClusterSeed(defaults)["upstreams"]}, nil
+	}
+	for _, node := range []struct{ name, body, topology, importFile string }{
+		{"defaults", "", "disabled", ""},
+		{"direct", "upstreams: {importFile: original-unread-file, recursion: {managedTopology: direct}}\n", "direct", "original-unread-file"},
+		{"stale-node-section", "upstreams: invalid\n", "disabled", ""},
+	} {
+		for _, shared := range []struct{ name, body string }{
+			{"scalar-section", "upstreams: invalid\n"},
+			{"scalar-recursion", "upstreams: {recursion: invalid}\n"},
+			{"foreign-host-fields", "upstreams: {importFile: foreign-unread-file, recursion: {managedTopology: edges, managedEdges: [invalid]}}\n"},
+		} {
+			t.Run(node.name+"/"+shared.name, func(t *testing.T) {
+				dir := t.TempDir()
+				path, settings := filepath.Join(dir, "node.yaml"), filepath.Join(dir, "settings.yaml")
+				if err := os.WriteFile(path, []byte("settingsFile: "+settings+"\n"+node.body), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(settings, []byte(shared.body), 0600); err != nil {
+					t.Fatal(err)
+				}
+				cfg, err := LoadWithSections(path, nil, load)
+				if err != nil {
+					t.Fatal("stale public section prevented original host restoration", err)
+				}
+				if cfg.Upstreams.ImportFile != node.importFile || cfg.Upstreams.Recursion.ManagedTopology != node.topology || len(cfg.Upstreams.Recursion.ManagedEdges) != 0 {
+					t.Fatal("shared ownership replaced or erased original host fields")
+				}
+			})
+		}
+	}
+	path := filepath.Join(t.TempDir(), "invalid-host.yaml")
+	if err := os.WriteFile(path, []byte("upstreams: {recursion: {managedTopology: invalid}}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWithSections(path, nil, load); err == nil {
+		t.Fatal("shared ownership concealed an invalid original host field")
+	}
+}

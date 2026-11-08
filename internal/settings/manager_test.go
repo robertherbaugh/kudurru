@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -58,6 +59,54 @@ func newManager(t *testing.T, b Backend, node string, env []string) *Manager {
 	return m
 }
 func revision(m *Manager) string { return m.Status().Sections["upstreams"].Revision }
+
+func TestOwnershipKeepsManagedTopologyInEachNodeFile(t *testing.T) {
+	dir := t.TempDir()
+	settingsFile := filepath.Join(dir, "settings.yaml")
+	backend := FileBackend{Path: settingsFile}
+	node := filepath.Join(dir, "direct.yaml")
+	other := filepath.Join(dir, "edge.yaml")
+	write(t, node, "store: {driver: sqlite}\nsettingsFile: "+settingsFile+"\nupstreams: {recursion: {managedTopology: direct}}\n")
+	write(t, other, "store: {driver: sqlite}\nsettingsFile: "+settingsFile+"\nupstreams:\n  recursion:\n    managedTopology: edges\n    managedEdges:\n    - node: edge-a\n      address: edge-a.example:8443\n      deployment: "+strings.Repeat("ab", 32)+"\n      backendAddress: dns.example:53\n      backendInternalAddress: dns.example:8443\n")
+	m := newManager(t, backend, node, nil)
+	// SQLite starts UI-owned; perform the real file-backed handoff both ways.
+	if err := m.Transition(t.Context(), "upstreams", "release", revision(m)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Transition(t.Context(), "upstreams", "adopt", revision(m)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		file, topology string
+		edges          int
+	}{{node, "direct", 0}, {other, "edges", 1}} {
+		restarted := newManager(t, backend, tc.file, nil)
+		recursion := restarted.Reload.Current().Upstreams.Recursion
+		if recursion.ManagedTopology != tc.topology || len(recursion.ManagedEdges) != tc.edges {
+			t.Fatal("shared settings replaced the receiving node's topology")
+		}
+		if tc.edges != 0 && recursion.ManagedEdges[0].Deployment != strings.Repeat("ab", 32) {
+			t.Fatal("shared settings replaced the original installed edge identity")
+		}
+		exported, err := restarted.YAML("upstreams", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, field := range []string{"managedTopology", "managedEdges", "deployment", "importFile"} {
+			if strings.Contains(exported, field) {
+				t.Fatalf("cluster export contains host-only field %s", field)
+			}
+		}
+	}
+	raw, err := os.ReadFile(settingsFile) //nolint:gosec // exact settings path created in this test's private temporary directory
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "managedTopology") || strings.Contains(string(raw), "managedEdges") {
+		t.Fatal("adoption persisted node topology in the shared section")
+	}
+}
+
 func write(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {

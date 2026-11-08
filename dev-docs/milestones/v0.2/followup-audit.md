@@ -2516,3 +2516,20 @@ revocation integration passes three entries (6.214 s). Final configured scoped
 lint exits0 with zero issues (4.611 s). All 2,962 source03 identities match;
 original failing receipts remain under `.context/member-contact-20261108/`.
 Root operator/domain/listener/join assembly and full HA acceptance remain open.
+
+### Shared upstream ownership and retained API failures, November 8
+
+Node-only managed topology, installed edge identity and import paths no longer
+enter shared upstream ownership or exports. Original node/default values survive
+malformed stale UI-owned sections, while invalid original host fields still
+refuse. The historical audit fixture removes its exact fresh enrollment sentinel;
+production schema migration is unchanged. A captured stack also establishes an
+unbounded wait in the API flush-cancellation test; its mock now waits for the
+actual write-deadline interrupt and bounds observations.
+
+Focused race16 and full settings/config/API race1,037 pass with no failures.
+The full run's one Kubernetes-assets skip is separately executed and passes on
+the installed control plane; PostgreSQL history runs in the full suite. The first
+failed/interrupted run and lint tool/annotation failures remain in gaps.md and
+`.context/settings-scope-20261108/`. These results do not establish final hosted
+CI or enrolled HA assembly.

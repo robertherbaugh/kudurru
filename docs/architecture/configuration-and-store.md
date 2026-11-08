@@ -687,9 +687,13 @@ flowchart LR
 An environment variable wins and locks the key in the dashboard. In
 Kubernetes, sections default to `gitops`: edit Helm values or the settings
 ConfigMap. Only `upstreams` can currently switch to `ui` ownership, through
-an explicit, revision-checked adoption. Adoption copies the entire effective
-section (groups, servers, bootstrap, conditional rules, ECS and recursion)
-without changing routing. Host-only restrictions remain in place.
+an explicit, revision-checked adoption. Adoption copies the effective public
+cluster settings (groups, servers, bootstrap, conditional rules, ECS and
+recursion) without changing routing. The schema excludes host-only fields from
+both persistence and YAML export, including import paths, managed-root ingress
+topology and installed edge identities. Each node retains its own declarations.
+These local fields come from the original node document or schema defaults;
+even a malformed stale shared section cannot erase or replace them.
 
 On the v0.2 complete SQLite runtime, canonical settings commands replace this
 legacy ownership manager. Adoption/release and legacy YAML export return 503;
@@ -708,8 +712,9 @@ remain host-only and restart-bound. See [auth control reload](access.md#auth-con
 UI-owned upstreams live with their ownership record in a separate ConfigMap,
 `<release>-ui-settings` by default (`KUDURRU_SETTINGS_RESOURCE`). Helm never
 renders that resource. Each replica reads it at startup and on the settings
-watcher's ten-second poll. Its values replace the entire file section; file
-keys are never merged into a UI-owned section. The environment still wins
+watcher's ten-second poll. Its values replace the public cluster portion of the
+file section; public file keys are never merged into a UI-owned section. The
+environment still wins
 and locks individual keys; any upstream environment override blocks ownership
 transitions. File declarations under a UI-owned section produce a warning,
 the `conflicts` field in `GET /settings` and a dashboard banner while UI values remain

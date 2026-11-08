@@ -17,6 +17,7 @@ import (
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	enrollmentaccepted "github.com/robertherbaugh/kudurru/internal/cluster/enrollment/accepted"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
@@ -60,6 +61,15 @@ func TestAuditResponsesRedactHistoricalCredentials(t *testing.T) {
 	}
 	if n, err := removed.RowsAffected(); err != nil || n != 1 {
 		t.Fatal("legacy fixture did not remove the exact fresh local anchor carrier", err)
+	}
+	// Schema 5 also predates the schema-9 enrollment owner. Remove only the
+	// exact fresh migration sentinel, never an enrolled or dormant owner.
+	removed, err = legacy.Exec(`DELETE FROM replication_sections WHERE section=? AND key=? AND data=?`, enrollmentaccepted.Section, enrollmentaccepted.RootKey, enrollmentaccepted.AwaitingOwnerJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := removed.RowsAffected(); err != nil || n != 1 {
+		t.Fatal("legacy fixture did not remove the exact fresh enrollment sentinel", err)
 	}
 	if _, err := legacy.Exec(`UPDATE meta SET value='5' WHERE key='schema_version'; DELETE FROM meta WHERE key='audit_legacy_max_id'`); err != nil {
 		t.Fatal(err)

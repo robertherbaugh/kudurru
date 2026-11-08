@@ -328,6 +328,8 @@ func TestDNSQueryOutputCancellationDuringFlush(t *testing.T) {
 	lease := &queryOutputLease{}
 	entered, finished := make(chan struct{}), make(chan struct{})
 	deadlines := make(chan time.Time, 2)
+	interrupted := make(chan struct{})
+	var interruptOnce sync.Once
 	var requestCancel context.CancelFunc
 	h := newHarness(t, func(o *Options) {
 		o.Chain = pipeline.MustNew(answerStage{})
@@ -341,8 +343,23 @@ func TestDNSQueryOutputCancellationDuringFlush(t *testing.T) {
 		requestCtx, stop := context.WithCancel(r.Context())
 		requestCancel = stop
 		defer stop()
-		dw := queryDeadlineWriter{w, func(d time.Time) { deadlines <- d }}
-		h.srv.ServeHTTP(queryCancelFlush{dw, func() { close(entered); <-requestCtx.Done() }}, r.WithContext(requestCtx))
+		dw := queryDeadlineWriter{w, func(d time.Time) {
+			deadlines <- d
+			if !d.After(time.Now()) {
+				interruptOnce.Do(func() { close(interrupted) })
+			}
+		}}
+		h.srv.ServeHTTP(queryCancelFlush{dw, func() {
+			close(entered)
+			// Keep the simulated transport write pending until the actual
+			// cancellation callback interrupts it. Returning on requestCtx.Done
+			// can legally stop that callback before it ever sets the deadline.
+			select {
+			case <-interrupted:
+			case <-ctx.Done():
+				t.Error("cancellation did not interrupt pending flush")
+			}
+		}}, r.WithContext(requestCtx))
 	}))
 	defer srv.Close()
 	outcome := make(chan error, 1)
@@ -373,7 +390,17 @@ func TestDNSQueryOutputCancellationDuringFlush(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	first, second := <-deadlines, <-deadlines
+	readDeadline := func() time.Time {
+		t.Helper()
+		select {
+		case d := <-deadlines:
+			return d
+		case <-ctx.Done():
+			t.Fatal("missing original or cancellation write deadline")
+			return time.Time{}
+		}
+	}
+	first, second := readDeadline(), readDeadline()
 	if !second.Before(first) || second.After(time.Now()) || !lease.released.Load() {
 		t.Fatal("cancellation did not tighten and join original write bound", first, second)
 	}
