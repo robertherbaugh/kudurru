@@ -252,7 +252,17 @@ become loopback. Loopback proves only the local path. An external or hairpin
 target reports the address on that route, which can differ from the route to
 an external secondary. Missing keys, bind failures, stale authority and
 unsigned or malformed replies fail without selecting another credential or
-source. Kubernetes serving qualification remains open.
+source.
+
+The Kubernetes listener also mounts this diagnostic using its complete immutable
+startup TSIG inventory. The original verified packet identity must match that
+same stored/file key inventory, within the packet's original deadline; pending,
+failed, wrong-owner and closed sources refuse. This read-only response attests to
+the packet's observed source only. It supplies no Kubernetes writer, leader or
+zone-readiness authority, and does not enable hot TSIG management. The startup
+inventory and restart requirements remain the same as ordinary signed DNS.
+Actual API-server acceptance covers stored/file keys, restart, unknown startup
+inventory, wrong encrypted owner, unsigned/wrong-key/TCP/malformed refusals.
 
 ## Transfers out
 

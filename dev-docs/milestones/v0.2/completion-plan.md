@@ -65,7 +65,7 @@ runners. Unit tests cannot substitute for those results.
 | F06b | Per-zone `notifySource` | Zones and AD | Integrated c80c6f2/46d7641; actual source/refusal races and UI unit tests pass |
 | F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Active D292: SQLite captured listener and secondary/RPZ activation integrated f725fdf; merged mounted races and scoped lint pass. SQLite management/API/generated clients now composed on schema8; final-clock and actual commit-error cases pass, external API races17 and full lint pass. Mounted DNS startup refusal and own-UPDATE acknowledgment corrected in D313; core races581/4 opt-in-helper skips, corrected output races14 and full lint pass. Observed Kubernetes identity prerequisite integrated 038fc54f. D314 startup-only stored keys now mount all six transports, secondary and NOTIFY; actual envtest restart/outage/wrong-owner races, 650 core race entries, 31 compatibility entries, full lint and vet pass. Kubernetes management/current authority and final gates remain open |
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Integrated a6bf8e1; actual encrypted wire and native mutation-refusal races pass; immutable installed keyrings |
-| F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Integrated c46f8c9; authenticated SQLite native/CLI races pass; Kubernetes qualification remains open |
+| F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Implemented D261/D331; authenticated SQLite native/CLI and actual Kubernetes stored/file/restart/refusal races pass; final gates open |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |
 | F09b | Production integration-host wiring and failover | Zones and AD | SQLite mount integrated 687371f; Kubernetes atomic-source and Delete dependencies remain |
 | F10a | Reload inline objects without restart | Zones and AD | Integrated 71c0393; whole-source refusal and actual mounted reload races pass |
@@ -498,3 +498,22 @@ recording does not clear it. Eligible original scopes use the unchanged strict
 Go comparison. No baseline, threshold, corpus or sample replacement is introduced.
 Twelve control tests and workflow YAML validation pass. Hosted paired execution
 and new absolute calibration remain pending; this is not release qualification.
+
+
+### F08 Kubernetes doctor egress diagnostic, November 8
+
+The missing Kubernetes self-NOTIFY mount first fails in the actual API-server
+fixture (native exit1, 26.444s); that original result is retained. D331 now mounts
+the diagnostic with the same complete immutable TSIG startup inventory used by
+all six listeners. It checks the original verified packet/key identity and
+finite deadline, reports only the observed UDP source, and grants no writer,
+leader or zone-readiness authority. Unknown/wrong-owner sources cannot fall back
+to file keys. Other NOTIFY traffic retains its original receiver.
+
+Actual Kubernetes stored/file key round trips and restart, offline/wrong-owner
+startup, unsigned/wrong-key/TCP/malformed refusals, plus all original SQLite
+Doctor tests pass under default race: 35 entries, zero failures/skips, 39.065s.
+All frozen source identities match. Scoped command lint exits0 with zero issues
+in 27.649s. Evidence is `.context/doctor-kube-20261108/`. This closes the named
+Kubernetes diagnostic gap; TSIG hot management, HA assembly and remaining final
+release gates remain open.

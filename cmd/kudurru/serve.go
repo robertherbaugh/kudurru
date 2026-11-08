@@ -896,6 +896,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	auth.Metrics = authoritative.NewMetrics(reg)
 	auth.LocalRecords = leaseDNS
 	auth.Notify = notifyReceiver.Handle
+	if kubeTSIG != nil {
+		auth.Notify = kubeTSIG.doctorNotify(auth.Notify)
+	}
 	auth.StubQuery = stubClient.Exchange
 
 	responseSettings, err := cfg.Response.Compile()

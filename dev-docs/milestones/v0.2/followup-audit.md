@@ -2575,3 +2575,22 @@ recording does not clear it. Eligible original scopes use the unchanged strict
 Go comparison. No baseline, threshold, corpus or sample replacement is introduced.
 Twelve control tests and workflow YAML validation pass. Hosted paired execution
 and new absolute calibration remain pending; this is not release qualification.
+
+
+### F08 Kubernetes doctor egress diagnostic, November 8
+
+The missing Kubernetes self-NOTIFY mount first fails in the actual API-server
+fixture (native exit1, 26.444s); that original result is retained. D331 now mounts
+the diagnostic with the same complete immutable TSIG startup inventory used by
+all six listeners. It checks the original verified packet/key identity and
+finite deadline, reports only the observed UDP source, and grants no writer,
+leader or zone-readiness authority. Unknown/wrong-owner sources cannot fall back
+to file keys. Other NOTIFY traffic retains its original receiver.
+
+Actual Kubernetes stored/file key round trips and restart, offline/wrong-owner
+startup, unsigned/wrong-key/TCP/malformed refusals, plus all original SQLite
+Doctor tests pass under default race: 35 entries, zero failures/skips, 39.065s.
+All frozen source identities match. Scoped command lint exits0 with zero issues
+in 27.649s. Evidence is `.context/doctor-kube-20261108/`. This closes the named
+Kubernetes diagnostic gap; TSIG hot management, HA assembly and remaining final
+release gates remain open.

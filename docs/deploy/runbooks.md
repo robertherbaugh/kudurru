@@ -429,7 +429,7 @@ data locally until then.
 
 ## Inspect the NOTIFY source address
 
-On a complete SQLite serving node with a configured file-backed TSIG key, run:
+On a SQLite or Kubernetes serving node with a matching local TSIG key file, run:
 
 ```sh
 kudurru doctor --notify --notify-key secondary-key --notify-target dns.example:53
@@ -445,7 +445,11 @@ check readiness and routing before retrying the diagnostic.
 The default wildcard listener resolves to loopback and produces a warning:
 that only proves local connectivity. A hairpin route may have different NAT
 from the route to your secondary; confirm its logs before changing allowlists.
-This diagnostic is not yet qualified on the Kubernetes serving path.
+On Kubernetes, the listener uses its complete startup TSIG inventory, including
+stored keys. Supply a matching local key file to the doctor command; it does
+not export stored secrets. A successful diagnostic confirms the authenticated
+packet path, not Kubernetes leadership or zone readiness. Pending or refused
+startup key inventory fails even when a local file key would otherwise match.
 
 ## Recursive group gets no answers
 

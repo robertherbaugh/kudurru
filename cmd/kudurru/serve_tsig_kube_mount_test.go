@@ -209,6 +209,7 @@ func TestRunServeKubeStoredTSIGStartupTransportsRestartAndOffline(t *testing.T) 
 					t.Fatalf("phase %d %s admitted an incomplete source", phase, proto)
 				}
 			}
+			kubeTSIGDoctorRoundTrip(t, cfg, key, phase < 2)
 		}
 		if phase < 2 {
 			startup, err := newKubeTSIGStartup(t.Context(), st, seal, mustKubeTSIGRing(t, fileKey), 5*time.Second)

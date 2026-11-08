@@ -75,7 +75,7 @@ func checkSelfNotify(ctx context.Context, rep *doctorReport, cfg *config.Config,
 	response, _, err := client.ExchangeContext(ctx, message, target)
 	if err != nil {
 		// Do not print peer-controlled errors, signatures or secret-file contents.
-		rep.fail("notify", "authenticated round trip to %s failed; check UDP routing/firewall, notify.source binding, matching TSIG keys and the current ready leader", target)
+		rep.fail("notify", "authenticated round trip to %s failed; check UDP routing/firewall, notify.source binding and the listener's TSIG source", target)
 		return
 	}
 	address, err := doctorNotifyAddress(response)
