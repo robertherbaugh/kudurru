@@ -18,7 +18,8 @@ import (
 // option different semantics); elsewhere every listener binds one socket.
 
 // ReuseportSupported reports whether this platform binds more than one
-// socket per UDP, TCP or DoT listener.
+// socket per UDP, TCP, DoT or QUIC listener. QUIC additionally requires a
+// successfully installed connection-ID selector.
 const ReuseportSupported = reuseportSupported
 
 // SocketCount resolves Options.Sockets: zero or negative means

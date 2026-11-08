@@ -1,8 +1,6 @@
 package dnsserver
 
 import (
-	"github.com/robertherbaugh/kudurru/internal/clientid"
-
 	"context"
 	"encoding/binary"
 	"errors"
@@ -16,6 +14,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 
+	"github.com/robertherbaugh/kudurru/internal/clientid"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
@@ -48,9 +47,7 @@ type doqListener struct {
 	qcfg *quic.Config
 
 	mu     sync.Mutex
-	pc     net.PacketConn
-	tr     *quic.Transport
-	ln     *quic.Listener
+	ln     *quicSockets
 	active map[*quic.Conn]struct{}
 
 	workers chan struct{}
@@ -91,10 +88,19 @@ func (l *doqListener) Ready() bool { return l.ready.Load() }
 func (l *doqListener) Addr() net.Addr {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.pc == nil {
+	if l.ln == nil {
 		return nil
 	}
-	return l.pc.LocalAddr()
+	return l.ln.Addr()
+}
+
+func (l *doqListener) Sockets() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.ln == nil {
+		return 0
+	}
+	return len(l.ln.packets)
 }
 
 func (l *doqListener) Bind() error {
@@ -102,18 +108,15 @@ func (l *doqListener) Bind() error {
 	if err != nil {
 		return err
 	}
-	pc, err := net.ListenPacket("udp", l.spec.Address)
+	tls := r.TLSConfig(ProtoDoQ.ALPN()...)
+	ln, err := listenQUICSockets(l.spec.Address, l.env.sockets, func(tr *quic.Transport) (quicAcceptor, error) {
+		return tr.Listen(tls, l.qcfg)
+	})
 	if err != nil {
-		return err
-	}
-	tr := &quic.Transport{Conn: pc}
-	ln, err := tr.Listen(r.TLSConfig(ProtoDoQ.ALPN()...), l.qcfg)
-	if err != nil {
-		_ = pc.Close()
 		return err
 	}
 	l.mu.Lock()
-	l.pc, l.tr, l.ln = pc, tr, ln
+	l.ln = ln
 	l.mu.Unlock()
 	return nil
 }
@@ -121,17 +124,17 @@ func (l *doqListener) Bind() error {
 func (l *doqListener) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.pc == nil {
+	if l.ln == nil {
 		return nil
 	}
-	_ = l.ln.Close()
-	_ = l.tr.Close()
-	err := l.pc.Close()
-	l.pc = nil
+	err := l.ln.closeSockets()
+	l.ln = nil
 	return err
 }
 
 func (l *doqListener) Serve(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	l.mu.Lock()
 	ln := l.ln
 	l.mu.Unlock()
@@ -145,7 +148,7 @@ func (l *doqListener) Serve(ctx context.Context) error {
 	for {
 		conn, err := ln.Accept(ctx)
 		if err != nil {
-			if ctx.Err() == nil && !errors.Is(err, quic.ErrServerClosed) {
+			if ctx.Err() == nil && !normalQUICClose(err) {
 				serveErr = err
 			}
 			break
@@ -172,6 +175,7 @@ func (l *doqListener) Serve(ctx context.Context) error {
 	// DOQ_NO_ERROR.
 	l.ready.Store(false)
 	_ = ln.Close()
+	cancel() // An individual accept-loop failure must also join stream acceptors.
 	conns.Wait()
 	drained := make(chan struct{})
 	go func() { l.streams.Wait(); close(drained) }()

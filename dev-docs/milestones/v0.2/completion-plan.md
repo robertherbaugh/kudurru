@@ -104,7 +104,7 @@ runners. Unit tests cannot substitute for those results.
 | F24a | Rate-limit slip metric | DNS and resolver | Integrated; final gates open |
 | F24b | Per-ClientGroup rate-limit exemptions | DNS and resolver | Integrated 3234ad4; actual mounted UDP/TCP/publication, real Kubernetes admission and 13 UI cases pass; generated CRDs included |
 | F25a | Multi-socket DoT | DNS and resolver | Integrated eeb68c2; real TLS/rotation/limits/shutdown and local socket benchmarks pass |
-| F25b | Multi-socket DoQ/DoH3 with connection-ID-aware routing | DNS and resolver | Queued: missing |
+| F25b | Multi-socket DoQ/DoH3 with connection-ID-aware routing | DNS and resolver | Implemented D311: actual IPv4/IPv6 routing, QUIC v1/v2/Retry, repeated migration and failure cleanup; final upstream CID race39, transport/config race706 (4 existing skips), mounted signed restart1 and vet pass. Local one/four-socket sample improves DoQ 12.33% but worsens HTTP3 12.54%; fixed-class/final gates and configured lint remain open |
 | F26a | Privacy reload preserves daily pseudonym identity | DNS and resolver | Implemented; lifecycle/concurrency/production reload races pass |
 | F26b | Cache growth retains initial shard count | DNS and resolver | Integrated 62990dd; safe resharding, mounted reload, races and local growth benchmarks pass |
 | F26c | Blocking refresh/degraded settings hot reload | DNS and resolver | Integrated 38153fa; real download/publication and scheduler/readiness races pass; generated inheritance schema included |

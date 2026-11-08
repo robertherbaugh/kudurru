@@ -1596,7 +1596,7 @@
       "type": "int",
       "scope": "node",
       "default": 0,
-      "help": "How many sockets each UDP and TCP DNS listener opens, so several CPU cores read queries in parallel. 0 (default) opens one per CPU (GOMAXPROCS), 1 a single socket. Uses SO_REUSEPORT on Linux, each socket with its own read loop; other systems always use one.",
+      "help": "How many sockets each UDP, TCP, DoT, DoQ and HTTP/3 DNS listener opens. 0 (default) opens one per CPU (GOMAXPROCS), 1 a single socket. Linux uses SO_REUSEPORT; QUIC routes by connection ID to preserve path migration, supports at most 256 sockets, and refuses startup if its routing filter cannot be installed. Other systems always use one socket.",
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,

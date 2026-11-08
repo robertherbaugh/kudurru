@@ -20,6 +20,7 @@ ARG GOTAGS=
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
+COPY third_party/quic-go/ ./third_party/quic-go/
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \

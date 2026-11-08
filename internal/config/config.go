@@ -120,7 +120,7 @@ type Listeners struct {
 	// ProxyProtocolSecretFile holds the PROXYv2 TLV 0xE0 secret shared with
 	// the dnsdist supervisor (dev-docs/design-record.md §3.3, D56).
 	ProxyProtocolSecretFile string `koanf:"proxyProtocolSecretFile" json:"proxyProtocolSecretFile"`
-	// Sockets is how many SO_REUSEPORT sockets each udp and tcp listener
+	// Sockets is how many SO_REUSEPORT sockets each UDP, TCP, DoT and QUIC listener
 	// binds (Linux; one elsewhere); 0 means GOMAXPROCS.
 	Sockets int `koanf:"sockets" json:"sockets"`
 	// Limits are shared resource limits applied separately to each DNS listener.

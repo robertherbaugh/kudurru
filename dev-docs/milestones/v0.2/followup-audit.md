@@ -1400,3 +1400,49 @@ Receipts and input identities: `.context/kube-browser-admission-20261108/`.
 F46 enrolled-node forwarding and final driver/release qualification remain open.
 The historical F20 performance failures and other external acceptance gates are
 unchanged. No push, deployment or release.
+
+
+### F25b CID-routed QUIC socket groups (D311), November 8
+
+Linux DoQ and HTTP3 now honor `listeners.sockets` with immutable 1–256-socket
+reuse-port groups and a destination-CID BPF selector. Each server CID has one
+shard byte and 120 random bits. Shared token protection supports Retry across
+sockets; application connection/worker caps remain shared. Handshake limits are
+per library transport. An exclusive first bind is retained through reuse-port
+setup; bind/filter failure refuses startup and any accept failure closes the
+whole group. Other platforms retain one socket.
+
+Actual IPv4/IPv6 kernel routing, every shard's TLS/QUIC v1/v2 with and without
+Retry, and real DoQ/HTTP3 exchanges across three successive migrations are
+covered, with single-socket controls. Partial binds, simultaneous startups,
+limits and cleanup are covered. Upstream quic-go v0.63.0 failed the third
+migration even on one socket. Its path manager discarded the active probing
+CID's ownership while clearing candidate paths. The pinned MIT module retains
+all 500 original files and hashes; only `path_manager.go` changes, retaining the
+active probing ID and retiring it on the next switch. A new twelve-switch test
+uses two probing CID slots; original upstream assertions remain unchanged.
+Docker dependency resolution includes the local replacement. No module-cache
+edit or upstream acceptance is claimed.
+
+Final frozen-source default-race results: upstream path/CID tests 39 passes,
+zero skips (11.421829848s); complete dnsserver/config 706 passes, four existing
+spike/measurement skips (56.692364702s); actual runServe signed-transport and
+SQLite encryption/restart test one pass (50.283144008s). No failures or race
+diagnostics. Minimum free bytes respectively 13,898,244,096, 13,652,758,528 and
+13,433,724,928. Affected vet exits 0 (19.833713570s). Configuration reference
+generation exits 0; docs drift tests pass four entries. Mock help matches the
+schema exactly. Configured golangci-lint remains unavailable.
+
+One fresh local 1s/case benchmark on two 2.90GHz cores records DoQ one/four
+sockets at 55,708/48,841ns (12.3268% lower) and HTTP3 at 70,311/79,129ns
+(12.5414% higher). Allocations are 138 and 262 respectively for both counts.
+The adverse HTTP3 result is retained. This is not a fixed-class throughput or
+release-performance qualification. Earlier migration failures, the refused
+module-cache overlay, and the diagnostic candidate that retired all probing
+IDs immediately remain preserved separately; that candidate is not final code.
+
+Evidence and exact inputs: `.context/quic-multisocket-20261108/`. Frozen final
+Go source matches all race/vet/benchmark receipts; later changes are documentation
+and mock help only. User dashboard/dist bytes remain untouched. F25b behavior is
+implemented; configured lint, fixed-class and final integrated release gates
+remain open. No push, deployment or release.

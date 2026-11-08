@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Linux DoQ and HTTP/3 listeners now honor `listeners.sockets` with connection-ID
+  routing across path migration and shared application limits. A pinned quic-go
+  fix prevents CID exhaustion across repeated migrations.
+
 - Kubernetes: browser login starts and callbacks now share durable request
   budgets across replicas and restart. Conflicts and admission-store outages
   refuse provider dispatch without local fallback.

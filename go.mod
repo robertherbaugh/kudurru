@@ -157,3 +157,6 @@ require (
 ignore ./dashboard/node_modules
 
 ignore ./license-server/node_modules
+
+// Pinned MIT upstream source plus bounded migration CID retirement; see README.kudurru.md.
+replace github.com/quic-go/quic-go => ./third_party/quic-go

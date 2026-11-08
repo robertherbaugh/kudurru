@@ -266,10 +266,11 @@ type Options struct {
 	// OnTSIGFailure, if set, is called with TSIGBadKey, TSIGBadSig or
 	// TSIGBadTime for every request rejected for its TSIG (metrics).
 	OnTSIGFailure func(reason string)
-	// Sockets is how many SO_REUSEPORT sockets every UDP, TCP and DoT listener
+	// Sockets is how many SO_REUSEPORT sockets every UDP, TCP, DoT and QUIC listener
 	// binds, each with its own read loop (listeners.sockets). Zero means
 	// runtime.GOMAXPROCS(0) and 1 a single plain socket; platforms other
-	// than Linux always bind one. See SocketCount.
+	// than Linux always bind one. QUIC uses connection-ID routing and supports
+	// at most 256 sockets; routing attachment failures refuse Bind. See SocketCount.
 	Sockets int
 }
 

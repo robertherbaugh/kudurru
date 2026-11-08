@@ -34,16 +34,31 @@ client policy before response blocking and rebinding checks.
 | Do53 TCP | miekg/dns, one socket per CPU | yes | yes |
 | DoT | miekg/dns `tcp-tls`, one socket per CPU, ALPN `dot` | yes | yes |
 | DoH (HTTP/1.1, HTTP/2) | `net/http`, GET `?dns=` or POST | no | yes |
-| DoQ | quic-go, ALPN `doq` | no | yes |
-| DoH3 | quic-go HTTP/3 | no | yes |
+| DoQ | quic-go, CID-routed socket group, ALPN `doq` | no | yes |
+| DoH3 | quic-go HTTP/3, CID-routed socket group | no | yes |
 
-On Linux, `listeners.sockets` controls UDP, TCP and DoT reuse-port groups
-(default: one socket per `GOMAXPROCS` CPU). Each DoT socket has its own accept
-loop and uses the same reloadable TLS certificate owner. TLS/PROXYv2 wrapping,
-per-connection query and idle limits, and shutdown apply on every socket.
-Other platforms bind one socket. QUIC listeners still bind independently;
-this TCP connection distribution does not supply connection-ID-aware routing
-for DoQ or DoH3.
+On Linux, `listeners.sockets` controls UDP, TCP, DoT, DoQ and DoH3 reuse-port
+groups (default: one socket per `GOMAXPROCS` CPU). Each DoT socket has its own
+accept loop and uses the same reloadable TLS certificate owner. TLS/PROXYv2
+wrapping, per-connection query and idle limits, and shutdown apply on every
+socket. Other platforms bind one socket.
+
+Each QUIC listener keeps an immutable group of at most 256 UDP sockets. A Linux
+reuse-port BPF selector routes long and short headers by the unprotected
+destination connection ID. Server-issued IDs keep one shard byte and 120 random
+bits through migration; Retry and token protection work across the group. The
+exclusive first bind is retained while enabling reuse-port, and any bind or
+selector failure refuses startup. An accept failure closes the whole group
+instead of removing a socket and changing kernel indices. There is one bounded
+accept pump per socket. Existing application connection/worker caps remain
+shared across the listener; the library's handshake limits apply per transport.
+
+The pinned MIT-licensed quic-go v0.63.0 source in `third_party/quic-go` includes a
+narrow path-manager fix: retain the active probing CID and retire it on the next
+path switch. The upstream implementation lost that ownership when clearing
+candidate paths, exhausting CID reservations after repeated migration even with
+one socket. Original-file fingerprints and the focused regression test accompany
+the replacement (D311).
 
 Every transport ends in one handler that stamps `Received` and a 5 s
 deadline, runs the chain and writes the reply. DoH, DoQ and DoH3 give the
