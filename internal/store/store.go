@@ -125,6 +125,21 @@ type ApplyOptions struct {
 type DeleteOptions struct {
 	Manager string
 	Force   bool
+	// ExpectedUID and ExpectedResourceVersion bind deletion to the caller's
+	// observed object. Either mismatch is ErrConflict, even with Force. A
+	// guarded deletion never re-reads and retries against a newer object.
+	ExpectedUID             string
+	ExpectedResourceVersion string
+}
+
+// CheckDeletePreconditions checks the original identity before a driver plans
+// a delete. The driver must retain these conditions through its commit boundary.
+func CheckDeletePreconditions(obj metav1.Object, opts DeleteOptions) error {
+	if (opts.ExpectedUID != "" && opts.ExpectedUID != string(obj.GetUID())) ||
+		(opts.ExpectedResourceVersion != "" && opts.ExpectedResourceVersion != obj.GetResourceVersion()) {
+		return ErrConflict
+	}
+	return nil
 }
 
 // DeleteRequest is one delete of a cascade (DeleteAll, MultiDeleter).

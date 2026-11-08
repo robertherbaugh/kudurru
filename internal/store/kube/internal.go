@@ -439,6 +439,9 @@ func (s *Store) deleteInternal(ctx context.Context, ki *kindInfo, key store.Key,
 		if err != nil {
 			return err
 		}
+		if err := store.CheckDeletePreconditions(prev, opts); err != nil {
+			return err
+		}
 		if owner := store.ManagedBy(prev); owner != "" && opts.Manager != "" && owner != opts.Manager && !opts.Force {
 			return &store.ErrManagedBy{Key: key, Owner: owner}
 		}
@@ -451,7 +454,7 @@ func (s *Store) deleteInternal(ctx context.Context, ki *kindInfo, key store.Key,
 		case !apierrors.IsConflict(err):
 			return fmt.Errorf("store/kube: delete %s: %w", key, err)
 		}
-		if attempt >= applyRetries {
+		if opts.ExpectedUID != "" || opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
 			return fmt.Errorf("%w: %s changed during delete", store.ErrConflict, key)
 		}
 	}

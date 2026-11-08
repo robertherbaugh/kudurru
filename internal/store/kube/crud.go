@@ -240,7 +240,15 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 			}
 			return fromUnstructured(ki, u)
 		}
-		err = s.c.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), applyOpts...)
+		capturedOpts := append([]client.ApplyOption(nil), applyOpts...)
+		if !opts.Force && cur != nil && store.ManagedBy(cur) == opts.Manager && sameManagerUpdateFields(cur, fieldManagerFor(opts.Manager)) {
+			// POST/CreateOnly records Update ownership. Kubernetes treats that
+			// as distinct from Apply ownership even for the same manager. Only
+			// migrate an exclusively self-owned object, using this exact RV.
+			// A foreign field owner or an intervening edit prevents migration.
+			capturedOpts = append(capturedOpts, client.ForceOwnership)
+		}
+		err = s.c.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), capturedOpts...)
 		if err == nil {
 			return fromUnstructured(ki, u)
 		}
@@ -274,6 +282,9 @@ func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 	if ki, ok := s.internal.get(key.Kind); ok {
 		return s.deleteInternal(ctx, ki, key, opts)
 	}
+	if opts.ExpectedUID != "" || opts.ExpectedResourceVersion != "" {
+		attempts = 1
+	}
 	ki, err := s.kinds.get(key.Kind)
 	if err != nil {
 		return err
@@ -290,6 +301,9 @@ func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 		}
 		if cur == nil {
 			return fmt.Errorf("%w: %s", store.ErrNotFound, key)
+		}
+		if err := store.CheckDeletePreconditions(cur, opts); err != nil {
+			return err
 		}
 		if owner := store.ManagedBy(cur); owner != "" && opts.Manager != "" && owner != opts.Manager && !opts.Force {
 			return &store.ErrManagedBy{Key: key, Owner: owner}
@@ -312,6 +326,24 @@ func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 			return fmt.Errorf("store/kube: delete %s: %w", key, err)
 		}
 	}
+}
+
+// sameManagerUpdateFields allows the Update-to-Apply transition of an atomic
+// POST without taking fields from another manager. Status ownership is separate.
+func sameManagerUpdateFields(obj metav1.Object, manager string) bool {
+	found := false
+	for _, entry := range obj.GetManagedFields() {
+		if entry.Subresource != "" {
+			continue
+		}
+		if entry.Manager != manager {
+			return false
+		}
+		if entry.Operation == metav1.ManagedFieldsOperationUpdate {
+			found = true
+		}
+	}
+	return found
 }
 
 // UpdateStatus implements store.Store through the status subresource, which

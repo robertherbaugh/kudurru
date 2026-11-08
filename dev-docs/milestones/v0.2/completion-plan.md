@@ -119,7 +119,7 @@ runners. Unit tests cannot substitute for those results.
 | F32 | Persist node-scope API changes or remove write half | Operations and UI | Integrated ffcf20e/bd47907; SQLite durable reset/host precedence; unsupported node writes refused with UI capability; actual restart/envtest/UI checks pass |
 | F33 | Remote `GET /nodes/{name}/health` | Operations and UI | Integrated; final gates open |
 | F34 | `/auth/me` exposes zone-scoped permissions | IAM and access | Implemented; final gates open |
-| F35a | Read external-dns `DNSEndpoint` CRs directly | Zones and AD | Queued: missing |
+| F35a | Read external-dns `DNSEndpoint` CRs directly | Zones and AD | Implemented D302/D303: elected bounded read-only source reconciles UID-owned native children with original source/zone checks and destination CAS. Actual Kubernetes permissions/watch/refusal and mounted DNS/restart/deletion races pass; legacy ownership regressions, vet, docs drift and Helm rendering pass. Separate API objects are not an atomic transaction; multi-node lease-loss/partition and final G09/G21/G22 gates remain |
 | F35b | `kudurru externaldns-webhook` sidecar subcommand | Zones and AD | Implemented D288 loopback relay to existing webhook; actual TLS/router and Kubernetes-backed CLI CRUD/ownership, cancellation/refusal races and lint pass |
 | F35c | external-dns webhook authentication | Zones and AD | Integrated; final gates open |
 | F36 | Serve object lists from live snapshot instead of store | Operations and UI | Implemented; final gates open |

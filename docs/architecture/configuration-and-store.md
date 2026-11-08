@@ -392,6 +392,19 @@ set. SQLite checks within its transaction; Kubernetes uses a create request
 for both CRDs and private Secrets, so a concurrent creator cannot turn a
 bootstrap or migration operation into an update.
 
+A Kubernetes create request records `Update` field ownership. On a later apply,
+the driver can migrate that ownership to `Apply` only if every non-status field
+belongs to the same manager and the managed-by annotation agrees. The exact
+observed resourceVersion guards this single request; a foreign owner or intervening
+edit prevents the transition. This does not grant general takeover authority.
+
+`DeleteOptions.ExpectedUID` and `ExpectedResourceVersion` retain the caller's
+original object identity. A mismatch conflicts even with `Force`. Kubernetes
+keeps the preconditions on its one delete request and never retries against a
+newer object; private Secrets follow the same rule. SQLite checks them inside its
+mutation/command boundary, and a failed command or atomic batch leaves all objects
+unchanged. Omitted preconditions preserve the existing unguarded delete contract.
+
 Every write carries a **manager**, recorded as the object's owner in the
 `kudurru.io/managed-by` annotation: `api`, `file:<path>`,
 `integration:<name>`, `bootstrap` or `system`.

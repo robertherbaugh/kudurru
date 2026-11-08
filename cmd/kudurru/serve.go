@@ -1324,6 +1324,28 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 
+	var endpointCRDs *externaldns.CRDController
+	if cfg.ExternalDNS.CRD.Enabled {
+		if kubeStore == nil {
+			return errors.New("externalDNS.crd.enabled requires the Kubernetes store")
+		}
+		if err := lic.Require(license.FeatureIntegrations); err != nil {
+			return err
+		}
+		endpointCRDs, err = externaldns.NewCRDController(kubeStore.RESTConfig(), externaldns.CRDOptions{
+			Store: st, Validator: v, Namespace: cfg.ExternalDNS.CRD.Namespace, ZoneSelector: cfg.ExternalDNS.CRD.ZoneSelector, Logger: logger,
+			Admit: func(original context.Context) error {
+				if err := original.Err(); err != nil {
+					return err
+				}
+				return lic.Require(license.FeatureIntegrations)
+			},
+		})
+		if err != nil {
+			return err
+		}
+	}
+
 	// Controller: leader-only reconcilers (status, serials, Events).
 	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()}
 	if complete != nil {
@@ -1541,6 +1563,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 			return err
 		}); err != nil {
+			return err
+		}
+	}
+	if endpointCRDs != nil {
+		if err := add("externaldns-crd", true, endpointCRDs.Run); err != nil {
 			return err
 		}
 	}

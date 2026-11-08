@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // APIListener is the HTTP API and UI listener (dev-docs/design-record.md §6.2,
@@ -68,6 +70,15 @@ func ParsePrefixOrAddr(s string) (netip.Prefix, error) {
 // ExternalDNS configures the external-dns integration (§5.6, §9.6).
 type ExternalDNS struct {
 	Webhook ExternalDNSWebhook `koanf:"webhook" json:"webhook"`
+	CRD     ExternalDNSCRD     `koanf:"crd" json:"crd"`
+}
+
+// ExternalDNSCRD reads external-dns objects without taking ownership of them.
+// Generated DNSRecordSets remain in their source namespace.
+type ExternalDNSCRD struct {
+	Enabled      bool              `koanf:"enabled" json:"enabled"`
+	Namespace    string            `koanf:"namespace" json:"namespace"`
+	ZoneSelector map[string]string `koanf:"zoneSelector" json:"zoneSelector"`
 }
 
 // ExternalDNSWebhook is the in-process external-dns webhook provider.
@@ -86,11 +97,14 @@ type ExternalDNSWebhook struct {
 
 // validate checks the webhook keys.
 func (e *ExternalDNS) validate() []error {
+	var errs []error
+	if e.CRD.Namespace != "" && len(validation.IsDNS1123Label(e.CRD.Namespace)) != 0 {
+		errs = append(errs, fmt.Errorf("externalDNS.crd.namespace must be a Kubernetes namespace name"))
+	}
 	w := e.Webhook
 	if !w.Enabled {
-		return nil
+		return errs
 	}
-	var errs []error
 	if w.Listen == "" {
 		errs = append(errs, fmt.Errorf("externalDNS.webhook.listen is required when the webhook is enabled"))
 	}

@@ -38,6 +38,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - Kubernetes: blocking toggles persist in the shared runtime ConfigMap and
   converge across replicas with the same absolute expiry after restart. Conflicts
   and unknown write outcomes are returned without replaying the change.
+- Kubernetes: opt-in direct `DNSEndpoint` ingestion creates source-owned record
+  sets through the elected controller, including update, deletion and restart
+  handling while keeping source CRs read-only.
+- Store: guarded deletes retain the original UID/version across drivers; atomic
+  Kubernetes creations remain editable by their owner without taking foreign fields.
 
 - SQLite DNS: load encrypted stored TSIG keys into complete serving snapshots
   and secondary/RPZ acquisition, retaining each request's original key through

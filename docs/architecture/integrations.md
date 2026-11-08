@@ -312,6 +312,69 @@ expiry, restart, drift, TLS, budget/cancellation and query-time memory isolation
 Optional DHCP DNS pushes, gateway mirroring and actions remain subsequent slices;
 unsupported configured writes currently return an error.
 
+## Direct Kubernetes DNSEndpoint source
+
+Kubernetes can read `externaldns.k8s.io/v1alpha1` `DNSEndpoint` objects directly
+(D303), independently of the webhook or the external-dns process. Install the
+upstream CRD separately and enable the licensed integration in host configuration:
+
+```yaml
+store:
+  driver: kube
+externalDNS:
+  crd:
+    enabled: true
+    namespace: apps
+    zoneSelector:
+      external-dns: enabled
+```
+
+With Helm, place the `externalDNS` block under `config.node`. An empty namespace
+reads all namespaces allowed by Kubernetes RBAC. The existing chart already grants
+only `get`, `list` and `watch` on `DNSEndpoint`; the adapter never changes a source's
+spec, status, labels, finalizers or ownership. The source requires Kubernetes;
+SQLite configuration is rejected before startup. Namespace and zone selection are
+host-only settings that require restart.
+
+The elected controller keeps derived `DNSRecordSet` children in each source's own
+namespace, with a deterministic name, exact source UID and owner reference. Each
+endpoint selects the longest matching primary-zone suffix. A zone's existing
+`recordSetSelector` still checks the source namespace and labels. Existing endpoint
+validation and native record conflict selection apply. Invalid source data withdraws
+that source's old children; a conflicting destination is never taken over, and
+unrelated sources can continue. Source deletion, UID replacement and zone-selection
+changes remove only original, still-owned children. A manually adopted child is
+left alone.
+
+```mermaid
+flowchart LR
+    Source[Read-only DNSEndpoint list and watch] --> Controller[Elected bounded reconciliation]
+    Zones[Current selected primary zones] --> Controller
+    Controller --> Children[Source-owned DNSRecordSet children]
+    Children --> Native[Existing status, serial and serving-cache controllers]
+    Native --> DNS[In-memory DNS answering on every replica]
+```
+
+Watch events trigger fresh reads; a ten-second relist also covers zone changes.
+A reconciliation retains its original term context and a maximum 30-second deadline.
+Source and zone UID/version checks precede writes; creation requires absence,
+updates require the observed destination version, and deletion retains both its UID
+and version. The adapter does not retry a refused mutation or a lost write reply.
+A later independent reconciliation may observe what actually committed.
+
+Limits are 1,024 sources and 16 MiB of retained source data, 1,024 inspected zones,
+1,000 endpoints and eight destination zones per source, and 8,192 inspected child
+rows. Source pages and watch responses have a 2 MiB read bound. Missing CRDs,
+RBAC refusals, partial lists and unavailable reads are errors, never an empty-source
+signal authorizing cleanup. Disabling the controller stops reconciliation and
+retains generated data; normal Kubernetes garbage collection still follows source
+owner references. DNS serving does not depend on a live license check.
+
+This follows Kubernetes controller convergence: source, zone and child are separate
+API objects, so their checks and writes are not one atomic transaction. Cancellation
+prevents undispatched work; an already accepted write may still commit. Partition,
+lease-loss and complete distributed fencing qualification remain separate gates.
+
 ## external-dns webhook transport authentication
 
 The external-dns webhook is an optional, licensed inbound listener. Authentication

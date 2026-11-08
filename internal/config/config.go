@@ -775,6 +775,9 @@ func (c *Config) Validate() error {
 	errs = append(errs, validateTSIGKeys(c.TSIGKeys)...)
 	errs = append(errs, c.Listeners.API.validate()...)
 	errs = append(errs, c.ExternalDNS.validate()...)
+	if c.ExternalDNS.CRD.Enabled && c.Store.Driver != "kube" {
+		errs = append(errs, errors.New("externalDNS.crd.enabled requires store.driver: kube"))
+	}
 	errs = append(errs, c.Auth.validate()...)
 	errs = append(errs, c.Credentials.validate()...)
 	for suffix, group := range c.Upstreams.Conditional {

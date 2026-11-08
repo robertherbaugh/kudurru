@@ -617,7 +617,7 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 	if err != nil {
 		return err
 	}
-	_, err = s.mutate(ctx, false, func(q queryer) (*mutation, error) {
+	_, err = s.mutate(ctx, opts.ExpectedUID != "" || opts.ExpectedResourceVersion != "", func(q queryer) (*mutation, error) {
 		prev, err := s.load(ctx, q, ki, key)
 		if err != nil {
 			return nil, err
@@ -633,6 +633,9 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 // planDelete prepares the delete of the stored object prev: the managedBy
 // check, then a tombstone, or a deletionTimestamp while finalizers remain.
 func (s *Store) planDelete(ki *kindInfo, key store.Key, prev *stored, opts store.DeleteOptions) (*mutation, error) {
+	if err := store.CheckDeletePreconditions(prev.obj, opts); err != nil {
+		return nil, err
+	}
 	manager := opts.Manager
 	m := &mutation{ki: ki, key: key, prev: prev, manager: manager, action: "delete"}
 	if owner := store.ManagedBy(prev.obj); owner != "" && manager != "" && owner != manager {

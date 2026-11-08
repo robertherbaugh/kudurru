@@ -1030,3 +1030,53 @@ Exact source freezes, raw outcomes and failed sources are retained under
 This is eventual shared state, not synchronous acknowledgment by every node,
 cluster-wide transactional IAM admission or same-transaction Kubernetes audit.
 Configured lint remains unavailable and final driver/release gates remain open.
+
+
+### F35a direct DNSEndpoint source (D302/D303), November 8
+
+The optional host-only `externalDNS.crd` source now runs inside the original
+elected controller term on Kubernetes. It lists/watches source CRs read-only
+and derives same-namespace DNSRecordSets with exact source UID ownership,
+deterministic names, native validation and each zone's recordSetSelector.
+The longest selected primary-zone suffix wins. Invalid current source data
+withdraws only its children; foreign owners remain intact and one conflict
+does not starve unrelated sources. Original finite term contexts, source/zone
+UID and resourceVersion checks, atomic creation, expected-version updates and
+original UID/version deletes bound each operation. Lost replies and refusals
+are not retried within that operation. Later reconciliation observes anew.
+
+Actual source updates exposed Kubernetes' distinction between POST Update
+ownership and SSA Apply ownership for the same manager. The store now permits
+that transition only for exclusively self-owned fields under the exact original
+resourceVersion. Foreign non-status field owners and intervening edits refuse.
+Optional original UID/version deletion preconditions now cover memory, SQLite
+and Kubernetes public/private objects; Force cannot bypass them. A stale SQLite
+CommandTx delete poisons the entire command. Unguarded semantics remain intact.
+
+Final production has 23 focused race passes with no failures/skips, including
+real source permission/watch/update/refusal, cancellation, lost reply, foreign
+ownership, replacement and actual runServe DNS/restart/deletion. Store conformance
+and same-owner migration previously passed 56 entries on the unchanged final
+store implementation. Legacy kube ownership/finalizer/rejection, external-dns
+webhook/relay and generated-reference regressions pass 136 race entries with
+no failures/skips. Vet passes. Helm renders the source through config.node,
+keeps store.driver=kube and grants source get/list/watch only. No RBAC expansion.
+
+Exact receipts and failed source archives are under
+`.context/externaldns-crd-20261108/`. Final focused race child0/wrapper0,
+wall71.913893334s, minimum15,052,296,192B; legacy regression child0/wrapper0,
+wall27.051235979s, minimum15,104,389,120B; vet child0 in30.250234413s.
+Earlier import collision, CRD fixture annotation failures (including one
+accidental unchanged repeat), and actual same-manager SSA conflicts remain
+preserved. Failed envtest children were identified and reaped. Helm succeeded;
+the first optional Python YAML verification lacked its module, then exact
+rendered blocks were verified without installing dependencies.
+
+Source, zone and child remain separate Kubernetes API objects: this is an
+eventual controller, not an atomic cross-object transaction or proof of
+partition-safe distributed fencing. The minimal specification-only test CRD is
+not an upstream CRD replacement. Disabling the adapter leaves existing data;
+normal Kubernetes owner-reference garbage collection follows source deletion.
+One mounted server restart is not multi-node lease-loss/partition acceptance.
+Those cases, configured lint (unavailable executable), and final G09/G21/G22
+and release gates remain open. Protected dashboard bytes are unchanged.

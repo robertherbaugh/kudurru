@@ -172,6 +172,9 @@ func (s *Store) Delete(_ context.Context, key store.Key, opts store.DeleteOption
 	if !ok {
 		return store.ErrNotFound
 	}
+	if err := store.CheckDeletePreconditions(prev, opts); err != nil {
+		return err
+	}
 	if owner := store.ManagedBy(prev); owner != "" && opts.Manager != "" && owner != opts.Manager && !opts.Force {
 		return &store.ErrManagedBy{Key: key, Owner: owner}
 	}
@@ -192,6 +195,9 @@ func (s *Store) DeleteMany(_ context.Context, reqs []store.DeleteRequest) error 
 		prev, ok := s.objects[r.Key]
 		if !ok {
 			continue
+		}
+		if err := store.CheckDeletePreconditions(prev, r.Options); err != nil {
+			return err
 		}
 		if owner := store.ManagedBy(prev); owner != "" && r.Options.Manager != "" && owner != r.Options.Manager && !r.Options.Force {
 			return &store.ErrManagedBy{Key: r.Key, Owner: owner}
