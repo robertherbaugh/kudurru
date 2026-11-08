@@ -18,7 +18,7 @@ const managedCacheCheck = `if type(kudurru_managed_cache_bypass) ~= "function" o
 // Caller holds mu. This is local installed-state evidence for readiness, not
 // a remote backend activation grant or a renewable cache eligibility lease.
 func (s *Supervisor) managedBypassInstalledLocked() bool {
-	return s.cfg.Options.ManagedCacheBypass && s.cacheBypassChild != nil &&
+	return s.cfg.Options.ManagedCacheBypass && s.configState != nil && s.configState.bypassID != "" && s.cacheBypassChild != nil &&
 		s.cacheBypassChild == s.child && s.child.Running() && !s.restarting &&
 		!s.cacheWatchFailed && slices.Equal(s.cacheDesired, s.endpoints) &&
 		s.cacheBypassFence == (resolverFence{s.cacheSourceEpoch, s.cacheChildEpoch})

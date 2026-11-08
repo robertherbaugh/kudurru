@@ -40,7 +40,9 @@ type Config struct {
 	Source cluster.MembershipSource
 	// Renderer is YAMLRenderer (default) or LuaRenderer.
 	Renderer Renderer
-	// ConfigDir holds the rendered files; default /etc/dnsdist.
+	// ConfigDir holds rendered files and retained managed-cache policy; default
+	// /etc/dnsdist. Run exclusively owns it through child shutdown. Managed mode
+	// requires persistent storage; disabling retained bypass is refused.
 	ConfigDir string
 	// Binary is the dnsdist executable; default "dnsdist". Tests point it
 	// at a fake.
@@ -131,6 +133,7 @@ type Supervisor struct {
 	authoritativeCacheMode, authoritativeCacheIdentity string
 	cacheBypassChild                                   *edge.Child
 	cacheBypassFence                                   resolverFence
+	configState                                        *configState
 }
 
 // New validates cfg and returns a Supervisor.
@@ -472,6 +475,27 @@ func (s *Supervisor) Signal(sig os.Signal) error {
 // dnsdist (SIGTERM, StopTimeout, SIGKILL) and returns nil. It returns an
 // error when the first configuration cannot be rendered or validated.
 func (s *Supervisor) Run(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	state, err := acquireConfigState(s.cfg.ConfigDir, s.cfg.Options.ManagedCacheBypass)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.configState = state
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.configState = nil
+		s.mu.Unlock()
+		if err := state.close(); err != nil {
+			s.log.Error("release configuration directory ownership", "err", err)
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	creds, err := s.cfg.NewCredentials()
 	if err != nil {
 		return err
@@ -935,6 +959,9 @@ func (s *Supervisor) Handler() http.Handler {
 		body["authoritativeCacheMode"], body["authoritativeCacheIdentity"] = s.authoritativeCacheMode, s.authoritativeCacheIdentity
 		body["managedCacheBypassConfigured"] = s.cfg.Options.ManagedCacheBypass
 		body["managedCacheBypassInstalled"] = s.managedBypassInstalledLocked()
+		if s.configState != nil && s.configState.bypassID != "" {
+			body["managedCacheBypassIdentity"] = s.configState.bypassID
+		}
 		if s.status != nil {
 			body["dnsdist"] = s.status
 		}

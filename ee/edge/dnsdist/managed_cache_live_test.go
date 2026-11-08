@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -200,7 +201,7 @@ func TestManagedCacheLivePinnedTransition(t *testing.T) {
 				}
 			}
 			stopStatic() // old warmed child is joined before the bypass target starts
-			managed, _, name := start(true)
+			managed, stopManaged, name := start(true)
 			verify := func() {
 				t.Helper()
 				status, err := managed.api.Status(t.Context())
@@ -270,6 +271,57 @@ func TestManagedCacheLivePinnedTransition(t *testing.T) {
 			if _, err := os.Stat(fault); !os.IsNotExist(err) {
 				t.Fatal("actual post-effect acknowledgment fault was not consumed", err)
 			}
+			verify()
+			// Restart the entire supervisor against the SAME durable directory.
+			// A previous child acknowledgment cannot replace the new console
+			// acknowledgment, and disabling bypass must refuse before any child.
+			managed.mu.Lock()
+			identity := managed.configState.bypassID
+			managed.mu.Unlock()
+			stopManaged()
+			restartConfig := managed.cfg
+			restartConfig.Registerer, restartConfig.Gatherer = nil, nil
+			restartConfig.Options.ManagedCacheBypass = false
+			disabled, err := New(restartConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			refusalContext, cancelRefusal := context.WithTimeout(t.Context(), 3*time.Second)
+			err = disabled.Run(refusalContext)
+			cancelRefusal()
+			if err == nil || !strings.Contains(err.Error(), "requires managed cache bypass") || disabled.child != nil {
+				t.Fatal("supervisor restart disabled retained bypass or launched a child", err)
+			}
+			restartConfig.Options.ManagedCacheBypass = true
+			managed, err = New(restartConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ready, _ := managed.Ready(); ready {
+				t.Fatal("restarted supervisor inherited installed readiness")
+			}
+			restartContext, cancelRestart := context.WithCancel(t.Context())
+			restartDone := make(chan error, 1)
+			go func() { restartDone <- managed.Run(restartContext) }()
+			t.Cleanup(func() {
+				cancelRestart()
+				select {
+				case err := <-restartDone:
+					if err != nil {
+						t.Error("restarted supervisor completion", err)
+					}
+				case <-time.After(15 * time.Second):
+					t.Error("restarted supervisor did not join")
+				}
+			})
+			labWait(t, "restarted supervisor and actual bypass child", func() bool { ok, _ := managed.Ready(); return ok })
+			managed.mu.Lock()
+			sameIdentity := managed.configState != nil && managed.configState.bypassID == identity
+			managed.mu.Unlock()
+			if !sameIdentity || labPID(t, name) == "" {
+				t.Fatal("restarted child lost durable deployment identity")
+			}
+			managed.offerResolverObservation(observation)
 			verify()
 		})
 	}

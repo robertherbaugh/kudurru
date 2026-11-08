@@ -197,11 +197,30 @@ routes. Topology validation rejects cache attachments. The sole cache worker
 ignores remote eligibility in this mode, including queued old observations,
 and cannot attach either pool. Zone discovery continues independently.
 
+Every supervisor exclusively locks its configuration directory before credential
+preparation or rendering, and holds that ownership until its workers and child
+have stopped. On the first managed start it creates a private
+`managed-cache-bypass.state` file with a random deployment identity. File and
+directory sync finish before any child starts. Subsequent starts retain that
+identity and refuse to disable bypass. Incomplete, malformed, linked or
+nonprivate state refuses startup without replacement or repair; even a later
+credential or child-start failure retains the policy.
+
+Managed edges therefore require a persistent configuration directory. Treat it
+as deployment state: do not delete, replace, restore an older copy or share it
+between edge deployments. The lock excludes cooperating supervisors; it does
+not fence filesystem rollback, an independently launched dnsdist or an orphan
+outside the supported PID-1 container lifecycle. Replacing that deployment
+cannot reuse its eventual backend admission. There is no online bypass-reset
+operation. Standalone rendered configurations do not create this retained state.
+
 Readiness additionally requires a bounded console acknowledgment of the loaded
 managed marker and synchronous detachment of both pools. It binds the exact
 running child and source epoch; source loss, replacement, restart or unknown
 completion cannot retain it. Unknown acknowledgment retires only the captured
-child. `/status` distinguishes configured and installed bypass. These local
+child. `/status` distinguishes configured and installed bypass and exposes the
+retained deployment identity separately. The durable file alone never proves
+that a child is running or that either cache was detached. These local
 observations are not backend activation grants: managed backend activation is
 still disabled pending the coordinator's original, exact edge admission.
 An existing eligibility lease or eventual flush cannot replace that gate.

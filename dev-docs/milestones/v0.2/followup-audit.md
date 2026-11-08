@@ -1813,3 +1813,35 @@ This is startup-only source activation. Kubernetes management/current mutation
 authority, remaining F07 acceptance, managed-root activation, HA, AD, all retained
 performance failures and external/final release gates remain open. No push or
 release publication follows from these checks.
+
+
+## November 8: retained managed edge cache policy (D315)
+
+The supervisor now exclusively owns its configuration-directory inode from
+before preparation through worker and child shutdown. First managed startup
+persists one private versioned bypass identity, syncing the file and directory
+ancestry before child startup. Restart retains that identity; disabling bypass,
+malformed or indirect storage refuses without repair. Failed preparation does
+not erase the policy. Actual installed evidence still requires the loaded child,
+both console detachments and the original source/child epoch.
+
+Evidence: `.context/edge-managed-durability-20261108/`. The first focused command
+failed compilation on a new integer-type mismatch, before any tests executed;
+that receipt is retained. After the correction, focused default race passes 21
+entries with the opt-in live case skipped. Actual pinned dnsdist YAML and Lua
+acceptance then passes all three entries without skips, including full supervisor
+restart on the same directory, disabled-bypass refusal and uncached postrestart
+queries. Full edge default race passes 189 entries with two explicitly opt-in
+live skips; the managed-cache live case was exercised separately.
+
+This closes a restart prerequisite, not F28 activation. The authenticated
+backend-to-edge exchange, original activation admission, elected/follower mounts,
+complete retirement/interoperability and final release gates remain open. Storage
+must persist for the deployment; filesystem replacement/rollback, independent
+processes and orphan daemons outside the supported PID-1 container lifecycle
+are not fenced by an advisory directory lock.
+
+Configured scoped lint passes with zero issues after six specific gosec findings
+were annotated: one public file-format tag and five operator/test-owned paths.
+No behavior changed after race/live qualification; the first lint failure is
+retained. Source hashes and raw outcomes are in the evidence directory.

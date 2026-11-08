@@ -28,6 +28,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Managed edge cache bypass survives supervisor restarts in its persistent
+  configuration directory. Startup refuses a later cache-enabling configuration
+  or damaged retained policy, and concurrent supervisors cannot own the same
+  directory. Backend managed-root activation remains gated separately.
+
 - SQLite native UPDATE acknowledgments survive their own committed generation
   change while retaining original writer, key and deadline checks. Ordinary DNS
   answers still reject stale generations. Unavailable startup captures return
