@@ -25,7 +25,10 @@ func (a SQLiteAtomic) Transact(ctx context.Context, term replication.Term, fn fu
 type sqliteCommandTx struct{ tx *sqlite.CommandTx }
 
 func (t sqliteCommandTx) State() any { return t.tx }
-func dedupKey(id string) string      { return "replica:" + fingerprint([]byte(id)) }
+func (t sqliteCommandTx) RequireCommitCheck(check func(context.Context) error) error {
+	return t.tx.RequireCommitCheck(check)
+}
+func dedupKey(id string) string { return "replica:" + fingerprint([]byte(id)) }
 func (t sqliteCommandTx) GetDedup(ctx context.Context, id string) (DedupRecord, bool, error) {
 	raw, err := t.tx.GetSection(ctx, "dedup", dedupKey(id))
 	if errors.Is(err, store.ErrNotFound) {

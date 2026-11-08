@@ -4559,3 +4559,27 @@ noise floor, ignore rule, absolute limit, benchmark or corpus changed.
 
 Evidence: `.context/release-benchmark-tools-20261108/`; commands and limitations
 are documented in `bench/README.md`. F21c/F63 and final performance gates remain open.
+
+
+### Replication admission and final command expiry, November 8
+
+Inbound peer authorization now retains the original finite request context and
+concurrency slot; canceled or expired successful authorization cannot dispatch.
+Coordinator pulls, status and promotion include queueing in that original bound;
+expired waiters invoke no dependency callbacks and grant no eligibility.
+Forwarded command envelopes now register expiry after domain final checks at the
+actual SQLite commit/no-op boundary, including retained dedup outcomes. Failed
+check registration refuses and rolls back the whole command.
+
+The archived original command/SQLite adapter reproduces expired status-200
+mutation and dedup outcomes plus missing final-check capacity refusal (numeric 1,
+four failed entries). Final default races pass 160 entries / 83 top-level tests
+across cluster, internalapi, replica and follower, with no failures/skips; the
+actual Kubernetes Lease handoff uses installed 1.37.0 API-server/etcd binaries.
+Vet and configured scoped lint pass. Earlier 159-pass/one-envtest-skip and a
+lint error in new test cleanup remain retained; the final run includes that test
+correction. This closes these admission defects, not enrollment, operator
+commit authorization, forwarding mounts or HA partition/rejoin acceptance.
+
+Evidence: `.context/replica-admission-20261108/` and
+`.context/replica-command-expiry-20261108/`. F60b/G11/G22 remain open.

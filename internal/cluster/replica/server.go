@@ -67,8 +67,17 @@ func (s *Server) Mount(mux *http.ServeMux) {
 func (s *Server) Handler() http.Handler { m := http.NewServeMux(); s.Mount(m); return m }
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Enrollment may perform I/O. Capture the original lifetime before
+		// reading peer authority and retain it through authorization and dispatch.
+		ctx, cancel := context.WithTimeout(r.Context(), s.opts.Timeout)
+		defer cancel()
+		r = r.WithContext(ctx)
 		w.Header().Set("Cache-Control", "no-store, private")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if ctx.Err() != nil {
+			s.fail(w, ErrUnavailable)
+			return
+		}
 		if r.TLS == nil || r.TLS.Version < tls.VersionTLS13 {
 			s.fail(w, ErrUnauthorized)
 			return
@@ -84,15 +93,6 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			s.fail(w, ErrUnauthorized)
 			return
 		}
-		if err := s.opts.AuthorizePeer(r.Context(), peer, r); err != nil {
-			s.fail(w, ErrUnauthorized)
-			return
-		}
-		s.termHeaders(w, a.Term)
-		if r.URL.RawQuery != "" {
-			s.fail(w, ErrProtocol)
-			return
-		}
 		select {
 		case s.slots <- struct{}{}:
 			defer func() { <-s.slots }()
@@ -100,11 +100,29 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			s.fail(w, ErrUnavailable)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), s.opts.Timeout)
-		defer cancel()
-		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(s.opts.Timeout))
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(s.opts.Timeout))
-		next.ServeHTTP(w, r.WithContext(ctx))
+		deadline, _ := ctx.Deadline() // WithTimeout always supplies a finite bound.
+		_ = http.NewResponseController(w).SetReadDeadline(deadline)
+		_ = http.NewResponseController(w).SetWriteDeadline(deadline)
+		if ctx.Err() != nil || !time.Now().Before(deadline) {
+			s.fail(w, ErrUnavailable)
+			return
+		}
+		if err := s.opts.AuthorizePeer(ctx, peer, r); err != nil {
+			s.fail(w, ErrUnauthorized)
+			return
+		}
+		// A late successful authorizer cannot dispatch work after its original
+		// request ended, even if it neglected to return the context error.
+		if ctx.Err() != nil || !time.Now().Before(deadline) {
+			s.fail(w, ErrUnavailable)
+			return
+		}
+		s.termHeaders(w, a.Term)
+		if r.URL.RawQuery != "" {
+			s.fail(w, ErrProtocol)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 func (s *Server) termHeaders(w http.ResponseWriter, t replication.Term) {

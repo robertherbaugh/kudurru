@@ -97,6 +97,10 @@ type CommandTx interface {
 	State() any
 	GetDedup(context.Context, string) (DedupRecord, bool, error)
 	PutDedup(context.Context, string, DedupRecord) error
+	// RequireCommitCheck runs after the callback and complete state validation,
+	// immediately before commit or a successful no-op. Failure rolls back every
+	// effect. Checks may read the clock or pinned memory, never transaction data.
+	RequireCommitCheck(func(context.Context) error) error
 }
 
 // Domain resolves current credentials/rights and executes typed mutations in tx.
@@ -231,8 +235,19 @@ func (s *CommandService) Execute(ctx context.Context, c Command) (Outcome, error
 			return err
 		}
 		defer func() {
-			if err == nil && !clock().Before(c.NotAfter) {
-				err = ErrExpired
+			if err != nil {
+				return
+			}
+			check := func(context.Context) error {
+				if !clock().Before(c.NotAfter) {
+					return ErrExpired
+				}
+				return nil
+			}
+			if err = check(txCtx); err == nil {
+				// Register last: earlier domain final checks must not let this
+				// envelope expire between callback success and durable admission.
+				err = tx.RequireCommitCheck(check)
 			}
 		}()
 		authorized, err := s.Domain.Authorize(txCtx, tx, c)

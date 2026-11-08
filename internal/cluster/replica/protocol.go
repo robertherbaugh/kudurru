@@ -55,6 +55,8 @@ type Peer struct{ MemberID, ClusterID, Address string }
 type PeerResolver func(context.Context) (Peer, error)
 
 // PeerAuthorizer checks enrollment and any stronger request-bound peer identity.
+// It runs synchronously inside the server's original finite request context and
+// concurrency slot. Its I/O must honor that context; it must not detach work.
 type PeerAuthorizer func(context.Context, Peer, *http.Request) error
 
 // AuthorityObserver persists authenticated terms before any body consumption.

@@ -3,7 +3,6 @@ package replica
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store/follower"
@@ -16,6 +15,7 @@ import (
 type ServingPin func(context.Context) (replication.Generation, func(), error)
 
 // CoordinatorOptions supplies pull scheduling, serving pins and operator policy.
+// Callbacks must honor their finite context and finish work before returning.
 type CoordinatorOptions struct {
 	Store             *sqlite.Store
 	Source            follower.Source
@@ -33,7 +33,7 @@ type CoordinatorOptions struct {
 type Coordinator struct {
 	opts                      CoordinatorOptions
 	puller                    *follower.Puller
-	mu                        sync.Mutex
+	gate                      chan struct{}
 	window                    bool
 	since, lastMiss, lastTick time.Duration
 	misses                    int
@@ -80,7 +80,29 @@ func NewCoordinator(o CoordinatorOptions) (*Coordinator, error) {
 	if o.WallNow == nil {
 		o.WallNow = time.Now
 	}
-	return &Coordinator{opts: o, puller: &follower.Puller{Mirror: o.Store, Source: o.Source, Interval: o.Interval, Timeout: o.Timeout, Now: o.WallNow}}, nil
+	return &Coordinator{opts: o, gate: make(chan struct{}, 1), puller: &follower.Puller{Mirror: o.Store, Source: o.Source, Interval: o.Interval, Timeout: o.Timeout, Now: o.WallNow}}, nil
+}
+
+// enter includes queueing in the original request lifetime. The callbacks below
+// must honor that context and join their work before releasing this admission.
+func (c *Coordinator) enter(ctx context.Context) (context.Context, func(), error) {
+	if ctx == nil {
+		return nil, nil, replication.ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, c.opts.Timeout)
+	select {
+	case c.gate <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-c.gate
+			cancel()
+			return nil, nil, err
+		}
+		return ctx, func() { <-c.gate; cancel() }, nil
+	case <-ctx.Done():
+		err := ctx.Err()
+		cancel()
+		return nil, nil, err
+	}
 }
 func (c *Coordinator) tickLocked() time.Duration {
 	now := c.opts.Elapsed()
@@ -96,11 +118,12 @@ func (c *Coordinator) tickLocked() time.Duration {
 
 // Pull serializes installs and updates continuous network-loss eligibility.
 func (c *Coordinator) Pull(ctx context.Context) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, c.opts.Timeout)
-	defer cancel()
-	err := c.puller.Pull(ctx)
+	ctx, release, err := c.enter(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	err = c.puller.Pull(ctx)
 	now := c.tickLocked()
 	var exchange *ExchangeError
 	reached := errors.As(err, &exchange) && exchange.Reached
@@ -146,6 +169,8 @@ func (c *Coordinator) statusLocked(ctx context.Context, served replication.Gener
 		s.Installed = image.Generation()
 	}
 	switch {
+	case ctx.Err() != nil:
+		s.Reason = "request_unavailable"
 	case s.Authority.Mode != replication.Follower:
 		s.Reason = "not_follower"
 	case err != nil || !s.Installed.Term.Same(s.Authority.Term):
@@ -165,8 +190,11 @@ func (c *Coordinator) statusLocked(ctx context.Context, served replication.Gener
 
 // Status evaluates eligibility while the serving generation is pinned.
 func (c *Coordinator) Status(ctx context.Context) CoordinatorStatus {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	ctx, leave, err := c.enter(ctx)
+	if err != nil {
+		return CoordinatorStatus{Authority: c.opts.Store.Authority(), Reason: "request_unavailable"}
+	}
+	defer leave()
 	served, release, err := c.opts.Served(ctx)
 	if release != nil {
 		defer release()
@@ -179,9 +207,15 @@ func (c *Coordinator) Status(ctx context.Context) CoordinatorStatus {
 
 // Promote requires current authorization, serving agreement, network loss and CAS.
 func (c *Coordinator) Promote(ctx context.Context, req PromoteRequest) (replication.Authority, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	ctx, leave, err := c.enter(ctx)
+	if err != nil {
+		return replication.Authority{}, err
+	}
+	defer leave()
 	if err := c.opts.AuthorizeOperator(ctx); err != nil {
+		return replication.Authority{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return replication.Authority{}, err
 	}
 	if req.ConfirmNode != c.opts.NodeName {

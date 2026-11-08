@@ -26,6 +26,13 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [0.2.0] - unreleased
 
+### Fixed
+
+- Replication primitives retain request deadlines through peer authorization
+  and coordinator queueing. Forwarded command expiry is checked at the actual
+  SQLite commit/no-op boundary, including deduplication responses. Production
+  enrolled HA remains pending.
+
 ### Added
 
 - Release benchmark collection now includes cache, upstream strategies, sockets

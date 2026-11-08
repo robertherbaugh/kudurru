@@ -800,6 +800,22 @@ disables transport body replay and retains the earlier command expiry. An
 ambiguous timeout remains an unknown outcome. These transport checks do not
 replace member enrollment or enable primary/follower HA at startup.
 
+Inbound peer requests start one finite lifetime before enrollment authorization.
+The concurrency slot covers that synchronous authorization work as well as the
+image or command handler. The same context and its earlier deadline reach the
+transport and handler; successful authorization cannot restart the timeout or
+dispatch after cancellation. Authorizers must honor the context and join their
+work before returning. This admission boundary does not supply member identity
+or replace the original command's final authorization checks.
+
+The replication coordinator also starts its finite lifetime before waiting for
+another pull, status read or promotion. Canceled waiters do not call the source,
+publication pin or operator authorizer. The admitted operation retains that
+context throughout; a late successful operator check cannot start promotion.
+An expired status request reports no eligibility. Callbacks remain synchronous
+and must honor the supplied context; these bounds do not establish enrollment
+or final operator authority at the store commit.
+
 ```mermaid
 flowchart LR
     P["Primary transaction"] --> I["Complete image<br/>term + revision + digest<br/>exact kind manifest"]
@@ -840,6 +856,9 @@ and complete-image validation, immediately before commit or a successful no-op;
 a denial rolls back object, security, audit, receipt and revision changes together.
 Checks cannot access the ended transaction or acquire publication/provider locks.
 Callers retain dependency replacement exclusion through the entire command.
+Forwarded command envelopes register their expiry check after the domain's
+checks, so callback success cannot authorize a later expired commit or dedup
+response. Exhausted final-check capacity refuses and rolls back the command.
 This defines admission time; wall time may still advance while SQLite syncs.
 External enrollment registers a final proof check so a JWT that expires during
 later command work cannot create a session.
