@@ -106,6 +106,10 @@ func (r *Regex) Match(name string) (src string, tag uint8, ok bool) {
 		}
 		cand = append(cand, idx)
 	}
+	// A fixed unindexed batch is usable only when every original member
+	// survived the same literal exclusions as the sparse candidate route.
+	// No subset program or new retained query state is constructed here.
+	sharedUnindexed := r.unindexedBatches == 1 && len(r.always) > 1 && len(cand) == len(r.always)
 	for i := 0; i+gramLen <= len(name); i++ {
 		g := gramAt(name, i)
 		b := gramBit(g)
@@ -131,12 +135,27 @@ func (r *Regex) Match(name string) (src string, tag uint8, ok bool) {
 		}
 	}
 	prev := int32(-1)
+	unindexedAt := 0
+	var sharedMask uint64
 	for _, idx := range cand {
 		if idx == prev {
 			continue
 		}
 		prev = idx
 		e := &r.entries[idx]
+		if sharedUnindexed && unindexedAt < len(r.batchIDs[0]) && idx == r.batchIDs[0][unindexedAt] {
+			// Delay shared execution until its first original ID is reached;
+			// an earlier indexed hit can still return without running it.
+			if unindexedAt == 0 {
+				sharedMask = r.batches[0].matchMask(name)
+			}
+			matched := sharedMask&(uint64(1)<<unindexedAt) != 0
+			unindexedAt++
+			if matched {
+				return e.src, e.tag, true
+			}
+			continue
+		}
 		if (e.lit == "" || strings.Contains(name, e.lit)) && e.re.MatchString(name) {
 			return e.src, e.tag, true
 		}

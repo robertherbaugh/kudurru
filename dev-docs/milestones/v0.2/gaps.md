@@ -3707,3 +3707,24 @@ matched, with the pinned binary also verified for comparator execution. Source
 archives, original58 comparisons and exact commands are retained under
 `.context/f20-root-integration-20261108/`. No benchmark, baseline, threshold,
 module or protected dashboard file changed; no push or release occurred.
+
+
+### F20 sparse unindexed batch dispatch
+
+The integrated sparse route now executes its one existing charged unindexed
+batch when every member survives original literal filtering. Results merge at
+original IDs, including indexed rules interleaved before a later unindexed hit.
+Partial admission and unsafe input retain the prior execution path. Programs,
+16-candidate escalation,128 buffer, memory/work limits and Visit are unchanged.
+
+Focused default-race passes88 entries; complete matcher/blocking/listfetcher
+races pass452 with only the existing memory-helper and unset comparator skips.
+Vet exits0. The new tests require actual batch execution, real tiny-cache
+saturation, independent stdlib matches, unchanged reservations and zero query
+allocations. One original12 diagnostic yields all58 keys: policy Evaluate
+hit/miss824/740.5ns; regex100 miss495.9ns; regex1000p99 remains17,691ns.
+Unchanged1M remains68,102,134ns/18allocations. These diagnostic samples do not
+clear the historical36 regressions/20 missing keys or establish fixed-class
+five-process performance. Configured lint remains pending its unavailable tool.
+All3966 frozen identities match. Commands, raw outcomes and every metric with
+prior deltas/ratios: `.context/f20-root-sparse-batch-20261108/result.md`.

@@ -222,7 +222,9 @@ exceptions and `$badfilter` use the complete original rule identity.
 
 Regexes and contextual patterns share a tagged lazy-DFA executor. Conservative
 literal prefilters retain original rule order; dense and unindexed candidates
-use fixed batches. A bounded transition arena freezes when full and continues
+use fixed batches. A sparse route also reuses its sole unindexed batch when
+every original member is admitted, merging its result at the original rule
+positions. A bounded transition arena freezes when full and continues
 with exact NFA execution. Invalid syntax and typed resource refusal remain
 separate outcomes; cache saturation never changes the language.
 
