@@ -102,7 +102,7 @@ func TestControlCompletePublicationInvalidatesEdge(t *testing.T) {
 		select {
 		case err := <-done:
 			if err != nil {
-				t.Error("control operational subscriber failed")
+				t.Errorf("control operational subscriber failed: %v", err)
 			}
 		case <-time.After(5 * time.Second):
 			t.Error("control operational subscriber did not join")
