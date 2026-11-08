@@ -4884,3 +4884,24 @@ the qualified race cut; final config loader behavior is source08, final test-onl
 signature source09. Complete signed native-recursive/root-retirement integration,
 edge activation, enrolled follower lifecycle and RFC interoperability are still
 required. All HA/AD, fixed-class/performance and external/final gates stay open.
+
+
+### F28 native recursive DNS through the complete runtime
+
+The direct standalone runtime now has actual native-recursion acceptance over
+UDP, TCP, DoT, DoH, DoQ and DoH3. A real non-loopback private root serves signed
+ED25519 DNSKEY records and priming NS/glue. Every response must retain AD, the
+original DS identity and a verifiable signature. Both actual runServe lifetimes
+pass: restart reacquires native data over UDP, performs no second bootstrap TCP
+fetch and leaves the accepted owner version unchanged. The outer raw cache is
+disabled so it cannot substitute for the native resolver path.
+
+Evidence: `.context/anchor-native-mount-20261108/`. The first ordinary command
+fails readiness; a new fixture startup-error report identifies its omitted
+required upstream strategy in the second failed command. Supplying that fixture
+field yields ordinary exit0/one pass (20.8447 s); combined direct authoritative
+and native-recursive default-race exits0/two passes/no skips (64.9035 s). No
+production behavior changed in this tranche. Earlier failures remain preserved.
+Configured command-package lint exits0/zero issues (15.0280 s). All-anchor-loss
+retirement, follower supervision/activation, edge topology and external RFC
+interoperability remain open; this is not full F28 or release qualification.
