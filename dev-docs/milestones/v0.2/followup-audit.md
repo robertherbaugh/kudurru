@@ -1881,3 +1881,23 @@ missing comment and explanatory node-name documentation changed afterward.
 The final full configured repository lint passes with zero issues in 58.4938 s
 on source04. All code behavior and tests match the qualified source; the sole
 post-race Go edit is the exported-error-group documentation comment.
+
+
+### Original complete edge fleet collector
+
+The private root collector now validates the entire explicit nonempty fleet before
+network acquisition, detaches requirements, verifies exact local backend tuples
+on every authenticated response and issues only one complete result. Partial
+failure cannot retry earlier peers or proceed to later peers. Original caller
+and runtime cancellation, issued pointer identity and finite lifetime remain
+mandatory. Focused default race passes 17 entries without failures/skips; evidence
+is `.context/anchor-edge-fleet-20261108/`. The collector is unmounted and supplies
+no activation grant. The explicit topology/lifecycle contract, input adoption,
+terminal writer/follower behavior and full F28 acceptance remain open.
+
+Scoped configured lint passes after renaming one test variable that shadowed a
+builtin; the first lint failure is retained, and production bytes did not change.
+Source review also confirms two independent automatic retry layers, RunWriter
+and cluster.Runner.superviseLeader. A future terminal anchor outcome must survive
+both without stopping unrelated writer work. This remains a mounting constraint,
+not a claim that the current unmounted worker is active.

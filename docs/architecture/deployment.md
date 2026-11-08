@@ -248,6 +248,14 @@ permit. It cannot prove an exhaustive deployment topology or replace the
 backend's original local policy/writer/publication admission. The remaining
 activation coordinator must check those boundaries; it is still unmounted.
 
+The private root fleet collector validates every explicit peer requirement before
+contacting any edge. It captures one detached nonempty fleet and a finite original
+attempt, checks this backend's exact name/DNS/internal address tuple in each
+response, and retains only a complete result. Partial failure does not retry
+earlier peers or contact later ones. Runtime cancellation interrupts acquisition;
+the result remains bound to its original deadline and issued object identity.
+This collector still has no configuration mount or activation lifetime adoption.
+
 Shared packet caching is eligible only when the captured served model proves
 client-independent behavior. Per-client rate limits (including the default),
 group/list/RPZ restrictions, zone ACLs, client names and unproven dynamic inputs
