@@ -11,9 +11,9 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
 )
 
-// A follower episode retains its original member/term/incarnation. New complete
-// installs within that episode supply new captured owners, never a primary
-// writer or a replacement episode after promotion/demotion.
+// Every captured operation retains its original member/term/incarnation. Only
+// a completed normal observation permits a later fresh capture to move to a
+// newer installed incarnation in the same member/term; no refusal can do so.
 type anchorFollowerEpoch struct {
 	member      string
 	term        replication.Term
@@ -36,6 +36,10 @@ type anchorFollowerPoller struct {
 	nextFor anchorRetrySource
 	nextAt  time.Time
 	stopped error
+	// normalCompleted records an actual authenticated normal disposition whose
+	// final original-authority check succeeded. It cannot represent an error,
+	// local denial, incomplete transport or a merely staged observation.
+	normalCompleted bool
 }
 
 type anchorFollowerStep struct {
@@ -65,7 +69,13 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	if u.epoch == (anchorFollowerEpoch{}) {
 		u.epoch = epoch
 	} else if !u.epoch.same(epoch) {
-		return step, replication.ErrFenced
+		if !u.normalCompleted || u.epoch.member != epoch.member || !u.epoch.term.Same(epoch.term) {
+			return step, replication.ErrFenced
+		}
+		// The previous operation has completed successfully. This new operation
+		// already captured its own installed source, local carrier and lifetime
+		// before any wire acquisition. Its checks never use the old token.
+		u.epoch = epoch
 	}
 	state, err := op.owner.State()
 	if err != nil {
@@ -82,10 +92,12 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	}
 	step.attempted = true
 	u.offset++
+	u.normalCompleted = false
 	step.result, err = op.observe()
 	if err == nil {
 		switch step.result.branch {
 		case sqlite.AnchorPollNormal:
+			u.normalCompleted = true
 			// This local cadence grants no hold-down/checkpoint progress. Poll at
 			// the minimum RFC refresh interval, independent of the leader's next
 			// observation. Never derive accepted State from the follower input.

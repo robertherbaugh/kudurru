@@ -2038,3 +2038,36 @@ only; source06's six race results retain their exact source fingerprint. Same-te
 install after a successful normal observation still needs a bounded fresh-poll
 continuation; terminal old operations must never be rearmed. That follow-up
 remains explicit rather than claiming complete automatic follower liveness.
+
+
+### F28 fresh follower acquisition after completed normal input
+
+A successful authenticated normal observation now permits a later fresh capture
+of a different installed incarnation within the same member/authority term. Its
+original operation has already completed with the exact final authority check.
+The successor operation captures its own source/local carrier/deadline before
+wire acquisition; unchanged owner/settings retain the existing cooldown.
+Terminal errors still set `stopped` before any future capture, and the supervisor
+retains terminal outcomes across same-term installs. A held receipt cannot adopt
+a successor, even after an earlier normal observation succeeded. Denial and
+incomplete transport do not create this normal-completion permission.
+
+Evidence `.context/anchor-follower-continuation-20261108/`: production source01
+passes all27 follower default-race entries/no skips (255.8060 s including cold
+compilation after the explicit standard Go build-cache reclamation). The actual
+SQLite tests retain canonical follower bytes through signed normal input and
+new primary refresh/install. The held-response test is strengthened separately
+to exercise successful normal input, one admitted new source, then another
+install while that next receipt is held. Final results are recorded below.
+The prior stricter per-operation epoch test and malformed-terminal-install
+regression remain unchanged. This closes the D318 successful-normal continuation
+gap; canonical writer all-loss/restart, edge activation, recovery, enrolled HA
+orchestration and external/final release requirements remain open.
+
+The final strengthened pair passes2/no skips under default race (24.8420 s),
+including a previously successful normal observation before the held successor
+receipt is invalidated by a second actual install. Production code is identical
+to the 27-pass follower suite; only that new test was strengthened.
+
+Final scoped configured command-package lint exits0/zero issues (182.5157 s,
+including cold normal-mode dependencies). No earlier failures are erased.

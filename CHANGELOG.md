@@ -52,7 +52,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - Explicit direct-topology RFC 5011 activation for SQLite nodes, with an
   elected updater, independent follower denial, accepted managed publication
   and retained restart history. Follower terminal failures survive replica
-  installs; authority changes join old acquisitions. The host declaration
+  installs; successful normal observations allow a later fresh installed-source
+  acquisition, and authority changes join old acquisitions. The host declaration
   rejects PROXYv2 ingress. Edge-backed activation and full enrolled HA
   orchestration remain separate.
 

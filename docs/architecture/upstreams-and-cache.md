@@ -405,8 +405,12 @@ refuses a normal response. A separate explicit authenticated-normal result lets
 the private follower poller schedule a new independent acquisition without
 creating accepted progress.
 
-That poller retains one member, authority term and local incarnation, plus its
-own session clock. Its first observation is immediate; a normal receipt imposes
+That poller retains one member and authority term, plus its own session clock.
+Each operation retains its exact local incarnation. Only after an authenticated
+normal observation completes with its original authority check may a later fresh
+capture adopt a newer installed incarnation in that same member/term. No failed
+or held operation can use this path; its original token remains immutable.
+Its first observation is immediate; a normal receipt imposes
 only a local one-hour minimum refresh cadence. Incomplete transport uses the
 accepted state's retry interval. Both cooldowns bind the exact owner, policy and
 settings identity. Authentication, complete-input, admission, completion or
@@ -422,8 +426,9 @@ term can admit another child. It cancels and joins old children before moving to
 a successor term, and parks failures without stopping unrelated serving work.
 A successful local denial retires the exact published input and survives reopen;
 no follower observation changes the canonical accepted owner. A same-term install
-can invalidate an active poller's exact incarnation, but cannot rescue that
-refused operation. Full automatic HA enrollment, forwarding and partition/rejoin
+can invalidate an in-flight operation's exact incarnation, but cannot rescue that
+refused operation. A completed normal operation may be followed by a new captured
+source; an unchanged owner/settings identity retains its existing cooldown. Full automatic HA enrollment, forwarding and partition/rejoin
 qualification remain separate.
 
 The `resolverstate` projection derives canonical SHA-256 DS records
