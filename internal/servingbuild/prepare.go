@@ -37,15 +37,16 @@ func New(opts Options) (*Builder, error) {
 // RuntimeOwner retains the exact primary versions and bound local runtime part.
 // Preparing a version does not acknowledge actual publication to an UPDATE.
 type RuntimeOwner struct {
-	migrations      []*internal.MigrationRun
-	unblockRequests []*public.UnblockRequest
-	primary         *primaryruntime.PreparedImage
-	zones           *servingzones.Prepared
-	keys            *dnsserver.StaticKeyring
-	keyringIdentity string
-	current         func() bool
-	browser         func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
-	cli             func(servingauth.ProviderRef, string) (*providerresources.CLI, error)
+	migrations          []*internal.MigrationRun
+	unblockRequests     []*public.UnblockRequest
+	primary             *primaryruntime.PreparedImage
+	zones               *servingzones.Prepared
+	keys                *dnsserver.StaticKeyring
+	keyringIdentity     string
+	current             func() bool
+	dependenciesCurrent func() bool
+	browser             func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
+	cli                 func(servingauth.ProviderRef, string) (*providerresources.CLI, error)
 }
 
 // Primary returns an immutable owner for exact publication acknowledgment.
@@ -63,6 +64,15 @@ func (r *RuntimeOwner) NotifyKeys() (string, *dnsserver.StaticKeyring, func() bo
 		return "", nil, nil
 	}
 	return r.keyringIdentity, r.keys, r.current
+}
+
+// DependenciesCurrent checks the retained dependency installations independently
+// of the canonical image revision. A command's own commit retires that image;
+// acknowledgment must instead check its exact receipt and original writer against
+// a new complete publication. This predicate grants neither read nor write
+// admission. The caller must retain the original serving lease throughout use.
+func (r *RuntimeOwner) DependenciesCurrent() bool {
+	return r != nil && r.dependenciesCurrent != nil && r.dependenciesCurrent()
 }
 
 // Browser selects only this complete owner's provider capability and binds its
@@ -157,7 +167,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: owners.current, browser: deps.Browser, cli: deps.CLI}, deps.Release),
+		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, browser: deps.Browser, cli: deps.CLI}, deps.Release),
 		component("control", owners.control, nil),
 		component("logging", owners.logging, nil),
 	}

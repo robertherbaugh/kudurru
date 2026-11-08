@@ -20,7 +20,9 @@ kudurru, dnsdist and keepalived from `deploy/compose/ha/node-{a,b,c}`.
   logs the real client address and applies client groups correctly.
 - kudurru runs the same file-managed configuration on every node.
   `kudurru.yaml` and `objects.d/` are distributed by your own tooling (git,
-  ansible, rsync); the UI is read-only for `kudurru.io` objects in this shape.
+  ansible, rsync); `cluster.role: static` makes the API and dashboard read-only for object
+  changes, including objects previously managed by the API. Every member
+  remains its own leader and has an independent database identity.
 
 The `kudurru-dnsdist` and `kudurru-keepalived` images (supervisors
 `kudurru edge run` and `kudurru vip run`) are milestone M4 deliverables.
@@ -37,7 +39,9 @@ A free personal key covers up to 3 nodes for eligible community use
 1. Replace the example addresses (10.0.0.11-13, VIP 10.0.0.53/24, `eth0`) in
    the three `docker-compose.yml` files: `--backends`, `--peers`, `--vip` and
    `KUDURRU_LISTENERS__PROXYPROTOCOLFROM` (exact `/32`s of the three hosts,
-   never the LAN prefix).
+   never the LAN prefix). Also replace the internal endpoints in the identical
+   `cluster.peers` list in every `kudurru.yaml`. Each unique name must match
+   that host's `node.name`; endpoints include the TLS port (normally 8082).
 2. Create the secrets once and copy the same files to every host:
 
    ```sh
@@ -71,6 +75,23 @@ within `fall 3` seconds. `kudurru lameduck` drains a node from every
 dnsdist's pool without moving the VIP; `kudurru vip drain` moves it (D51).
 
 ## Changing configuration
+
+Static membership is a host-only setting that requires a restart. Its shared
+TLS and bearer credentials permit internal reads; the peer list grants no
+replication, enrollment or promotion authority. A static process refuses a
+database already enrolled as a primary or follower. An unavailable peer remains
+listed with unknown readiness; local DNS keeps using its admitted local state.
+
+Object, cluster-setting, IAM credential and provider mutation requests return
+`503 read_only` after ordinary authentication and permission checks. The
+external-dns mutation webhook cannot be enabled in this mode. Supply the
+bootstrap password file shown above or provision accounts before enabling
+static mode. Public block-page unblock requests are disabled as well.
+A generated password requiring a first-login change cannot be
+changed through this read-only API. Host-local administration remains a
+separate privileged operation. Sign-in, sign-out and inventory reads remain
+available. Blocking toggles and cache flushes affect only the addressed node;
+blocking responses explicitly report `scope: node`.
 
 Edit `kudurru.yaml` or `objects.d/` in your source of truth and distribute it
 to all three hosts. Objects re-apply on file change; keys flagged `R` in

@@ -46,7 +46,7 @@ type Settings struct {
 func SettingsFrom(c *config.Config) Settings {
 	b := c.BlockPage
 	s := Settings{Title: b.Title, Message: b.Message, Contact: strings.TrimSpace(b.Contact), ShowDetails: b.ShowDetails, RateLimit: b.RateLimit,
-		Requests: c.UnblockRequests.Enabled, RequestRate: c.UnblockRequests.RateLimit, BlockTTL: c.Blocking.BlockTTL.Std()}
+		Requests: c.UnblockRequests.Enabled && !c.Cluster.Static(), RequestRate: c.UnblockRequests.RateLimit, BlockTTL: c.Blocking.BlockTTL.Std()}
 	s.ContactURL, _ = config.BlockPageContactURL(b.Contact)
 	s.DashboardURL = strings.TrimSuffix(b.DashboardURL, "/")
 	if s.DashboardURL == "" {

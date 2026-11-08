@@ -203,6 +203,14 @@ func TestSchemaEnumsRejectBogus(t *testing.T) {
 					flat[k.Path] = v
 					flat["upstreams.recursion.trustAnchors"] = []string{"12345 15 2 " + strings.Repeat("AB", 32)}
 					_, validErr = FromFlat(flat)
+				} else if k.Path == "cluster.role" && v == "static" {
+					// Static membership requires a real named self endpoint.
+					// Missing and invalid peers remain negative topology cases.
+					flat := Defaults()
+					flat[k.Path] = v
+					flat["node.name"] = "node-a"
+					flat["cluster.peers"] = []map[string]any{{"name": "node-a", "address": "127.0.0.1:8082"}}
+					_, validErr = FromFlat(flat)
 				} else {
 					validErr = validateWith(t, k.Path, v)
 				}

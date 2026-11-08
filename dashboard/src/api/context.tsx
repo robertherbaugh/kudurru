@@ -115,13 +115,23 @@ export function useSession() {
 /** Whether the session may perform verb on resource (cluster scope). */
 export function useCan(): (resource: string, verb: string) => boolean {
   const { data } = useSession();
+  const readOnly = useStaticMode();
   return useCallback(
     (resource: string, verb: string) => {
       if (!data) return false;
+      if (readOnly && ['write', 'delete', 'decide', 'import', 'sync', 'act'].includes(verb)) return false;
       return can(data, resource, verb);
     },
-    [data],
+    [data, readOnly],
   );
+}
+
+/** Host mode is a UI capability; the API independently rejects each mutation. */
+export function useStaticMode(): boolean {
+  const api = useApi();
+  const { data: session } = useSession();
+  const cluster = useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info(), enabled: !!session, staleTime: 60_000, retry: false });
+  return cluster.data?.readOnly === true;
 }
 
 export function can(me: Me, resource: string, verb: string): boolean {

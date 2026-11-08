@@ -22,7 +22,9 @@ and the interface in all three directories.
 v0.1.0 includes the `kudurru-dnsdist` and `kudurru-keepalived` images and the
 `edge run` / `vip run` supervisors. They need a license key with the edge
 entitlement; eligible personal users can request a free key. Each node is
-an independent SQLite instance: distribute file-managed objects to every
-node to keep configuration consistent. A cluster-wide read-only API mode
-and follower replication are future work. The guide is
+an independent SQLite instance. `cluster.role: static` mounts the configured
+`cluster.peers` for authenticated peer status and refuses API object and
+cluster-setting writes, including API-owned objects. Distribute the same files
+to every node; blocking toggles and cache controls remain local. Follower
+replication and enrollment are separate work. The guide is
 [docs/deploy/compose-ha.md](../../../docs/deploy/compose-ha.md).

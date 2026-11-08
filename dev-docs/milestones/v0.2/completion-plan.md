@@ -168,9 +168,9 @@ runners. Unit tests cannot substitute for those results.
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
-| F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Active prerequisites: original peer identity/token capture, pre-resolution lifetime and no POST credential/body replay pass full replica/follower race59 and vet. Static configuration, enrolled-member authority, production mounts and two-node acceptance remain missing; configured lint pending |
+| F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Implemented D300 static SQLite twins: bounded host peers, local leadership, enrolled-database refusal, API/UI/public block-page read-only boundaries, authenticated status/digest reads and node-local controls. Two actual runServe assemblies pass peer-loss/restart acceptance; full affected package races and vet pass after one enum-fixture correction. Separate-process acceptance and configured lint remain; enrolled primary/follower authority is separate F60b/G11 work |
 | F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Integrated b3f6986/5048c61; actual restart, chart/Compose and volume ownership checks pass |
-| F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Queued: partial |
+| F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Actual two-runServe static membership/status/body/refusal/local-control/peer-loss/restart race passes. Separate server-process acceptance is next; enrolled primary/follower promotion, partition/rejoin and final G11/G22/G24 remain open |
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
 | F68b | Knot catalog consumer interoperability | Zones and AD | Integrated 6aa58ed; actual pinned Knot 3.6.2 catalog/NOTIFY/TSIG acceptance and repeated races pass |
 | F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; original VM qualification remains external |

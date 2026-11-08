@@ -808,6 +808,64 @@
       ]
     },
     {
+      "path": "cluster.peers",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Between 1 and 64 unique node names and internal TLS host:port endpoints, including this node, when cluster.role is static. Every node needs the same list and shared internal credentials. These endpoints do not grant replication or promotion authority.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Static peers",
+      "group": "Node",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "name",
+            "label": "Node name",
+            "help": "Exact stable node.name, such as node-a; a unique lowercase DNS name.",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "address",
+            "label": "Internal endpoint",
+            "help": "Reachable internal TLS host and port, such as 10.0.0.11:8082 or [2001:db8::11]:8082.",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          }
+        ]
+      }
+    },
+    {
+      "path": "cluster.role",
+      "type": "string",
+      "scope": "node",
+      "default": "auto",
+      "help": "auto keeps the store driver's normal membership. static uses independent SQLite nodes with identical distributed files and refuses API object and cluster-setting changes; each node remains its own leader.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Cluster role",
+      "group": "Node",
+      "enum": [
+        {
+          "value": "auto",
+          "label": "Automatic",
+          "help": "Use the SQLite local leader or Kubernetes election."
+        },
+        {
+          "value": "static",
+          "label": "Static twins",
+          "help": "Use the configured peers for authenticated status reads; manage objects through files on every node."
+        }
+      ]
+    },
+    {
       "default": false,
       "envLocked": false,
       "group": "DNSSEC",

@@ -91,6 +91,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/kube"
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 	"github.com/robertherbaugh/kudurru/internal/stub"
@@ -183,6 +184,10 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		case err != nil:
 			return nil, nil, nil, err
 		}
+		if cfg.Cluster.Static() && s.Authority().Mode != replication.Standalone {
+			_ = s.Close()
+			return nil, nil, nil, errors.New("cluster.role static requires an independent standalone database; enrolled authority cannot be replaced by host routing")
+		}
 		if err := initializeSQLiteRuntime(ctx, s, cfg); err != nil {
 			_ = s.Close()
 			return nil, nil, nil, fmt.Errorf("initialize runtime owners: %w", err)
@@ -227,6 +232,11 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 }
 
 func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error {
+	if cfg.Cluster.Static() {
+		if err := cfg.Validate(); err != nil {
+			return err
+		}
+	}
 	cfg, err := prepareServingNodeLog(ctx, cfg)
 	if err != nil {
 		return err
@@ -439,6 +449,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	loader, err := objects.New(objects.Options{
 		Store: st, Validator: v, Logger: logger, Registerer: reg,
+		Static:       cfg.Cluster.Static(),
 		RoleBindings: sourceBindings, RequireRoleBindings: sql != nil,
 		Inline: cfg.Objects, InlineFile: inlineFile, InlineSource: inlineSource, Dir: cfg.ObjectsDir,
 	})
@@ -524,6 +535,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	var membership cluster.Membership = cluster.Self{Name: cfg.Node.Name}
+	if cfg.Cluster.Static() {
+		members := make([]cluster.Peer, len(cfg.Cluster.Peers))
+		for i, peer := range cfg.Cluster.Peers {
+			members[i] = cluster.Peer{Name: peer.Name, Address: peer.Address}
+		}
+		membership = &cluster.Static{SelfName: cfg.Node.Name, LeaderName: cfg.Node.Name, Members: members}
+	}
 	registerHealthDetails(checker, st.Elector(cluster.ElectionController), cfg.Node.Name, zc.Snapshot)
 	if cfg.Store.Driver == "kube" {
 		headless := os.Getenv("KUDURRU_HEADLESS_SERVICE")

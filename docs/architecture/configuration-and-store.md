@@ -764,10 +764,9 @@ loopback compatibility and refusal behavior.
 
 ## Not built yet
 
-The `follower` (v0.2) and `raft` (v1.0) drivers, the `cluster.role: static`
-read-only mode for compose twins, the health of other nodes (the node
-list, the stats and the query log are already gathered), and a
-`roles:` setting. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
+Production enrolled `follower` coordination (v0.2), the `raft` driver (v1.0)
+and a general `roles:` setting remain unmounted. Static file-managed twins
+and authenticated remote health reads are available separately. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
 for the plan.
 
 ## SQLite replication foundation
@@ -786,7 +785,7 @@ return an accepted image. Reads may try the originally captured rotation tokens
 after a pre-authentication refusal. A command POST makes one credential attempt,
 disables transport body replay and retains the earlier command expiry. An
 ambiguous timeout remains an unknown outcome. These transport checks do not
-replace member enrollment or mount static HA at startup.
+replace member enrollment or enable primary/follower HA at startup.
 
 ```mermaid
 flowchart LR
@@ -945,7 +944,10 @@ the same final credential and writer checks. A 200 response waits for a complete
 publication containing the exact committed settings UID, resourceVersion and
 status, then evaluates its blocking view at one response time. The original
 writer binding remains in force during this observation, outside transaction and
-dependency locks. If commit succeeds but publication cannot be acknowledged, 503
+dependency locks. The retained dependency predicate excludes the old image
+revision, which the command's own commit supersedes; original host, provider,
+catalog, key and managed-anchor dependency checks remain required. Other users
+of the old image still fail its full currency check. If commit succeeds but publication cannot be acknowledged, 503
 includes a `committed: true` hint and the exact receipt; it does not imply rollback.
 
 Persisted deadlines have whole-second precision. Relative timers round up to the
@@ -1237,3 +1239,39 @@ their capture hooks are configured. Without an initial complete prepared source,
 the file baseline supplies no complete serving or acquisition authority. Stored
 keys can be loaded from existing encrypted records, including across restart;
 there is not yet a stored-key management API or hot Kubernetes rotation.
+
+
+## Static file-managed SQLite twins
+
+Host-only `cluster.role: static` plus `cluster.peers` installs the existing
+static membership at startup. The bounded list has unique names and unicast
+internal endpoints and must include this node. Each node retains its own
+standalone database and leader; routing configuration cannot replace enrolled
+primary/follower authority. Kubernetes retains its elector membership through
+the default `auto` mode. Peer status must identify the configured name, and an
+unavailable or mismatched peer is shown without a readiness assertion. Shared
+TLS/token authentication proves access to this internal plane, not individual
+replication enrollment.
+
+The file loader is mounted in static mode. A common API guard covers ordinary
+and forwarded object/settings/IAM/provider mutations after authorization and
+before body decoding or side effects, even for previously API-owned objects.
+Read endpoints, authentication sessions and node-local runtime controls remain
+available. Cluster settings metadata and dashboard actions reflect read-only
+mode; credential provisioning requires host administration before activation.
+The external-dns mutation webhook is refused at configuration validation.
+The public block page also disables unblock-request submissions, including
+direct form POSTs, so it cannot create configuration objects outside the API guard.
+Blocking keeps its original current command and publication acknowledgment,
+but its response explicitly identifies the static node scope. No cross-node
+mutation or authority is inferred from the configured peer list.
+
+```mermaid
+flowchart LR
+    Files["Identical distributed files"] --> A["Node A: local SQLite leader"]
+    Files --> B["Node B: local SQLite leader"]
+    A <-->|"Authenticated status and digest reads"| B
+    API["API object/settings writes"] --> Refuse["503 read_only"]
+    A --> DNSA["Local admitted DNS state"]
+    B --> DNSB["Local admitted DNS state"]
+```

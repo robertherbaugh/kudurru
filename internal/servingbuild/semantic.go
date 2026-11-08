@@ -39,22 +39,23 @@ type CatalogResource struct {
 }
 
 type semanticOwners struct {
-	migrations []*internal.MigrationRun
-	objects    *zonecache.Snapshot
-	settings   *public.Kudurru
-	config     *config.Config
-	control    *control.View
-	policy     *policy.Index
-	resolution *upstreamstage.View
-	response   *responsepolicy.Settings
-	cache      *cachestage.View
-	blocking   *blockingstage.View
-	logging    *querylog.Captured
-	auth       *servingauth.View
-	upstreams  *upstream.Set
-	lists      string
-	anchor     *sqlite.AnchorPublication
-	current    func() bool
+	migrations          []*internal.MigrationRun
+	objects             *zonecache.Snapshot
+	settings            *public.Kudurru
+	config              *config.Config
+	control             *control.View
+	policy              *policy.Index
+	resolution          *upstreamstage.View
+	response            *responsepolicy.Settings
+	cache               *cachestage.View
+	blocking            *blockingstage.View
+	logging             *querylog.Captured
+	auth                *servingauth.View
+	upstreams           *upstream.Set
+	lists               string
+	anchor              *sqlite.AnchorPublication
+	current             func() bool
+	dependenciesCurrent func() bool
 
 	unblockRequests []*public.UnblockRequest
 }
@@ -204,10 +205,12 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	// A concrete store-issued token is checked against memory-only authority.
 	// Even A -> B -> A receives a fresh cache/resolver incarnation. Late fills
 	// cannot become eligible merely because configuration bytes match again.
+	owners.dependenciesCurrent = func() bool {
+		return deps.Current() && (owners.anchor == nil || owners.anchor.Input().Current())
+	}
 	current := func() bool {
 		authority, blocked := opts.Authority()
-		return !blocked && candidate.Token.Matches(authority) && deps.Current() &&
-			(owners.anchor == nil || owners.anchor.Input().Current())
+		return !blocked && candidate.Token.Matches(authority) && owners.dependenciesCurrent()
 	}
 	owners.current = current
 	owners.resolution, err = upstreamstage.NewView(owners.upstreams, validator, owners.config.DNSSEC.Enabled, current)

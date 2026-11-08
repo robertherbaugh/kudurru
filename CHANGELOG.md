@@ -28,6 +28,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Static SQLite twins: configure named peers for authenticated status and list
+  reads while each node retains local leadership. Distributed files own object
+  and cluster-setting changes; object and credential mutations are refused, and
+  public block-page requests are disabled. Dashboard actions reflect this mode,
+  and blocking toggles report node scope.
+
 - SQLite DNS: load encrypted stored TSIG keys into complete serving snapshots
   and secondary/RPZ acquisition, retaining each request's original key through
   its response. Stored-key administration and Kubernetes rotation remain pending.

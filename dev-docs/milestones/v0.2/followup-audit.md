@@ -935,3 +935,17 @@ locally. `e581fc8` corrects the hosted edge golden-fixture directory collision;
 actual selected golden/supervisor checks pass. Fresh hosted evidence remains
 required on the updated PR head. Exact outcomes, unsuccessful intermediate checks
 and remaining scope are retained in gaps.md and the complete inventory.
+
+
+### F65/F67 static deployment implementation, November 8
+
+D300 mounts bounded host-selected static SQLite twins, with local independent
+leadership and authenticated status/list bodies. API/UI object and credential
+mutations, public unblock submissions and the external-dns mutation webhook are
+refused. Actual two-runServe peer-loss/restart and single-dispatch local-control
+acceptance passes. Seven affected packages pass1055 race entries with4 external
+service skips; corrected full config passes340, vet and dashboard checks pass.
+Earlier failures and exact bounds remain in gaps.md and
+`.context/ha-static-20261108/`. Separate-process acceptance and configured lint
+remain pending; enrollment/promotion and partition/rejoin are separate open
+requirements. Shared internal credentials are not individual member proof.

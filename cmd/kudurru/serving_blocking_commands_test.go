@@ -311,7 +311,7 @@ func TestServingBlockingPostcommitHelperOutcomesAndPublication(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					_, _, current := owner.NotifyKeys()
+					current := owner.DependenciesCurrent
 					f.s.publisher.Wake()
 					if _, err := f.s.awaitBlockingPublication(ctx, target, receipt, original.DependencyIdentity(), current, f.now); err != nil {
 						return err
@@ -621,7 +621,7 @@ func TestServingBlockingPostcommitExpiryAndExactReceipt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, current := owner.NotifyKeys()
+		current := owner.DependenciesCurrent
 		var receipt *public.Kudurru
 		committed, err := f.s.currentAuthCommandThen(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 			if _, _, err := servingauth.ReauthorizeCurrentWithClock(ctx, tx, deps, proof, blockingToggleAttrs, f.s.opts.Now); err != nil {

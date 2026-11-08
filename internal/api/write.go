@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -53,6 +54,9 @@ type writeResult struct {
 
 // readOnly returns the 503 read_only error in the ha-static shape.
 func (s *Server) readOnly() error {
+	if s.opts.Config.Cluster.Static() {
+		return storeError(objects.ErrStaticReadOnly)
+	}
 	if s.opts.Objects == nil {
 		return nil
 	}
@@ -60,6 +64,10 @@ func (s *Server) readOnly() error {
 		return storeError(err)
 	}
 	return nil
+}
+
+func (s *Server) staticMode() bool {
+	return s.opts.Config.Cluster.Static() || s.opts.Objects != nil && s.opts.Objects.APIReadOnly()
 }
 
 // objectScope is the RBAC scope that guards obj: zone:<name> for zones and

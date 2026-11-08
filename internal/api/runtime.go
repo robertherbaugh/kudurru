@@ -187,7 +187,7 @@ func (s *Server) getBlocking(ctx context.Context, _ *struct{}) (*blockingOutput,
 		if err != nil || ctx.Err() != nil || enabled && !configured {
 			return nil, errUnavailable("original blocking state unavailable")
 		}
-		out := &BlockingState{Configured: configured, Blocking: enabled, Scope: "cluster", Node: s.opts.NodeName}
+		out := &BlockingState{Configured: configured, Blocking: enabled, Scope: s.blockingScope(), Node: s.opts.NodeName}
 		if configured && !enabled && until.After(now) && until.Before(blockingstage.Forever) {
 			u, seconds := until.UTC(), until.Sub(now).Seconds()
 			out.Until, out.Timer = &u, &seconds

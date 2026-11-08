@@ -17,7 +17,7 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
+import { canAnyScope, qk, useApi, useCan, useSession, useStaticMode } from '../api/context';
 import { useFeature } from '../api/hooks';
 import type { ApiToken, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
 import { AuthenticatorPanel, RecoverAuthenticatorButton } from '../components/access/Authenticators';
@@ -109,6 +109,7 @@ function Tokens() {
   const qc = useQueryClient();
   const notify = useNotify();
   const can = useCan();
+  const readOnly = useStaticMode();
   const { data: session } = useSession();
   const [description, setDescription] = useState('');
   const [expires, setExpires] = useState('720h');
@@ -143,7 +144,7 @@ function Tokens() {
     },
     onError: (err) => notify.error(err, 'Could not revoke the token'),
   });
-  const allowed = (!!session && canAnyScope(session, 'tokens', 'own')) || can('tokens', 'write');
+  const allowed = !readOnly && ((!!session && canAnyScope(session, 'tokens', 'own')) || can('tokens', 'write'));
   const columns: TableColumn<TokenRow>[] = [
     {
       key: 'description',
@@ -190,7 +191,7 @@ function Tokens() {
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
       width: pixel(128),
-      renderCell: (t) => <Button label="Revoke" size="sm" variant="ghost" onClick={() => del.mutate(t.id)} />,
+      renderCell: (t) => <Button label="Revoke" size="sm" variant="ghost" isDisabled={readOnly} tooltip={readOnly ? 'Tokens are read-only in static mode' : undefined} onClick={() => del.mutate(t.id)} />,
     },
   ];
   return (

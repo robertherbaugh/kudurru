@@ -32,6 +32,23 @@ type requestFixture struct {
 	now        time.Time
 }
 
+func TestStaticSettingsDisablePublicRequestWrites(t *testing.T) {
+	f := newRequestFixture(t)
+	cfg, err := config.FromFlat(config.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Cluster.Role = "static"
+	cfg.UnblockRequests.Enabled = true
+	f.srv.Reconfigure(SettingsFrom(cfg))
+	if response := f.post(url.Values{}, "192.0.2.1:12345"); response.Code != http.StatusNotFound {
+		t.Fatal("static public request accepted or decoded the body", response.Code)
+	}
+	if f.book.Counts().Pending != 0 {
+		t.Fatal("static public request wrote an object")
+	}
+}
+
 func newRequestFixture(t *testing.T) *requestFixture {
 	t.Helper()
 	f := &requestFixture{set: unblock.Defaults, reg: prometheus.NewRegistry(), now: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}

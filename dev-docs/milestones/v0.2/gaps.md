@@ -3806,3 +3806,46 @@ Exact commands, limits and outcomes: `.context/ha-original-transport-20261108/`.
 Configured lint remains pending the missing executable. Static startup,
 individual enrollment proof, CLI/API mounting, promotion and actual partition/
 rejoin still require implementation. This does not activate HA or managed roots.
+
+
+### F65 static SQLite twins and F67 mounted acceptance (D300)
+
+Host-only restart-required `cluster.role: static` and `cluster.peers` now mount
+independent SQLite leaders with bounded unique names/endpoints and exact self
+membership. Enrolled databases are refused without changing their authority.
+Shared TLS/token status and digest reads remain independent of individual member
+enrollment. Status must name the configured peer; unreachable peers remain listed
+without readiness. The common post-authorization API guard refuses object,
+cluster-setting, IAM credential and provider mutations before body decoding or
+forwarding, including previously API-owned objects. Static mode also disables
+public unblock-request creation and refuses the external-dns mutation webhook.
+File loaders, login/logout and local blocking/cache controls remain available.
+UI capabilities, schema metadata, Compose examples and architecture are updated.
+
+Mounted acceptance exposed a real postcommit acknowledgment defect: the retained
+RuntimeOwner predicate included the old generation cursor, so the command's own
+commit invalidated it. A separate retained dependency predicate now preserves
+host/provider/catalog/key/managed-anchor checks during exact-receipt acknowledgment.
+Original HTTP command admission, writer binding and every other old-image currency
+check remain. No mutation replay or deadline extension was introduced.
+
+Final two-runServe race acceptance passes2 top-level tests, including independent
+DB identity/local leadership, actual DNS/TLS digest reads, read-only mutations,
+single-dispatch node-local blocking, peer loss and restart. Focused blocking43
+and builder2 entries pass; the same earlier command's startup failure remains
+recorded. Seven unchanged affected packages pass1055 entries with4 actual skips;
+config initially failed its generic enum fixture (static without required peers),
+then the corrected full config suite passes340 entries. The skipped tests require
+PostgreSQL/Kubernetes and receive no qualification credit. Vet exits0; dashboard
+capability/account40 and settings23 tests, TypeScript and scoped ESLint pass.
+All3 Compose configurations validate. Generated reference drift passes; generation
+also corrected existing committed anchor-mode/root-hint reference drift, with the
+initial unexpected-output wrapper failure preserved. Earlier mounted/login/body
+and UI-fixture failures are retained under `.context/ha-static-20261108/`.
+
+Every qualification used frozen root source and raw numeric persistence before
+enrichment. Protected `dashboard/dist/index.html` remains untouched. Configured
+Go lint is pending its missing executable and unanswered rebuild approval.
+This acceptance runs two actual assemblies within one test process; separate
+server-process static acceptance is next. F60b enrollment/promotion, forwarding,
+partition/rejoin and final release gates are not closed by static peer routing.

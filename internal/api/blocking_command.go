@@ -52,6 +52,6 @@ func (s *Server) setBlockingCommand(ctx context.Context, in *setBlockingInput) (
 		result.Until = &v
 	}
 	result.Node = s.opts.NodeName
-	result.Scope = "cluster"
+	result.Scope = s.blockingScope()
 	return &blockingOutput{Body: &result}, nil
 }

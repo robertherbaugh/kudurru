@@ -10,7 +10,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, LogOut } from 'lucide-react';
 import { useState } from 'react';
-import { qk, useApiContext, useSession, useSignOut } from '../api/context';
+import { qk, useApiContext, useSession, useSignOut, useStaticMode } from '../api/context';
 import type { Me } from '../api/types';
 import { errorText, useNotify } from './Feedback';
 import { CheckboxField, TextField } from './fields/TextField';
@@ -160,6 +160,7 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
 /** A "Change password" button with its dialog; nothing for non-local principals. */
 export function ChangePasswordButton({ iconOnly = false }: { iconOnly?: boolean }) {
   const { data } = useSession();
+  const readOnly = useStaticMode();
   const [open, setOpen] = useState(false);
   if (!isLocalUser(data)) return null;
   return (
@@ -169,17 +170,19 @@ export function ChangePasswordButton({ iconOnly = false }: { iconOnly?: boolean 
         variant={iconOnly ? 'ghost' : 'secondary'}
         size="sm"
         isIconOnly={iconOnly}
+        isDisabled={readOnly}
         icon={iconOnly ? <KeyRound size={16} aria-hidden="true" /> : undefined}
-        tooltip={iconOnly ? 'Change password' : undefined}
+        tooltip={readOnly ? 'Credentials are managed outside the API in static mode' : iconOnly ? 'Change password' : undefined}
         onClick={() => setOpen(true)}
       />
-      <ChangePasswordDialog isOpen={open} onClose={() => setOpen(false)} />
+      <ChangePasswordDialog isOpen={open && !readOnly} onClose={() => setOpen(false)} />
     </>
   );
 }
 
 export function AccountMenu() {
   const { data } = useSession();
+  const readOnly = useStaticMode();
   const signOut = useSignOut();
   if (!data) return null;
   return (
@@ -197,7 +200,9 @@ export function AccountMenu() {
         tooltip="Sign out"
         onClick={() => void signOut()}
       />
-      {data.mustChangePassword && isLocalUser(data) ? <ChangePasswordDialog isOpen onClose={() => undefined} forced /> : null}
+      {data.mustChangePassword && isLocalUser(data) ? readOnly
+        ? <Banner status="warning" title="Account setup required" description="Ask the host administrator to provision your password before enabling static mode." />
+        : <ChangePasswordDialog isOpen onClose={() => undefined} forced /> : null}
     </HStack>
   );
 }

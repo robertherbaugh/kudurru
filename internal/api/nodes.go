@@ -159,6 +159,10 @@ func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, erro
 					s.log.WarnContext(ctx, "peer status unavailable", "node", p.Name, "address", p.Address, "error", err)
 					return
 				}
+				if status.Node != p.Name {
+					items[i].Error = "peer status: node identity mismatch"
+					return
+				}
 				items[i].Ready, items[i].Unready = status.Ready, status.Unready
 				items[i].Version, items[i].State, items[i].Snapshot = status.Version, status.State, status.Snapshot
 			}()
@@ -249,9 +253,7 @@ func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, e
 	if peers, err := s.opts.Membership.Peers(ctx); err == nil {
 		out.Nodes = len(peers)
 	}
-	if s.opts.Objects != nil {
-		out.ReadOnly = s.opts.Objects.APIReadOnly()
-	}
+	out.ReadOnly = s.staticMode()
 	return &clusterOutput{Body: out}, nil
 }
 

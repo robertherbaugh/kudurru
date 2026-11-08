@@ -6,7 +6,7 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { qk, useApi, useApiContext, useCan, useSession } from '../../api/context';
+import { qk, useApi, useApiContext, useCan, useSession, useStaticMode } from '../../api/context';
 import type { IamUser, Me } from '../../api/types';
 import { isLocalUser } from '../AccountMenu';
 import { FormDialog } from '../FormDialog';
@@ -113,8 +113,10 @@ function useAttempt(onDiscard: (message: string) => void) {
 
 export function AuthenticatorPanel() {
   const { data: me } = useSession();
+  const readOnly = useStaticMode();
   return <Panel title="Authenticator" headingId="authenticator-title">
-    {eligible(me) ? <LocalAuthenticator key={sessionKey(me)} me={me} /> : <Text>Authenticator management requires a local account cookie session with a completed password change.</Text>}
+    {readOnly ? <Banner status="info" title="Credentials are read-only in static mode" description="Provision account credentials on each host before enabling static mode." />
+      : eligible(me) ? <LocalAuthenticator key={sessionKey(me)} me={me} /> : <Text>Authenticator management requires a local account cookie session with a completed password change.</Text>}
   </Panel>;
 }
 function LocalAuthenticator({ me }: { me: Me }) {

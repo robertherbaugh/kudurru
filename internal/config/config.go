@@ -44,6 +44,7 @@ type Config struct {
 	Node      Node               `koanf:"node" json:"node"`
 	Listeners Listeners          `koanf:"listeners" json:"listeners"`
 	Store     StoreConfig        `koanf:"store" json:"store"`
+	Cluster   ClusterConfig      `koanf:"cluster" json:"cluster"`
 	DHCP      DHCP               `koanf:"dhcp" json:"dhcp"`
 	Upstreams Upstreams          `koanf:"upstreams" json:"upstreams"`
 	Control   Control            `koanf:"control" json:"control"`
@@ -722,6 +723,7 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 // *FieldError.
 func (c *Config) Validate() error {
 	errs := c.validateSchema()
+	errs = append(errs, c.validateStaticCluster()...)
 	if err := c.ClientNames.ReversePTR.validate(); err != nil {
 		errs = append(errs, err)
 	}

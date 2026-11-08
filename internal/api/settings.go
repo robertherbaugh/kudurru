@@ -315,7 +315,7 @@ func (s *Server) settingsSchema(ctx context.Context, _ *struct{}) (*schemaOutput
 		items = append(items, SettingKey{
 			Path: k.Path, Type: string(k.Type), Scope: string(k.Scope), Default: k.Default, Help: help,
 			HostOnly: k.HostOnly, EnvLocked: slices.Contains(cfg.EnvLocked, k.Path), RestartRequired: config.RequiresRestart(k, s.authControlsHotReload()),
-			ReadOnly:  k.Scope == config.ScopeNode && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil),
+			ReadOnly:  k.Scope == config.ScopeCluster && s.staticMode() || k.Scope == config.ScopeNode && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil),
 			WriteOnly: k.WriteOnly, Label: k.Label, Group: k.Group, SettingConstraints: settingConstraints(k.Shape()), Value: v,
 		})
 	}

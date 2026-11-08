@@ -44,6 +44,9 @@ func (s *Server) declare(op *huma.Operation, p perm) {
 	}
 	op.Metadata[permKey] = p
 	op.Middlewares = append(op.Middlewares, s.authorizeMW(p))
+	if staticObjectMutation(*op, p) {
+		op.Middlewares = append(op.Middlewares, s.staticWriteMW)
+	}
 	if op.MaxBodyBytes == 0 {
 		op.MaxBodyBytes = maxBodyBytes
 	}

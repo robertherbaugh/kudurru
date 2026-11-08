@@ -105,8 +105,8 @@ func (s *servingRuntime) BlockingCommand(ctx context.Context, change api.Blockin
 	if err != nil {
 		return nil, currentCommandAPIError(err)
 	}
-	_, _, current := runtime.NotifyKeys()
-	if current == nil || !current() {
+	current := runtime.DependenciesCurrent
+	if !current() {
 		return nil, currentCommandAPIError(serving.ErrDependency)
 	}
 	dependency := original.DependencyIdentity()
