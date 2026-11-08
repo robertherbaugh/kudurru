@@ -5961,3 +5961,21 @@ scenario passes locally in27.266s including setup (18.4s test); file ESLint pass
 The exact f916537e binary builds CGO-disabled with unchanged generated dashboard
 bytes. Evidence: .context/hosted-release-b2d197d8-20261108/. Hosted final-source
 qualification remains open; the earlier failed run is preserved.
+
+
+### F60b/G11 original peer cancellation during output, November 8
+
+A final review added a separate-command-context regression against f916537e.
+It failed: after MemberCommand returned, the output context retained the command
+parent but did not propagate cancellation from the independently captured peer
+request. The actual Store guard refused eventual completion, but that alone
+could not interrupt an active emitter. The numeric1/one failed test is retained.
+
+The coordinator now joins original peer cancellation through the entire emission
+callback and reaps its cancellation callback before releasing dependency pins.
+The actual command's committed bit remains independent. Final affected
+coordinator/serving/provider default races pass140 entries without failures/skips
+(45.499s); configured coordinator lint exits0/zero issues (6.615s). Source04 hashes
+match. Earlier composed350 evidence remains scoped to source02. Evidence:
+.context/member-output-coordinator-20261108/cancel-before03.json and race04.json.
+Production enrolled listener/domain/forwarding assembly remains open.

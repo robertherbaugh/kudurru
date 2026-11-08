@@ -99,7 +99,20 @@ func (c *Coordinator) WithMemberCommandOutput(ctx context.Context, target servin
 					}
 					return pin.CurrentAt(c.opts.Now())
 				}
-				return request.WithCommandOutput(func(context.Context) error {
+				return request.WithCommandOutput(func(original context.Context) error {
+					// A separately carried command context must not detach the
+					// original peer cancellation after MemberCommand returns.
+					// Keep both contexts joined until actual emission has ended.
+					joined := make(chan struct{})
+					stop := context.AfterFunc(original, func() { cancelOutput(); close(joined) })
+					defer func() {
+						if !stop() {
+							<-joined
+						}
+					}()
+					if err := original.Err(); err != nil {
+						return err
+					}
 					if err := check(); err != nil {
 						return err
 					}

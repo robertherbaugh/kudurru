@@ -966,8 +966,9 @@ the original peer request. It does not substitute membership or a subject name
 for raw user credentials. The callback verifies current domain permission in the
 actual transaction, before effects or dedup reads.
 
-The output context keeps the earliest request, peer, host and provider expiry;
-root must also retain the original credential bounds and install the resulting
+The output context keeps the earliest request, peer, host and provider expiry,
+and joins original peer cancellation even when the command has a separate parent.
+The cancellation callback is reaped before dependency pins release. Root must also retain the original credential bounds and install the resulting
 transport deadline. Output is synchronous and must explicitly flush without
 reentering Store or acquiring another publication pin. The returned `committed`
 bit records actual completion independently of emission failure. Ordinary

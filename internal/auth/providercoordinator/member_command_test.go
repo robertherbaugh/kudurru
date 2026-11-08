@@ -324,3 +324,33 @@ func TestMemberCommandOutputRefusesMissingOriginalWriterAndLifetime(t *testing.T
 		t.Fatal("zero pin supplied a lifetime")
 	}
 }
+
+func TestMemberCommandOutputRetainsOriginalPeerCancellationDuringEmission(t *testing.T) {
+	f := newMemberOutputFixture(t)
+	ctx, target := writer(t, f.store)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	original, cancelOriginal := context.WithCancel(ctx)
+	defer cancelOriginal()
+	request, err := f.store.CaptureMemberRequest(original, target.Term.ClusterID, f.remote, &f.connection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The command context intentionally is not a child of the captured peer
+	// request. Matching writer identity must not detach original cancellation.
+	entered := false
+	committed, err := f.coordinator.WithMemberCommandOutput(ctx, target, request, f.authorize, func(output context.Context) error {
+		entered = true
+		cancelOriginal()
+		select {
+		case <-output.Done():
+			return output.Err()
+		case <-time.After(100 * time.Millisecond):
+			t.Error("emitter lost original peer cancellation")
+			return ErrInvalid
+		}
+	})
+	if !entered || !committed || !errors.Is(err, context.Canceled) {
+		t.Fatal("original cancellation lost", entered, committed, err)
+	}
+}
