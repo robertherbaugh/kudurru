@@ -43,6 +43,13 @@ original benchmark processor count. The eight-core host does not change the
 workloads to eight processors. The same class and processor count apply to
 baseline calibration and candidate comparison.
 
+For an in-repository pull request, adding the `release-benchmarks` label starts
+one explicitly requested recording of its exact head commit. Later pushes do
+not repeat that measurement automatically. This opt-in path works before the
+workflow is registered on the default branch; fork pull requests cannot use it.
+The manual workflow remains available after registration. Both paths retain
+the original workloads and leave the baseline and limits unchanged.
+
 The workflow records measurements; a successful job is not release qualification.
 New cache/strategy absolute limits, baseline calibration and final comparison
 still need review on that actual runner. Local sandbox measurements, matching CPU
