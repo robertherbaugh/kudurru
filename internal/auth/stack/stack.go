@@ -41,6 +41,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/k8s"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
+	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/objcache"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
@@ -74,6 +75,8 @@ type Options struct {
 	Store store.Store
 	// Keys are the encryption keys (keys.Load). Current is required.
 	Keys keys.Keys
+	// LoginLimit is the actual shared password-admission owner, when mounted.
+	LoginLimit *loginlimit.Limiter
 	// TokenMigration resolves completed offline cutover provenance, captured
 	// with current identities. Nil never guesses a legacy credential binding.
 	TokenMigration tokens.MigrationResolver
@@ -263,7 +266,7 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	}
 
 	// Stores and caches.
-	if s.users, err = users.New(users.Options{Store: opts.Store, Logger: log, Now: opts.Now}); err != nil {
+	if s.users, err = users.New(users.Options{Store: opts.Store, Logger: log, Now: opts.Now, SharedLimit: opts.LoginLimit}); err != nil {
 		return nil, err
 	}
 	if s.tokens, err = tokens.New(tokens.Options{Store: opts.Store, MaxLifetime: cfg.Auth.Tokens.MaxLifetime.Std(), Namespace: opts.Namespace,

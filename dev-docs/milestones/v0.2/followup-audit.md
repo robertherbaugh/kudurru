@@ -1080,3 +1080,55 @@ normal Kubernetes owner-reference garbage collection follows source deletion.
 One mounted server restart is not multi-node lease-loss/partition acceptance.
 Those cases, configured lint (unavailable executable), and final G09/G21/G22
 and release gates remain open. Protected dashboard bytes are unchanged.
+
+
+### F46 shared Kubernetes password admission (D304), November 8
+
+The actual Kubernetes server now mounts one shared lockout owner for local
+password login. One private release-namespace Secret atomically reserves both
+normalized IP-prefix and username capacity before hashing, retaining the driver's
+cluster-identity transport, original finite context and UID/resourceVersion CAS.
+Five IP failures within five minutes lock for five minutes; ten username failures
+within fifteen minutes lock for fifteen minutes. IPv6 uses the existing /64 key.
+A successful password removes its own IP reservation and resets only older
+completed username failures; other pending work and newer failures survive.
+Durable sequence numbers distinguish even identical wall-time samples.
+
+Unfinished reservations become failures at their original expiry. The document
+has a 512KiB/4096-key maximum and only reclaims expired entries. HMAC keys under
+its persisted random salt omit raw usernames/addresses; Secret access remains
+sensitive. Clock rollback refuses rather than resetting counters. Every operation
+retains an original bound of at most30s; unknown writes, conflicts, malformed state
+and outages refuse without retries or local fallback. Committed-but-canceled
+operations retain their effect and cannot return admission. Privileged Secret
+removal resets counters. Existing Secret RBAC suffices; no new config or CRD.
+
+Actual two-runServe acceptance proves a successful password, five failed logins
+alternating replicas, both replicas refusing a correct password while locked,
+restart persistence, unavailable shared reads returning503/no write or cookie,
+and recovery preserving the lock. Real kube tests additionally verify original
+CAS interposition, exactly one committed lost-reply reservation, no replay,
+canceled input and a preexisting foreign Secret left unchanged. Pure tests cover
+simultaneous reservations, later-failure preservation, successful username reset,
+idle expiry, malformed/capacity refusal and original context/ticket consumption.
+
+Final production has7 targeted race entries with zero failures/skips,
+child0/wrapper0, wall35.457727048s, minimum14,743,908,352B. Earlier expanded pure9
+and actual kube1 passes remain; full unchanged users/stack regression passes75
+entries, zero failures/skips, wall14.226176477s. Final affected-package vet exits0
+in4.811018429s, minimum15,063,453,696B. Exact freezes, logs and receipts are in
+`.context/login-lockouts-20261108/`.
+
+Earlier failures remain: the first mounted correct-password login returned503
+because JSON omitted monotonic metadata carried by the original context deadline;
+reservation expiry now normalizes to UTC before durable identity comparison,
+without extending the deadline. That run also had a test variable-name compile
+error. A later negative fixture tried to change an immutable Kubernetes Secret
+type and was rejected; it now creates a separate preexisting foreign Secret.
+No failed run is relabeled green. Protected dashboard bytes remain untouched.
+
+This is the Kubernetes password mount only. Complete SQLite login/factor counters
+still need same-command persistence and replication composition; OIDC initiation
+limits are distinct. Shared counters do not grant credentials, TOTP replay
+protection or cross-object IAM transactions. Configured lint remains unavailable;
+F46's remaining driver/route work and final G12/G22/release gates stay open.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 )
@@ -254,6 +255,9 @@ func (s *Stack) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, users.ErrInvalidCredentials):
 		writeErr(w, r, &auth.Error{Status: http.StatusUnauthorized, Key: "unauthenticated", Message: "invalid username or password"})
+		return
+	case errors.Is(err, loginlimit.ErrUnavailable):
+		writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "login_limit_unavailable", Message: "shared login admission is unavailable"})
 		return
 	case err != nil:
 		writeErr(w, r, &auth.Error{Status: http.StatusInternalServerError, Key: "internal", Message: "login failed", Err: err})

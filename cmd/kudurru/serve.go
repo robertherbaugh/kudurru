@@ -38,6 +38,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/iamgate"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
+	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
@@ -976,6 +977,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 	stackOpts.Kube = restCfg
+	if kubeStore != nil {
+		stackOpts.LoginLimit, err = loginlimit.New(kubeStore,
+			loginlimit.Policy{Failures: 5, Window: 5 * time.Minute, Lockout: 5 * time.Minute},
+			loginlimit.Policy{Failures: 10, Window: 15 * time.Minute, Lockout: 15 * time.Minute}, nil)
+		if err != nil {
+			return err
+		}
+	}
 	stackOpts.OIDCAllowed = func() bool { return lic.Allows(license.FeatureOIDC) }
 	stackOpts.RBACAllowed = func() bool { return lic.Allows(license.FeatureRBAC) }
 	if cfg.Store.Driver == "kube" {

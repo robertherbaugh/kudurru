@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Kubernetes: local-password lockouts share durable IP-prefix and username
+  admission across replicas and restart. Concurrent attempts reserve capacity;
+  unavailable shared state refuses login without issuing a session.
+
 - Static SQLite twins: configure named peers for authenticated status and list
   reads while each node retains local leadership. Distributed files own object
   and cluster-setting changes; object and credential mutations are refused, and

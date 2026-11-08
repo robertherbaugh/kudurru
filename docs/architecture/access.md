@@ -38,6 +38,54 @@ explicit subscription policy. Custom HTTP clients and low-level generated
 request editors remain trusted extension points; the public CLI exposes no
 request editor.
 
+## Shared Kubernetes password lockouts (D304)
+
+Kubernetes replicas reserve password-attempt capacity in one private
+`kudurru-login-lockouts` Secret in the release namespace. Admission retains the
+actual driver's cluster-identity guard and performs one original UID/version
+update or absent-state create. A conflict, lost reply, malformed state or API
+outage returns 503 before a session can be issued; there is no local fallback
+or mutation retry. The existing namespace Secret permissions suffice.
+
+```mermaid
+sequenceDiagram
+    participant A as Replica A or B
+    participant K as Kubernetes API
+    participant P as Password verifier
+    A->>K: Reserve IP prefix and username with original CAS
+    K-->>A: Confirm reservation
+    A->>P: Verify once
+    P-->>A: Result
+    A->>K: Complete exact reservation with original CAS
+    K-->>A: Confirm result
+    A-->>A: Continue existing session checks or return refusal
+```
+
+The unchanged policy is five IP failures within five minutes for a five-minute
+lockout, and ten username failures within fifteen minutes for a fifteen-minute
+lockout. IPv6 clients share a /64. In-flight attempts reserve capacity before
+hashing, preventing simultaneous requests across replicas from multiplying
+available guesses. Abandoned reservations become failures at their original
+expiry. A successful password removes its own IP reservation and clears earlier
+completed username failures; another in-flight attempt or later failure survives.
+The durable sequence distinguishes operations even at identical wall times.
+
+Reservations retain their original context and expire within thirty seconds.
+State is bounded by 4,096 combined keys and 512 KiB; whichever bound is reached
+first refuses new admission. Only expired entries are reclaimed. Keys are HMACs
+under a random salt stored with the document; raw usernames/IPs are absent,
+but access to the Secret still exposes sensitive operational metadata. Keep
+replica clocks synchronized: a sample earlier than the last durable observation
+refuses rather than resetting counters. Encryption-key rotation does not reset
+this separate salt. Privileged deletion of the Secret resets its history.
+
+This mount covers Kubernetes local-password login. It does not replace OIDC
+start/callback limits, create shared TOTP replay authority, or make unrelated
+identity/session writes a cross-object transaction. The complete SQLite runtime's
+password and factor limits remain local until their own admitted transaction and
+replication composition is implemented. Static independent stores do not gain
+shared authority from configured peer names.
+
 ## Coherent authentication owner foundation
 
 The complete SQLite runtime exposes dedicated reviewed RoleBinding commands
