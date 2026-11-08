@@ -97,3 +97,32 @@ matching CPU headers in both inputs. Empty, failed or incomplete baselines
 refuse. No command updates a baseline. `result.json` keeps
 `release_qualified: false`: these measurements alone do not establish the
 remaining absolute calibrations, external acceptance or other release gates.
+
+## Original reference on the selected class
+
+The first actual Ubicloud recording, [run 42514599389](https://github.com/robertherbaugh/kudurru/actions/runs/42514599389),
+measured candidate `9cc2ae0423070fc514c94a25ab5b92e3816889e7` with Go 1.27.3
+and six processors. Its AMD EPYC 9454P CPU differs from the retained Intel Xeon
+baseline. All 40 native commands and seven shape/absolute checks passed: 136
+cases, 592 metric keys, 2,960 values. This recording is not a baseline reset or
+release qualification. The original Intel results and failures remain retained.
+
+To obtain a reference on the selected class, add `release-benchmark-reference`
+to the in-repository PR, or select `reference` in the manual workflow. This
+measures immutable commit `0cc9565e9a878f8223fc1cee5201eb7eca8aacd2`, which last
+established the original committed baseline. Its blocking and zone benchmark
+bodies match the candidate except for documentation comments; its original
+cache and strategy cases also remain. Later added cases remain new metrics.
+
+The historical source and current measurement controls occupy separate clean
+checkouts. Twenty fresh native processes cover the four original scopes, with
+the original one-second durations, five samples and six processors. The current
+strict gate checks the three resulting reports. Raw process receipts and both
+source manifests accompany the artifact. Any changed source, resource stop or
+remaining descendant stops the sequence; native failures are retained without
+retries or replacement samples. Nothing edits `bench/baseline.txt`.
+
+Reference recording alone does not close the gate. Its actual results must be
+reviewed and compared with the candidate on this class under the unchanged
+relative threshold and noise floors. New cache/strategy absolute calibration
+and final-current-source qualification remain separate requirements.

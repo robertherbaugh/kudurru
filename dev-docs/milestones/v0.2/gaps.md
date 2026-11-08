@@ -5534,3 +5534,38 @@ and all unrelated feature/release gates remain open.
 Final source04 configured scoped lint passes with zero issues in 3.208 seconds.
 Source04 changes from the race-qualified source03 are documentation and the
 exact temporary-file annotation only; no behavioral change followed the races.
+
+### F63/G23 actual selected-runner recording, November 8
+
+Hosted run 42514599389 measured exact candidate 9cc2ae0423070fc514c94a25ab5b92e3816889e7.
+The job API confirms ubicloud-standard-8-ubuntu-2404 and actual runner
+`gr4410z6aj5j3qnxa4v3979221`; native headers identify AMD EPYC 9454P.
+Go 1.27.3 and original GOMAXPROCS=6 were retained. All 40 native measurements
+and seven shape/absolute checks exit zero, with every process group reaped and
+no resource stop. Seven combined hashes match result.json. Independent bounded
+review finds 136 cases, 592 metric keys and 2,960 values, exactly five per key.
+
+Median unchanged-1M compilation is 53,321,245 ns/op with eight allocations;
+suffix-1M p99 hit/miss is 961/600 ns. Exact-1M miss p50 is 170 ns. CNAME p99 is
+1,722 ns with one allocation. Steady 3M RSS is 94.24 MiB, separately 143.7 MiB
+peak, with 1.963 s compile. The original absolute limits pass. Recording reports
+measurement_complete=true and release_qualified=false. It does not erase the
+prior 158 ns versus 109 ns exact-miss failure or any earlier failed sample.
+
+The retained Intel Xeon baseline is a different class. To obtain an actual
+reference on Ubicloud without making the candidate its own baseline, the new
+explicit reference workflow pins 0cc9565e9a878f8223fc1cee5201eb7eca8aacd2, the
+last original baseline source commit. Blocking/zone benchmark executable bodies
+match except comments; original cache/strategy cases are retained. Separate
+clean source/control checkouts and all identities surround twenty fresh native
+commands and three original shape/absolute checks. Failures remain numeric and
+no sample is replaced. Eight combined Python control tests pass, including
+native/gate failure retention, changed-source/resource stops and wrong-reference
+refusal. Both changed workflow YAML files parse with the existing YAML dependency.
+This reference workflow has not yet run; no baseline or limit is changed.
+
+Same-class reference comparison, new cache/strategy absolute calibration and
+final-current-source qualification remain open. Complete downloaded artifacts,
+independent vectors/review, original inputs and control-test evidence are under
+`.context/hosted-release-20261108/`. Original failures and external release gates
+remain unchanged.

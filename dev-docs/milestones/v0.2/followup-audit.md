@@ -2533,3 +2533,16 @@ the installed control plane; PostgreSQL history runs in the full suite. The firs
 failed/interrupted run and lint tool/annotation failures remain in gaps.md and
 `.context/settings-scope-20261108/`. These results do not establish final hosted
 CI or enrolled HA assembly.
+
+### Actual Ubicloud recording and original reference preparation, November 8
+
+Run 42514599389 on exact 9cc2ae04 completed all 40 measurements and seven
+shape/absolute checks on the selected Ubicloud class: 136 cases, 592 metrics,
+five values each, actual AMD EPYC 9454P and GOMAXPROCS6. All hashes and exits
+verify. Recording succeeds; release_qualified remains false. The old Intel
+baseline and exact-miss regression remain retained. A separate explicitly
+triggered workflow now pins the original baseline source 0cc9565e for new
+reference measurements on Ubicloud; eight control tests and YAML validation
+pass, but no reference execution is claimed. Same-class comparisons, additional
+absolute calibration and final-source gates remain open; see gaps.md and
+bench/README.md.
