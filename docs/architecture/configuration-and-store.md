@@ -77,6 +77,15 @@ remain additional requirements, including when recovering with a matching pin.
 See the [cold-start runbook](../deploy/runbooks.md#cold-start-without-the-apiserver)
 for the nonsecret provisioning and upgrade procedure.
 
+The optional `StartupClusterID` capability returns only an authenticated,
+nonempty observed UID under the earlier caller deadline and configured startup
+timeout. Unpinned callers share existing discovery; pinned callers use the same
+identity guard. Closing the Store cancels a held probe or wait. A direct client
+without background discovery cannot invent an unpinned identity. This getter
+is a prerequisite for private credential startup, with no general startup or
+readiness call site; it does not make unsigned saved-state serving depend on
+an online API server or establish a complete TSIG source.
+
 ## API migrations
 
 `internal/importers` reads Pi-hole v6 and Technitium HTTP APIs and produces

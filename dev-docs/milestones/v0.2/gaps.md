@@ -4675,3 +4675,22 @@ Earlier new-fixture missing-preparation-bound failures and the stopped original
 run remain in `.context/dns-response-admission-20261108/`; no original deadlines
 or production guards were relaxed. These scoped checks do not complete the
 remaining F07a/Kubernetes, managed activation, HA, performance or release gates.
+
+### November 8 — observed Kubernetes startup identity prerequisite
+
+`StartupClusterID` now shares actual unpinned namespace discovery or the existing
+authenticated pinned guard, bounded by the original caller and startup timeout.
+Empty UIDs never signal readiness, configured expectations are not observations,
+and Store closure cancels held work. No global startup/health or TSIG mount call
+site is added; unsigned saved-state availability remains independent.
+
+Focused default race passed 28 entries; an additional held pinned-Close test
+passed. Full Kubernetes driver default race passed 202 entries with no failures
+in 78.927497716 seconds against actual envtest. Exactly three optional spike
+measurements skipped because `KUDURRU_MEASURE=1` was absent: TestMeasureStore,
+TestMeasureFirstRequests and TestMeasureElectorProductionTimings. Configured
+scoped lint passed with zero issues (6.614283894 seconds); vet passed
+(1.009347458 seconds). All frozen sources matched. Evidence is retained in
+`.context/kube-tsig-identity-20261108/`. Kubernetes complete TSIG preparation,
+transport/background mounts and accepted management authority remain open;
+these checks supply no performance, hot-rotation or release qualification.

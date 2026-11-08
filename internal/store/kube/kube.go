@@ -100,7 +100,8 @@ type Options struct {
 	RenewDeadline time.Duration
 	RetryPeriod   time.Duration
 	// StartupTimeout bounds WaitForSync when the caller's context has no
-	// deadline (store.kube.startupTimeout, §4.4). Default 15 s.
+	// deadline and optional StartupClusterID observation (store.kube.startupTimeout,
+	// §4.4). Default 15 s.
 	StartupTimeout time.Duration
 	// Scheme overrides the scheme; it must contain kudurru.io/v1alpha1 and
 	// core/v1. Default: a fresh scheme with both.
@@ -193,9 +194,10 @@ type Store struct {
 	cacheDone      chan struct{}      // closed when cache.Start returns
 	informersReady chan struct{}      // closed when every kind has an informer
 
-	clusterID  atomic.Pointer[string]
-	identity   *clusterIdentity
-	restConfig *rest.Config
+	clusterID      atomic.Pointer[string]
+	clusterIDReady chan struct{} // closed only after actual unpinned discovery
+	identity       *clusterIdentity
+	restConfig     *rest.Config
 
 	mu       sync.Mutex
 	closed   bool
@@ -311,10 +313,12 @@ func newStore(cfg *rest.Config, opts Options, background bool, mapper meta.RESTM
 		cancel:         cancel,
 		cacheDone:      make(chan struct{}),
 		informersReady: make(chan struct{}),
+		clusterIDReady: make(chan struct{}),
 		electors:       map[string]*LeaseElector{},
 		watchers:       map[*watcher]struct{}{},
 	}
 	if !background {
+		s.clusterIDReady = nil // Direct CRUD owns no discovery operation.
 		close(s.cacheDone)
 		return s, nil
 	}
@@ -360,9 +364,17 @@ func (s *Store) discoverClusterID(ctx context.Context) {
 		rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		err := s.c.Get(rctx, client.ObjectKey{Name: "kube-system"}, &ns)
 		cancel()
-		if err == nil {
+		if err == nil && ns.UID != "" {
+			if ctx.Err() != nil {
+				return
+			}
 			id := string(ns.UID)
-			s.clusterID.Store(&id)
+			s.mu.Lock()
+			if !s.closed && s.clusterIDReady != nil && s.clusterID.Load() == nil {
+				s.clusterID.Store(&id)
+				close(s.clusterIDReady)
+			}
+			s.mu.Unlock()
 			return
 		}
 		select {
