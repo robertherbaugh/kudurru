@@ -227,3 +227,10 @@ comparison still exits 1 (three suffix-miss regressions). It records 136 cases,
 592 metric keys and 2,960 values with five samples each. Earlier failures remain
 retained. Named-class execution and new cache/strategy calibration remain open;
 local recording success is not release qualification.
+
+Promotion authorization now retains an original pinned proof through the store's
+final commit check, including idempotent success (D322). Focused race21 and full affected race1,192 pass with no failures or skips;
+configured scoped lint passes with zero issues. This closes an admission prerequisite,
+not enrolled HA orchestration, forwarding or the operator route. The exact-list
+performance failure remains open: a diagnostic original timed-suite profile
+reproduces 169 ns p50; no matcher or gate edits or replacement samples were made.

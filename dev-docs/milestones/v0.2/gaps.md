@@ -5157,3 +5157,36 @@ those outcomes remain explicit.
 Final CLI/default-race30 passes without failures/skips (65.9093s), including
 all offline recovery cases, regenerated CLI-reference drift, shell completion
 and existing convenience-command regressions. Source06 remains unchanged.
+
+
+### F60b/G11 promotion authorization prerequisite, November 8
+
+D322 changes coordinator operator authorization from an early verdict to a
+retained original proof check plus dependency release. Missing callbacks refuse.
+The coordinator keeps that original authorization and the complete serving pin
+through SQLite `PromoteChecked`, whose final memory/clock check runs after all
+staged authority/feed writes and before commit or idempotent success. A refusal
+rolls back, preserves memory authority and generation notifications, and survives
+physical reopen. Cancellation cannot be hidden by a callback returning nil.
+The low-level store CAS remains available to already-authorized internal callers;
+this change does not mount enrollment, forwarding or operator promotion routes.
+
+Focused default-race qualification passes 21 entries without failures or skips,
+including actual SQLite rollback/reopen, exact retry, terminal SQL1811 failure,
+original-context/dependency lifetime and queued admission. The full SQLite, follower, replica, serving, servingauth and servingbuild
+default-race run passes 1,192 entries without failures or skips (296.055 seconds).
+All frozen source identities match; configured scoped lint passes with zero
+issues (8.415 seconds). Evidence:
+`.context/promotion-authorization-20261108/`.
+
+### F20 retained exact-miss performance diagnosis, November 8
+
+No matcher, parser, workload or gate changed. The original five-process gate on
+6cace80f still fails exact-1M miss p50 (158 ns median versus 109 ns). One isolated
+original Evaluate CPU profile reports 88.96 ns/op, zero allocations, and attributes
+most samples to normalization/filter memory loads; nil regex calls are a minor
+cost. One full original latency-sibling CPU profile reproduces 169 ns exact-miss
+p50 with a 35 ns timer p50. Profiling is diagnostic and cannot replace unprofiled
+samples or named-runner evidence. The profiles do not justify a matcher semantic
+or filter-capacity change. Original failures and fixed-class/final gates remain
+open. Evidence: `.context/exact-miss-review-20261108/`.

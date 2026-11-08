@@ -14,6 +14,16 @@ import (
 // complete bundle publisher supplies it; nil never grants promotion eligibility.
 type ServingPin func(context.Context) (replication.Generation, func(), error)
 
+// PromotionAuthorization retains the original verified operator proof and its
+// dependency exclusions. Check must use only pinned memory and the actual clock:
+// no I/O, new locks, Store calls or successor proof. Release runs exactly once
+// after promotion or refusal, including when authorization returns an error.
+// Both functions are mandatory on successful authorization.
+type PromotionAuthorization struct {
+	Check   func(context.Context) error
+	Release func()
+}
+
 // CoordinatorOptions supplies pull scheduling, serving pins and operator policy.
 // Callbacks must honor their finite context and finish work before returning.
 type CoordinatorOptions struct {
@@ -22,7 +32,7 @@ type CoordinatorOptions struct {
 	NodeName          string
 	Interval, Timeout time.Duration
 	Served            ServingPin
-	AuthorizeOperator func(context.Context) error
+	AuthorizeOperator func(context.Context) (PromotionAuthorization, error)
 	// Elapsed is a monotonic duration since coordinator startup, not wall time.
 	// Default time.Since(start), including Go's monotonic clock. Tests inject it.
 	Elapsed func() time.Duration
@@ -212,11 +222,18 @@ func (c *Coordinator) Promote(ctx context.Context, req PromoteRequest) (replicat
 		return replication.Authority{}, err
 	}
 	defer leave()
-	if err := c.opts.AuthorizeOperator(ctx); err != nil {
+	authorization, err := c.opts.AuthorizeOperator(ctx)
+	if authorization.Release != nil {
+		defer authorization.Release()
+	}
+	if err != nil {
 		return replication.Authority{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return replication.Authority{}, err
+	}
+	if authorization.Check == nil || authorization.Release == nil {
+		return replication.Authority{}, ErrForbidden
 	}
 	if req.ConfirmNode != c.opts.NodeName {
 		return replication.Authority{}, ErrIneligible
@@ -224,7 +241,7 @@ func (c *Coordinator) Promote(ctx context.Context, req PromoteRequest) (replicat
 	a := c.opts.Store.Authority()
 	storeRequest := replication.PromoteRequest{ExpectedTerm: req.ExpectedTerm, ExpectedInstalled: req.ExpectedInstalled, RequestID: req.RequestID}
 	if a.Mode == replication.Primary && a.LastPromotionRequest == req.RequestID && a.Parent != nil && a.Parent.Same(req.ExpectedInstalled) && a.Parent.Term.Same(req.ExpectedTerm) {
-		return c.opts.Store.Promote(ctx, storeRequest)
+		return c.opts.Store.PromoteChecked(ctx, storeRequest, authorization.Check)
 	}
 	served, release, err := c.opts.Served(ctx)
 	if release != nil {
@@ -240,7 +257,7 @@ func (c *Coordinator) Promote(ctx context.Context, req PromoteRequest) (replicat
 	if !status.Authority.Term.Same(req.ExpectedTerm) || !status.Installed.Same(req.ExpectedInstalled) {
 		return a, replication.ErrCAS
 	}
-	return c.opts.Store.Promote(ctx, storeRequest)
+	return c.opts.Store.PromoteChecked(ctx, storeRequest, authorization.Check)
 }
 
 // Run pulls until cancellation; rejected exchanges remain visible through Status.

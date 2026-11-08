@@ -821,9 +821,38 @@ The replication coordinator also starts its finite lifetime before waiting for
 another pull, status read or promotion. Canceled waiters do not call the source,
 publication pin or operator authorizer. The admitted operation retains that
 context throughout; a late successful operator check cannot start promotion.
-An expired status request reports no eligibility. Callbacks remain synchronous
-and must honor the supplied context; these bounds do not establish enrollment
-or final operator authority at the store commit.
+An expired status request reports no eligibility. Operator authorization now
+returns the original verified proof's memory/clock check and its dependency
+release. Both are mandatory. The coordinator retains that authorization and
+the serving pin through `PromoteChecked`; SQLite checks the same proof on entry
+and after every staged write, immediately before commit. Exact idempotent
+success also requires that check. Expiry, revocation or cancellation rolls back
+the transition without publishing a new authority or watch lineage. This is
+commit admission: SQLite synchronization can outlast the proof's wall deadline.
+The callback cannot perform I/O, acquire locks, read Store or adopt a successor.
+These seams do not supply enrollment or a production operator route.
+
+```mermaid
+sequenceDiagram
+    participant O as Original operator request
+    participant C as Promotion coordinator
+    participant P as Serving publisher
+    participant S as SQLite
+    O->>C: Finite request, typed node, expected term and image
+    C->>C: Capture verified proof and dependency exclusions
+    C->>P: Pin current complete served generation
+    C->>C: Require spaced failed pulls and exact installed agreement
+    C->>S: PromoteChecked(original proof check)
+    S->>S: Check proof, validate image, stage authority and feed changes
+    S->>S: Check original proof and context before commit
+    alt final refusal
+        S-->>C: Roll back, preserve original authority
+    else admitted
+        S-->>C: Commit and publish new authority
+    end
+    C->>P: Release serving pin
+    C->>C: Release original operator dependencies
+```
 
 ```mermaid
 flowchart LR

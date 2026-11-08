@@ -23,11 +23,11 @@ func TestCoordinatorMonotonicEligibilityServingCASAndRestart(t *testing.T) {
 	var elapsed time.Duration
 	served := base
 	deny := false
-	options := CoordinatorOptions{Store: mirror, NodeName: "follower-b", Interval: time.Second, Elapsed: func() time.Duration { return elapsed }, Source: sourceFunc(func(context.Context, string) (follower.Response, error) { return follower.Response{}, ErrUnavailable }), Served: func(context.Context) (replication.Generation, func(), error) { return served, func() {}, nil }, AuthorizeOperator: func(context.Context) error {
+	options := CoordinatorOptions{Store: mirror, NodeName: "follower-b", Interval: time.Second, Elapsed: func() time.Duration { return elapsed }, Source: sourceFunc(func(context.Context, string) (follower.Response, error) { return follower.Response{}, ErrUnavailable }), Served: func(context.Context) (replication.Generation, func(), error) { return served, func() {}, nil }, AuthorizeOperator: func(context.Context) (PromotionAuthorization, error) {
 		if deny {
-			return ErrForbidden
+			return PromotionAuthorization{}, ErrForbidden
 		}
-		return nil
+		return allowedPromotion(), nil
 	}}
 	c, e := NewCoordinator(options)
 	if e != nil {
@@ -93,7 +93,7 @@ func TestCoordinatorReachableRejectedDataNeverGrantsPromotion(t *testing.T) {
 		base := imageOf(t, mirror).Generation()
 		var elapsed time.Duration
 		next := error(ErrUnavailable)
-		c, e := NewCoordinator(CoordinatorOptions{Store: mirror, NodeName: "b", Interval: time.Second, Elapsed: func() time.Duration { return elapsed }, Served: func(context.Context) (replication.Generation, func(), error) { return base, func() {}, nil }, AuthorizeOperator: func(context.Context) error { return nil }, Source: sourceFunc(func(context.Context, string) (follower.Response, error) { return follower.Response{}, next })})
+		c, e := NewCoordinator(CoordinatorOptions{Store: mirror, NodeName: "b", Interval: time.Second, Elapsed: func() time.Duration { return elapsed }, Served: func(context.Context) (replication.Generation, func(), error) { return base, func() {}, nil }, AuthorizeOperator: func(context.Context) (PromotionAuthorization, error) { return allowedPromotion(), nil }, Source: sourceFunc(func(context.Context, string) (follower.Response, error) { return follower.Response{}, next })})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -109,4 +109,10 @@ func TestCoordinatorReachableRejectedDataNeverGrantsPromotion(t *testing.T) {
 			t.Fatalf("reachable/rejected/cancelled primary grants eligibility: %v", failure)
 		}
 	}
+}
+
+// allowedPromotion is an explicitly unrestricted test authorization. Production
+// callers must retain their actual original proof and dependency exclusions.
+func allowedPromotion() PromotionAuthorization {
+	return PromotionAuthorization{Check: func(ctx context.Context) error { return ctx.Err() }, Release: func() {}}
 }

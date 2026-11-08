@@ -382,8 +382,32 @@ func (s *Store) ObserveAuthority(ctx context.Context, term replication.Term) (re
 // Promote is the atomic store CAS. The coordinator enforces monotonic primary
 // unreachability/two-pull-interval and human confirmation before calling it.
 func (s *Store) Promote(ctx context.Context, req replication.PromoteRequest) (replication.Authority, error) {
+	return s.promote(ctx, req, nil)
+}
+
+// PromoteChecked retains the caller's original pinned authorization through the
+// promotion CAS. check must inspect only that pinned proof and the actual clock;
+// it cannot perform I/O, reenter Store, acquire locks or reacquire authority.
+// The caller holds its dependency exclusions until this method returns. Checks
+// run on entry and immediately before commit or an idempotent success. A final
+// refusal rolls back the entire transition. This is admission, not a guarantee
+// that wall time cannot advance during SQLite's commit.
+func (s *Store) PromoteChecked(ctx context.Context, req replication.PromoteRequest, check func(context.Context) error) (replication.Authority, error) {
+	if ctx == nil || check == nil {
+		return replication.Authority{}, replication.ErrInvalid
+	}
+	if _, finite := ctx.Deadline(); !finite {
+		return replication.Authority{}, replication.ErrInvalid
+	}
+	return s.promote(ctx, req, check)
+}
+
+func (s *Store) promote(ctx context.Context, req replication.PromoteRequest, check func(context.Context) error) (replication.Authority, error) {
 	if req.RequestID == "" || len(req.RequestID) > 256 {
 		return replication.Authority{}, replication.ErrInvalid
+	}
+	if err := checkPromotion(ctx, check); err != nil {
+		return replication.Authority{}, err
 	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
@@ -400,6 +424,9 @@ func (s *Store) Promote(ctx context.Context, req replication.PromoteRequest) (re
 		return a, err
 	}
 	if a.Mode == replication.Primary && a.LastPromotionRequest == req.RequestID && a.Parent != nil && a.Parent.Same(req.ExpectedInstalled) && a.Parent.Term.Same(req.ExpectedTerm) {
+		if err := checkPromotion(ctx, check); err != nil {
+			return a, err
+		}
 		return a, nil
 	}
 	if s.writeBlocked.Load() || a.Mode != replication.Follower || a.Conflict != nil {
@@ -421,6 +448,7 @@ func (s *Store) Promote(ctx context.Context, req replication.PromoteRequest) (re
 	if a.MaxObservedEpoch == math.MaxUint64 || a.Incarnation == math.MaxUint64 {
 		return a, replication.ErrInvalid
 	}
+	before := a
 	parent := image.Generation()
 	a.Parent = &parent
 	a.Term = replication.Term{ClusterID: a.Term.ClusterID, Epoch: max(a.Term.Epoch, a.MaxObservedEpoch) + 1, PrimaryID: a.MemberID, PromotionID: uuid.NewString(), PrimaryName: s.opts.Identity}
@@ -438,6 +466,9 @@ func (s *Store) Promote(ctx context.Context, req replication.PromoteRequest) (re
 	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, strconv.FormatUint(s.head.Load(), 10), metaFeedCompacted); err != nil {
 		return a, err
 	}
+	if err := checkPromotion(ctx, check); err != nil {
+		return before, err
+	}
 	if err := tx.Commit(); err != nil {
 		return a, err
 	}
@@ -446,6 +477,21 @@ func (s *Store) Promote(ctx context.Context, req replication.PromoteRequest) (re
 	s.publishAuthorityLocked(a)
 	s.publishGenerationLocked()
 	return a, nil
+}
+
+func checkPromotion(ctx context.Context, check func(context.Context) error) error {
+	if ctx == nil {
+		return replication.ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if check != nil {
+		if err := check(ctx); err != nil {
+			return err
+		}
+	}
+	return ctx.Err()
 }
 
 func (e *Elector) runDynamic(ctx context.Context, start func(context.Context), stop func()) error {

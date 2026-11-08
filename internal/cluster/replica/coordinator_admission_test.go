@@ -36,7 +36,10 @@ func TestCoordinatorAdmissionBoundsQueuedRequests(t *testing.T) {
 			pins.Add(1)
 			return base, func() {}, nil
 		},
-		AuthorizeOperator: func(context.Context) error { authorizations.Add(1); return nil },
+		AuthorizeOperator: func(context.Context) (PromotionAuthorization, error) {
+			authorizations.Add(1)
+			return allowedPromotion(), nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +131,11 @@ func TestCoordinatorAdmissionPreservesEarlierDeadline(t *testing.T) {
 			pinned++
 			return base, func() {}, nil
 		},
-		AuthorizeOperator: func(ctx context.Context) error { check(ctx); authorized++; return nil },
+		AuthorizeOperator: func(ctx context.Context) (PromotionAuthorization, error) {
+			check(ctx)
+			authorized++
+			return allowedPromotion(), nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -157,12 +164,12 @@ func TestCoordinatorLateAuthorizationCannotPromote(t *testing.T) {
 		Elapsed: func() time.Duration { return elapsed },
 		Source:  sourceFunc(func(context.Context, string) (follower.Response, error) { return follower.Response{}, ErrUnavailable }),
 		Served:  func(context.Context) (replication.Generation, func(), error) { pins++; return base, func() {}, nil },
-		AuthorizeOperator: func(ctx context.Context) error {
+		AuthorizeOperator: func(ctx context.Context) (PromotionAuthorization, error) {
 			select {
 			case <-ctx.Done():
-				return nil
+				return allowedPromotion(), nil
 			case <-time.After(5 * time.Second):
-				return errors.New("authorization had no original bound")
+				return PromotionAuthorization{}, errors.New("authorization had no original bound")
 			}
 		},
 	})
