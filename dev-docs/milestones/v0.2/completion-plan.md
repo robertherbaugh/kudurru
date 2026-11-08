@@ -212,3 +212,8 @@ the explicit scale invocation passes without skips. `make size` produces an
 80,384,160-byte CGO-disabled static ELF under the original 100,000,000-byte limit.
 Exact outcomes and artifact qualifications are in the audit and gap ledger;
 remaining implementation, performance and external release gates stay open.
+
+The measured zone CNAME tail has a one-allocation answer-assembly refinement;
+full zone/cache/primary/authoritative races pass 659 entries with zero skips,
+plus vet and scoped lint. The unchanged original benchmark still needs a fresh
+five-process run; the prior CNAME and pure-list miss regressions remain recorded.

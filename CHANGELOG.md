@@ -281,6 +281,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Zone lookup reserves space for a CNAME and its target together, avoiding an
+  extra answer-slice allocation on ordinary alias queries.
+
 - Blocking: avoid scanning indexed regex batches after a coincidental gram hit
   when every original required literal is absent, preserving rule order and
   exact fallback behavior.

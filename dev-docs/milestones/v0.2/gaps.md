@@ -4482,3 +4482,25 @@ ten original native commands. Evidence: `.context/benchgate-integrity-20261108/`
 These integrity checks do not certify fresh-process provenance or a named runner
 class. F21c/F63 calibration, remaining measured regressions and release gates
 remain open. No baseline refresh, push, deployment or release.
+
+
+### CNAME answer allocation, November 8
+
+The original zone CNAME profile shows answer assembly and slice growth in the
+lookup path. A first alias now reserves two RR slots, so the ordinary alias plus
+one address answer allocates once instead of twice. Additional hops and larger
+RRsets retain normal bounded growth. Query-type behavior, ownership callbacks,
+hop budgets, wildcard copies, zone cuts and answer ordering are unchanged.
+A new allocation assertion also exercises an actual ownership refusal before
+following the target; all prior lookup and benchmark fixtures remain unchanged.
+
+Full zone/zone-cache/primary-zone/authoritative-stage default races pass 659
+entries, zero failures/skips, 30.851530642s and minimum free 10,667,352,064B.
+Actual Kubernetes assets are enabled for the cache suite. Affected vet and
+configured scoped lint exit 0. Evidence: `.context/query-tail-20261108/`.
+The original 3s profiled CNAME sample records two allocations before and one
+after; its after sample is 885.2ns average and 1,774ns p99. Those diagnostic
+samples do not clear the original five-process 1,545ns/1,128ns median regression.
+The independent pure-list miss profile points mainly to filter memory access;
+no speculative Bloom-filter or nil-receiver rewrite is applied. Final-source
+five-process qualification remains required. No baseline, limit or corpus edits.

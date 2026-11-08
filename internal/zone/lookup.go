@@ -248,6 +248,11 @@ func (z *Zone) answer(r *Result, n *node, qname string, qtype uint16, wildcard b
 		return "", true
 	}
 	if c := n.get(dns.TypeCNAME); c != nil {
+		if r.Answer == nil {
+			// The usual chain contains this alias and one target RR. Reserve
+			// both slots once; further hops and larger RRsets grow normally.
+			r.Answer = make([]dns.RR, 0, 2)
+		}
 		r.Answer = appendSet(r.Answer, c, qname, wildcard)
 		return c.RRs[0].(*dns.CNAME).Target, false
 	}
