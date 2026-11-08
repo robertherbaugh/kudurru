@@ -45,6 +45,10 @@ func (s *servingRuntime) runServingReload(ctx context.Context, targets reloadTar
 				}
 				previous = next
 			}
+		} else if errors.Is(err, serving.ErrClosed) {
+			// The publication owner can finish before this observer's caller
+			// receives cancellation. Closure is terminal, not a reload failure.
+			return nil
 		} else if ctx.Err() == nil && !errors.Is(err, serving.ErrPending) && !transientServing(err) {
 			return err
 		}

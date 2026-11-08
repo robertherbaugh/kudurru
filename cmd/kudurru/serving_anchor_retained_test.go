@@ -9,6 +9,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/servingdns"
+	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
@@ -63,6 +64,40 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 			t.Fatal("skipped mutation did not consume its attempt")
 		}
 	}
+	// Exercise actual ingress replies from the original complete lease. These
+	// carry node identity, never canonical authoritative or local zone data.
+	for _, name := range []string{ingress.HealthName, "id.server."} {
+		t.Run(name, func(t *testing.T) {
+			query := new(dns.Msg)
+			query.SetQuestion(name, dns.TypeTXT)
+			if name == "id.server." {
+				query.Question[0].Qclass = dns.ClassCHAOS
+			}
+			request := &pipeline.Request{Ctx: ctx, Msg: query, Serving: req.Serving}
+			output, err := captureRootAnchorOutput(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := (&ingress.Stage{NodeID: "original-node"}).Serve(request, func(*pipeline.Request) (*pipeline.Response, error) {
+				t.Fatal("node identity reached a data-answering stage")
+				return nil, nil
+			})
+			if err != nil || len(response.Msg.Answer) != 1 || response.Msg.Answer[0].Header().Rrtype != dns.TypeTXT {
+				t.Fatal("ingress identity reply failed", err)
+			}
+			o := output.(*rootAnchorOutput)
+			if err := o.BindResponse(response); err != nil {
+				t.Fatal(err)
+			}
+			called := false
+			if err := o.Emit(func() error { called = true; return nil }); err != nil || !called {
+				t.Fatal("ordinary commit suppressed ingress identity", err)
+			}
+			if err := o.Next(); err == nil {
+				t.Fatal("node identity granted transfer continuation")
+			}
+		})
+	}
 	for _, tc := range []struct {
 		name   string
 		origin pipeline.ResponseOrigin
@@ -79,6 +114,7 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 		{"unattributed", pipeline.OriginUnknown, pipeline.StatusForwarded, dns.RcodeSuccess, false},
 		{"unavailable", pipeline.OriginUnknown, pipeline.StatusServfailUnsynced, dns.RcodeServerFailure, true},
 		{"unavailable success", pipeline.OriginUnknown, pipeline.StatusServfailUnsynced, dns.RcodeSuccess, false},
+		{"authoritative special status", pipeline.OriginAuthoritative, pipeline.StatusSpecialDomain, dns.RcodeSuccess, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			output, err := captureRootAnchorOutput(req)

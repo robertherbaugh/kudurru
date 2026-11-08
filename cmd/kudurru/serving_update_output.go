@@ -116,6 +116,12 @@ func retainedDNSResponse(response *pipeline.Response) bool {
 	if response.Origin == pipeline.OriginForwarded || response.Origin == pipeline.OriginSynthetic && response.Status.Class() == pipeline.ClassBlocked {
 		return true
 	}
+	// Only ingress produces SpecialDomain: node health and CHAOS identity
+	// replies contain no canonical zone data. Keep the last complete route's
+	// liveness available while a settings successor cannot be prepared.
+	if response.Status == pipeline.StatusSpecialDomain && response.Origin == pipeline.OriginUnknown {
+		return true
+	}
 	// Expired/unavailable local data may report its empty refusal. This gives
 	// no local answer, delegation, denial proof or transfer generation credit.
 	m := response.Msg

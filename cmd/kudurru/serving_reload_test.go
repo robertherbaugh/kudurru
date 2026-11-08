@@ -101,3 +101,18 @@ func TestServingReloadInvalidatesRegexOnlyPublications(t *testing.T) {
 		waitControlFlush(t, flushed)
 	}
 }
+
+func TestServingReloadJoinsClosedPublisherBeforeCallerCancellation(t *testing.T) {
+	f := newServingCommandFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	// Independent owner shutdown precedes cancellation of the subscriber.
+	// Reproduces the terminal capture regardless of scheduler ordering.
+	f.s.publisher.Close()
+	if err := f.s.runServingReload(ctx, reloadTargets{logger: slog.New(slog.DiscardHandler)}, nil); err != nil {
+		t.Fatal("closed publisher reported a reload failure", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("subscriber waited for caller cancellation")
+	}
+}

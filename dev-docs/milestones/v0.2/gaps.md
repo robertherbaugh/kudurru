@@ -5800,3 +5800,44 @@ by the original bundle push and independent remote verification. Evidence:
 .context/catalogue-publication-20261108/published-receipt.json and
 .context/hosted-release-20261108/catalogue-race.json. F23 is complete;
 other implementation, hosted performance and external acceptance gates remain.
+
+
+### G21 ingress liveness and operational shutdown, November 8
+
+CI42522338875 exposed a health-query timeout after query-log preparation failed,
+and an operational subscriber reporting publisher closure during shutdown.
+The unchanged health case failed in all three local race repetitions (exit1,
+62.929s); the subscriber failure did not recur in those three runs. D334 retains
+only ingress health/CHAOS identity responses across ordinary data commits and
+makes owner closure terminal for the observer. A deterministic test closes the
+publisher while the observer's caller remains live. Authoritative/local/mixed
+responses, native cache mutations and actual anchor retirement stay guarded.
+
+Focused default races pass21 entries with zero failures/skips (66.750s), including
+the original mounted failed-preparation case, actual ingress replies, original
+UPDATE data-generation refusal, blocked output/first-Managed exclusion and the
+reload observer controls. Configured command lint passes with zero issues
+(42.907s). The first lint launch found no executable on PATH and executed no
+scanner; the retained installed binary supplied the successful invocation.
+Source02 matches. Earlier hosted/local failures stay
+retained at .context/ci-current-fixes-20261108/ and
+.context/hosted-release-20261108/ci-current-go-private.log. The hosted browser
+primary-read timeout is a separate unresolved qualification item.
+
+### F63/G23 current paired Ubicloud comparison, November 8
+
+Run42522360297 measured original0cc9565e and candidate91cb21bb together on one
+AMD Ryzen9 7950X3D VM in the selected Ubicloud class, Go1.27.3, GOMAXPROCS6.
+Independent review verifies both complete Git-source manifests, native argv,
+report hashes, all60 successful native processes and10 successful shape/absolute
+gates, group reaping and all811 five-value vectors (4,055 measurements).
+The strict comparisons exit0/1/0 for blocking-zone/cache/upstream, with no missing
+original metrics. Cache hit191.1 versus158.2ns and Set313.3 versus258.1ns still
+fail the original20% plus noise-floor rule. Cache memory308.7 versus292.7bytes
+per entry now passes. All other original compared keys pass in this run.
+
+The combined native result is1 and release_qualified=false. These paired results
+do not erase the earlier EPYC run's failures or qualify new metrics. No sample,
+threshold, baseline or workload changed. Current implementation and final gates
+remain open. Artifacts and independent review: .context/hosted-release-20261108/
+paired-current-artifact/ and paired-current-reviewed-{summary.json,vectors.csv}.
