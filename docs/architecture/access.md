@@ -120,9 +120,18 @@ authentication effects together. The command is bounded by the earlier original
 deadline or thirty seconds. Malformed state refuses without repair; followers
 retain the exact document through install/restart but cannot mutate it locally.
 
-This mount covers local login, including its supplied TOTP proof. Self-service
-password/factor routes and OIDC attempt limits still have separate local admission;
-enrolled-replica request forwarding remains unmounted. Two adapters sharing one
+This mount covers local login, including its supplied TOTP proof. D307 also
+shares these counters across authenticated TOTP setup, confirmation and disable.
+Current cookie/account and CSRF checks precede the same original command. Invalid
+challenge/candidate proofs may count only before factor state changes; all later
+errors roll back counters and factor effects together. Successful setup or an
+already-disabled factor can advance operational counters while leaving all
+factor/object state unchanged. Administrator recovery keeps its existing current
+users/write authorization. The one-second factor throttle remains an additional
+local control; distributed failure caps do not claim distributed pacing.
+
+Self-service password changes and OIDC attempt limits still have separate local
+admission; enrolled-replica request forwarding remains unmounted. Two adapters sharing one
 Store and physical follower install/restart tests do not prove production
 multi-node forwarding.
 

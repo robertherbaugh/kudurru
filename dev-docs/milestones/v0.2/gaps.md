@@ -4115,3 +4115,50 @@ wall 146.833130272s, minimum 14,440,554,496B.
 Final root vet exits 0, wall 2.005811144s. Receipts/freezes/original sources
 are retained under `.context/oidc-own-commit-20261108/`. Configured lint remains
 unavailable; full release and remaining F46 routes/forwarding gates stay open.
+
+
+### F46 shared SQLite factor proof failures (D307), November 8
+
+Authenticated TOTP setup, confirmation and disable now use the same bounded
+shared IP-prefix/username counters as local login. Cookie, exact current account,
+CSRF and existing local factor pacing remain admission prerequisites. Counters,
+proof verification and factor effects share the original finite command; the
+private security callback never receives a caller-claimed verification result.
+
+Only command-bound password refusals or challenge/candidate-code refusals issued
+before any authentication mutation can commit failures. Later conflicts,
+enrollment/factor errors, original context expiry, clock rollback and poisoned
+commands roll back counters and authentication state together. Valid proofs are
+not verified a second time at final commit. The original five-IP/ten-username
+policy and 512KiB/4096-key bounds remain unchanged. The one-second factor throttle
+remains an additional local control, not a newly claimed distributed pace.
+
+Real HTTP tests alternate failed setup/disable requests across separate adapters,
+recreate one adapter and verify that setup, confirmation and login all refuse the
+shared lock. Every failure changes only the versioned counter row; every other
+payload field and object revision remain exact. Real challenge/code tests combine
+setup, malformed challenge, disable and incorrect numeric code failures, preserve
+factor refusal ownership across restart, and confirm exactly three password checks
+across five attempts; challenge and candidate-code refusals occur before hashing.
+Locked confirmation does no hash.
+Valid activation and final-error/clock/poison cases assert actual target entry,
+exact rollback or one committed factor/counter effect.
+
+Focused default-race passes 24 entries, no failures/skips, wall
+57.896847543s, minimum 14,382,419,968B. Full security/loginlimit
+regression passes 110 entries, no test failures/skips, wall
+81.331390614s, minimum 14,547,116,032B. The sqliteadapter package
+has no direct test files; its actual transaction behavior is exercised by the
+security and mounted HTTP tests. Affected vet exits 0 in
+2.807594720s. Exact source freezes, original five-file archive and
+receipts are in `.context/sqlite-factor-lockouts-20261108/`.
+
+Three existing HTTP assertions now distinguish the intended operational counter
+commit from unchanged authentication state, comparing the entire remaining
+image and object revision; original declarations/messages and negative bodies
+remain. Independent failure requests wait for publication of the actual previous
+source before capturing their next request; no refused mutation is replayed.
+Pure factor APIs retain their original no-op behavior and regression tests.
+Self-service password changes, OIDC budgets, enrolled-node forwarding, configured
+lint and final F46/G12/G22/release gates remain open. Kubernetes factor authority
+is not implied by this complete-SQLite mount. No push or release.

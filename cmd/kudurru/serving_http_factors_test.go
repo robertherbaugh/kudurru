@@ -158,7 +158,7 @@ func TestServingHTTPFactorsSetupConfirmLoginDisable(t *testing.T) {
 	}
 	setup := factorSetupHTTP(t, f, cookie, info.CSRF, "")
 	after, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil || !before.Generation().Same(after.Generation()) {
+	if err != nil || !factorAdmissionOnly(before, after) {
 		t.Fatal("setup activated a candidate before confirmation", err)
 	}
 	confirmed := f.call(t, "POST", "/auth/totp/confirm", factorBody(t, api.TOTPConfirmRequest{
@@ -254,7 +254,7 @@ func TestServingHTTPFactorsStrictOwnerBodyAndOrigin(t *testing.T) {
 	}
 	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/totp/setup", `{"currentPassword":"wrong"}`, "", cookie, info.CSRF), 401)
 	after, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil || !before.Generation().Same(after.Generation()) {
+	if err != nil || !factorAdmissionOnly(before, after) {
 		t.Fatal("denied requests changed durable factor state", err)
 	}
 }
@@ -416,6 +416,7 @@ func TestServingHTTPFactorsMustChangeAndFailureAdmission(t *testing.T) {
 		f := newServingHTTPFixture(t, false)
 		cookie, info := f.login(t)
 		for range 5 {
+			localUsersFresh(t, f)
 			expectServingHTTPStatus(t, f.call(t, "POST", "/auth/totp/setup", `{"currentPassword":"wrong"}`, "", cookie, info.CSRF), 401)
 		}
 		expectServingHTTPStatus(t, f.call(t, "POST", "/auth/totp/setup", `{"currentPassword":"initial-password"}`, "", cookie, info.CSRF), 429)
@@ -435,7 +436,7 @@ func TestServingHTTPFactorsDisabledNoopOriginalLease(t *testing.T) {
 	expectServingHTTPStatus(t, w, 204)
 	factorCleared(t, w)
 	after, err := f.s.opts.Store.ReadGeneration(t.Context())
-	if err != nil || !before.Generation().Same(after.Generation()) {
+	if err != nil || !factorAdmissionOnly(before, after) {
 		t.Fatal("already-disabled operation changed durable state", err)
 	}
 	request := httptest.NewRequest("POST", "http://kudurru.test/api/v1/auth/totp/disable", strings.NewReader(body))

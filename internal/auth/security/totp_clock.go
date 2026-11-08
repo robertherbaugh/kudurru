@@ -41,7 +41,7 @@ func ConfirmTOTPWithClock(ctx context.Context, tx *sqlite.CommandTx, deps servin
 	observed := clock().UTC()
 	c, seed, err := openFactor(deps, challenge, observed)
 	if err != nil {
-		return err
+		return refuseFactorAdmission(tx, err)
 	}
 	if err := confirmTOTP(ctx, tx, deps, proof, c, seed, code, observed); err != nil {
 		return err

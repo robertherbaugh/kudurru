@@ -110,7 +110,7 @@ func BeginTOTP(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depen
 func ConfirmTOTP(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential, challenge, code string, now time.Time) error {
 	c, seed, err := openFactor(deps, challenge, now)
 	if err != nil {
-		return err
+		return refuseFactorAdmission(tx, err)
 	}
 	return confirmTOTP(ctx, tx, deps, proof, c, seed, code, now)
 }
@@ -127,13 +127,13 @@ func confirmTOTP(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dep
 	}
 	step, err := totp.Match(seed, code, now)
 	if err != nil {
-		return servingauth.ErrCredentials
+		return refuseFactorAdmission(tx, servingauth.ErrCredentials)
 	}
 	account, version, id := seed.Identity()
 	next, err := totp.Advance(totp.Record{FormatVersion: totp.FormatVersion, Account: account, SeedVersion: version, SeedID: id, Enabled: true,
 		HasConsumed: prior.HasConsumed, LastConsumedStep: prior.LastConsumedStep}, seed, step)
 	if err != nil {
-		return servingauth.ErrCredentials
+		return refuseFactorAdmission(tx, servingauth.ErrCredentials)
 	}
 	u, err := factorAccount(ctx, tx, deps, proof, now)
 	if err != nil {

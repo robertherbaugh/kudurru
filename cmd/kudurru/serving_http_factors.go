@@ -14,6 +14,7 @@ import (
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
@@ -104,8 +105,11 @@ func (h *servingHTTP) totpStatus(w http.ResponseWriter, r *http.Request) error {
 	return servingauth.ErrCredentials
 }
 
-func (h *servingHTTP) factorCommand(r *http.Request, original auth.Principal, cookie servingauth.Credential, password, oldCode string, fn func(context.Context, *sqlite.CommandTx, servingauth.Dependencies, servingauth.Credential) error) error {
-	return h.opts.Runtime.currentAuthCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+func (h *servingHTTP) factorCommand(r *http.Request, original auth.Principal, cookie servingauth.Credential, password, oldCode string, fn func(context.Context, *sqlite.CommandTx, servingauth.Dependencies, servingauth.Credential) (error, error)) error {
+	ctx, cancel := context.WithTimeout(r.Context(), loginlimit.Lifetime)
+	defer cancel()
+	var refused error
+	err := h.opts.Runtime.currentAuthCommand(ctx, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		p, err := servingauth.AuthenticateCurrentWithClock(ctx, tx, deps, cookie, h.now)
 		if err != nil {
 			return err
@@ -113,8 +117,18 @@ func (h *servingHTTP) factorCommand(r *http.Request, original auth.Principal, co
 		if cookie.Kind != servingauth.Cookie || p.Kind != auth.KindUser || p.Provider != "local" || p.MustChangePassword || p.AccountUID == "" || p.AccountUID != original.AccountUID || p.Name != original.Name || p.ID != original.ID {
 			return servingauth.ErrDenied
 		}
-		return fn(ctx, tx, deps, servingauth.Credential{Kind: servingauth.Password, Username: p.Name, Value: password, TOTPCode: oldCode})
+		refused, err = fn(ctx, tx, deps, servingauth.Credential{Kind: servingauth.Password, Username: p.Name, Value: password, TOTPCode: oldCode})
+		return err
 	})
+	if err != nil {
+		return err
+	}
+	h.opts.Runtime.publisher.Wake()
+	var locked *loginlimit.Locked
+	if errors.As(refused, &locked) {
+		return &auth.Error{Status: http.StatusTooManyRequests, Key: "rate_limited", Message: "too many failed attempts; try again later", RetryAfter: locked.RetryAfter}
+	}
+	return refused
 }
 
 func (h *servingHTTP) factorAdmissionFor(r *http.Request, name, code string) error {
@@ -137,10 +151,10 @@ func (h *servingHTTP) beginTOTP(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	var setup security.FactorSetup
-	err = h.factorCommand(r, p, cookie, req.CurrentPassword, req.TOTPCode, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential) error {
-		var err error
-		setup, err = security.BeginTOTPWithClock(ctx, tx, deps, proof, h.now)
-		return err
+	err = h.factorCommand(r, p, cookie, req.CurrentPassword, req.TOTPCode, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential) (error, error) {
+		var refused, err error
+		setup, refused, err = security.BeginTOTPWithAdmission(ctx, tx, deps, proof, h.clientKey(r), h.now)
+		return refused, err
 	})
 	h.loginResult(r, p.Name, err)
 	if err != nil {
@@ -168,8 +182,8 @@ func (h *servingHTTP) confirmTOTP(w http.ResponseWriter, r *http.Request) error 
 	if err := h.factorAdmissionFor(r, p.Name, req.Code); err != nil {
 		return err
 	}
-	err = h.factorCommand(r, p, cookie, req.CurrentPassword, req.TOTPCode, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential) error {
-		return security.ConfirmTOTPWithClock(ctx, tx, deps, proof, req.Challenge, req.Code, h.now)
+	err = h.factorCommand(r, p, cookie, req.CurrentPassword, req.TOTPCode, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential) (error, error) {
+		return security.ConfirmTOTPWithAdmission(ctx, tx, deps, proof, req.Challenge, req.Code, h.clientKey(r), h.now)
 	})
 	h.loginResult(r, p.Name, err)
 	if err != nil {
@@ -195,8 +209,8 @@ func (h *servingHTTP) disableTOTP(w http.ResponseWriter, r *http.Request) error 
 	if err := h.factorAdmissionFor(r, p.Name, req.TOTPCode); err != nil {
 		return err
 	}
-	err = h.factorCommand(r, p, cookie, req.CurrentPassword, req.TOTPCode, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential) error {
-		return security.DisableTOTPWithClock(ctx, tx, deps, proof, h.now)
+	err = h.factorCommand(r, p, cookie, req.CurrentPassword, req.TOTPCode, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential) (error, error) {
+		return security.DisableTOTPWithAdmission(ctx, tx, deps, proof, h.clientKey(r), h.now)
 	})
 	h.loginResult(r, p.Name, err)
 	if err != nil {
