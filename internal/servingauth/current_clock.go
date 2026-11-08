@@ -15,25 +15,30 @@ import (
 // time.Now. Root must retain original writer and dependency exclusion through the
 // whole Command, and call this before mutations or returning a dedup result.
 func ReauthorizeCurrentWithClock(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, proof Credential, attrs rbac.Attributes, clock func() time.Time) (auth.Principal, rbac.Decision, error) {
+	p, decision, _, err := reauthorizeCurrentWithValidity(ctx, tx, deps, proof, attrs, clock)
+	return p, decision, err
+}
+
+func reauthorizeCurrentWithValidity(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, proof Credential, attrs rbac.Attributes, clock func() time.Time) (auth.Principal, rbac.Decision, credentialValidity, error) {
 	if clock == nil {
 		clock = time.Now
 	}
 	view, err := prepareCurrent(ctx, tx, deps)
 	if err != nil {
-		return auth.Principal{}, rbac.Decision{}, err
+		return auth.Principal{}, rbac.Decision{}, credentialValidity{}, err
 	}
 	defer view.Release()
 	now := clock().UTC()
 	p, validity, err := authenticateCurrentWithValidity(ctx, tx, view, proof, now)
 	if err != nil {
-		return auth.Principal{}, rbac.Decision{}, err
+		return auth.Principal{}, rbac.Decision{}, credentialValidity{}, err
 	}
 	decision, err := view.Authorize(p, attrs, now)
 	if err != nil {
-		return auth.Principal{}, decision, err
+		return auth.Principal{}, decision, credentialValidity{}, err
 	}
 	if !decision.Allowed {
-		return auth.Principal{}, decision, ErrDenied
+		return auth.Principal{}, decision, credentialValidity{}, ErrDenied
 	}
 	// The View is released at helper return, but this detached evidence belongs
 	// to the original Command through its final checks, when tx is inactive.
@@ -43,9 +48,9 @@ func ReauthorizeCurrentWithClock(ctx context.Context, tx *sqlite.CommandTx, deps
 		}
 		return validity.validAt(clock().UTC())
 	}); err != nil {
-		return auth.Principal{}, decision, err
+		return auth.Principal{}, decision, credentialValidity{}, err
 	}
-	return detachedPrincipal(p), decision, nil
+	return detachedPrincipal(p), decision, validity, nil
 }
 
 // credentialValidity has no public constructor or raw credential. It retains

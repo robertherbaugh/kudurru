@@ -6143,3 +6143,35 @@ ten-lifecycle investigation then passed all ten fresh signed restart tests
 with original four-second exchange bounds and no replay. The hosted TSIG
 failure remains unreproduced; these successes do not establish its cause.
 All frozen source identities and the protected dashboard artifact match.
+
+
+### F60b/G11 verified credential lifetime through output, November 8
+
+D339 adds ReauthorizeCurrentForOutput, sharing the existing raw-proof verifier
+and final commit check. Its opaque CredentialLifetime retains only original
+verified timing and the trusted clock. Under the separately admitted original
+Store output scope it shortens the finite context to the verified token/JWT or
+cookie absolute/idle deadline, then checks time and cancellation around actual
+emission. It supplies no permission, writer authority or completion receipt.
+Password/TOTP forwarding remains unsupported; no transaction context is retained
+after commit. Actual output refusal leaves durable completion independent.
+
+Tests use real API tokens, sealed cookies and signed JWTs across eight local/
+external credential variants. They cover earlier operation bounds, expiry
+before/during output, clock regression, cancellation, nil/unverified evidence
+and preserved committed rows. Enrolled HTTP/1 and HTTP/2 API-token composition
+uses the derived Store-scoped context. An actual net.Pipe write stops at the
+verified token expiry; pre-output expiry enters no transport callback.
+
+The first focused command passed ten serving-auth entries but failed to compile
+the coordinator fixture because tokens.Parse returns a Boolean. That failure
+is retained; the corrected coordinator selection passes 14 entries. Full
+serving-auth/coordinator/replica default races pass 339 entries without failures
+or skips (94.383s). Configured three-package lint passes with zero issues
+(14.232s). All frozen sources match. Evidence:
+.context/member-credential-output-20261108/.
+
+Production root domains, public forwarding ingress/final response, HA listener
+activation/join/promotion and complete restart/partition/rejoin acceptance remain
+open. Cookie/JWT verification here is concrete but its member HTTP wire
+composition remains separate follow-up work. No release qualification is claimed.

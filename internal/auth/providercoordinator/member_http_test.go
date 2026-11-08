@@ -29,6 +29,7 @@ import (
 type scopedHTTPDomain struct {
 	deps           servingauth.Dependencies
 	authorizations *atomic.Int32
+	lifetime       **servingauth.CredentialLifetime
 }
 
 func (d scopedHTTPDomain) Authorize(ctx context.Context, tx replica.CommandTx, command replica.Command) (context.Context, error) {
@@ -37,13 +38,14 @@ func (d scopedHTTPDomain) Authorize(ctx context.Context, tx replica.CommandTx, c
 	if err != nil {
 		return nil, err
 	}
-	p, _, err := servingauth.ReauthorizeCurrentWithClock(ctx, tx.State().(*sqlite.CommandTx), d.deps, raw, rbac.Attributes{Resource: "stats", Verb: "read"}, time.Now)
+	p, lifetime, err := servingauth.ReauthorizeCurrentForOutput(ctx, tx.State().(*sqlite.CommandTx), d.deps, raw, rbac.Attributes{Resource: "stats", Verb: "read"}, time.Now)
 	if err != nil {
 		return nil, err
 	}
 	if p.Kind != command.Subject.Kind || p.ID != command.Subject.ID || p.Provider != command.Subject.Provider || p.TokenID != command.Subject.CredentialID || !p.CredentialIssuedAt.Equal(command.Subject.IssuedAt) {
 		return nil, replica.ErrForbidden
 	}
+	*d.lifetime = lifetime
 	return ctx, nil
 }
 
@@ -67,12 +69,15 @@ func TestMemberCoordinatorActualScopedHTTPFlush(t *testing.T) {
 				ExecuteScoped: func(ctx context.Context, request *sqlite.MemberRequest, command replica.Command, emit func(context.Context, replica.Outcome) error) error {
 					ctx = sqlite.WithWriterToken(ctx, writerToken)
 					var out replica.Outcome
+					var lifetime *servingauth.CredentialLifetime
 					_, err := f.coordinator.WithMemberCommandOutput(ctx, target, request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
-						service := replica.CommandService{Domain: scopedHTTPDomain{deps: deps, authorizations: &authorizations}}
+						service := replica.CommandService{Domain: scopedHTTPDomain{deps: deps, authorizations: &authorizations, lifetime: &lifetime}}
 						var err error
 						out, err = service.StageSQLite(ctx, tx, command)
 						return err
-					}, func(scope context.Context) error { return emit(scope, out) })
+					}, func(scope context.Context) error {
+						return lifetime.WithOutput(scope, func(bounded context.Context) error { return emit(bounded, out) })
+					})
 					return err
 				}})
 			if err != nil {

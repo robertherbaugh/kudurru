@@ -1008,6 +1008,20 @@ structured logging redact secrets; explicit JSON is transport data and must
 never be used for audit or diagnostic logging. Root domain policy and listener
 assembly remain required.
 
+`ReauthorizeCurrentForOutput` performs the same current raw-proof authorization
+and final commit-time validation, then returns opaque `CredentialLifetime`
+evidence. It retains only verified time bounds and the trusted verifier clock,
+not raw credentials, the released view or the transaction's temporary context.
+Under the original Store-issued output scope, `WithOutput` derives a child
+context with the earlier original or credential deadline; cookies retain both
+absolute and idle expiry. It checks time and cancellation around synchronous
+emission. The transport must install that deadline and finish its cancellation
+callbacks before releasing the enclosing output guard. Nil/unverified evidence
+and unbounded contexts refuse output. This evidence supplies no permission or
+completion receipt; output failure cannot undo a committed command. Enrolled
+HTTP/1 and HTTP/2 composition uses the derived context without replacing the
+private Store scope. Production root domain/listener assembly remains open.
+
 The output deadline also respects the original command expiration. Failed writes,
 flush errors, lost original admission and callback failures abort the HTTP stream
 rather than allowing handler-return buffering to emit protected bytes. After a
