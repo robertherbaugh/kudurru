@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- The pending managed-root writer adapter preserves terminal poll failures
+  across host and cluster-runner restarts, including cancellation after a
+  complete receipt. Managed activation remains gated separately.
+
 - Managed edge cache bypass survives supervisor restarts in its persistent
   configuration directory. Startup refuses a later cache-enabling configuration
   or damaged retained policy, and concurrent supervisors cannot own the same

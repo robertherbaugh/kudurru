@@ -21,6 +21,14 @@ type anchorAcquisitionFailure struct{ err error }
 func (e *anchorAcquisitionFailure) Error() string { return "root anchor acquisition failed" }
 func (e *anchorAcquisitionFailure) Unwrap() error { return e.err }
 
+// A completed receipt must remain terminal even when caller cancellation races
+// authentication or the final command. Outer workers may join, but cannot turn
+// that cancellation into permission to acquire the same source again.
+type anchorTerminalFailure struct{ err error }
+
+func (e *anchorTerminalFailure) Error() string { return e.err.Error() }
+func (e *anchorTerminalFailure) Unwrap() error { return e.err }
+
 type anchorRetrySource struct {
 	owner                        accepted.Version
 	policyID, seeds              string
@@ -109,12 +117,12 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 			return step, errAnchorPolicy
 		}
 	}
-	if ctx.Err() != nil {
-		return step, ctx.Err()
-	}
 	var acquisition *anchorAcquisitionFailure
 	if !errors.As(err, &acquisition) {
-		return step, err
+		return step, &anchorTerminalFailure{err: err}
+	}
+	if ctx.Err() != nil {
+		return step, ctx.Err()
 	}
 	// No authenticated input or state mutation has entered this failure path.
 	// The pure API supplies only the next NEW acquisition's wall schedule.

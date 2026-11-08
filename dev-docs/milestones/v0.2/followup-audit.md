@@ -1901,3 +1901,24 @@ Source review also confirms two independent automatic retry layers, RunWriter
 and cluster.Runner.superviseLeader. A future terminal anchor outcome must survive
 both without stopping unrelated writer work. This remains a mounting constraint,
 not a claim that the current unmounted worker is active.
+
+
+### F28 terminal writer state across both retry layers
+
+A runtime-owned terminal record now survives host replacement and cluster
+Runner restart within the original elected term/incarnation. The failed anchor
+child stays joined until cancellation, leaving unrelated writer services alive.
+Completed-receipt cancellation remains terminal and preserves original error
+identity. A canceled incomplete socket joins without inventing a receipt; only
+a genuinely new term/incarnation clears the terminal record. This adapter is
+still unmounted; managed activation and full F28 acceptance remain open.
+
+Evidence: `.context/anchor-writer-terminal-20261108/`. Initial focused race
+failed one new test because its server accepted only one exchange. That fixture
+now accepts and holds both original canceled callers. The correction also adds
+a real signed receipt with final-pin cancellation test. Focused race passes 10
+entries; composed Anchor/RootAnchor/ServingRuntime race passes 92, no skips or
+failures. Vet exits 0. First scoped lint failed one unused test parameter;
+renaming only that parameter to underscore yields configured lint exit 0 with
+zero issues (23.6383 s). Production source matches the successful race/vet cut.
+Prior failures and all performance/external gates remain retained.

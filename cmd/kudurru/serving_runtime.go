@@ -69,6 +69,7 @@ type servingRuntime struct {
 	primary      *primaryRuntime
 	anchorPin    currentguard.PinFunc
 	anchors      *rootAnchorOwner
+	anchorWriter anchorWriterControl
 	status       *servingbuild.PrimaryStatus
 	integrations *integrationRuntime
 	catalog      *servingbuild.CatalogRuntime

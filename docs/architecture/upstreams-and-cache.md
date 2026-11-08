@@ -362,6 +362,15 @@ notice. Cancellation joins the original socket/wait before return. The scheduler
 is not mounted by the writer episode; installed edge activation admission and
 the remaining managed acceptance gates still precede that mount.
 
+Its writer adapter retains a terminal failure in the runtime for the original
+elected term and incarnation, across both host replacement and cluster-runner
+restarts. The failed anchor child waits for cancellation while other writer
+services continue; the caller joins it before releasing the borrowed host. A
+complete receipt remains terminal even when cancellation races final admission.
+Cancellation of an incomplete socket acquisition can join without inventing a
+received observation. Only a new elected term or incarnation clears the terminal
+record. This adapter is still unmounted pending activation admission.
+
 A separate private follower adapter captures actual installed managed history,
 canonical policy and the local denial attempt before its own numeric TCP
 acquisition. The first complete frame receives that operation's opaque local
