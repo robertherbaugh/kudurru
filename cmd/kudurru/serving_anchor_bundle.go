@@ -73,6 +73,7 @@ func newRootAnchorOwner(ctx context.Context, store *sqlite.Store, host *config.C
 type recursiveRootSeal struct {
 	base              replication.Generation
 	dependencyCurrent func() bool
+	dnsDependencies   func() bool
 	managed           *sqlite.AnchorResolverInput
 	static            *sqlite.AnchorStaticInput
 	admission         *rootAnchorAdmission
@@ -82,6 +83,18 @@ func (s *recursiveRootSeal) current() bool {
 	if s == nil || s.dependencyCurrent == nil || !s.dependencyCurrent() {
 		return false
 	}
+	return s.inputCurrent()
+}
+
+// Recursive/policy DNS responses retain their immutable policy through ordinary
+// canonical commits. Authoritative output, publication and detached mutations
+// still require full data currency. Installed dependencies and the actual
+// static/managed anchor owner remain mandatory for every final handoff.
+func (s *recursiveRootSeal) dnsCurrent() bool {
+	return s != nil && s.dnsDependencies != nil && s.dnsDependencies() && s.inputCurrent()
+}
+
+func (s *recursiveRootSeal) inputCurrent() bool {
 	if s.managed != nil {
 		return s.static == nil && s.admission.current() && s.managed.Current()
 	}
@@ -111,11 +124,18 @@ func (o *rootAnchorOwner) prepare(ctx context.Context, candidate serving.Candida
 	}
 	base := candidate.Token.Generation()
 	parts := make(map[string]bool, len(prepared.Components))
+	var runtime *servingbuild.RuntimeOwner
 	for _, part := range prepared.Components {
 		if parts[part.Name] || part.Name == recursiveRootComponent || part.Identity == "" || !part.Base.Same(base) || rootAnchorNil(part.Value) {
 			return prepared, serving.ErrComponents
 		}
 		parts[part.Name] = true
+		if part.Name == "runtime" {
+			runtime, _ = part.Value.(*servingbuild.RuntimeOwner)
+		}
+	}
+	if runtime == nil {
+		return prepared, serving.ErrComponents
 	}
 	for _, required := range serving.CompleteManifest() {
 		if !parts[required] {
@@ -142,7 +162,7 @@ func (o *rootAnchorOwner) prepare(ctx context.Context, candidate serving.Candida
 	if err != nil {
 		return prepared, err
 	}
-	seal := &recursiveRootSeal{base: base, dependencyCurrent: prepared.Current}
+	seal := &recursiveRootSeal{base: base, dependencyCurrent: prepared.Current, dnsDependencies: runtime.DependenciesCurrent}
 	var domain [32]byte
 	switch policy.Mode {
 	case config.RootAnchorsStatic:
@@ -231,7 +251,11 @@ type recursiveRootRead struct {
 }
 
 func (s *recursiveRootSeal) captureRead(ctx context.Context) (*recursiveRootRead, error) {
-	if !s.current() {
+	return s.captureReadCurrent(ctx, s.current)
+}
+
+func (s *recursiveRootSeal) captureReadCurrent(ctx context.Context, current func() bool) (*recursiveRootRead, error) {
+	if current == nil || !current() {
 		return nil, serving.ErrDependency
 	}
 	read := &recursiveRootRead{seal: s}
@@ -254,9 +278,9 @@ func (s *recursiveRootSeal) withRead(read *recursiveRootRead, fn func(func() err
 	return s.withReadCurrent(read, s.current, fn)
 }
 
-// Only a root-issued UPDATE completion may substitute the original writer and
-// dependency check for data-generation currency. The original mode/R attempt
-// and its lifetime remain mandatory for both kinds of emission.
+// Root chooses either full data currency, retained recursive/policy DNS input,
+// or the original writer of an UPDATE completion. The original mode/R attempt
+// and its lifetime remain mandatory for every handoff.
 func (s *recursiveRootSeal) withReadCurrent(read *recursiveRootRead, dependencyCurrent func() bool, fn func(func() error) error) error {
 	if s == nil || read == nil || read.seal != s || fn == nil || dependencyCurrent == nil {
 		return serving.ErrComponents

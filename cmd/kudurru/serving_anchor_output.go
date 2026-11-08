@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 
+	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -19,6 +20,10 @@ type rootAnchorOutput struct {
 	state atomic.Uint32
 	ack   *rootUpdateAcknowledgment
 	bound bool
+	// Only a bound ordinary recursive/policy response uses retained DNS data.
+	// Unbound output, authoritative data and transfer continuations stay strict.
+	query       bool
+	retainedDNS bool
 }
 
 const (
@@ -33,11 +38,13 @@ func captureRootAnchorOutput(req *pipeline.Request) (dnsserver.Output, error) {
 	if err != nil {
 		return nil, err
 	}
-	read, err := seal.captureRead(req.Ctx)
+	read, err := seal.captureReadCurrent(req.Ctx, seal.dnsCurrent)
 	if err != nil {
 		return nil, err
 	}
-	return &rootAnchorOutput{ctx: req.Ctx, seal: seal, read: read}, nil
+	return &rootAnchorOutput{ctx: req.Ctx, seal: seal, read: read,
+		query: req.Msg != nil && req.Msg.Opcode == dns.OpcodeQuery && len(req.Msg.Question) == 1 &&
+			req.Question().Qtype != dns.TypeAXFR && req.Question().Qtype != dns.TypeIXFR}, nil
 }
 
 // Emit holds mode/R only around the synchronous actual transport handoff.
@@ -53,6 +60,9 @@ func (o *rootAnchorOutput) Emit(fn func() error) error {
 		}
 	}()
 	current := o.seal.current
+	if o.retainedDNS {
+		current = o.seal.dnsCurrent
+	}
 	if o.ack != nil {
 		if !o.bound {
 			return serving.ErrDependency
@@ -75,7 +85,7 @@ func (o *rootAnchorOutput) Emit(fn func() error) error {
 
 // Next precedes the next iterator pull. Failure never rescues an old frame.
 func (o *rootAnchorOutput) Next() error {
-	if o == nil || o.ack != nil || !o.state.CompareAndSwap(anchorOutputWritten, anchorOutputBusy) {
+	if o == nil || o.ack != nil || o.retainedDNS || !o.state.CompareAndSwap(anchorOutputWritten, anchorOutputBusy) {
 		return serving.ErrDependency
 	}
 	completed := false

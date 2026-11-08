@@ -324,7 +324,7 @@ func runServeUniFiHostnamePolicyLifecycle(t *testing.T, fullLifecycle bool) {
 		}
 	}
 	var heldDeadline time.Time
-	await := func(source, name string, blocked bool) {
+	awaitTransport := func(source, transport, name string, blocked bool) *dns.Msg {
 		t.Helper()
 		until := time.Now().Add(observationBound)
 		if !heldDeadline.IsZero() && heldDeadline.Before(until) {
@@ -333,15 +333,19 @@ func runServeUniFiHostnamePolicyLifecycle(t *testing.T, fullLifecycle bool) {
 		ctx, cancel := context.WithDeadline(t.Context(), until)
 		defer cancel()
 		for {
-			a, err := uniFiHostnameExchange(ctx, cfg, secret, source, "udp", name, true)
+			a, err := uniFiHostnameExchange(ctx, cfg, secret, source, transport, name, true)
 			if err == nil && uniFiHostnameAnswer(a, blocked) {
-				return
+				return a
 			}
 			if time.Now().After(until) {
 				t.Fatalf("UniFi identity did not converge source=%s name=%s blocked=%t phase=%d attempts=%d successor_attempts=%d", source, name, blocked, controller.phase.Load(), controller.calls.Load(), successor.calls.Load())
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
+	}
+	await := func(source, name string, blocked bool) *dns.Msg {
+		t.Helper()
+		return awaitTransport(source, "udp", name, blocked)
 	}
 	phase := func(next int32) {
 		t.Helper()
@@ -447,9 +451,8 @@ func runServeUniFiHostnamePolicyLifecycle(t *testing.T, fullLifecycle bool) {
 	if fullLifecycle {
 		allocations := map[string]string{}
 		for _, name := range []string{"shared-label.example.", "shared-label-2.example."} {
-			await("127.0.0.4", name, false)
-			a, err := exchange("127.0.0.4", "tcp", name, true)
-			if err != nil || !uniFiHostnameAnswer(a, false) || !a.Authoritative {
+			a := awaitTransport("127.0.0.4", "tcp", name, false)
+			if !uniFiHostnameAnswer(a, false) || !a.Authoritative {
 				t.Fatal("allocated source name missing from mounted authority")
 			}
 			allocations[name] = a.Answer[0].(*dns.A).A.String()
@@ -509,9 +512,10 @@ func runServeUniFiHostnamePolicyLifecycle(t *testing.T, fullLifecycle bool) {
 		phase(uniFiNames)
 		await("127.0.0.2", "exact.test.", true)
 		for name, ip := range allocations {
-			await("127.0.0.4", name, false)
-			a, err := exchange("127.0.0.4", "tcp", name, true)
-			if err != nil || !uniFiHostnameAnswer(a, false) || a.Answer[0].(*dns.A).A.String() != ip {
+			// Inspect the exact successful TCP observation. A second request
+			// would acquire a different cut during continuous source polling.
+			a := awaitTransport("127.0.0.4", "tcp", name, false)
+			if !uniFiHostnameAnswer(a, false) || a.Answer[0].(*dns.A).A.String() != ip {
 				t.Fatal("restoration changed stable name allocation")
 			}
 		}

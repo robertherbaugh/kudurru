@@ -91,7 +91,15 @@ func (o *rootAnchorOutput) BindResponse(response *pipeline.Response) error {
 		return serving.ErrDependency
 	}
 	if o.ack == nil {
-		return nil // Ordinary answers retain the complete data-generation check.
+		if o.bound {
+			o.state.Store(anchorOutputTerminal)
+			return serving.ErrDependency
+		}
+		o.bound = true
+		// These are internal pipeline provenance fields, never wire AA/AD or
+		// client claims. Local/authoritative/mixed data stays generation-bound.
+		o.retainedDNS = o.query && retainedDNSResponse(response)
+		return nil
 	}
 	if o.bound || !o.ack.matches(response) || !o.ack.current() {
 		o.state.Store(anchorOutputTerminal)
@@ -99,4 +107,25 @@ func (o *rootAnchorOutput) BindResponse(response *pipeline.Response) error {
 	}
 	o.bound = true
 	return nil
+}
+
+func retainedDNSResponse(response *pipeline.Response) bool {
+	if response == nil || response.Msg == nil || response.Msg.Opcode != dns.OpcodeQuery || response.Transfer != nil {
+		return false
+	}
+	if response.Origin == pipeline.OriginForwarded || response.Origin == pipeline.OriginSynthetic && response.Status.Class() == pipeline.ClassBlocked {
+		return true
+	}
+	// Expired/unavailable local data may report its empty refusal. This gives
+	// no local answer, delegation, denial proof or transfer generation credit.
+	m := response.Msg
+	if response.Status != pipeline.StatusServfailUnsynced || m.Rcode != dns.RcodeServerFailure || m.Authoritative || len(m.Answer) != 0 || len(m.Ns) != 0 {
+		return false
+	}
+	for _, rr := range m.Extra {
+		if _, ok := rr.(*dns.OPT); !ok {
+			return false
+		}
+	}
+	return true
 }

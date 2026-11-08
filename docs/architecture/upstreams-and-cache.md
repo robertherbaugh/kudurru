@@ -562,13 +562,18 @@ original lease and response through bounded typed serialization, then writes
 and explicitly flushes HTTP output inside its pre-pipeline root attempt.
 Request cancellation and earlier proof expiry bound that actual write.
 
-Production still does not enable managed builder input or automatic polling.
 Detached raw-cache leaders capture a separate finite insertion attempt from
 their original cloned complete lease before fetching. Encoding precedes the
 attempt's mode/retirement hold; insertion, security-failure deletion and
 failed-refresh metadata changes finish under that hold before releasing the
 lease. Queuing never renews the original TTL origin. Static restored promotion
 uses the same admission order; a dump cannot reconstruct a managed registration.
+An ordinary canonical commit can supersede the data generation while a held
+recursive/policy query still owns valid dependencies and anchor input. In that
+case the raw-cache attempt is consumed without performing its mutation, and the
+held query can finish. Anchor retirement, dependency loss and original expiry
+still refuse the operation. Native resolver mutations below retain their
+stricter complete-generation check; this raw-cache skip does not authorize them.
 Native recursion captures a trusted mutation source from the original complete
 request immediately before exchange. It retains the private root component and
 finite query lifetime, never a replacement publication. Each child acquisition

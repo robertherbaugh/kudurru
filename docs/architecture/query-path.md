@@ -98,7 +98,16 @@ shared UDP writes cannot wait beyond the original bound. A successful local
 flush or FIN remains an actual effect even if a later admission check reports an
 error. It is not reset, replayed or presented as evidence of remote receipt.
 
-Ordinary answers retain the complete data-generation check. A native UPDATE's
+Authoritative, local and mixed answers retain the complete data-generation
+check. Forwarded and policy-blocked ordinary queries retain their original
+immutable policy across unrelated canonical commits, while still requiring the
+original dependency installations, anchor input and finite output attempt.
+Only internal pipeline provenance permits this behavior; wire AA/AD bits do not.
+An unavailable local zone may emit an empty SERVFAIL without claiming a data
+generation. These retained responses cannot start a transfer continuation.
+API dig and native resolver cache mutations keep the complete generation check.
+
+A native UPDATE's
 own commit retires that generation, so its root command adapter issues a private
 completion receipt for only the exact empty acknowledgment it returned. Final
 pipeline binding refuses substituted messages, changed response codes, answer

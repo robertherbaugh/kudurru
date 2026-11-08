@@ -559,3 +559,35 @@ hit163.6ns remains above the new156.48ns ceiling; no local timing or one-process
 result is fixed-runner or five-process qualification. Original hosted cache and
 strategy failures remain open pending actual new-source measurement. Evidence:
 .context/cache-metadata-20261108/.
+
+
+### F18c/F26d/F28 held DNS across canonical commits, November 8
+
+D332 distinguishes retained recursive/policy responses from data-generation
+currency. Actual query-log reload and UniFi held queries originally failed in
+all three local repetitions (six failures, native exit1, 123.201s). The root
+component now retains the typed original runtime dependencies and actual anchor
+input for ordinary forwarded/policy responses. Authoritative/local/mixed output,
+API dig and native resolver mutations retain full generation checks; the original
+ordinary-query-after-UPDATE refusal test is unchanged and passes. Empty unsynced
+SERVFAIL can report unavailable local data without answer/delegation/proof rows.
+Raw-cache work consumes but skips an old-generation mutation, never an anchor
+retirement refusal. Original query lifetimes, mode/retirement holds and all
+expected policy/address values remain unchanged.
+
+Earlier drafts and failures remain: the first fixed run still failed UniFi;
+source04 broader races had87 passes, one expired-record output failure and one
+explicit live-edge skip. Source05 had12 passes and a restoration observation
+failure. A diagnostic-only richer assertion run passed and did not establish
+that failure's cause. The final fixture checks the exact successful TCP
+allocation/restoration observation rather than discarding a converged UDP result
+and reacquiring another cut during continuous polling; it still asserts every
+original exact address and bound. No held request is retried or renewed.
+
+Final source06 mounted default races pass44 entries without failures/skips
+(267.998s), including both original held cases, full UniFi lifecycle, native
+six-transport bootstrap/revocation/restart, actual pinned dnsdist edge restart,
+root cache/output retirement and original UPDATE refusal. Configured command
+and SQLite lint exits0 with zero issues (32.255s); frozen source identities match.
+Earlier root39 and broader87 passing entries remain scoped evidence, not a full
+repository green claim. Evidence: .context/held-fixtures-20261108/.
