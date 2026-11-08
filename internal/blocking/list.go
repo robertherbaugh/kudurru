@@ -359,7 +359,7 @@ func fingerprint(spec *Spec, regexCap int) (uint32, map[string]bool, error) {
 		for _, text := range src.Exclude {
 			excluded[text] = true
 		}
-		res, err := parser.Parse(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains, KeepUnsupported: -1, KeepInvalid: -1, EmitSlow: func(u parser.UnsupportedRule) error {
+		checksum, err := parser.Fingerprint(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains, EmitSlow: func(u parser.UnsupportedRule) error {
 			if excluded[u.Text] {
 				return parser.ErrUnsupportedSlow
 			}
@@ -376,7 +376,7 @@ func fingerprint(spec *Spec, regexCap int) (uint32, map[string]bool, error) {
 				}
 			}
 			return parser.ErrUnsupportedSlow
-		}}, nil)
+		}})
 		_ = rc.Close()
 		if err != nil {
 			return 0, nil, err
@@ -385,7 +385,7 @@ func fingerprint(spec *Spec, regexCap int) (uint32, map[string]bool, error) {
 		if format == "" {
 			format = parser.FormatAuto
 		}
-		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, res.CRC32, ExcludeDigest(src.Exclude))
+		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, checksum, ExcludeDigest(src.Exclude))
 	}
 	return h.Sum32(), badfilters, nil
 }

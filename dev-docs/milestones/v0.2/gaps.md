@@ -3629,3 +3629,29 @@ The poller remains unmounted, as does the elected updater. Root does not enable
 managed AnchorStore. Backend-to-edge activation authority, joined elected and
 follower mounts, complete frontend/cache retirement, recovery/interoperability,
 all F20 failures, TSIG gaps and external acceptance remain open.
+
+
+### F20 parent modifier-aware fingerprint prerequisite
+
+Parent reuse now shares the actual parser's input/sniff/autodetect/CRC path while
+classifying only literal-dollar candidates. Both modifier attachment paths
+require that byte, and every candidate still reaches the original parser and
+compiler callback. Full build parsing, parent regex delimiter fixes, fingerprint
+version/options, source opens/closes, exclusions and badfilter keys are unchanged.
+
+Full parent parser/blocking/listfetcher default race passes **339 entries / 117
+top-level tests**, zero failures, with the two existing memory-helper/external
+AdGuard skips. Focused vet passes; configured lint remains pending because the
+installed executable disappeared. One unchanged original 1M diagnostic reports
+**67,043,086ns / 66,240B / 17 allocations**, three iterations, 200ms, current
+2.90GHz/GOMAXPROCS2. It verifies exact parent owner reuse. This is neither a
+controlled before/after pair nor the isolated lazy-DFA implementation, a fresh
+five-process result, comparator/RSS evidence or official fixed-class gate.
+
+The isolated F20 tree was not changed or imported. Its budget integration,
+all 36 measured regressions plus 20 missing zone keys and every historical
+failure remain open. The wrong-doc-path archive preparation failure was retained;
+the two edited originals were recovered from immutable parent commit and matched
+the preceding source freeze. Source/tests/diagnostic evidence and limits are in
+`.context/f20-parent-fingerprint-20261108/result.md`. No benchmark body, baseline,
+threshold, module, tool or parser fixture was replaced or rebuilt.

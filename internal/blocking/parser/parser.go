@@ -67,6 +67,26 @@ type Options struct {
 // non-nil error from emit stops parsing and is returned. emit may be nil to
 // only count. Rule.Pattern is valid only until emit returns.
 func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
+	return parse(r, opts, emit, false)
+}
+
+// Fingerprint returns the same normalized CRC as Parse, including its format
+// detection, source sniffing and read errors. Only lines containing a literal
+// dollar sign undergo rule classification and may call opts.EmitSlow. Both
+// modifier attachment paths require that byte, so every actual badfilter still
+// reaches the original parser and callback. Other rules are not validated here;
+// callers must use Parse when building a changed list. Diagnostic limits are
+// ignored because this pass does not expose partial classification counters.
+func Fingerprint(r io.Reader, opts Options) (uint32, error) {
+	opts.KeepUnsupported, opts.KeepInvalid = -1, -1
+	res, err := parse(r, opts, nil, true)
+	if err != nil {
+		return 0, err
+	}
+	return res.CRC32, nil
+}
+
+func parse(r io.Reader, opts Options, emit func(Rule) error, modifierCandidatesOnly bool) (*Result, error) {
 	if !opts.Format.Valid() {
 		return nil, fmt.Errorf("%w %q", ErrUnknownFormat, opts.Format)
 	}
@@ -81,9 +101,10 @@ func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
 		return nil, err
 	}
 	p := &state{
-		opts:   opts,
-		emit:   emit,
-		format: opts.Format,
+		opts:                   opts,
+		emit:                   emit,
+		format:                 opts.Format,
+		modifierCandidatesOnly: modifierCandidatesOnly,
 		res: &Result{
 			UnsupportedReasons: map[string]int{},
 			InvalidReasons:     map[string]int{},
@@ -208,11 +229,12 @@ func isCommentLine(t []byte) bool {
 }
 
 type state struct {
-	opts   Options
-	emit   func(Rule) error
-	format Format
-	res    *Result
-	crc    uint32
+	opts                   Options
+	emit                   func(Rule) error
+	format                 Format
+	res                    *Result
+	crc                    uint32
+	modifierCandidatesOnly bool
 }
 
 func (p *state) process(n int, raw []byte, tooLong bool) error {
@@ -233,6 +255,9 @@ func (p *state) process(n int, raw []byte, tooLong bool) error {
 	}
 	p.crc = crc32.Update(p.crc, crc32.IEEETable, t)
 	p.crc = crc32.Update(p.crc, crc32.IEEETable, newline)
+	if p.modifierCandidatesOnly && bytes.IndexByte(t, '$') < 0 {
+		return nil
+	}
 	line := bufferString(t)
 	if p.format == FormatRegex {
 		return p.regexLine(n, line)

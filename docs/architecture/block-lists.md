@@ -238,9 +238,17 @@ flowchart TD
     SNAP --> SET["zonecache SetLists → rebuild → atomic swap"]
 ```
 
-A comment-only change to a list does not recompile it. Lists of 1 MiB or more
-trigger a garbage collection between compiles, so a refresh of several big
-lists does not hold them all in memory at once.
+A comment-only change to a list does not recompile it. The fingerprint pass
+shares the parser's format detection, input checks and normalized CRC stream.
+It classifies only lines containing a literal `$`, passing them through the
+actual parser and modifier callback so all `$badfilter` validation and exclusions
+still apply. Ordinary lines contribute to the checksum without building rules;
+changed lists receive the full parser pass and diagnostics. Fingerprint versions,
+options and source identity remain part of reuse, and failures keep the previous
+complete owner. This optimization does not qualify the separate lazy-DFA work.
+
+Lists of 1 MiB or more trigger a garbage collection between compiles, so a
+refresh of several big lists does not hold them all in memory at once.
 
 ## The starter list
 
