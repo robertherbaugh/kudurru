@@ -3655,3 +3655,24 @@ the two edited originals were recovered from immutable parent commit and matched
 the preceding source freeze. Source/tests/diagnostic evidence and limits are in
 `.context/f20-parent-fingerprint-20261108/result.md`. No benchmark body, baseline,
 threshold, module, tool or parser fixture was replaced or rebuilt.
+
+
+### F20 fingerprint/lazy-DFA overlay compatibility
+
+One read-only six-path Go overlay combined the committed parent fingerprint and
+regex-delimiter fixes/tests with the isolated lazy-DFA compiler. Its only list.go
+changes select Fingerprint and its CRC result; all existing badfilter budget,
+rewind/refusal, list/candidate and ancestor reservation logic stays intact.
+
+Full parser/matcher/blocking/listfetcher default race passes **616 entries / 180
+top-level tests**, zero failures, two actual memory-helper/external AdGuard skips.
+Wall39.070026479s, minimum free19,414,880,256B; all7,725 frozen identities match.
+All3,757 original isolated files remain unchanged, including existing budget,
+10k/helper tests and benchmark inputs. Exact overlay, raw completion, inventory
+and report: `.context/f20-fingerprint-overlay-20261108/result.md`
+(SHA256 `7e6da62ff52fd584936b6a3c1824f0ee68fb1c578cc60ff6bfddd8627a119048`).
+
+This establishes tested overlay compatibility, not source import or new lazy-DFA
+performance/RSS/comparator qualification. No benchmark, preimage or baseline was
+rerun. Historical36 measured regressions/20 missing zone keys, CPU differences,
+configured lint/static gates and final integration remain open.
