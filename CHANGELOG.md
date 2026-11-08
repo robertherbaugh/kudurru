@@ -54,8 +54,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   and retained restart history. Follower terminal failures survive replica
   installs; successful normal observations allow a later fresh installed-source
   acquisition, and authority changes join old acquisitions. The host declaration
-  rejects PROXYv2 ingress. Edge-backed activation and full enrolled HA
-  orchestration remain separate.
+  rejects PROXYv2 ingress. Explicit edge topology now requires authenticated
+  installed persistent cache bypass from every declared peer before startup;
+  edge/backend restarts retain managed trust without fallback. Full enrolled HA
+  orchestration and initial empty edge-follower installation remain separate.
 
 - Managed edges can expose a separate authenticated TLS observation listener
   with request-bound deployment, child and membership identities. Missing or

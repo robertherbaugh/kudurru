@@ -18,6 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
@@ -41,20 +42,21 @@ import (
 // configuration is detached once; canonical singleton settings come from each
 // complete candidate. Secret/trust loading finishes before any owner is pinned.
 type servingRuntimeOptions struct {
-	Store       *sqlite.Store
-	Config      *config.Config
-	Validator   *validator.Validator
-	License     *license.Manager
-	AuthKeys    *authKeyOwner
-	Keyrings    *servingbuild.KeyringOwner
-	Catalog     *catalogue.Holder
-	Transferred *servingbuild.TransferredRuntime
-	Lists       *listfetcher.DiskCache
-	Namespace   string
-	Upstreams   upstream.Options
-	Now         func() time.Time
-	Logging     *querylogRuntime
-	TSIG        *tsigRuntime
+	Store          *sqlite.Store
+	Config         *config.Config
+	Validator      *validator.Validator
+	License        *license.Manager
+	AuthKeys       *authKeyOwner
+	Keyrings       *servingbuild.KeyringOwner
+	Catalog        *catalogue.Holder
+	Transferred    *servingbuild.TransferredRuntime
+	Lists          *listfetcher.DiskCache
+	Namespace      string
+	Upstreams      upstream.Options
+	Now            func() time.Time
+	Logging        *querylogRuntime
+	TSIG           *tsigRuntime
+	InternalClient *internalapi.Client
 }
 
 // servingRuntime owns the complete publisher and provider/primary workers.
@@ -128,7 +130,7 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
-	if err := s.admitDirectAnchors(ctx); err != nil {
+	if err := s.admitAnchors(ctx); err != nil {
 		return nil, err
 	}
 	scheme, err := runtimekinds.NewScheme()

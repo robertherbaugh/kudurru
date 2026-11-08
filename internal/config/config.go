@@ -242,6 +242,9 @@ type Recursion struct {
 	// ManagedTopology is an explicit host declaration, independent of cluster
 	// policy. Direct means every client reaches these listeners without an edge.
 	ManagedTopology string `koanf:"managedTopology" json:"managedTopology"`
+	// ManagedEdges is the exhaustive host-declared caching edge fleet. Every
+	// member must attest its retained installed bypass before startup admission.
+	ManagedEdges []ManagedRootEdge `koanf:"managedEdges" json:"managedEdges"`
 	// QNAMEMinimization sends each name server only the labels it needs
 	// (RFC 9156).
 	QNAMEMinimization bool `koanf:"qnameMinimization" json:"qnameMinimization"`
@@ -664,6 +667,7 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 	}
 	fileHash := fmt.Sprintf("%x", sha256.Sum256(fileBytes))
 	managedTopology := k.Get("upstreams.recursion.managedTopology")
+	managedEdges := k.Get("upstreams.recursion.managedEdges")
 	for section, value := range sections {
 		k.Delete(section)
 		if err := k.Load(confmap.Provider(map[string]any{section: value}, "."), nil); err != nil {
@@ -672,7 +676,7 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 	}
 	// Host source and topology declarations survive replacement of the public
 	// section. The later environment layer still has its original precedence.
-	if err := k.Load(confmap.Provider(map[string]any{"upstreams.importFile": importPath, "upstreams.recursion.managedTopology": managedTopology}, "."), nil); err != nil {
+	if err := k.Load(confmap.Provider(map[string]any{"upstreams.importFile": importPath, "upstreams.recursion.managedTopology": managedTopology, "upstreams.recursion.managedEdges": managedEdges}, "."), nil); err != nil {
 		return nil, err
 	}
 	// Supervisor collections replace whole lower values, including maps. Delete

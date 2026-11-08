@@ -1076,7 +1076,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		complete, err = newServingRuntime(ctx, servingRuntimeOptions{
 			Store: sql, Config: cfg, Validator: v, License: lic, AuthKeys: authKeys,
 			Keyrings: rings, TSIG: tsigSource, Catalog: catalogs, Transferred: servingbuild.NewTransferredRuntime(secondaries, stubs, feeds),
-			Lists: lists, Namespace: namespace, Upstreams: upOpts, Logging: qlLogs,
+			Lists: lists, Namespace: namespace, Upstreams: upOpts, Logging: qlLogs, InternalClient: internalClient,
 		})
 		if err != nil {
 			return err

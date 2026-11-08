@@ -2102,3 +2102,60 @@ RFC interoperability and final release requirements remain open.
 Final scoped configured command-package lint exits0/zero issues (27.6478 s)
 on source03. The prior race remains tied to source02; only the tagged-switch
 style correction separates them.
+
+
+### F28 original installed edge fleet activation (D319)
+
+SQLite host topology now supports `edges` with 1–32 explicit unique node,
+observation address, retained deployment identity and exact backend DNS/internal
+membership requirements. Internal credentials must exist. The complete root
+constructor captures one local image/token before contacting any peer, validates
+the whole fleet, then acquires one authenticated installed observation from each.
+The original Store publication barrier adopts only the exact issued observation
+once into runtime life; any deadline, peer/membership or local authority/image
+refusal fails startup without recapture. All original canonical/local-denial,
+writer, complete publication, native/raw cache and final-output checks remain.
+
+Runtime lifetime adoption relies on the previously qualified D315 persistent
+immutable bypass across edge children; diagnostic readiness never grants it.
+Host declarations cannot discover undeclared proxies. Replacing/rolling back edge
+deployment storage is excluded as before. An initial empty follower requires its
+first complete image before edge startup; direct followers can still wait.
+Full enrolled HA bootstrap/orchestration remains open.
+
+Evidence `.context/anchor-edge-activation-20261108/`: focused ordinary44 passes,
+no skips (36.6714 s). Actual pinned dnsdist2.1.3 image89c7f196 plus a real runServe
+backend initially fails only the final query before post-restart health recovery;
+that original failure is retained. The corrected bounded readiness wait passes1,
+no skips (23.8418 s). This actual YAML daemon test starts installed bypass before
+the backend is ready, bootstraps once, queries both authoritative/resolver pools
+over UDP/TCP, restarts the edge with retained deployment/new run identity, then
+joins the backend and observes no cached data. Backend restart authenticates the
+fleet again without another root bootstrap or accepted-version progress; both
+actual pools have zero cache capacity/entries. Previous Lua installed-cache
+qualification remains separate; this is not all external edge transport coverage.
+
+Composed source03 default race passes133 entries/no skips (167.4716 s), including
+the enabled pinned daemon, all managed-root/runtime cases and selected config
+cases. Source review then found the host fleet needed the same explicit retention
+as topology across UI-owned upstream section loading. Source04 preserves that
+host list and tests actual file/UI/environment precedence. Final config/static
+outcomes are recorded separately below; source03's race evidence is not relabeled.
+
+Safe operator recovery, initial edge follower installation/orchestration, complete
+RFC interoperability/hold-down and remaining release gates are still open.
+
+Final configuration source05 passes363 default-race entries/no skips
+(31.6501 s). The first full config race retained361 passes/two failures: the new
+fixture incorrectly expected environment-list support, which existing policy
+intentionally refuses, and the generic enum fixture lacked the required fleet.
+Corrected fixtures retain that refusal, test scalar environment topology
+precedence, and supply a complete fleet for the positive enum case. The actual
+file/UI list preservation now passes without weakening collection validation.
+The reference generator also exits0 (1.4053 s).
+
+Final generated-reference tests pass4/no skips (0.8041 s), and full repository
+configured golangci-lint exits0/zero issues on source06 (115.1813 s). No rules
+or thresholds changed. The final runtime/activation production files are identical
+to source03; source04/05 changes are the separately qualified host loader and
+config fixtures. Minimum free space during lint was32,947,277,824 bytes.

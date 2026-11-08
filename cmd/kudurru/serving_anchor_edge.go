@@ -30,6 +30,7 @@ type anchorEdgeAttempt struct {
 	fleet     []anchorEdgeRequirement
 	used      atomic.Bool
 	result    atomic.Pointer[anchorEdgeObservation]
+	adopted   atomic.Pointer[rootAnchorAdmission]
 }
 
 type anchorEdgeObservation struct {
@@ -134,7 +135,8 @@ func (a *anchorEdgeAttempt) observe() (*anchorEdgeObservation, error) {
 // check is memory-only for the eventual ORIGINAL local activation boundary.
 // Copying equal fields, waiting beyond the original deadline, or replacing a
 // failed attempt cannot promote this observation into fresh evidence. It is
-// intentionally still finite: lifetime adoption and runtime mounts are absent.
+// intentionally finite. Only the startup Store barrier can adopt the exact
+// observation into runtime life; calling this check never extends its lifetime.
 func (o *anchorEdgeObservation) check() error {
 	if o == nil || o.owner == nil || o.owner.result.Load() != o || len(o.states) != len(o.owner.fleet) {
 		return errAnchorEdgeEvidence

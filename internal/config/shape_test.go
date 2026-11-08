@@ -203,6 +203,13 @@ func TestSchemaEnumsRejectBogus(t *testing.T) {
 					flat[k.Path] = v
 					flat["upstreams.recursion.trustAnchors"] = []string{"12345 15 2 " + strings.Repeat("AB", 32)}
 					_, validErr = FromFlat(flat)
+				} else if k.Path == "upstreams.recursion.managedTopology" && v == "edges" {
+					// The edge enum requires an explicit complete host fleet.
+					flat := Defaults()
+					flat[k.Path] = v
+					flat["node.name"] = "backend-a"
+					flat["upstreams.recursion.managedEdges"] = []map[string]any{{"node": "edge-a", "address": "192.0.2.2:8085", "deployment": strings.Repeat("a", 64), "backendAddress": "192.0.2.1:5353", "backendInternalAddress": "192.0.2.1:8082"}}
+					_, validErr = FromFlat(flat)
 				} else if k.Path == "cluster.role" && v == "static" {
 					// Static membership requires a real named self endpoint.
 					// Missing and invalid peers remain negative topology cases.

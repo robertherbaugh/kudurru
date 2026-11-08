@@ -304,8 +304,38 @@ proxy; configured PROXYv2 peers are rejected. This declaration cannot discover
 undeclared proxies. It is host-only, requires restart, and is separate from the
 cluster's root policy. The default `disabled` topology never activates managed
 serving. Enrolled primary writers use the elected updater; enrolled followers
-mount an independent deny-only supervisor. Edge-backed activation remains
-unavailable, and full enrolled HA orchestration/acceptance is still separate.
+mount an independent deny-only supervisor. Edge deployments use the explicit
+`edges` topology described below. Full enrolled HA orchestration/acceptance
+is still separate.
+
+For dnsdist deployments, set `managedTopology: edges` and list **every caching
+edge** in host-only `upstreams.recursion.managedEdges`. Each entry contains the
+edge's `node`, its managed observation TLS `address`, the expected retained
+`deployment` identity, and this node's exact `backendAddress` and
+`backendInternalAddress` in that edge's installed membership. The backend name
+must match `node.name`. Use the same internal credentials as the edges. Start
+edges with retained `managedCacheBypass` and `managedObservationAddress`; obtain
+the public deployment identity from their local `/status` for host provisioning.
+That diagnostic value alone does not authorize activation.
+
+Before serving, the backend captures one complete local image/authority token
+and a finite startup attempt, then authenticates the installed bypass and exact
+membership of every declared edge. It adopts only that original observation
+under the Store's original-token barrier. Missing credentials, any unavailable
+or mismatched peer, expired work or an intervening local image/authority change
+refuses startup without replay. An empty follower must receive its initial image
+before starting with edge topology; direct followers can wait for installation.
+Neither declaration discovers omitted proxies or unmanaged independent daemons.
+
+Successful edge admission retains the runtime lifetime. Its safety across an
+edge child restart relies on D315's persistent immutable bypass: both pools stay
+uncached and every child starts with the skip-cache rule. Replacing or rolling
+back the edge deployment storage is outside that guarantee. Backend restart
+requires a fresh installed observation of the same explicitly configured fleet.
+This permission never replaces canonical history, elected writer, local denial,
+complete publication or per-output checks. Actual pinned dnsdist/backend tests
+exercise both edge pools over UDP/TCP, edge and backend restarts, and no cached
+answer after backend shutdown. This does not qualify every external topology.
 
 The root runtime adopts direct topology under bounded startup preparation and
 retains that exact admission through its lifetime. It mounts one elected updater
@@ -350,7 +380,7 @@ source acquisition, then install the primary's history without initializing a
 new one. Old images and binaries refuse across the schema/feature boundary;
 received images are never converted. Direct activation mounts the elected
 updater or local follower supervisor and immutable complete-image resolver
-publication; edge-backed activation remains separately gated.
+publication. Edge topology additionally requires the installed fleet barrier.
 
 The SQLite poll bridge captures the normal update, local denial and paired
 post-denial update from one committed owner/authority cut before acquisition.

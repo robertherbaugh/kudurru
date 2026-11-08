@@ -40,12 +40,14 @@ func (c *Config) ValidateManagedRootTopology() error {
 	case "", "disabled":
 		return nil
 	case "direct":
-		if c.Store.Driver != "sqlite" || len(c.Listeners.ProxyProtocolFrom) != 0 || c.Listeners.ProxyProtocolSecretFile != "" {
-			return errors.New("upstreams.recursion.managedTopology: direct requires SQLite listeners without PROXYv2 ingress")
+		if c.Store.Driver != "sqlite" || len(c.Listeners.ProxyProtocolFrom) != 0 || c.Listeners.ProxyProtocolSecretFile != "" || len(c.Upstreams.Recursion.ManagedEdges) != 0 {
+			return errors.New("upstreams.recursion.managedTopology: direct requires SQLite listeners without PROXYv2 ingress or edge entries")
 		}
 		return nil
+	case "edges":
+		return c.validateManagedRootEdges()
 	default:
-		return errors.New("upstreams.recursion.managedTopology: expected disabled or direct")
+		return errors.New("upstreams.recursion.managedTopology: expected disabled, direct or edges")
 	}
 }
 
