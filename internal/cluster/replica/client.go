@@ -10,9 +10,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
@@ -151,6 +153,7 @@ func (c *Client) requestCaptured(ctx context.Context, identity requestIdentity, 
 		return nil, err
 	}
 	client := c.http
+	var reached atomic.Bool
 	if c.member != nil {
 		if peer.Trust.MemberID() != peer.MemberID {
 			return nil, ErrUntrusted
@@ -166,6 +169,16 @@ func (c *Client) requestCaptured(ctx context.Context, identity requestIdentity, 
 		defer transport.CloseIdleConnections()
 		client = &http.Client{Transport: transport, Timeout: c.opts.Timeout,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		// A verified connection to the original enrolled primary is contact
+		// even if it later aborts HTTP without sending headers. Keep this fact
+		// across credential attempts; it grants no term, image or write outcome.
+		ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+			TLSHandshakeDone: func(state tls.ConnectionState, err error) {
+				if err == nil && peer.Trust.VerifyPeer(&state) == nil {
+					reached.Store(true)
+				}
+			},
+		})
 	}
 	for _, token := range identity.tokens {
 		if err := ctx.Err(); err != nil {
@@ -210,7 +223,11 @@ func (c *Client) requestCaptured(ctx context.Context, identity requestIdentity, 
 			if ctx.Err() != nil && errors.Is(ctx.Err(), context.Canceled) {
 				return nil, ctx.Err()
 			}
-			return nil, errors.Join(ErrUnavailable, err)
+			failure := errors.Join(ErrUnavailable, err)
+			if reached.Load() {
+				return nil, &ExchangeError{Reached: true, Err: failure}
+			}
+			return nil, failure
 		}
 		if err := c.checkResponse(ctx, peer, resp); err != nil {
 			closeResponse(resp)

@@ -973,7 +973,11 @@ observation and before an image or command result can be accepted. No lookup
 replaces the captured trust after a response. TLS alerts are authentication or
 protocol refusals, not network-loss evidence for promotion. A POST alert or
 cancellation after a complete result preserves an unknown outcome; the client
-never dispatches a replacement command itself.
+never dispatches a replacement command itself. An actual successful TLS handshake
+against that original enrolled CA records authenticated contact even if the peer
+then aborts HTTP without headers. Such failure clears the coordinator's missed-pull
+window; it supplies no authority term, accepted image or success receipt. A failed
+connection without that verified handshake remains network-loss evidence.
 
 The existing `NewClient` is the shared-credential transport primitive used by
 legacy tests; it does not establish independent member identity. Root enrolled

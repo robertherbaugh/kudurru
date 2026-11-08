@@ -524,8 +524,9 @@ func TestMemberServerActualMemberClientImageDedupAndUnknownCompletion(t *testing
 				t.Fatal("original command not executed once")
 			}
 			if mode == "revoked-after-commit" {
-				if !errors.Is(err, replica.ErrOutcomeUnknown) || out.Status != 0 {
-					t.Fatal("lost acknowledgment erased actual unknown completion", err)
+				var contact *replica.ExchangeError
+				if !errors.Is(err, replica.ErrOutcomeUnknown) || !errors.As(err, &contact) || !contact.Reached || out.Status != 0 {
+					t.Fatal("lost acknowledgment erased actual unknown completion or verified contact", err)
 				}
 				return
 			}

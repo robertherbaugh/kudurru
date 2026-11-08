@@ -15,6 +15,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Cluster failover: a verified primary that aborts HTTP remains authenticated
+  contact, so response refusal cannot create a missed-pull promotion window.
+
 - Cluster transport: add enrolled replication routes that retain original peer
   admission through command completion and explicit HTTP response flushing.
   Production listener, domain policy and operator-route assembly remain open.

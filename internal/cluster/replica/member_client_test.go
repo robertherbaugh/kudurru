@@ -5,12 +5,14 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster/memberidentity"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -230,5 +232,85 @@ func TestMemberClientTLSRefusalCannotManufactureNetworkLoss(t *testing.T) {
 	_, err = sourceFor(t, client, peer, p).Fetch(t.Context(), "")
 	if !errors.Is(err, ErrUntrusted) || errors.Is(err, ErrUnavailable) || calls.Load() != 0 {
 		t.Fatal("actual peer TLS refusal became promotion-eligible network loss", err, calls.Load())
+	}
+}
+
+func TestMemberClientAuthenticatedAbortDoesNotCreatePromotionWindow(t *testing.T) {
+	p := openStore(t, replication.Primary)
+	mirror := mirrorOf(t, p)
+	primaryIdentity, followerIdentity := memberIdentityFor(t, p), memberIdentityFor(t, mirror)
+	var calls atomic.Int32
+	address := memberReplicaServer(t, primaryIdentity, followerIdentity.Trust(), http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1); panic(http.ErrAbortHandler) }))
+	peer := Peer{MemberID: p.Authority().MemberID, ClusterID: p.Authority().Term.ClusterID, Address: address, Trust: primaryIdentity.Trust()}
+	client, err := NewMemberClient(ClientOptions{Credentials: credentials(t, 1), Observer: mirror, Self: func() Peer { return Peer{MemberID: mirror.Authority().MemberID, ClusterID: peer.ClusterID} }}, followerIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var elapsed time.Duration
+	coordinator, err := NewCoordinator(CoordinatorOptions{Store: mirror, Source: sourceFor(t, client, peer, p), NodeName: "follower", Interval: time.Second, Elapsed: func() time.Duration { return elapsed }, Served: func(context.Context) (replication.Generation, func(), error) {
+		return imageOf(t, mirror).Generation(), func() {}, nil
+	}, AuthorizeOperator: func(context.Context) (PromotionAuthorization, error) {
+		return PromotionAuthorization{Check: func(context.Context) error { return nil }, Release: func() {}}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := mirror.Authority()
+	for n := 0; n < 3; n++ {
+		elapsed = time.Duration(n) * time.Second
+		err := coordinator.Pull(t.Context())
+		var contact *ExchangeError
+		if !errors.As(err, &contact) || !contact.Reached {
+			t.Fatal("authenticated primary abort was classified as unreachable", err)
+		}
+		status := coordinator.Status(t.Context())
+		if status.Eligible || status.MissedPulls != 0 || status.Reason == "primary_unreachable" {
+			t.Fatal("authenticated abort created promotion eligibility", status)
+		}
+	}
+	if calls.Load() != 3 || !mirror.Authority().Term.Same(before.Term) {
+		t.Fatal("failed original exchange retried or adopted authority", calls.Load())
+	}
+}
+
+func TestMemberClientAuthenticatedWriteAbortKeepsUnknownAndContact(t *testing.T) {
+	p := openStore(t, replication.Primary)
+	mirror := mirrorOf(t, p)
+	primaryIdentity, followerIdentity := memberIdentityFor(t, p), memberIdentityFor(t, mirror)
+	var calls atomic.Int32
+	address := memberReplicaServer(t, primaryIdentity, followerIdentity.Trust(), http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1); panic(http.ErrAbortHandler) }))
+	peer := Peer{MemberID: p.Authority().MemberID, ClusterID: p.Authority().Term.ClusterID, Address: address, Trust: primaryIdentity.Trust()}
+	client, err := NewMemberClient(ClientOptions{Credentials: credentials(t, 1), Observer: mirror, Self: func() Peer { return Peer{MemberID: mirror.Authority().MemberID, ClusterID: peer.ClusterID} }}, followerIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := client.Write(t.Context(), peer, commandFor(p, "authenticated-abort"))
+	var contact *ExchangeError
+	if !errors.Is(err, ErrOutcomeUnknown) || !errors.As(err, &contact) || !contact.Reached || out.Status != 0 || calls.Load() != 1 {
+		t.Fatal("failed acknowledgment lost unknown outcome or original contact", err, calls.Load())
+	}
+}
+
+func TestMemberClientConnectionFailureRemainsNetworkLoss(t *testing.T) {
+	p := openStore(t, replication.Primary)
+	mirror := mirrorOf(t, p)
+	primaryIdentity, followerIdentity := memberIdentityFor(t, p), memberIdentityFor(t, mirror)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	peer := Peer{MemberID: p.Authority().MemberID, ClusterID: p.Authority().Term.ClusterID, Address: address, Trust: primaryIdentity.Trust()}
+	client, err := NewMemberClient(ClientOptions{Credentials: credentials(t, 1), Observer: mirror, Self: func() Peer { return Peer{MemberID: mirror.Authority().MemberID, ClusterID: peer.ClusterID} }}, followerIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sourceFor(t, client, peer, p).Fetch(t.Context(), "")
+	var contact *ExchangeError
+	if !errors.Is(err, ErrUnavailable) || errors.As(err, &contact) && contact.Reached {
+		t.Fatal("failed connection manufactured authenticated contact", err)
 	}
 }

@@ -420,3 +420,24 @@ join transport, forwarding and complete HA/restart/rejoin acceptance remain open
 The test domain is deliberately a transaction fixture, not production RBAC credit.
 The legacy error-only-authorizer server is preserved without enrolled-authority
 credit. No hosted benchmark, push, deployment or release occurred.
+
+### F60b/G11 authenticated refusal and promotion eligibility, November 8
+
+D330 fixes the member client's classification of an actual authenticated primary
+that aborts HTTP before response headers. TLSHandshakeDone records contact only
+after the original independently enrolled peer CA verifies the actual connection.
+That contact persists within the original exchange; it neither refreshes trust
+nor supplies a term, accepted image or command success. ExchangeError preserves
+Reached=true on later transport failure, clearing the coordinator's missed-pull
+window. POST still returns an unknown outcome and is never automatically replayed.
+Failed connections without verified contact remain network-loss evidence.
+
+The new tests first reproduced both missing-contact failures on unchanged client
+source (numeric1, two failed tests, 4.209 s). Fixed full replica default-race passes
+82 entries without failures/skips (22.242 s), including three repeated actual
+TLS/HTTP aborts with no promotion window, one-dispatch unknown writes and a real
+failed TCP connection. The actual enrolled server/client image/dedup/committed
+revocation integration passes three entries (6.214 s). Final configured scoped
+lint exits0 with zero issues (4.611 s). All 2,962 source03 identities match;
+original failing receipts remain under `.context/member-contact-20261108/`.
+Root operator/domain/listener/join assembly and full HA acceptance remain open.
