@@ -30,7 +30,12 @@ test('a secondary is created, transferred, edited and expires on this node', asy
       spec: { zoneName: apex, type: 'primary', nameservers: [`ns1.${apex}`], policy: { zoneTransfer: 'allowOnlyPrivate' }, soa: { mname: `ns1.${apex}`, refresh: 1, retry: 1, expire: 5 } },
     } })).ok()).toBe(true);
     expect((await primaryApi.post(`/api/v1/zones/${name}/records`, { headers, data: { dnsName: `www.${name}`, recordType: 'A', targets: ['192.0.2.77'] } })).ok()).toBe(true);
-    await expect.poll(async () => (await query(primary.dns, `www.${name}`)).a).toContain('192.0.2.77');
+    // Each read is independent while the new primary generation is preparing.
+    // Retry a refused/timed-out observation within the original convergence
+    // bound; expect.poll aborts immediately when its async callback rejects.
+    await expect(async () => {
+      expect((await query(primary.dns, `www.${name}`)).a).toContain('192.0.2.77');
+    }).toPass({ timeout: 10_000 });
 
     await main(page).getByRole('button', { name: 'New zone' }).click();
     const wizard = page.getByRole('dialog', { name: 'New zone' });
@@ -49,7 +54,9 @@ test('a secondary is created, transferred, edited and expires on this node', asy
 
     const readRuntime = async () => (await api.get<ZoneSummary>(`/zones/${name}`)).body.secondaryRuntime;
     await expect.poll(async () => (await readRuntime())?.state, { timeout: 30_000 }).toBe('serving');
-    await expect.poll(async () => (await query(env('KUDURRU_E2E_DNS'), `www.${name}`)).a).toContain('192.0.2.77');
+    await expect(async () => {
+      expect((await query(env('KUDURRU_E2E_DNS'), `www.${name}`)).a).toContain('192.0.2.77');
+    }).toPass({ timeout: 10_000 });
     await page.reload();
     await settle(page);
     await expectRendered(page);

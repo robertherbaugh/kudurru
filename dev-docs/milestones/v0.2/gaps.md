@@ -5841,3 +5841,24 @@ do not erase the earlier EPYC run's failures or qualify new metrics. No sample,
 threshold, baseline or workload changed. Current implementation and final gates
 remain open. Artifacts and independent review: .context/hosted-release-20261108/
 paired-current-artifact/ and paired-current-reviewed-{summary.json,vectors.csv}.
+
+
+### G21 secondary browser convergence, November 8
+
+The retained CI42522338875 trace failed at the first primary DNS observation,
+before secondary creation: several empty answers preceded one socket timeout.
+Playwright expect.poll propagated that rejected callback immediately. The two
+independent DNS convergence probes now use a bounded assertion retry, preserving
+the original ten-second limit and exact192.0.2.77 address. No mutation or held
+request is replayed, and the post-expiry refusal stays a single asserted query.
+
+The complete real-browser two-server secondary creation/transfer/edit/expiry
+workflow passes (one test,62.534s including setup;54.7s test), and file ESLint
+passes. The first local attempt refused before executing the test because a
+build overlay selected the committed placeholder dashboard. That refusal and
+binary are retained; the successful build embeds the existing generated bundle,
+whose original working-tree bytes remain unchanged and unstaged. Native build
+exits0 (12.635s), source and binary/test manifests match. Evidence:
+.context/ci-current-fixes-20261108/browser03.json, browser-source03.json,
+browser-output03/ and dashboard-preservation.json. This scoped acceptance does
+not replace final hosted CI or establish the earlier transient DNS gap's cause.
