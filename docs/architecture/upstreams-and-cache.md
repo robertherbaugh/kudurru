@@ -360,6 +360,18 @@ the same database retains quarantine and permanent revocations; choosing static
 keys or disabling the managed topology cannot reset that history or restore
 protected publication. Explicit operator recovery is not yet mounted.
 
+The recovery primitives accept operator-selected replacement DS trust only from
+an already quarantined owner and after a fresh matching signed DNSKEY response.
+They preserve initial policy/seed identity and every revoked key, without crediting
+pending hold-down. Pure format 2 adds bounded permanent recovery records (at most
+32), each binding the prior complete digest, generation, receipt time and selected
+DS records. Ordinary updates preserve that exact history; follower installation
+rejects rewrites of its already accepted prefix. Format 1 retains its existing
+serialization. Recovery proposals have separate opaque proofs checked against the
+original captured writer, complete before/after states and receipt lifetime through
+commit. These primitives do not authorize an operator or replace a transactional
+audit. The offline command and mixed-version operational acceptance remain pending.
+
 Bootstrap and updates retain an opaque original observation bounded by received
 DNSKEY/RRSIG TTLs, signed original TTL and signature expiration. Final admission
 checks both wall and monotonic age without restamping. Encoding a proposed state

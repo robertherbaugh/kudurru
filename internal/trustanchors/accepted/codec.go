@@ -32,6 +32,32 @@ func NewDormant(cluster, history string, at time.Time) (Snapshot, error) {
 // and durably CAS this proposal before its checkpoint can become accepted input.
 // Ordinary callers must not use this to stage arbitrary next pure states.
 func ProposeManaged(current Snapshot, next trustanchors.State, at, until time.Time) (Snapshot, error) {
+	if len(next.Inspect().Recoveries) != len(current.state.Inspect().Recoveries) || !next.RetainsRecoveryHistory(current.state) {
+		return Snapshot{}, ErrCAS
+	}
+	return proposeManaged(current, next, at, until)
+}
+
+// ProposeRecovery frames one structurally consistent explicit recovery. This
+// remains a proposal: its caller must independently authorize/audit the operator
+// and verify the original RecoveryObservation before writing and through commit.
+func ProposeRecovery(current Snapshot, next trustanchors.State, at, until time.Time) (Snapshot, error) {
+	before, err := current.State()
+	if err != nil {
+		return Snapshot{}, err
+	}
+	old, doc := before.Inspect(), next.Inspect()
+	if !old.Quarantined || doc.Quarantined || !next.RetainsRecoveryHistory(before) || len(doc.Recoveries) != len(old.Recoveries)+1 {
+		return Snapshot{}, ErrCAS
+	}
+	receipt := doc.Recoveries[len(doc.Recoveries)-1]
+	if receipt.Generation != doc.Generation || receipt.PreviousDigest != current.root.Pure.Digest || !receipt.At.Equal(at) {
+		return Snapshot{}, ErrCAS
+	}
+	return proposeManaged(current, next, at, until)
+}
+
+func proposeManaged(current Snapshot, next trustanchors.State, at, until time.Time) (Snapshot, error) {
 	old := current.root
 	if old.Generation == 0 || old.Generation >= math.MaxUint64-1 || at.Before(old.UpdatedAt) {
 		return Snapshot{}, ErrCAS

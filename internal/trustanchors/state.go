@@ -137,6 +137,7 @@ type Snapshot struct {
 	Schedule       Schedule   `json:"schedule"`
 	ClockUncertain bool       `json:"clockUncertain"`
 	Quarantined    bool       `json:"quarantined"`
+	Recoveries     []Recovery `json:"recoveries,omitempty"`
 }
 
 // State holds immutable protocol evidence. Bootstrap/Advance produce PROPOSED
@@ -156,6 +157,10 @@ func (s State) Inspect() Snapshot {
 	d := s.doc
 	d.Seeds = slices.Clone(d.Seeds)
 	d.Keys = slices.Clone(d.Keys)
+	d.Recoveries = slices.Clone(d.Recoveries)
+	for i := range d.Recoveries {
+		d.Recoveries[i].Seeds = slices.Clone(d.Recoveries[i].Seeds)
+	}
 	for i := range d.Keys {
 		d.Keys[i].Support = slices.Clone(d.Keys[i].Support)
 	}

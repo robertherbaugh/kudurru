@@ -517,6 +517,9 @@ func anchorSuccessor(old, next *anchorCursor, install bool) error {
 		if err != nil {
 			return err
 		}
+		if !newState.RetainsRecoveryHistory(oldState) {
+			return accepted.ErrCAS
+		}
 		denied := map[string]bool{}
 		for _, key := range newState.Inspect().Keys {
 			if key.Status == trustanchors.Revoked {

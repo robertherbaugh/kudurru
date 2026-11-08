@@ -72,7 +72,7 @@ func validLabel(s string) bool {
 }
 
 func validate(d Snapshot) error {
-	if d.Format != FormatVersion || !validLabel(d.ClusterID) || !validLabel(d.PolicyID) || !validDigest(d.SeedDigest) || d.Generation == 0 || d.Keys == nil || len(d.Keys) == 0 || len(d.Keys) > MaxLiveKeys+MaxTombstones || len(d.Seeds) == 0 || len(d.Seeds) > MaxLiveKeys || !slices.IsSorted(d.Seeds) || digest([]byte(strings.Join(d.Seeds, "\n"))) != d.SeedDigest {
+	if (d.Format != FormatVersion && d.Format != RecoveryFormatVersion) || !validLabel(d.ClusterID) || !validLabel(d.PolicyID) || !validDigest(d.SeedDigest) || d.Generation == 0 || d.Keys == nil || len(d.Keys) == 0 || len(d.Keys) > MaxLiveKeys+MaxTombstones || len(d.Seeds) == 0 || len(d.Seeds) > MaxLiveKeys || !slices.IsSorted(d.Seeds) || digest([]byte(strings.Join(d.Seeds, "\n"))) != d.SeedDigest {
 		return ErrInvalid
 	}
 	seeds := make([]*dns.DS, 0, len(d.Seeds))
@@ -86,6 +86,11 @@ func validate(d Snapshot) error {
 		}
 		seeds = append(seeds, seed)
 	}
+	recoverySeeds, err := validateRecoveries(d)
+	if err != nil {
+		return err
+	}
+	seeds = append(seeds, recoverySeeds...)
 	if !validSession(d.Checkpoint.Session) || d.Checkpoint.Tick < 0 || !validTime(d.Checkpoint.Wall) {
 		return ErrClock
 	}

@@ -2159,3 +2159,34 @@ configured golangci-lint exits0/zero issues on source06 (115.1813 s). No rules
 or thresholds changed. The final runtime/activation production files are identical
 to source03; source04/05 changes are the separately qualified host loader and
 config fixtures. Minimum free space during lint was32,947,277,824 bytes.
+
+
+### F28 recovery provenance and persistence primitives (D320)
+
+Explicit quarantined-owner recovery authenticates new DS-selected DNSKEY trust,
+retains initial policy/seed identity and exact permanent tombstones, and records
+at most 32 immutable version-2 recovery events. Ordinary refresh preserves the
+ledger. A separate opaque proof binds both complete state digests and the original
+wall/monotonic lifetime through captured SQLite commit. No operator command,
+authorization/audit mount, migration or automatic reseed is exposed here.
+
+Pure race73 and pure/accepted/persistence race190 passed without skips. The wider
+trustanchors/SQLite default-race run reached 975 passing test entries but FAILED
+at its five-minute package deadline; it is not full SQLite qualification. New
+recovery tests prove actual original-refusal rollback, committed recovery, physical
+writer/follower restart, ordinary continuation and mounted rejection of an
+independently well-formed replica rewriting prior recovery provenance. Their first
+run failed because a writer-only fixture read was used on a follower; the corrected
+read-only installed-image fixture passes both tests under race. Evidence remains
+in .context/anchor-recovery-20261108; all earlier failures are retained.
+
+A separate qualification compiled the exact pre-change pure codec from be4446fc
+and fed it actual generated format-1 and recovered format-2 documents: race1
+passed, preserving format-1 bytes and rejecting format 2. This checks the codec,
+not an entire old daemon or mixed-version fleet. The first lint invocation could
+not start a missing executable; the installed configured linter then reported
+one test variable shadowing builtin copy, corrected with a local rename.
+Offline operator admission/audit, strict existing-schema opening, operational
+mixed-version acceptance and complete F28/release gates remain open.
+
+Final configured trustanchors/SQLite scoped lint passes (zero issues, 2.006s).
