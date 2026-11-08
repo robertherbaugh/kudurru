@@ -4460,3 +4460,25 @@ pre-fix failures and earlier F20 failures remain evidence. A prepared CRC
 optimization remains unmerged because unchanged compilation passed the actual
 gate. Final-source five-process and fixed-class qualification remain open.
 No push, deployment, release or baseline change.
+
+
+### Benchmark evidence validation, November 8
+
+`make bench` and `bench-baseline` now require exactly BENCH_COUNT measurements
+for every current metric. The gate also offers explicit processor-suffix checks;
+strict CPU mode requires actual CPU headers. Parsing refuses non-finite/negative
+values, malformed result rows, duplicate units, invalid iterations and mixed CPU
+headers. Thresholds and absolute maxima cannot be NaN, infinity or negative.
+No baseline, corpus, limit, noise floor, ignore rule or measurement command changes.
+
+Default-race tests pass 25 entries without failures/skips; vet and configured
+scoped lint pass. Tests cover partial/extra samples, missing individual metrics,
+mixed processors, missing/mismatched CPUs, native failure and actual regression.
+The final tool checks all retained original five-process data with samples=5,
+procs=6 and strict CPU enabled: exit 1 and byte-identical full findings to the
+original gate, preserving all four regressions. The Makefile dry run retains all
+ten original native commands. Evidence: `.context/benchgate-integrity-20261108/`.
+
+These integrity checks do not certify fresh-process provenance or a named runner
+class. F21c/F63 calibration, remaining measured regressions and release gates
+remain open. No baseline refresh, push, deployment or release.

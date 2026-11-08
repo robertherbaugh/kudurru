@@ -18,12 +18,17 @@
 //
 // Without -baseline only the limits are checked, which is how
 // `make bench-baseline` validates a freshly recorded baseline.
+// -samples requires an exact sample count per current metric; the Makefile
+// supplies BENCH_COUNT after running each sample in a fresh process. -procs
+// checks every current benchmark's processor suffix. -strict-cpu requires
+// CPU headers and compares the current CPU to the baseline when supplied.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"text/tabwriter"
 )
@@ -39,7 +44,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	limitsPath := fs.String("limits", "", "limits file")
 	threshold := fs.Float64("threshold", 20, "allowed regression in percent")
 	strictCPU := fs.Bool("strict-cpu", false, "fail when the baseline was recorded on a different CPU")
+	samples := fs.Int("samples", 0, "require exactly this many samples per current metric (0 disables)")
+	procs := fs.Int("procs", 0, "require this GOMAXPROCS suffix on every current result (0 disables)")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if math.IsNaN(*threshold) || math.IsInf(*threshold, 0) || *threshold < 0 || *samples < 0 || *procs < 0 {
+		_, _ = fmt.Fprintln(stderr, "benchgate: threshold, samples and procs must be finite and nonnegative")
 		return 2
 	}
 	if fs.NArg() != 1 {
@@ -75,6 +86,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	failed := false
+	if *strictCPU && (current.CPU == "" || baseline != nil && baseline.CPU == "") {
+		_, _ = fmt.Fprintln(stdout, "benchgate: strict CPU check requires CPU headers")
+		failed = true
+	}
+	if *procs > 0 && (len(current.Procs) != 1 || !current.Procs[*procs]) {
+		_, _ = fmt.Fprintf(stdout, "benchgate: expected GOMAXPROCS=%d on every current result\n", *procs)
+		failed = true
+	}
+	if *samples > 0 {
+		for _, name := range current.order {
+			for _, unit := range sortedUnits(current.Samples[name]) {
+				if count := len(current.Samples[name][unit]); count != *samples {
+					_, _ = fmt.Fprintf(stdout, "benchgate: %s %s has %d samples; expected %d\n", name, unit, count, *samples)
+					failed = true
+				}
+			}
+		}
+	}
 	if len(current.Samples) == 0 {
 		_, _ = fmt.Fprintln(stdout, "benchgate: no benchmark results in", fs.Arg(0))
 		failed = true

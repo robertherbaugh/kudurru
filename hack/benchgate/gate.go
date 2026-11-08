@@ -16,6 +16,7 @@ import (
 // the -GOMAXPROCS suffix) and unit, the samples of every -count run.
 type Results struct {
 	CPU     string
+	Procs   map[int]bool
 	Samples map[string]map[string][]float64
 	// Failures are FAIL / panic lines; a run with failures never passes.
 	Failures []string
@@ -27,24 +28,40 @@ var procSuffix = regexp.MustCompile(`-[0-9]+$`)
 // Parse reads benchmark output. Lines that are not benchmark results, cpu
 // headers or failures are ignored, so comments may be added freely.
 func Parse(r io.Reader) (*Results, error) {
-	res := &Results{Samples: map[string]map[string][]float64{}}
+	res := &Results{Samples: map[string]map[string][]float64{}, Procs: map[int]bool{}}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		switch {
 		case strings.HasPrefix(line, "cpu:"):
-			res.CPU = strings.TrimSpace(strings.TrimPrefix(line, "cpu:"))
+			cpu := strings.TrimSpace(strings.TrimPrefix(line, "cpu:"))
+			if cpu == "" || res.CPU != "" && cpu != res.CPU {
+				return nil, fmt.Errorf("benchgate: empty or inconsistent CPU header %q", cpu)
+			}
+			res.CPU = cpu
 		case strings.HasPrefix(line, "FAIL"), strings.HasPrefix(line, "--- FAIL"), strings.HasPrefix(line, "panic:"):
 			res.Failures = append(res.Failures, line)
 		case strings.HasPrefix(line, "Benchmark"):
 			f := strings.Fields(line)
-			if len(f) < 4 || len(f)%2 != 0 {
+			if len(f) == 1 {
 				continue // a benchmark name echoed without results
 			}
-			if _, err := strconv.ParseInt(f[1], 10, 64); err != nil {
-				continue
+			if len(f) < 4 || len(f)%2 != 0 {
+				return nil, fmt.Errorf("benchgate: malformed result %q", line)
 			}
+			if iterations, err := strconv.ParseInt(f[1], 10, 64); err != nil || iterations <= 0 {
+				return nil, fmt.Errorf("benchgate: invalid iteration count in %q", line)
+			}
+			procs := 1 // Go omits the suffix for GOMAXPROCS=1.
+			if suffix := procSuffix.FindString(f[0]); suffix != "" {
+				var err error
+				procs, err = strconv.Atoi(suffix[1:])
+				if err != nil || procs <= 0 {
+					return nil, fmt.Errorf("benchgate: invalid processor suffix in %q", line)
+				}
+			}
+			res.Procs[procs] = true
 			name := procSuffix.ReplaceAllString(f[0], "")
 			units := res.Samples[name]
 			if units == nil {
@@ -52,11 +69,16 @@ func Parse(r io.Reader) (*Results, error) {
 				res.Samples[name] = units
 				res.order = append(res.order, name)
 			}
+			seen := map[string]bool{}
 			for i := 2; i+1 < len(f); i += 2 {
 				v, err := strconv.ParseFloat(f[i], 64)
-				if err != nil {
+				if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 					return nil, fmt.Errorf("benchgate: bad value %q in %q", f[i], line)
 				}
+				if seen[f[i+1]] {
+					return nil, fmt.Errorf("benchgate: duplicate unit %q in %q", f[i+1], line)
+				}
+				seen[f[i+1]] = true
 				units[f[i+1]] = append(units[f[i+1]], v)
 			}
 		}
@@ -105,8 +127,8 @@ func ParseRules(r io.Reader) ([]Rule, error) {
 		switch {
 		case f[0] == "limit" && len(f) == 4:
 			v, err := strconv.ParseFloat(f[3], 64)
-			if err != nil {
-				return nil, fmt.Errorf("benchgate: limits line %d: %w", n, err)
+			if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+				return nil, fmt.Errorf("benchgate: limits line %d: invalid maximum %q", n, f[3])
 			}
 			rule.Max = v
 		case f[0] == "ignore" && len(f) == 3:

@@ -256,13 +256,13 @@ BENCH_RUN        = for i in $$(seq $(BENCH_COUNT)); do \
 bench:
 	@mkdir -p $(dir $(BENCH_OUT))
 	{ $(BENCH_RUN); } | tee $(BENCH_OUT)
-	go run ./hack/benchgate -baseline $(BENCH_BASELINE) -limits $(BENCH_LIMITS) -threshold $(BENCH_THRESHOLD) $(BENCH_OUT)
+	go run ./hack/benchgate -baseline $(BENCH_BASELINE) -limits $(BENCH_LIMITS) -threshold $(BENCH_THRESHOLD) -samples $(BENCH_COUNT) $(BENCH_OUT)
 
 ## bench-baseline: re-record bench/baseline.txt on this machine and check it against the limits
 bench-baseline:
 	@mkdir -p $(dir $(BENCH_OUT))
 	{ $(BENCH_RUN); } | tee $(BENCH_OUT)
-	go run ./hack/benchgate -limits $(BENCH_LIMITS) $(BENCH_OUT)
+	go run ./hack/benchgate -limits $(BENCH_LIMITS) -samples $(BENCH_COUNT) $(BENCH_OUT)
 	cp $(BENCH_OUT) $(BENCH_BASELINE)
 
 ## dashboard-*: the dashboard SPA in dashboard/ (Bun + Vite, dev-docs/design-record.md §10,
