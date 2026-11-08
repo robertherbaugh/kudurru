@@ -4615,3 +4615,31 @@ establish a named fixed class. F21c/F63 class selection, actual calibration,
 new absolute limits, hosted and final release qualification remain open.
 Evidence: `.context/release-expanded-measurements-20261108/result.md`, every
 native receipt/log, all-vectors.csv and original-baseline-gate.json/log.
+
+
+### November 8 — SQLite TSIG management composition
+
+Permission-checked metadata/create/replace/overlap-removal/revoke routes now mount
+through the actual SQLite command facade and complete serving owner. Generated
+OpenAPI, Go and TypeScript clients include these routes. Provider lifetime,
+original writer, same-transaction source/credential checks, redacted audit and
+exact committed-publication observation remain mandatory. Architecture and
+operator documentation distinguish durable receipt from serving acknowledgment.
+
+Ordinary composition passed; new final-clock and physical deferred-FK commit
+error tests passed (18 entries). The broad core race exposed two contract
+updates (resource count and virtual TSIG SAR mapping), now corrected. The
+subsequent mounted selection passed 64 entries but FAILED four entries: two
+pending-startup subcases plus their parent, and native UPDATE. Startup capture
+failure currently drops the expected empty unsigned SERVFAIL. The native UPDATE
+advanced the durable head while its peer received EOF: the original data
+generation output guard rejects the command's own commit. No wire acknowledgment
+is credited and the mutation was not replayed. These response-path corrections
+are the next production task; F07a remains incomplete.
+
+All three earlier external API skips were executed against real PostgreSQL and
+Kubernetes envtest: default race passed 17 entries with no skips. Full configured
+lint passes after two test-only switch cleanups; affected-package vet and
+dashboard typecheck pass. Original failures and every source freeze remain in
+`.context/tsig-management-integration-20261108/`. Production Kubernetes authority,
+remaining original final-authority cases and release gates remain open.

@@ -43,6 +43,7 @@ type RuntimeOwner struct {
 	zones               *servingzones.Prepared
 	keys                *dnsserver.StaticKeyring
 	keyringIdentity     string
+	tsig                *TSIGManagement
 	current             func() bool
 	dependenciesCurrent func() bool
 	browser             func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
@@ -167,7 +168,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, browser: deps.Browser, cli: deps.CLI}, deps.Release),
+		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, tsig: deps.TSIG, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, browser: deps.Browser, cli: deps.CLI}, deps.Release),
 		component("control", owners.control, nil),
 		component("logging", owners.logging, nil),
 	}

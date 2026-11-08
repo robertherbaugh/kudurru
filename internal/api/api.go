@@ -356,6 +356,9 @@ type Options struct {
 	DomainCommand DomainCommand
 	// ZoneNotifyCommand admits durable manual NOTIFY under current authority.
 	ZoneNotifyCommand ZoneNotifyCommand
+	// TSIGKeyReads and TSIGKeyCommand have no legacy persistence fallback.
+	TSIGKeyReads   TSIGKeyReadSource
+	TSIGKeyCommand TSIGKeyCommand
 	// CrossOrigin shares the host's existing same-origin policy. Nil creates
 	// the default protection with no trusted-origin exceptions.
 	CrossOrigin *http.CrossOriginProtection

@@ -26,6 +26,7 @@ resources:
   tokens: [read, write, delete, own]
   identityproviders: [read, write, delete]
   rolebindings: [read, write, delete]
+  tsigkeys: [read, write, delete]
   integrations: [read, write, delete, sync, check, secrets, act]
   cluster: [read, join, promote, drain]
   edge: [read, write]

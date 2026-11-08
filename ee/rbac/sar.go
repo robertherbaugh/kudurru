@@ -53,6 +53,7 @@ var SARResources = map[string]string{
 	"tokens":            "tokens",
 	"identityproviders": "identityproviders",
 	"rolebindings":      "rolebindings",
+	"tsigkeys":          "tsigkeys",
 	"integrations":      "integrations",
 	"cluster":           "clusters",
 	"edge":              "edges",

@@ -1468,6 +1468,33 @@
         ],
         "type": "object"
       },
+      "CreateStoredTSIGKeyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "algorithm": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "keyName": {
+            "maxLength": 254,
+            "minLength": 1,
+            "type": "string"
+          },
+          "secret": {
+            "maxLength": 684,
+            "minLength": 4,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "keyName",
+          "algorithm",
+          "secret"
+        ],
+        "type": "object"
+      },
       "CreateTokenRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7106,6 +7133,37 @@
         ],
         "type": "object"
       },
+      "ReplaceStoredTSIGKeyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "algorithm": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "resourceVersion": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "secret": {
+            "maxLength": 684,
+            "minLength": 4,
+            "type": "string",
+            "writeOnly": true
+          },
+          "uid": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "resourceVersion",
+          "secret"
+        ],
+        "type": "object"
+      },
       "ReplicationStatus": {
         "additionalProperties": false,
         "properties": {
@@ -8641,6 +8699,26 @@
         ],
         "type": "object"
       },
+      "StoredTSIGKeyBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "resourceVersion": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uid": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "resourceVersion"
+        ],
+        "type": "object"
+      },
       "StubAuthority": {
         "additionalProperties": false,
         "properties": {
@@ -9035,6 +9113,99 @@
         },
         "required": [
           "enabled"
+        ],
+        "type": "object"
+      },
+      "TSIGKeyCommandReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "committed": {
+            "description": "Always true in a receipt: actual command completion was confirmed.",
+            "type": "boolean"
+          },
+          "key": {
+            "$ref": "#/components/schemas/TSIGKeyMetadata"
+          },
+          "operation": {
+            "enum": [
+              "create",
+              "replace",
+              "revoke",
+              "reseal"
+            ],
+            "type": "string"
+          },
+          "published": {
+            "description": "Exact target publication acknowledged within original bounds; false does not imply rollback or absence of publication.",
+            "type": "boolean"
+          },
+          "removed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "operation",
+          "committed",
+          "published",
+          "removed",
+          "key"
+        ],
+        "type": "object"
+      },
+      "TSIGKeyList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TSIGKeyMetadata"
+            },
+            "maxItems": 1024,
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "TSIGKeyMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "algorithm": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "keyName": {
+            "maxLength": 254,
+            "type": "string"
+          },
+          "resourceVersion": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "file",
+              "store"
+            ],
+            "type": "string"
+          },
+          "uid": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyName",
+          "algorithm",
+          "source"
         ],
         "type": "object"
       },
@@ -30893,6 +31064,721 @@
           "resource": "stats",
           "scope": "cluster",
           "verb": "read"
+        }
+      }
+    },
+    "/tsigkeys": {
+      "get": {
+        "operationId": "listTSIGKeyMetadata",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List captured TSIG key metadata",
+        "tags": [
+          "tsigkeys"
+        ],
+        "x-kudurru-permission": {
+          "resource": "tsigkeys",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "post": {
+        "description": "SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
+        "operationId": "createStoredTSIGKey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStoredTSIGKeyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyCommandReceipt"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyCommandReceipt"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create an absent stored TSIG key",
+        "tags": [
+          "tsigkeys"
+        ],
+        "x-kudurru-permission": {
+          "resource": "tsigkeys",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/tsigkeys/{keyName}/replace": {
+      "post": {
+        "description": "SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
+        "operationId": "replaceStoredTSIGKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "keyName",
+            "required": true,
+            "schema": {
+              "maxLength": 254,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceStoredTSIGKeyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyCommandReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyCommandReceipt"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Replace a reviewed stored TSIG key",
+        "tags": [
+          "tsigkeys"
+        ],
+        "x-kudurru-permission": {
+          "resource": "tsigkeys",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/tsigkeys/{keyName}/reseal": {
+      "post": {
+        "description": "SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
+        "operationId": "resealStoredTSIGKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "keyName",
+            "required": true,
+            "schema": {
+              "maxLength": 254,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoredTSIGKeyBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyCommandReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyCommandReceipt"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Reseal a reviewed stored TSIG key",
+        "tags": [
+          "tsigkeys"
+        ],
+        "x-kudurru-permission": {
+          "resource": "tsigkeys",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/tsigkeys/{keyName}/revoke": {
+      "post": {
+        "description": "SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
+        "operationId": "revokeStoredTSIGKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "keyName",
+            "required": true,
+            "schema": {
+              "maxLength": 254,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoredTSIGKeyBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyCommandReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TSIGKeyCommandReceipt"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Revoke a reviewed stored TSIG key",
+        "tags": [
+          "tsigkeys"
+        ],
+        "x-kudurru-permission": {
+          "resource": "tsigkeys",
+          "scope": "cluster",
+          "verb": "delete"
         }
       }
     },

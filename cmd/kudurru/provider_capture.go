@@ -29,6 +29,8 @@ func providerDependencyCapture(
 	}
 	return func(ctx context.Context, image *replication.Image) (servingbuild.Dependencies, error) {
 		d, err := base(ctx, image)
+		baseTSIG := d.TSIG
+		d.TSIG = nil // Partial capture never exposes provisioning capability.
 		if err != nil {
 			return d, err
 		}
@@ -71,6 +73,9 @@ func providerDependencyCapture(
 		d.Browser = p.Browser
 		d.CLI = p.CLI
 		d.Current = func() bool { return !released.Load() && baseCurrent() && p.Current() }
+		if baseTSIG != nil {
+			d.TSIG = baseTSIG.BindLifetime(func() bool { return !released.Load() && p.Current() })
+		}
 		return d, nil
 	}, nil
 }

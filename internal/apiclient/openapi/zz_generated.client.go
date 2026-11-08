@@ -1274,6 +1274,48 @@ func (e StubRuntimeState) Valid() bool {
 	}
 }
 
+// Defines values for TSIGKeyCommandReceiptOperation.
+const (
+	TSIGKeyCommandReceiptOperationCreate  TSIGKeyCommandReceiptOperation = "create"
+	TSIGKeyCommandReceiptOperationReplace TSIGKeyCommandReceiptOperation = "replace"
+	TSIGKeyCommandReceiptOperationReseal  TSIGKeyCommandReceiptOperation = "reseal"
+	TSIGKeyCommandReceiptOperationRevoke  TSIGKeyCommandReceiptOperation = "revoke"
+)
+
+// Valid indicates whether the value is a known member of the TSIGKeyCommandReceiptOperation enum.
+func (e TSIGKeyCommandReceiptOperation) Valid() bool {
+	switch e {
+	case TSIGKeyCommandReceiptOperationCreate:
+		return true
+	case TSIGKeyCommandReceiptOperationReplace:
+		return true
+	case TSIGKeyCommandReceiptOperationReseal:
+		return true
+	case TSIGKeyCommandReceiptOperationRevoke:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TSIGKeyMetadataSource.
+const (
+	TSIGKeyMetadataSourceFile  TSIGKeyMetadataSource = "file"
+	TSIGKeyMetadataSourceStore TSIGKeyMetadataSource = "store"
+)
+
+// Valid indicates whether the value is a known member of the TSIGKeyMetadataSource enum.
+func (e TSIGKeyMetadataSource) Valid() bool {
+	switch e {
+	case TSIGKeyMetadataSourceFile:
+		return true
+	case TSIGKeyMetadataSourceStore:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TokenOwnerKind.
 const (
 	TokenOwnerKindServiceAccount TokenOwnerKind = "ServiceAccount"
@@ -2607,6 +2649,13 @@ type CreateLocalUserRequest struct {
 
 	// Password Initial password, at least 8 characters and at most 1024 bytes; never returned or logged.
 	Password *string `json:"password,omitempty"`
+}
+
+// CreateStoredTSIGKeyBody defines model for CreateStoredTSIGKeyBody.
+type CreateStoredTSIGKeyBody struct {
+	Algorithm string  `json:"algorithm"`
+	KeyName   string  `json:"keyName"`
+	Secret    *string `json:"secret,omitempty"`
 }
 
 // CreateTokenRequest defines model for CreateTokenRequest.
@@ -4497,6 +4546,14 @@ type ReplaceRoleBindingCommand struct {
 	Uid             string             `json:"uid"`
 }
 
+// ReplaceStoredTSIGKeyBody defines model for ReplaceStoredTSIGKeyBody.
+type ReplaceStoredTSIGKeyBody struct {
+	Algorithm       *string `json:"algorithm,omitempty"`
+	ResourceVersion string  `json:"resourceVersion"`
+	Secret          *string `json:"secret,omitempty"`
+	Uid             string  `json:"uid"`
+}
+
 // ReplicationStatus defines model for ReplicationStatus.
 type ReplicationStatus struct {
 	AppliedIndex  int64  `json:"appliedIndex"`
@@ -5001,6 +5058,12 @@ type Stats struct {
 	Rows          int64 `json:"rows"`
 }
 
+// StoredTSIGKeyBinding defines model for StoredTSIGKeyBinding.
+type StoredTSIGKeyBinding struct {
+	ResourceVersion string `json:"resourceVersion"`
+	Uid             string `json:"uid"`
+}
+
 // StubAuthority defines model for StubAuthority.
 type StubAuthority struct {
 	Address  string                `json:"address"`
@@ -5124,6 +5187,39 @@ type TOTPSetupResponse struct {
 type TOTPStatus struct {
 	Enabled bool `json:"enabled"`
 }
+
+// TSIGKeyCommandReceipt defines model for TSIGKeyCommandReceipt.
+type TSIGKeyCommandReceipt struct {
+	// Committed Always true in a receipt: actual command completion was confirmed.
+	Committed bool                           `json:"committed"`
+	Key       TSIGKeyMetadata                `json:"key"`
+	Operation TSIGKeyCommandReceiptOperation `json:"operation"`
+
+	// Published Exact target publication acknowledged within original bounds; false does not imply rollback or absence of publication.
+	Published bool `json:"published"`
+	Removed   bool `json:"removed"`
+}
+
+// TSIGKeyCommandReceiptOperation defines model for TSIGKeyCommandReceipt.Operation.
+type TSIGKeyCommandReceiptOperation string
+
+// TSIGKeyList defines model for TSIGKeyList.
+type TSIGKeyList struct {
+	Items *[]TSIGKeyMetadata `json:"items"`
+}
+
+// TSIGKeyMetadata defines model for TSIGKeyMetadata.
+type TSIGKeyMetadata struct {
+	Algorithm       string                `json:"algorithm"`
+	CreatedAt       *time.Time            `json:"createdAt,omitempty"`
+	KeyName         string                `json:"keyName"`
+	ResourceVersion *string               `json:"resourceVersion,omitempty"`
+	Source          TSIGKeyMetadataSource `json:"source"`
+	Uid             *string               `json:"uid,omitempty"`
+}
+
+// TSIGKeyMetadataSource defines model for TSIGKeyMetadata.Source.
+type TSIGKeyMetadataSource string
 
 // TimeseriesBody defines model for TimeseriesBody.
 type TimeseriesBody struct {
@@ -6533,6 +6629,18 @@ type ChangeSettingsOwnershipJSONRequestBody = OwnershipInputBody
 
 // ExportSettingsSectionYAMLJSONRequestBody defines body for ExportSettingsSectionYAML for application/json ContentType.
 type ExportSettingsSectionYAMLJSONRequestBody = SettingsYAMLInputBody
+
+// CreateStoredTSIGKeyJSONRequestBody defines body for CreateStoredTSIGKey for application/json ContentType.
+type CreateStoredTSIGKeyJSONRequestBody = CreateStoredTSIGKeyBody
+
+// ReplaceStoredTSIGKeyJSONRequestBody defines body for ReplaceStoredTSIGKey for application/json ContentType.
+type ReplaceStoredTSIGKeyJSONRequestBody = ReplaceStoredTSIGKeyBody
+
+// ResealStoredTSIGKeyJSONRequestBody defines body for ResealStoredTSIGKey for application/json ContentType.
+type ResealStoredTSIGKeyJSONRequestBody = StoredTSIGKeyBinding
+
+// RevokeStoredTSIGKeyJSONRequestBody defines body for RevokeStoredTSIGKey for application/json ContentType.
+type RevokeStoredTSIGKeyJSONRequestBody = StoredTSIGKeyBinding
 
 // ApproveUnblockRequestJSONRequestBody defines body for ApproveUnblockRequest for application/json ContentType.
 type ApproveUnblockRequestJSONRequestBody = UnblockApproval
@@ -8139,6 +8247,83 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /stats/upstreams (the `StatsUpstreams` operationId).
 	StatsUpstreams(ctx context.Context, params *StatsUpstreamsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTSIGKeyMetadata List captured TSIG key metadata
+	//
+	// Corresponds with GET /tsigkeys (the `ListTSIGKeyMetadata` operationId).
+	ListTSIGKeyMetadata(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStoredTSIGKeyWithBody Create an absent stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /tsigkeys (the `CreateStoredTSIGKey` operationId).
+	CreateStoredTSIGKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStoredTSIGKey Create an absent stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /tsigkeys (the `CreateStoredTSIGKey` operationId).
+	CreateStoredTSIGKey(ctx context.Context, body CreateStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceStoredTSIGKeyWithBody Replace a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/replace (the `ReplaceStoredTSIGKey` operationId).
+	ReplaceStoredTSIGKeyWithBody(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceStoredTSIGKey Replace a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/replace (the `ReplaceStoredTSIGKey` operationId).
+	ReplaceStoredTSIGKey(ctx context.Context, keyName string, body ReplaceStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResealStoredTSIGKeyWithBody Reseal a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/reseal (the `ResealStoredTSIGKey` operationId).
+	ResealStoredTSIGKeyWithBody(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResealStoredTSIGKey Reseal a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/reseal (the `ResealStoredTSIGKey` operationId).
+	ResealStoredTSIGKey(ctx context.Context, keyName string, body ResealStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeStoredTSIGKeyWithBody Revoke a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/revoke (the `RevokeStoredTSIGKey` operationId).
+	RevokeStoredTSIGKeyWithBody(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeStoredTSIGKey Revoke a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/revoke (the `RevokeStoredTSIGKey` operationId).
+	RevokeStoredTSIGKey(ctx context.Context, keyName string, body RevokeStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListUnblockRequests List the unblock requests users made on the block page, newest first
 	//
@@ -12058,6 +12243,173 @@ func (c *Client) StatsTop(ctx context.Context, params *StatsTopParams, reqEditor
 // Corresponds with GET /stats/upstreams (the `StatsUpstreams` operationId).
 func (c *Client) StatsUpstreams(ctx context.Context, params *StatsUpstreamsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStatsUpstreamsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTSIGKeyMetadata List captured TSIG key metadata
+//
+// Corresponds with GET /tsigkeys (the `ListTSIGKeyMetadata` operationId).
+func (c *Client) ListTSIGKeyMetadata(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTSIGKeyMetadataRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateStoredTSIGKeyWithBody Create an absent stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /tsigkeys (the `CreateStoredTSIGKey` operationId).
+func (c *Client) CreateStoredTSIGKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStoredTSIGKeyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateStoredTSIGKey Create an absent stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /tsigkeys (the `CreateStoredTSIGKey` operationId).
+func (c *Client) CreateStoredTSIGKey(ctx context.Context, body CreateStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStoredTSIGKeyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplaceStoredTSIGKeyWithBody Replace a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /tsigkeys/{keyName}/replace (the `ReplaceStoredTSIGKey` operationId).
+func (c *Client) ReplaceStoredTSIGKeyWithBody(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceStoredTSIGKeyRequestWithBody(c.Server, keyName, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplaceStoredTSIGKey Replace a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /tsigkeys/{keyName}/replace (the `ReplaceStoredTSIGKey` operationId).
+func (c *Client) ReplaceStoredTSIGKey(ctx context.Context, keyName string, body ReplaceStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceStoredTSIGKeyRequest(c.Server, keyName, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResealStoredTSIGKeyWithBody Reseal a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /tsigkeys/{keyName}/reseal (the `ResealStoredTSIGKey` operationId).
+func (c *Client) ResealStoredTSIGKeyWithBody(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResealStoredTSIGKeyRequestWithBody(c.Server, keyName, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResealStoredTSIGKey Reseal a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /tsigkeys/{keyName}/reseal (the `ResealStoredTSIGKey` operationId).
+func (c *Client) ResealStoredTSIGKey(ctx context.Context, keyName string, body ResealStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResealStoredTSIGKeyRequest(c.Server, keyName, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeStoredTSIGKeyWithBody Revoke a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /tsigkeys/{keyName}/revoke (the `RevokeStoredTSIGKey` operationId).
+func (c *Client) RevokeStoredTSIGKeyWithBody(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeStoredTSIGKeyRequestWithBody(c.Server, keyName, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeStoredTSIGKey Revoke a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /tsigkeys/{keyName}/revoke (the `RevokeStoredTSIGKey` operationId).
+func (c *Client) RevokeStoredTSIGKey(ctx context.Context, keyName string, body RevokeStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeStoredTSIGKeyRequest(c.Server, keyName, body)
 	if err != nil {
 		return nil, err
 	}
@@ -21539,6 +21891,214 @@ func NewStatsUpstreamsRequest(server string, params *StatsUpstreamsParams) (*htt
 	return req, nil
 }
 
+// NewListTSIGKeyMetadataRequest constructs an http.Request for the ListTSIGKeyMetadata method
+func NewListTSIGKeyMetadataRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tsigkeys")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateStoredTSIGKeyRequest calls the generic CreateStoredTSIGKey builder with application/json body
+func NewCreateStoredTSIGKeyRequest(server string, body CreateStoredTSIGKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateStoredTSIGKeyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateStoredTSIGKeyRequestWithBody constructs an http.Request for the CreateStoredTSIGKey method, with any body, and a specified content type
+func NewCreateStoredTSIGKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tsigkeys")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewReplaceStoredTSIGKeyRequest calls the generic ReplaceStoredTSIGKey builder with application/json body
+func NewReplaceStoredTSIGKeyRequest(server string, keyName string, body ReplaceStoredTSIGKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplaceStoredTSIGKeyRequestWithBody(server, keyName, "application/json", bodyReader)
+}
+
+// NewReplaceStoredTSIGKeyRequestWithBody constructs an http.Request for the ReplaceStoredTSIGKey method, with any body, and a specified content type
+func NewReplaceStoredTSIGKeyRequestWithBody(server string, keyName string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "keyName", keyName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tsigkeys/%s/replace", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewResealStoredTSIGKeyRequest calls the generic ResealStoredTSIGKey builder with application/json body
+func NewResealStoredTSIGKeyRequest(server string, keyName string, body ResealStoredTSIGKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResealStoredTSIGKeyRequestWithBody(server, keyName, "application/json", bodyReader)
+}
+
+// NewResealStoredTSIGKeyRequestWithBody constructs an http.Request for the ResealStoredTSIGKey method, with any body, and a specified content type
+func NewResealStoredTSIGKeyRequestWithBody(server string, keyName string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "keyName", keyName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tsigkeys/%s/reseal", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeStoredTSIGKeyRequest calls the generic RevokeStoredTSIGKey builder with application/json body
+func NewRevokeStoredTSIGKeyRequest(server string, keyName string, body RevokeStoredTSIGKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRevokeStoredTSIGKeyRequestWithBody(server, keyName, "application/json", bodyReader)
+}
+
+// NewRevokeStoredTSIGKeyRequestWithBody constructs an http.Request for the RevokeStoredTSIGKey method, with any body, and a specified content type
+func NewRevokeStoredTSIGKeyRequestWithBody(server string, keyName string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "keyName", keyName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tsigkeys/%s/revoke", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListUnblockRequestsRequest constructs an http.Request for the ListUnblockRequests method
 func NewListUnblockRequestsRequest(server string, params *ListUnblockRequestsParams) (*http.Request, error) {
 	var err error
@@ -24089,6 +24649,85 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /stats/upstreams (the `StatsUpstreams` operationId).
 	StatsUpstreamsWithResponse(ctx context.Context, params *StatsUpstreamsParams, reqEditors ...RequestEditorFn) (*StatsUpstreamsResponse, error)
+
+	// ListTSIGKeyMetadataWithResponse List captured TSIG key metadata
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /tsigkeys (the `ListTSIGKeyMetadata` operationId).
+	ListTSIGKeyMetadataWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTSIGKeyMetadataResponse, error)
+
+	// CreateStoredTSIGKeyWithBodyWithResponse Create an absent stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /tsigkeys (the `CreateStoredTSIGKey` operationId).
+	CreateStoredTSIGKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStoredTSIGKeyResponse, error)
+
+	// CreateStoredTSIGKeyWithResponse Create an absent stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /tsigkeys (the `CreateStoredTSIGKey` operationId).
+	CreateStoredTSIGKeyWithResponse(ctx context.Context, body CreateStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStoredTSIGKeyResponse, error)
+
+	// ReplaceStoredTSIGKeyWithBodyWithResponse Replace a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/replace (the `ReplaceStoredTSIGKey` operationId).
+	ReplaceStoredTSIGKeyWithBodyWithResponse(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceStoredTSIGKeyResponse, error)
+
+	// ReplaceStoredTSIGKeyWithResponse Replace a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/replace (the `ReplaceStoredTSIGKey` operationId).
+	ReplaceStoredTSIGKeyWithResponse(ctx context.Context, keyName string, body ReplaceStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceStoredTSIGKeyResponse, error)
+
+	// ResealStoredTSIGKeyWithBodyWithResponse Reseal a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/reseal (the `ResealStoredTSIGKey` operationId).
+	ResealStoredTSIGKeyWithBodyWithResponse(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResealStoredTSIGKeyResponse, error)
+
+	// ResealStoredTSIGKeyWithResponse Reseal a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/reseal (the `ResealStoredTSIGKey` operationId).
+	ResealStoredTSIGKeyWithResponse(ctx context.Context, keyName string, body ResealStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*ResealStoredTSIGKeyResponse, error)
+
+	// RevokeStoredTSIGKeyWithBodyWithResponse Revoke a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/revoke (the `RevokeStoredTSIGKey` operationId).
+	RevokeStoredTSIGKeyWithBodyWithResponse(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeStoredTSIGKeyResponse, error)
+
+	// RevokeStoredTSIGKeyWithResponse Revoke a reviewed stored TSIG key
+	//
+	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /tsigkeys/{keyName}/revoke (the `RevokeStoredTSIGKey` operationId).
+	RevokeStoredTSIGKeyWithResponse(ctx context.Context, keyName string, body RevokeStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeStoredTSIGKeyResponse, error)
 
 	// ListUnblockRequestsWithResponse List the unblock requests users made on the block page, newest first
 	//
@@ -39679,6 +40318,568 @@ func (r StatsUpstreamsResponse) ContentType() string {
 	return ""
 }
 
+type ListTSIGKeyMetadataResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TSIGKeyList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTSIGKeyMetadataResponse) GetJSON200() *TSIGKeyList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListTSIGKeyMetadataResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListTSIGKeyMetadataResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListTSIGKeyMetadataResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListTSIGKeyMetadataResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListTSIGKeyMetadataResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r ListTSIGKeyMetadataResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListTSIGKeyMetadataResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTSIGKeyMetadataResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTSIGKeyMetadataResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTSIGKeyMetadataResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTSIGKeyMetadataResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateStoredTSIGKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *TSIGKeyCommandReceipt
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *TSIGKeyCommandReceipt
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON201() *TSIGKeyCommandReceipt {
+	return r.JSON201
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON202() *TSIGKeyCommandReceipt {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateStoredTSIGKeyResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateStoredTSIGKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateStoredTSIGKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateStoredTSIGKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateStoredTSIGKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReplaceStoredTSIGKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TSIGKeyCommandReceipt
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *TSIGKeyCommandReceipt
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON200() *TSIGKeyCommandReceipt {
+	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON202() *TSIGKeyCommandReceipt {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ReplaceStoredTSIGKeyResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ReplaceStoredTSIGKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplaceStoredTSIGKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplaceStoredTSIGKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReplaceStoredTSIGKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResealStoredTSIGKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TSIGKeyCommandReceipt
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *TSIGKeyCommandReceipt
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON200() *TSIGKeyCommandReceipt {
+	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON202() *TSIGKeyCommandReceipt {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ResealStoredTSIGKeyResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ResealStoredTSIGKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResealStoredTSIGKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResealStoredTSIGKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResealStoredTSIGKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeStoredTSIGKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TSIGKeyCommandReceipt
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *TSIGKeyCommandReceipt
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON200() *TSIGKeyCommandReceipt {
+	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON202() *TSIGKeyCommandReceipt {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r RevokeStoredTSIGKeyResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeStoredTSIGKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeStoredTSIGKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeStoredTSIGKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeStoredTSIGKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListUnblockRequestsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -44176,6 +45377,139 @@ func (c *ClientWithResponses) StatsUpstreamsWithResponse(ctx context.Context, pa
 		return nil, err
 	}
 	return ParseStatsUpstreamsResponse(rsp)
+}
+
+// ListTSIGKeyMetadataWithResponse List captured TSIG key metadata
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /tsigkeys (the `ListTSIGKeyMetadata` operationId).
+func (c *ClientWithResponses) ListTSIGKeyMetadataWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTSIGKeyMetadataResponse, error) {
+	rsp, err := c.ListTSIGKeyMetadata(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTSIGKeyMetadataResponse(rsp)
+}
+
+// CreateStoredTSIGKeyWithBodyWithResponse Create an absent stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /tsigkeys (the `CreateStoredTSIGKey` operationId).
+func (c *ClientWithResponses) CreateStoredTSIGKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStoredTSIGKeyResponse, error) {
+	rsp, err := c.CreateStoredTSIGKeyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStoredTSIGKeyResponse(rsp)
+}
+
+// CreateStoredTSIGKeyWithResponse Create an absent stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /tsigkeys (the `CreateStoredTSIGKey` operationId).
+func (c *ClientWithResponses) CreateStoredTSIGKeyWithResponse(ctx context.Context, body CreateStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStoredTSIGKeyResponse, error) {
+	rsp, err := c.CreateStoredTSIGKey(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStoredTSIGKeyResponse(rsp)
+}
+
+// ReplaceStoredTSIGKeyWithBodyWithResponse Replace a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /tsigkeys/{keyName}/replace (the `ReplaceStoredTSIGKey` operationId).
+func (c *ClientWithResponses) ReplaceStoredTSIGKeyWithBodyWithResponse(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceStoredTSIGKeyResponse, error) {
+	rsp, err := c.ReplaceStoredTSIGKeyWithBody(ctx, keyName, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceStoredTSIGKeyResponse(rsp)
+}
+
+// ReplaceStoredTSIGKeyWithResponse Replace a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /tsigkeys/{keyName}/replace (the `ReplaceStoredTSIGKey` operationId).
+func (c *ClientWithResponses) ReplaceStoredTSIGKeyWithResponse(ctx context.Context, keyName string, body ReplaceStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceStoredTSIGKeyResponse, error) {
+	rsp, err := c.ReplaceStoredTSIGKey(ctx, keyName, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceStoredTSIGKeyResponse(rsp)
+}
+
+// ResealStoredTSIGKeyWithBodyWithResponse Reseal a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /tsigkeys/{keyName}/reseal (the `ResealStoredTSIGKey` operationId).
+func (c *ClientWithResponses) ResealStoredTSIGKeyWithBodyWithResponse(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResealStoredTSIGKeyResponse, error) {
+	rsp, err := c.ResealStoredTSIGKeyWithBody(ctx, keyName, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResealStoredTSIGKeyResponse(rsp)
+}
+
+// ResealStoredTSIGKeyWithResponse Reseal a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /tsigkeys/{keyName}/reseal (the `ResealStoredTSIGKey` operationId).
+func (c *ClientWithResponses) ResealStoredTSIGKeyWithResponse(ctx context.Context, keyName string, body ResealStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*ResealStoredTSIGKeyResponse, error) {
+	rsp, err := c.ResealStoredTSIGKey(ctx, keyName, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResealStoredTSIGKeyResponse(rsp)
+}
+
+// RevokeStoredTSIGKeyWithBodyWithResponse Revoke a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /tsigkeys/{keyName}/revoke (the `RevokeStoredTSIGKey` operationId).
+func (c *ClientWithResponses) RevokeStoredTSIGKeyWithBodyWithResponse(ctx context.Context, keyName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeStoredTSIGKeyResponse, error) {
+	rsp, err := c.RevokeStoredTSIGKeyWithBody(ctx, keyName, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeStoredTSIGKeyResponse(rsp)
+}
+
+// RevokeStoredTSIGKeyWithResponse Revoke a reviewed stored TSIG key
+//
+// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /tsigkeys/{keyName}/revoke (the `RevokeStoredTSIGKey` operationId).
+func (c *ClientWithResponses) RevokeStoredTSIGKeyWithResponse(ctx context.Context, keyName string, body RevokeStoredTSIGKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeStoredTSIGKeyResponse, error) {
+	rsp, err := c.RevokeStoredTSIGKey(ctx, keyName, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeStoredTSIGKeyResponse(rsp)
 }
 
 // ListUnblockRequestsWithResponse List the unblock requests users made on the block page, newest first
@@ -57878,6 +59212,493 @@ func ParseStatsUpstreamsResponse(rsp *http.Response) (*StatsUpstreamsResponse, e
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTSIGKeyMetadataResponse parses an HTTP response from a ListTSIGKeyMetadataWithResponse call
+func ParseListTSIGKeyMetadataResponse(rsp *http.Response) (*ListTSIGKeyMetadataResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTSIGKeyMetadataResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TSIGKeyList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateStoredTSIGKeyResponse parses an HTTP response from a CreateStoredTSIGKeyWithResponse call
+func ParseCreateStoredTSIGKeyResponse(rsp *http.Response) (*CreateStoredTSIGKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateStoredTSIGKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest TSIGKeyCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest TSIGKeyCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplaceStoredTSIGKeyResponse parses an HTTP response from a ReplaceStoredTSIGKeyWithResponse call
+func ParseReplaceStoredTSIGKeyResponse(rsp *http.Response) (*ReplaceStoredTSIGKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplaceStoredTSIGKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TSIGKeyCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest TSIGKeyCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResealStoredTSIGKeyResponse parses an HTTP response from a ResealStoredTSIGKeyWithResponse call
+func ParseResealStoredTSIGKeyResponse(rsp *http.Response) (*ResealStoredTSIGKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResealStoredTSIGKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TSIGKeyCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest TSIGKeyCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeStoredTSIGKeyResponse parses an HTTP response from a RevokeStoredTSIGKeyWithResponse call
+func ParseRevokeStoredTSIGKeyResponse(rsp *http.Response) (*RevokeStoredTSIGKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeStoredTSIGKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TSIGKeyCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest TSIGKeyCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest Error

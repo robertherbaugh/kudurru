@@ -38,11 +38,14 @@ type Dependencies struct {
 	// KeyringIdentity names the local installation that supplied Keys, from the
 	// same KeyringCut. Equal key bytes after replacement do not reuse this ID.
 	KeyringIdentity string
-	Secondary       *secondary.Snapshot
-	Stub            *stub.Snapshot
-	RPZ             *rpz.Snapshot
-	Current         func() bool
-	Release         func()
+	// TSIG retains original provisioning inputs; nil is unsupported. Its narrow
+	// lifetime is not a replacement for complete Current or command admission.
+	TSIG      *TSIGManagement
+	Secondary *secondary.Snapshot
+	Stub      *stub.Snapshot
+	RPZ       *rpz.Snapshot
+	Current   func() bool
+	Release   func()
 }
 
 // Options supplies local infrastructure and a complete dependency capture.

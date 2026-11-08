@@ -256,6 +256,7 @@ func (s *servingRuntime) captureHost(ctx context.Context, image *replication.Ima
 	}
 	keys := s.opts.Keyrings.Capture()
 	encryptionCurrent := func() bool { return true }
+	var management *servingbuild.TSIGManagement
 	if prepared := keys.Prepared(); prepared != nil {
 		cut := s.opts.AuthKeys.owner.Capture()
 		if !cut.Current() || cut.Value() == nil || prepared.Matches(ctx, image) != nil {
@@ -272,6 +273,13 @@ func (s *servingRuntime) captureHost(ctx context.Context, image *replication.Ima
 			return servingbuild.Dependencies{}, serving.ErrDependency
 		}
 		encryptionCurrent = cut.Current
+		management, err = servingbuild.NewTSIGManagement(prepared, sealer, func() bool { return s.life.Err() == nil && host.Current() && cut.Current() })
+		if err != nil {
+			if host.Release != nil {
+				host.Release()
+			}
+			return servingbuild.Dependencies{}, err
+		}
 	} else if s.opts.TSIG != nil {
 		if host.Release != nil {
 			host.Release()
@@ -279,7 +287,7 @@ func (s *servingRuntime) captureHost(ctx context.Context, image *replication.Ima
 		return servingbuild.Dependencies{}, serving.ErrDependency
 	}
 	id := sha256.Sum256([]byte("serving-host/v1/" + host.Identity + "/" + keys.Identity()))
-	return servingbuild.Dependencies{Identity: hex.EncodeToString(id[:]), Host: s.opts.Config, Auth: host.Auth, Keys: keys.Keys(), KeyringIdentity: keys.Identity(), Current: func() bool { return s.life.Err() == nil && host.Current() && keys.Current() && encryptionCurrent() }, Release: host.Release}, nil
+	return servingbuild.Dependencies{Identity: hex.EncodeToString(id[:]), Host: s.opts.Config, Auth: host.Auth, Keys: keys.Keys(), KeyringIdentity: keys.Identity(), TSIG: management, Current: func() bool { return s.life.Err() == nil && host.Current() && keys.Current() && encryptionCurrent() }, Release: host.Release}, nil
 }
 
 // Close cancels both root lifetimes and joins before retiring owned resources.

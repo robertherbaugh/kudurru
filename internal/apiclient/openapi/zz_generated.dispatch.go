@@ -689,6 +689,26 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.StatsUpstreams(ctx, nil, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 1 && parts[0] == "tsigkeys" {
+		response, err := c.ListTSIGKeyMetadata(ctx, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 1 && parts[0] == "tsigkeys" {
+		response, err := c.CreateStoredTSIGKeyWithBody(ctx, contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 3 && parts[0] == "tsigkeys" && parts[2] == "replace" {
+		response, err := c.ReplaceStoredTSIGKeyWithBody(ctx, parts[1], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 3 && parts[0] == "tsigkeys" && parts[2] == "reseal" {
+		response, err := c.ResealStoredTSIGKeyWithBody(ctx, parts[1], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 3 && parts[0] == "tsigkeys" && parts[2] == "revoke" {
+		response, err := c.RevokeStoredTSIGKeyWithBody(ctx, parts[1], contentType, body, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 1 && parts[0] == "unblockrequests" {
 		response, err := c.ListUnblockRequests(ctx, nil, editors...)
 		return response, true, err

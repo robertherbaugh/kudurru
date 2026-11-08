@@ -1036,6 +1036,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var unblockCommand unblock.Command
 	var domainCommand api.DomainCommand
 	var zoneNotifyCommand api.ZoneNotifyCommand
+	var tsigKeyReads api.TSIGKeyReadSource
+	var tsigKeyCommand api.TSIGKeyCommand
 	catalogSource := catalogueAPI(catalogs, catRefreshers)
 	if sql == nil {
 		logger.Warn("background integration execution is unavailable for the Kubernetes store; atomic source publication is required")
@@ -1126,6 +1128,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		unblockCommand = complete.UnblockCommand
 		domainCommand = complete.DomainCommand
 		zoneNotifyCommand = complete.ZoneNotifyCommand
+		tsigKeyReads, tsigKeyCommand = complete.TSIGKeyReads, complete.TSIGKeyCommand
 		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
 	}
 	var kubeBlocking *kubeBlockingRuntime
@@ -1300,6 +1303,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
+		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,
 		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, CacheInspect: newCacheInspector(cs, fwd, dnsQueryCapture), Chain: chain, DNSQueryCapture: dnsQueryCapture, DNSQueryOutput: dnsQueryOutput,

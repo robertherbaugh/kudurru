@@ -35,6 +35,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- SQLite TSIG key administration exposes permission-checked metadata, creation,
+  replacement, overlap removal and revocation. Commands retain original writer,
+  credential and source checks; receipts distinguish durable commits from
+  confirmed serving publication. Secret material is never returned.
+
 - Release benchmark collection now includes cache, upstream strategies, sockets
   and persistence in fresh processes, with retained failures and baseline
   integrity checks. Fixed-runner calibration remains required.

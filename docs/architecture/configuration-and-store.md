@@ -1269,8 +1269,13 @@ SQLite startup mounts the coordinator and captured transport mode with the
 same owners used by secondary and RPZ acquisition. Listeners bind only after
 their capture hooks are configured. Without an initial complete prepared source,
 the file baseline supplies no complete serving or acquisition authority. Stored
-keys can be loaded from existing encrypted records, including across restart;
-there is not yet a stored-key management API or hot Kubernetes rotation.
+keys can be loaded from existing encrypted records, including across restart.
+The SQLite management API now supports explicit create, replace, revoke and
+reseal commands with original-source, current-credential and writer checks in
+one transaction. Its receipt distinguishes confirmed commit from observed
+publication; an uncertain error is not a rollback certificate. File keys stay
+read-only. Kubernetes management and hot rotation remain unavailable. See
+[stored TSIG keys](../deploy/tsig-keys.md).
 
 
 ## Static file-managed SQLite twins

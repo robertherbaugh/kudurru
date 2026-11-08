@@ -693,7 +693,22 @@ Typed create, replace, revoke and reseal plans validate the original preimage,
 then the complete intended postimage in the same transaction. A final in-memory
 mutation-journal check refuses any later write to that private object kind,
 including an ABA change, without rereading storage after the transaction closes.
-These helpers do not yet expose management routes or permissions.
+Complete SQLite serving exposes admin-only metadata and create, replace, revoke
+and reseal routes under `/api/v1/tsigkeys`. Each command captures its original
+credential, source, encryption/provider owners and elected writer, then runs
+once in the current transaction with final lifetime checks and safe audit.
+Replace, revoke and reseal require the reviewed UID and resourceVersion. File
+keys remain read-only. The virtual `tsigkeys.kudurru.io` permission does not grant
+access to Kubernetes Secrets; the Kubernetes management capability remains
+unavailable.
+
+Publication observation retains the original ten-second command bound and any
+earlier request deadline. It reauthenticates the same raw credential and checks
+the exact committed source, encryption owner, principal and current grant on a
+complete publication. HTTP 201/200 confirms both commit and bounded publication
+acknowledgment; HTTP 202 confirms commit without that acknowledgment. Errors
+can leave completion uncertain and never authorize replay. See the
+[stored-key guide](../deploy/tsig-keys.md) for request and rotation semantics.
 
 Secondary and RPZ managers can capture one immutable key provider and receiver
 per scheduled job. Credential replacement cancels the old job and waits for it

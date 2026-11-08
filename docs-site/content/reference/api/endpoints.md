@@ -282,6 +282,16 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/stats/top` | Top domains, clients, upstreams, lists or zones | `stats.read` (cluster) |
 | GET | `/api/v1/stats/upstreams` | Traffic and health per upstream | `stats.read` (cluster) |
 
+## tsigkeys
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| GET | `/api/v1/tsigkeys` | List captured TSIG key metadata | `tsigkeys.read` (cluster) |
+| POST | `/api/v1/tsigkeys` | Create an absent stored TSIG key | `tsigkeys.write` (cluster) |
+| POST | `/api/v1/tsigkeys/{keyName}/replace` | Replace a reviewed stored TSIG key | `tsigkeys.write` (cluster) |
+| POST | `/api/v1/tsigkeys/{keyName}/reseal` | Reseal a reviewed stored TSIG key | `tsigkeys.write` (cluster) |
+| POST | `/api/v1/tsigkeys/{keyName}/revoke` | Revoke a reviewed stored TSIG key | `tsigkeys.delete` (cluster) |
+
 ## unblockrequests
 
 | Method | Path | Summary | Permission |
