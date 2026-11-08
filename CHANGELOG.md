@@ -49,6 +49,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Offline `anchors status` and `anchors recover` for complete managed-root loss,
+  with explicit replacement trust, retained revocations and recovery history,
+  exact expected-version checks, and an audit committed with the recovery.
+
 - Explicit direct-topology RFC 5011 activation for SQLite nodes, with an
   elected updater, independent follower denial, accepted managed publication
   and retained restart history. Follower terminal failures survive replica

@@ -358,7 +358,7 @@ key tag. Loss of every anchor quarantines validation. Canonical self-revocation 
 active output before local denial and the paired history update commit. Reopening
 the same database retains quarantine and permanent revocations; choosing static
 keys or disabling the managed topology cannot reset that history or restore
-protected publication. Explicit operator recovery is not yet mounted.
+protected publication. Offline operator recovery uses the explicit command below.
 
 The recovery primitives accept operator-selected replacement DS trust only from
 an already quarantined owner and after a fresh matching signed DNSKEY response.
@@ -370,7 +370,30 @@ rejects rewrites of its already accepted prefix. Format 1 retains its existing
 serialization. Recovery proposals have separate opaque proofs checked against the
 original captured writer, complete before/after states and receipt lifetime through
 commit. These primitives do not authorize an operator or replace a transactional
-audit. The offline command and mixed-version operational acceptance remain pending.
+audit. `kudurru anchors status|recover` now opens an existing current-schema WAL
+database under the exclusive process lock, without initialization/migration or
+repair. Local OS file permissions authorize this offline operation; a required
+stopped-process acknowledgment, exact expected envelope digest, bounded audit
+reason and explicit replacement DS records precede acquisition. The original
+complete image token is checked before network and under the command's actual
+writer lock through commit. The hash-chained audit commits with the trust change;
+actual completion, including committed-with-error, remains distinct from output
+success. Restart keeps the original configured policy/seeds and publishes through
+the usual complete admission path. See the [recovery runbook](../deploy/runbooks.md#recover-a-quarantined-managed-root-anchor).
+Full mixed-version fleet operational acceptance remains separate.
+
+```mermaid
+flowchart LR
+  Q[Retained quarantine] --> O[Offline lock and exact original capture]
+  DS[Independent replacement DS trust] --> O
+  O --> N[Bounded TCP receipt and signature verification]
+  N --> C[Original AnchorCommand]
+  C --> R[Atomic trust history and audit commit]
+  C --> F[Confirmed rollback retains quarantine]
+  C --> U[Unknown outcome requires inspection]
+  R --> S[Restart with original policy]
+  S --> P[Complete publication and output admission]
+```
 
 Bootstrap and updates retain an opaque original observation bounded by received
 DNSKEY/RRSIG TTLs, signed original TTL and signature expiration. Final admission

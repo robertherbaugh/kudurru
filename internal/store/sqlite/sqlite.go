@@ -237,6 +237,10 @@ var _ store.Store = (*Store)(nil)
 // returns the store. A database written by a newer binary returns
 // ErrSchemaTooNew; a database held by another process returns ErrLocked.
 func Open(path string, opts Options) (*Store, error) {
+	return openStore(context.Background(), path, opts, false)
+}
+
+func openStore(ctx context.Context, path string, opts Options, existing bool) (*Store, error) {
 	if path == "" {
 		return nil, errors.New("store/sqlite: empty path")
 	}
@@ -247,12 +251,27 @@ func Open(path string, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { // #nosec G703 -- operator-supplied database path, never request input
-		return nil, fmt.Errorf("store/sqlite: create %s: %w", filepath.Dir(path), err)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	flags := os.O_RDWR
+	if existing {
+		info, err := os.Lstat(path) // #nosec G703 -- explicit offline operator database path
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() || info.Size() == 0 {
+			return nil, ErrExistingDatabase
+		}
+	} else {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { // #nosec G703 -- operator-supplied database path, never request input
+			return nil, fmt.Errorf("store/sqlite: create %s: %w", filepath.Dir(path), err)
+		}
+		flags |= os.O_CREATE
 	}
 	// Create the file 0600 before SQLite does (it would use 0644); the
 	// -wal and -shm files inherit the mode.
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) // #nosec G304 G703 -- operator-supplied database path, never request input
+	f, err := os.OpenFile(path, flags, 0o600) // #nosec G304 G703 -- operator-supplied database path, never request input
 	if err != nil {
 		return nil, fmt.Errorf("store/sqlite: open %s: %w", path, err)
 	}
@@ -282,7 +301,13 @@ func Open(path string, opts Options) (*Store, error) {
 		_ = s.closeDBs()
 		return nil, err
 	}
-	if s.w, err = sql.Open("sqlite", dsn(path, opts.BusyTimeout, true)); err != nil {
+	connectionString := func(writer bool) string {
+		if existing {
+			return existingDSN(path, opts.BusyTimeout, writer)
+		}
+		return dsn(path, opts.BusyTimeout, writer)
+	}
+	if s.w, err = sql.Open("sqlite", connectionString(true)); err != nil {
 		return fail(fmt.Errorf("store/sqlite: open %s: %w", path, err))
 	}
 	s.w.SetMaxOpenConns(1)
@@ -291,16 +316,21 @@ func Open(path string, opts Options) (*Store, error) {
 	s.w.SetConnMaxIdleTime(0)
 	s.ws = newStmts(s.w)
 
-	ctx := context.Background()
 	// Migrate before the reader pool exists: query_only connections must
 	// not race the first creation of the WAL.
-	if err := migrate(ctx, s.w, migrations, store.SchemaVersion, opts.Now); err != nil {
-		return fail(err)
+	if existing {
+		if err := checkExistingSchema(ctx, s.w); err != nil {
+			return fail(err)
+		}
+	} else {
+		if err := migrate(ctx, s.w, migrations, store.SchemaVersion, opts.Now); err != nil {
+			return fail(err)
+		}
 	}
 	if err := s.ws.prepareAll(ctx, writerQueries); err != nil {
 		return fail(fmt.Errorf("store/sqlite: prepare: %w", err))
 	}
-	if s.r, err = sql.Open("sqlite", dsn(path, opts.BusyTimeout, false)); err != nil {
+	if s.r, err = sql.Open("sqlite", connectionString(false)); err != nil {
 		return fail(fmt.Errorf("store/sqlite: open %s: %w", path, err))
 	}
 	s.r.SetMaxOpenConns(opts.ReadConns)
@@ -310,13 +340,27 @@ func Open(path string, opts Options) (*Store, error) {
 	if err := s.loadMeta(ctx); err != nil {
 		return fail(err)
 	}
-	if err := s.initializeAuthority(ctx); err != nil {
-		return fail(err)
+	if existing {
+		authority, err := readAuthority(ctx, s.r)
+		if err != nil {
+			return fail(err)
+		}
+		if authority.Term.ClusterID != s.clusterID || authority.Term.Epoch != s.epoch {
+			return fail(ErrExistingDatabase)
+		}
+		s.authority.Store(&authority)
+	} else {
+		if err := s.initializeAuthority(ctx); err != nil {
+			return fail(err)
+		}
 	}
 	if s.Authority().Mode != replication.Standalone {
 		if _, err := s.w.ExecContext(ctx, `PRAGMA synchronous=FULL`); err != nil {
 			return fail(err)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(err)
 	}
 	if opts.Metrics != nil {
 		opts.Metrics.boundStore.Store(s)

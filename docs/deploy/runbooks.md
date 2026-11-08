@@ -1,5 +1,60 @@
 # Runbooks
 
+
+## Recover a quarantined managed root anchor
+
+Use this only after canonical loss of every managed root anchor, with independently
+verified replacement root DS records. A missing/corrupt database, a follower, a live
+trusted owner or a key that was already revoked is not a recovery candidate.
+
+1. Stop kudurru and every other process using the database. In an enrolled fleet,
+   stop writers and coordinate the recovery on the primary; do not recover each
+   follower independently. Preserve a backup and retain managed edge cache bypass.
+2. Use a binary supporting recovery format 2 on every reader/replica before
+   distributing recovered history. Older codecs reject this format. Do not roll
+   back the database or old binaries to evade revocation or recovery history.
+3. Read the exact retained accepted-envelope digest with local OS permissions:
+
+   ```sh
+   kudurru anchors status --offline --database /var/lib/kudurru/state.db
+   ```
+
+4. Supply that `version.digest`, an audit reason, independently verified DS records
+   and numeric authoritative root endpoints. Each `--ds` is one complete DNS
+   presentation record; repeat the flag if needed. For example, replacing the
+   placeholders with verified values:
+
+   ```sh
+   kudurru anchors recover --offline --database /var/lib/kudurru/state.db \
+     --expected-digest ACCEPTED_ENVELOPE_SHA256 \
+     --reason 'Replacement root verified through the operator ceremony' \
+     --ds '. 0 IN DS KEYTAG ALGORITHM DIGEST_TYPE VERIFIED_DIGEST' \
+     --root-server 198.41.0.4:53
+   ```
+
+The command uses one original deadline (at most 30 seconds), captures the actual
+writer and accepted owner before TCP acquisition, and samples the first complete
+response before parsing. It selects at most three originally supplied endpoints,
+with at most four seconds each within the original deadline. An invalid complete
+response is terminal. It authenticates the new keys, commits only the exact
+proposal and original lifetime, and writes the OS user ID, reason and before/after
+versions to the hash-chained audit in that same transaction. An audit failure rolls
+back the trust change. It creates no database, upgrades no schema and repairs no
+missing history. SQLite may recover the retained WAL normally.
+
+Inspect `outcome` even when the command returns an error: `committed` describes a
+real commit, `rolled-back` a confirmed rollback, and `unknown` requires inspection
+before any new attempt. `not-attempted` means mutation was never entered. An output
+failure can hide a real commit; use `anchors status` rather than replaying an old
+expected digest. The command grants no permission to serve by itself.
+
+Restart with the **original managed policy and initial configured seeds**. Recovery
+records the separate replacement trust without changing that identity. Revoked keys
+and local denials remain permanent. Complete publication, native/cache/output
+retirement and installed edge admission still apply. A successful recovery does
+not credit hold-down time or authorize static fallback. At most 32 recovery records
+are retained; exhaustion refuses further recovery instead of pruning evidence.
+
 ## Cold start without the apiserver
 
 Kubernetes clusters that resolve through kudurru need DNS before (and

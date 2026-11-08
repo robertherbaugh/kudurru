@@ -99,6 +99,46 @@ Flags:
                           sessions, not tokens)
 ```
 
+## kudurru anchors
+
+Operate directly on an existing current-schema SQLite database using local OS file permissions. Stop kudurru and all other readers/writers first, preserve a backup, and keep managed edges uncached. No API credentials or network discovery are used. This command cannot initialize, migrate or repair a database.
+
+Recovery is available only after canonical loss of every trusted root key. Obtain replacement root DS records through an independent trusted channel. The command authenticates one fresh DNSKEY response, preserves all revoked keys and records explicit recovery history plus an audit event in the same transaction. Do not replay an uncertain result: inspect the retained version first. All replicas must support recovery format 2 before installing recovered history.
+
+Flags:
+
+```text
+      --database string    existing state.db path (required)
+      --offline            acknowledge that all database readers and writers are stopped
+      --timeout duration   original operation deadline (positive, at most 30s) (default 30s)
+```
+
+### kudurru anchors recover
+
+Accept explicit replacement trust after complete anchor loss.
+
+```text
+kudurru anchors recover [flags]
+```
+
+Flags:
+
+```text
+      --ds stringArray            independently verified replacement root DS record; repeat
+                                  for each record
+      --expected-digest string    exact accepted-envelope digest from status (required)
+      --reason string             audited recovery reason (required, at most 512 bytes)
+      --root-server stringArray   numeric root DNS IP:port; TCP, at most three selected endpoints
+```
+
+### kudurru anchors status
+
+Read the exact retained anchor version.
+
+```text
+kudurru anchors status
+```
+
 ## kudurru api
 
 Send a raw request to the API (path relative to /api/v1).

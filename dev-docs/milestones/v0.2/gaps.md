@@ -5109,3 +5109,51 @@ Offline operator admission/audit, strict existing-schema opening, operational
 mixed-version acceptance and complete F28/release gates remain open.
 
 Final configured trustanchors/SQLite scoped lint passes (zero issues, 2.006s).
+
+
+### F28 offline original-command recovery (D321)
+
+`anchors status|recover` now uses a strict existing current-schema SQLite open:
+no database/directory creation, schema migration, metadata repair or authority
+initialization. Original finite context, existing WAL mode, complete metadata and
+exclusive process ownership are required. Real SQLite tests cover missing/empty/
+indirect/old/new-schema files, missing identity/audit metadata, non-WAL state and
+actual process-lock exclusion; 17 race entries pass without skips.
+
+The OS-authorized offline command requires explicit stopped-process acknowledgment,
+exact original accepted-envelope digest, reason, bounded replacement DS records
+and numeric root endpoints. It captures original owner/writer/source before TCP
+acquisition, uses actual preparse receipt sampling and returns the independent SQL
+disposition. Trust and the OS UID/reason/version audit commit in one transaction.
+An actual SQLite trigger rejecting the audit proves rollback of both; stale input,
+unauthenticated input and cancellation preserve the original quarantine. The first
+command build failed on a duplicate fixture variable declaration and is retained;
+corrected ordinary7 and final default-race8 pass without skips.
+
+The final race includes actual `runServe` after offline recovery, complete native
+recursive DNSKEY authentication and AD output over UDP/TCP/DoT/DoH/DoQ/DoH3, then
+a second physical restart of the same database. Original configured seed/policy
+identity stays fixed; the explicit replacement key verifies the actual wire. The
+original recovery version and tombstones remain, with one recovery TCP acquisition
+and no restart rebootstrap/progress. Wall65.7071s, package25.987s, minimum32,864,342,016B;
+evidence .context/anchor-recovery-command-20261108. This is not full enrolled HA,
+external RFC interoperability, fleet mixed-version or final release acceptance.
+
+Final configured command/SQLite/trustanchors lint passes (zero issues, 29.051s).
+The first two lint runs retained test-only G115/G304 diagnostics; explicit clock
+range termination and test-path annotations fixed them. One broad race invocation
+was accidentally started before lint had exited; root terminated only that newly
+owned group (child -15, wrapper241), retained its137 passes as unqualified and
+verified no remaining Go/compiler/link/test processes before the sequential run.
+The separate earlier five-minute package timeout remains failed evidence.
+
+The final sequential default-race suite on source06 passes all 1,026 test entries
+across trustanchors, accepted, persistence, resolverstate, retirement, SQLite and
+runtimeowners, with zero failures/skips. Go0, wall280.2494s, SQLite268.006s, minimum
+32,446,283,776B, log1,071,360B, no source mismatches or resource stop. This supersedes
+neither the retained five-minute timeout nor the interrupted overlap attempt;
+those outcomes remain explicit.
+
+Final CLI/default-race30 passes without failures/skips (65.9093s), including
+all offline recovery cases, regenerated CLI-reference drift, shell completion
+and existing convenience-command regressions. Source06 remains unchanged.
