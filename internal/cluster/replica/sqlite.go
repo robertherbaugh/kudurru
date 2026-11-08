@@ -45,6 +45,32 @@ func (a SQLiteMemberAtomic) Transact(ctx context.Context, term replication.Term,
 
 type sqliteCommandTx struct{ tx *sqlite.CommandTx }
 
+// StageSQLite authorizes and stages domain effects plus dedup in an already
+// active original command. Its Outcome is only a proposal: the caller must
+// await actual outer Store completion and retain domain/dependency pins through
+// one Store-admitted output scope. It never opens or commits a transaction.
+func (s *CommandService) StageSQLite(ctx context.Context, tx *sqlite.CommandTx, command Command) (Outcome, error) {
+	if s == nil || tx == nil {
+		return Outcome{}, ErrUnavailable
+	}
+	staged := *s
+	staged.Backend = sqliteStagedAtomic{tx: tx}
+	return staged.Execute(ctx, command)
+}
+
+type sqliteStagedAtomic struct{ tx *sqlite.CommandTx }
+
+func (a sqliteStagedAtomic) Transact(ctx context.Context, term replication.Term, fn func(context.Context, CommandTx) error) error {
+	if !a.tx.Authority().Same(term) {
+		return replication.ErrCAS
+	}
+	// RequireCommitCheck refuses an ended transaction before any domain code.
+	if err := a.tx.RequireCommitCheck(func(ctx context.Context) error { return ctx.Err() }); err != nil {
+		return err
+	}
+	return fn(ctx, sqliteCommandTx(a))
+}
+
 func (t sqliteCommandTx) State() any { return t.tx }
 func (t sqliteCommandTx) RequireCommitCheck(check func(context.Context) error) error {
 	return t.tx.RequireCommitCheck(check)

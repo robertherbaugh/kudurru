@@ -25,8 +25,9 @@ import (
 
 type memberOutputFixture struct {
 	*fixture
-	connection tls.ConnectionState
-	remote     string
+	connection                    tls.ConnectionState
+	remote                        string
+	localIdentity, remoteIdentity *memberidentity.Identity
 }
 
 func memberFinite(t *testing.T) context.Context {
@@ -112,7 +113,7 @@ func newMemberOutputFixture(t *testing.T) memberOutputFixture {
 		t.Fatal("actual enrolled TLS handshake", serverErr, clientErr)
 	}
 	wait(t, func() bool { return f.publisher.Status().ProtectedReady })
-	return memberOutputFixture{fixture: f, connection: server.ConnectionState(), remote: remote.Trust().MemberID()}
+	return memberOutputFixture{fixture: f, connection: server.ConnectionState(), remote: remote.Trust().MemberID(), localIdentity: local, remoteIdentity: remote}
 }
 
 func (f memberOutputFixture) request(t *testing.T) (context.Context, serving.TermActivation, *sqlite.MemberRequest) {
@@ -151,6 +152,9 @@ func TestMemberCommandOutputRetainsAllPinsThroughEmission(t *testing.T) {
 			}
 			return tx.PutSection(ctx, "dedup", replication.Entry{Key: "member-output", Data: []byte(`{"ok":true}`)})
 		}, func(output context.Context) error {
+			if err := request.CheckCommandOutput(output); err != nil {
+				return err
+			}
 			close(entered)
 			select {
 			case <-release:

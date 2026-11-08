@@ -21,12 +21,21 @@ import (
 // work or return a proposal as success; only Store completion permits output.
 type MemberCommandHandler func(context.Context, *sqlite.MemberRequest, Command, func(Outcome) error) error
 
+// MemberScopedCommandHandler uses an enclosing command/output coordinator.
+// emit accepts only the context issued by this request's active
+// WithCommandOutput callback. It writes and flushes synchronously without
+// acquiring another Store output scope. Domain proof and dependency exclusions
+// remain the caller's obligation; staged outcomes alone cannot acknowledge.
+type MemberScopedCommandHandler func(context.Context, *sqlite.MemberRequest, Command, func(context.Context, Outcome) error) error
+
 // MemberServerOptions binds the enrolled HTTP transport to the actual Store.
-// A nil Execute keeps image reads available but refuses forwarded mutations.
+// With neither executor, image reads remain available and mutations refuse.
+// The two executor forms are mutually exclusive.
 type MemberServerOptions struct {
 	Store                                          *sqlite.Store
 	Credentials                                    *internalapi.Credentials
 	Execute                                        MemberCommandHandler
+	ExecuteScoped                                  MemberScopedCommandHandler
 	MaxImageBytes, MaxCommandBytes, MaxResultBytes int64
 	MaxConcurrent                                  int
 	Timeout                                        time.Duration
@@ -43,7 +52,8 @@ type MemberServer struct {
 // NewMemberServer requires a finite original request of at most 30 seconds.
 func NewMemberServer(o MemberServerOptions) (*MemberServer, error) {
 	if o.Store == nil || o.Credentials == nil || o.Timeout < 0 || o.Timeout > 30*time.Second ||
-		o.MaxConcurrent < 0 || o.MaxImageBytes < 0 || o.MaxCommandBytes < 0 || o.MaxResultBytes < 0 {
+		o.MaxConcurrent < 0 || o.MaxImageBytes < 0 || o.MaxCommandBytes < 0 || o.MaxResultBytes < 0 ||
+		o.Execute != nil && o.ExecuteScoped != nil {
 		return nil, ErrProtocol
 	}
 	if o.Timeout == 0 {
@@ -170,7 +180,7 @@ func (s *MemberServer) write(w http.ResponseWriter, r *http.Request, request *sq
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if s.opts.Execute == nil {
+	if s.opts.Execute == nil && s.opts.ExecuteScoped == nil {
 		writeProblem(w, ErrUnavailable)
 		return
 	}
@@ -208,7 +218,7 @@ func (s *MemberServer) write(w http.ResponseWriter, r *http.Request, request *sq
 	defer cancel()
 	started, emitted, attempted := false, false, false
 	var outputErr error
-	err = s.opts.Execute(ctx, request, command, func(out Outcome) (result error) {
+	emit := func(scope context.Context, out Outcome) (result error) {
 		defer func() {
 			if result != nil {
 				outputErr = result
@@ -225,12 +235,29 @@ func (s *MemberServer) write(w http.ResponseWriter, r *http.Request, request *sq
 		if err != nil {
 			return err
 		}
-		if err := memberEmit(ctx, w, request, request.WithCommandOutput, http.StatusOK, "", encoded, &started); err != nil {
+		withOutput := request.WithCommandOutput
+		if s.opts.ExecuteScoped != nil {
+			withOutput = func(write func(context.Context) error) error {
+				if err := request.CheckCommandOutput(scope); err != nil {
+					return err
+				}
+				if err := write(scope); err != nil {
+					return err
+				}
+				return request.CheckCommandOutput(scope)
+			}
+		}
+		if err := memberEmit(ctx, w, request, withOutput, http.StatusOK, "", encoded, &started); err != nil {
 			return err
 		}
 		emitted = true
 		return nil
-	})
+	}
+	if s.opts.ExecuteScoped != nil {
+		err = s.opts.ExecuteScoped(ctx, request, command, emit)
+	} else {
+		err = s.opts.Execute(ctx, request, command, func(out Outcome) error { return emit(nil, out) })
+	}
 	if err != nil || outputErr != nil || !emitted {
 		// The callback may have committed before output admission failed. Do
 		// not serialize an acknowledgment or ordinary refusal after dropping its

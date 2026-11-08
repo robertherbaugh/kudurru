@@ -973,8 +973,24 @@ transport deadline. Output is synchronous and must explicitly flush without
 reentering Store or acquiring another publication pin. The returned `committed`
 bit records actual completion independently of emission failure. Ordinary
 `WithCommand` and postcommit publication observations retain their existing
-contracts. This helper is qualified separately; adapting production domain
-commands and the enrolled HTTP listener remains root assembly work.
+contracts. The scoped enrolled HTTP adapter below accepts this helper’s output context.
+Production domain commands and listener startup remain root assembly work.
+
+For an enclosing command/output coordinator, `MemberServer.ExecuteScoped`
+accepts the already admitted emitter context and performs no second writer-lock
+acquisition. `MemberRequest.CheckCommandOutput` checks a private context binding
+to the same request, active output state, actual command completion and exact
+resulting authority. Plain, foreign, image-only, canceled, extended-deadline and
+escaped callback contexts cannot authorize response bytes. The transport checks
+this context before and after bounded write/flush. Selecting both executor forms
+is invalid.
+
+`CommandService.StageSQLite` prepares domain changes and dedup inside the supplied
+active transaction. Its result remains a proposal until the enclosing actual
+`MemberCommand` succeeds. Ended transactions refuse staging. This connects the
+coordinator to the enrolled HTTP adapter without nesting an output guard or
+mistaking staged results for acknowledgments; root still supplies production
+credential handling, typed domain policy and listener assembly.
 
 The output deadline also respects the original command expiration. Failed writes,
 flush errors, lost original admission and callback failures abort the HTTP stream

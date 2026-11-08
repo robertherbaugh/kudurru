@@ -63,6 +63,7 @@ type memberRequest struct {
 }
 
 type memberRequestKey struct{}
+type memberOutputKey struct{}
 
 type memberCompletion struct {
 	authority replication.Authority
@@ -349,6 +350,34 @@ func (r *MemberRequest) WithCommandOutput(emit func(context.Context) error) erro
 	return r.withOutput(true, emit)
 }
 
+// CheckCommandOutput authenticates the context issued inside this request's
+// active command-output callback. It is memory-only and acquires no locks;
+// transport adapters call it before writing within the already held exclusion.
+// Plain, foreign, image-only, canceled and escaped callback contexts refuse.
+// It grants no domain permission and cannot establish command completion from
+// caller-supplied outcome data. Callbacks must remain synchronous.
+func (r *MemberRequest) CheckCommandOutput(ctx context.Context) error {
+	if r == nil || r.original == nil || ctx == nil {
+		return enrollment.ErrRefused
+	}
+	o := r.original
+	if ctx.Value(memberOutputKey{}) != o || o.state.Load() != memberOutput {
+		return enrollment.ErrRefused
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	deadline, finite := ctx.Deadline()
+	if !finite || deadline.After(o.deadline) || !time.Now().Before(deadline) {
+		return enrollment.ErrRefused
+	}
+	completed := o.completed.Load()
+	if completed == nil || !completed.command || !reflect.DeepEqual(o.s.Authority(), completed.authority) {
+		return replication.ErrCAS
+	}
+	return o.check()
+}
+
 func (r *MemberRequest) withOutput(requireCommand bool, emit func(context.Context) error) error {
 	if r == nil || r.original == nil || emit == nil {
 		return enrollment.ErrRefused
@@ -385,7 +414,7 @@ func (r *MemberRequest) withOutput(requireCommand bool, emit func(context.Contex
 	}
 	outputCtx, cancel := context.WithDeadline(o.ctx, o.deadline)
 	defer cancel()
-	if err := emit(outputCtx); err != nil {
+	if err := emit(context.WithValue(outputCtx, memberOutputKey{}, o)); err != nil {
 		return err
 	}
 	return o.check()

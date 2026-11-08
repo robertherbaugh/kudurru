@@ -734,3 +734,35 @@ coordinator/serving/provider default races pass140 entries without failures/skip
 match. Earlier composed350 evidence remains scoped to source02. Evidence:
 .context/member-output-coordinator-20261108/cancel-before03.json and race04.json.
 Production enrolled listener/domain/forwarding assembly remains open.
+
+
+### F60b/G11 scoped member HTTP composition, November 8
+
+D337 connects the bounded coordinator to the enrolled HTTP transport without a
+nested writer/output lock. A private Store-issued context binds the exact active
+command-output scope. The scoped executor checks it before and after write/flush;
+plain, foreign, image-only, canceled, extended-deadline and escaped contexts
+refuse. Executor modes are mutually exclusive. StageSQLite prepares domain and
+dedup together in the supplied active transaction; its result is only a proposal
+until the actual enclosing MemberCommand succeeds. Ended transactions refuse.
+The coordinator preserves the Store context while joining both original peer
+and command cancellation, retaining the earlier dependency/transport deadline.
+
+Initial focused default races pass 27 entries. Full enrollment-persistence,
+replica and coordinator default races pass 253 entries without failures/skips
+(71.339s). Direct coordinator-to-HTTP/1 and HTTP/2 tests then pass 3 entries,
+observing protected small response bytes before handler return. Their domain
+uses an actual current raw credential but a fixture mutation; they do not claim
+production forwarded credential encoding or root domain-policy coverage.
+
+Lint found one equivalent-struct construction style issue; it was corrected to
+an explicit type conversion. Final source03 targeted default races pass all 30
+entries without failures/skips (23.247s), including rollback versus proposal,
+current domain/dedup completion, cancellation, scope identity and both actual
+HTTP protocols. Configured scoped lint exits 0 with zero issues (9.624s). Exact
+source identities and all earlier results are preserved under
+.context/member-scoped-http-20261108/.
+
+This closes the library coordinator/transport composition. Production listener
+startup, raw forwarded credentials, operator activation/join/promotion, typed
+root domains and complete partition/rejoin/restart acceptance remain open.

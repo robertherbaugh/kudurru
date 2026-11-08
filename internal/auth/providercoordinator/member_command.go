@@ -103,8 +103,13 @@ func (c *Coordinator) WithMemberCommandOutput(ctx context.Context, target servin
 					// A separately carried command context must not detach the
 					// original peer cancellation after MemberCommand returns.
 					// Keep both contexts joined until actual emission has ended.
+					// Derive from the Store-issued context so the transport can
+					// authenticate this exact active output scope. Join the root
+					// operation as well; neither parent may detach the other.
+					emission, cancelEmission := context.WithDeadline(original, deadline)
+					defer cancelEmission()
 					joined := make(chan struct{})
-					stop := context.AfterFunc(original, func() { cancelOutput(); close(joined) })
+					stop := context.AfterFunc(output, func() { cancelEmission(); close(joined) })
 					defer func() {
 						if !stop() {
 							<-joined
@@ -116,7 +121,7 @@ func (c *Coordinator) WithMemberCommandOutput(ctx context.Context, target servin
 					if err := check(); err != nil {
 						return err
 					}
-					if err := emit(output); err != nil {
+					if err := emit(emission); err != nil {
 						return err
 					}
 					return check()
