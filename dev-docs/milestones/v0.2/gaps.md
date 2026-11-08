@@ -3757,3 +3757,31 @@ Configured lint is pending its unavailable executable. All3966 root identities
 and the comparator binary match their freezes. Raw outcomes, both source
 versions, all58 comparisons and report:
 `.context/f20-root-fingerprint-allocations-20261108/result.md`.
+
+
+### F20 anchored fallback qualification
+
+A read-only overlay on the unchanged actual benchmark fixture counted unindexed
+NFA steps on2475 of65536 warmed regex1000 misses; indexed fallback count was0.
+The bounded inventory is not CPU attribution, and its truncated per-query log
+is retained. The existing all-program start-of-text proof now suppresses
+impossible later program starts while advancing every current PC. Mixed and
+unanchored programs keep prior behavior; capacity/reservations/freeze/work and
+final cancellation checks are unchanged.
+
+Focused default-race98 and full core467 pass (2 existing helper/unset comparator
+skips); final pinned comparator46 and vet pass. Oracle fuzz20s completes
+127/127 baseline inputs and157288 coordinator executions,128 new interesting,
+without a mismatch. Internal skipped invalid/refused inputs are not counted
+separately; the old throughput plateau remains recorded.
+
+Original69/all291 diagnostic metrics report0B/0allocs in every current case.
+Original20%/noise-floor arithmetic still flags dense500 early warm768.4/421.3ns,
+dense1000 early warm482.9/310.7ns and long256 cold66393/54491ns. A private
+comparison's reversed MB/s direction was corrected to the retained runner;
+superseded output remains. Original12/all58 records unchanged1M70183299ns/
+65984B/8allocs, but regex1000p9918550ns remains adverse. No tail-repair or
+five-process/fixed-class completion claim. All historical36 measured failures,
+20 missing zone keys and older limitations remain. Configured lint is pending.
+All3967 frozen root paths match; exact receipts/commands/all comparisons are in
+`.context/f20-root-anchored-start-20261108/result.md`.

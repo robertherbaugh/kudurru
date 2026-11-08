@@ -395,8 +395,12 @@ func (a *automaton) step(previous, r rune) uint64 {
 	for _, pc := range a.current {
 		push(pc)
 	}
-	for _, pc := range a.starts {
-		push(pc)
+	// Every proven anchored program can start only at the first boundary.
+	// Current PCs still advance normally, including any internal assertions.
+	if !a.beginTextOnly || previous < 0 {
+		for _, pc := range a.starts {
+			push(pc)
+		}
 	}
 	context := syntax.EmptyOpContext(previous, r)
 	var accept uint64

@@ -225,7 +225,9 @@ literal prefilters retain original rule order; dense and unindexed candidates
 use fixed batches. A sparse route also reuses its sole unindexed batch when
 every original member is admitted, merging its result at the original rule
 positions. A bounded transition arena freezes when full and continues
-with exact NFA execution. Invalid syntax and typed resource refusal remain
+with exact NFA execution. When every program provably requires the start of
+text, fallback advances current states without retrying starts at later
+boundaries. Invalid syntax and typed resource refusal remain
 separate outcomes; cache saturation never changes the language.
 
 Compilation reserves programs, mappings, transition capacity and fallback
