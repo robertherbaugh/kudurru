@@ -6011,3 +6011,49 @@ source identities and all earlier results are preserved under
 This closes the library coordinator/transport composition. Production listener
 startup, raw forwarded credentials, operator activation/join/promotion, typed
 root domains and complete partition/rejoin/restart acceptance remain open.
+
+
+### Fixed-runner paired recording b2d197d8, November 8
+
+Ubicloud 8-core Ubuntu 24.04 run 42530394856 completed on the same AMD EPYC
+9454P VM for reference 0cc9565e and candidate b2d197d8, with Go 1.27.3,
+GOMAXPROCS=6 and five fresh processes per suite. All 20 reference and 40
+candidate native commands exit 0; all 811 five-value metric vectors (4,055
+values), exact source manifests, command arguments, raw receipts and reaping
+records verify. The original reference fails upstream slow-first/rtt_weighted
+limits: 268,025 ns/op exceeds 230,468.4 and p50 186 microseconds exceeds 130.8.
+The candidate fails cache hit-parallel at 177.1 ns/op against 156.5, plus six
+upstream fast/strict, fast/random and slow-first/rtt_weighted ns/op/p50 limits.
+Candidate blocking/zone, UDP, DoT, QUIC and persistence gates pass.
+
+The collector preserves exit 1 for both sources and the paired result, with
+comparison_eligible=false and release_qualified=false. It runs no relative
+comparison because the historical reference failed its original gates. This
+recording uses a different CPU model than the earlier Ryzen recording; no
+cross-model baseline substitution, threshold adjustment, replacement sample or
+retry was made. The earlier cache regressions and all failed recordings remain
+retained. Evidence: .context/hosted-release-b2d197d8-20261108/paired-artifact/,
+paired-reviewed-summary.json and paired-reviewed-vectors.csv. The release
+performance gate remains open.
+
+
+### F60b/G11 cancellation during active member output, November 8
+
+A real net.Pipe regression reproduced four failures: command or original
+output-scope cancellation did not interrupt a blocked Write or Flush. The
+original finite deadline alone allowed output to remain active after either
+parent was canceled. D337 now installs that original deadline first, then joins
+both cancellation parents to one deadline-shortening callback. Both callbacks
+finish before the Store output guard and dependency pins release. Explicit
+cancellation checks also refuse a flush after a buffered write is canceled.
+Actual commit state remains independent of transport failure; there is no retry.
+
+Full affected replication, enrollment-persistence and coordinator default races
+pass 261 entries without failures/skips (90.019s). The final pre-flush checks
+then pass 64 targeted race entries (42.726s), including actual HTTP/1 and HTTP/2
+composition, blocked socket interruption and callback joining. Configured lint
+passes with zero issues (7.421s). Earlier errcheck and staticcheck cleanup
+findings are retained. Final source04 transport races pass all eight entries
+without failures/skips (7.019s). Evidence and frozen identities: .context/member-emit-cancellation-20261108/.
+Production HA listener/operator/domain assembly and complete acceptance remain
+open; these transport checks do not close those items.

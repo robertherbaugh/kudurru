@@ -982,8 +982,11 @@ acquisition. `MemberRequest.CheckCommandOutput` checks a private context binding
 to the same request, active output state, actual command completion and exact
 resulting authority. Plain, foreign, image-only, canceled, extended-deadline and
 escaped callback contexts cannot authorize response bytes. The transport checks
-this context before and after bounded write/flush. Selecting both executor forms
-is invalid.
+this context before and after bounded write/flush. The original command and
+output-scope cancellations each interrupt active socket output by shortening the
+write deadline, once. Callbacks are installed only after the original deadline
+and joined before the output guard releases; a canceled buffered write cannot
+start a flush. Selecting both executor forms is invalid.
 
 `CommandService.StageSQLite` prepares domain changes and dedup inside the supplied
 active transaction. Its result remains a proposal until the enclosing actual

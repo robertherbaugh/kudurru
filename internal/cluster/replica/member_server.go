@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
@@ -271,6 +272,9 @@ func memberEmit(ctx context.Context, w http.ResponseWriter, request *sqlite.Memb
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if err := original.Err(); err != nil {
+			return err
+		}
 		deadline, _ := original.Deadline()
 		if limit, finite := ctx.Deadline(); finite && limit.Before(deadline) {
 			deadline = limit
@@ -280,6 +284,25 @@ func memberEmit(ctx context.Context, w http.ResponseWriter, request *sqlite.Memb
 		}
 		controller := http.NewResponseController(w)
 		if err := controller.SetWriteDeadline(deadline); err != nil {
+			return err
+		}
+		// Install the original deadline before cancellation can shorten it.
+		// Either parent must interrupt active Write/Flush, and both callbacks
+		// must finish before the enclosing authority/dependency pins release.
+		interrupt := sync.OnceFunc(func() { _ = controller.SetWriteDeadline(time.Now()) })
+		for _, parent := range []context.Context{ctx, original} {
+			done := make(chan struct{})
+			stop := context.AfterFunc(parent, func() { interrupt(); close(done) })
+			defer func() {
+				if !stop() {
+					<-done
+				}
+			}()
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := original.Err(); err != nil {
 			return err
 		}
 		a := request.OriginalTerm()
@@ -301,10 +324,19 @@ func memberEmit(ctx context.Context, w http.ResponseWriter, request *sqlite.Memb
 				return io.ErrShortWrite
 			}
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := original.Err(); err != nil {
+			return err
+		}
 		if err := controller.Flush(); err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := original.Err(); err != nil {
 			return err
 		}
 		if !time.Now().Before(deadline) {
