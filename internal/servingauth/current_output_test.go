@@ -21,7 +21,7 @@ func TestCurrentCredentialOutputPreservesEveryVerifiedExpiry(t *testing.T) {
 			now := f.now
 			var lifetime *CredentialLifetime
 			err := f.st.Command(t.Context(), f.st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-				_, verified, err := ReauthorizeCurrentForOutput(ctx, tx, f.deps, raw, readAttrs(), func() time.Time { return now })
+				_, _, verified, err := ReauthorizeCurrentForOutput(ctx, tx, f.deps, raw, readAttrs(), func() time.Time { return now })
 				if err != nil {
 					return err
 				}
@@ -102,7 +102,7 @@ func TestCurrentCredentialOutputRequiresVerifiedFiniteInput(t *testing.T) {
 	}
 	var lifetime *CredentialLifetime
 	if err := f.st.Command(t.Context(), f.st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		_, verified, err := ReauthorizeCurrentForOutput(ctx, tx, f.deps, Credential{Kind: APIToken, Value: f.wire}, readAttrs(), nil)
+		_, _, verified, err := ReauthorizeCurrentForOutput(ctx, tx, f.deps, Credential{Kind: APIToken, Value: f.wire}, readAttrs(), nil)
 		lifetime = verified
 		return err
 	}); err != nil {
@@ -115,7 +115,7 @@ func TestCurrentCredentialOutputRequiresVerifiedFiniteInput(t *testing.T) {
 		t.Fatal("nil output accepted", err)
 	}
 	for _, kind := range []CredentialKind{Password, "kubernetes", ""} {
-		if _, proof, err := ReauthorizeCurrentForOutput(ctx, nil, f.deps, Credential{Kind: kind}, readAttrs(), nil); !errors.Is(err, ErrUnsupported) || proof != nil {
+		if _, _, proof, err := ReauthorizeCurrentForOutput(ctx, nil, f.deps, Credential{Kind: kind}, readAttrs(), nil); !errors.Is(err, ErrUnsupported) || proof != nil {
 			t.Fatal("unsupported proof gained output lifetime", err)
 		}
 	}

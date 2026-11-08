@@ -33,7 +33,7 @@ type servingCommandFixture struct {
 	stop    func()
 }
 
-func newServingCommandFixture(t *testing.T) *servingCommandFixture {
+func newServingCommandFixture(t *testing.T, beforeStart ...func(*servingRuntime)) *servingCommandFixture {
 	t.Helper()
 	f := &servingCommandFixture{s: newServingRuntimeFixture(t), now: time.Now().UTC().Truncate(time.Second)}
 	f.expires = f.now.Add(time.Hour)
@@ -57,6 +57,9 @@ func newServingCommandFixture(t *testing.T) *servingCommandFixture {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, setup := range beforeStart {
+		setup(f.s)
 	}
 	runServingFixture(t, f.s)
 	ctx, cancel := context.WithCancel(t.Context())

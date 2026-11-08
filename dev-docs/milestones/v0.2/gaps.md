@@ -6203,3 +6203,48 @@ HA restart/partition/rejoin acceptance remain open.
 
 Configured two-package lint passes with zero issues (9.025s); source identities
 remain matched. No qualification beyond the recorded scope is inferred.
+
+
+### F60b/G11 first typed root member command, November 8
+
+D341 adds the actual root scoped executor for version-2 blocking.toggle. Unknown
+operations, generic object/status dispatch and legacy credential envelopes
+refuse. An exact Kudurru/default resource-version precondition protects new
+commands, including no-ops. The payload requires explicit blocking intent and
+permits only an absolute whole-second deadline; relative timers cannot restart
+at the receiver. Current effective configuration is validated before the same
+transaction stages canonical blocking status and the command's dedup outcome.
+
+The handler retains the original running elected writer, current provider/host
+pins and actual raw blocking.toggle permission through commit and one Store-
+admitted response. Verified subject/provider/issuance/reference comparisons
+precede effects and dedup reads. Current authorization also supplies actual
+audit actor/path fields; ReauthorizeCurrentForOutput now returns that decision
+alongside its detached lifetime. Original request, envelope and credential
+bounds survive through emission. The response says committed with publication
+pending, and the publisher is woken outside the protected scope. It never
+claims that a successful command has already reached the serving publication.
+
+The actual root executor passes 15 race entries through enrolled HTTP/1 and
+HTTP/2, checking canonical status, absolute intent, authorized exact dedup
+replay, stale versions, unsupported operations/relative timers/missing intent,
+forged references, invalid proof, revoked-token replay and durable audit
+attribution with no raw credential in image or audit. The initial compile
+collision with the existing replica test helper, missing original writer in
+enrollment setup (three failures before target entry), and incorrect raw JSON
+byte equality after dedup canonicalization (three failures after the positive
+root mutation) are all retained. The final test compares the complete structured
+receipt and exact resulting generation; it does not recapture or renew intent.
+
+Composed root/member/lifetime races pass 81 entries (54.328s). That selection's
+names did not include the older ServingBlocking/ServingCurrentCommand suites;
+a separate exact selection passes all 51 entries (56.526s). No failures/skips
+occur in either final selection. Configured command/auth/coordinator lint passes
+with zero issues (55.323s). All frozen inputs match. Evidence:
+.context/root-member-blocking-20261108/.
+
+The test explicitly sets up enrollment and mounts the real root executor on the
+enrolled HTTP server. Production listener/operator activation, public forwarding
+and final public responses, other typed root domains and full HA acceptance
+remain open. Existing public blocking commands and their publication contract
+remain separate. This is not completion of F60b/G11 or release qualification.

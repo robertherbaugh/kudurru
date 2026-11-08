@@ -36,18 +36,18 @@ func (*CredentialLifetime) MarshalJSON() ([]byte, error) { return []byte(`"priva
 // ReauthorizeCurrentWithClock. The detached result keeps those verified bounds
 // through response emission; a claimed subject or expiration is never input.
 // Password/TOTP enrollment does not supply a reusable response credential.
-func ReauthorizeCurrentForOutput(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, proof Credential, attrs rbac.Attributes, clock func() time.Time) (auth.Principal, *CredentialLifetime, error) {
+func ReauthorizeCurrentForOutput(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, proof Credential, attrs rbac.Attributes, clock func() time.Time) (auth.Principal, rbac.Decision, *CredentialLifetime, error) {
 	if proof.Kind != APIToken && proof.Kind != Cookie && proof.Kind != OIDCJWT {
-		return auth.Principal{}, nil, ErrUnsupported
+		return auth.Principal{}, rbac.Decision{}, nil, ErrUnsupported
 	}
 	if clock == nil {
 		clock = time.Now
 	}
-	p, _, validity, err := reauthorizeCurrentWithValidity(ctx, tx, deps, proof, attrs, clock)
+	p, decision, validity, err := reauthorizeCurrentWithValidity(ctx, tx, deps, proof, attrs, clock)
 	if err != nil {
-		return auth.Principal{}, nil, err
+		return auth.Principal{}, decision, nil, err
 	}
-	return p, &CredentialLifetime{validity: validity, clock: clock}, nil
+	return p, decision, &CredentialLifetime{validity: validity, clock: clock}, nil
 }
 
 // WithOutput shortens an already finite original output context to the verified

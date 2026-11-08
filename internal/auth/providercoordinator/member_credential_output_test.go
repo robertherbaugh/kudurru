@@ -48,7 +48,7 @@ func TestMemberCommandOutputRetainsVerifiedCredentialExpiry(t *testing.T) {
 			}
 			emitted := false
 			committed, err := f.coordinator.WithMemberCommandOutput(ctx, target, request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
-				_, verified, err := servingauth.ReauthorizeCurrentForOutput(ctx, tx, deps, servingauth.Credential{Kind: servingauth.APIToken, Value: f.wire}, rbac.Attributes{Resource: "stats", Verb: "read"}, clock)
+				_, _, verified, err := servingauth.ReauthorizeCurrentForOutput(ctx, tx, deps, servingauth.Credential{Kind: servingauth.APIToken, Value: f.wire}, rbac.Attributes{Resource: "stats", Verb: "read"}, clock)
 				if err != nil {
 					return err
 				}

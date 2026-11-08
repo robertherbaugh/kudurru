@@ -36,7 +36,7 @@ func (d scopedHTTPDomain) Authorize(ctx context.Context, tx replica.CommandTx, c
 	if err != nil {
 		return nil, err
 	}
-	p, lifetime, err := servingauth.ReauthorizeCurrentForOutput(ctx, tx.State().(*sqlite.CommandTx), d.deps, raw, rbac.Attributes{Resource: "stats", Verb: "read"}, time.Now)
+	p, _, lifetime, err := servingauth.ReauthorizeCurrentForOutput(ctx, tx.State().(*sqlite.CommandTx), d.deps, raw, rbac.Attributes{Resource: "stats", Verb: "read"}, time.Now)
 	if err != nil {
 		return nil, err
 	}

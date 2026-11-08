@@ -1027,6 +1027,26 @@ completion receipt; output failure cannot undo a committed command. Enrolled
 HTTP/1 and HTTP/2 composition uses the derived context without replacing the
 private Store scope. Production root domain/listener assembly remains open.
 
+The root now supplies a closed `blocking.toggle` member-command executor. It
+accepts version 2 only, requires an exact `Kudurru/default` resource version and
+verifies the current `blocking.toggle` permission before domain effects or dedup.
+Subject/provider/issuance and credential references must match the current raw
+verifier. A derived authenticated context supplies actor and authorization-path
+audit fields; neither peer claims nor raw proof enter audit metadata. The sender
+must resolve relative timers before dispatch: the receiver accepts only a required
+blocking Boolean and an optional absolute whole-second deadline, so delay cannot
+restart a timer. It validates current effective configuration and stages the
+canonical status and dedup result in the same concrete transaction.
+
+The handler retains the original running writer, provider/host exclusions and
+verified credential lifetime through one Store-admitted HTTP response. Exact
+authorized duplicates return the retained outcome without reapplying their now
+stale precondition; new commands must satisfy their original version, including
+no-ops. The receipt reports actual completion with publication `pending`, and the
+publisher is woken after the protected scope ends. The scoped executor can mount
+on `MemberServer`; production listener/operator activation, public forwarding and
+other typed root domains remain separate unfinished assembly.
+
 The output deadline also respects the original command expiration. Failed writes,
 flush errors, lost original admission and callback failures abort the HTTP stream
 rather than allowing handler-return buffering to emit protected bytes. After a
