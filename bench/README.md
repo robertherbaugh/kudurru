@@ -180,3 +180,14 @@ latencies. Its CPU also differs from the historical reference, so these absolute
 observations are not a strict relative comparison. The failures remain open;
 limits must not be raised to clear them. Socket/persistence calibration, the
 paired original comparison and final-source release qualification remain open.
+
+
+The first paired execution, [run 42518988512](https://github.com/robertherbaugh/kudurru/actions/runs/42518988512),
+measured original `0cc9565e` and candidate `92d5c9ee` on the same EPYC9454P VM.
+All sixty native measurements and ten shape/absolute gates passed. The actual
+strict Go comparisons failed blocking/zone (one exact-miss p50 regression) and
+cache (eight latency/allocation/memory regressions); all sixty original upstream
+strategy metrics passed. The job correctly failed and `release_qualified` stayed
+false. This run predates the compact cache metadata fix and the additional
+cache/strategy limits above. Current-source measurement is still required;
+prior failed runs and all five-value vectors remain retained in the release ledger.

@@ -5753,3 +5753,29 @@ publication race entries pass without failures/skips (19.432s); configured
 command/SQLite lint exits0 with zero issues (32.255s). Source06 hashes match.
 Evidence: .context/anchor-publication-context-20261108/ and
 .context/held-fixtures-20261108/lint06.json. Final hosted gates remain open.
+
+
+### F63/G23 actual paired Ubicloud comparison, November 8
+
+Run42518988512 measured immutable original0cc9565e and candidate92d5c9ee on one
+AMD EPYC9454P VM, Go1.27.3, original GOMAXPROCS6. All20 original and40 candidate
+native processes and their3/7 shape/absolute gates exited0. Independently checked
+source/plan identities, native argv/counts/bounds/reaping, report hashes and all
+811 five-value vectors preserve45/219 original and136/592 candidate cases/keys.
+
+Actual strict Go comparisons exit1/1/0 for blocking-zone/cache/upstream. The
+blocking failure is exact1M miss p50:160 versus90ns (+77.78%). Cache has eight
+relative failures: hit528.5 versus420.5ns, parallel193.5 versus128.5ns, Set288
+versus112B and604 versus456.9ns, memory551203648 versus375285520B,468.7 versus
+292.7bytes/entry,349.8 versus173.8overhead bytes/entry, and1117414235 versus
+798471632ns. All60 original strategy metrics pass. No original comparison key
+is missing. New workloads remain unqualified; aggregate/hosted exit1 and
+release_qualified=false are retained.
+
+This run predates b8877d85's cache metadata fix and the new cache/strategy limit
+files. It does not qualify current source. The previous CNAME reference failure,
+heterogeneous-CPU observation and all earlier regressions remain preserved;
+no sample, baseline, ignore, original ceiling or corpus was replaced. Final
+current-source performance and remaining implementation/external gates stay open.
+Full artifacts, independent review and all vectors:
+.context/hosted-release-20261108/paired-artifact/ and paired-reviewed-*.
