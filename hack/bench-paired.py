@@ -97,8 +97,8 @@ def execute(checkout, output):
                 retained(identities)
                 argv = ["go", "run", "./hack/benchgate", "-samples", str(runner.SAMPLES),
                         "-procs", str(reference.PROCS), "-strict-cpu", "-threshold", "20"]
-                if name == "blocking-zone":
-                    argv += ["-limits", "bench/limits.txt"]
+                if name in runner.LIMIT_FILES:
+                    argv += ["-limits", runner.LIMIT_FILES[name]]
                 argv += ["-baseline", str(output / "reference" / (name + ".txt")),
                          str(output / "candidate" / (name + ".txt"))]
                 receipt = runner.measure(argv, output / (name + "-compare"), reference.PROCS, 300)

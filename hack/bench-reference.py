@@ -65,7 +65,8 @@ def execute(reference, output):
     plan = {"head": REFERENCE, "control_head": control_head,
             "runner_class": RUNNER_CLASS, "procs": PROCS, "samples": runner.SAMPLES,
             "go_version": version, "commands": commands,
-            "limits_sha256": runner.digest(CONTROL / "bench/limits.txt")}
+            "limits_sha256": runner.digest(CONTROL / "bench/limits.txt"),
+            "scope_limits_sha256": {name: runner.digest(CONTROL / path) for name, path in runner.LIMIT_FILES.items()}}
     output.mkdir(parents=True, exist_ok=False)
     runner.save(output / "plan.json", plan)
     runner.save(output / "source.json", source)
@@ -109,8 +110,8 @@ def execute(reference, output):
         result["reports"][report] = runner.digest(path)
         argv = ["go", "run", "./hack/benchgate", "-samples", str(runner.SAMPLES),
                 "-procs", str(PROCS), "-strict-cpu", "-threshold", "20"]
-        if report == "blocking-zone":
-            argv += ["-limits", "bench/limits.txt"]
+        if report in runner.LIMIT_FILES:
+            argv += ["-limits", runner.LIMIT_FILES[report]]
         with at(CONTROL):
             receipt = runner.measure([*argv, str(path)], output / (report + "-gate"), PROCS, 300)
         failed |= receipt["child_exit_code"] != 0 or receipt["stop_reason"] is not None

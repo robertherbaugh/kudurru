@@ -5660,3 +5660,23 @@ All frozen source identities match. Scoped command lint exits0 with zero issues
 in 27.649s. Evidence is `.context/doctor-kube-20261108/`. This closes the named
 Kubernetes diagnostic gap; TSIG hot management, HA assembly and remaining final
 release gates remain open.
+
+
+### F21c original cache/strategy calibration, November 8
+
+The selected-runner historical reference supplies five fresh values for all20
+cache and60 strategy metrics. Separate committed ceilings use each original
+median plus max(20%, original noise floor); reports, process receipts, hashes and
+all vectors are retained in bench/calibration/ubicloud8-20261108. All thirteen
+control tests pass. Collectors now pin and enforce those files alongside unchanged
+blocking/zone limits. No baseline, old threshold, ignore or workload is changed.
+
+Actual Go absolute checks of the retained reference cache and strategy reports
+exit0. The full reference's old CNAME failure remains1 and cannot establish a
+paired baseline. Retained candidate42514599389 fails both new scopes: five cache
+limits (parallel hit168.6ns, Set288B/op, memory551258352B/op,468.7bytes/entry,
+349.8overhead-bytes/entry) and three strategy limits (fast/strict126398ns,
+slow-first/rtt_weighted259747ns and177us p50). These are honest absolute failures,
+not a CPU-matched relative comparison; current-source optimization/qualification
+remains open. No benchmark was rerun to select or replace samples. Evidence:
+.context/cache-strategy-calibration-20261108/.

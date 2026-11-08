@@ -51,8 +51,8 @@ The manual workflow remains available after registration. Both paths retain
 the original workloads and leave the baseline and limits unchanged.
 
 The workflow records measurements; a successful job is not release qualification.
-New cache/strategy absolute limits, baseline calibration and final comparison
-still need review on that actual runner. Local sandbox measurements, matching CPU
+The original cache/strategy ceilings below are now calibrated; their candidate
+failures, socket/persistence calibration and final comparison remain open. Local sandbox measurements, matching CPU
 text or merely passing this label to the script cannot close the hosted gate.
 
 For a clean committed checkout on the selected runner:
@@ -75,8 +75,8 @@ Existing output directories are refused.
 Reports separate blocking/zone rules from the additional suites, so ignores
 for the blocking memory helper cannot hide cache or persistence measurements.
 The original Go gate validates all report shapes and the unchanged
-blocking/zone absolute limits. Cache/strategy absolute limits are not yet
-calibrated. UDP and TLS query throughput (`q/s`) is higher-is-better; loss
+blocking/zone absolute limits plus the independently calibrated cache/strategy
+ceilings below. UDP and TLS query throughput (`q/s`) is higher-is-better; loss
 remains lower-is-better.
 
 After separately reviewing and retaining a baseline artifact, compare on the
@@ -96,7 +96,7 @@ Each Go comparison requires five samples, matching processor suffixes and
 matching CPU headers in both inputs. Empty, failed or incomplete baselines
 refuse. No command updates a baseline. `result.json` keeps
 `release_qualified: false`: these measurements alone do not establish the
-remaining absolute calibrations, external acceptance or other release gates.
+remaining socket/persistence calibrations, external acceptance or other release gates.
 
 ## Original reference on the selected class
 
@@ -124,8 +124,8 @@ retries or replacement samples. Nothing edits `bench/baseline.txt`.
 
 Reference recording alone does not close the gate. Its actual results must be
 reviewed and compared with the candidate on this class under the unchanged
-relative threshold and noise floors. New cache/strategy absolute calibration
-and final-current-source qualification remain separate requirements.
+relative threshold and noise floors. The cache/strategy calibration below and final-current-source qualification
+remain separate from that original recording.
 
 
 ## Paired measurements in one VM
@@ -149,7 +149,34 @@ the independent candidate recording, but refuses comparison and fails the paired
 result. The original Go gate retains five samples, six processors, strict CPU
 matching, the 20% threshold, noise floors and absolute limits. Source changes,
 resource stops, residual descendants and altered artifacts stop remaining work.
-New candidate scopes stay calibration evidence; `release_qualified` remains
-false pending their absolute calibration and all other release requirements.
+Candidate socket/persistence scopes stay calibration evidence;
+`release_qualified` remains false pending their absolute calibration, resolution
+of measured failures and all other release requirements.
 Neither collector changes the committed Intel baseline or treats the candidate
 as its own reference.
+
+
+## Cache and strategy ceilings
+
+`cache-limits.txt` and `upstream-limits.txt` pin all 20 original cache metrics
+and 60 original strategy metrics to independently recorded historical source
+0cc9565e on the selected Ubicloud class (EPYC 9224, Go 1.27.3, six processors).
+Each ceiling is its five-process median plus the larger of 20% or the existing
+per-unit noise floor. The original vectors, exact reports, all ten native
+receipts and both successful scope gates are in `calibration/ubicloud8-20261108/`.
+Control tests verify hashes, distinct processes, metric completeness and the
+formula. These ceilings do not alter any original blocking/zone rule or ignore.
+
+This is scoped calibration, not acceptance of the full historical reference:
+that reference's separate CNAME absolute gate failed. It remains ineligible for
+the paired baseline comparison unless a complete paired recording passes all
+its required gates. The collector pins all three limit-file identities, applies
+the new limits to recording and comparison, and rejects a baseline with different
+limits. Later cache Growth cases remain new; no old baseline is invented for them.
+
+Applying the new ceilings to retained candidate run 42514599389 fails five cache
+metrics (parallel hit, insertion bytes, three memory metrics) and three strategy
+latencies. Its CPU also differs from the historical reference, so these absolute
+observations are not a strict relative comparison. The failures remain open;
+limits must not be raised to clear them. Socket/persistence calibration, the
+paired original comparison and final-source release qualification remain open.

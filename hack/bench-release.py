@@ -34,6 +34,8 @@ SUITES = {
 }
 REPORTS = {"blocking-zone": ("blocking", "zone"),
            **{name: (name,) for name in SUITES if name not in ("blocking", "zone")}}
+LIMIT_FILES = {"blocking-zone": "bench/limits.txt", "cache": "bench/cache-limits.txt",
+               "upstream": "bench/upstream-limits.txt"}
 WORKLOAD_ROOTS = ("internal/blocking/", "internal/zone/", "internal/cache/",
                   "internal/upstream/", "internal/dnsserver/")
 
@@ -145,7 +147,7 @@ def source_identity():
 
 def validate_baseline(path, plan):
     baseline = json.loads((path / "plan.json").read_text())
-    for key in ("runner_class", "procs", "samples", "commands", "platform", "go_version", "limits_sha256", "workload_inputs"):
+    for key in ("runner_class", "procs", "samples", "commands", "platform", "go_version", "limits_sha256", "scope_limits_sha256", "workload_inputs"):
         if baseline[key] != plan[key]:
             raise ValueError("baseline differs in " + key)
     outcome = json.loads((path / "result.json").read_text())
@@ -172,6 +174,7 @@ def execute(output, runner_class, procs, baseline=None):
             "head": subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip(),
             "go_version": subprocess.check_output(["go", "version"]).decode().strip(),
             "limits_sha256": digest("bench/limits.txt"),
+            "scope_limits_sha256": {name: digest(path) for name, path in LIMIT_FILES.items()},
             "workload_inputs": {name: value for name, value in source.items()
                                 if name.startswith(WORKLOAD_ROOTS) and
                                 (name.endswith("_test.go") or "/testdata/" in name or "/internal/synth/" in name)}}
@@ -211,8 +214,8 @@ def execute(output, runner_class, procs, baseline=None):
         result["reports"][report] = digest(path)
         argv = ["go", "run", "./hack/benchgate", "-samples", str(SAMPLES),
                 "-procs", str(procs), "-strict-cpu", "-threshold", "20"]
-        if report == "blocking-zone":
-            argv += ["-limits", "bench/limits.txt"]
+        if report in LIMIT_FILES:
+            argv += ["-limits", LIMIT_FILES[report]]
         if baseline is not None:
             if any(digest(baseline / name) != expected for name, expected in baseline_hashes.items()):
                 raise ValueError("baseline changed during measurement")
@@ -227,7 +230,7 @@ def execute(output, runner_class, procs, baseline=None):
         raise ValueError("baseline changed during comparison")
     result.update(measurement_complete=True, exit_code=int(failed))
     # Runner labels and a passed relative gate do not calibrate the additional
-    # cache/strategy absolute limits or establish other release requirements.
+    # socket/persistence absolute limits or establish other release requirements.
     save(output / "result.json", result)
     return int(failed)
 

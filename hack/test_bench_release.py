@@ -48,6 +48,12 @@ class ReleaseBenchmarks(unittest.TestCase):
             for _, argv, procs in calls[:40]:
                 self.assertEqual(procs, 6)
                 self.assertEqual(argv[argv.index("-count") + 1], "1")
+            for report, argv, _ in calls[40:]:
+                name = report.removesuffix("-gate")
+                if name in runner.LIMIT_FILES:
+                    self.assertEqual(argv[argv.index("-limits") + 1], runner.LIMIT_FILES[name])
+                else:
+                    self.assertNotIn("-limits", argv)
             self.assertIn("FAIL:", (output / "udp.txt").read_text())
             self.assertNotIn("FAIL:", (output / "persist.txt").read_text())
             result = json.loads((output / "result.json").read_text())
@@ -84,7 +90,9 @@ class ReleaseBenchmarks(unittest.TestCase):
             output = Path(directory)
             plan = {"runner_class": "reviewed-class", "procs": 6, "samples": 5,
                     "commands": runner.commands(), "platform": ["Linux", "x86_64"],
-                    "go_version": "go fixture", "limits_sha256": "unchanged", "workload_inputs": {"bench_test.go": "original"}}
+                    "go_version": "go fixture", "limits_sha256": "unchanged",
+                    "scope_limits_sha256": {name: "unchanged" for name in runner.LIMIT_FILES},
+                    "workload_inputs": {"bench_test.go": "original"}}
             runner.save(output / "plan.json", plan)
             reports = {}
             for name in runner.REPORTS:
@@ -96,7 +104,7 @@ class ReleaseBenchmarks(unittest.TestCase):
             runner.validate_baseline(output, plan)
             for key, wrong in (("runner_class", "other"), ("procs", 2), ("samples", 1),
                                ("go_version", "different"), ("limits_sha256", "changed"),
-                               ("commands", {}), ("workload_inputs", {})):
+                               ("commands", {}), ("workload_inputs", {}), ("scope_limits_sha256", {})):
                 with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):
                     runner.validate_baseline(output, dict(plan, **{key: wrong}))
             runner.save(output / "result.json", dict(outcome, exit_code=1))

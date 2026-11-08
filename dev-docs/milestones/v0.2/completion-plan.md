@@ -95,7 +95,7 @@ runners. Unit tests cannot substitute for those results.
 | F20d | Lazy-DFA regex engine | DNS and resolver | Integrated D293 with parent modifier-aware fingerprint/parser fixes. Root core race835 (2 actual helper/comparator skips), mounted API/command race47, pinned comparator46 and vet pass. Original12 single diagnostic has all58 metrics: unchanged1M 67115699ns/19allocs; regex1000 p99 18276ns remains adverse. Historical five-process arithmetic FAIL remains 36 measured regressions plus20 missing zone keys, with CPU differences and official/static gates open. Sparse shared-batch dispatch passes focused race88/core race452 (2 actual skips) and vet; one original12 sample improves policy Evaluate miss to740.5ns but regex1000 p99 17691ns and unchanged18allocs remain adverse. Fingerprint allocation fix passes focused101/core race641 (2 actual skips), pinned comparator46 and vet; original1M diagnostic reaches8allocs at79681673ns, preserving first10alloc guard failure and all earlier performance evidence. Proven anchored-start fallback passes focused race98/core467, pinned comparator46, vet and bounded oracle fuzz157288 executions; original69/all291 metrics retain3 arithmetic regressions and original12 regex1000 p99 18550ns remains adverse. Full configured root lint v2.15.0 passes. Complete original five-process blocking+zone gate on 859bacf6 exits1 with four regressions and no missing metrics; actual source-profile-guided literal refinement passes focused93/core656 races, pinned comparator46, fuzz197295, vet and scoped lint. Original regex1000 diagnostic p99 improves18226 to1455ns; final-source five-process/fixed-class gates remain open |
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Implemented; bounded canonical translation, refusal/ownership/restart and real mounted DNS routes pass |
 | F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated 157-operation client and API/reference contracts updated |
-| F21c | Cache/strategy benchmark limits | DNS and resolver | Original workloads included in the new collector; named-class calibration and absolute limits remain open |
+| F21c | Cache/strategy benchmark limits | DNS and resolver | Original cache/strategy ceilings calibrated from Ubicloud reference and enforced; retained candidate fails both scopes; final-source qualification remains open |
 | F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Implemented; actual transport/config/mounted races pass |
 | F22b | DoH `Alt-Svc` | DNS and resolver | Implemented; actual HTTPS/HTTP3 and full transport races pass |
 | F22c | RFC 8467 response padding | DNS and resolver | Implemented; actual encrypted/plaintext/TSIG and full transport races pass |
@@ -517,3 +517,23 @@ All frozen source identities match. Scoped command lint exits0 with zero issues
 in 27.649s. Evidence is `.context/doctor-kube-20261108/`. This closes the named
 Kubernetes diagnostic gap; TSIG hot management, HA assembly and remaining final
 release gates remain open.
+
+
+### F21c original cache/strategy calibration, November 8
+
+The selected-runner historical reference supplies five fresh values for all20
+cache and60 strategy metrics. Separate committed ceilings use each original
+median plus max(20%, original noise floor); reports, process receipts, hashes and
+all vectors are retained in bench/calibration/ubicloud8-20261108. All thirteen
+control tests pass. Collectors now pin and enforce those files alongside unchanged
+blocking/zone limits. No baseline, old threshold, ignore or workload is changed.
+
+Actual Go absolute checks of the retained reference cache and strategy reports
+exit0. The full reference's old CNAME failure remains1 and cannot establish a
+paired baseline. Retained candidate42514599389 fails both new scopes: five cache
+limits (parallel hit168.6ns, Set288B/op, memory551258352B/op,468.7bytes/entry,
+349.8overhead-bytes/entry) and three strategy limits (fast/strict126398ns,
+slow-first/rtt_weighted259747ns and177us p50). These are honest absolute failures,
+not a CPU-matched relative comparison; current-source optimization/qualification
+remains open. No benchmark was rerun to select or replace samples. Evidence:
+.context/cache-strategy-calibration-20261108/.

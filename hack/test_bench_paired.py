@@ -60,6 +60,8 @@ class PairedControls(unittest.TestCase):
             self.assertEqual(argv[argv.index("-threshold") + 1], "20")
             self.assertEqual(argv[argv.index("-samples") + 1], "5")
             self.assertIn("-strict-cpu", argv)
+            name = stem.name.removesuffix("-compare")
+            self.assertEqual(argv[argv.index("-limits") + 1], paired.runner.LIMIT_FILES[name])
             self.assertEqual(Path(argv[-1]).parent, output / "candidate")
             self.assertEqual(Path(argv[argv.index("-baseline") + 1]).parent, output / "reference")
             return {"child_exit_code": int(compare_failure), "stop_reason": None, "group_reaped": True}
