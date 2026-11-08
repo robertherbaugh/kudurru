@@ -105,6 +105,9 @@ type ServerOptions struct {
 	Status func(ctx context.Context) Status
 	// Health fills GET /internal/health with local operational readiness; nil answers 404.
 	Health func(context.Context) (Health, error)
+	// EdgeBypass observes an actually installed retained edge policy. Nil
+	// disables the route. The requested deployment must match the local owner.
+	EdgeBypass func(context.Context, string) (EdgeBypassState, error)
 	// Lists serves GET /internal/lists/{digest}; nil answers 404.
 	Lists ListOpener
 	// Zones fills GET /internal/zones (the primary and secondary zones
@@ -158,6 +161,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Credentials == nil {
 		return nil, errors.New("internalapi: server needs credentials")
 	}
+	if opts.EdgeBypass != nil && opts.Credentials.nodeName == "" {
+		return nil, errors.New("internalapi: managed edge observation needs a node identity")
+	}
 	if opts.Address == "" {
 		opts.Address = DefaultAddress
 	}
@@ -205,6 +211,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("GET "+PathStatus, s.handleStatus)
 	if opts.Health != nil {
 		mux.HandleFunc("GET "+PathHealth, s.handleHealth)
+	}
+	if opts.EdgeBypass != nil {
+		mux.HandleFunc("GET "+PathEdgeBypass, s.handleEdgeBypass)
 	}
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
 	if opts.Zones != nil || opts.ServingZones != nil {
@@ -308,6 +317,8 @@ func routeOf(p string) string {
 		return "status"
 	case p == PathHealth:
 		return "health"
+	case p == PathEdgeBypass:
+		return "edge-managed-bypass"
 	case p == PathZones:
 		return "zones"
 	case p == PathCatalogue, p == PathCatalogueAdGuard:

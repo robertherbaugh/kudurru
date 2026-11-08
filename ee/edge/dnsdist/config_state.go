@@ -8,6 +8,7 @@ import "os"
 type configState struct {
 	dir      *os.File
 	bypassID string
+	runID    string
 }
 
 func (s *configState) close() error { return s.dir.Close() }

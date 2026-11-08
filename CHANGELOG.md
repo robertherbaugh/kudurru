@@ -45,6 +45,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Managed edges can expose a separate authenticated TLS observation listener
+  with request-bound deployment, child and membership identities. Missing or
+  stale installed state refuses; backend activation remains separately gated.
+
 - Kubernetes loads complete encrypted stored/file TSIG keys once at startup for
   native and encrypted DNS, secondary acquisition and NOTIFY. Unknown or invalid
   private sources refuse signed work without blocking unrelated unsigned saved

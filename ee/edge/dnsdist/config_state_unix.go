@@ -39,7 +39,18 @@ func acquireConfigState(path string, managed bool) (_ *configState, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return &configState{dir: dir, bypassID: id}, nil
+	state := &configState{dir: dir, bypassID: id}
+	if managed {
+		var instance [32]byte
+		if _, err := rand.Read(instance[:]); err != nil {
+			return nil, err
+		}
+		if instance == ([32]byte{}) {
+			return nil, errors.New("dnsdist: empty managed supervisor identity")
+		}
+		state.runID = hex.EncodeToString(instance[:])
+	}
+	return state, nil
 }
 
 func retainManagedBypass(dirFD int, dir *os.File, enabled bool) (string, error) {

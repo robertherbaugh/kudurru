@@ -4764,3 +4764,39 @@ Configured scoped lint passes with zero issues after six specific gosec findings
 were annotated: one public file-format tag and five operator/test-owned paths.
 No behavior changed after race/live qualification; the first lint failure is
 retained. Source hashes and raw outcomes are in the evidence directory.
+
+
+## November 8: authenticated managed edge observations (D316)
+
+The optional host-only `edge.managedObservationAddress` listener exposes the
+actual retained deployment, fresh supervisor incarnation, acknowledged child/
+source epochs and detached backend membership through the existing authenticated
+internal TLS guard. One fresh challenge, expected node/deployment, original
+2-second total deadline, 128-member and 128 KiB limits bound acquisition.
+Substituted/malformed/redirected/expired observations refuse without replacement.
+The listener and zone polling share one captured credential source. Listener
+failure cancels and joins the supervisor and other listener.
+
+Evidence: `.context/edge-managed-observation-20261108/`. Focused default race
+passes 26 entries without skips. Actual pinned dnsdist YAML/Lua acceptance passes
+three entries without skips, exercising the authenticated exchange after loaded
+policy/source/child acknowledgment and full supervisor restart. Full internal
+API, edge and configuration default race passes 596 entries, with only the two
+opt-in console/managed-live cases skipped; managed-live ran separately. Root
+bind-failure coverage is lifecycle evidence with a script child, not dnsdist
+cache qualification. The CLI and configuration references are regenerated,
+including the prior D315 help text omitted from its commit.
+
+These observations grant no backend activation or mutation authority. Explicit
+exhaustive topology, original local activation admission, updater/follower
+mounts and the complete F28 retirement/interoperability requirements remain open.
+All previous release, performance and external acceptance failures remain open.
+
+Root edge/supervisor configuration and generated-reference default race passes
+46 entries without failures/skips. The first full configured lint command fails
+one missing exported-error-group comment; its receipt is retained. Only the
+missing comment and explanatory node-name documentation changed afterward.
+
+The final full configured repository lint passes with zero issues in 58.4938 s
+on source04. All code behavior and tests match the qualified source; the sole
+post-race Go edit is the exported-error-group documentation comment.

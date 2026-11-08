@@ -27,6 +27,7 @@ func TestManagedCachePolicyRetainedAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := first.bypassID
+	run := first.runID
 	if len(id) != 64 {
 		t.Fatal("missing durable identity")
 	}
@@ -49,6 +50,10 @@ func TestManagedCachePolicyRetainedAcrossRestart(t *testing.T) {
 		if next.bypassID != id {
 			t.Fatal("restart replaced managed deployment identity")
 		}
+		if next.runID == "" || next.runID == run {
+			t.Fatal("restart reused the previous supervisor incarnation")
+		}
+		run = next.runID
 		if err := next.close(); err != nil {
 			t.Fatal(err)
 		}

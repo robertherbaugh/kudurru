@@ -225,6 +225,29 @@ observations are not backend activation grants: managed backend activation is
 still disabled pending the coordinator's original, exact edge admission.
 An existing eligibility lease or eventual flush cannot replace that gate.
 
+`edge.managedObservationAddress` (`--managed-observation-address`, empty by
+default) adds a separate internal TLS listener for
+`GET /internal/edge/managed-bypass`. It requires retained bypass and the existing
+internal credentials. The listener and backend polling share one captured
+credential source. Listener startup failures cancel and join the supervisor and
+its other listener; shutdown joins all three lifetimes.
+
+The exchange uses a fresh challenge, a two-second total client/server bound and
+a 128 KiB response cap. The caller supplies the expected node and durable edge
+deployment identity before sending. The response carries that identity, a fresh
+supervisor incarnation, the actually acknowledged source/child epochs and a
+detached bounded backend list. Wrong identities, empty or duplicate membership,
+malformed responses, redirects and expired acquisition refuse without retrying
+the observation. The observer takes the same supervisor lock as installed-state
+changes and performs no console, filesystem or network acquisition inside it.
+The authenticated node name is the supervisor host name used for its internal
+credentials; it is independent of dnsdist's configurable `serverID`.
+
+This endpoint exposes an authenticated observation, not a backend activation
+permit. It cannot prove an exhaustive deployment topology or replace the
+backend's original local policy/writer/publication admission. The remaining
+activation coordinator must check those boundaries; it is still unmounted.
+
 Shared packet caching is eligible only when the captured served model proves
 client-independent behavior. Per-client rate limits (including the default),
 group/list/RPZ restrictions, zone ACLs, client names and unproven dynamic inputs

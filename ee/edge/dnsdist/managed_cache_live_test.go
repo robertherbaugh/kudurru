@@ -204,6 +204,7 @@ func TestManagedCacheLivePinnedTransition(t *testing.T) {
 			managed, stopManaged, name := start(true)
 			verify := func() {
 				t.Helper()
+				verifyManagedLiveObservation(t, managed, endpoint)
 				status, err := managed.api.Status(t.Context())
 				if err != nil {
 					t.Fatal("actual child status unavailable", err)
@@ -277,6 +278,7 @@ func TestManagedCacheLivePinnedTransition(t *testing.T) {
 			// acknowledgment, and disabling bypass must refuse before any child.
 			managed.mu.Lock()
 			identity := managed.configState.bypassID
+			oldRun := managed.configState.runID
 			managed.mu.Unlock()
 			stopManaged()
 			restartConfig := managed.cfg
@@ -316,7 +318,7 @@ func TestManagedCacheLivePinnedTransition(t *testing.T) {
 			})
 			labWait(t, "restarted supervisor and actual bypass child", func() bool { ok, _ := managed.Ready(); return ok })
 			managed.mu.Lock()
-			sameIdentity := managed.configState != nil && managed.configState.bypassID == identity
+			sameIdentity := managed.configState != nil && managed.configState.bypassID == identity && managed.configState.runID != oldRun
 			managed.mu.Unlock()
 			if !sameIdentity || labPID(t, name) == "" {
 				t.Fatal("restarted child lost durable deployment identity")

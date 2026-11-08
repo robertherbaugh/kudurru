@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 	discoveryv1client "k8s.io/client-go/kubernetes/typed/discovery/v1"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
@@ -59,6 +60,7 @@ type edgeFlags struct {
 	threads                         int
 	// run only
 	healthAddr                                string
+	managedObservationAddr                    string
 	debounce, drain, zonePoll, stopTimeout    time.Duration
 	pollZones                                 bool
 	internalTokenFile, internalCA, internalSN string
@@ -107,6 +109,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 		fl.StringVar(&f.dnsdistUser, "dnsdist-user", "", "uid[:gid] dnsdist switches to after binding its sockets and creating the eBPF maps (dnsdist --uid/--gid), for a supervisor started as root; dnsdist keeps only capabilities_to_retain")
 		fl.StringVar(&f.configDir, "config-dir", "/etc/dnsdist", "directory for the rendered configuration")
 		fl.StringVar(&f.healthAddr, "health-address", ":8084", "supervisor listener: /healthz/ready, /healthz/live, /status, /metrics")
+		fl.StringVar(&f.managedObservationAddr, "managed-observation-address", "", "optional authenticated TLS listener for installed managed-cache observations (host:port); requires retained bypass and internal credentials")
 		fl.StringVar(&f.healthAddr, "readiness-address", ":8084", "alias of --health-address (the chart's form)")
 		fl.DurationVar(&f.debounce, "debounce", 5*time.Second, "delay before re-rendering after membership or certificate changes")
 		fl.DurationVar(&f.drain, "drain", time.Second, "readiness 503 period before a restart")
@@ -390,15 +393,18 @@ func runEdgeRun(c *cobra.Command, f *edgeFlags) error {
 		Debounce: f.debounce, Drain: f.drain, ZonePoll: f.zonePoll, StopTimeout: f.stopTimeout,
 		Logger: logger, Registerer: reg, Gatherer: reg,
 	}
-	if f.pollZones && f.internalPort > 0 {
-		zl, err := f.zoneLister()
-		switch {
-		case err != nil:
+	var internalCredentials *internalapi.Credentials
+	if f.pollZones && f.internalPort > 0 || f.managedObservationAddr != "" {
+		internalCredentials, err = f.internalCredentials()
+		if err != nil {
 			return err
-		case zl == nil:
+		}
+	}
+	if f.pollZones && f.internalPort > 0 {
+		if internalCredentials == nil {
 			logger.Warn("zone polling disabled: no KUDURRU_ENCRYPTION_KEY[_FILE] and no --internal-token-file; authoritative routing uses --authoritative-zones only")
-		default:
-			cfg.Zones = zl
+		} else {
+			cfg.Zones = internalapi.NewClient(internalCredentials, internalapi.ClientOptions{Timeout: 3 * time.Second})
 		}
 	}
 	sup, err := dnsdist.New(cfg)
@@ -410,19 +416,22 @@ func runEdgeRun(c *cobra.Command, f *edgeFlags) error {
 		_ = sup.Signal(s)
 	})
 	defer stop()
-	errCh := make(chan error, 1)
-	go func() { errCh <- sup.Serve(ctx, f.healthAddr) }()
-	runErr := sup.Run(ctx)
-	stop()
-	if err := <-errCh; err != nil && runErr == nil {
-		runErr = fmt.Errorf("health listener: %w", err)
+	observation, err := f.managedObservationServer(sup, logger, internalCredentials)
+	if err != nil {
+		return err
 	}
-	return runErr
+	g, runContext := errgroup.WithContext(ctx)
+	g.Go(func() error { return sup.Serve(runContext, f.healthAddr) })
+	g.Go(func() error { return sup.Run(runContext) })
+	if observation != nil {
+		g.Go(func() error { return observation.Run(runContext) })
+	}
+	return g.Wait()
 }
 
-// zoneLister returns the internal-API client for /internal/zones, or nil
-// when no internal credentials are configured.
-func (f *edgeFlags) zoneLister() (dnsdist.ZoneLister, error) {
+// Capture one immutable credential source for both backend polling and the
+// optional observation listener. Neither path rereads files after startup.
+func (f *edgeFlags) internalCredentials() (*internalapi.Credentials, error) {
 	key, prev, err := readEncryptionKeys()
 	if err != nil {
 		return nil, err
@@ -431,14 +440,10 @@ func (f *edgeFlags) zoneLister() (dnsdist.ZoneLister, error) {
 		return nil, nil
 	}
 	host, _ := os.Hostname()
-	creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{
+	return internalapi.NewCredentials(internalapi.CredentialOptions{
 		Key: key, PreviousKey: prev, NodeName: host, TokenFile: f.internalTokenFile,
 		CAFile: f.internalCA, ServerName: f.internalSN,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return internalapi.NewClient(creds, internalapi.ClientOptions{Timeout: 3 * time.Second}), nil
 }
 
 func isLoopbackHostPort(hp string) bool {

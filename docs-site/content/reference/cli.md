@@ -536,9 +536,9 @@ Flags:
       --internal-port int                   kudurru internal listener port (zone serial
                                             polling); 0 disables (default 8082)
       --listen strings                      addresses every frontend binds (default [0.0.0.0])
-      --managed-cache-bypass                bypass both packet caches for this supervisor's
-                                            lifetime; required before managed root-anchor
-                                            backends activate
+      --managed-cache-bypass                retain both packet-cache bypasses in config-dir
+                                            across restarts; required before managed
+                                            root-anchor backends activate
       --out string                          write the rendered files into this directory
                                             instead of stdout
       --pool-authoritative string           load-balancing policy of the authoritative pool
@@ -573,107 +573,110 @@ kudurru edge run [flags]
 Flags:
 
 ```text
-      --acl strings                         client prefixes allowed to query (default: private
-                                            and loopback ranges)
-      --api string                          dnsdist webserver/API address (loopback only)
-                                            (default "127.0.0.1:8083")
-      --api-key-group string                group (name or gid) of the --api-key-out file,
-                                            e.g. keepalived_script; default unchanged
-      --api-key-out string                  write the per-start dnsdist API key here (0640),
-                                            e.g. /run/kudurru/dnsdist-api.key
-      --authoritative-cache                 cache the authoritative pool briefly and flush it
-                                            on zone serial changes
-      --authoritative-cache-ttl int         max TTL (s) of the authoritative cache (default 30)
-      --authoritative-zones strings         zones routed to the authoritative pool, in
-                                            addition to those polled from /internal/zones
-      --backend-port int                    kudurru DNS port for entries without a port and
-                                            EndpointSlices without the named port (default 5353)
-      --backend-port-name string            EndpointSlice port name carrying DNS (default "dns")
-      --backends string                     static backends: comma-separated
-                                            [name=]host[:port] (port default --backend-port);
-                                            EVERY edge lists ALL kudurru nodes
-      --backends-from string                membership source: static (from --backends) or
-                                            endpointslice:<namespace>/<service> (default "static")
-      --cache-size int                      resolver pool packet cache entries (default 200000)
-      --config-dir string                   directory for the rendered configuration (default
-                                            "/etc/dnsdist")
-      --console string                      dnsdist console address (loopback only) (default
-                                            "127.0.0.1:5199")
-      --debounce duration                   delay before re-rendering after membership or
-                                            certificate changes (default 5s)
-      --dnsdist-bin string                  dnsdist executable (default "dnsdist")
-      --dnsdist-user string                 uid[:gid] dnsdist switches to after binding its
-                                            sockets and creating the eBPF maps (dnsdist
-                                            --uid/--gid), for a supervisor started as root;
-                                            dnsdist keeps only capabilities_to_retain
-      --doh string                          enable the DoH frontend on host:port (the host
-                                            must be a --listen address; the chart's form);
-                                            with any of --dot/--doh/--doq/--doh3 the frontends
-                                            are do53 plus those given
-      --doh3 string                         enable the DoH3 frontend on host:port (the host
-                                            must be a --listen address; the chart's form);
-                                            with any of --dot/--doh/--doq/--doh3 the frontends
-                                            are do53 plus those given
-      --doq string                          enable the DoQ frontend on host:port (the host
-                                            must be a --listen address; the chart's form);
-                                            with any of --dot/--doh/--doq/--doh3 the frontends
-                                            are do53 plus those given
-      --dot string                          enable the DoT frontend on host:port (the host
-                                            must be a --listen address; the chart's form);
-                                            with any of --dot/--doh/--doq/--doh3 the frontends
-                                            are do53 plus those given
-      --drain duration                      readiness 503 period before a restart (default 1s)
-      --dynblocks                           enable dnsdist dynamic blocking
-      --dynblocks-nxdomain-rate int         per-client NXDOMAIN rate that triggers a dynamic
-                                            block; 0 disables (default 20)
-      --dynblocks-qps int                   per-client query rate (qps over 10 s) that
-                                            triggers a dynamic block (default 50)
-      --ebpf                                push dynamic-block drops into an eBPF socket
-                                            filter (needs CAP_SYS_ADMIN)
-      --health-address string               supervisor listener: /healthz/ready,
-                                            /healthz/live, /status, /metrics (default ":8084")
-      --internal-ca-file string             CA of the kudurru internal listener (default
-                                            derived from KUDURRU_ENCRYPTION_KEY)
-      --internal-port int                   kudurru internal listener port (zone serial
-                                            polling); 0 disables (default 8082)
-      --internal-server-name string         TLS server name of the internal listener (default
-                                            internal.kudurru.invalid)
-      --internal-token-file string          bearer token of the kudurru internal listener
-                                            (default derived from KUDURRU_ENCRYPTION_KEY)
-      --listen strings                      addresses every frontend binds (default [0.0.0.0])
-      --log-format string                   json or text (default "json")
-      --log-level string                    debug, info, warn or error (default "info")
-      --managed-cache-bypass                bypass both packet caches for this supervisor's
-                                            lifetime; required before managed root-anchor
-                                            backends activate
-      --poll-zones                          poll backends' /internal/zones (needs
-                                            KUDURRU_ENCRYPTION_KEY[_FILE] or
-                                            --internal-token-file) (default true)
-      --pool-authoritative string           load-balancing policy of the authoritative pool
-                                            (default "leastOutstanding")
-      --pool-resolver string                load-balancing policy of the resolver pool
-                                            (default "chashed")
-      --protocols strings                   frontends (do53,dot,doh,doq,doh3); default do53
-                                            plus all TLS ones when --tls-dir is set
-      --proxy-protocol-secret-file string   PROXYv2 TLV 0xE0 shared secret (printable, >= 32
-                                            bytes: openssl rand -hex 32); required unless
-                                            every backend is loopback
-      --readiness-address string            alias of --health-address (the chart's form)
-                                            (default ":8084")
-      --renderer string                     configuration format: yaml (dnsdist.yml +
-                                            functions-only dnsdist.lua) or lua (dnsdist.conf)
-                                            (default "yaml")
-      --server-id string                    dnsdist general.server_id; default the host name
-      --stop-timeout duration               dnsdist SIGTERM grace period before SIGKILL
-                                            (default 10s)
-      --threads int                         Do53 listener threads (default 2)
-      --tls-dir string                      directory with tls.crt+tls.key (or
-                                            fullchain.pem+privkey.pem): enables
-                                            DoT/DoH/DoQ/DoH3, watched for rotation
-      --transfer-sources strings            addresses/prefixes allowed to send
-                                            AXFR/IXFR/NOTIFY/UPDATE through the edge
-      --zone-poll duration                  interval of the /internal/zones serial poll
-                                            (default 5s)
+      --acl strings                          client prefixes allowed to query (default:
+                                             private and loopback ranges)
+      --api string                           dnsdist webserver/API address (loopback only)
+                                             (default "127.0.0.1:8083")
+      --api-key-group string                 group (name or gid) of the --api-key-out file,
+                                             e.g. keepalived_script; default unchanged
+      --api-key-out string                   write the per-start dnsdist API key here (0640),
+                                             e.g. /run/kudurru/dnsdist-api.key
+      --authoritative-cache                  cache the authoritative pool briefly and flush it
+                                             on zone serial changes
+      --authoritative-cache-ttl int          max TTL (s) of the authoritative cache (default 30)
+      --authoritative-zones strings          zones routed to the authoritative pool, in
+                                             addition to those polled from /internal/zones
+      --backend-port int                     kudurru DNS port for entries without a port and
+                                             EndpointSlices without the named port (default 5353)
+      --backend-port-name string             EndpointSlice port name carrying DNS (default "dns")
+      --backends string                      static backends: comma-separated
+                                             [name=]host[:port] (port default --backend-port);
+                                             EVERY edge lists ALL kudurru nodes
+      --backends-from string                 membership source: static (from --backends) or
+                                             endpointslice:<namespace>/<service> (default "static")
+      --cache-size int                       resolver pool packet cache entries (default 200000)
+      --config-dir string                    directory for the rendered configuration (default
+                                             "/etc/dnsdist")
+      --console string                       dnsdist console address (loopback only) (default
+                                             "127.0.0.1:5199")
+      --debounce duration                    delay before re-rendering after membership or
+                                             certificate changes (default 5s)
+      --dnsdist-bin string                   dnsdist executable (default "dnsdist")
+      --dnsdist-user string                  uid[:gid] dnsdist switches to after binding its
+                                             sockets and creating the eBPF maps (dnsdist
+                                             --uid/--gid), for a supervisor started as root;
+                                             dnsdist keeps only capabilities_to_retain
+      --doh string                           enable the DoH frontend on host:port (the host
+                                             must be a --listen address; the chart's form);
+                                             with any of --dot/--doh/--doq/--doh3 the
+                                             frontends are do53 plus those given
+      --doh3 string                          enable the DoH3 frontend on host:port (the host
+                                             must be a --listen address; the chart's form);
+                                             with any of --dot/--doh/--doq/--doh3 the
+                                             frontends are do53 plus those given
+      --doq string                           enable the DoQ frontend on host:port (the host
+                                             must be a --listen address; the chart's form);
+                                             with any of --dot/--doh/--doq/--doh3 the
+                                             frontends are do53 plus those given
+      --dot string                           enable the DoT frontend on host:port (the host
+                                             must be a --listen address; the chart's form);
+                                             with any of --dot/--doh/--doq/--doh3 the
+                                             frontends are do53 plus those given
+      --drain duration                       readiness 503 period before a restart (default 1s)
+      --dynblocks                            enable dnsdist dynamic blocking
+      --dynblocks-nxdomain-rate int          per-client NXDOMAIN rate that triggers a dynamic
+                                             block; 0 disables (default 20)
+      --dynblocks-qps int                    per-client query rate (qps over 10 s) that
+                                             triggers a dynamic block (default 50)
+      --ebpf                                 push dynamic-block drops into an eBPF socket
+                                             filter (needs CAP_SYS_ADMIN)
+      --health-address string                supervisor listener: /healthz/ready,
+                                             /healthz/live, /status, /metrics (default ":8084")
+      --internal-ca-file string              CA of the kudurru internal listener (default
+                                             derived from KUDURRU_ENCRYPTION_KEY)
+      --internal-port int                    kudurru internal listener port (zone serial
+                                             polling); 0 disables (default 8082)
+      --internal-server-name string          TLS server name of the internal listener (default
+                                             internal.kudurru.invalid)
+      --internal-token-file string           bearer token of the kudurru internal listener
+                                             (default derived from KUDURRU_ENCRYPTION_KEY)
+      --listen strings                       addresses every frontend binds (default [0.0.0.0])
+      --log-format string                    json or text (default "json")
+      --log-level string                     debug, info, warn or error (default "info")
+      --managed-cache-bypass                 retain both packet-cache bypasses in config-dir
+                                             across restarts; required before managed
+                                             root-anchor backends activate
+      --managed-observation-address string   optional authenticated TLS listener for installed
+                                             managed-cache observations (host:port); requires
+                                             retained bypass and internal credentials
+      --poll-zones                           poll backends' /internal/zones (needs
+                                             KUDURRU_ENCRYPTION_KEY[_FILE] or
+                                             --internal-token-file) (default true)
+      --pool-authoritative string            load-balancing policy of the authoritative pool
+                                             (default "leastOutstanding")
+      --pool-resolver string                 load-balancing policy of the resolver pool
+                                             (default "chashed")
+      --protocols strings                    frontends (do53,dot,doh,doq,doh3); default do53
+                                             plus all TLS ones when --tls-dir is set
+      --proxy-protocol-secret-file string    PROXYv2 TLV 0xE0 shared secret (printable, >= 32
+                                             bytes: openssl rand -hex 32); required unless
+                                             every backend is loopback
+      --readiness-address string             alias of --health-address (the chart's form)
+                                             (default ":8084")
+      --renderer string                      configuration format: yaml (dnsdist.yml +
+                                             functions-only dnsdist.lua) or lua (dnsdist.conf)
+                                             (default "yaml")
+      --server-id string                     dnsdist general.server_id; default the host name
+      --stop-timeout duration                dnsdist SIGTERM grace period before SIGKILL
+                                             (default 10s)
+      --threads int                          Do53 listener threads (default 2)
+      --tls-dir string                       directory with tls.crt+tls.key (or
+                                             fullchain.pem+privkey.pem): enables
+                                             DoT/DoH/DoQ/DoH3, watched for rotation
+      --transfer-sources strings             addresses/prefixes allowed to send
+                                             AXFR/IXFR/NOTIFY/UPDATE through the edge
+      --zone-poll duration                   interval of the /internal/zones serial poll
+                                             (default 5s)
 ```
 
 ## kudurru export
