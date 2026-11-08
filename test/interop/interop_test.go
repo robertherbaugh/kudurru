@@ -153,6 +153,17 @@ func TestBINDSecondary(t *testing.T) {
 	primaryStatus := primaryStatusProbe(t, spec)
 	var primarySerial uint32
 	if !kudurrutest.Eventually(20*time.Second, 100*time.Millisecond, func() bool {
+		// Both zones share one complete serving publication. Starting named
+		// while denied.test still publishes status can interrupt its first
+		// signed interop.test request; BIND then waits its own retry interval.
+		deniedSerial, deniedReady := primaryStatus("denied-test")
+		if !deniedReady {
+			return false
+		}
+		s, deniedCode := soaSerial(t, spec.Ports.DNS, "denied.test.")
+		if deniedCode != dns.RcodeSuccess || s != deniedSerial {
+			return false
+		}
 		statusSerial, settled := primaryStatus("interop-test")
 		if !settled {
 			return false
@@ -161,7 +172,7 @@ func TestBINDSecondary(t *testing.T) {
 		primarySerial, rcode = soaSerial(t, spec.Ports.DNS, "interop.test.")
 		return rcode == dns.RcodeSuccess && primarySerial != 0 && primarySerial == statusSerial
 	}) {
-		t.Fatal("kudurru primary status and interop.test SOA did not settle")
+		t.Fatal("kudurru primary status and both zone SOAs did not settle")
 	}
 
 	// named: the secondary.

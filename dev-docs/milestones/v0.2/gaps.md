@@ -5486,3 +5486,13 @@ skips, in 18.637 seconds. Both receipts/logs and frozen sources are retained in
 `.context/security-quic-20261108/{bind-reproduction,bind-ready}.json`. This is
 fixture readiness and stronger negative coverage, not a production relaxation;
 full hosted CI and final release qualification remain open.
+
+The first broader interoperability race run also exposed initial setup overlap:
+BIND's first signed SOA arrived while the other primary's status was still
+publishing, received an unsigned refusal and waited its own refresh interval.
+That run remains exit 1 (27 passes/two failures/one explicit Knot skip). Initial
+fixture setup now settles both independently owned zones inside the original
+20-second bound before starting named. The corrected full interoperability race
+suite passes 29 entries in 47.298 seconds, with the sole separately enabled Knot
+catalog skip; scoped configured lint passes in 6.822 seconds with zero issues.
+No production source, transfer retry or comparator assertion was weakened.
