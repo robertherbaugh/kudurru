@@ -800,6 +800,42 @@ complete logical image; it is separate from the YAML backup/apply format.
 The server transport, startup selection and coherent serving/authentication
 publication are being integrated; these packages alone do not enable HA.
 
+### Per-member TLS identity foundation
+
+`internal/cluster/memberidentity` creates or loads a separate node-local Ed25519
+CA under the node's original UUID. The private canonical artifact is created
+exclusively at mode 0600, with file and directory synchronization. Descriptor-
+relative operations refuse symlinks, hardlinks, nonregular files, permissive
+modes, oversized/malformed data and wrong local UUIDs. Loading never creates or
+repairs identity. Unsupported platforms refuse these filesystem operations.
+
+Enrollment receives only a detached public CA certificate and fingerprint.
+The ten-year node CA signs short-lived TLS leaves; restarting or renewing the
+leaf preserves the original enrolled CA. A replacement CA with the same UUID
+is a different identity. Client TLS trusts exactly the captured target CA and
+member hostname, before sending any HTTP proof or body. Server TLS requires
+mutual TLS from its captured bounded member set. Normal X.509 verification
+stays enabled; cluster-wide shared CA credentials cannot substitute for a member.
+A route must also match the actual connection to the exact claimed member with
+`VerifyPeer`, which rechecks original certificate expiry, including held
+connections. Membership authorization and revocation remain separate checks.
+
+```mermaid
+flowchart LR
+    K["Node-local private CA<br/>exclusive 0600 artifact"] --> L["Rotating TLS leaf"]
+    K --> P["Public CA + UUID<br/>explicit enrollment input"]
+    P --> T["Original peer trust capture"]
+    T --> C["TLS 1.3 mutual verification<br/>before HTTP bytes"]
+    L --> C
+    C --> V["Match actual connection<br/>to exact claimed member"]
+    V --> A["Original membership and domain authorization<br/>required through final effects"]
+```
+
+These are identity primitives, not a mounted enrollment flow. The persistent
+membership owner, one-time join tokens, root listener/client assembly and
+revocation/output barriers remain to be implemented. Connection pools must be
+scoped to the exact original enrolled trust, never reused for a successor CA.
+
 Peer-image acquisition captures its finite lifetime, local member and detached
 token vector before resolving a peer. All body validation retains that original
 bound; expired resolution cannot dial, and canceled completed bytes cannot

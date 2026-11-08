@@ -28,6 +28,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Add persistent, independent member TLS identity primitives for enrolled HA;
+  enrollment and production transport mounting remain pending.
+
 - The HA promotion coordinator retains the original operator authorization
   through SQLite commit and idempotent success; late expiry, revocation or
   cancellation rolls back the transition. Production enrollment remains pending.

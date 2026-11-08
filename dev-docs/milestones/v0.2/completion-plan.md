@@ -234,3 +234,9 @@ configured scoped lint passes with zero issues. This closes an admission prerequ
 not enrolled HA orchestration, forwarding or the operator route. The exact-list
 performance failure remains open: a diagnostic original timed-suite profile
 reproduces 169 ns p50; no matcher or gate edits or replacement samples were made.
+
+D323 supplies independent persistent member TLS identity with exact original
+member CA trust and standard mutual TLS verification. Expanded race21 passes
+without failures/skips; configured scoped lint passes with zero issues. Durable membership, one-time enrollment, root
+mounting and final revocation/output barriers remain open; this prerequisite
+is not full F60b/G11 completion.

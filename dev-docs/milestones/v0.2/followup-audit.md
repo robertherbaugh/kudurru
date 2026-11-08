@@ -2271,3 +2271,28 @@ p50 with a 35 ns timer p50. Profiling is diagnostic and cannot replace unprofile
 samples or named-runner evidence. The profiles do not justify a matcher semantic
 or filter-capacity change. Original failures and fixed-class/final gates remain
 open. Evidence: `.context/exact-miss-review-20261108/`.
+
+
+### F60b/G11 independent member identity prerequisite, November 8
+
+D323 adds `internal/cluster/memberidentity`. Exclusive durable 0600 creation and
+strict loading retain a private node-local Ed25519 CA bound to the original
+member UUID. Public enrollment data is detached; no private key enters images.
+Standard TLS 1.3 mutual verification uses exact independent member CAs before
+application bytes. Short-lived leaf renewal/restart keeps the enrolled CA;
+a different CA cannot impersonate it by claiming the same UUID. Route checks
+match the actual verified connection to the exact member and recheck original
+certificate expiry. No insecure certificate-verification fallback is installed.
+
+Initial default-race17 passes without failures/skips, including actual two-peer
+TLS, wrong-client/wrong-server refusal before HTTP, same-UUID replacement,
+physical key reopen, concurrent create, bad-file refusal, and held original leaf
+expiry. Expanded final default-race21 passes without failures/skips (4.612 s),
+adding another enrolled member claiming the wrong UUID, anonymous-client and
+TLS1.2 refusals. Configured scoped lint passes with zero issues (2.007 s). Its
+first run flagged intentional private-key serialization; narrowly justified
+annotations identify the protected file and in-memory comparison. That failure
+is retained; final source differs from race02 only in those comments. This is an identity
+prerequisite only: durable membership, join tokens, root wiring, current
+revocation/output checks, forwarding and complete HA remain open. Evidence:
+`.context/member-identity-20261108/`.
