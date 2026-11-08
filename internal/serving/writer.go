@@ -2,6 +2,7 @@ package serving
 
 import (
 	"context"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
@@ -16,6 +17,29 @@ import (
 // An outside authority sample cannot replace the transaction's final fence.
 // The callback runs synchronously once and its result is returned unchanged.
 func (p *Publisher) WithWriterGate(ctx context.Context, target TermActivation, fn func() error) error {
+	return p.withWriterGate(ctx, target, fn)
+}
+
+// WithWriterOutputGate retains publication exclusion through a bounded command
+// and its synchronous response. Unlike WithWriterGate, it permits transport
+// output, with an original finite deadline of at most 30 seconds. Callers must
+// retain dependency and Store-issued output admission in that order, install
+// the earlier actual deadline, interrupt canceled I/O and flush before return.
+// No publication wait, nested pin, acquisition or replacement is permitted.
+// This gate supplies neither domain permission nor proof of command completion.
+func (p *Publisher) WithWriterOutputGate(ctx context.Context, target TermActivation, fn func() error) error {
+	if ctx == nil {
+		return replication.ErrInvalid
+	}
+	deadline, finite := ctx.Deadline()
+	now := time.Now()
+	if !finite || !now.Before(deadline) || deadline.Sub(now) > 30*time.Second {
+		return replication.ErrInvalid
+	}
+	return p.withWriterGate(ctx, target, fn)
+}
+
+func (p *Publisher) withWriterGate(ctx context.Context, target TermActivation, fn func() error) error {
 	if fn == nil || target.Term.Validate() != nil || target.Incarnation == 0 {
 		return replication.ErrInvalid
 	}

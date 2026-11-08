@@ -958,6 +958,23 @@ inside `WithCommandOutput`. That scope requires an actual command receipt; image
 completion cannot authorize a command acknowledgment. Dedup and domain changes
 share the same original transaction.
 
+`providercoordinator.WithMemberCommandOutput` supplies a separate bounded
+composition for a trusted root domain callback. It holds publication, provider
+resources and host exclusions in that order across the actual `MemberCommand`
+and one `WithCommandOutput` scope. The carried elected writer must already match
+the original peer request. It does not substitute membership or a subject name
+for raw user credentials. The callback verifies current domain permission in the
+actual transaction, before effects or dedup reads.
+
+The output context keeps the earliest request, peer, host and provider expiry;
+root must also retain the original credential bounds and install the resulting
+transport deadline. Output is synchronous and must explicitly flush without
+reentering Store or acquiring another publication pin. The returned `committed`
+bit records actual completion independently of emission failure. Ordinary
+`WithCommand` and postcommit publication observations retain their existing
+contracts. This helper is qualified separately; adapting production domain
+commands and the enrolled HTTP listener remains root assembly work.
+
 The output deadline also respects the original command expiration. Failed writes,
 flush errors, lost original admission and callback failures abort the HTTP stream
 rather than allowing handler-return buffering to emit protected bytes. After a

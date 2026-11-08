@@ -197,6 +197,19 @@ func (p *Pinned) CurrentAt(now time.Time) error {
 	return validAt(p.snapshot, now)
 }
 
+// Deadline returns the earliest original resource expiry while this pin is
+// active. Zero means no ready resource has a time bound; it is not permission
+// for an unbounded operation. Callers retain their original finite request.
+func (p *Pinned) Deadline() (time.Time, error) {
+	if p == nil || p.owner == nil {
+		return time.Time{}, ErrClosed
+	}
+	if err := p.CurrentAt(p.owner.opts.Now()); err != nil {
+		return time.Time{}, err
+	}
+	return p.snapshot.until, nil
+}
+
 // Match checks a transaction-reprojected complete source/registry/host cut.
 func (p *Pinned) Match(d Desired) error {
 	if p == nil || !p.active.Load() {

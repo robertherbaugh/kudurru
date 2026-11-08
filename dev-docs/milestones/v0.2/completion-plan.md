@@ -666,3 +666,34 @@ This closes initial socket/persistence calibration, not final release gates.
 The original paired cache hit/Set failures, prior failed evidence, heterogeneous
 CPU observations and current-source qualification remain open. No sample was
 retried or replaced; release_qualified remains false.
+
+
+### F60b/G11 bounded member dependency/output composition, November 8
+
+D336 adds providercoordinator.WithMemberCommandOutput as a separate original
+member-command path. It requires an already carried elected writer and a finite
+request of at most30 seconds, then retains publication/provider/host exclusions
+through actual MemberCommand and one Store-admitted output scope. Output uses
+the earliest request/peer/resource/host bound. Actual committed completion is
+reported independently of output errors or cancellation. Root must still verify
+raw user proof/current permission and retain its original lifetime through
+transport writes and explicit flush; membership supplies no domain permission.
+The ordinary command and postcommit-publication paths are unchanged.
+
+The first focused run retained one pass/five failed entries because the new
+fixture used nonexistent dnszones.list permission names. Correcting the fixture
+to the real stats.read permission preserved raw credential verification. Focused
+default races then pass14 entries (18.043s); composed serving/provider/coordinator/
+enrollment/replica default races pass350 entries without failures/skips (79.954s).
+Cases include actual enrollment/mutual TLS, all dependency replacement exclusions,
+changed/no-op completion versus transport failure, forged credential refusal,
+copied-request replay refusal, missing writer/unbounded input, and a real blocked
+socket timing out at the earlier host deadline. Configured scoped lint exits0
+with zero issues. Source02 identities remain matched. Evidence:
+.context/member-output-coordinator-20261108/.
+
+This completes the bounded helper, not production enrolled HA. Root listener and
+domain adaptation, raw forwarded credential transport, operator activation/join/
+promotion, forwarding and full partition/rejoin acceptance remain open. The
+existing MemberServer callback retains its own WithCommandOutput responsibility;
+its emit must not be nested inside this helper's already admitted raw emitter.
