@@ -2957,3 +2957,38 @@ The HTTP domain mutation is a fixture, and the actual current proof tested here
 is an API token. This closes the raw credential wire prerequisite, not production
 root domains, public forwarding ingress/final response, credential-expiry output
 composition, HA listener/operator activation or complete restart/rejoin acceptance.
+
+
+### G21 retained hosted failures and writer fixture fence, November 8
+
+Hosted CI 42530377433 on b2d197d8 completed with failure. Dashboard passed
+153 cases and failed initial primary convergence in the stub fixture; the
+previously recorded local fix remains awaiting hosted confirmation. Go shard 2
+passed. Shard 1 failed the signed stored-TSIG restart transport exchange and the
+explicit writer-fencing UPDATE output case. The latter had already committed
+and published its UPDATE. All other completed CI jobs passed; ci-ok failed.
+
+ObserveAuthority sets writeBlocked before persisting/publishing its successor
+term. The primary driver correctly refuses during that interval, while the test
+fixture previously recognized only a term change. The fixture now recognizes
+blocked/nonwritable authority or term/incarnation retirement of its exact
+original token, only for the explicitly expected writer-loss case and
+ErrUnavailable. Other early driver errors still fail. No production admission
+was relaxed. The TSIG helper now reports phase/protocol and bounded HTTP error,
+status/version and context diagnostics, without logging credentials or signed
+wire bytes. Its original four-second bound and single signed exchange remain.
+
+Before changes, the exact two failures passed 12 local default-race entries
+(88.193s including build). This does not reproduce or erase the hosted failures.
+The changed fixtures and related output cases pass 14 race entries with no
+failures/skips (72.779s including build); frozen inputs match. The TSIG cause
+remains unconfirmed and requires hosted diagnostic evidence. Evidence:
+.context/hosted-go-failures-20261108/ and
+.context/hosted-release-b2d197d8-20261108/final-ci.json.
+
+Configured command-package lint passed with zero issues (60.919s). A bounded
+ten-lifecycle investigation then passed all ten fresh signed restart tests
+(137.891s including build): 40 real restart phases, six transports per phase,
+with original four-second exchange bounds and no replay. The hosted TSIG
+failure remains unreproduced; these successes do not establish its cause.
+All frozen source identities and the protected dashboard artifact match.

@@ -159,8 +159,13 @@ func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer
 		done <- f.store.Elector("primary").Run(ctx, func(term context.Context) {
 			original, _ := sqlite.WriterTokenFromContext(term)
 			if err := f.runtime.Run(term); err != nil && term.Err() == nil {
-				if observer != nil && f.expectWriterLoss.Load() && !f.store.Authority().Term.Same(original.Term()) && errors.Is(err, pr.ErrUnavailable) {
-					return // The test deliberately replaced this exact writer's authority.
+				if observer != nil && f.expectWriterLoss.Load() && errors.Is(err, pr.ErrUnavailable) {
+					current, blocked := f.store.ServingAuthority()
+					// ObserveAuthority blocks the original writer before its SQL
+					// commit publishes the successor term and cancels the elector.
+					if blocked || !current.Writable() || !current.Term.Same(original.Term()) || current.Incarnation != original.Incarnation() {
+						return // Only the explicitly expected retirement of this token.
+					}
 				}
 				t.Error("primary driver ended early", err)
 			}

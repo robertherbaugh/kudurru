@@ -77,6 +77,7 @@ func TestRunServeSQLiteStoredTSIGTransportsAndEncryptionRestart(t *testing.T) {
 			t.Fatal("prepare immutable client")
 		}
 		for _, protocol := range []string{"udp", "tcp", "dot", "doh", "doq", "doh3"} {
+			t.Logf("signed restart exchange: phase=%d protocol=%s", phase, protocol)
 			query := new(dns.Msg)
 			query.SetQuestion("seed.signed.test.", dns.TypeA)
 			query.Id = 0
@@ -264,7 +265,7 @@ func tsigMountedExchange(t *testing.T, cfg *config.Config, roots *x509.CertPool,
 		request.Header.Set("Content-Type", "application/dns-message")
 		response, err := client.Do(request)
 		if err != nil {
-			t.Fatal("actual encrypted HTTP exchange failed")
+			t.Fatalf("actual encrypted HTTP exchange failed: protocol=%s err=%v context=%v", protocol, err, ctx.Err())
 		}
 		defer func() { _ = response.Body.Close() }()
 		wantVersion := 2
@@ -272,11 +273,11 @@ func tsigMountedExchange(t *testing.T, cfg *config.Config, roots *x509.CertPool,
 			wantVersion = 3
 		}
 		if response.StatusCode != http.StatusOK || response.ProtoMajor != wantVersion {
-			t.Fatal("actual HTTP version/status mismatch")
+			t.Fatalf("actual HTTP version/status mismatch: protocol=%s status=%d version=%s", protocol, response.StatusCode, response.Proto)
 		}
 		out, err := io.ReadAll(io.LimitReader(response.Body, dns.MaxMsgSize+1))
 		if err != nil || len(out) > dns.MaxMsgSize {
-			t.Fatal("read bounded encrypted HTTP response")
+			t.Fatalf("read bounded encrypted HTTP response: protocol=%s bytes=%d err=%v context=%v", protocol, len(out), err, ctx.Err())
 		}
 		return out
 	}
