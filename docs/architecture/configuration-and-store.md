@@ -995,6 +995,19 @@ coordinator to the enrolled HTTP adapter without nesting an output guard or
 mistaking staged results for acknowledgments; root still supplies production
 credential handling, typed domain policy and listener assembly.
 
+Command envelope version 2 carries a bounded raw API token, session cookie or
+compact JWT, including an optional original JWT provider selector. It carries no
+verified principal, rights or lifetime. Version 1 refuses this field and retains
+its existing wire shape. Password/TOTP and Kubernetes credentials are not part
+of this envelope. The receiver must reverify the original bytes against current
+transaction state before domain effects or dedup reads and retain the verified
+credential deadline through output. Subject references remain claims to compare
+with that verified identity. The raw proof is bound into the command fingerprint;
+dedup persists only its digest and the outcome. Command/proof formatting and
+structured logging redact secrets; explicit JSON is transport data and must
+never be used for audit or diagnostic logging. Root domain policy and listener
+assembly remain required.
+
 The output deadline also respects the original command expiration. Failed writes,
 flush errors, lost original admission and callback failures abort the HTTP stream
 rather than allowing handler-return buffering to emit protected bytes. After a

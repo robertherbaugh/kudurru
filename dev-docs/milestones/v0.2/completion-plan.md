@@ -834,3 +834,32 @@ change from those experiments remains. A mistyped pipeline package path caused
 one qualification command failure; the actual missing package then passed.
 Evidence: .context/cache-publication-layout-20261108/. All hosted failures and
 original release gates remain unchanged.
+
+
+### F60b/G11 versioned raw credential wire, November 8
+
+D338 adds command version 2 with bounded original API-token, session-cookie or
+compact-JWT bytes and an optional JWT provider selector. Version 1 keeps its old
+wire form and refuses the new field. Password/TOTP and Kubernetes credentials
+are unsupported. Shape validation grants no permission. The current domain
+verifier must authenticate the received bytes, compare claimed identity, and
+retain verified credential bounds through commit and emission. Fingerprints bind
+the raw proof; dedup stores only the fingerprint and outcome. Ordinary/Go and
+structured command/proof diagnostics redact secret values; explicit JSON remains
+private transport data and must not be logged or audited.
+
+Focused default races pass 13 entries, including actual enrolled HTTP/1 and
+HTTP/2 raw API-token verification with coordinator/Store output, invalid raw
+proof, forged subject, missing proof and incompatible-version refusals. Extended
+tests confirm raw credentials never enter the persisted complete image and a
+revoked token reaches the current verifier even for an existing dedup outcome.
+A shadowed test-helper name caused one coordinator compile failure; the other
+two packages passed 233 entries. After the narrow rename, the full coordinator
+suite passes 41 entries without failures/skips (49.512s). Configured two-package
+lint passes with zero issues (9.225s); all frozen identities match. Evidence:
+.context/member-credential-wire-20261108/.
+
+The HTTP domain mutation is a fixture, and the actual current proof tested here
+is an API token. This closes the raw credential wire prerequisite, not production
+root domains, public forwarding ingress/final response, credential-expiry output
+composition, HA listener/operator activation or complete restart/rejoin acceptance.

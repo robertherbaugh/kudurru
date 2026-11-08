@@ -3,6 +3,7 @@ package replica
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth"
@@ -35,18 +36,30 @@ type Precondition struct {
 
 // Command carries one immutable request identity with a replaceable term fence.
 type Command struct {
-	Format        string           `json:"format"`
-	Version       int              `json:"version"`
-	ID            string           `json:"id"`
-	ExpectedTerm  replication.Term `json:"expectedTerm"`
-	Hops          int              `json:"hops"`
-	IssuedAt      time.Time        `json:"issuedAt"`
-	NotAfter      time.Time        `json:"notAfter"`
-	Operation     string           `json:"operation"`
-	Subject       SubjectRef       `json:"subject"`
+	Format       string           `json:"format"`
+	Version      int              `json:"version"`
+	ID           string           `json:"id"`
+	ExpectedTerm replication.Term `json:"expectedTerm"`
+	Hops         int              `json:"hops"`
+	IssuedAt     time.Time        `json:"issuedAt"`
+	NotAfter     time.Time        `json:"notAfter"`
+	Operation    string           `json:"operation"`
+	Subject      SubjectRef       `json:"subject"`
+	// Credential is mandatory in version 2 and forbidden in version 1. It is
+	// included in the fingerprint but never persisted as part of a dedup row.
+	Credential    *CredentialProof `json:"credential,omitempty"`
 	Preconditions []Precondition   `json:"preconditions"`
 	Payload       json.RawMessage  `json:"payload"`
 }
+
+// String hides command payloads and raw credentials in ordinary diagnostics.
+func (Command) String() string { return "replica command (private)" }
+
+// GoString hides command payloads and raw credentials in Go diagnostics.
+func (c Command) GoString() string { return c.String() }
+
+// LogValue prevents structured logging from using the transport JSON form.
+func (c Command) LogValue() slog.Value { return slog.StringValue(c.String()) }
 
 // Outcome contains the domain's bounded JSON result and local secrecy assertion.
 type Outcome struct {
@@ -140,7 +153,22 @@ type CommandService struct {
 }
 
 func (c Command) validate(now time.Time, maxLifetime time.Duration) error {
-	if c.Format != CommandFormat || c.Version != 1 || !validID(c.ID) || !validID(c.Operation) || c.Subject.ID == "" || len(c.Subject.ID) > 1024 || c.Subject.Provider == "" || len(c.Subject.Provider) > 256 || len(c.Subject.CredentialID) > 1024 || c.Subject.CredentialID == "" || c.Subject.IssuedAt.IsZero() || len(c.Preconditions) > 10000 {
+	if c.Format != CommandFormat || !validID(c.ID) || !validID(c.Operation) || c.Subject.ID == "" || len(c.Subject.ID) > 1024 || c.Subject.Provider == "" || len(c.Subject.Provider) > 256 || len(c.Subject.CredentialID) > 1024 || c.Subject.CredentialID == "" || c.Subject.IssuedAt.IsZero() || len(c.Preconditions) > 10000 {
+		return ErrProtocol
+	}
+	switch c.Version {
+	case 1:
+		if c.Credential != nil {
+			return ErrProtocol
+		}
+	case 2:
+		if err := c.Credential.validate(); err != nil {
+			return err
+		}
+		if !c.Credential.matchesKind(c.Subject.CredentialKind) {
+			return ErrProtocol
+		}
+	default:
 		return ErrProtocol
 	}
 	if c.Hops != 1 {
