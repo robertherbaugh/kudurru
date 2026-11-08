@@ -2071,3 +2071,34 @@ to the 27-pass follower suite; only that new test was strengthened.
 
 Final scoped configured command-package lint exits0/zero issues (182.5157 s,
 including cold normal-mode dependencies). No earlier failures are erased.
+
+
+### F28 canonical all-anchor loss and physical restart
+
+The actual elector-carried root caller now has a complete-runtime regression
+for signed bootstrap followed by signed self-revocation of the sole anchor.
+A real net.Pipe write inside the original Output.Emit scope holds retirement;
+after the authority observes the second acquisition, denial cannot complete
+until that write drains. Both local denial and paired canonical update commit,
+the old transfer continuation refuses, and accepted history retains quarantine
+and the permanent revocation tombstone.
+
+The same SQLite database is physically closed and reopened under managed,
+static/default and disabled-topology configuration. Each complete runtime
+refuses protected publication with prepare_failed, preserving the exact accepted
+version and encoded pure state without another root acquisition. The two root
+operations are explicitly invoked under the actual elector; this does not
+accelerate or qualify the one-hour scheduler minimum. Restart runs the complete
+read runtime, not a newly elected writer. The held output is one scoped pipe
+write; prior mounted six-transport evidence remains separate.
+
+Evidence: `.context/anchor-canonical-loss-20261108/`. Initial ordinary passes1
+with no skips (39.6666 s). The strengthened source02 synchronizes on the actual
+second authority request and passes1 under default race with no skips (28.4512 s).
+Initial scoped lint fails QF1003; source03 changes only the restart branch to a
+tagged switch. Edge activation, explicit recovery, enrolled HA orchestration,
+RFC interoperability and final release requirements remain open.
+
+Final scoped configured command-package lint exits0/zero issues (27.6478 s)
+on source03. The prior race remains tied to source02; only the tagged-switch
+style correction separates them.

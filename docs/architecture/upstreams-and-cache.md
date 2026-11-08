@@ -324,8 +324,11 @@ Only checkpointed monotonic progress in the same process session counts toward
 addition; restart or failover receives no unproved downtime credit. Addition also
 requires a fresh authenticated observation after the hold-down. Missing trusted
 keys remain trusted; self-revocation uses the received REVOKE flags and changed
-key tag. Loss of every anchor quarantines validation under the planned managed
-policy.
+key tag. Loss of every anchor quarantines validation. Canonical self-revocation drains
+active output before local denial and the paired history update commit. Reopening
+the same database retains quarantine and permanent revocations; choosing static
+keys or disabling the managed topology cannot reset that history or restore
+protected publication. Explicit operator recovery is not yet mounted.
 
 Bootstrap and updates retain an opaque original observation bounded by received
 DNSKEY/RRSIG TTLs, signed original TTL and signature expiration. Final admission
