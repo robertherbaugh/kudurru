@@ -689,8 +689,18 @@ binding listeners. The serving coordinator, secondary manager and RPZ manager
 share the same original encryption and immutable keyring owners. The initial
 file baseline cannot authorize complete serving or acquisition until a complete
 stored source has been prepared. An unavailable first source or uninitialized
-follower retains listeners but refuses complete serving. Kubernetes continues
-to use its fixed startup keys; stored-key management remains separate work.
+follower retains listeners but refuses complete serving.
+
+Kubernetes selects one complete stored/file keyring prepared asynchronously at
+startup (D314). Its transport hook captures only immutable credentials and does
+not claim a complete serving lease. Unknown or failed private-source preparation
+refuses signed requests even when a file key is present; unsigned saved-state DNS
+remains independent. Successful keys stay fixed until restart. Secondary jobs
+capture the actual keyring, preserving stored credential epochs in cache
+provenance; unavailable signed jobs cannot renew old data. Unsigned jobs need no
+private-source evidence. The notifier waits for the one startup result, then
+captures its immutable provider before target resolution and all attempts.
+Kubernetes current-command authority and stored-key management remain separate.
 
 The coordinator prepares complete encrypted sources outside request handling and
 installs them only under the original encryption and keyring owners. A failed

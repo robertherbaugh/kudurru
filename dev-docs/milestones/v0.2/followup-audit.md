@@ -1775,3 +1775,41 @@ Earlier new-fixture missing-preparation-bound failures and the stopped original
 run remain in `.context/dns-response-admission-20261108/`; no original deadlines
 or production guards were relaxed. These scoped checks do not complete the
 remaining F07a/Kubernetes, managed activation, HA, performance or release gates.
+
+
+### November 8 — Kubernetes immutable stored TSIG startup mount
+
+D314 adds a single asynchronous preparation under the original startup deadline:
+actual authenticated cluster identity, complete bounded private source, then full
+decrypt/merge with the captured encryption and file inputs. Unknown and failed
+sources cannot authorize file-only signing. Successful keys are immutable until
+restart; no query-time Store lookup, late credential adoption, hot administration
+or cross-resource transaction authority is introduced. Unrelated unsigned
+saved-state DNS and unsigned secondary acquisition remain independent.
+
+All six native/encrypted transports select the actual StaticKeyring before
+verification without claiming a complete serving lease. Secondary jobs preserve
+stored credential epochs and original acquired expiry. NOTIFY selects immutable
+keys before network work; only its initial round waits for preparation. An actual
+envtest/runServe test verifies online/restart signatures, signed SOA/transfer and
+NOTIFY, API-outage and wrong-owner refusal, and unchanged persisted acquisition
+metadata when no complete source is available. It passed default race with no
+skip (38.275064642 seconds). Focused default race passed 18 entries with no skips;
+full DNS-server/secondary/notifier/tsigkeys races passed 650 entries with exactly
+four existing measurement/helper skips, no failures (55.162494342 seconds).
+
+Original Kubernetes offline and SQLite TSIG compatibility races passed 31 entries,
+no failures/skips (203.367148342 seconds), including native UPDATE acknowledgments,
+background TCP/TLS, encryption restart, pending-source refusal and original expiry.
+Full configured root lint passed with zero issues (87.161939136 seconds); affected
+vet passed (3.611785218 seconds). Production bytes stayed unchanged across these
+checks. Source01's optional-fixture failures (signed-only HTTP helper applied to
+unsigned queries; mixed-case key assertion and missing secondary primaries) remain
+preserved, with source02 corrections limited to the new tests. The mounted test
+alone expanded in source03. Receipts/freezes live in
+`.context/kube-tsig-startup-20261108/`.
+
+This is startup-only source activation. Kubernetes management/current mutation
+authority, remaining F07 acceptance, managed-root activation, HA, AD, all retained
+performance failures and external/final release gates remain open. No push or
+release publication follows from these checks.

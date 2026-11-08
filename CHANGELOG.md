@@ -40,6 +40,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Kubernetes loads complete encrypted stored/file TSIG keys once at startup for
+  native and encrypted DNS, secondary acquisition and NOTIFY. Unknown or invalid
+  private sources refuse signed work without blocking unrelated unsigned saved
+  DNS. Failed preparation and credential changes require restart; Kubernetes
+  hot key management remains unavailable.
+
 - SQLite TSIG key administration exposes permission-checked metadata, creation,
   replacement, overlap removal and revocation. Commands retain original writer,
   credential and source checks; receipts distinguish durable commits from

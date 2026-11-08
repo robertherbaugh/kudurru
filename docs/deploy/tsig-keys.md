@@ -55,6 +55,23 @@ implied by this procedure.
 
 Safe backups exclude stored credentials. Full backups preserve ciphertext and
 need the matching encryption keys and cluster identity. Protect those keys
-separately; ciphertext alone cannot restore signing capability. Kubernetes
-stored-key activation and full supported-driver rotation qualification remain
-separate from this SQLite management surface.
+separately; ciphertext alone cannot restore signing capability. Full
+supported-driver rotation qualification remains separate from this SQLite
+management surface.
+
+## Kubernetes startup
+
+Kubernetes nodes load existing correctly provisioned encrypted TSIG records once
+at startup, alongside file keys. The actual cluster identity, complete private
+inventory and every encrypted owner must validate within `store.kube.startupTimeout`.
+Duplicate file/store names, malformed records, unavailable keys or API access
+failure leave signed DNS, signed transfers and signed NOTIFY unavailable. A file
+key does not bypass an unknown stored source. Unsigned DNS from a valid saved
+snapshot remains available independently.
+
+Successful startup keys remain immutable for the process lifetime. Changes to
+stored credentials or recovery after a failed preparation require restart;
+Kubernetes has no hot TSIG administration or rotation endpoint. The startup warning
+reports unavailable preparation without exposing private source data. Kubernetes
+Secret provisioning must bind ciphertext to the actual Secret UID; this reader
+never creates, repairs or reseals credentials.

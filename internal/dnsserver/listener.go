@@ -328,6 +328,9 @@ func NewRegistry(opts Options) (*Registry, error) {
 	if opts.Handler.Capture != nil && opts.Handler.Keys == nil {
 		return nil, errors.New("dnsserver: captured mode requires immutable key selector")
 	}
+	if opts.Handler.Output != nil && opts.Handler.Capture == nil {
+		return nil, errors.New("dnsserver: output admission requires complete capture")
+	}
 	logger := opts.Logger
 	if logger == nil {
 		logger = opts.Handler.logger()

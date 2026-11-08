@@ -97,6 +97,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 	"github.com/robertherbaugh/kudurru/internal/stub"
+	"github.com/robertherbaugh/kudurru/internal/tsigkeys"
 	"github.com/robertherbaugh/kudurru/internal/unblock"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
@@ -592,6 +593,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var authKeys *authKeyOwner
 	var rings *servingbuild.KeyringOwner
 	var tsigSource *tsigRuntime
+	var kubeTSIG *kubeTSIGStartup
 	if sql != nil {
 		authKeys, err = newAuthKeyOwner(ctx, encKeys)
 		if err != nil {
@@ -607,6 +609,17 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
+	if kubeStore != nil {
+		sealer, err := tsigkeys.NewSealer(encKey, encPrev)
+		if err != nil {
+			return err
+		}
+		kubeTSIG, err = newKubeTSIGStartup(ctx, kubeStore, sealer, keyring, kubeStartupTimeout(cfg))
+		if err != nil {
+			return err
+		}
+		defer kubeTSIG.Close()
+	}
 	secondaryCluster := sha256.Sum256(append([]byte("kudurru/secondary/cluster/v1:"), encKey...))
 	secondaryOptions := secondary.Options{
 		Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", secondaryCluster), Keyring: keyring,
@@ -619,6 +632,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return &secondary.TransferClient{Keyring: keys}
 		}
 		secondaryOptions.KeysChanged = rings.Changes
+	}
+	if kubeTSIG != nil {
+		secondaryOptions.Keyring, secondaryOptions.Receiver = nil, nil
+		secondaryOptions.CaptureZoneKeys = kubeTSIG.captureAcquisition
+		secondaryOptions.ReceiverForKeys = func(keys *dnsserver.StaticKeyring) secondary.Receiver {
+			return &secondary.TransferClient{Keyring: keys}
+		}
+		secondaryOptions.KeysChanged = kubeTSIG.changes
 	}
 	secondaries, err := secondary.New(secondaryOptions)
 	if err != nil {
@@ -942,7 +963,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		if cfg.Notify.Source != "" {
 			notifySrc = netip.MustParseAddr(cfg.Notify.Source)
 		}
-		nt, err = notifier.New(notifier.Options{Source: zoneview.Source{Cache: zc}, Keyring: keyring, SourceAddr: notifySrc, Registerer: reg, Logger: logger})
+		notifyOptions := notifier.Options{Source: zoneview.Source{Cache: zc}, Keyring: keyring, SourceAddr: notifySrc, Registerer: reg, Logger: logger}
+		if kubeTSIG != nil {
+			notifyOptions.Keyring, notifyOptions.CaptureKeys = nil, kubeTSIG.keys
+		}
+		nt, err = notifier.New(notifyOptions)
 		if err != nil {
 			return err
 		}
@@ -1153,6 +1178,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		dnsHandler.Capture = servingdns.Capture(complete.publisher)
 		dnsHandler.Keys = servingbuild.DNSKeys
 		dnsHandler.Output = captureRootAnchorOutput
+	}
+	if kubeTSIG != nil {
+		dnsHandler.Keys = kubeTSIG.requestKeys
 	}
 	registry, err := dnsserver.NewRegistry(dnsserver.Options{
 		Handler:       dnsHandler,
@@ -1404,8 +1432,30 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		if err := add("rpz", false, feeds.Run); err != nil {
 			return err
 		}
-	} else if err := add("notifier", true, nt.Run); err != nil {
-		return err
+	} else {
+		runNotifier := nt.Run
+		if kubeTSIG != nil {
+			runNotifier = func(ctx context.Context) error { return kubeTSIG.runNotifier(ctx, nt.Run) }
+		}
+		if err := add("notifier", true, runNotifier); err != nil {
+			return err
+		}
+	}
+	if kubeTSIG != nil {
+		if err := add("tsig-startup", false, func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-kubeTSIG.done:
+			}
+			if ctx.Err() == nil && kubeTSIG.keys() == nil {
+				logger.Warn("stored TSIG startup source unavailable; signed operations require restart")
+			}
+			<-ctx.Done()
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
 	if complete == nil {
 		if err := add("settings", false, func(ctx context.Context) error {

@@ -50,7 +50,12 @@ type Options struct {
 	// CaptureKeys and ReceiverForKeys opt into immutable per-entry acquisition.
 	// Both must be supplied together. KeysChanged subscribes before capture;
 	// polling remains a bounded recovery hint, never a credential lookup.
-	CaptureKeys     func() dnsserver.AcquisitionKeys
+	CaptureKeys func() dnsserver.AcquisitionKeys
+	// CaptureZoneKeys is an alternative for a startup-only source that can
+	// admit unsigned acquisition independently of private key availability.
+	// The detached zone is the original entry input; never use this callback
+	// to adopt a successor credential during an existing operation.
+	CaptureZoneKeys func(*v1alpha1.DNSZone) dnsserver.AcquisitionKeys
 	ReceiverForKeys func(*dnsserver.StaticKeyring) Receiver
 	KeysChanged     func() <-chan struct{}
 	Now             func() time.Time
@@ -109,7 +114,8 @@ func New(opts Options) (*Manager, error) {
 	if opts.Cache == nil || opts.Blobs == nil || opts.ClusterID == "" || (opts.Receiver == nil && opts.ReceiverForKeys == nil) {
 		return nil, errors.New("secondary: cache, persistence, cluster identity and receiver are required")
 	}
-	if (opts.CaptureKeys == nil) != (opts.ReceiverForKeys == nil) || (opts.KeysChanged != nil && opts.CaptureKeys == nil) {
+	captured := opts.CaptureKeys != nil || opts.CaptureZoneKeys != nil
+	if (opts.CaptureKeys != nil && opts.CaptureZoneKeys != nil) || captured != (opts.ReceiverForKeys != nil) || (opts.KeysChanged != nil && !captured) {
 		return nil, errors.New("secondary: captured keys and receiver factory must be configured together")
 	}
 	if opts.Now == nil {

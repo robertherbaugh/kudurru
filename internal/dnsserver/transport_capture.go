@@ -34,16 +34,18 @@ func (h *Handler) captureTransport(ctx context.Context, msg *dns.Msg, client pip
 			}
 		})
 	}
-	if h.Capture == nil || h.Keys == nil {
+	if h.Keys == nil {
 		return req, nil, cleanup, pipeline.ErrServingCapture
 	}
-	lease, err := h.Capture(req)
-	req.Serving = lease
-	if err != nil {
-		return req, nil, cleanup, err
-	}
-	if lease == nil {
-		return req, nil, cleanup, pipeline.ErrServingCapture
+	if h.Capture != nil {
+		lease, err := h.Capture(req)
+		req.Serving = lease
+		if err != nil {
+			return req, nil, cleanup, err
+		}
+		if lease == nil {
+			return req, nil, cleanup, pipeline.ErrServingCapture
+		}
 	}
 	if h.Output != nil {
 		output, err := h.Output(req)

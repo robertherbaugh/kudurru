@@ -50,11 +50,16 @@ func (a acquisition) accept(ctx context.Context, cache func() error, publish fun
 	return a.keys.WithCurrent(ctx, cache, publish)
 }
 
-func (m *Manager) captureAcquisition() (acquisition, error) {
-	if m.opts.CaptureKeys == nil {
+func (m *Manager) captureAcquisition(dz *v1alpha1.DNSZone) (acquisition, error) {
+	if m.opts.CaptureKeys == nil && m.opts.CaptureZoneKeys == nil {
 		return acquisition{receiver: m.opts.Receiver}, nil
 	}
-	keys := m.opts.CaptureKeys()
+	var keys dnsserver.AcquisitionKeys
+	if m.opts.CaptureZoneKeys != nil {
+		keys = m.opts.CaptureZoneKeys(dz.DeepCopy())
+	} else {
+		keys = m.opts.CaptureKeys()
+	}
 	if keys == nil || keys.Keys() == nil || keys.Identity() == "" || !keys.Current() {
 		return acquisition{}, errors.New("secondary: immutable credential source is unavailable")
 	}
@@ -89,7 +94,7 @@ func acquisitionCredential(dz *v1alpha1.DNSZone, keys dnsserver.TSIGKeyring) (st
 }
 
 func (m *Manager) captureEntry(dz *v1alpha1.DNSZone) (acquisition, string, error) {
-	a, err := m.captureAcquisition()
+	a, err := m.captureAcquisition(dz)
 	if err != nil {
 		return a, "", err
 	}
@@ -107,7 +112,7 @@ func (m *Manager) receiverFor(e *entry) Receiver {
 	if e.acquisition.receiver != nil {
 		return e.acquisition.receiver
 	}
-	if m.opts.CaptureKeys != nil {
+	if m.opts.CaptureKeys != nil || m.opts.CaptureZoneKeys != nil {
 		return nil
 	}
 	return m.opts.Receiver

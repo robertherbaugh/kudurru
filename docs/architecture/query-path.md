@@ -77,7 +77,11 @@ This authentication does not issue native UPDATE/NOTIFY capabilities: encrypted
 mutation requests still receive signed REFUSED. SQLite listeners capture the
 original complete serving publication before verification and retain its
 immutable keys through response emission; later messages capture independently.
-Kubernetes and explicit fixed-key mode retain their startup keyrings. Opaque
+Kubernetes captures its complete startup stored/file keyring before verification,
+without inventing a complete serving lease. Until that source is prepared,
+signed requests receive empty unsigned SERVFAIL while unrelated unsigned DNS
+continues. A failed source remains unavailable until restart. Explicit fixed-key
+mode retains its configured startup keyring. Opaque
 mutable lookup providers fail closed on these transports because they cannot
 pin an installed credential generation. Stored-key administration remains
 separate from this transport mount.

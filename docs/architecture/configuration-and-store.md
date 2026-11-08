@@ -82,9 +82,9 @@ nonempty observed UID under the earlier caller deadline and configured startup
 timeout. Unpinned callers share existing discovery; pinned callers use the same
 identity guard. Closing the Store cancels a held probe or wait. A direct client
 without background discovery cannot invent an unpinned identity. This getter
-is a prerequisite for private credential startup, with no general startup or
-readiness call site; it does not make unsigned saved-state serving depend on
-an online API server or establish a complete TSIG source.
+is used by optional private credential startup, with no general startup or
+readiness barrier; it does not make unsigned saved-state serving depend on
+an online API server or by itself establish a complete TSIG source.
 
 ## API migrations
 
@@ -1285,6 +1285,22 @@ one transaction. Its receipt distinguishes confirmed commit from observed
 publication; an uncertain error is not a rollback certificate. File keys stay
 read-only. Kubernetes management and hot rotation remain unavailable. See
 [stored TSIG keys](../deploy/tsig-keys.md).
+
+Kubernetes prepares a complete stored source once, asynchronously, under the
+original configured startup bound. It requires the observed cluster UID and a
+successful complete private-carrier read, decrypt and merge. Pending or failed
+preparation never certifies a missing source or permits file-only signing.
+Successful preparation, including a verified empty inventory, supplies immutable
+keys until restart. UID discovery and the later Secret list are separate API
+observations, not an atomic transaction or current mutation authority.
+
+Native and encrypted requests select that actual immutable keyring once before
+verification. An unavailable source refuses signed requests with empty unsigned
+SERVFAIL; unrelated unsigned saved-state DNS remains available. Signed secondary
+jobs retain the stored credential epoch and original expiry. Unsigned acquisition
+can proceed independently. NOTIFY waits only for this one preparation result,
+then retains a provider for each round. A failed startup requires restart after
+recovery; no DNS lookup, background retry or file fallback repairs the source.
 
 
 ## Static file-managed SQLite twins

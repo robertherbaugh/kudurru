@@ -28,13 +28,17 @@ type Handler struct {
 	// DefaultQueryTimeout.
 	QueryTimeout time.Duration
 	// Capture acquires a complete publication BEFORE signature verification.
-	// Keys selects only that request's immutable provider. Configure both once
-	// before listeners start. Nil Capture retains legacy fixed-provider mode.
+	// Keys selects only that request's immutable provider. Configure once before
+	// listeners start. Keys alone supports a startup-only immutable credential
+	// source without claiming a complete Serving lease. Both nil retain legacy
+	// fixed-provider mode. A failed selector never falls back to listener keys.
 	Capture pipeline.Capture
 	Keys    func(*pipeline.Request) (*StaticKeyring, error)
 	// Output is the root-owned final write guard, captured before work.
 	Output CaptureOutput
 }
+
+func (h *Handler) capturesTransport() bool { return h.Capture != nil || h.Keys != nil }
 
 func (h *Handler) logger() *slog.Logger {
 	if h.Logger != nil {

@@ -77,7 +77,7 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 		ctx = context.Background()
 	}
 	var capturedKeys *StaticKeyring
-	if h.Capture != nil {
+	if h.capturesTransport() {
 		captured, keys, cleanup, err := h.captureTransport(ctx, req, client, time.Now())
 		handedOff := false
 		defer func() {

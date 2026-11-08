@@ -84,6 +84,10 @@ type Options struct {
 	// Keyring holds the TSIG secrets selected by zone NOTIFY policy. Nil
 	// means no keys: zones that name one are not notified (result nokey).
 	Keyring dnsserver.TSIGKeyring
+	// CaptureKeys selects an immutable provider once before a round's first
+	// network work. Nil result refuses signed NOTIFY, never unsigned fallback.
+	// Mutually exclusive with Keyring.
+	CaptureKeys func() *dnsserver.StaticKeyring
 	// SourceAddr is the local address NOTIFY is sent from (notify.source);
 	// the zero value lets the kernel choose.
 	SourceAddr netip.Addr
@@ -124,6 +128,9 @@ type Notifier struct {
 func New(opts Options) (*Notifier, error) {
 	if opts.Source == nil {
 		return nil, errors.New("notifier: Options.Source is required")
+	}
+	if opts.Keyring != nil && opts.CaptureKeys != nil {
+		return nil, errors.New("notifier: configure one credential source")
 	}
 	if opts.Resolver == nil {
 		opts.Resolver = net.DefaultResolver
@@ -264,6 +271,10 @@ func (n *Notifier) scan(ctx context.Context, rounds map[string]*round, wg *sync.
 
 // notifyZone sends one round for z to every target in parallel.
 func (n *Notifier) notifyZone(ctx context.Context, z *zone.Zone) {
+	keys := n.opts.Keyring
+	if n.opts.CaptureKeys != nil {
+		keys = n.opts.CaptureKeys()
+	}
 	targets := n.targets(ctx, z)
 	if len(targets) == 0 {
 		return
@@ -274,7 +285,11 @@ func (n *Notifier) notifyZone(ctx context.Context, z *zone.Zone) {
 	}
 	base := zone.Notify{Zone: z.Name(), Serial: z.Serial(), SOA: z.SOA(), Source: source, Timeout: n.opts.Timeout}
 	if key := z.NotifyKey(); key != "" {
-		_, alg, ok := n.lookup(key)
+		var alg string
+		var ok bool
+		if keys != nil {
+			_, alg, ok = keys.Lookup(key)
+		}
 		if !ok {
 			n.log.Warn("zone names a TSIG key this node does not have; NOTIFY not sent", "zone", z.Name(), "key", key)
 			for range targets {
@@ -282,7 +297,7 @@ func (n *Notifier) notifyZone(ctx context.Context, z *zone.Zone) {
 			}
 			return
 		}
-		base.KeyName, base.Algorithm, base.TSIG = key, alg, dnsserver.TSIGProvider(n.opts.Keyring)
+		base.KeyName, base.Algorithm, base.TSIG = key, alg, dnsserver.TSIGProvider(keys)
 	}
 	n.log.Debug("notifying", "zone", z.Name(), "serial", z.Serial(), "targets", len(targets))
 	var wg sync.WaitGroup
@@ -295,13 +310,6 @@ func (n *Notifier) notifyZone(ctx context.Context, z *zone.Zone) {
 		})
 	}
 	wg.Wait()
-}
-
-func (n *Notifier) lookup(key string) ([]byte, string, bool) {
-	if n.opts.Keyring == nil {
-		return nil, "", false
-	}
-	return n.opts.Keyring.Lookup(key)
 }
 
 // notifyTarget tries one target up to Attempts times and returns the
