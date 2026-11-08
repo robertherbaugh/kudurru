@@ -39,7 +39,11 @@ func (t *CommandTx) checkCommit(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if _, err := t.s.checkWriter(ctx, t.tx); err != nil {
+	if t.primary != nil {
+		if err := t.checkPrimaryWriter(ctx); err != nil {
+			return err
+		}
+	} else if _, err := t.s.checkWriter(ctx, t.tx); err != nil {
 		return err
 	}
 	for _, check := range t.checks {

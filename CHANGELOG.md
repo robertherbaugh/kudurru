@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Cluster storage: initial membership and Primary activation now share one
+  authorized transaction with audit and final lifetime checks. Operator routes
+  and production HA assembly remain in progress.
+
 - Add bounded member enrollment state and one-time invitation wire formats with
   key-possession proof, original expiry and permanent signing-key revocation.
   Schema 9 persists complete membership with atomic consumption, final admission

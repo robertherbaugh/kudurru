@@ -310,3 +310,25 @@ without failures/skips (120.999 s); final full configured lint exits 0 with zero
 issues (99.199 s). Root enrollment routes, operator/output
 barriers, current peer exclusion and HA orchestration remain open; this is not
 production enrollment completion. Evidence: `.context/enrollment-storage-20261108/`.
+
+### F60b/G11 atomic initial Primary enrollment, November 8
+
+D327 stages first membership and Standalone-to-Primary authority in one actual
+SQLite Command from an original Store-issued complete cut, an existing Dormant
+owner and the local private identity. The caller retains original operator
+authorization and dependency pins; final admission checks the original lifetime
+and exact planned authority while old memory authority remains installed.
+Audit can be appended in the same transaction. A successful commit advances one
+generation and fences the old writer; rollback changes none of these effects.
+Uncertain completion blocks the old writer and wakes dependents without claiming
+a rollback or a committed candidate. The actual restart reads durable authority.
+
+Focused source01 default-race passes 21 entries without failures/skips (13.626 s).
+Composed enrollment, SQLite, replica and serving/auth/build race passes 1259
+entries without failures or test skips (374.423 s). The accepted framing package
+has no standalone tests; actual adapter/image cases exercise it. Final source02 explicitly distinguishes unknown completion from confirmed
+rollback; all 21 focused race entries pass again (11.219 s), and configured
+SQLite/enrollment lint passes with zero issues (8.018 s).
+Root operator routes, publication/output acknowledgment, peer exclusion, join
+transport and full HA assembly remain open.
+Evidence: `.context/enrollment-primary-20261108/`.

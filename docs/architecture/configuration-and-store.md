@@ -897,6 +897,23 @@ and explicit conflict resolution compare original receiver history before
 replacing any rows. A higher image revision cannot erase or resurrect members.
 Unrelated commands do not read or decode enrollment state.
 
+`CommandTx.StageEnrollmentPrimary` composes initial membership with the explicit
+Standalone-to-Primary role transition. It requires the original Store-issued
+complete source cut, an existing Dormant owner, the actual local private identity
+and an original finite context. The caller authorizes inside the same transaction
+and retains its original final proof checks and dependency pins. Activation runs
+before mutations; the audit event is appended in that same command.
+
+The driver stages the new role/incarnation after callback work and compares its
+exact planned SQL authority while retaining the old memory authority through
+final checks. Actual commit success publishes membership, role and one generation
+notification together. Rollback preserves all old state and audit; uncertain
+completion returns `ErrEnrollmentCompletionUnknown`, blocks the old writer and
+wakes its dependents. Only a physical restart
+may read durable authority again after that uncertainty. The old writer cannot
+acknowledge success through a new incarnation; caller publication/output admission
+is still required. This is a storage composition API, not a mounted operator route.
+
 `replica.NewMemberClient` connects those identities to image and command
 exchanges. It requires the original resolver's exact member CA, rejects a local
 UUID that does not match its private identity, and refuses custom transports.

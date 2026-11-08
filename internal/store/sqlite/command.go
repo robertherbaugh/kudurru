@@ -59,6 +59,14 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	var t *CommandTx
 	defer func() {
 		sqlBoundary.finish(&result)
+		if t != nil && t.primary != nil && sqlBoundary.outcome == AnchorUnknown {
+			// Ambiguous completion cannot leave the old standalone writer usable.
+			// A restart must read the actual atomic membership/authority outcome.
+			s.writeBlocked.Store(true)
+			result = errors.Join(result, ErrEnrollmentCompletionUnknown)
+			close(s.authorityChanged)
+			s.authorityChanged = make(chan struct{})
+		}
 		operation := anchor
 		if t != nil && t.anchor != nil {
 			operation = t.anchor
@@ -140,8 +148,17 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	if err := advanceRevision(ctx, tx, &a); err != nil {
 		return err
 	}
-	if _, err := s.readGeneration(ctx, tx); err != nil {
+	if err := t.preparePrimary(ctx, &a); err != nil {
 		return err
+	}
+	image, err := s.readGeneration(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if t.primary != nil {
+		if _, err := s.ValidateImage(ctx, *image); err != nil {
+			return err
+		}
 	}
 	var compactTo uint64
 	if len(t.rvs) > 0 && s.sinceCompacted+len(t.mutations) >= s.compactEvery {
@@ -176,6 +193,9 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 		s.compacted.Store(compactTo)
 		s.sinceCompacted = 0
 	}
+	if t.primary != nil {
+		s.bus.reset()
+	}
 	s.publishAuthorityLocked(a)
 	s.publishGenerationLocked()
 	for n, m := range t.mutations {
@@ -205,6 +225,7 @@ type CommandTx struct {
 	anchorTouched    bool                  // monotonic actual-change marker, including ABA
 	anchorLocalInit  *anchorLocal          // typed migration-proven unchanged-Dormant local initialization
 	enrollmentBefore []replication.Entry   // actual owner before first membership mutation
+	primary          *enrollmentPrimary    // same-command initial membership + authority
 }
 
 func (t *CommandTx) valid(ctx context.Context) error {
