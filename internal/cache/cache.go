@@ -108,7 +108,6 @@ type Cache struct {
 
 type entry struct {
 	metadata    *Metadata // immutable; nil is exactly zero Metadata
-	restored    bool
 	key         Key
 	wire        []byte
 	stored      int64 // unix nanoseconds
@@ -119,6 +118,7 @@ type entry struct {
 	hits        uint32
 	kind        Kind
 	prefetching bool
+	restored    bool // keep flags together rather than padding every entry
 	prev, next  *entry
 }
 

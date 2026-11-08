@@ -812,3 +812,25 @@ findings are retained. Final source04 transport races pass all eight entries
 without failures/skips (7.019s). Evidence and frozen identities: .context/member-emit-cancellation-20261108/.
 Production HA listener/operator/domain assembly and complete acceptance remain
 open; these transport checks do not close those items.
+
+
+### Cache entry padding and retained diagnostics, November 8
+
+The restored-entry flag now sits with the other entry flags, removing unused
+alignment padding without changing locks, metadata, admission, timestamps or
+serialization. The unchanged 1-million-entry memory benchmark on the local
+Xeon reports 308.8 bytes/entry before and 292.7 after (one fresh process each,
+GOMAXPROCS=6, one iteration). This is a local diagnostic, not fixed-runner
+qualification or evidence that the parallel-hit latency gate passes. Final
+cache/persistence/pipeline default races pass 86 entries without failures/skips
+(8.820s), and configured lint passes with zero issues (4.412s).
+
+Two earlier local experiments were fully archived and reverted: separating the
+publication lock's cache lines and using an immutable read topology with shard
+exclusion. Neither improved the original parallel-hit diagnostic: the retained
+three-sample medians are 213.4 ns before, 250.7 ns for padding and 242.1 ns for
+the topology experiment. All samples have zero allocations. No concurrency
+change from those experiments remains. A mistyped pipeline package path caused
+one qualification command failure; the actual missing package then passed.
+Evidence: .context/cache-publication-layout-20261108/. All hosted failures and
+original release gates remain unchanged.
