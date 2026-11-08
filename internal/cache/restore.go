@@ -13,7 +13,7 @@ func (c *Cache) RebindRestored(scope pipeline.CacheScope) {
 		sh := &c.shards[i]
 		sh.mu.Lock()
 		for _, e := range sh.m {
-			if e.restored && e.metadata.Scope.ID == scope.ID {
+			if e.restored && e.provenance().Scope.ID == scope.ID {
 				sh.remove(e)
 				entries = append(entries, e)
 			}
@@ -38,7 +38,11 @@ func (c *Cache) RebindRestored(scope pipeline.CacheScope) {
 			continue
 		}
 		e.key = k
-		e.metadata.Scope = scope
+		// A concurrent dump may hold the old immutable metadata after copying
+		// this entry. Replace the value; never rewrite a shared snapshot.
+		metadata := e.provenance()
+		metadata.Scope = scope
+		e.metadata = &metadata
 		e.restored = false
 		c.insert(e)
 	}

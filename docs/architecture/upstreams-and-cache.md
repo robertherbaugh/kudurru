@@ -985,3 +985,15 @@ list clients or cached names, or inspect the separate recursive resolver cache.
 
 Next: [Zones and transfers](zones.md) covers the queries that never reach
 this page because kudurru is the authority.
+
+
+### Cache provenance storage
+
+Raw-cache entries retain complete scope, validation, absolute security deadlines
+and upstream metadata by value at the API boundary. Internally, an entry with
+exactly zero metadata uses the smaller entry allocation. Nonzero metadata shares
+one allocation with its entry; no security or scope field is omitted or inferred.
+Both forms keep the existing version-2 dump encoding. Rebinding a restored entry
+replaces its immutable metadata value so an in-progress dump can finish with its
+original matching key and scope. Invalidation, TTL origins, stale limits and
+managed-cache admission are unchanged.

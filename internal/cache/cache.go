@@ -107,7 +107,7 @@ type Cache struct {
 }
 
 type entry struct {
-	metadata    Metadata
+	metadata    *Metadata // immutable; nil is exactly zero Metadata
 	restored    bool
 	key         Key
 	wire        []byte
@@ -127,6 +127,32 @@ type Metadata struct {
 	Scope    pipeline.CacheScope
 	Security pipeline.Security
 	Upstream string
+}
+
+// Entries without provenance need no space for empty scope/security fields.
+// Nonzero metadata shares ONE allocation with its entry and remains immutable:
+// dump snapshots may retain its pointer after releasing the shard lock.
+func newEntry(metadata Metadata) *entry {
+	if metadata == (Metadata{}) {
+		return &entry{}
+	}
+	value := &struct {
+		entry
+		metadata Metadata
+	}{metadata: metadata}
+	value.entry.metadata = &value.metadata
+	return &value.entry
+}
+
+func (e *entry) provenance() Metadata {
+	if e.metadata == nil {
+		return Metadata{}
+	}
+	return *e.metadata
+}
+
+func (e *entry) securityAvailable(now int64) bool {
+	return e.metadata == nil || e.metadata.Security.AvailableAt(time.Unix(0, now))
 }
 
 // Now returns this cache's configured clock.
@@ -277,7 +303,7 @@ func (c *Cache) Get(k Key) (Lookup, bool) {
 		sh.mu.Unlock()
 		return Lookup{}, false
 	}
-	if now >= e.staleUntil || now < e.stored || !e.metadata.Security.AvailableAt(time.Unix(0, now)) {
+	if now >= e.staleUntil || now < e.stored || !e.securityAvailable(now) {
 		kind := e.kind
 		sh.remove(e)
 		sh.mu.Unlock()
@@ -285,7 +311,7 @@ func (c *Cache) Get(k Key) (Lookup, bool) {
 		return Lookup{}, false
 	}
 	sh.moveFront(e)
-	l := Lookup{Metadata: e.metadata, Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored)}
+	l := Lookup{Metadata: e.provenance(), Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored)}
 	if now < e.expires {
 		l.State = Fresh
 		if threshold := c.threshold.Load(); threshold > 0 {
@@ -327,10 +353,10 @@ func (c *Cache) Peek(k Key) (Lookup, bool) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	e := sh.m[k]
-	if e == nil || now >= e.staleUntil || now < e.stored || !e.metadata.Security.AvailableAt(time.Unix(0, now)) {
+	if e == nil || now >= e.staleUntil || now < e.stored || !e.securityAvailable(now) {
 		return Lookup{}, false
 	}
-	l := Lookup{Metadata: e.metadata, Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored), State: Fresh}
+	l := Lookup{Metadata: e.provenance(), Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored), State: Fresh}
 	if now >= e.expires {
 		l.State = Stale
 		l.Hold = now < e.holdUntil
@@ -387,7 +413,10 @@ func (c *Cache) setAtIfGeneration(k Key, wire []byte, kind Kind, ttl time.Durati
 		exp = min(exp, deadline)
 		stale = min(stale, deadline)
 	}
-	c.insert(&entry{metadata: metadata, key: k, wire: wire, kind: kind, stored: origin, expires: exp, staleUntil: stale, windowStart: now})
+	e := newEntry(metadata)
+	e.key, e.wire, e.kind = k, wire, kind
+	e.stored, e.expires, e.staleUntil, e.windowStart = origin, exp, stale, now
+	c.insert(e)
 }
 
 // insert adds or replaces e and evicts beyond capacity.

@@ -5680,3 +5680,25 @@ slow-first/rtt_weighted259747ns and177us p50). These are honest absolute failure
 not a CPU-matched relative comparison; current-source optimization/qualification
 remains open. No benchmark was rerun to select or replace samples. Evidence:
 .context/cache-strategy-calibration-20261108/.
+
+
+### F21c cache provenance allocation, November 8
+
+Original cache calibration exposed160 bytes of empty inline provenance per
+entry. Cache entries now omit only exactly-zero metadata; complete nonzero
+scope/security/upstream metadata shares one allocation with its entry. Restored
+scope changes replace immutable metadata so retained dump snapshots cannot mix
+old keys with a new scope. Original lifetimes, original fields, version2 wire
+format, admission and workloads are unchanged. Both insertion forms have an
+actual one-allocation guard; returned values do not alias owners. A deterministic
+blocked actual dump plus concurrent restore rebind preserves all32 original rows.
+
+Full cache/persistence/cache-stage/upstream-stage default races pass102 entries
+without failures/skips (7.413s), followed by configured scoped lint exit0/zero
+issues (2.812s). All source01 identities match. One unchanged original-cache
+1s diagnostic on this sandbox exits0 (26.842s): Set128B/1alloc, memory308.7bytes
+and189.8overhead-bytes per entry; all Get/Growth lookup cases0alloc. Parallel
+hit163.6ns remains above the new156.48ns ceiling; no local timing or one-process
+result is fixed-runner or five-process qualification. Original hosted cache and
+strategy failures remain open pending actual new-source measurement. Evidence:
+.context/cache-metadata-20261108/.

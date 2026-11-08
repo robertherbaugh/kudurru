@@ -62,7 +62,7 @@ func (c *Cache) WriteDump(w io.Writer) (int, error) {
 		}
 		sh.mu.Unlock()
 		for _, e := range snap {
-			metadata, err := json.Marshal(e.metadata)
+			metadata, err := json.Marshal(e.provenance())
 			if err != nil {
 				return written, err
 			}
@@ -229,7 +229,10 @@ func (c *Cache) Load(r io.Reader) (int, error) {
 			continue
 		}
 		c.publication.RLock()
-		c.insert(&entry{metadata: metadata, restored: true, key: Key(key), wire: wire, kind: Kind(kind), stored: stored, expires: expires, staleUntil: staleUntil, windowStart: now})
+		e := newEntry(metadata)
+		e.restored, e.key, e.wire, e.kind = true, Key(key), wire, Kind(kind)
+		e.stored, e.expires, e.staleUntil, e.windowStart = stored, expires, staleUntil, now
+		c.insert(e)
 		c.publication.RUnlock()
 		n++
 	}
