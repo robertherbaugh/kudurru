@@ -260,7 +260,9 @@ It classifies only lines containing a literal `$`, passing them through the
 actual parser and modifier callback so all `$badfilter` validation and exclusions
 still apply. Ordinary lines contribute to the checksum without building rules;
 changed lists receive the full parser pass and diagnostics. Fingerprint versions,
-options and source identity remain part of reuse, and failures keep the previous
+options and source identity retain their exact encoding. The fingerprint pass
+omits diagnostic storage it does not return; full parsing still returns all
+original counters and samples. Failures keep the previous
 complete owner. The integrated lazy-DFA compiler shares this fingerprint path;
 correctness checks and performance acceptance remain separate.
 

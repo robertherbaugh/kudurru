@@ -2,6 +2,8 @@ package blocking
 
 import (
 	"errors"
+	"fmt"
+	"hash/crc32"
 	"io"
 	"strings"
 	"testing"
@@ -84,5 +86,76 @@ func TestCompileFingerprintSniffFailureCannotReusePrevious(t *testing.T) {
 	}
 	if _, ok := first.Match("valid.example"); !ok {
 		t.Fatal("failed candidate mutated original owner")
+	}
+}
+
+// Reference the established fmt-based v3 stream independently of the optimized
+// encoder. Full Parse supplies source CRCs, including format detection.
+func originalV3Fingerprint(t *testing.T, spec Spec, cap int, limit int64) uint32 {
+	t.Helper()
+	h := crc32.NewIEEE()
+	fmt.Fprintf(h, "kudurru-blocking-v3-lazy-dfa\x00%s\x00%d\x00%d\x00", spec.Mode, cap, limit)
+	fmt.Fprintf(h, "external-policy=%t\x00", spec.ExternalPolicy)
+	for _, src := range spec.Sources {
+		rc, err := src.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := parser.Parse(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains}, nil)
+		closeErr := rc.Close()
+		if err != nil || closeErr != nil {
+			t.Fatal(err, closeErr)
+		}
+		format := src.Format
+		if format == "" {
+			format = parser.FormatAuto
+		}
+		fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, res.CRC32, ExcludeDigest(src.Exclude))
+	}
+	return h.Sum32()
+}
+
+func TestCompileFingerprintRetainsV3Encoding(t *testing.T) {
+	for _, format := range []parser.Format{"", parser.FormatAuto, parser.FormatAdblock, parser.FormatHosts, parser.FormatDomains, parser.FormatRegex} {
+		t.Run(string(format), func(t *testing.T) {
+			for _, mode := range []Mode{ModeBlock, ModeAllow} {
+				for _, external := range []bool{false, true} {
+					for _, cap := range []int{-1, 0, 1000} {
+						for _, limit := range []int64{1, 128 << 20} {
+							empty := BytesSource("empty", format, nil)
+							src := BytesSource(strings.Repeat("n", 257)+"\x00é", format, []byte("! Title: original\nordinary.example\n/ads[.]example$/\n"))
+							src.HostsSubdomains = true
+							src.Exclude = []string{"ordinary.example", "unused", "ordinary.example"}
+							spec := Spec{Name: "encoding", Mode: mode, ExternalPolicy: external, Sources: []Source{empty, src}}
+							want := originalV3Fingerprint(t, spec, cap, limit)
+							got, _, err := fingerprint(&spec, cap, limit)
+							if err != nil || got != want {
+								t.Fatalf("v3 identity changed: mode=%s external=%t cap=%d bytes=%d got=%08x want=%08x err=%v", mode, external, cap, limit, got, want, err)
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCompileFingerprintReuseAllocationBound(t *testing.T) {
+	// The original unchanged-list gate permits eight allocations. Keep the
+	// real Compile/source-open/sniff/reservation path in this smaller guard;
+	// the unchanged million-entry benchmark remains the performance evidence.
+	spec := Spec{Name: "reuse", Mode: ModeBlock, Sources: []Source{BytesSource("original", parser.FormatAdblock, []byte("||ads.example^\n||second.example^\n"))}}
+	opts := CompileOptions{RegexHardCap: -1}
+	prev, err := Compile(spec, nil, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *List
+	allocs := testing.AllocsPerRun(20, func() { got, err = Compile(spec, prev, opts) })
+	if err != nil || got != prev {
+		t.Fatal("unchanged compilation did not preserve the original owner", err)
+	}
+	if allocs > 8 {
+		t.Fatalf("unchanged compilation allocated %g times, original bound is eight", allocs)
 	}
 }

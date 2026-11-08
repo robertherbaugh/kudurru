@@ -3728,3 +3728,32 @@ clear the historical36 regressions/20 missing keys or establish fixed-class
 five-process performance. Configured lint remains pending its unavailable tool.
 All3966 frozen identities match. Commands, raw outcomes and every metric with
 prior deltas/ratios: `.context/f20-root-sparse-batch-20261108/result.md`.
+
+
+### F20 unchanged fingerprint allocation correction
+
+The v3 fingerprint now encodes the same field bytes with bounded typed scratch.
+Fingerprint-only parsing omits unreturned diagnostic storage; full Parse
+continues to expose its original title, maps, counters and samples. Shared
+validation state and a lazy exclusion map preserve every real badfilter callback,
+temporary resource refusal and cross-source rewind. No pool or additional
+retained serving capacity is introduced. Independent compatibility checks use
+the original fmt stream and full Parse CRC, including empty/long/NUL/Unicode
+names, all formats, cap/byte options, modes and exclusions.
+
+The first allocation guard failed at10 versus8, with100 other passes; source,
+output and compiler escape diagnostics are preserved. The corrected focused
+selection passes101; complete parser/matcher/blocking/listfetcher default-race
+passes641 with2 actual helper/unset comparator skips. Pinned AdGuard then
+passes46/zero skips, retaining both documented deviations. Scoped vet exits0.
+
+One original12 diagnostic has all58 keys: unchanged1M79,681,673ns/65,984B/
+8allocations (three iterations). This meets the historical allocation count
+in one process, not the complete performance gate. Policy Evaluate hit/miss
+1095/965.6ns and regex1000p9918,906ns remain recorded, including worsening
+relative observations. The original36 regressions/20 missing zone keys and
+all prior limits remain open; no workload, baseline or threshold changed.
+Configured lint is pending its unavailable executable. All3966 root identities
+and the comparator binary match their freezes. Raw outcomes, both source
+versions, all58 comparisons and report:
+`.context/f20-root-fingerprint-allocations-20261108/result.md`.

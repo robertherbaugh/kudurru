@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -388,19 +389,28 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 // fingerprint hashes normalized rule lines and collects all badfilter
 // directives before compilation. Comment-only changes do not force a rebuild.
 func fingerprint(spec *Spec, regexCap int, programBytes int64) (uint32, map[string]bool, error) {
-	h := crc32.NewIEEE()
-	_, _ = fmt.Fprintf(h, "kudurru-blocking-v3-lazy-dfa\x00%s\x00%d\x00%d\x00", spec.Mode, regexCap, programBytes)
-	var validationBudget *matcher.ProgramBudget
-	_, _ = fmt.Fprintf(h, "external-policy=%t\x00", spec.ExternalPolicy)
-	var badfilters map[string]bool
+	var h listFingerprint
+	h.field("kudurru-blocking-v3-lazy-dfa")
+	h.field(string(spec.Mode))
+	h.decimal(int64(regexCap))
+	h.decimal(programBytes)
+	var validation struct {
+		budget     *matcher.ProgramBudget
+		badfilters map[string]bool
+	}
+	h.write("external-policy=")
+	h.boolean(spec.ExternalPolicy)
 	for _, src := range spec.Sources {
 		rc, err := src.Open()
 		if err != nil {
 			return 0, nil, err
 		}
-		excluded := map[string]bool{}
-		for _, text := range src.Exclude {
-			excluded[text] = true
+		var excluded map[string]bool
+		if len(src.Exclude) > 0 {
+			excluded = make(map[string]bool, len(src.Exclude))
+			for _, text := range src.Exclude {
+				excluded[text] = true
+			}
 		}
 		checksum, err := parser.Fingerprint(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains, EmitSlow: func(u parser.UnsupportedRule) error {
 			if excluded[u.Text] {
@@ -408,19 +418,19 @@ func fingerprint(spec *Spec, regexCap int, programBytes int64) (uint32, map[stri
 			}
 			for _, m := range u.Modifiers {
 				if m.Name == "badfilter" {
-					if validationBudget == nil {
-						validationBudget = matcher.NewProgramBudgetWithoutClassProof(programBytes)
+					if validation.budget == nil {
+						validation.budget = matcher.NewProgramBudgetWithoutClassProof(programBytes)
 					}
-					r, e := compileRuleBudget(u, validationBudget)
-					validationBudget.Rewind(0) // key validation retains no executable program
+					r, e := compileRuleBudget(u, validation.budget)
+					validation.budget.Rewind(0) // key validation retains no executable program
 					if errors.Is(e, matcher.ErrProgramBudget) {
 						return e
 					}
 					if e == nil && r.badfilter {
-						if badfilters == nil {
-							badfilters = map[string]bool{}
+						if validation.badfilters == nil {
+							validation.badfilters = map[string]bool{}
 						}
-						badfilters[r.key] = true
+						validation.badfilters[r.key] = true
 					}
 					break
 				}
@@ -435,9 +445,58 @@ func fingerprint(spec *Spec, regexCap int, programBytes int64) (uint32, map[stri
 		if format == "" {
 			format = parser.FormatAuto
 		}
-		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, checksum, ExcludeDigest(src.Exclude))
+		h.field(src.Name)
+		h.field(string(format))
+		h.boolean(src.HostsSubdomains)
+		h.checksum(checksum)
+		h.field(ExcludeDigest(src.Exclude))
 	}
-	return h.Sum32(), badfilters, nil
+	return h.crc, validation.badfilters, nil
+}
+
+// listFingerprint preserves the v3 byte stream without interface formatting.
+// Scratch is fixed even for an unusually long source name; each field retains
+// its original NUL separator and each checksum has eight lowercase hex digits.
+type listFingerprint struct {
+	crc uint32
+	buf [128]byte
+}
+
+func (h *listFingerprint) write(s string) {
+	for len(s) != 0 {
+		n := copy(h.buf[:], s)
+		h.crc = crc32.Update(h.crc, crc32.IEEETable, h.buf[:n])
+		s = s[n:]
+	}
+}
+
+func (h *listFingerprint) field(s string) {
+	h.write(s)
+	h.write("\x00")
+}
+
+func (h *listFingerprint) boolean(v bool) {
+	if v {
+		h.field("true")
+	} else {
+		h.field("false")
+	}
+}
+
+func (h *listFingerprint) decimal(v int64) {
+	b := strconv.AppendInt(h.buf[:0], v, 10)
+	h.crc = crc32.Update(h.crc, crc32.IEEETable, b)
+	h.write("\x00")
+}
+
+func (h *listFingerprint) checksum(v uint32) {
+	const hex = "0123456789abcdef"
+	for i := 7; i >= 0; i-- {
+		h.buf[i] = hex[v&15]
+		v >>= 4
+	}
+	h.crc = crc32.Update(h.crc, crc32.IEEETable, h.buf[:8])
+	h.write("\x00")
 }
 
 type chainBuilder struct {

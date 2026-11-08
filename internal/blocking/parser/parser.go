@@ -67,7 +67,11 @@ type Options struct {
 // non-nil error from emit stops parsing and is returned. emit may be nil to
 // only count. Rule.Pattern is valid only until emit returns.
 func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
-	return parse(r, opts, emit, false)
+	res := &Result{UnsupportedReasons: map[string]int{}, InvalidReasons: map[string]int{}}
+	if err := parseInto(r, opts, emit, res, false); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 // Fingerprint returns the same normalized CRC as Parse, including its format
@@ -79,16 +83,16 @@ func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
 // ignored because this pass does not expose partial classification counters.
 func Fingerprint(r io.Reader, opts Options) (uint32, error) {
 	opts.KeepUnsupported, opts.KeepInvalid = -1, -1
-	res, err := parse(r, opts, nil, true)
-	if err != nil {
+	var res Result
+	if err := parseInto(r, opts, nil, &res, true); err != nil {
 		return 0, err
 	}
 	return res.CRC32, nil
 }
 
-func parse(r io.Reader, opts Options, emit func(Rule) error, modifierCandidatesOnly bool) (*Result, error) {
+func parseInto(r io.Reader, opts Options, emit func(Rule) error, res *Result, modifierCandidatesOnly bool) error {
 	if !opts.Format.Valid() {
-		return nil, fmt.Errorf("%w %q", ErrUnknownFormat, opts.Format)
+		return fmt.Errorf("%w %q", ErrUnknownFormat, opts.Format)
 	}
 	if opts.Format == "" {
 		opts.Format = FormatAuto
@@ -98,17 +102,14 @@ func parse(r io.Reader, opts Options, emit func(Rule) error, modifierCandidatesO
 
 	br := bufio.NewReaderSize(r, maxLineLen)
 	if err := sniffReader(br); err != nil {
-		return nil, err
+		return err
 	}
 	p := &state{
 		opts:                   opts,
 		emit:                   emit,
 		format:                 opts.Format,
 		modifierCandidatesOnly: modifierCandidatesOnly,
-		res: &Result{
-			UnsupportedReasons: map[string]int{},
-			InvalidReasons:     map[string]int{},
-		},
+		res:                    res,
 	}
 
 	detecting := opts.Format == FormatAuto
@@ -128,7 +129,7 @@ func parse(r io.Reader, opts Options, emit func(Rule) error, modifierCandidatesO
 	for n := 1; ; n++ {
 		raw, tooLong, err := readLine(br)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("parser: read: %w", err)
+			return fmt.Errorf("parser: read: %w", err)
 		}
 		atEOF := err != nil
 		if atEOF && len(raw) == 0 && !tooLong {
@@ -144,11 +145,11 @@ func parse(r io.Reader, opts Options, emit func(Rule) error, modifierCandidatesO
 			}
 			if sampled >= detectSampleLines {
 				if err := flush(); err != nil {
-					return nil, err
+					return err
 				}
 			}
 		} else if err := p.process(n, raw, tooLong); err != nil {
-			return nil, err
+			return err
 		}
 		if atEOF {
 			break
@@ -156,12 +157,12 @@ func parse(r io.Reader, opts Options, emit func(Rule) error, modifierCandidatesO
 	}
 	if detecting {
 		if err := flush(); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	p.res.Format = p.format
-	p.res.CRC32 = p.crc
-	return p.res, nil
+	res.Format = p.format
+	res.CRC32 = p.crc
+	return nil
 }
 
 // Checksum returns the CRC-32 (IEEE) of the normalised rule lines of r:
@@ -266,7 +267,7 @@ func (p *state) process(n int, raw []byte, tooLong bool) error {
 }
 
 func (p *state) title(t []byte) {
-	if p.res.Title != "" {
+	if p.modifierCandidatesOnly || p.res.Title != "" {
 		return
 	}
 	s := strings.TrimLeft(string(t[1:]), " \t!#")
@@ -620,6 +621,9 @@ func (p *state) unsupported(u UnsupportedRule) error {
 			return err
 		}
 	}
+	if p.modifierCandidatesOnly {
+		return nil
+	}
 	p.res.Unsupported++
 	p.res.UnsupportedReasons[u.Reason]++
 	if len(p.res.UnsupportedRules) < p.opts.KeepUnsupported {
@@ -634,6 +638,9 @@ func (p *state) unsupported(u UnsupportedRule) error {
 }
 
 func (p *state) invalid(n int, text, reason, detail string) {
+	if p.modifierCandidatesOnly {
+		return
+	}
 	p.res.Invalid++
 	p.res.InvalidReasons[reason]++
 	if len(p.res.InvalidSamples) < p.opts.KeepInvalid {
