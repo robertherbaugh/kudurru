@@ -239,6 +239,9 @@ type Recursion struct {
 	DNSSEC bool `koanf:"dnssec" json:"dnssec"`
 	// AnchorMode selects static roots or retained RFC 5011 managed history.
 	AnchorMode RootAnchorMode `koanf:"anchorMode" json:"anchorMode"`
+	// ManagedTopology is an explicit host declaration, independent of cluster
+	// policy. Direct means every client reaches these listeners without an edge.
+	ManagedTopology string `koanf:"managedTopology" json:"managedTopology"`
 	// QNAMEMinimization sends each name server only the labels it needs
 	// (RFC 9156).
 	QNAMEMinimization bool `koanf:"qnameMinimization" json:"qnameMinimization"`
@@ -660,14 +663,16 @@ func load(path string, environ []string, owned SectionLoader, final map[string]a
 		return nil, err
 	}
 	fileHash := fmt.Sprintf("%x", sha256.Sum256(fileBytes))
+	managedTopology := k.Get("upstreams.recursion.managedTopology")
 	for section, value := range sections {
 		k.Delete(section)
 		if err := k.Load(confmap.Provider(map[string]any{section: value}, "."), nil); err != nil {
 			return nil, err
 		}
 	}
-	// The source path remains host-owned even when the public section is UI-owned.
-	if err := k.Load(confmap.Provider(map[string]any{"upstreams.importFile": importPath}, "."), nil); err != nil {
+	// Host source and topology declarations survive replacement of the public
+	// section. The later environment layer still has its original precedence.
+	if err := k.Load(confmap.Provider(map[string]any{"upstreams.importFile": importPath, "upstreams.recursion.managedTopology": managedTopology}, "."), nil); err != nil {
 		return nil, err
 	}
 	// Supervisor collections replace whole lower values, including maps. Delete
@@ -753,6 +758,9 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("upstreams.groups.default is required"))
 	}
 	errs = append(errs, c.Upstreams.validate()...)
+	if err := c.ValidateManagedRootTopology(); err != nil {
+		errs = append(errs, err)
+	}
 	errs = append(errs, c.Cache.validate()...)
 	if _, err := c.DNSSEC.Validator(nil); err != nil {
 		errs = append(errs, err)

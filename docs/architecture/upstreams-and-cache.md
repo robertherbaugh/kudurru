@@ -296,9 +296,25 @@ sequenceDiagram
 
 ### Automatic root-anchor lifecycle status
 
-Recursive serving currently uses its configured static trust anchors. The pure
-`internal/trustanchors` package implements the RFC 5011 state/evidence prerequisite;
-it is not yet mounted by the resolver or an automatic updater.
+Static trust anchors remain the default. Standalone SQLite nodes can explicitly
+select `upstreams.recursion.managedTopology: direct` in host configuration, then
+`anchorMode: managed` with DNSSEC enabled and explicit DS seeds. Direct declares
+that every client reaches the node's listeners without dnsdist or another caching
+proxy; configured PROXYv2 peers are rejected. This declaration cannot discover
+undeclared proxies. It is host-only, requires restart, and is separate from the
+cluster's root policy. The default `disabled` topology never activates managed
+serving. Enrolled primary/follower and edge-backed activation remain unavailable.
+
+The root runtime adopts direct topology under bounded startup preparation and
+retains that exact admission through its lifetime. It mounts one elected updater
+and the complete managed builder only for that admitted owner. Initial provider
+readiness waits before the first anchor capture; it cannot retry a refused anchor
+operation. The first bounded anchor attempt finishes before other elected
+provider/primary services start, so their startup writes cannot invalidate that
+initial capture. Every outcome releases those services; terminal refusal keeps
+only the anchor child parked. Successful preparation cancellation does not expire a published input.
+The pure `internal/trustanchors` state remains distinct from durable acceptance
+and root publication authority.
 
 Its immutable state retains explicit DS seeds, every actual authenticating
 supporter, original hold-down times and permanent bounded revocation tombstones.
@@ -327,8 +343,9 @@ either. Complete images require both `managed-root-anchors-v1` and
 `managed-root-runtime-v1`. Followers capture their original receiver state before
 source acquisition, then install the primary's history without initializing a
 new one. Old images and binaries refuse across the schema/feature boundary;
-received images are never converted. The elected updater and immutable
-complete-image resolver publication remain unmounted.
+received images are never converted. Direct standalone activation mounts the
+elected updater and immutable complete-image resolver publication; follower and
+edge-backed activation remain separately gated.
 
 The SQLite poll bridge captures the normal update, local denial and paired
 post-denial update from one committed owner/authority cut before acquisition.
@@ -345,8 +362,8 @@ original 30-second lifetime. It samples the receipt synchronously at the first
 complete frame, before parsing or correlation; that response is terminal even
 when malformed, truncated or refused. The updater scheduler selects TCP upfront,
 without resolver lookup, cached responses or a second receipt after truncation.
-These helpers have local socket/signature and SQLite race coverage; they are
-prerequisites, not an elected updater or managed-serving activation.
+These helpers retain the original socket/signature and SQLite boundaries when
+used by the admitted direct standalone writer.
 
 The private updater scheduler retains one original elected target, borrowed host
 and session clock. Each due acquisition has a fresh lifetime bounded to 30 seconds
@@ -358,9 +375,10 @@ settings identity. A complete malformed response, authentication refusal, change
 admission or SQL/completion error stops that scheduler permanently; actual denial
 and update dispositions remain separate from errors. Generation broadcasts and
 bounded checks wake scheduling without consuming the publisher's local-denial
-notice. Cancellation joins the original socket/wait before return. The scheduler
-is not mounted by the writer episode; installed edge activation admission and
-the remaining managed acceptance gates still precede that mount.
+notice. Cancellation joins the original socket/wait before return. The writer
+episode mounts it only with the root runtime's private topology admission.
+Installed edge activation admission and full retirement/interoperability
+acceptance remain separate requirements.
 
 Its writer adapter retains a terminal failure in the runtime for the original
 elected term and incarnation, across both host replacement and cluster-runner
@@ -369,7 +387,7 @@ services continue; the caller joins it before releasing the borrowed host. A
 complete receipt remains terminal even when cancellation races final admission.
 Cancellation of an incomplete socket acquisition can join without inventing a
 received observation. Only a new elected term or incarnation clears the terminal
-record. This adapter is still unmounted pending activation admission.
+record. Direct standalone writer episodes mount this adapter after admission.
 
 A separate private follower adapter captures actual installed managed history,
 canonical policy and the local denial attempt before its own numeric TCP
@@ -393,10 +411,10 @@ settings identity. Authentication, complete-input, admission, completion or
 promotion refusal stops the loop; confirmed local denial also stops it.
 Generation/authority broadcasts and bounded waits preserve the publisher's
 separate denial notice. Caller and runtime cancellation join the original socket
-and wait. The follower poller and elected updater remain unmounted; these
-prerequisites do not enable production managed serving.
+and wait. The follower poller remains unmounted; direct topology refuses enrolled
+roles until that lifecycle and its activation admission are implemented.
 
-The unmounted `resolverstate` projection derives canonical SHA-256 DS records
+The `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit
 states with no fallback keys. Detached domain and owner identities bind history,
 policy, seed and both envelope and pure-state versions, including checkpoint-only
@@ -596,8 +614,10 @@ The EDE text names the zone or record that failed. RRSIG, NSEC and NSEC3
 records are returned only to clients that sent DO (or asked for that type). The state (secure,
 insecure, bogus; unknown when validation is off and for forwarded answers)
 is stored with the cached answer and fills the query log's `dnssec`
-column, cache hits included. New root keys arrive with kudurru releases or
-through `trustAnchors`; there is no automatic RFC 5011 rollover.
+column, cache hits included. Static root keys arrive with kudurru releases or
+through `trustAnchors`. Automatic rollover requires the explicit managed
+recursive topology and policy described above; it does not change forwarded
+validation's root lifecycle.
 
 A SERVFAIL from **any** upstream that carries EDE 6-12, a validating
 forwarder such as 1.1.1.1 included, is logged as `dnssec_bogus` instead of

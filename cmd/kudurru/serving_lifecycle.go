@@ -269,6 +269,18 @@ func (s *servingRuntime) writerEpisode(ctx context.Context, target serving.TermA
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
+	if s.anchors != nil && s.anchors.admission != nil {
+		ready := make(chan struct{})
+		g.Go(func() error { return s.runAnchorWriterReady(ctx, target, host, func() { close(ready) }) })
+		// The first anchor capture must precede unrelated elected startup
+		// writes. No locks are held across acquisition. Every outcome releases
+		// this bounded phase; a terminal anchor child then parks independently.
+		select {
+		case <-ctx.Done():
+			return g.Wait()
+		case <-ready:
+		}
+	}
 	g.Go(func() error { return s.providers.RunWriter(ctx, target) })
 	g.Go(func() error { return s.primary.Run(ctx) })
 	g.Go(func() error {

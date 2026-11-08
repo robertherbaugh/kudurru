@@ -128,6 +128,9 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
+	if err := s.admitDirectAnchors(ctx); err != nil {
+		return nil, err
+	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		return nil, err
@@ -159,7 +162,11 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
-	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, Now: o.Now, Upstreams: o.Upstreams, PrepareLogging: func(ctx context.Context, cfg config.Querylog) (*querylog.Captured, error) {
+	var anchorStore *sqlite.Store
+	if s.anchors.admission.current() {
+		anchorStore = o.Store
+	}
+	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, AnchorStore: anchorStore, Now: o.Now, Upstreams: o.Upstreams, PrepareLogging: func(ctx context.Context, cfg config.Querylog) (*querylog.Captured, error) {
 		if o.Logging == nil {
 			return &querylog.Captured{}, nil
 		}

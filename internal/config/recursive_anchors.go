@@ -30,6 +30,25 @@ type RootAnchorPolicy struct {
 	Seeds      []string
 }
 
+// ValidateManagedRootTopology checks the host deployment declaration. It cannot
+// discover undeclared proxies and supplies no accepted trust or writer authority.
+func (c *Config) ValidateManagedRootTopology() error {
+	if c == nil {
+		return errors.New("upstreams.recursion.managedTopology: missing configuration")
+	}
+	switch c.Upstreams.Recursion.ManagedTopology {
+	case "", "disabled":
+		return nil
+	case "direct":
+		if c.Store.Driver != "sqlite" || len(c.Listeners.ProxyProtocolFrom) != 0 || c.Listeners.ProxyProtocolSecretFile != "" {
+			return errors.New("upstreams.recursion.managedTopology: direct requires SQLite listeners without PROXYv2 ingress")
+		}
+		return nil
+	default:
+		return errors.New("upstreams.recursion.managedTopology: expected disabled or direct")
+	}
+}
+
 // RootAnchorPolicy requires explicit, bounded supported DS seeds for managed
 // mode. Shipped roots are never substituted here, including on empty input.
 func (r Recursion) RootAnchorPolicy() (RootAnchorPolicy, error) {

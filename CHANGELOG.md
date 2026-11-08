@@ -28,7 +28,7 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
-- The pending managed-root writer adapter preserves terminal poll failures
+- The managed-root writer adapter preserves terminal poll failures
   across host and cluster-runner restarts, including cancellation after a
   complete receipt. Managed activation remains gated separately.
 
@@ -48,6 +48,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   enrolled HA remains pending.
 
 ### Added
+
+- Explicit direct-topology RFC 5011 activation for standalone SQLite nodes,
+  with an elected updater, accepted managed-root publication and retained
+  restart history. The host declaration rejects PROXYv2 ingress; edge-backed
+  and enrolled HA activation remain unavailable.
 
 - Managed edges can expose a separate authenticated TLS observation listener
   with request-bound deployment, child and membership identities. Missing or

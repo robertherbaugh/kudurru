@@ -27,6 +27,7 @@ type rootAnchorOwner struct {
 	source      *sqlite.AnchorSource
 	host        *config.Config
 	incarnation [32]byte
+	admission   *rootAnchorAdmission
 }
 
 // The coalesced signal wakes rebuilding; it never grants output admission.
@@ -74,6 +75,7 @@ type recursiveRootSeal struct {
 	dependencyCurrent func() bool
 	managed           *sqlite.AnchorResolverInput
 	static            *sqlite.AnchorStaticInput
+	admission         *rootAnchorAdmission
 }
 
 func (s *recursiveRootSeal) current() bool {
@@ -81,7 +83,7 @@ func (s *recursiveRootSeal) current() bool {
 		return false
 	}
 	if s.managed != nil {
-		return s.static == nil && s.managed.Current()
+		return s.static == nil && s.admission.current() && s.managed.Current()
 	}
 	return s.static != nil && s.static.Current()
 }
@@ -152,9 +154,10 @@ func (o *rootAnchorOwner) prepare(ctx context.Context, candidate serving.Candida
 			return prepared, err
 		}
 	case config.RootAnchorsManaged:
-		if prepared.Anchor == nil {
+		if prepared.Anchor == nil || !o.admission.current() {
 			return prepared, errAnchorPolicy
 		}
+		seal.admission = o.admission
 		projection := prepared.Anchor.Projection()
 		identity := projection.Identity()
 		if projection.Disposition() != resolverstate.Usable || len(projection.DS()) == 0 ||

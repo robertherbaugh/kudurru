@@ -58,12 +58,21 @@ func (r *anchorWriterRun) release() {
 	}
 }
 
-// runAnchorWriter is the still-unmounted elected adapter. The eventual caller
-// must first complete managed activation and retain its borrowed host until this
-// returns. Terminal failure parks only this child, preserving other writer work
+// runAnchorWriter is mounted only after root topology admission. Its caller
+// retains the borrowed host until this returns. Terminal failure parks only
+// this child, preserving other writer work
 // and preventing either outer retry loop from replaying the same elected source.
 // A real new elected term/incarnation may acquire again after the old child joins.
 func (s *servingRuntime) runAnchorWriter(ctx context.Context, target serving.TermActivation, host providercoordinator.HostCapture) error {
+	return s.runAnchorWriterReady(ctx, target, host, func() {})
+}
+
+// ready ends only the bounded first-attempt startup phase. It is not a success
+// acknowledgment: both terminal refusal and transport cooldown release other
+// writer services, while the original anchor result remains retained.
+func (s *servingRuntime) runAnchorWriterReady(ctx context.Context, target serving.TermActivation, host providercoordinator.HostCapture, ready func()) error {
+	signal := sync.OnceFunc(ready)
+	defer signal()
 	if s == nil || ctx == nil {
 		return errAnchorPolicy
 	}
@@ -73,7 +82,12 @@ func (s *servingRuntime) runAnchorWriter(ctx context.Context, target serving.Ter
 	}
 	defer run.release()
 	if run.acquire {
-		err = s.runAnchorUpdater(ctx, target, host)
+		if s.anchors != nil && s.anchors.admission != nil {
+			err = s.prepareAnchorWriter(ctx, target, host)
+		}
+		if err == nil {
+			err = s.runAnchorUpdaterReady(ctx, target, host, signal)
+		}
 		var terminal *anchorTerminalFailure
 		if !errors.As(err, &terminal) && ctx.Err() != nil && (err == nil || errors.Is(err, ctx.Err())) {
 			return ctx.Err() // owner cancellation joins; no original input is retained
@@ -84,6 +98,7 @@ func (s *servingRuntime) runAnchorWriter(ctx context.Context, target serving.Ter
 		run.stopped(err)
 		slog.Error("root anchor updater stopped for this writer term", "err", err)
 	}
+	signal()
 	// Returning the terminal error would make cluster Runner restart the whole
 	// writer. Keep the original child joined to its caller instead, while the
 	// runtime-owned terminal record survives host/caller replacement.

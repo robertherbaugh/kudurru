@@ -1922,3 +1922,46 @@ failures. Vet exits 0. First scoped lint failed one unused test parameter;
 renaming only that parameter to underscore yields configured lint exit 0 with
 zero issues (23.6383 s). Production source matches the successful race/vet cut.
 Prior failures and all performance/external gates remain retained.
+
+
+### F28 direct standalone runtime activation (D317)
+
+Explicit host-only `upstreams.recursion.managedTopology: direct` now mounts the
+actual elected updater and managed complete builder on standalone SQLite. It
+requires no PROXYv2 ingress and an exhaustive operator declaration that clients
+reach the node without a caching proxy. The private admission belongs to one
+root owner/runtime, survives successful preparation cancellation and is retained
+by managed publication. Disabled topology, unsupported stores and enrolled roles
+cannot activate; remote edge and enrolled HA acceptance remain open.
+
+The first bounded anchor step completes before unrelated elected startup writers
+start. All outcomes release those services; terminal anchor work remains parked
+with its term/incarnation record. No original source/capture/receipt checks were
+relaxed. UI-owned upstream replacement now preserves the original host topology
+alongside the import path, with original environment precedence.
+
+Evidence `.context/anchor-direct-activation-20261108/` preserves all commands and
+source01..09. Focused ordinary9 passes. First mounted ordinary fails a new DoQ
+fixture nonzero ID; exact ID-zero correction passes actual three-phase runServe:
+signed-wire bootstrap, all six transports, retained restart without rebootstrap,
+and disabled admission returning empty unsigned SERVFAIL/auth503. First composed
+race (96 pass/1 fail) exposes genuine primary-startup generation interposition;
+startup sequencing fixes it. A focused race then passes8. The next composed race
+passes96 but fails one new shutdown expectation: primary's existing writer check
+may return ErrUnavailable when cancellation races a generation wake. Only that
+new fixture is narrowed to accept the exact joined cancellation outcome with
+same original live token/term/incarnation; early worker exit still fails. Final
+direct race passes5/no skips, including deterministic held-reply startup ordering,
+terminal caller replacement, explicit follower refusal and all6 runServe paths.
+The preceding composed commands remain failures, not relabeled full-suite green.
+
+Full servingbuild race passes218/no skips. The same command's config suite
+fails2 (lost host topology under UI section ownership, missing enum help); fixes
+and new source-precedence cases yield full config race350/no skips. Affected vet
+exits0/22.2384s; reference generation and all4 drift tests pass. Full configured
+lint initially fails one context-parameter order in a new helper; signature/call
+reordering only yields lint0/24.2393s/zero issues. Production runtime bytes match
+the qualified race cut; final config loader behavior is source08, final test-only
+signature source09. Complete signed native-recursive/root-retirement integration,
+edge activation, enrolled follower lifecycle and RFC interoperability are still
+required. All HA/AD, fixed-class/performance and external/final gates stay open.

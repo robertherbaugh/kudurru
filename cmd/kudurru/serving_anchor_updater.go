@@ -139,11 +139,14 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	return step, nil
 }
 
-// runAnchorUpdater is deliberately not mounted by writerEpisode yet. Its
-// eventual caller must first compose original installed edge activation
-// admission and join this worker before releasing the borrowed episode host.
+// runAnchorUpdater is mounted through the root-admitted writer adapter, which
+// joins this worker before releasing the borrowed episode host.
 // It never enables a builder or initializes/replaces accepted history itself.
 func (s *servingRuntime) runAnchorUpdater(ctx context.Context, target serving.TermActivation, host providercoordinator.HostCapture) error {
+	return s.runAnchorUpdaterReady(ctx, target, host, func() {})
+}
+
+func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target serving.TermActivation, host providercoordinator.HostCapture, ready func()) error {
 	if s == nil || s.anchors == nil || s.anchors.source == nil || ctx == nil {
 		return errAnchorPolicy
 	}
@@ -159,6 +162,7 @@ func (s *servingRuntime) runAnchorUpdater(ctx context.Context, target serving.Te
 		// canonical changes, while bounded rechecks cover other refusals.
 		changed := s.opts.Store.GenerationChanges()
 		step, err := u.step(ctx)
+		ready() // release startup sequencing only after the original step joins
 		if err != nil {
 			return err // no replay after authentication/admission/completion refusal
 		}

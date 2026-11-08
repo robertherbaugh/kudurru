@@ -221,8 +221,11 @@ completion cannot retain it. Unknown acknowledgment retires only the captured
 child. `/status` distinguishes configured and installed bypass and exposes the
 retained deployment identity separately. The durable file alone never proves
 that a child is running or that either cache was detached. These local
-observations are not backend activation grants: managed backend activation is
-still disabled pending the coordinator's original, exact edge admission.
+observations are not backend activation grants: edge-backed managed activation
+is still disabled pending the coordinator's original, exact edge admission.
+The separate `upstreams.recursion.managedTopology: direct` host declaration
+permits only standalone SQLite listeners with no caching proxy or configured
+PROXYv2 ingress; it must never be used for a backend behind these edges.
 An existing eligibility lease or eventual flush cannot replace that gate.
 
 `edge.managedObservationAddress` (`--managed-observation-address`, empty by
