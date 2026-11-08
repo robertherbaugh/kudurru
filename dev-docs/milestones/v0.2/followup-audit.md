@@ -104,7 +104,7 @@ security/aging replication and rollback retaining new writes remain required.
 | F22b | DoH `Alt-Svc` | Missing | `internal/dnsserver/doh.go`, `doh3.go` do not emit the header. | Advertise only configured reachable HTTP/3 endpoints; test HTTPS/proxy/path behavior; G07, G23. |
 | F22c | RFC 8467 response padding | Missing | Padding tolerance in `internal/dnsserver/transports_test.go` is request parsing coverage; no response-padding policy in `internal/dnsserver/` / `internal/stages/`. | Correct transport/size policy with truncation/privacy/interoperability tests; G07, G23. |
 | F22d | DoH path client IDs | Implemented | `internal/dnsserver/doh.go`, `doh3.go`, `internal/config/schema.go` HTTP `clientIDs`; `internal/clientid/` and transport tests; `cd76bba`. | Retain policy-selector/non-authentication distinction and edge propagation acceptance; G10, G23. |
-| F23 | Separate public blocked-services/safe-search data repo (D120) | External | `internal/listdata/catalogue/` remains embedded; `cmd/kudurru/catalogue.go` supports replacement URL/provenance. | Owner creates/publishes separate permissively licensed data repo; pin provenance/update behavior. Existing override feature does not perform that publication; G07, G24. |
+| F23 | Separate public blocked-services/safe-search data repo (D120) | Complete | Owner-authorized public [kudurru-data](https://github.com/robertherbaugh/kudurru-data) at `13d8d42b504246867dea420a8ad0e04ff5043776`; Apache-2.0, 150 services, seven safe-search engines. | Published Git tree and pinned HTTPS bytes match the validated bundle; 104 manifest entries and consumer race tests pass. D333 and docs/deploy/blocked-services.md pin provenance/update behavior; G07/G24 retain their other requirements. |
 | F24a | Rate-limit slip metric | Missing | `cmd/kudurru/serve.go: limiter.SetHook` counts only VerdictDrop; `internal/stages/ingress/ratelimit.go` and `ratelimit_test.go` already implement slip. | Counter once per slip, bounded labels, distinguish allow/drop, focused UDP acceptance; G07, G13. |
 | F24b | Per-ClientGroup rate-limit exemptions | Missing | `api/v1alpha1/clientgroup_types.go` lacks exemption; ingress uses global prefix exemptions (`internal/stages/ingress/ingress.go`). | Define precedence with early ingress policy identification; preserve abuse bounds and captured groups; G07, G10. |
 | F25a | Multi-socket DoT | Missing | `internal/dnsserver/dns.go: socketCount` explicitly returns one for DoT; `socket_test.go` covers listener socket behavior. | TLS listener reuse-port behavior, resource bounds and measured gain; G07, G23. |
@@ -294,7 +294,7 @@ in the original review without a v0.2 follow-up row are still required.
 | G21 / production contracts | Applies to every row; model/helper/test existence does not mount a feature. API/CLI/UI/schema/permissions/docs must agree. |
 | G22 / upgrade/failure | All supported-driver migrations, durable restarts, fences and multi-process partition/rejoin remain final-artifact gates. |
 | G23 / interoperability/performance | F05, F11, F15–F31, F39, F43, F55, F61, F63, F68; tests with optional external-program skips require unskipped results. |
-| G24 / deployment/release | F15, F23, F41–F43, F56, F63–F68, F74; applicable release-checklist, license/artifact and two-VM evidence remain open. |
+| G24 / deployment/release | F15, F41–F43, F56, F63–F68, F74; applicable release-checklist, license/artifact and two-VM evidence remain open. |
 
 ## F64a authority-fencing metric closure
 

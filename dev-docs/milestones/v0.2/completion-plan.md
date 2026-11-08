@@ -44,8 +44,8 @@ mutation replay.
    and deployment/release gates on the final artifacts. Publishing a release,
    changing release branches or deploying to production is not part of this work.
 
-External decision F23 needs an explicit documented disposition;
-where implementation can satisfy the original requirement, do that work.
+F23 is published with explicit owner authorization; its immutable catalog URL
+and provenance are documented. Continue the remaining implementation and gates.
 Fixed-class performance and Windows/two-VM acceptance require their named
 runners. Unit tests cannot substitute for those results.
 
@@ -100,7 +100,7 @@ runners. Unit tests cannot substitute for those results.
 | F22b | DoH `Alt-Svc` | DNS and resolver | Implemented; actual HTTPS/HTTP3 and full transport races pass |
 | F22c | RFC 8467 response padding | DNS and resolver | Implemented; actual encrypted/plaintext/TSIG and full transport races pass |
 | F22d | DoH path client IDs | DNS and resolver | Implemented; final gates open |
-| F23 | Separate public blocked-services/safe-search data repo (D120) | DNS and resolver | External acceptance/decision open |
+| F23 | Separate public blocked-services/safe-search data repo (D120) | DNS and resolver | Complete D333: owner-authorized public robertherbaugh/kudurru-data at 13d8d42b; all published blobs and HTTPS catalog verified, pinned update/provenance contract documented; consumer races pass |
 | F24a | Rate-limit slip metric | DNS and resolver | Integrated; final gates open |
 | F24b | Per-ClientGroup rate-limit exemptions | DNS and resolver | Integrated 3234ad4; actual mounted UDP/TCP/publication, real Kubernetes admission and 13 UI cases pass; generated CRDs included |
 | F25a | Multi-socket DoT | DNS and resolver | Integrated eeb68c2; real TLS/rotation/limits/shutdown and local socket benchmarks pass |

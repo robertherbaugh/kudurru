@@ -5779,3 +5779,24 @@ no sample, baseline, ignore, original ceiling or corpus was replaced. Final
 current-source performance and remaining implementation/external gates stay open.
 Full artifacts, independent review and all vectors:
 .context/hosted-release-20261108/paired-artifact/ and paired-reviewed-*.
+
+
+### F23 published Apache-2.0 catalog, November 8
+
+The owner explicitly authorized publication of robertherbaugh/kudurru-data.
+The public repository now contains exact prepared commit `13d8d42b504246867dea420a8ad0e04ff5043776`:
+150 services, 15 categories and seven safe-search engines. All 105 Git blobs
+match the local approved tree; the standalone verifier checks 104 manifest
+entries. The anonymous HTTPS catalog matches SHA-256
+110d1368d6f2d6c38d23c0555f54b9ea195d3f74c95abb79edfa9caefe0a300f.
+Existing consumer race qualification remains valid because data bytes are
+unchanged. The deployment contract documents the exact commit URL, explicit
+operator updates, provenance and last-good/offline behavior; D333 completes
+D120's owner decision. No application release was published.
+
+The cloud integration's repository-creation permission refusal is retained;
+creation succeeded through the owner's local authenticated GitHub CLI, followed
+by the original bundle push and independent remote verification. Evidence:
+.context/catalogue-publication-20261108/published-receipt.json and
+.context/hosted-release-20261108/catalogue-race.json. F23 is complete;
+other implementation, hosted performance and external acceptance gates remain.

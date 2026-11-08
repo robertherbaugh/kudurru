@@ -308,26 +308,41 @@ Rules this build checks (`catalogue.Parse`):
 - Limits: 4 MiB per document, 1000 services, 100 categories, 100 engines,
   10,000 safe-search domains.
 
-### URL contract for the data repository
+### Published data and pinned updates
 
-D60 puts the catalogue in a separate public data repository owned by the
-project. kudurru expects, at a stable URL such as
-`https://raw.githubusercontent.com/<owner>/<repo>/main/v2/catalogue.json`:
+The public [kudurru-data repository](https://github.com/robertherbaugh/kudurru-data)
+contains the Apache-2.0 catalog, per-entry provenance, original icon attribution
+and a standalone manifest verifier. Its initial schema-2 revision contains 150
+services in 15 categories and seven safe-search engines.
 
-- one document per schema version, under a path that names the version
-  (`v1/catalogue.json`, `v2/catalogue.json`), so a release that reads
-  version 3 can move to `v3/` while older releases keep reading theirs;
-  this build reads both `v1/` and `v2/` documents;
-- `Content-Type: application/json`, an `ETag` or `Last-Modified` header for
-  conditional GETs, and HTTPS;
-- every entry with its `source`, a permissive licence (Apache-2.0 or CC0)
-  in `license`, and a provenance file in the repository. Nothing derived
-  from GPL tables (AdGuard's blocked-services and safe-search lists) or any
-  other copyleft source.
+To use that exact reviewed revision, configure:
 
-Until that repository exists, leave `blocking.catalogue.url` empty: the
-embedded catalogue is complete, and each release ships the catalogue
-current at its build.
+```yaml
+blocking:
+  catalogue:
+    url: https://raw.githubusercontent.com/robertherbaugh/kudurru-data/13d8d42b504246867dea420a8ad0e04ff5043776/catalogue.json
+```
+
+The document's SHA-256 is
+`110d1368d6f2d6c38d23c0555f54b9ea195d3f74c95abb79edfa9caefe0a300f`.
+The full commit URL pins the document and its schema. Leave the URL empty to
+keep the embedded offline catalog. Selecting a new commit is an explicit
+operator update; using a moving branch intentionally accepts future changes.
+Neither fetching the catalog nor publishing new data enables a policy by itself.
+
+Consumers validate the document's schema and contents, rather than the URL path
+or HTTP media type. GitHub raw responses use `text/plain` and an `ETag` over
+HTTPS. A full commit URL prevents a future schema from replacing the selected
+document; versioned paths are also suitable when maintaining moving feeds for
+multiple schema versions. This build accepts schema 1 and 2. An incompatible,
+malformed, oversized or unavailable update retains the last good catalog under
+the runtime contract above.
+
+Every entry retains its source and permissive license. Data updates must preserve
+provenance and exclude material derived from GPL/EUPL tables. Run `python3
+verify.py` in the data repository and the consumer catalog compilation and DNS
+tests before publishing a new revision. The data repository's README documents
+the update procedure.
 
 ## AdGuard's services (opt-in, GPL-3.0)
 
