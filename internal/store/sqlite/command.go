@@ -101,6 +101,9 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	if t.failed != nil {
 		return t.failed
 	}
+	if err := t.prepareEnrollment(ctx); err != nil {
+		return err
+	}
 	if err := t.prepareAnchor(ctx); err != nil {
 		return err
 	}
@@ -185,22 +188,23 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 // ordinary Apply/status/ownership/finalizer/audit semantics. Section rows share
 // this transaction, including a command's sealed dedup outcome.
 type CommandTx struct {
-	s               *Store
-	tx              *sql.Tx
-	q               cachedTx
-	authority       replication.Authority
-	active          atomic.Bool
-	failed          error
-	changed         bool
-	localChanged    bool // node-local metadata, outside the canonical image
-	mutations       []*mutation
-	rvs             []uint64
-	checks          []func(context.Context) error
-	sectionFences   []*sectionPrefixFence // bounded by successful final-check registrations
-	anchor          *anchorOperation      // only a private original pre-held retirement scope
-	anchorInit      *anchorCursor         // narrow sentinel -> Dormant proposal, never durable authority
-	anchorTouched   bool                  // monotonic actual-change marker, including ABA
-	anchorLocalInit *anchorLocal          // typed migration-proven unchanged-Dormant local initialization
+	s                *Store
+	tx               *sql.Tx
+	q                cachedTx
+	authority        replication.Authority
+	active           atomic.Bool
+	failed           error
+	changed          bool
+	localChanged     bool // node-local metadata, outside the canonical image
+	mutations        []*mutation
+	rvs              []uint64
+	checks           []func(context.Context) error
+	sectionFences    []*sectionPrefixFence // bounded by successful final-check registrations
+	anchor           *anchorOperation      // only a private original pre-held retirement scope
+	anchorInit       *anchorCursor         // narrow sentinel -> Dormant proposal, never durable authority
+	anchorTouched    bool                  // monotonic actual-change marker, including ABA
+	anchorLocalInit  *anchorLocal          // typed migration-proven unchanged-Dormant local initialization
+	enrollmentBefore []replication.Entry   // actual owner before first membership mutation
 }
 
 func (t *CommandTx) valid(ctx context.Context) error {
@@ -427,6 +431,9 @@ func (t *CommandTx) PutSection(ctx context.Context, section string, entry replic
 	if err := t.rawAnchorWrite(ctx, section, e.Key, e.Data, false); err != nil {
 		return err
 	}
+	if err := t.captureEnrollment(ctx, section, e.Key); err != nil {
+		return err
+	}
 	if t.s.opts.ValidateReplicaEntry != nil {
 		if err := t.s.opts.ValidateReplicaEntry(section, replication.Entry{Key: e.Key, Data: append(json.RawMessage(nil), e.Data...)}); err != nil {
 			return t.poison(err)
@@ -457,6 +464,9 @@ func (t *CommandTx) DeleteSection(ctx context.Context, section, key string) erro
 		return t.poison(replication.ErrInvalid)
 	}
 	if err := t.rawAnchorWrite(ctx, section, key, nil, true); err != nil {
+		return err
+	}
+	if err := t.captureEnrollment(ctx, section, key); err != nil {
 		return err
 	}
 	result, err := t.tx.ExecContext(ctx, `DELETE FROM replication_sections WHERE section=? AND key=?`, section, key)

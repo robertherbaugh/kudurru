@@ -371,6 +371,9 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 // replaceReplicaRows is the single ownership transaction lane used by install
 // and explicit branch resolution. The caller validates and holds wmu.
 func (s *Store) replaceReplicaRows(ctx context.Context, tx *sql.Tx, image replication.Image) error {
+	if err := validateEnrollmentInstall(ctx, tx, image); err != nil {
+		return err
+	}
 	for _, q := range []string{`DELETE FROM objects`, `DELETE FROM changes`, `DELETE FROM replication_sections`} {
 		if _, err := tx.ExecContext(ctx, q); err != nil {
 			return err
@@ -453,6 +456,9 @@ func (s *Store) ApplyCluster(ctx context.Context, objects []store.Object, opts s
 		return nil, replication.ErrTooLarge
 	}
 	for _, change := range sections {
+		if enrollmentKey(change.Section, change.Key) {
+			return nil, replication.ErrInvalid
+		}
 		if anchorKey(change.Section, change.Key) {
 			return nil, ErrAnchorUnavailable
 		}

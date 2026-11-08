@@ -42,6 +42,7 @@ var migrations = []migration{
 	{version: 6, name: "authenticated audit attribution", up: migrateAuditAttribution},
 	{version: 7, name: "explicit managed root-anchor owner", up: migrateTrustAnchorOwner},
 	{version: 8, name: "private local root-anchor retirement", up: migrateAnchorLocal},
+	{version: 9, name: "explicit member enrollment owner", up: migrateEnrollmentOwner},
 }
 
 // schemaV1 is migration 1. Objects keep the whole JSON document in data;

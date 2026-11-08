@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robertherbaugh/kudurru/internal/store"
+	enrollmentowner "github.com/robertherbaugh/kudurru/internal/cluster/enrollment/accepted"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
@@ -48,6 +48,30 @@ func anchorRuntimePreservedRows(t *testing.T, db *sql.DB) map[string][]string {
 	if removed != 1 {
 		t.Fatal("upgrade did not add exactly one private carrier")
 	}
+	var schema string
+	if err := db.QueryRowContext(t.Context(), `SELECT value FROM meta WHERE key=?`, metaSchemaVersion).Scan(&schema); err != nil {
+		t.Fatal(err)
+	}
+	if schema == "9" {
+		added := 0
+		rows["sections"] = slices.DeleteFunc(rows["sections"], func(raw string) bool {
+			var row []string
+			if err := json.Unmarshal([]byte(raw), &row); err != nil || len(row) != 3 {
+				t.Fatal("invalid section fixture", err)
+			}
+			if row[0] == enrollmentowner.Section && row[1] == enrollmentowner.RootKey {
+				if row[2] != enrollmentowner.AwaitingOwnerJSON {
+					t.Fatal("schema9 migration granted or changed enrollment")
+				}
+				added++
+				return true
+			}
+			return false
+		})
+		if added != 1 {
+			t.Fatal("schema9 did not add exactly its non-granting membership marker")
+		}
+	}
 	return rows
 }
 
@@ -73,7 +97,7 @@ func TestAnchorRuntimeSchema7UpgradePreservesOriginalRows(t *testing.T) {
 				}
 			}
 			before := anchorDBRows(t, db, false)
-			if err := migrate(t.Context(), db, migrations, store.SchemaVersion, time.Now); err != nil {
+			if err := migrate(t.Context(), db, migrations, 8, time.Now); err != nil {
 				t.Fatal(err)
 			}
 			requireAnchorSchema(t, db, "8")

@@ -18,8 +18,14 @@ type Admission struct {
 	state                  *State
 	expires                time.Time
 	member, originalIssuer memberidentity.Trust
-	last                   atomic.Int64
-	closed                 atomic.Bool
+	life                   *admissionLife
+}
+
+// Copies of the opaque handle share terminal state and the original high-water
+// clock. Copying a public struct cannot manufacture another admission lifetime.
+type admissionLife struct {
+	last   atomic.Int64
+	closed atomic.Bool
 }
 
 // Admit samples the actual clock under an original finite request, verifies
@@ -48,7 +54,7 @@ func (s *State) Admit(ctx context.Context, proposal Proposal, issuer Issuer) (*A
 	if err != nil {
 		return nil, err
 	}
-	a := &Admission{ctx: ctx, issuer: issuer, before: beforeDigest, after: afterDigest, state: after, member: proposal.member.Trust}
+	a := &Admission{ctx: ctx, issuer: issuer, before: beforeDigest, after: afterDigest, state: after, member: proposal.member.Trust, life: &admissionLife{}}
 	for _, r := range s.doc.Invitations {
 		if r.ID == proposal.invitation.record.ID {
 			a.expires = r.ExpiresAt
@@ -61,7 +67,7 @@ func (s *State) Admit(ctx context.Context, proposal Proposal, issuer Issuer) (*A
 			break
 		}
 	}
-	a.last.Store(now.UnixNano())
+	a.life.last.Store(now.UnixNano())
 	if err := a.Check(beforeDigest, afterDigest, issuer); err != nil {
 		return nil, err
 	}
@@ -82,10 +88,10 @@ func (a *Admission) State() *State {
 // The caller must compare the actual transaction's before/after digests and
 // actual original issuer, retaining dependency exclusion through store commit.
 func (a *Admission) Check(before, after string, issuer Issuer) error {
-	if a == nil || a.closed.Load() {
+	if a == nil || a.life == nil || a.life.closed.Load() {
 		return ErrRefused
 	}
-	fail := func(err error) error { a.closed.Store(true); return err }
+	fail := func(err error) error { a.life.closed.Store(true); return err }
 	if a.ctx == nil || a.state == nil || len(a.before) != 64 || len(a.after) != 64 || !validIssuer(a.issuer) || a.expires.IsZero() {
 		return fail(ErrRefused)
 	}
@@ -105,18 +111,18 @@ func (a *Admission) Check(before, after string, issuer Issuer) error {
 		return fail(ErrRefused)
 	}
 	for {
-		previous := a.last.Load()
+		previous := a.life.last.Load()
 		if nanos < previous {
 			return fail(ErrRefused)
 		}
-		if a.last.CompareAndSwap(previous, nanos) {
+		if a.life.last.CompareAndSwap(previous, nanos) {
 			break
 		}
 	}
 	if err := a.ctx.Err(); err != nil {
 		return fail(err)
 	}
-	if a.closed.Load() {
+	if a.life.closed.Load() {
 		return ErrRefused
 	}
 	return nil

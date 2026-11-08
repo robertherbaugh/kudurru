@@ -1933,6 +1933,8 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 
 | D325 | Bounded immutable member enrollment | Retain explicit complete member history and hash-only one-time invitations bound to original cluster, issuer, target and absolute lifetime. Verify purpose-separated key possession once, retain exact before/after admission through a finite original context, and permanently refuse revoked UUIDs/signing keys even under new certificates. | Join tokens need atomic consumption, durable history and original identity without distributing private keys or renewing old invitations. | Generic secret serialization; history pruning on capacity; missing owner as empty; structural decoding as possession; reissued revoked keys; prepared admission as a commit receipt; claiming persistence or root mounting from pure primitives |
 
+| D326 | Complete SQLite enrollment owner | Schema9 adds an exact non-granting sentinel; original startup converts only that marker to Dormant. A one-use original writer/operator capture, exact owner CAS, atomic complete-row staging, postimage fence and final possession/lifetime check protect transitions. Complete images require member-enrollment-v1; commands, installs and conflict replacement preserve irreversible history. | Missing membership must never reset enrollment, and a valid signature cannot justify partial consumption or a later expired commit. | Adoption of preexisting migration rows; schema-marker emulation; raw bulk owner writes; erased revocations on higher image revision; prepared state as success; claiming operator routes, peer exclusion or root HA mounting from storage primitives |
+
 ---
 
 ## 17. Glossary

@@ -106,7 +106,11 @@ func TestRetainsHistoryRejectsValidButRewrittenOwners(t *testing.T) {
 			candidate.doc.Revision++
 			switch field {
 			case "member":
-				candidate.doc.Members[0].Address = "127.0.0.9:8082"
+				for j := range candidate.doc.Members {
+					if candidate.doc.Members[j].ID == issuer.MemberID {
+						candidate.doc.Members[j].Address = "127.0.0.9:8082"
+					}
+				}
 			case "revocation":
 				for j := range candidate.doc.Members {
 					candidate.doc.Members[j].Revoked = false

@@ -5263,3 +5263,44 @@ primitives do not supply durable owner migration, join-token routes, operator
 policy, follower install exclusion or root HA mounting. All earlier performance
 failures and external acceptance requirements remain open.
 Evidence: `.context/enrollment-owner-20261108/`.
+
+### F60b/G11 complete enrollment storage, November 8
+
+D326 introduces supported schema9 and required member-enrollment-v1 image
+negotiation. Migration inserts only an exact non-granting marker; original startup
+converts that marker to Dormant. Missing, malformed, orphaned or oversized
+current-schema membership never repairs. Schema8 anchor retirement provenance
+and bytes remain unchanged, with the loader explicitly supporting schema9.
+The original schema8-only migration regression still targets actual schema8;
+current-store fixtures assert the actual supported marker without emulation.
+
+One-use original writer/operator captures retain exact owner CAS and finite
+lifetime. The SQLite adapter atomically stores invitation consumption and member
+addition, registers the postimage fence, and retains original possession/expiry
+through commit. Generic command owner mutations and actual install/conflict
+replacement preserve history; legacy bulk writes refuse the enrollment prefix.
+Secret invitation responses remain staged until the outer command commits.
+
+Expanded focused default-race26 passes without failures/skips (15.626 s). Cases
+include actual SQL1811 rollback, original cancellation/authorization, postimage
+ABA, real expiry after staging, raw erasure refusal, physical primary/follower
+restart, higher-image resurrection and explicit conflict-resolution refusal,
+quarantine rollback, complete current-schema corruption refusal, schema8-to9
+row preservation and actual downgrade refusal. Earlier unsupported-schema
+loader and missing-token fixture failures remain preserved. The first broad run
+had 1003 passes and 16 failed entries: random UUID ordering in a new history fixture,
+new mandatory-row accounting, future-schema and old-schema fixture framing.
+Those are corrected while preserving original negative targets and validation
+error priority; 34 regression race entries pass. Final composed source05 default-race suite
+passes 1464 entries without failures/test skips (357.534 s), including serving,
+authentication publication and local storage. The accepted framing package has
+no standalone tests and reports a package-only skip; actual adapter/image cases
+exercise it. Full configured root lint passes with zero issues (130.222 s).
+A later admission-only correction puts opaque handle terminal/consumption state
+in private shared cells, so copied values cannot reopen attempts; final source06
+affected default-race passes 69 entries without failures/skips (42.676 s).
+Final source06 mounted startup/recovery/cluster default-race passes 26 entries
+without failures/skips (120.999 s); final full configured lint exits 0 with zero
+issues (99.199 s). Root enrollment routes, operator/output
+barriers, current peer exclusion and HA orchestration remain open; this is not
+production enrollment completion. Evidence: `.context/enrollment-storage-20261108/`.

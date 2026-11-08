@@ -12,6 +12,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
+	enrollmentowner "github.com/robertherbaugh/kudurru/internal/cluster/enrollment/accepted"
 	inventorypersistence "github.com/robertherbaugh/kudurru/internal/inventory/persistence"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -91,6 +92,13 @@ func legacyAnchorFixture(t *testing.T) replication.Image {
 		t.Fatal("local legacy factory already granted anchor history")
 	}
 	i.Payload.Runtime = slices.DeleteFunc(slices.Clone(i.Payload.Runtime), func(row replication.Entry) bool { return row.Key == accepted.RootKey })
+	// The local factory also contains schema9's non-granting marker. Actual
+	// schema6 has no enrollment owner; remove only that exact factory marker
+	// before freezing the old fixture and writing it via real migrations[:6].
+	if !enrollmentowner.IsAwaiting(i.Payload.Membership) {
+		t.Fatal("legacy factory already granted enrollment history")
+	}
+	i.Payload.Membership = slices.DeleteFunc(slices.Clone(i.Payload.Membership), func(row replication.Entry) bool { return row.Key == enrollmentowner.RootKey })
 	i.StoreSchemaVersion = 6
 	i.RequiredFeatures = []string{"complete-set-v1", "singleton-settings-v1", "opaque-sections-v1", "provider-registry-v1", "inventory-state-v1", "auth-browser-attempts-v1"}
 	var err error

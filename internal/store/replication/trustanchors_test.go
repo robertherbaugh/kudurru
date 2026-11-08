@@ -8,7 +8,7 @@ import (
 
 func TestManagedRootAnchorsFeatureAndSchemaAreIndependentGates(t *testing.T) {
 	oldFeatures := []string{"complete-set-v1", "singleton-settings-v1", "opaque-sections-v1", "provider-registry-v1", "inventory-state-v1", "auth-browser-attempts-v1"}
-	if !slices.Equal(FeatureNames(), append(slices.Clone(oldFeatures), "managed-root-anchors-v1", "managed-root-runtime-v1")) {
+	if !slices.Equal(FeatureNames(), append(slices.Clone(oldFeatures), "managed-root-anchors-v1", "managed-root-runtime-v1", "member-enrollment-v1")) {
 		t.Fatal("unexpected required feature contract")
 	}
 	for _, stage := range []string{"current", "old-schema", "schema6-receiver", "old-features", "both-old", "unknown", "duplicate"} {

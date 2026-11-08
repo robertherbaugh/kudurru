@@ -156,6 +156,14 @@ func (s *State) Revision() uint64 {
 	return s.doc.Revision
 }
 
+// UpdatedAt is the original last transition time; loading never refreshes it.
+func (s *State) UpdatedAt() time.Time {
+	if s == nil {
+		return time.Time{}
+	}
+	return s.doc.UpdatedAt
+}
+
 // Members returns detached complete history, including permanent revocations.
 func (s *State) Members() []Member {
 	if s == nil {

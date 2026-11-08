@@ -152,7 +152,7 @@ func TestAdmissionRetainsOriginalContextDigestsAndTerminalRefusal(t *testing.T) 
 			case "canceled":
 				cancel()
 			case "clock":
-				a.last.Store(time.Now().Add(time.Second).UnixNano())
+				a.life.last.Store(time.Now().Add(time.Second).UnixNano())
 			}
 			if err := a.Check(badBefore, badAfter, badIssuer); err == nil {
 				t.Fatal("changed original admission survived")
@@ -188,5 +188,38 @@ func TestAdmissionExpiresAtOriginalInvitationDeadline(t *testing.T) {
 	}
 	if _, err := issued.Admit(context.Background(), proposal, issuer); !errors.Is(err, ErrRefused) {
 		t.Fatal("unbounded request admitted", err)
+	}
+}
+
+func TestAdmissionCopiesShareTerminalRefusal(t *testing.T) {
+	s, issuer, now := owner(t)
+	issued, inv, err := s.Issue(issuer, "follower", "127.0.0.2:8082", now, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal, err := inv.Propose(identity(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	a, err := issued.Admit(ctx, proposal, issuer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied := *a
+	before, err := issued.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := a.State().Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Check("wrong original owner", after, issuer); !errors.Is(err, ErrRefused) {
+		t.Fatal("changed source accepted", err)
+	}
+	if err := copied.Check(before, after, issuer); !errors.Is(err, ErrRefused) {
+		t.Fatal("copy reopened a terminal admission", err)
 	}
 }

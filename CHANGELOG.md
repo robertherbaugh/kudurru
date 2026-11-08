@@ -30,7 +30,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 - Add bounded member enrollment state and one-time invitation wire formats with
   key-possession proof, original expiry and permanent signing-key revocation.
-  Durable owner integration and join-token routes remain pending.
+  Schema 9 persists complete membership with atomic consumption, final admission
+  checks and irreversible replica history; join-token routes remain pending.
 
 - The enrolled replication client verifies the original member identity before
   sending credentials or commands and retains original deadlines through result

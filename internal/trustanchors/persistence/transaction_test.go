@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -33,8 +34,8 @@ var sharedValidator = sync.OnceValue(func() *validator.Validator {
 
 func openStore(t *testing.T, path string, mode replication.Mode, registered bool) *sqlite.Store {
 	t.Helper()
-	if store.SchemaVersion != 8 {
-		t.Fatal("fixture requires the parent's actual schema8 composition")
+	if store.SchemaVersion < 8 {
+		t.Fatal("fixture requires the actual schema8-or-later composition")
 	}
 	opts := sqlite.Options{Identity: "anchor-fixture", InitialMode: mode, Validator: sharedValidator()}
 	if registered {
@@ -116,7 +117,7 @@ func initializeOwner(ctx context.Context, tx *sqlite.CommandTx, original persist
 	return staged, err
 }
 
-// corruptClosed changes only a stopped real schema8 database, preserving its
+// corruptClosed changes only a stopped current-schema database, preserving its
 // schema marker. Public reserved-prefix guards cannot mask the intended load
 // or initialization failure, and no proposal is bound before that failure.
 func corruptClosed(ctx context.Context, t *testing.T, s *sqlite.Store, path string, change func(context.Context, *sql.Tx) error) {
@@ -135,8 +136,8 @@ func corruptClosed(ctx context.Context, t *testing.T, s *sqlite.Store, path stri
 	}
 	defer func() { _ = tx.Rollback() }()
 	var marker string
-	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='schema_version'`).Scan(&marker); err != nil || marker != "8" {
-		t.Fatal("corruption fixture is not actual current schema8", err)
+	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='schema_version'`).Scan(&marker); err != nil || marker != strconv.Itoa(store.SchemaVersion) {
+		t.Fatal("corruption fixture is not the actual current schema", err)
 	}
 	if err := change(ctx, tx); err != nil {
 		t.Fatal(err)

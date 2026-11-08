@@ -7,10 +7,12 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/retirement"
 )
@@ -19,7 +21,7 @@ import (
 // migrates, inserts, repairs, or resets owner/local history.
 func anchorLocalTestAwaiting(t *testing.T, s *Store) {
 	t.Helper()
-	requireAnchorSchema(t, s.r, "8")
+	requireAnchorSchema(t, s.r, strconv.Itoa(store.SchemaVersion))
 	local, err := loadAnchorLocal(t.Context(), s.r)
 	if err != nil || local == nil || local.record.Phase != "awaiting" || local.record.Revision != 1 || local.record.Owner != (accepted.Version{}) || local.record.RetiredThrough != 0 || len(local.record.Denied) != 0 {
 		t.Fatal("fresh store lacks exact migration provenance", err)

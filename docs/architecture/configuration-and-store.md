@@ -832,8 +832,8 @@ flowchart LR
 ```
 
 These are identity primitives, not a mounted enrollment flow. The persistent
-membership persistence, join-token routes, root listener/client assembly and
-revocation/output barriers remain to be implemented. Connection pools must be
+join-token routes, root listener/client assembly and revocation/output barriers
+remain to be implemented. Connection pools must be
 scoped to the exact original enrolled trust, never reused for a successor CA.
 
 `internal/cluster/enrollment` supplies the immutable owner and bounded wire
@@ -857,10 +857,11 @@ reject missing, ambiguous, orphaned or rewritten history.
 
 An opaque admission retains the original finite context, actual clock, exact
 before/after digests, issuer and original certificate/invitation lifetimes for a
-final memory-only check. A refusal permanently closes that admission. It is a
-prepared successor, not evidence of a durable commit. SQLite must still stage the
-whole owner under the original writer and retain the same check through commit;
-missing persisted history must never become an invitation to initialize again.
+final memory-only check. Copies share the private terminal state; a refusal
+permanently closes that admission. It is a
+prepared successor, not evidence of a durable commit. The SQLite adapter stages
+the whole owner under the original writer and retains the same check through
+commit. Missing persisted history never becomes an invitation to initialize again.
 
 ```mermaid
 flowchart LR
@@ -868,8 +869,33 @@ flowchart LR
     I --> W["Authorized secret delivery<br/>original issuer CA and target"]
     W --> P["Signed proposal<br/>original key and timestamps"]
     P --> A["One admission<br/>consume + add successor"]
-    A --> S["Pending storage adapter<br/>exact CAS + final check + commit"]
+    A --> S["SQLite original command<br/>exact CAS + final check + commit"]
 ```
+
+Schema 9 adds a single non-granting membership marker. Existing owned rows
+refuse migration without adoption or replacement. The original startup command
+converts only that exact marker to an explicit cluster-bound Dormant owner;
+missing, orphaned or malformed rows refuse. The complete image requires
+`member-enrollment-v1`, independently of its schema version, so old peers cannot
+silently strip enrollment history. Private member keys remain node-local.
+
+`enrollment/persistence` captures the original carried writer, complete owner
+digest and memory-only operator check under an original deadline of at most
+30 seconds. A capture is used once, including copies of its opaque handle.
+Activation requires the actual writer's
+member UUID; production assembly must supply its verified local private identity.
+Issue, acceptance, revocation and explicit expiry pruning run in that command.
+Only the actual successful outer commit permits delivery of an issued secret;
+the adapter's returned digest and invitation are staged proposals beforehand.
+
+The adapter writes one bounded complete row, then registers the driver's prefix
+fence. A later mutation, including delete/reinsert of identical bytes, aborts
+the command. Final possession checks retain the original invitation, certificate
+and request lifetimes. Raw command writes also validate the complete owner
+transition, and the legacy bulk lane refuses this prefix. Follower installation
+and explicit conflict resolution compare original receiver history before
+replacing any rows. A higher image revision cannot erase or resurrect members.
+Unrelated commands do not read or decode enrollment state.
 
 `replica.NewMemberClient` connects those identities to image and command
 exchanges. It requires the original resolver's exact member CA, rejects a local

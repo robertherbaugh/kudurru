@@ -94,7 +94,9 @@ func loadAnchorLocal(ctx context.Context, q queryer) (*anchorLocal, error) {
 		}
 		return nil, nil
 	}
-	if version != 8 {
+	// Schema9 preserves the exact schema8 carrier and its provenance. Unknown
+	// later schemas still refuse; this is not a marker conversion or repair.
+	if version != 8 && version != 9 {
 		return nil, ErrAnchorUnavailable
 	}
 	var raw string

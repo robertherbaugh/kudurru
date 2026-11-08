@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -75,7 +76,7 @@ func TestOpenExistingRefusesWithoutCreatingOrRepairing(t *testing.T) {
 			}
 			query := map[string]string{
 				"old-schema":             "UPDATE meta SET value='7' WHERE key='schema_version'",
-				"new-schema":             "UPDATE meta SET value='9' WHERE key='schema_version'",
+				"new-schema":             "UPDATE meta SET value='" + strconv.Itoa(store.SchemaVersion+1) + "' WHERE key='schema_version'",
 				"missing-schema":         "DELETE FROM meta WHERE key='schema_version'",
 				"missing-authority":      "DELETE FROM meta WHERE key='replication_authority'",
 				"missing-cluster":        "DELETE FROM meta WHERE key='cluster_id'",

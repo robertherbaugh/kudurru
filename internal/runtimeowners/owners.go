@@ -12,6 +12,8 @@ import (
 	loginlimits "github.com/robertherbaugh/kudurru/internal/auth/loginlimit/sqliteadapter"
 	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
+	enrollmentowner "github.com/robertherbaugh/kudurru/internal/cluster/enrollment/accepted"
+	enrollmentpersistence "github.com/robertherbaugh/kudurru/internal/cluster/enrollment/persistence"
 	"github.com/robertherbaugh/kudurru/internal/inventory/persistence"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -22,6 +24,9 @@ import (
 
 // ValidateEntry checks each registered owner without granting completeness.
 func ValidateEntry(section string, row replication.Entry) error {
+	if err := enrollmentowner.ValidateEntry(section, row); err != nil {
+		return err
+	}
 	if err := requestlimit.ValidateEntry(section, row); err != nil {
 		return err
 	}
@@ -52,7 +57,10 @@ func ValidateImage(image *replication.Image) error {
 	if err := persistence.ValidateImage(image); err != nil {
 		return err
 	}
-	return accepted.ValidateImage(image)
+	if err := accepted.ValidateImage(image); err != nil {
+		return err
+	}
+	return enrollmentowner.ValidateImage(image)
 }
 
 // Initialize stages all owner initialization/migration in one concrete command.
@@ -70,6 +78,9 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {
 		return err
 	}
 	if err := security.InitializeOwners(ctx, tx); err != nil {
+		return err
+	}
+	if err := enrollmentpersistence.InitializeDormant(ctx, tx); err != nil {
 		return err
 	}
 	if err := initializeInventory(ctx, tx, at); err != nil {
