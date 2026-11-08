@@ -164,7 +164,7 @@ runners. Unit tests cannot substitute for those results.
 | F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F62a | CLI conformance against actual API router | Operations and UI | Integrated 6938fbb; actual router/CLI races and scoped lint pass |
 | F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Integrated c439532; exact wire contracts and API serialization races pass |
-| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Named class choice, actual expanded run, calibrated baselines/limits and hosted qualification remain open |
+| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Actual local expanded collection completes 40 native commands and seven shape/absolute checks, 136 cases/592 metrics/five samples each; separate original relative gate exits 1 with three suffix-miss regressions. Named class choice, calibrated baselines/limits and hosted qualification remain open |
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
@@ -220,3 +220,10 @@ commands and 439 metrics, but the actual gate still exits 1: exact-list miss p50
 158 ns versus 109 ns remains regressed. Regex-1000 p99 is 1,593 ns and CNAME
 p99 is 1,291 ns with one allocation; no absolute-limit violation or missing
 metric. Prior failures remain recorded; fixed-class qualification remains open.
+
+The separate expanded eight-suite collector on 63a52742 completes all 40 native
+commands and seven shape/absolute checks with exit 0; its original relative
+comparison still exits 1 (three suffix-miss regressions). It records 136 cases,
+592 metric keys and 2,960 values with five samples each. Earlier failures remain
+retained. Named-class execution and new cache/strategy calibration remain open;
+local recording success is not release qualification.

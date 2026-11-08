@@ -4583,3 +4583,35 @@ commit authorization, forwarding mounts or HA partition/rejoin acceptance.
 
 Evidence: `.context/replica-admission-20261108/` and
 `.context/replica-command-expiry-20261108/`. F60b/G11/G22 remain open.
+
+
+### Expanded release workload measurements, November 8
+
+The new collector ran once on committed 63a52742 in the isolated clean checkout:
+all 40 original native commands and seven original Go shape/absolute checks exit
+0, with five fresh processes per suite, no retries/replacements, resource stops
+or remaining process groups. All 4,537 source identities match. The eight suites
+produce 136 case names, 592 metric keys and 2,960 values; every vector has five
+measurements. Native wall times total 1,112.418948899 seconds and sampled minimum
+free space is 10,477,436,928 bytes. Raw numeric outcomes precede enrichment.
+
+A separate actual Go comparison against unchanged baseline/limits exits **1**:
+95 ok, 14 improved, three regressions, 300 new, no missing original metrics or
+absolute-limit violations. Suffix miss latency 307.4 vs 255.1 ns/op, p50 221 vs
+170 ns, and Evaluate 172.5 vs 140.8 ns/op fail the original relative arithmetic.
+Earlier exact-miss and all older failures remain recorded; no sample was replaced.
+Unchanged-1M median is 71,770,967 ns/8 allocations, regex-1000 p99 1,578 ns,
+steady 3M suffix/exact RSS 92.97 MiB and separate peak 140.8 MiB.
+
+UDP one/six-socket medians are 199,535/270,035 queries/s; persistent DoT
+236,547/211,708, with zero loss/failure values in all reported samples. DoQ
+one/four sockets are 20,487/22,092 ns/op and HTTP3 31,360/29,628; additional
+sockets are not uniformly faster. Original Persist200k save/restore and all
+cache/upstream vectors and allocations are retained without inventing new limits.
+
+The explicit class is local-sandbox-diagnostic (reported 2.90 GHz, GOMAXPROCS 6).
+The recording result does not override the failed original relative gate or
+establish a named fixed class. F21c/F63 class selection, actual calibration,
+new absolute limits, hosted and final release qualification remain open.
+Evidence: `.context/release-expanded-measurements-20261108/result.md`, every
+native receipt/log, all-vectors.csv and original-baseline-gate.json/log.
