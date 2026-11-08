@@ -6,6 +6,8 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -809,24 +811,69 @@ type anchorPublicationTestContext struct {
 }
 
 func (c *anchorPublicationTestContext) Deadline() (time.Time, bool) {
-	if c.final.Load() {
-		c.calls.Add(1)
-	}
+	c.recordFinalCall()
 	return c.Context.Deadline()
 }
 
 func (c *anchorPublicationTestContext) Done() <-chan struct{} {
-	if c.final.Load() {
-		c.calls.Add(1)
-	}
+	c.recordFinalCall()
 	return c.Context.Done()
 }
 
 func (c *anchorPublicationTestContext) Err() error {
-	if c.final.Load() {
-		c.calls.Add(1)
-	}
+	c.recordFinalCall()
 	return c.Context.Err()
+}
+
+func (c *anchorPublicationTestContext) Value(key any) any {
+	c.recordFinalCall()
+	return c.Context.Value(key)
+}
+
+func (c *anchorPublicationTestContext) finalCall(fn func() error) error {
+	c.final.Store(true)
+	defer c.final.Store(false)
+	return fn()
+}
+
+func (c *anchorPublicationTestContext) recordFinalCall() {
+	if !c.final.Load() {
+		return
+	}
+	// SQLite's interruptOnDone goroutines can call this same context after
+	// their SQL statement returns. Count calls on the actual final callback's
+	// stack, not unrelated asynchronous activity in the same wall-clock window.
+	var pcs [64]uintptr
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs[:])])
+	for {
+		frame, more := frames.Next()
+		if strings.HasSuffix(frame.Function, ".(*anchorPublicationTestContext).finalCall") {
+			c.calls.Add(1)
+			return
+		}
+		if !more {
+			return
+		}
+	}
+}
+
+func TestAnchorPublicationContextMonitorSeparatesConcurrentCalls(t *testing.T) {
+	ctx := &anchorPublicationTestContext{Context: anchorLocalTestFinite(t.Context(), t)}
+	if err := ctx.finalCall(func() error {
+		done := make(chan struct{})
+		go func() { _ = ctx.Done(); close(done) }()
+		<-done
+		if ctx.calls.Load() != 0 {
+			t.Fatal("unrelated context watcher attributed to final callback")
+		}
+		_, _ = ctx.Deadline()
+		_ = ctx.Done()
+		_ = ctx.Err()
+		_ = ctx.Value(struct{}{})
+		return nil
+	}); err != nil || ctx.calls.Load() != 4 {
+		t.Fatal("monitor missed synchronous final context calls", ctx.calls.Load(), err)
+	}
 }
 
 func TestAnchorPublicationApplyUsesNoContextInterfaceInFinalCallback(t *testing.T) {
@@ -834,10 +881,7 @@ func TestAnchorPublicationApplyUsesNoContextInterfaceInFinalCallback(t *testing.
 	ctx := &anchorPublicationTestContext{Context: anchorLocalTestFinite(t.Context(), t)}
 	token, p := anchorPublicationTestCapture(ctx, t, s)
 	err := s.PublishIfCurrent(ctx, token, PublicationOptions{Anchor: p}, func() error {
-		ctx.final.Store(true)
-		result := p.Apply()
-		ctx.final.Store(false)
-		return result
+		return ctx.finalCall(p.Apply)
 	})
 	if err != nil || ctx.calls.Load() != 0 {
 		t.Fatal("Apply invoked arbitrary context methods", err)

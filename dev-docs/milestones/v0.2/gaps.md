@@ -5734,3 +5734,22 @@ root cache/output retirement and original UPDATE refusal. Configured command
 and SQLite lint exits0 with zero issues (32.255s); frozen source identities match.
 Earlier root39 and broader87 passing entries remain scoped evidence, not a full
 repository green claim. Evidence: .context/held-fixtures-20261108/.
+
+
+### G21 publication-context monitor attribution, November 8
+
+Hosted CI42518981841's SQLite shard failed the final-publication context monitor.
+A diagnostic-only overlay reproduced one failure in ten runs and captured the
+actual stack: modernc.org/sqlite.interruptOnDone.func1 called Context.Done from
+an unrelated asynchronous SQL watcher during the monitor's wall-clock flag.
+It was not a call from AnchorPublication.Apply. The original failing log and
+instrumented native exit1 remain retained.
+
+The test monitor now attributes calls to the synchronous final callback stack,
+including all four Context methods. A deterministic control proves that an
+independent watcher is ignored and all four synchronous calls are counted.
+Production SQLite and final callback behavior are unchanged. All62 actual
+publication race entries pass without failures/skips (19.432s); configured
+command/SQLite lint exits0 with zero issues (32.255s). Source06 hashes match.
+Evidence: .context/anchor-publication-context-20261108/ and
+.context/held-fixtures-20261108/lint06.json. Final hosted gates remain open.
