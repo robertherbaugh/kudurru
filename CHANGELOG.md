@@ -33,6 +33,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   and cluster-setting changes; object and credential mutations are refused, and
   public block-page requests are disabled. Dashboard actions reflect this mode,
   and blocking toggles report node scope.
+- CLI: `cluster status` reports the connected node's store, leader, membership
+  count and read-only mode, with table/wide/JSON/YAML output.
 
 - SQLite DNS: load encrypted stored TSIG keys into complete serving snapshots
   and secondary/RPZ acquisition, retaining each request's original key through

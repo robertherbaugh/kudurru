@@ -19,6 +19,13 @@ container.
 Operator docs: [deploy/](../deploy/README.md). This page shows how the
 pieces talk to each other.
 
+`kudurru cluster status` reads the connected node's authenticated `/cluster`
+observation: driver, reported leader, member count and read-only mode. Wide
+output includes its cluster ID and epoch; JSON/YAML retain the API response.
+Static twins intentionally report separate database identities and local
+leaders. This status is not a quorum or promotion-eligibility check; use
+`kudurru nodes` to inspect individual readiness.
+
 The v0.1.0 [DHCPv4 server](dhcp.md) is opt-in, runs on Linux with either
 store, and independent allocators must never share a pool. On the Kubernetes
 store, scopes are `DHCPScope` objects, leases are `DHCPLease` objects, and

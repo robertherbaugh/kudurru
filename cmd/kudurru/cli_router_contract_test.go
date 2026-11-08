@@ -42,7 +42,7 @@ type routerCLI struct {
 	calls  map[string]int
 }
 
-func newRouterCLI(t *testing.T) *routerCLI {
+func newRouterCLI(t *testing.T, configure ...func(*api.Options)) *routerCLI {
 	t.Helper()
 	v, err := validator.New()
 	if err != nil {
@@ -59,11 +59,15 @@ func newRouterCLI(t *testing.T) *routerCLI {
 		store: memory.New(), tail: querylog.NewTail(32, 32, nil), calls: map[string]int{},
 	}
 	t.Cleanup(func() { _ = f.store.Close() })
-	srv, err := api.New(api.Options{Config: cfg, NodeName: cfg.Node.Name, Store: f.store,
+	opts := api.Options{Config: cfg, NodeName: cfg.Node.Name, Store: f.store,
 		Validator: v, Authenticate: apitest.Authenticate,
 		Authorizer: apitest.Authorizer(apitest.StandardBindings()...), Tail: f.tail,
 		Logger: slog.New(slog.DiscardHandler),
-	})
+	}
+	for _, apply := range configure {
+		apply(&opts)
+	}
+	srv, err := api.New(opts)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3871,3 +3871,21 @@ remain; only their shared licensed fixture name is generalized. Configured lint,
 enrolled replication/promotion, partition/rejoin and final release gates remain
 open. This evidence does not grant individual member authority from shared
 internal credentials.
+
+
+### F60b cluster status command, November 8
+
+`kudurru cluster status` reads the existing authenticated `/cluster` route once
+and renders the server's driver, leader, member count and read-only mode. Wide
+output adds cluster ID/epoch; JSON/YAML preserve the original response fields.
+Static twins report local leadership; status grants no quorum or promotion
+eligibility. Invalid arguments/format/transport and canceled input do not dispatch.
+
+Actual-router race9 entries pass with no skips/failures, child0/wrapper0,
+wall23.441864966s, minimum17,223,516,160B. Generated CLI reference and command
+package vet pass. The first race run's success fixtures used viewer without
+cluster.read and were correctly refused (6 pass/3 failed entries); those results
+remain. Success fixtures now use the existing administrator identity; permissions
+and refusal assertions are unchanged. Exact frozen-source receipts are under
+`.context/cluster-status-20261108/`. Configured lint remains unavailable.
+Enrollment, join-token, promotion, forwarding and final HA acceptance remain open.

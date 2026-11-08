@@ -292,6 +292,26 @@ Flush the whole cache, or the entries of one name.
 kudurru cache flush [name]
 ```
 
+## kudurru cluster
+
+Inspect cluster membership and store status.
+
+### kudurru cluster status
+
+Read the connected node's store driver, epoch, reported leader, member count and read-only mode. Static twins each report their own local leader and store identity. This observation does not establish quorum, peer health or permission to promote a node. Use kudurru nodes for individual node readiness.
+
+```text
+kudurru cluster status
+```
+
+Examples:
+
+```sh
+kudurru cluster status
+kudurru cluster status -o wide
+kudurru cluster status -o json
+```
+
 ## kudurru completion
 
 Generate a shell completion script.
@@ -516,6 +536,9 @@ Flags:
       --internal-port int                   kudurru internal listener port (zone serial
                                             polling); 0 disables (default 8082)
       --listen strings                      addresses every frontend binds (default [0.0.0.0])
+      --managed-cache-bypass                bypass both packet caches for this supervisor's
+                                            lifetime; required before managed root-anchor
+                                            backends activate
       --out string                          write the rendered files into this directory
                                             instead of stdout
       --pool-authoritative string           load-balancing policy of the authoritative pool
@@ -620,6 +643,9 @@ Flags:
       --listen strings                      addresses every frontend binds (default [0.0.0.0])
       --log-format string                   json or text (default "json")
       --log-level string                    debug, info, warn or error (default "info")
+      --managed-cache-bypass                bypass both packet caches for this supervisor's
+                                            lifetime; required before managed root-anchor
+                                            backends activate
       --poll-zones                          poll backends' /internal/zones (needs
                                             KUDURRU_ENCRYPTION_KEY[_FILE] or
                                             --internal-token-file) (default true)
