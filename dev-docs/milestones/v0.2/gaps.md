@@ -5466,3 +5466,23 @@ its actual local reproduction remains failure. The earlier operational-reload
 failure did not reproduce in 20 focused race iterations; diagnostics now retain
 the underlying error, with no production fix or flake waiver inferred. These
 failures and all final implementation/performance/external gates remain open.
+
+### G23 BIND per-zone readiness, November 8
+
+The hosted TestBINDSecondary/ZoneTransferDeny failure reproduces on the actual
+local BIND process: the fixture had settled only interop.test, then queried
+independently initialized denied.test once. Primary status publication can
+retire a zone's earlier source RV until its committed lifecycle aligns. The
+existing authenticated status probe now accepts the exact zone name; the deny
+case waits for its own current Ready projection, nonzero serving serial and
+matching SOA before sending its one transfer. The NOTIFY setup also waits for
+the changed zone's matching status/serial within its original 20-second bound.
+No transfer, mutation, or refused operation is replayed. The denial assertion
+now requires REFUSED and zero records, so SERVFAIL cannot satisfy it.
+
+The unchanged initial reproduction exits 1 (three passes/two failed entries).
+The corrected actual BIND run exits 0 with all five entries, zero failures or
+skips, in 18.637 seconds. Both receipts/logs and frozen sources are retained in
+`.context/security-quic-20261108/{bind-reproduction,bind-ready}.json`. This is
+fixture readiness and stronger negative coverage, not a production relaxation;
+full hosted CI and final release qualification remain open.

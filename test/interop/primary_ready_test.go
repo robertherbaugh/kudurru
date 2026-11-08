@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -21,7 +22,7 @@ import (
 // status write, whose new source RV temporarily closes DNS admission. Historical
 // Ready=true alone also cannot prove that source alignment has finished.
 // This probe reads readiness only; it never attempts or retries a transfer.
-func primaryStatusProbe(t *testing.T, spec kudurrutest.NodeSpec) func() (uint32, bool) {
+func primaryStatusProbe(t *testing.T, spec kudurrutest.NodeSpec) func(string) (uint32, bool) {
 	t.Helper()
 	out, err := exec.CommandContext(t.Context(), kudurruBin, "admin", "create-token", "--socket", filepath.Join(spec.DataDir, "admin.sock")).Output() //nolint:gosec // test-owned binary and socket
 	if err != nil {
@@ -33,8 +34,8 @@ func primaryStatusProbe(t *testing.T, spec kudurrutest.NodeSpec) func() (uint32,
 	}
 	client := &http.Client{Timeout: 3 * time.Second}
 	t.Cleanup(client.CloseIdleConnections)
-	return func() (uint32, bool) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+spec.Ports.API+"/api/v1/zones/interop-test", nil)
+	return func(name string) (uint32, bool) {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+spec.Ports.API+"/api/v1/zones/"+url.PathEscape(name), nil)
 		if err != nil {
 			t.Fatal("build primary readiness request")
 		}
@@ -61,7 +62,7 @@ func primaryStatusProbe(t *testing.T, spec kudurrutest.NodeSpec) func() (uint32,
 		}
 		z := &detail.Object
 		ready := meta.FindStatusCondition(z.Status.Conditions, public.ConditionReady)
-		if z.Name != "interop-test" || ready == nil || ready.Status != metav1.ConditionTrue ||
+		if z.Name != name || ready == nil || ready.Status != metav1.ConditionTrue ||
 			ready.ObservedGeneration != z.Generation || z.Status.ObservedGeneration != z.Generation ||
 			!detail.Ready || detail.Serial == 0 || z.Status.Serial != detail.Serial {
 			return 0, false

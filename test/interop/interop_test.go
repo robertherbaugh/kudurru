@@ -153,7 +153,7 @@ func TestBINDSecondary(t *testing.T) {
 	primaryStatus := primaryStatusProbe(t, spec)
 	var primarySerial uint32
 	if !kudurrutest.Eventually(20*time.Second, 100*time.Millisecond, func() bool {
-		statusSerial, settled := primaryStatus()
+		statusSerial, settled := primaryStatus("interop-test")
 		if !settled {
 			return false
 		}
@@ -238,9 +238,13 @@ zone "denied.test" {
 		writeFile(t, filepath.Join(objDir, "records.yaml"), recordsYAML(`{ dnsName: new.interop.test, recordType: A, targets: ["192.0.2.77"] }`))
 		var after uint32
 		if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
+			statusSerial, settled := primaryStatus("interop-test")
+			if !settled {
+				return false
+			}
 			var rcode int
 			after, rcode = soaSerial(t, spec.Ports.DNS, "interop.test.")
-			return rcode == dns.RcodeSuccess && after != 0 && after != before
+			return rcode == dns.RcodeSuccess && after != 0 && after != before && after == statusSerial
 		}) {
 			t.Fatalf("kudurru serial did not move after the record change (still %d)", before)
 		}
@@ -288,12 +292,28 @@ zone "denied.test" {
 	})
 
 	t.Run("ZoneTransferDeny", func(t *testing.T) {
+		// Readiness belongs to this zone. The earlier interop.test checks do
+		// not establish denied.test's committed lifecycle/status alignment.
+		// Only poll setup reads; issue the denied transfer exactly once below.
+		if !kudurrutest.Eventually(20*time.Second, 100*time.Millisecond, func() bool {
+			statusSerial, settled := primaryStatus("denied-test")
+			if !settled {
+				return false
+			}
+			s, rcode := soaSerial(t, spec.Ports.DNS, "denied.test.")
+			return rcode == dns.RcodeSuccess && s != 0 && s == statusSerial
+		}) {
+			t.Fatal("kudurru primary status and denied.test SOA did not settle")
+		}
 		if s, rcode := soaSerial(t, spec.Ports.DNS, "denied.test."); rcode != dns.RcodeSuccess || s == 0 {
 			t.Fatalf("kudurru does not serve denied.test (rcode %d)", rcode)
 		}
 		rrs, err := axfr(spec.Ports.DNS, "denied.test.", keyName, keyAlg, secret)
 		if err == nil {
 			t.Fatalf("AXFR of a zoneTransfer: deny zone succeeded with %d records", len(rrs))
+		}
+		if err.Error() != fmt.Sprintf("dns: bad xfr rcode: %d", dns.RcodeRefused) || len(rrs) != 0 {
+			t.Fatalf("denied AXFR must return REFUSED without records: %v (%d records)", err, len(rrs))
 		}
 		t.Logf("denied.test: %v", err)
 		// named tried the same transfer at startup and cannot serve it.
