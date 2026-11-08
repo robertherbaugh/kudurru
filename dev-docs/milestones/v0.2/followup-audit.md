@@ -1262,3 +1262,47 @@ Pure factor APIs retain their original no-op behavior and regression tests.
 Self-service password changes, OIDC budgets, enrolled-node forwarding, configured
 lint and final F46/G12/G22/release gates remain open. Kubernetes factor authority
 is not implied by this complete-SQLite mount. No push or release.
+
+
+### F46 SQLite self-service password admission (D308), November 8
+
+Self-service password changes now share login and TOTP-management failure
+counters. The original cookie/API-token and exact current account are verified
+first; the current password and factor are admitted and verified once before any
+password mutation. Invalid proofs commit only counters. All later failures abort
+the entire command, including its counter result, password, factor consumption,
+revocation floors, token deletions and replacement enrollment.
+
+A private same-command enrollment helper uses the actual password decision just
+verified before this operation's own password change. No caller can construct a
+claimed decision to issue a session; token callers receive no cookie enrollment.
+Exact local ownership, accepted token-provider aliases, must-change behavior and
+original revocation-floor time remain. New-password hashing happens outside locks
+before shared admission; only current-password/factor verification is admitted.
+The opaque preparation is one-use, redacted and bound to the original request's
+30-second-or-earlier deadline, retained through publication and response sealing.
+
+Real HTTP adapters alternate invalid current passwords and invalid numeric TOTP
+proofs. Each failure changes only the intended counter row, leaving the complete
+remaining image exact. Recreating the adapter cannot bypass the lock. Actual TOTP
+password change consumes its proof once. Private command tests reach staged
+password/enrollment before callback/final/clock/poison/cancellation refusals and
+assert exact rollback. Success revokes the old cookie and seals the replacement;
+consumed preparation cannot be reused.
+
+Final full security race: 105 test passes, no failures/skips, wall
+103.992015973s, minimum 14,422,274,048B. Final focused HTTP race:
+18 passes, no failures/skips, wall 107.030013562s, minimum
+14,223,118,336B. Affected vet exits 0 in 4.011298767s;
+formatting is clean. Earlier source01 focused race passed 19 entries. An overly
+broad combined test selector was interrupted (child -15/wrapper 241); that raw
+attempt is preserved and not credited as qualification. Source02 was then tested
+with separate full-security and focused-HTTP commands.
+
+Evidence, source freezes, archives and raw receipts are retained in
+`.context/sqlite-password-change-lockouts-20261108/`. The issue.go preimage was
+read from its exact committed blob immediately after that helper edit, as recorded
+in the archive note; it is not claimed as a prior working-byte archive.
+Configured lint remains unavailable. OIDC budgets, enrolled-replica forwarding,
+Kubernetes factor semantics and final F46/G12/G22/release gates remain open.
+No push or release.

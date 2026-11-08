@@ -74,6 +74,13 @@ func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depe
 	if err != nil {
 		return Enrollment{}, err
 	}
+	return issueLocalDecision(ctx, tx, d, now)
+}
+
+// issueLocalDecision is private: callers cannot mint an enrollment from a
+// claimed principal. Its callers obtain d by actual password/factor verification
+// in this same command, before their own local password mutation if any.
+func issueLocalDecision(ctx context.Context, tx *sqlite.CommandTx, d servingauth.SessionDecision, now time.Time) (Enrollment, error) {
 	if d.Principal.Kind != auth.KindUser || d.Principal.Provider != "local" || d.Principal.AccountUID == "" || d.Settings == nil {
 		return Enrollment{}, servingauth.ErrUnsupported
 	}

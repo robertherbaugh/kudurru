@@ -95,7 +95,7 @@ the first admitted attempt. Privileged removal explicitly resets this history.
 
 ```mermaid
 sequenceDiagram
-    participant H as Original HTTP login
+    participant H as Original HTTP proof request
     participant C as Original SQLite command
     participant P as Password and factor verifier
     H->>C: Admit original lease and writer
@@ -106,7 +106,7 @@ sequenceDiagram
         C->>C: Stage failed counters only
     else Successful proof
         P-->>C: Authenticated current account
-        C->>C: Stage result, factor use and enrollment
+        C->>C: Stage result, factor use and requested auth change
     end
     C->>C: Final original context, clock and authority checks
     C-->>H: Commit all effects or roll back all effects
@@ -130,8 +130,17 @@ factor/object state unchanged. Administrator recovery keeps its existing current
 users/write authorization. The one-second factor throttle remains an additional
 local control; distributed failure caps do not claim distributed pacing.
 
-Self-service password changes and OIDC attempt limits still have separate local
-admission; enrolled-replica request forwarding remains unmounted. Two adapters sharing one
+D308 applies the same counters to self-service password changes. After current
+cookie/API-token and exact-account checks, it verifies the current password and
+factor once, before changing the password. Invalid proofs change counters only;
+all later errors roll back every effect. Cookie callers receive an enrollment
+from that same verified decision after the password change; token callers receive
+no cookie. The prepared new hash is opaque, one-use and bound to the original
+30-second-or-earlier context through response publication. New-password hashing
+still occurs outside locks before shared admission.
+
+OIDC attempt limits still have separate local admission; enrolled-replica request
+forwarding remains unmounted. Two adapters sharing one
 Store and physical follower install/restart tests do not prove production
 multi-node forwarding.
 
