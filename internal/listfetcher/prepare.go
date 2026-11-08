@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
+	"github.com/robertherbaugh/kudurru/internal/blocking/matcher"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 )
 
@@ -28,6 +30,10 @@ type CompleteOptions struct {
 	Compile                blocking.CompileOptions
 	MaxLists, MaxSources   int
 	MaxBodyBytes, MaxBytes int64
+	// MaxProgramBytes bounds reserved expression storage across all lists,
+	// independently of the source-body byte budget. Zero uses 128 MiB;
+	// explicit values cannot exceed that ceiling. This is not total RSS.
+	MaxProgramBytes int64
 }
 
 // PreparedLists contains an immutable exact-input compilation. Preparation
@@ -61,6 +67,19 @@ func PrepareComplete(ctx context.Context, objects []*public.BlockList, opts Comp
 	if opts.MaxBytes == 0 {
 		opts.MaxBytes = 256 << 20
 	}
+	if opts.MaxProgramBytes == 0 {
+		opts.MaxProgramBytes = 128 << 20
+	}
+	if opts.MaxProgramBytes < 1 || opts.MaxProgramBytes > 128<<20 {
+		return nil, ErrTooLarge
+	}
+	opts.Compile.ProgramBudget = opts.Compile.ProgramBudget.Child(opts.MaxProgramBytes)
+	retained := false
+	defer func() {
+		if !retained {
+			opts.Compile.ProgramBudget.Rewind(0)
+		}
+	}()
 	if opts.MaxLists < 1 || opts.MaxLists > 10000 || opts.MaxSources < 1 || opts.MaxSources > 100000 || opts.MaxBodyBytes < 1 || opts.MaxBodyBytes > 256<<20 || opts.MaxBytes < 1 || opts.MaxBytes > 1<<30 || len(objects) > opts.MaxLists {
 		return nil, ErrTooLarge
 	}
@@ -92,7 +111,7 @@ func PrepareComplete(ctx context.Context, objects []*public.BlockList, opts Comp
 		return strings.Compare(ListName(a.Namespace, a.Name), ListName(b.Namespace, b.Name))
 	})
 	fingerprint := &fpBuilder{}
-	fingerprint.add("complete-lists/v1", opts.Catalogue.Fingerprint())
+	fingerprint.add("complete-lists/v2-lazy-dfa", opts.Catalogue.Fingerprint(), fmt.Sprint(opts.Compile.RegexHardCap), fmt.Sprint(opts.Compile.ProgramBytes), fmt.Sprint(opts.MaxProgramBytes))
 	var compiled []*blocking.List
 	for _, object := range cloned {
 		if err := ctx.Err(); err != nil {
@@ -118,6 +137,9 @@ func PrepareComplete(ctx context.Context, objects []*public.BlockList, opts Comp
 		}
 		list, err := blocking.Compile(contextSpec(ctx, spec), nil, opts.Compile)
 		if err != nil {
+			if errors.Is(err, matcher.ErrProgramBudget) {
+				return nil, errors.Join(ErrIncomplete, err)
+			}
 			return nil, ErrIncomplete
 		}
 		compiled = append(compiled, list)
@@ -130,6 +152,7 @@ func PrepareComplete(ctx context.Context, objects []*public.BlockList, opts Comp
 		return nil, err
 	}
 	digest := sha256.Sum256([]byte(fingerprint.String()))
+	retained = true
 	return &PreparedLists{Snapshot: snapshot, Identity: hex.EncodeToString(digest[:])}, nil
 }
 
@@ -199,6 +222,9 @@ func compileComplete(ctx context.Context, pl plannedList, opts CompleteOptions, 
 	}
 	list, err := blocking.Compile(contextSpec(ctx, spec), nil, opts.Compile)
 	if err != nil {
+		if errors.Is(err, matcher.ErrProgramBudget) {
+			return nil, "", errors.Join(ErrIncomplete, err)
+		}
 		return nil, "", ErrIncomplete
 	}
 	if err := ctx.Err(); err != nil {

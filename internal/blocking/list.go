@@ -116,6 +116,11 @@ type CompileOptions struct {
 	// and exception rules together): 0 means DefaultRegexHardCap, negative
 	// means unlimited.
 	RegexHardCap int
+	// ProgramBytes bounds all retained expression programs, transition caches
+	// and fallback scratch in one list. Zero uses matcher.DefaultProgramBytes.
+	ProgramBytes int64
+	// ProgramBudget optionally charges an entire candidate's compiled lists.
+	ProgramBudget *matcher.ProgramBudget
 }
 
 func (o CompileOptions) regexCap() int {
@@ -203,12 +208,13 @@ type List struct {
 	fingerprint uint32
 	// complete is false when a source failed; such a list is never reused
 	// by the checksum skip.
-	complete    bool
-	slow        []*compiledRule
-	slowIndex   *matcher.PatternIndex
-	hasRewrites bool
-	badfilters  map[string]bool
-	exclusions  exclusionSet
+	complete     bool
+	programBytes int64
+	slow         []*compiledRule
+	slowPatterns *matcher.PatternSet
+	hasRewrites  bool
+	badfilters   map[string]bool
+	exclusions   exclusionSet
 }
 
 // Name returns the list name.
@@ -219,6 +225,9 @@ func (l *List) Mode() Mode { return l.mode }
 
 // Stats returns the compile statistics.
 func (l *List) Stats() Stats { return l.stats }
+
+// ProgramBytes reports reserved expression program/cache/scratch storage.
+func (l *List) ProgramBytes() int64 { return l.programBytes }
 
 // Sources returns per-source statistics in Spec order.
 func (l *List) Sources() []SourceStats {
@@ -271,9 +280,9 @@ func (l *List) matchContext(ctx Context, except bool) (Match, bool) {
 		return m, true
 	}
 	best := candidate{rank: -1}
-	l.slowIndex.Visit(ctx.Name, func(id int) {
+	l.slowPatterns.VisitMatches(ctx.Name, func(id int) {
 		r := l.slow[id]
-		if r.rewrite != nil || !r.matches(ctx) || (r.exception && l.mode == ModeBlock) != except {
+		if r.rewrite != nil || !r.matchesContext(ctx) || (r.exception && l.mode == ModeBlock) != except {
 			return
 		}
 		c := candidateFor(l, r, ctx.Name)
@@ -314,12 +323,38 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 	}
 	start := time.Now()
 	regexCap := opts.regexCap()
-	fp, badfilters, fpErr := fingerprint(&spec, regexCap)
+	limit := opts.ProgramBytes
+	if limit == 0 {
+		limit = matcher.DefaultProgramBytes
+	}
+	if limit < 1 || limit > 128<<20 {
+		return nil, matcher.ErrProgramBudget
+	}
+	fp, badfilters, fpErr := fingerprint(&spec, regexCap, limit)
+	if errors.Is(fpErr, matcher.ErrProgramBudget) {
+		return nil, fpErr
+	}
 	if fpErr == nil && prev != nil && prev.complete && prev.fingerprint == fp {
+		if prev.programBytes < 0 || prev.programBytes > limit {
+			return nil, matcher.ErrProgramBudget
+		}
+		if err := opts.ProgramBudget.Reserve(prev.programBytes); err != nil {
+			return nil, err
+		}
 		return prev, nil
 	}
 
+	budget := opts.ProgramBudget.Child(limit)
+	retained := false
+	defer func() {
+		if !retained {
+			budget.Rewind(0)
+		}
+	}()
 	c := newCompiler(spec.Mode, regexCap)
+	c.budget = budget
+	c.primary.regex.Budget, c.except.regex.Budget = budget, budget
+	c.exclusions.budget = budget.Child(1 << 20)
 	c.badfilters = badfilters
 	l := &List{name: spec.Name, mode: spec.Mode, fingerprint: fp}
 	var errs []error
@@ -328,6 +363,9 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 		st, err := c.source(src, source)
 		l.sources = append(l.sources, st)
 		if err != nil {
+			if errors.Is(err, matcher.ErrProgramBudget) {
+				return nil, err
+			}
 			errs = append(errs, fmt.Errorf("blocking: list %q source %q: %w", spec.Name, src.Name, err))
 			l.warnings = append(l.warnings, fmt.Sprintf("source %q failed: %v", src.Name, err))
 			continue
@@ -337,17 +375,22 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 	if ok == 0 && len(spec.Sources) != 0 {
 		return nil, errors.Join(errs...)
 	}
-	c.build(l)
+	if err := c.build(l); err != nil {
+		return nil, err
+	}
+	l.programBytes = budget.Used()
 	l.complete = fpErr == nil && len(errs) == 0
 	l.stats.CompileTime = time.Since(start)
+	retained = true
 	return l, errors.Join(errs...)
 }
 
 // fingerprint hashes normalized rule lines and collects all badfilter
 // directives before compilation. Comment-only changes do not force a rebuild.
-func fingerprint(spec *Spec, regexCap int) (uint32, map[string]bool, error) {
+func fingerprint(spec *Spec, regexCap int, programBytes int64) (uint32, map[string]bool, error) {
 	h := crc32.NewIEEE()
-	_, _ = fmt.Fprintf(h, "kudurru-blocking-v2\x00%s\x00%d\x00", spec.Mode, regexCap)
+	_, _ = fmt.Fprintf(h, "kudurru-blocking-v3-lazy-dfa\x00%s\x00%d\x00%d\x00", spec.Mode, regexCap, programBytes)
+	var validationBudget *matcher.ProgramBudget
 	_, _ = fmt.Fprintf(h, "external-policy=%t\x00", spec.ExternalPolicy)
 	var badfilters map[string]bool
 	for _, src := range spec.Sources {
@@ -365,7 +408,14 @@ func fingerprint(spec *Spec, regexCap int) (uint32, map[string]bool, error) {
 			}
 			for _, m := range u.Modifiers {
 				if m.Name == "badfilter" {
-					r, e := compileRule(u)
+					if validationBudget == nil {
+						validationBudget = matcher.NewProgramBudgetWithoutClassProof(programBytes)
+					}
+					r, e := compileRuleBudget(u, validationBudget)
+					validationBudget.Rewind(0) // key validation retains no executable program
+					if errors.Is(e, matcher.ErrProgramBudget) {
+						return e
+					}
 					if e == nil && r.badfilter {
 						if badfilters == nil {
 							badfilters = map[string]bool{}
@@ -397,14 +447,18 @@ type chainBuilder struct {
 	ips    matcher.IPSetBuilder
 }
 
-func (b *chainBuilder) build(exception bool) chain {
+func (b *chainBuilder) build(exception bool) (chain, error) {
+	regex, err := b.regex.BuildChecked()
+	if err != nil {
+		return chain{}, err
+	}
 	return chain{
 		exact:     b.exact.Build(),
 		suffix:    b.suffix.Build(),
-		regex:     b.regex.Build(),
+		regex:     regex,
 		ips:       b.ips.Build(),
 		exception: exception,
-	}
+	}, nil
 }
 
 func (b *chainBuilder) added() int {
@@ -412,6 +466,7 @@ func (b *chainBuilder) added() int {
 }
 
 type compiler struct {
+	budget          *matcher.ProgramBudget
 	mode            Mode
 	regexCap        int
 	primary, except chainBuilder
@@ -527,6 +582,9 @@ func (c *compiler) add(r parser.Rule) error {
 			return nil
 		}
 		if err := b.regex.Add(r.Pattern, tag); err != nil {
+			if errors.Is(err, matcher.ErrProgramBudget) {
+				return err
+			}
 			c.regexInvalid++
 			return nil
 		}
@@ -536,7 +594,14 @@ func (c *compiler) add(r parser.Rule) error {
 }
 
 func (c *compiler) addSlow(u parser.UnsupportedRule) error {
-	r, err := compileRule(u)
+	mark := c.budget.Used()
+	retained := false
+	defer func() {
+		if !retained {
+			c.budget.Rewind(mark)
+		}
+	}()
+	r, err := compileRuleBudget(u, c.budget)
 	if err != nil {
 		return err
 	}
@@ -561,18 +626,27 @@ func (c *compiler) addSlow(u parser.UnsupportedRule) error {
 	c.slowSeen[r.key] = true
 	r.order = len(c.slow)
 	c.slow = append(c.slow, r)
+	retained = true
 	return nil
 }
 func (c *compiler) slowRegexes() int {
 	return c.slowRegex
 }
 
-func (c *compiler) build(l *List) {
+func (c *compiler) build(l *List) error {
 	added := c.primary.added() + c.except.added() + c.regexAccepted
-	l.primary = c.primary.build(false)
-	l.except = c.except.build(true)
+	var err error
+	l.primary, err = c.primary.build(false)
+	if err != nil {
+		return err
+	}
+	l.except, err = c.except.build(true)
+	if err != nil {
+		return err
+	}
 	l.slow, l.badfilters = c.slow, c.badfilters
-	c.exclusions.seen = nil // compile-only duplicate tracking
+	c.exclusions.seen = nil   // compile-only duplicate tracking
+	c.exclusions.budget = nil // no mutable compiler accounting survives publication
 	l.exclusions = c.exclusions
 	var patterns []*matcher.Pattern
 	slowExceptions, slowUnindexed := 0, 0
@@ -587,7 +661,10 @@ func (c *compiler) build(l *List) {
 		}
 	}
 	if len(patterns) > 0 {
-		l.slowIndex = matcher.NewPatternIndex(patterns)
+		l.slowPatterns, err = matcher.NewPatternSet(patterns, c.budget)
+		if err != nil {
+			return err
+		}
 	}
 	entries := l.primary.entries() + l.except.entries() + len(l.slow)
 	l.stats = Stats{
@@ -601,12 +678,12 @@ func (c *compiler) build(l *List) {
 		Regexes:        l.primary.regex.Len() + l.except.regex.Len() + c.slowRegexes(),
 		RegexUnindexed: l.primary.regex.Unindexed() + l.except.regex.Unindexed() + slowUnindexed,
 		RegexDropped:   c.regexDropped,
-		Bytes:          l.primary.bytes() + l.except.bytes(),
+		Bytes:          l.primary.bytes() + l.except.bytes() - l.primary.regex.ProgramBytes() - l.except.regex.ProgramBytes() + int(c.budget.Used()),
 	}
 	for _, r := range l.slow {
-		l.stats.Bytes += len(r.text) + len(r.key) + 2048
+		l.stats.Bytes += len(r.text) + len(r.key)
 	}
-	l.stats.Bytes += 2*l.exclusions.bytes + len(l.exclusions.rules)*128 + l.exclusions.patterns*2048
+	l.stats.Bytes += 2*l.exclusions.bytes + len(l.exclusions.rules)*128
 	l.unsupported = c.unsupportedRules
 	if l.stats.Regexes > matcher.RegexWarnThreshold {
 		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules (more than %d); %d of them have no indexable literal", l.stats.Regexes, matcher.RegexWarnThreshold, l.stats.RegexUnindexed))
@@ -625,4 +702,5 @@ func (c *compiler) build(l *List) {
 		}
 		l.warnings = append(l.warnings, fmt.Sprintf("%d rules use features not supported in this version (%s)", c.unsupported, strings.Join(parts, ", ")))
 	}
+	return nil
 }

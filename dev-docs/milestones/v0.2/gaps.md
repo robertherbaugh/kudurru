@@ -3676,3 +3676,34 @@ This establishes tested overlay compatibility, not source import or new lazy-DFA
 performance/RSS/comparator qualification. No benchmark, preimage or baseline was
 rerun. Historical36 measured regressions/20 missing zone keys, CPU differences,
 configured lint/static gates and final integration remain open.
+
+
+### F20 root lazy-DFA integration checkpoint
+
+The root now integrates the qualified23 lazy-DFA source paths. Twenty-two are
+byte-identical to the isolated handoff; list.go has only the already qualified
+parent Fingerprint call/checksum composition. Parent parser delimiter/CIDR
+fixes, existing tests and module files remain intact; the isolated tree is
+unchanged. This supersedes earlier current-status statements that the engine
+was unimported, while retaining their historical evidence.
+
+On this exact source, core blocking/listfetcher/servingbuild default-race checks
+pass835 entries (288 top-level), with only the actual memory-helper and unset
+AdGuard skips. Mounted API/command checks pass47 entries with no skips. The
+pinned v0.107.79 AdGuard comparator then passes all46 entries, zero skips, with
+its two documented deviations unchanged. Scoped vet exits0. The configured
+lint executable is unavailable; vet is not a lint substitute.
+
+One unchanged original12 200ms diagnostic records all58 metrics at2.90GHz,
+GOMAXPROCS2. Unchanged1M is67,115,699ns,66,202B and19 allocations (3 iterations),
+so the eight-allocation baseline remains unmet. Policy Evaluate hit/miss is
+867.5/1123ns; regex1000p99 is18,276ns and remains adverse. This is not a controlled
+before/after pair, five-process median or fixed-class qualification. All36
+historical measured regressions,20 missing zone keys, earlier6B allocation,
+StageA unknown child status and fuzz throughput limits remain recorded.
+
+Raw outcomes were persisted before enrichment. All3965 frozen root identities
+matched, with the pinned binary also verified for comparator execution. Source
+archives, original58 comparisons and exact commands are retained under
+`.context/f20-root-integration-20261108/`. No benchmark, baseline, threshold,
+module or protected dashboard file changed; no push or release occurred.

@@ -100,9 +100,9 @@ func (sel *Selection) basic(l *List, ctx Context) candidate {
 			}
 		}
 	}
-	l.slowIndex.Visit(ctx.Name, func(id int) {
+	l.slowPatterns.VisitMatches(ctx.Name, func(id int) {
 		r := l.slow[id]
-		if (r.rewrite != nil && l.mode != ModeAllow) || sel.canceled(l, r.key) || !r.matches(ctx) {
+		if (r.rewrite != nil && l.mode != ModeAllow) || sel.canceled(l, r.key) || !r.matchesContext(ctx) {
 			return
 		}
 		c := candidateFor(l, r, ctx.Name)
@@ -196,9 +196,9 @@ func (sel *Selection) rewrites(ctx Context) Decision {
 		if !l.hasRewrites {
 			continue
 		}
-		l.slowIndex.Visit(ctx.Name, func(id int) {
+		l.slowPatterns.VisitMatches(ctx.Name, func(id int) {
 			r := l.slow[id]
-			if r.rewrite == nil || sel.canceled(l, r.key) || !r.matches(ctx) {
+			if r.rewrite == nil || sel.canceled(l, r.key) || !r.matchesContext(ctx) {
 				return
 			}
 			c := rewriteCandidate{l, r, i}
@@ -327,9 +327,9 @@ func (sel *Selection) basicIP(l *List, ctx Context, a netip.Addr) candidate {
 		}
 	}
 	ctx.Name = a.Unmap().String()
-	l.slowIndex.Visit(ctx.Name, func(id int) {
+	l.slowPatterns.VisitMatches(ctx.Name, func(id int) {
 		r := l.slow[id]
-		if !r.addr.IsValid() || r.rewrite != nil || sel.canceled(l, r.key) || !r.matches(ctx) {
+		if !r.addr.IsValid() || r.rewrite != nil || sel.canceled(l, r.key) || !r.matchesContext(ctx) {
 			return
 		}
 		c := candidateFor(l, r, ctx.Name)

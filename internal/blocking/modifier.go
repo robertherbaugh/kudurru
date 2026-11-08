@@ -2,6 +2,7 @@ package blocking
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -101,7 +102,7 @@ func (r *Rewrite) identity() string {
 }
 
 func invalidModifier(detail string) error { return fmt.Errorf("%w: %s", parser.ErrInvalidSlow, detail) }
-func compileRule(u parser.UnsupportedRule) (*compiledRule, error) {
+func compileRuleBudget(u parser.UnsupportedRule, budget *matcher.ProgramBudget) (*compiledRule, error) {
 	switch u.Reason {
 	case parser.ReasonModifiers, parser.ReasonWildcard, parser.ReasonUnanchored, parser.ReasonPrefix:
 	default:
@@ -111,8 +112,11 @@ func compileRule(u parser.UnsupportedRule) (*compiledRule, error) {
 	if err != nil {
 		return nil, invalidModifier("pattern: " + err.Error())
 	}
-	p, err := matcher.CompilePattern(pattern)
+	p, err := matcher.CompilePatternWithBudget(pattern, budget)
 	if err != nil {
+		if errors.Is(err, matcher.ErrProgramBudget) {
+			return nil, err
+		}
 		return nil, invalidModifier("pattern: " + err.Error())
 	}
 	r := &compiledRule{text: strings.Clone(u.Text), pattern: p, exception: u.Exception, modifiers: len(u.Modifiers), specificity: len(strings.NewReplacer("*", "", "^", "", "|", "").Replace(u.Pattern))}
@@ -283,7 +287,9 @@ func knownTag(tag string) bool {
 	}
 	return false
 }
-func (r *compiledRule) matches(ctx Context) bool {
+
+// matchesContext evaluates conditions after the shared pattern language hit.
+func (r *compiledRule) matchesContext(ctx Context) bool {
 	if r.badfilter {
 		return false
 	}
@@ -303,8 +309,7 @@ func (r *compiledRule) matches(ctx Context) bool {
 	}) {
 		return false
 	}
-	return matchesSelectors(r.tags, func(s selector) bool { return slices.Contains(ctx.Tags, s.value) }) &&
-		(r.pattern.Literal() == "" || strings.Contains(ctx.Name, r.pattern.Literal())) && r.pattern.Match(ctx.Name)
+	return matchesSelectors(r.tags, func(s selector) bool { return slices.Contains(ctx.Tags, s.value) })
 }
 func matchesSelectors(ss []selector, match func(selector) bool) bool {
 	positives, matched := false, false

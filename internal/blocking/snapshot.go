@@ -16,7 +16,8 @@ var ErrUnknownList = errors.New("blocking: unknown list")
 
 // Snapshot is an immutable set of compiled lists. The owner publishes it
 // through an atomic.Pointer[Snapshot] and swaps in the result of Rebuild;
-// readers load the pointer once per query and never lock.
+// readers load the pointer once per query. Exact/suffix lookups do not lock;
+// regex engines synchronize only their own bounded derived execution state.
 type Snapshot struct {
 	lists      []*List // sorted by name
 	byName     map[string]*List

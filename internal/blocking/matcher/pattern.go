@@ -1,7 +1,9 @@
 package matcher
 
 import (
+	"context"
 	"fmt"
+	"math/bits"
 	"regexp"
 	"strings"
 )
@@ -9,12 +11,17 @@ import (
 // Pattern is a DNS-name adblock pattern compiled from the public filtering
 // grammar. Browser URL/path rules are rejected by the parser, not broadened.
 type Pattern struct {
-	re      *regexp.Regexp
+	re      *Expression
 	literal string
 }
 
 // CompilePattern compiles a DNS adblock pattern or delimited RE2 expression.
 func CompilePattern(pattern string) (*Pattern, error) {
+	return CompilePatternWithBudget(pattern, NewProgramBudget(DefaultProgramBytes))
+}
+
+// CompilePatternWithBudget charges the exact compiled pattern to its list.
+func CompilePatternWithBudget(pattern string, budget *ProgramBudget) (*Pattern, error) {
 	var expression strings.Builder
 	rawRegex := len(pattern) > 2 && pattern[0] == '/' && pattern[len(pattern)-1] == '/'
 	if rawRegex {
@@ -54,7 +61,7 @@ func CompilePattern(pattern string) (*Pattern, error) {
 			}
 		}
 	}
-	re, err := regexp.Compile("(?i)" + expression.String())
+	re, err := compileExpression("(?i)"+expression.String(), budget)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +74,77 @@ func CompilePattern(pattern string) (*Pattern, error) {
 // Match verifies the complete compiled pattern against name.
 func (p *Pattern) Match(name string) bool { return p.re.MatchString(name) }
 
-// Literal returns a substring required by every match, or an empty string.
+// MatchContext performs optional diagnostic matching with bounded admission.
+func (p *Pattern) MatchContext(ctx context.Context, name string) (bool, error) {
+	return p.re.MatchStringContext(ctx, name)
+}
+
+// Literal returns a proven normalized-ASCII shortcut, or an empty string.
 func (p *Pattern) Literal() string { return p.literal }
+
+// PatternSet shares tagged execution across dense modifier candidates. It
+// reports only language hits; client/type/rewrite conditions remain outside.
+type PatternSet struct {
+	patterns []*Pattern
+	index    *PatternIndex
+	batches  []*automaton
+}
+
+// NewPatternSet builds bounded shared execution, propagating resource refusal.
+func NewPatternSet(patterns []*Pattern, budget *ProgramBudget) (*PatternSet, error) {
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+	expressions := make([]*Expression, len(patterns))
+	for i, p := range patterns {
+		expressions[i] = p.re
+	}
+	batches, err := batchExpressions(expressions, budget)
+	if err != nil {
+		return nil, err
+	}
+	return &PatternSet{patterns: patterns, index: NewPatternIndex(patterns), batches: batches}, nil
+}
+
+// VisitMatches visits exact language hits in original order. Sparse candidate
+// verification and dense shared execution both use the same tagged core.
+func (p *PatternSet) VisitMatches(name string, visit func(int)) {
+	if p == nil {
+		return
+	}
+	if prefilterSafe(name) {
+		var candidates [16]int
+		count := 0
+		p.index.Visit(name, func(id int) {
+			if count < len(candidates) {
+				candidates[count] = id
+			}
+			count++
+		})
+		if count <= len(candidates) {
+			// PatternIndex order need not be insertion order.
+			for i := 1; i < count; i++ {
+				for j := i; j > 0 && candidates[j] < candidates[j-1]; j-- {
+					candidates[j], candidates[j-1] = candidates[j-1], candidates[j]
+				}
+			}
+			for _, id := range candidates[:count] {
+				if p.patterns[id].Match(name) {
+					visit(id)
+				}
+			}
+			return
+		}
+	}
+	for i, batch := range p.batches {
+		mask := batch.matchMask(name)
+		for mask != 0 {
+			id := bits.TrailingZeros64(mask)
+			mask &= mask - 1
+			visit(i*automatonRules + id)
+		}
+	}
+}
 
 // PatternIndex selects all possible pattern IDs, with no truncation. A
 // name's repeated shortcut is visited once. Entries lacking a safe shortcut

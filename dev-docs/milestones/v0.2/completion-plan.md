@@ -17,13 +17,12 @@ Later pushes require their own hosted results.
 ## Execution and dependencies
 
 The parent integrates reviewed signed-off commits on the existing PR branch,
-maintains design/contracts/evidence, and runs composed checks. Three isolated
-agents currently own RFC 5011 trust-anchor lifecycle, stored TSIG activation
-and bounded lazy-DFA matching; the parent
-has integrated F02a/F02b/F38/F51/F66 alongside F05/F31/F18a/F62/F70 and the
-disposable Samba/VIP labs. Freed agents take
-the next independent package, retaining original proofs, ownership, current
-transactions and final credential/license checks. No refused mutation replay.
+maintains design/contracts/evidence, and runs composed checks. The parent now owns continued
+integration and qualification of RFC 5011 trust anchors, stored TSIG activation
+and bounded lazy-DFA matching. Retained isolated handoffs supply source and
+evidence; they do not authorize parallel checks. Original proofs, ownership,
+transactions and final credential/license checks remain required. No refused
+mutation replay.
 
 1. Close F01, F47, F04 and F64a; reconcile shared config and startup seams.
 2. Run independent packages F72, F29b, F22a, F06 and F70, then the remaining
@@ -93,7 +92,7 @@ runners. Unit tests cannot substitute for those results.
 | F20a | AdGuard black-box conformance implementation | DNS and resolver | Implemented; final gates open |
 | F20b | Real AdGuard/container qualification and CI evidence | DNS and resolver | Integrated; final gates open |
 | F20c | Move benchgate to `hack/` | DNS and resolver | Integrated; final gates open |
-| F20d | Lazy-DFA regex engine | DNS and resolver | Active D293: core races, pinned comparator, captured API race, original 10k admission and bounded oracle fuzz pass with recorded limits. Five fresh performance and five fresh RSS samples complete; original arithmetic FAILS with 36 measured regressions and 20 missing zone keys, collector/control exit1 and no absolute-limit violations. CPU-class mismatch and official/static gates remain. Isolated two-file lazy-budget correction now passes ordinary56, blocking/listfetcher race207 with2 actual skips, and lint0. Single unchanged-list diagnostic514127698ns/29allocs does not demonstrate allocation savings; root composition and historical failures remain. Parent modifier-aware fingerprint now passes full parser/blocking/listfetcher race339 with2 actual skips and vet0; one parent unchanged-1M diagnostic67043086ns/17allocs is separate from lazy-DFA. Six-path overlay compatibility passes full parser/matcher/blocking/listfetcher race616 with2 skips; isolated source remains unimported and configured lint/performance gates remain pending |
+| F20d | Lazy-DFA regex engine | DNS and resolver | Integrated D293 with parent modifier-aware fingerprint/parser fixes. Root core race835 (2 actual helper/comparator skips), mounted API/command race47, pinned comparator46 and vet pass. Original12 single diagnostic has all58 metrics: unchanged1M 67115699ns/19allocs; regex1000 p99 18276ns remains adverse. Historical five-process arithmetic FAIL remains 36 measured regressions plus20 missing zone keys, with CPU differences and official/static gates open. Configured lint pending unavailable executable; integration is not performance completion |
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Implemented; bounded canonical translation, refusal/ownership/restart and real mounted DNS routes pass |
 | F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated 157-operation client and API/reference contracts updated |
 | F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |

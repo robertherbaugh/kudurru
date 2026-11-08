@@ -2,7 +2,6 @@ package blocking
 
 import (
 	"context"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -37,7 +36,7 @@ type excludedRule struct {
 	pattern string
 	kind    parser.Kind
 	except  bool
-	regex   *regexp.Regexp
+	regex   *matcher.Expression
 	slow    *compiledRule
 }
 
@@ -47,6 +46,7 @@ type exclusionSet struct {
 	bytes     int
 	patterns  int
 	truncated bool
+	budget    *matcher.ProgramBudget
 }
 
 func (s *exclusionSet) reserve(source int, text string, pattern bool) bool {
@@ -83,8 +83,10 @@ func (s *exclusionSet) addBasic(source int, rule parser.Rule) {
 	r := excludedRule{source: source, text: text, pattern: strings.Clone(rule.Pattern), kind: rule.Kind, except: rule.Exception}
 	if rule.Kind == parser.KindRegex {
 		var err error
-		r.regex, err = matcher.CompileRegex(rule.Pattern)
+		mark := s.budget.Used()
+		r.regex, err = matcher.CompileRegexWithBudget(rule.Pattern, s.budget)
 		if err != nil {
+			s.budget.Rewind(mark)
 			s.truncated = true
 			return
 		}
@@ -96,30 +98,36 @@ func (s *exclusionSet) addSlow(source int, rule parser.UnsupportedRule) {
 	if !s.reserve(source, rule.Text, true) {
 		return
 	}
-	r, err := compileRule(rule)
+	mark := s.budget.Used()
+	r, err := compileRuleBudget(rule, s.budget)
 	if err != nil {
+		s.budget.Rewind(mark)
 		s.truncated = true
 		return
 	}
 	if r.badfilter {
+		s.budget.Rewind(mark)
 		return // a cancellation directive is not a question-matching rule
 	}
 	s.rules = append(s.rules, excludedRule{source: source, text: r.text, except: r.exception, slow: r})
 }
 
-func (r *excludedRule) matches(ctx Context) bool {
+func (r *excludedRule) matches(ctx context.Context, question Context) (bool, error) {
 	if r.slow != nil {
-		return r.slow.matches(ctx)
+		if !r.slow.matchesContext(question) {
+			return false, nil
+		}
+		return r.slow.pattern.MatchContext(ctx, question.Name)
 	}
 	switch r.kind {
 	case parser.KindExact:
-		return ctx.Name == r.pattern
+		return question.Name == r.pattern, nil
 	case parser.KindSuffix:
-		return ctx.Name == r.pattern || strings.HasSuffix(ctx.Name, "."+r.pattern)
+		return question.Name == r.pattern || strings.HasSuffix(question.Name, "."+r.pattern), nil
 	case parser.KindRegex:
-		return r.regex.MatchString(ctx.Name)
+		return r.regex.MatchStringContext(ctx, question.Name)
 	}
-	return false
+	return false, nil
 }
 
 // ExcludedQuestionRules examines only this immutable policy selection, with a
@@ -145,7 +153,11 @@ func (sel *Selection) ExcludedQuestionRules(ctx context.Context, question Contex
 				if work > maxDiagnosticWork || ctx.Err() != nil {
 					return out, true
 				}
-				if !rule.matches(question) {
+				matched, err := rule.matches(ctx, question)
+				if err != nil {
+					return out, true
+				}
+				if !matched {
 					continue
 				}
 				if len(out) == MaxExclusionMatches {

@@ -8,7 +8,8 @@
 //   - parser: the clean-room list parser (hosts, domains, adblock, regex,
 //     auto-detection and a complete modifier candidate stream).
 //   - matcher: exact, suffix and regex matchers, an IP set, and an uncapped
-//     required-literal index for contextual DNS patterns.
+//     required-literal index for contextual DNS patterns. Shared tagged lazy
+//     DFA sets use fixed transition capacity and exact NFA execution on saturation.
 //   - List: one compiled BlockList: a primary chain (deny entries for a
 //     block list, allow entries for an allow list) and, for block lists, an
 //     exception chain plus compiled modifier rules. Compile returns the
@@ -16,7 +17,8 @@
 //     are unchanged. Badfilter directives are collected before compilation.
 //   - Snapshot: an immutable set of Lists. The owner (the blocking stage and
 //     the list refresher) publishes it through an atomic.Pointer[Snapshot]
-//     and replaces it copy-on-write with Rebuild; readers never lock.
+//     and replaces it copy-on-write with Rebuild. Derived regex execution
+//     storage has its own bounded synchronization, independent of publication.
 //   - Selection: the lists one policy applies, with EvaluateContext for
 //     the question and EvaluateResponseContext for returned targets and
 //     addresses. Context pins the query type and operator inventory identity.

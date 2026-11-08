@@ -105,7 +105,11 @@ func (s *Server) domainRegexImpact(ctx context.Context, action domainlist.Action
 	if err != nil {
 		return nil, objectReadUnavailable()
 	}
-	result := &DomainRegexImpact{Name: name, Action: string(action), Expression: entry.Value, Matches: expression.MatchString(blocking.NormalizeName(name)), Enabled: entry.Enabled, Everyone: entry.Everyone, Groups: entry.Groups, Overlaps: []DomainOverride{}}
+	matched, err := expression.MatchStringContext(ctx, blocking.NormalizeName(name))
+	if err != nil {
+		return nil, objectReadUnavailable()
+	}
+	result := &DomainRegexImpact{Name: name, Action: string(action), Expression: entry.Value, Matches: matched, Enabled: entry.Enabled, Everyone: entry.Everyone, Groups: entry.Groups, Overlaps: []DomainOverride{}}
 	if result.Matches {
 		names, incomplete := lists.ListNamesBounded(256)
 		result.Incomplete = incomplete

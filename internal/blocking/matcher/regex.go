@@ -3,20 +3,19 @@ package matcher
 import (
 	"errors"
 	"fmt"
-	"regexp"
+	"math/bits"
 	"regexp/syntax"
 	"strings"
+	"unsafe"
 )
 
 // RegexWarnThreshold is the number of regexes per list above which callers
 // should warn (blocky uses the same threshold).
 const RegexWarnThreshold = 500
 
-// RegexUnindexedWarnThreshold is the number of unindexed expressions (no
-// required literal of four bytes) per list above which callers should warn:
-// each one runs for every name the exact and suffix sets did not answer, at
-// roughly 25-75 ns apiece on the spike machine, so 50 of them cost 2-3.5 µs
-// per lookup (dev-docs/spikes/blocking.md).
+// RegexUnindexedWarnThreshold warns about rules without a required literal.
+// They need shared execution on every regex lookup; a saturated lazy cache
+// remains exact but executes the bounded NFA rather than cached transitions.
 const RegexUnindexedWarnThreshold = 50
 
 // ErrRegexCap is returned by RegexBuilder.Add once the hard cap is reached.
@@ -28,19 +27,15 @@ const (
 	gramLen = 4
 	// gramBits sizes the bitmap in front of the gram index.
 	gramBits = 1 << 16
-	// maxCandidates bounds the candidate buffer of one lookup; a name with
-	// more candidates falls back to the linear scan.
+	// maxCandidates bounds the candidate buffer of one lookup; dense
+	// candidates use fixed ordered tagged batches.
 	maxCandidates = 128
 )
 
-// Regex matches names against RE2 expressions. Each expression carries the
-// longest literal that every match must contain (RequiredLiteral). Most
-// expressions are indexed by one 4-byte gram of that literal, chosen to
-// keep index buckets small, so a lookup slides over the grams of the name,
-// tests a bitmap, and runs only the expressions whose gram occurs in the
-// name: the cost follows the name length, not the number of expressions.
-// Expressions without a usable literal are always run. The idea is the
-// "shortcut index" of dev-docs/design-record.md §7.3 item 4, re-implemented.
+// Regex matches RE2 languages using the shared tagged lazy-DFA executor.
+// Required-literal grams avoid execution on proven misses and select small
+// sparse candidate sets. Dense/unindexed candidates use fixed ordered tagged
+// sets, with exact bounded NFA execution after cache saturation.
 //
 // Expressions are matched against the normalised (lower-case) name. An
 // expression that contains upper-case ASCII letters is compiled
@@ -51,10 +46,16 @@ type Regex struct {
 	always  []int32            // expressions without an indexed gram, ascending
 	index   map[uint32][]int32 // gram -> expressions, ascending
 	bits    []uint64           // gramBits-bit filter over the indexed grams
+	batches []*automaton
+	// The two batch lanes preserve original order within unindexed and
+	// indexed rules. Local engine tags always map through batchIDs.
+	batchIDs         [][]int32
+	unindexedBatches int
+	batchBytes       int // charged immutable mapping/slice storage
 }
 
 type regexEntry struct {
-	re  *regexp.Regexp
+	re  *Expression
 	src string // as written, without the /.../ delimiters
 	lit string // required literal; empty when none could be derived
 	tag uint8
@@ -90,22 +91,37 @@ func (r *Regex) Match(name string) (src string, tag uint8, ok bool) {
 	if r == nil {
 		return "", 0, false
 	}
-	if len(r.always) > maxCandidates {
-		return r.scan(name)
+	if !prefilterSafe(name) {
+		return r.scanSafe(name, false)
 	}
 	var buf [maxCandidates]int32
-	cand := append(buf[:0], r.always...)
+	cand := buf[:0]
+	for _, idx := range r.always {
+		e := &r.entries[idx]
+		if e.lit != "" && !strings.Contains(name, e.lit) {
+			continue
+		}
+		if len(cand) == 16 {
+			return r.scanSafe(name, true)
+		}
+		cand = append(cand, idx)
+	}
 	for i := 0; i+gramLen <= len(name); i++ {
 		g := gramAt(name, i)
 		b := gramBit(g)
 		if r.bits[b>>6]&(1<<(b&63)) == 0 {
 			continue
 		}
-		ids := r.index[g]
-		if len(cand)+len(ids) > maxCandidates {
-			return r.scan(name)
+		for _, idx := range r.index[g] {
+			e := &r.entries[idx]
+			if e.lit != "" && !strings.Contains(name, e.lit) {
+				continue
+			}
+			if len(cand) == 16 {
+				return r.scanSafe(name, true)
+			}
+			cand = append(cand, idx)
 		}
-		cand = append(cand, ids...)
 	}
 	// Insertion sort: candidate lists are short, and evaluating in index
 	// order keeps the first-added-wins rule of the linear scan.
@@ -128,26 +144,109 @@ func (r *Regex) Match(name string) (src string, tag uint8, ok bool) {
 	return "", 0, false
 }
 
-// scan is the linear fallback for names with too many candidates.
+// scan merges batch lower bounds to find the earliest original matching ID.
 func (r *Regex) scan(name string) (string, uint8, bool) {
-	for i := range r.entries {
-		e := &r.entries[i]
-		if (e.lit == "" || strings.Contains(name, e.lit)) && e.re.MatchString(name) {
-			return e.src, e.tag, true
+	return r.scanSafe(name, prefilterSafe(name))
+}
+
+// scanSafe reuses only the safety result already established by Match or scan.
+func (r *Regex) scanSafe(name string, safe bool) (string, uint8, bool) {
+	next := [2]int{0, r.unindexedBatches}
+	end := [2]int{r.unindexedBatches, len(r.batches)}
+	if safe && !r.hasIndexedGram(name) {
+		end[1] = next[1]
+	}
+	best := len(r.entries)
+	for {
+		lane := -1
+		for i := range next {
+			if next[i] < end[i] && (lane < 0 || r.batchIDs[next[i]][0] < r.batchIDs[next[lane]][0]) {
+				lane = i
+			}
 		}
+		if lane < 0 {
+			break
+		}
+		batch := next[lane]
+		next[lane]++
+		if int(r.batchIDs[batch][0]) >= best {
+			break // no remaining batch can contain an earlier original ID
+		}
+		if safe && r.batchExcluded(batch, name) {
+			continue
+		}
+		if mask := r.batches[batch].matchMask(name); mask != 0 {
+			id := int(r.batchIDs[batch][bits.TrailingZeros64(mask)])
+			if id < best {
+				best = id
+			}
+		}
+	}
+	if best < len(r.entries) {
+		e := &r.entries[best]
+		return e.src, e.tag, true
 	}
 	return "", 0, false
 }
 
-// Bytes returns a rough heap footprint estimate (the regexp program size is
-// not exported, so this counts sources plus a fixed per-expression cost).
+// hasIndexedGram reports possible indexed eligibility, not a language match.
+// On prefilter-safe names every indexed match requires its selected literal
+// gram. Bitmap positives must reach the exact index; collisions prove nothing.
+// Callers may exclude the indexed lane only when the input is prefilter-safe.
+func (r *Regex) hasIndexedGram(name string) bool {
+	if len(r.index) == 0 {
+		return false
+	}
+	for i := 0; i+gramLen <= len(name); i++ {
+		g := gramAt(name, i)
+		b := gramBit(g)
+		if r.bits[b>>6]&(1<<(b&63)) != 0 && len(r.index[g]) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// batchExcluded proves that every original member is a miss. Callers must
+// bypass this shortcut for inputs outside prefilterSafe. An empty literal
+// never excludes an expression, even if all its neighbors are excluded.
+func (r *Regex) batchExcluded(batch int, name string) bool {
+	for _, id := range r.batchIDs[batch] {
+		e := &r.entries[id]
+		if e.lit == "" || strings.Contains(name, e.lit) {
+			return false
+		}
+	}
+	return true
+}
+
+// Bytes approximates retained metadata plus reserved programs/cache/scratch.
 func (r *Regex) Bytes() int {
 	if r == nil {
 		return 0
 	}
-	n := 8*len(r.bits) + 4*len(r.always) + 48*len(r.index)
+	n := 8*len(r.bits) + 4*len(r.always) + 48*len(r.index) + r.batchBytes
 	for i := range r.entries {
-		n += 2*len(r.entries[i].src) + len(r.entries[i].lit) + 2048 + 4
+		n += 2*len(r.entries[i].src) + len(r.entries[i].lit) + r.entries[i].re.bytes + 4
+	}
+	for _, batch := range r.batches {
+		n += batch.bytes()
+	}
+	return n
+}
+
+// ProgramBytes counts retained programs/cache/scratch and original-ID mapping
+// storage, without unrelated entry/index metadata.
+func (r *Regex) ProgramBytes() int {
+	if r == nil {
+		return 0
+	}
+	n := r.batchBytes
+	for _, e := range r.entries {
+		n += e.re.bytes
+	}
+	for _, batch := range r.batches {
+		n += batch.bytes()
 	}
 	return n
 }
@@ -158,6 +257,8 @@ type RegexBuilder struct {
 	// HardCap is the maximum number of expressions; Add returns ErrRegexCap
 	// beyond it. Zero or negative means unlimited.
 	HardCap int
+	// Budget charges all programs and reserved runtime capacity to one list.
+	Budget *ProgramBudget
 
 	entries []regexEntry
 	seen    map[string]struct{}
@@ -175,7 +276,7 @@ func (b *RegexBuilder) Add(src string, tag uint8) error {
 		b.dropped++
 		return ErrRegexCap
 	}
-	re, err := CompileRegex(src)
+	re, err := CompileRegexWithBudget(src, b.Budget)
 	if err != nil {
 		return fmt.Errorf("matcher: invalid regex %q: %w", src, err)
 	}
@@ -190,11 +291,16 @@ func (b *RegexBuilder) Add(src string, tag uint8) error {
 
 // CompileRegex uses the list engine's case behavior for a normalized DNS name.
 // Diagnostic matchers use it too so an excluded rule retains identical meaning.
-func CompileRegex(src string) (*regexp.Regexp, error) {
+func CompileRegex(src string) (*Expression, error) {
+	return CompileRegexWithBudget(src, NewProgramBudget(DefaultProgramBytes))
+}
+
+// CompileRegexWithBudget uses the same case wrapper and a shared reservation.
+func CompileRegexWithBudget(src string, budget *ProgramBudget) (*Expression, error) {
 	if hasUpperASCII(src) {
 		src = "(?i)" + src
 	}
-	return regexp.Compile(src)
+	return compileExpression(src, budget)
 }
 
 // Len returns the number of expressions added so far.
@@ -209,9 +315,18 @@ func (b *RegexBuilder) Dropped() int { return b.dropped }
 // Build returns the matcher and resets the builder. It returns nil when
 // nothing was added.
 func (b *RegexBuilder) Build() *Regex {
+	r, err := b.BuildChecked()
+	if err != nil {
+		panic(err)
+	} // only callers with an explicit budget can refuse
+	return r
+}
+
+// BuildChecked propagates aggregate program refusal to the list compiler.
+func (b *RegexBuilder) BuildChecked() (*Regex, error) {
 	if len(b.entries) == 0 {
-		*b = RegexBuilder{HardCap: b.HardCap}
-		return nil
+		*b = RegexBuilder{HardCap: b.HardCap, Budget: b.Budget}
+		return nil, nil
 	}
 	r := &Regex{entries: b.entries, index: map[uint32][]int32{}, bits: make([]uint64, gramBits/64)}
 	for i, e := range r.entries {
@@ -233,26 +348,90 @@ func (b *RegexBuilder) Build() *Regex {
 		bit := gramBit(best)
 		r.bits[bit>>6] |= 1 << (bit & 63)
 	}
-	*b = RegexBuilder{HardCap: b.HardCap}
-	return r
+	if err := r.buildBatches(b.Budget); err != nil {
+		return nil, err
+	}
+	*b = RegexBuilder{HardCap: b.HardCap, Budget: b.Budget}
+	return r, nil
 }
 
-// RequiredLiteral returns the longest literal string that every match of the
-// RE2 expression expr must contain, lower-cased when the literal is
-// case-insensitive, or "" when none can be derived (alternations, optional
-// parts, parse errors). It never returns a string that some match lacks, so
-// it is safe as a prefilter.
+// buildBatches keeps independently excludable indexed rules separate from
+// always candidates. Every mask retains an explicit original-ID mapping.
+func (r *Regex) buildBatches(budget *ProgramBudget) error {
+	u := len(r.always)
+	r.unindexedBatches = (u + automatonRules - 1) / automatonRules
+	count := r.unindexedBatches + (len(r.entries)-u+automatonRules-1)/automatonRules
+	// Reserve headers, exactly sized retained arrays, and the mapping's own
+	// accounting fields before allocating them. The graph builder separately
+	// charges every machine, including a possible extra partial batch.
+	reserved := int64(unsafe.Sizeof(r.batches) + unsafe.Sizeof(r.batchIDs) + unsafe.Sizeof(r.unindexedBatches) + unsafe.Sizeof(r.batchBytes))
+	reserved += int64(len(r.entries)) * int64(unsafe.Sizeof(int32(0)))
+	reserved += int64(count) * int64(unsafe.Sizeof((*automaton)(nil))+unsafe.Sizeof([]int32{}))
+	if err := budget.take(reserved); err != nil {
+		return err
+	}
+	r.batchBytes = int(reserved)
+	r.batches = make([]*automaton, 0, count)
+	r.batchIDs = make([][]int32, 0, count)
+	ids := make([]int32, len(r.entries))
+	copy(ids, r.always)
+	at := u
+	for i, e := range r.entries {
+		if len(e.lit) >= gramLen {
+			ids[at] = int32(i) //nolint:gosec // programs bound entry count to available memory
+			at++
+		}
+	}
+	for _, group := range [2][]int32{ids[:u], ids[u:]} {
+		for start := 0; start < len(group); start += automatonRules {
+			end := min(start+automatonRules, len(group))
+			members := group[start:end:end]
+			var programs [automatonRules]*syntax.Prog
+			for i, id := range members {
+				programs[i] = r.entries[id].re.program
+			}
+			machine, err := newBudgetedAutomaton(programs[:len(members)], 64<<10, budget)
+			if err != nil {
+				return err
+			}
+			r.batches = append(r.batches, machine)
+			r.batchIDs = append(r.batchIDs, members)
+		}
+	}
+	return nil
+}
+
+// RequiredLiteral returns a conservative ASCII shortcut for normalized ASCII
+// names, or "" when none is proven (alternations, optional parts, Unicode or
+// resource/syntax refusal). Case-insensitive literals are lowercased. Callers
+// must bypass shortcuts for other inputs, as Regex and PatternSet do.
 func RequiredLiteral(expr string) string {
+	if !parseInputFits(expr) {
+		return ""
+	}
+	for i := range len(expr) {
+		if expr[i] >= 128 {
+			return ""
+		}
+	}
 	re, err := syntax.Parse(expr, syntax.Perl)
 	if err != nil {
 		return ""
 	}
-	return requiredLiteral(re.Simplify())
+	// Required text does not require expansion of counted repetitions.
+	return requiredLiteral(re)
 }
 
 func requiredLiteral(re *syntax.Regexp) string {
 	switch re.Op {
 	case syntax.OpLiteral:
+		// Escaped Unicode is not visible in the source-byte preflight. Keep
+		// every shortcut ASCII; Unicode inputs bypass shortcuts altogether.
+		for _, r := range re.Rune {
+			if r >= 128 {
+				return ""
+			}
+		}
 		s := string(re.Rune)
 		if re.Flags&syntax.FoldCase != 0 {
 			s = strings.ToLower(s)
@@ -291,10 +470,53 @@ func (r *Regex) Visit(name string, visit func(string, uint8) bool) {
 	if r == nil {
 		return
 	}
-	for i := range r.entries {
-		e := &r.entries[i]
-		if (e.lit == "" || strings.Contains(name, e.lit)) && e.re.MatchString(name) && !visit(e.src, e.tag) {
+	safe := prefilterSafe(name)
+	cursors := [2]regexCursor{{end: r.unindexedBatches}, {batch: r.unindexedBatches, end: len(r.batches)}}
+	if safe && !r.hasIndexedGram(name) {
+		cursors[1].end = cursors[1].batch
+	}
+	var heads [2]int32
+	var ready [2]bool
+	for i := range cursors {
+		heads[i], ready[i] = cursors[i].next(r, name, safe)
+	}
+	for ready[0] || ready[1] {
+		lane := 0
+		if !ready[0] || ready[1] && heads[1] < heads[0] {
+			lane = 1
+		}
+		e := &r.entries[heads[lane]]
+		if !visit(e.src, e.tag) {
 			return
 		}
+		heads[lane], ready[lane] = cursors[lane].next(r, name, safe)
+	}
+}
+
+// regexCursor streams one ordered lane with constant query storage. Each
+// engine lock is released before a callback or another cursor is advanced.
+type regexCursor struct {
+	batch, end int
+	mask       uint64
+	ids        []int32
+}
+
+func (c *regexCursor) next(r *Regex, name string, safe bool) (int32, bool) {
+	for {
+		if c.mask != 0 {
+			bit := bits.TrailingZeros64(c.mask)
+			c.mask &= c.mask - 1
+			return c.ids[bit], true
+		}
+		if c.batch >= c.end {
+			return 0, false
+		}
+		batch := c.batch
+		c.batch++
+		if safe && r.batchExcluded(batch, name) {
+			continue
+		}
+		c.ids = r.batchIDs[batch]
+		c.mask = r.batches[batch].matchMask(name)
 	}
 }

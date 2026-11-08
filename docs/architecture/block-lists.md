@@ -188,7 +188,7 @@ flowchart LR
 flowchart LR
     N(["name, lower-cased,<br/>no trailing dot"]) --> E{"exact set<br/>sorted buckets by length,<br/>bit filter, binary search"}
     E -- "miss" --> S{"suffix set<br/>||x^, *.x, hosts with subdomains;<br/>walk labels broadest first"}
-    S -- "miss" --> RX{"regex set<br/>RE2, indexed by a 4-byte<br/>piece of each literal"}
+    S -- "miss" --> RX{"regex set<br/>RE2 languages, literal-gram index<br/>and tagged lazy-DFA batches"}
     RX -- "miss" --> M["no match"]
     E -- "hit" --> HIT["match + rule text"]
     S -- "hit" --> HIT
@@ -201,7 +201,8 @@ in a block list, allow rules in an allow list) and the **exception** chain
 when the answer is checked. Each entry keeps a one-byte syntax tag, so the
 query log can show the rule as written without storing the lines.
 
-Lookups allocate nothing. The spike measured p99 1.18 µs for a hit and
+The matchers reserve query scratch and transition capacity during compilation.
+Cold and saturated regex execution uses the same reserved storage. The spike measured p99 1.18 µs for a hit and
 0.71 µs for a miss over a 1 M-entry suffix set, and about 90 MB steady RSS
 for 3 M entries ([spike](../../dev-docs/spikes/blocking.md)); `make bench` guards it.
 
@@ -218,6 +219,19 @@ Regex modifiers begin after the closing `/`, for example
 client-selector slashes remain part of their modifier values. Escaped slashes,
 character classes and RE2 literal quoting retain their regex meaning; scoped
 exceptions and `$badfilter` use the complete original rule identity.
+
+Regexes and contextual patterns share a tagged lazy-DFA executor. Conservative
+literal prefilters retain original rule order; dense and unindexed candidates
+use fixed batches. A bounded transition arena freezes when full and continues
+with exact NFA execution. Invalid syntax and typed resource refusal remain
+separate outcomes; cache saturation never changes the language.
+
+Compilation reserves programs, mappings, transition capacity and fallback
+scratch against each list and the complete serving candidate. Both default to
+128 MiB; reused lists still debit the candidate. Refusal preserves the previous
+complete owner. These reservations are not total RSS or a bound on old and new
+serving bundles held together. The original performance gates remain open:
+integrated correctness does not clear historical relative regressions.
 
 ## Compile and swap
 
@@ -245,7 +259,8 @@ actual parser and modifier callback so all `$badfilter` validation and exclusion
 still apply. Ordinary lines contribute to the checksum without building rules;
 changed lists receive the full parser pass and diagnostics. Fingerprint versions,
 options and source identity remain part of reuse, and failures keep the previous
-complete owner. This optimization does not qualify the separate lazy-DFA work.
+complete owner. The integrated lazy-DFA compiler shares this fingerprint path;
+correctness checks and performance acceptance remain separate.
 
 Lists of 1 MiB or more trigger a garbage collection between compiles, so a
 refresh of several big lists does not hold them all in memory at once.
