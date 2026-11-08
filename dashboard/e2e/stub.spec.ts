@@ -31,7 +31,11 @@ test('a stub discovers authorities, routes queries, edits and expires', async ({
     for (const [host, target] of [['ns', '127.0.0.1'], ['www', '192.0.2.81']]) {
       expect((await primaryApi.post(`/api/v1/zones/${name}/records`, { headers, data: { dnsName: `${host}.${name}`, recordType: 'A', targets: [target] } })).ok()).toBe(true);
     }
-    await expect.poll(async () => (await query(primary.dns, `www.${name}`)).a).toContain('192.0.2.81');
+    // Independent observations may be refused while the new generation prepares.
+    // Keep the original ten-second bound, including rejected DNS queries.
+    await expect(async () => {
+      expect((await query(primary.dns, `www.${name}`)).a).toContain('192.0.2.81');
+    }).toPass({ timeout: 10_000 });
     await main(page).getByRole('button', { name: 'New zone' }).click();
     const wizard = page.getByRole('dialog', { name: 'New zone' });
     await wizard.getByRole('radio', { name: /^Stub/ }).click();
@@ -47,7 +51,9 @@ test('a stub discovers authorities, routes queries, edits and expires', async ({
     await expect(page).toHaveURL((url) => url.pathname === `/zones/${name}`);
     const readRuntime = async () => (await api.get<ZoneSummary>(`/zones/${name}`)).body.stubRuntime;
     await expect.poll(async () => (await readRuntime())?.state, { timeout: 30_000 }).toBe('routing');
-    await expect.poll(async () => (await query(env('KUDURRU_E2E_DNS'), `www.${name}`)).a).toContain('192.0.2.81');
+    await expect(async () => {
+      expect((await query(env('KUDURRU_E2E_DNS'), `www.${name}`)).a).toContain('192.0.2.81');
+    }).toPass({ timeout: 10_000 });
     expect((await readRuntime())?.authorities).toEqual([{ name: `ns.${apex}`, address: primary.dns, protocol: 'udp' }]);
     await page.reload();
     await settle(page);
@@ -64,7 +70,9 @@ test('a stub discovers authorities, routes queries, edits and expires', async ({
     await expect(settings.getByRole('button', { name: 'Save Zone settings' })).toHaveCount(0);
     expect((await api.get<DNSZone>(`/objects/dnszones/${name}`)).body.spec.stub).toEqual({ nameservers: [`tcp://${primary.dns}`] });
     await expect.poll(async () => (await readRuntime())?.authorities[0]?.protocol, { timeout: 30_000 }).toBe('tcp');
-    await expect.poll(async () => (await query(env('KUDURRU_E2E_DNS'), `www.${name}`)).a).toContain('192.0.2.81');
+    await expect(async () => {
+      expect((await query(env('KUDURRU_E2E_DNS'), `www.${name}`)).a).toContain('192.0.2.81');
+    }).toPass({ timeout: 10_000 });
     await primary.stop();
     stopped = true;
     await expect.poll(async () => (await readRuntime())?.state, { timeout: 15_000 }).toBe('expired');

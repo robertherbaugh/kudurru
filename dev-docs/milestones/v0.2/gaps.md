@@ -5942,3 +5942,22 @@ domain adaptation, raw forwarded credential transport, operator activation/join/
 promotion, forwarding and full partition/rejoin acceptance remain open. The
 existing MemberServer callback retains its own WithCommandOutput responsibility;
 its emit must not be nested inside this helper's already admitted raw emitter.
+
+
+### G04 stub browser convergence, November 8
+
+Hosted CI42530377433 onb2d197d8 passed153 browser cases and failed the stub case.
+Its retained trace places the failure at the initial primary DNS observation,
+before any stub creation: six empty address arrays followed by a three-second
+DNS timeout. The earlier corrected secondary case passed in this hosted run.
+The initial serving gap's cause is not established by that trace.
+
+The three independent stub DNS convergence observations now use bounded toPass
+assertions, which handle rejected queries as well as wrong answers. The original
+ten-second observation bounds, exact192.0.2.81,90-second whole-test limit and
+single post-expiry SERVFAIL observation are unchanged. No mutation or held
+request is replayed. The full real-browser two-server create/routing/edit/expiry
+scenario passes locally in27.266s including setup (18.4s test); file ESLint passes.
+The exact f916537e binary builds CGO-disabled with unchanged generated dashboard
+bytes. Evidence: .context/hosted-release-b2d197d8-20261108/. Hosted final-source
+qualification remains open; the earlier failed run is preserved.
