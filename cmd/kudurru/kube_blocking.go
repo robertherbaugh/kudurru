@@ -131,6 +131,7 @@ func (r *kubeBlockingRuntime) Command(ctx context.Context, change api.BlockingCh
 		}
 		return ctx.Err()
 	}
+	// nosemgrep: trailofbits.go.invalid-usage-of-modified-variable.invalid-usage-of-modified-variable -- Receipt is a value, valid on error; its dispatch/commit fields distinguish refused, unknown and committed writes.
 	receipt, err := r.store.ChangeBlockingRuntime(ctx, until, admit)
 	if err != nil {
 		if !receipt.Dispatched {

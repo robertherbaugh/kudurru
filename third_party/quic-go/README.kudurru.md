@@ -26,3 +26,19 @@ When upgrading, compare the replacement against the upstream module and rerun
 both the upstream path/CID tests and the real DNS migration tests. Remove the
 replacement only when upstream supplies equivalent behavior. Do not edit the
 shared Go module cache. No upstream contribution or acceptance is claimed.
+
+The standalone module also pins patched `golang.org/x` dependencies rather
+than relying on the application's higher minimum versions. This closes the
+upstream module's independently scanned crypto, module transparency-log,
+HTTP/2, HTML and text vulnerability findings. The root application's selected
+dependency versions are unchanged.
+
+Narrow Semgrep annotations document reviewed upstream runtime contracts:
+unsupported-version parsing returns a nonnil header, QUIC enforces TLS 1.3,
+and impossible negative frame accounting terminates the connection goroutine
+with an unrecovered panic. These annotations change no runtime behavior.
+The root scan retains all production QUIC sources; only upstream examples,
+integration fixtures, interop tools, dashboard fixtures and inactive upstream
+GitHub configuration follow the repository's development-fixture exclusions.
+`UPSTREAM.json` remains the original source manifest, including original module
+pins, so every local difference remains independently reviewable.

@@ -441,3 +441,11 @@ revocation integration passes three entries (6.214 s). Final configured scoped
 lint exits0 with zero issues (4.611 s). All 2,962 source03 identities match;
 original failing receipts remain under `.context/member-contact-20261108/`.
 Root operator/domain/listener/join assembly and full HA acceptance remain open.
+
+The selected Ubicloud benchmark runner is now executing the exact candidate
+9cc2ae04 in hosted run 42514599389; recording success is not a release gate.
+Fresh security run 42514564273 exposed stale standalone QUIC module pins and
+reviewed upstream fixture warnings. Patched pins and narrowly documented scan
+findings pass local configured Semgrep/Trivy; exact evidence is in gaps.md.
+Fresh CI's BIND denial-zone readiness failure is reproduced locally and remains
+under investigation. Historical green runs do not qualify this new candidate.

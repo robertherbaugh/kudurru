@@ -1087,6 +1087,7 @@ func (c *Conn) handleOnePacket(rp receivedPacket, datagramPayloadChecksum qlog.D
 		}
 
 		if wire.IsLongHeaderPacket(p.data[0]) {
+			// nosemgrep: trailofbits.go.invalid-usage-of-modified-variable.invalid-usage-of-modified-variable -- ParsePacket returns the parsed nonnil header with ErrUnsupportedVersion; other errors never dereference hdr.
 			hdr, packetData, rest, err := wire.ParsePacket(p.data)
 			if err != nil {
 				if c.qlogger != nil {

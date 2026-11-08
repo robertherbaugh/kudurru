@@ -233,6 +233,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	}
 	// We currently only use the cert-related stuff from tls.Config,
 	// so we don't need to make a full copy.
+	// nosemgrep: go.lang.security.audit.crypto.missing-ssl-minversion.missing-ssl-minversion -- QUIC requires TLS 1.3; the QUIC handshake enforces it independently of this certificate-only config.
 	ln, err := s.setupListenerForConn(&tls.Config{Certificates: certs}, nil)
 	if err != nil {
 		return err
@@ -729,6 +730,7 @@ func ListenAndServeTLS(addr, certFile, keyFile string, handler http.Handler) err
 	}
 	// We currently only use the cert-related stuff from tls.Config,
 	// so we don't need to make a full copy.
+	// nosemgrep: go.lang.security.audit.crypto.missing-ssl-minversion.missing-ssl-minversion -- This config is passed only to the QUIC server, whose handshake enforces TLS 1.3; it is not the separate TCP server's config.
 	config := &tls.Config{
 		Certificates: certs,
 	}

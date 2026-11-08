@@ -5435,3 +5435,34 @@ revocation integration passes three entries (6.214 s). Final configured scoped
 lint exits0 with zero issues (4.611 s). All 2,962 source03 identities match;
 original failing receipts remain under `.context/member-contact-20261108/`.
 Root operator/domain/listener/join assembly and full HA acceptance remain open.
+
+### G04/G24 hosted security findings, November 8
+
+Hosted security run 42514564273 on 9cc2ae04 failed its source scans. Image,
+license-server image and reachable Go vulnerability scans passed. The retained
+standalone QUIC module still selected vulnerable upstream dependency versions;
+its module pins now match the patched application crypto/net/text selections
+and use x/mod 0.41.0. The root go.mod/go.sum and original UPSTREAM.json/license
+are unchanged. Upstream development-only workflows, examples and simulator
+fixtures follow the existing scan fixture policy. Production QUIC remains
+scanned, with narrow annotations for verified parse-on-error, mandatory QUIC
+TLS 1.3 and fatal internal panic contracts. Trivy accepts only the explicitly
+named, unused upstream fuzz/simulator Dockerfile findings, with reasons.
+
+The exact tracked-file snapshot passes the configured Semgrep scan (exit 0,
+57.447 seconds) and Trivy vulnerability/secret/misconfiguration scan (exit 0,
+7.452 seconds). The first local Trivy scan's three upstream-fixture findings
+remain recorded. Standalone QUIC/HTTP3/handshake races pass; the combined run
+still exits 1 because the wire STREAM zero-allocation assertion observes four
+allocations under the race detector (1,678 pass entries, two failed entries and
+two socket-buffer privilege skips). No upstream assertion was changed or
+omitted. The complete ordinary wire suite passes 472 entries, including that
+allocation test. Actual application DNS/upstream races pass 455 entries with
+four existing opt-in/privilege skips. Evidence, original failed logs and exact
+frozen identities are in `.context/security-quic-20261108/`.
+
+Fresh hosted CI 42514564260 also found a BIND ZoneTransferDeny readiness failure;
+its actual local reproduction remains failure. The earlier operational-reload
+failure did not reproduce in 20 focused race iterations; diagnostics now retain
+the underlying error, with no production fix or flake waiver inferred. These
+failures and all final implementation/performance/external gates remain open.

@@ -345,6 +345,7 @@ func (t *Transport) getClient(ctx context.Context, hostname string, onlyCached b
 func (t *Transport) dial(ctx context.Context, hostname string) (*quic.Conn, clientConn, error) {
 	var tlsConf *tls.Config
 	if t.TLSClientConfig == nil {
+		// nosemgrep: go.lang.security.audit.crypto.missing-ssl-minversion.missing-ssl-minversion -- QUIC's TLS handshake enforces TLS 1.3 even with an empty client config.
 		tlsConf = &tls.Config{}
 	} else {
 		tlsConf = t.TLSClientConfig.Clone()

@@ -884,6 +884,7 @@ func (s *sendStreamAckHandler) OnAcked(f wire.Frame) {
 	}
 	s.numOutstandingFrames--
 	if s.numOutstandingFrames < 0 {
+		// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- Fatal internal accounting invariant: this path panics out of the connection goroutine, never returns or resumes stream use; ordinary paths unlock below.
 		panic("numOutStandingFrames negative")
 	}
 	completed := (*SendStream)(s).isNewlyCompleted()
@@ -907,6 +908,7 @@ func (s *sendStreamAckHandler) OnLost(f wire.Frame) {
 	}
 	s.numOutstandingFrames--
 	if s.numOutstandingFrames < 0 {
+		// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- Fatal internal accounting invariant: this path panics out of the connection goroutine, never returns or resumes stream use; ordinary paths unlock below.
 		panic("numOutStandingFrames negative")
 	}
 
@@ -956,6 +958,7 @@ func (s *sendStreamResetStreamHandler) OnAcked(f wire.Frame) {
 	}
 	s.numOutstandingFrames--
 	if s.numOutstandingFrames < 0 {
+		// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- Fatal internal accounting invariant: this path panics out of the connection goroutine, never returns or resumes stream use; ordinary paths unlock below.
 		panic("numOutStandingFrames negative")
 	}
 	completed := (*SendStream)(s).isNewlyCompleted()
