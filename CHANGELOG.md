@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Release benchmark collection now includes cache, upstream strategies, sockets
+  and persistence in fresh processes, with retained failures and baseline
+  integrity checks. Fixed-runner calibration remains required.
+
 - Linux DoQ and HTTP/3 listeners now honor `listeners.sockets` with connection-ID
   routing across path migration and shared application limits. A pinned quic-go
   fix prevents CID exhaustion across repeated migrations.

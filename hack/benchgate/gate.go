@@ -147,7 +147,7 @@ func ParseRules(r io.Reader) ([]Rule, error) {
 }
 
 // higherIsBetter lists units where a drop is the regression.
-var higherIsBetter = map[string]bool{"MB/s": true}
+var higherIsBetter = map[string]bool{"MB/s": true, "q/s": true}
 
 // floor returns the absolute change below which a relative regression is
 // treated as noise, per unit.

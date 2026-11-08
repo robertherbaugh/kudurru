@@ -18,9 +18,9 @@
 //
 // Without -baseline only the limits are checked, which is how
 // `make bench-baseline` validates a freshly recorded baseline.
-// -samples requires an exact sample count per current metric; the Makefile
+// -samples requires an exact sample count per metric in both inputs; the Makefile
 // supplies BENCH_COUNT after running each sample in a fresh process. -procs
-// checks every current benchmark's processor suffix. -strict-cpu requires
+// checks every benchmark's processor suffix in both inputs. -strict-cpu requires
 // CPU headers and compares the current CPU to the baseline when supplied.
 package main
 
@@ -44,8 +44,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	limitsPath := fs.String("limits", "", "limits file")
 	threshold := fs.Float64("threshold", 20, "allowed regression in percent")
 	strictCPU := fs.Bool("strict-cpu", false, "fail when the baseline was recorded on a different CPU")
-	samples := fs.Int("samples", 0, "require exactly this many samples per current metric (0 disables)")
-	procs := fs.Int("procs", 0, "require this GOMAXPROCS suffix on every current result (0 disables)")
+	samples := fs.Int("samples", 0, "require exactly this many samples per metric in both inputs (0 disables)")
+	procs := fs.Int("procs", 0, "require this GOMAXPROCS suffix on every result in both inputs (0 disables)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -111,6 +111,32 @@ func run(args []string, stdout, stderr io.Writer) int {
 	for _, l := range current.Failures {
 		_, _ = fmt.Fprintln(stdout, "benchgate: benchmark run failed:", l)
 		failed = true
+	}
+	// A failed or incomplete baseline cannot establish a regression reference,
+	// even when the current run is complete and its numbers appear better.
+	if baseline != nil {
+		if len(baseline.Samples) == 0 {
+			_, _ = fmt.Fprintln(stdout, "benchgate: no baseline benchmark results in", *baselinePath)
+			failed = true
+		}
+		for _, l := range baseline.Failures {
+			_, _ = fmt.Fprintln(stdout, "benchgate: baseline run failed:", l)
+			failed = true
+		}
+		if *procs > 0 && (len(baseline.Procs) != 1 || !baseline.Procs[*procs]) {
+			_, _ = fmt.Fprintf(stdout, "benchgate: expected GOMAXPROCS=%d on every baseline result\n", *procs)
+			failed = true
+		}
+		if *samples > 0 {
+			for _, name := range baseline.order {
+				for _, unit := range sortedUnits(baseline.Samples[name]) {
+					if count := len(baseline.Samples[name][unit]); count != *samples {
+						_, _ = fmt.Fprintf(stdout, "benchgate: baseline %s %s has %d samples; expected %d\n", name, unit, count, *samples)
+						failed = true
+					}
+				}
+			}
+		}
 	}
 	if baseline != nil && baseline.CPU != current.CPU {
 		_, _ = fmt.Fprintf(stdout, "benchgate: WARNING baseline CPU %q differs from this run's %q; refresh the baseline on this runner class (make bench-baseline)\n", baseline.CPU, current.CPU)

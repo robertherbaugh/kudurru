@@ -4504,3 +4504,58 @@ samples do not clear the original five-process 1,545ns/1,128ns median regression
 The independent pure-list miss profile points mainly to filter memory access;
 no speculative Bloom-filter or nil-receiver rewrite is applied. Final-source
 five-process qualification remains required. No baseline, limit or corpus edits.
+
+### Integrated five-process benchmark after literal and CNAME fixes
+
+All ten original native commands completed with exit 0, all groups reaped,
+no source mismatches or resource stops. Five fresh blocking processes and five
+fresh zone processes supply 99 benchmark cases, 439 metrics and 2,195 values.
+The actual Go benchgate exits **1** with unchanged baseline, limits, 20% threshold,
+five-sample count, six-processor suffix and strict CPU checks. Both CPU headers
+report Intel Xeon at 2.90 GHz; this is not a named fixed-runner qualification.
+
+Findings: 97 ok, 1 regression, 14 improved, 300 new; no missing metrics or
+absolute-limit violations. The remaining relative failure is exact-list miss
+p50: 158 ns versus 109 ns (+44.9541%). Its five values are 151, 158, 166, 165,
+and 95 ns; the low fifth sample does not replace any prior sample.
+
+Regex-1000 miss p99 is 1,593 ns, down from the earlier 18,434 ns median.
+CNAME lookup p99 is 1,291 ns, with exactly one allocation in all five processes;
+the earlier CNAME failure remains retained. Suffix miss Evaluate is 167.4 ns,
+just within the original relative threshold. Unchanged 1M compilation is
+72,382,832 ns and eight allocations. Steady 3M suffix/exact RSS is 92.54 MiB;
+this does not measure whole-serving or retained old+new regex RSS.
+
+Native wall time totals 668.472929887 seconds; sampled minimum free space is
+10,866,843,648 bytes. Every raw per-process receipt preceded enrichment. Full
+vectors and all gate findings remain beside this report. Prior full gate FAIL
+on 859bacf6, isolated F20 failures, calibration gaps and external acceptance
+remain unchanged. No benchmark, corpus, threshold, baseline or limit was edited.
+
+Evidence: `.context/final-benchmark-gate-20261108/`.
+
+### Release benchmark collection and baseline integrity
+
+A manual workflow now accepts the owner's explicit runner label and collects
+five fresh processes each for original blocking, zone, cache, upstream-strategy,
+UDP/DoT/QUIC and Persist200k suites. Separate reports keep blocking helper ignore
+rules from hiding the added suites. The collector preserves raw numeric failures,
+resource stops and source/fixture identities, refuses output replacement, and
+requires matching class/toolchain/commands/fixtures plus intact report hashes
+for comparison. It never rewrites the committed baseline or declares release
+qualification. Named-class execution, calibration of new absolute limits and
+final hosted evidence remain open; the 40-command collector has not been run.
+
+The actual Go gate now rejects failed/empty baselines and applies explicit sample
+and processor controls to both inputs. Socket q/s is higher-is-better; packet
+loss retains its original lower-is-better direction. Four collector control tests
+pass, including an actual nonzero Python child; gate default races pass 37 entries
+with zero skips, plus vet and installed scoped lint. Both workflow files parse
+with the existing YAML v3 dependency. A missing Python YAML module and the first
+helper's YAML 1.1 interpretation of `on` are retained as validation-tool failures;
+no workflow input was changed to conceal them. Rechecking the retained full
+benchmark output produces byte-identical findings and exit 1. No threshold,
+noise floor, ignore rule, absolute limit, benchmark or corpus changed.
+
+Evidence: `.context/release-benchmark-tools-20261108/`; commands and limitations
+are documented in `bench/README.md`. F21c/F63 and final performance gates remain open.

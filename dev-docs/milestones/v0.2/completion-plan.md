@@ -95,7 +95,7 @@ runners. Unit tests cannot substitute for those results.
 | F20d | Lazy-DFA regex engine | DNS and resolver | Integrated D293 with parent modifier-aware fingerprint/parser fixes. Root core race835 (2 actual helper/comparator skips), mounted API/command race47, pinned comparator46 and vet pass. Original12 single diagnostic has all58 metrics: unchanged1M 67115699ns/19allocs; regex1000 p99 18276ns remains adverse. Historical five-process arithmetic FAIL remains 36 measured regressions plus20 missing zone keys, with CPU differences and official/static gates open. Sparse shared-batch dispatch passes focused race88/core race452 (2 actual skips) and vet; one original12 sample improves policy Evaluate miss to740.5ns but regex1000 p99 17691ns and unchanged18allocs remain adverse. Fingerprint allocation fix passes focused101/core race641 (2 actual skips), pinned comparator46 and vet; original1M diagnostic reaches8allocs at79681673ns, preserving first10alloc guard failure and all earlier performance evidence. Proven anchored-start fallback passes focused race98/core467, pinned comparator46, vet and bounded oracle fuzz157288 executions; original69/all291 metrics retain3 arithmetic regressions and original12 regex1000 p99 18550ns remains adverse. Full configured root lint v2.15.0 passes. Complete original five-process blocking+zone gate on 859bacf6 exits1 with four regressions and no missing metrics; actual source-profile-guided literal refinement passes focused93/core656 races, pinned comparator46, fuzz197295, vet and scoped lint. Original regex1000 diagnostic p99 improves18226 to1455ns; final-source five-process/fixed-class gates remain open |
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Implemented; bounded canonical translation, refusal/ownership/restart and real mounted DNS routes pass |
 | F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated 157-operation client and API/reference contracts updated |
-| F21c | Cache/strategy benchmark limits | DNS and resolver | Queued: partial |
+| F21c | Cache/strategy benchmark limits | DNS and resolver | Original workloads included in the new collector; named-class calibration and absolute limits remain open |
 | F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Implemented; actual transport/config/mounted races pass |
 | F22b | DoH `Alt-Svc` | DNS and resolver | Implemented; actual HTTPS/HTTP3 and full transport races pass |
 | F22c | RFC 8467 response padding | DNS and resolver | Implemented; actual encrypted/plaintext/TSIG and full transport races pass |
@@ -164,7 +164,7 @@ runners. Unit tests cannot substitute for those results.
 | F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F62a | CLI conformance against actual API router | Operations and UI | Integrated 6938fbb; actual router/CLI races and scoped lint pass |
 | F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Integrated c439532; exact wire contracts and API serialization races pass |
-| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | External acceptance/decision open |
+| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Named class choice, actual expanded run, calibrated baselines/limits and hosted qualification remain open |
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
@@ -215,5 +215,8 @@ remaining implementation, performance and external release gates stay open.
 
 The measured zone CNAME tail has a one-allocation answer-assembly refinement;
 full zone/cache/primary/authoritative races pass 659 entries with zero skips,
-plus vet and scoped lint. The unchanged original benchmark still needs a fresh
-five-process run; the prior CNAME and pure-list miss regressions remain recorded.
+plus vet and scoped lint. The unchanged original five-process run on 6cace80f now completes all ten
+commands and 439 metrics, but the actual gate still exits 1: exact-list miss p50
+158 ns versus 109 ns remains regressed. Regex-1000 p99 is 1,593 ns and CNAME
+p99 is 1,291 ns with one allocation; no absolute-limit violation or missing
+metric. Prior failures remain recorded; fixed-class qualification remains open.

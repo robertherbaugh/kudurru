@@ -3,8 +3,9 @@
 `make bench` runs each blocking and zone sample in a fresh Go process, five
 processes per scope by default. It preserves native failures in the combined
 output and invokes `hack/benchgate` against the committed baseline and limits.
-The gate requires exactly `BENCH_COUNT` values for every current metric, including
-informational metrics. A partial sample cannot silently reduce a median's count.
+The gate requires exactly `BENCH_COUNT` values for every metric in both current
+and baseline inputs, including informational metrics. A partial sample cannot
+silently reduce a median's count.
 
 The parser rejects malformed result rows, duplicate units, non-finite or negative
 measurements, invalid iteration counts and inconsistent CPU headers. Thresholds
@@ -21,8 +22,8 @@ go run ./hack/benchgate -baseline bench/baseline.txt -limits bench/limits.txt \
 
 `-samples` counts measurements; it cannot prove they came from fresh processes.
 Keep the original command and process receipts with the logs. `-procs` checks
-every current benchmark suffix (no suffix means one processor). `-strict-cpu`
-requires CPU headers and compares against the baseline when supplied. Matching
+every benchmark suffix in both inputs (no suffix means one processor).
+`-strict-cpu` requires CPU headers and compares against the baseline when supplied. Matching
 CPU text and processor count do not establish a named fixed runner class.
 
 The committed baseline and limits cover blocking and zone lookup. New metrics
@@ -31,3 +32,56 @@ by appearing in the output. Cache/strategy, socket and persistence qualification
 and the fixed-class runner remain tracked in the v0.2 completion ledger. Preserve
 failed runs when fixing code; do not replace samples or reset the baseline to
 clear a regression.
+
+## Additional release workloads
+
+The manual **release benchmark measurements** workflow also collects the
+response cache, upstream strategies, UDP/DoT/QUIC sockets, and `Persist200k`.
+Supply the explicitly selected fixed runner label and processor count. The
+workflow records measurements; a successful job is not release qualification.
+The runner choice, new cache/strategy absolute limits, baseline calibration,
+and final comparison still need review on that actual runner. A CPU model
+string or a caller-provided label does not establish a fixed runner class.
+
+For a clean committed checkout on the selected runner:
+
+```sh
+python3 hack/bench-release.py --runner-class SELECTED_LABEL --procs 6 \
+  --output bin/release-benchmark-recording
+```
+
+The collector runs each suite five times in separate sequential Go processes,
+with the existing benchmark bodies and corpora. UDP retains its documented
+five-second duration; other cases use the original one-second default. Each
+process has a 30-minute test timeout, an outer deadline, a 2 MiB log bound,
+and disk admission/stop floors of 3/2 GiB. Numeric exit, wall time and sampled
+minimum free space are synced before enrichment. No failed sample is retried
+or replaced. Ordinary child failures remain in combined reports and fail the
+result; a resource stop, changed source or leftover child holds the sequence.
+Existing output directories are refused.
+
+Reports separate blocking/zone rules from the additional suites, so ignores
+for the blocking memory helper cannot hide cache or persistence measurements.
+The original Go gate validates all report shapes and the unchanged
+blocking/zone absolute limits. Cache/strategy absolute limits are not yet
+calibrated. UDP and TLS query throughput (`q/s`) is higher-is-better; loss
+remains lower-is-better.
+
+After separately reviewing and retaining a baseline artifact, compare on the
+same actual runner:
+
+```sh
+python3 hack/bench-release.py --runner-class SELECTED_LABEL --procs 6 \
+  --baseline /path/to/reviewed-artifact --output bin/release-benchmark-current
+```
+
+The baseline must contain every suite, successful measurements and gates,
+matching class, platform, Go version, commands, sample count, processor count,
+fixture/test source identities, and original limits identity. Its report hashes are checked
+before and after measurement. Intentional fixture changes require explicit
+baseline review, even if they affect only another test in the same package.
+Each Go comparison requires five samples, matching processor suffixes and
+matching CPU headers in both inputs. Empty, failed or incomplete baselines
+refuse. No command updates a baseline. `result.json` keeps
+`release_qualified: false`: these measurements alone do not establish the
+remaining absolute calibrations, external acceptance or other release gates.

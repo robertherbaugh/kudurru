@@ -1,0 +1,49 @@
+name: release benchmark measurements
+on:
+  workflow_dispatch:
+    inputs:
+      runner_class:
+        description: "Owner-selected fixed runner label (recorded in the artifact)"
+        required: true
+        type: string
+      procs:
+        description: "GOMAXPROCS for every fresh measurement process"
+        required: true
+        default: "6"
+        type: string
+permissions:
+  contents: read
+# Do not cancel an in-progress sample or share its measurement runner with
+# another invocation of this workflow. Artifacts never update the baseline.
+concurrency:
+  group: release-benchmark-measurements
+  cancel-in-progress: false
+jobs:
+  measure:
+    runs-on: ${{ inputs.runner_class }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Check the collector
+        run: python3 -B -m unittest discover -s hack -p test_bench_release.py
+      - name: Record original workloads in fresh processes
+        env:
+          BENCH_RUNNER_CLASS: ${{ inputs.runner_class }}
+          BENCH_PROCS: ${{ inputs.procs }}
+        run: >-
+          python3 hack/bench-release.py --output bin/release-benchmarks
+          --runner-class "$BENCH_RUNNER_CLASS" --procs "$BENCH_PROCS"
+      - name: Retain calibration evidence, including failed commands
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-benchmarks-${{ github.sha }}-${{ github.run_id }}
+          path: bin/release-benchmarks/
+          if-no-files-found: error
+          retention-days: 30

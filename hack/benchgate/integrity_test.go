@@ -89,3 +89,63 @@ func TestRequiredMeasurementShape(t *testing.T) {
 		})
 	}
 }
+
+func TestRequiredBaselineShape(t *testing.T) {
+	line := "BenchmarkX-6 1 100 ns/op 0 allocs/op\n"
+	full := "cpu: stable\n" + strings.Repeat(line, 5)
+	for _, tc := range []struct {
+		name, body, message string
+		controls            bool
+		want                int
+	}{
+		{"complete", full, "benchgate: ok", true, 0},
+		{"empty", "cpu: stable\n", "no baseline benchmark results", false, 1},
+		{"native-failure", full + "FAIL: go test exited non-zero\n", "baseline run failed", false, 1},
+		{"panic", full + "panic: helper failed\n", "baseline run failed", false, 1},
+		{"one-sample", "cpu: stable\n" + line, "baseline BenchmarkX allocs/op has 1 samples", true, 1},
+		{"six-samples", full + line, "has 6 samples; expected 5", true, 1},
+		{"partial-metric", strings.Replace(full, " 0 allocs/op", "", 1), "allocs/op has 4 samples", true, 1},
+		{"different-procs", strings.ReplaceAll(full, "BenchmarkX-6", "BenchmarkX-2"), "expected GOMAXPROCS=6 on every baseline result", true, 1},
+		{"mixed-procs", strings.Replace(full, "BenchmarkX-6", "BenchmarkX-2", 1), "expected GOMAXPROCS=6 on every baseline result", true, 1},
+		{"legacy-without-shape-controls", "cpu: stable\n" + line, "benchgate: ok", false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			baseline, current := filepath.Join(dir, "baseline"), filepath.Join(dir, "current")
+			for path, body := range map[string]string{baseline: tc.body, current: full} {
+				if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			args := []string{"-baseline", baseline, "-strict-cpu"}
+			if tc.controls {
+				args = append(args, "-samples", "5", "-procs", "6")
+			}
+			var out, errOut bytes.Buffer
+			code := run(append(args, current), &out, &errOut)
+			if code != tc.want || !strings.Contains(out.String(), tc.message) {
+				t.Fatalf("exit %d, want %d containing %q: %s%s", code, tc.want, tc.message, &out, &errOut)
+			}
+		})
+	}
+}
+
+func TestSocketThroughputDirection(t *testing.T) {
+	baseline := mustParse(t, "BenchmarkUDPSockets/sockets=6-6 100 1000 q/s 0 lost\n")
+	for _, tc := range []struct {
+		throughput, lost, status string
+	}{
+		{"700", "0", "regression"},
+		{"1300", "0", "improved"},
+		{"1000", "1", "ok"},
+	} {
+		current := mustParse(t, "BenchmarkUDPSockets/sockets=6-6 100 "+tc.throughput+" q/s "+tc.lost+" lost\n")
+		findings := statuses(Compare(baseline, current, nil, 0.20))
+		if findings["BenchmarkUDPSockets/sockets=6 q/s"] != tc.status {
+			t.Fatalf("throughput %s: %v", tc.throughput, findings)
+		}
+		if tc.lost != "0" && findings["BenchmarkUDPSockets/sockets=6 lost"] != "regression" {
+			t.Fatal("packet loss did not remain a lower-is-better metric", findings)
+		}
+	}
+}
