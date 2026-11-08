@@ -5862,3 +5862,22 @@ exits0 (12.635s), source and binary/test manifests match. Evidence:
 .context/ci-current-fixes-20261108/browser03.json, browser-source03.json,
 browser-output03/ and dashboard-preservation.json. This scoped acceptance does
 not replace final hosted CI or establish the earlier transient DNS gap's cause.
+
+
+### F21c cache hot-path work, November 8
+
+The current paired cache hit/Set regressions motivated a narrow implementation
+change: fill lookup return values directly and copy metadata only when present;
+sample the security/TTL clock once; sample eviction time only when there is a
+capacity victim. Publication/shard locks, generation fencing, metadata values,
+security expiry, prefetch history, metrics and all original workloads remain.
+No new concurrency protocol or limit change is introduced.
+
+Full cache/persistence/cache-stage/upstream-stage default races pass102 entries
+without failures/skips (11.024s); configured scoped lint passes with zero issues
+(5.621s). The unchanged four-case original Get/Set one-second diagnostic on this
+sandbox (six processors, Xeon2.50GHz) records before/after hit964/944.5ns,
+miss171.6/174ns, parallel275.4/257.8ns and Set1056/929.4ns. All lookups remain
+0B/0alloc; Set remains128B/1alloc. This single diagnostic pair is not fixed-runner
+or five-process qualification; the earlier hosted failures remain open. Source02
+matches. Evidence: .context/cache-hotpath-20261108/.

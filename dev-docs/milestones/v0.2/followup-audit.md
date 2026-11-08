@@ -2713,3 +2713,20 @@ no sample, baseline, ignore, original ceiling or corpus was replaced. Final
 current-source performance and remaining implementation/external gates stay open.
 Full artifacts, independent review and all vectors:
 .context/hosted-release-20261108/paired-artifact/ and paired-reviewed-*.
+
+
+### November 8 continued publication, CI and cache work
+
+F23 is complete: the owner-approved public kudurru-data13d8d42b is verified
+against the prepared tree and pinned HTTPS document (D333). D334 corrects
+last-good ingress health output and operational observer shutdown;21 focused
+race entries and configured lint pass. The separate full browser secondary
+workflow passes with the original DNS convergence bound and expected address.
+
+Paired Ubicloud42522360297 on91cb21bb passes blocking-zone/upstream and cache
+memory, but retains two cache latency regressions (strict comparison0/1/0).
+All811 five-value vectors and complete sources/receipts are verified. Subsequent
+cache return-copy/clock work passes102 affected race entries and scoped lint;
+its one-process local diagnostic is not release evidence. The gap ledger holds
+exact results and prior failures. Final hosted checks, new workload calibration,
+HA/driver/AD implementation and external acceptance remain open.

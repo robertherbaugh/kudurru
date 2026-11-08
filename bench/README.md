@@ -191,3 +191,13 @@ strategy metrics passed. The job correctly failed and `release_qualified` stayed
 false. This run predates the compact cache metadata fix and the additional
 cache/strategy limits above. Current-source measurement is still required;
 prior failed runs and all five-value vectors remain retained in the release ledger.
+
+
+The next paired execution, [run 42522360297](https://github.com/robertherbaugh/kudurru/actions/runs/42522360297),
+measured original `0cc9565e` and compact-metadata candidate `91cb21bb` together on
+one Ryzen 9 7950X3D VM in the same selected class. The strict comparisons passed
+blocking/zone and upstream, and failed two cache latency metrics: hit 191.1 vs
+158.2 ns and Set 313.3 vs 258.1 ns. Memory passed at 308.7 vs 292.7 bytes/entry.
+All 811 five-value vectors and numeric outcomes remain retained. This confirms
+the pool's CPU variation and the need for comparisons within one VM; it does not
+erase earlier failures or qualify later source changes.

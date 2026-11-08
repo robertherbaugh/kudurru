@@ -291,7 +291,7 @@ func (c *Cache) nanos() int64 { return c.now().UnixNano() }
 // CountStaleHit once it knows it served the stale data (a successful
 // refresh makes it a miss). A fresh hit moves the entry to the front of the
 // LRU and feeds the prefetch accounting.
-func (c *Cache) Get(k Key) (Lookup, bool) {
+func (c *Cache) Get(k Key) (l Lookup, ok bool) {
 	c.publication.RLock()
 	defer c.publication.RUnlock()
 	c.m.request()
@@ -311,7 +311,13 @@ func (c *Cache) Get(k Key) (Lookup, bool) {
 		return Lookup{}, false
 	}
 	sh.moveFront(e)
-	l := Lookup{Metadata: e.provenance(), Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored)}
+	// Fill the return value directly; an entry with no provenance needs no
+	// temporary Metadata value or copy of its empty fields.
+	if e.metadata != nil {
+		l.Metadata = *e.metadata
+	}
+	l.Wire, l.Kind = e.wire, e.kind
+	l.Age, l.TTL = time.Duration(now-e.stored), time.Duration(e.expires-e.stored)
 	if now < e.expires {
 		l.State = Fresh
 		if threshold := c.threshold.Load(); threshold > 0 {
@@ -345,7 +351,7 @@ func (c *Cache) CountPrefetch() { c.m.Prefetched() }
 // accounting, no LRU movement, no prefetch claim and no expiry removal.
 // Entries past their stale window are reported absent. It is meant for
 // debugging APIs and tests.
-func (c *Cache) Peek(k Key) (Lookup, bool) {
+func (c *Cache) Peek(k Key) (l Lookup, ok bool) {
 	c.publication.RLock()
 	defer c.publication.RUnlock()
 	now := c.nanos()
@@ -356,7 +362,12 @@ func (c *Cache) Peek(k Key) (Lookup, bool) {
 	if e == nil || now >= e.staleUntil || now < e.stored || !e.securityAvailable(now) {
 		return Lookup{}, false
 	}
-	l := Lookup{Metadata: e.provenance(), Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored), State: Fresh}
+	if e.metadata != nil {
+		l.Metadata = *e.metadata
+	}
+	l.Wire, l.Kind = e.wire, e.kind
+	l.Age, l.TTL = time.Duration(now-e.stored), time.Duration(e.expires-e.stored)
+	l.State = Fresh
 	if now >= e.expires {
 		l.State = Stale
 		l.Hold = now < e.holdUntil
@@ -392,13 +403,16 @@ func (c *Cache) SetAtIfGeneration(k Key, wire []byte, kind Kind, ttl time.Durati
 func (c *Cache) setAtIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata, generation uint64, stored time.Time) {
 	c.publication.RLock()
 	defer c.publication.RUnlock()
-	if generation != c.Generation() || !metadata.Security.AvailableAt(c.now()) {
+	if generation != c.Generation() || ttl <= 0 {
 		return
 	}
-	if ttl <= 0 {
+	// Use one clock observation for security and the TTL origin. Both remain
+	// inside publication exclusion, after the original generation check.
+	sampled := c.now()
+	if !metadata.Security.AvailableAt(sampled) {
 		return
 	}
-	now := c.nanos()
+	now := sampled.UnixNano()
 	origin := now
 	if !stored.IsZero() {
 		origin = stored.UnixNano()
@@ -433,7 +447,10 @@ func (c *Cache) insert(e *entry) {
 	}
 	sh.m[e.key] = e
 	sh.pushFront(e)
-	now := c.nanos()
+	var now int64
+	if len(sh.m) > sh.capacity && sh.tail != nil {
+		now = c.nanos()
+	}
 	for len(sh.m) > sh.capacity && sh.tail != nil {
 		victim := sh.tail
 		if now >= victim.staleUntil {
