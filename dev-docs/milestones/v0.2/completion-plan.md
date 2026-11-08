@@ -203,3 +203,12 @@ Current integrated static check: golangci-lint v2.15.0 scans all root packages
 with the unchanged repository rules and passes with zero issues (November 8).
 Earlier unavailable/failed lint evidence remains in the audit; this does not
 complete the remaining implementation, performance or external release gates.
+
+Composed November 8 qualification on 19d6c729 passes full SQLite/trust-anchor
+race suites (964 entries), serving/build/primary/runtime-owner races (477),
+actual PostgreSQL central/audit races (244), and the separately enabled original
+million-row central scale test (one). The initial scale skip remains recorded;
+the explicit scale invocation passes without skips. `make size` produces an
+80,384,160-byte CGO-disabled static ELF under the original 100,000,000-byte limit.
+Exact outcomes and artifact qualifications are in the audit and gap ledger;
+remaining implementation, performance and external release gates stay open.

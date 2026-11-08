@@ -4382,3 +4382,35 @@ Evidence: `.context/lint-restoration-20261108/`. This supersedes unavailable-lin
 status for the current root source. Historical F20 relative/missing-scope/CPU
 failures, incomplete F28 activation, HA/AD implementation and external/final
 release gates remain open. No push, deployment or release.
+
+
+### Composed storage, serving and central qualification, November 8
+
+On integrated commit `19d6c7297e2d85a9c17c5229fa1a43af81a98127`, full
+SQLite/trust-anchor default-race suites pass 964 entries across six packages;
+serving/build/primary-runtime/runtime-owner suites pass 477 across eight packages.
+Both have zero failures or skips. Wall times are 290.880184649s and
+266.968804250s, with minimum free bytes 11,312,537,600 and 10,999,070,720.
+
+Full central/audit races use the actual pinned PostgreSQL 17 image and pass
+244 entries with zero failures. Their one measurement-test skip is subsequently
+run explicitly: `TestDomainHourMillionCentral` ingests the original one million
+rows with 252,000 distinct names and passes under default race detection, with
+zero failures/skips. The ordinary and scale commands take 110.196661470s and
+420.164267912s, with minimum free bytes 10,956,136,448 and 9,743,323,136.
+Two package-level no-test-files markers are separate from the measurement skip.
+Only the owned PostgreSQL container and its volumes are removed afterward;
+the existing isolated Docker daemon and other retained fixtures are preserved.
+
+`make size` builds an actual stripped, static CGO-disabled linux/amd64 ELF of
+80,384,160 bytes, below the unchanged 100,000,000-byte ceiling. Version smoke
+reports 0.2.0, commit 19d6c729, Go 1.27.3. ELF metadata confirms no dynamic
+interpreter. This private artifact includes the unchanged user dashboard bundle;
+it is not a clean published release artifact.
+
+All commands match the same 4,530 tracked-file source freeze, including the
+protected user dashboard bytes. Numeric outcomes are persisted before enrichment.
+Evidence: `.context/integrated-qualification-20261108/`. These composed passes do
+not complete F20 performance, F28 activation, enrolled HA, AD implementation,
+Windows/fixed-class acceptance, hosted CI or the remaining release gates.
+No push, deployment, release or waived gate.
