@@ -51,9 +51,10 @@ The manual workflow remains available after registration. Both paths retain
 the original workloads and leave the baseline and limits unchanged.
 
 The workflow records measurements; a successful job is not release qualification.
-The original cache/strategy ceilings below are now calibrated; their candidate
-failures, socket/persistence calibration and final comparison remain open. Local sandbox measurements, matching CPU
-text or merely passing this label to the script cannot close the hosted gate.
+Cache/strategy and socket/persistence bounds below are calibrated. Measured
+candidate failures and final-source comparison remain open. Local sandbox
+measurements, matching CPU text or merely passing this label to the script
+cannot close the hosted gate.
 
 For a clean committed checkout on the selected runner:
 
@@ -75,8 +76,8 @@ Existing output directories are refused.
 Reports separate blocking/zone rules from the additional suites, so ignores
 for the blocking memory helper cannot hide cache or persistence measurements.
 The original Go gate validates all report shapes and the unchanged
-blocking/zone absolute limits plus the independently calibrated cache/strategy
-ceilings below. UDP and TLS query throughput (`q/s`) is higher-is-better; loss
+blocking/zone absolute limits plus the calibrated cache/strategy and
+socket/persistence bounds below. UDP and TLS query throughput (`q/s`) is higher-is-better; loss
 remains lower-is-better.
 
 After separately reviewing and retaining a baseline artifact, compare on the
@@ -96,7 +97,7 @@ Each Go comparison requires five samples, matching processor suffixes and
 matching CPU headers in both inputs. Empty, failed or incomplete baselines
 refuse. No command updates a baseline. `result.json` keeps
 `release_qualified: false`: these measurements alone do not establish the
-remaining socket/persistence calibrations, external acceptance or other release gates.
+external acceptance or other release gates.
 
 ## Original reference on the selected class
 
@@ -149,9 +150,9 @@ the independent candidate recording, but refuses comparison and fails the paired
 result. The original Go gate retains five samples, six processors, strict CPU
 matching, the 20% threshold, noise floors and absolute limits. Source changes,
 resource stops, residual descendants and altered artifacts stop remaining work.
-Candidate socket/persistence scopes stay calibration evidence;
-`release_qualified` remains false pending their absolute calibration, resolution
-of measured failures and all other release requirements.
+Candidate socket/persistence scopes also enforce the initial hosted calibration
+below. `release_qualified` remains false pending resolution of measured failures,
+final-source qualification and all other release requirements.
 Neither collector changes the committed Intel baseline or treats the candidate
 as its own reference.
 
@@ -170,16 +171,15 @@ formula. These ceilings do not alter any original blocking/zone rule or ignore.
 This is scoped calibration, not acceptance of the full historical reference:
 that reference's separate CNAME absolute gate failed. It remains ineligible for
 the paired baseline comparison unless a complete paired recording passes all
-its required gates. The collector pins all three limit-file identities, applies
-the new limits to recording and comparison, and rejects a baseline with different
-limits. Later cache Growth cases remain new; no old baseline is invented for them.
+its required gates. The collector pins all seven limit-file identities, applies the applicable
+limits to recording and comparison, and rejects a baseline with different limits. Later cache Growth cases remain new; no old baseline is invented for them.
 
 Applying the new ceilings to retained candidate run 42514599389 fails five cache
 metrics (parallel hit, insertion bytes, three memory metrics) and three strategy
 latencies. Its CPU also differs from the historical reference, so these absolute
 observations are not a strict relative comparison. The failures remain open;
-limits must not be raised to clear them. Socket/persistence calibration, the
-paired original comparison and final-source release qualification remain open.
+limits must not be raised to clear them. The paired original comparison and
+final-source release qualification remain open.
 
 
 The first paired execution, [run 42518988512](https://github.com/robertherbaugh/kudurru/actions/runs/42518988512),
@@ -201,3 +201,36 @@ blocking/zone and upstream, and failed two cache latency metrics: hit 191.1 vs
 All 811 five-value vectors and numeric outcomes remain retained. This confirms
 the pool's CPU variation and the need for comparisons within one VM; it does not
 erase earlier failures or qualify later source changes.
+
+
+## Socket and persistence bounds
+
+`udp-limits.txt`, `dot-limits.txt`, `quic-limits.txt` and `persist-limits.txt`
+use the first complete hosted recording, run 42514599389 at immutable source
+`9cc2ae0423070fc514c94a25ab5b92e3816889e7`. It used the selected Ubicloud class,
+EPYC 9454P, Go 1.27.3 and six processors. The retained 14 cases contain 58
+metrics and 290 values from five fresh processes per suite. Exact reports,
+commands, receipts, workload identities and all vectors are preserved in
+`calibration/ubicloud8-sockets-persist-20261108/`. These workloads have no original
+committed baseline; this initializes their bounds without changing the original
+blocking/zone, cache or strategy references.
+
+The limits file supports these independent rules:
+
+- `limit <regexp> <unit> <maximum>` bounds the median above. Each initial ceiling
+  is the recorded median plus the larger of 20% or the existing unit noise floor
+  (25 ns/op, 64 B/op, otherwise zero).
+- `minimum <regexp> <unit> <minimum>` bounds the median below. Throughput and
+  persisted entry counts must retain at least 80% of the initial median; a
+  smaller completed persistence workload cannot pass merely by finishing faster.
+- `require <regexp> <unit>` rejects an absent metric, independently of ignores.
+  The calibration requires every exact benchmark/unit pair.
+- `zero <regexp> <unit>` rejects any nonzero sample. UDP loss and DoT failure
+  counters must be zero in all five processes, even when their median is zero.
+
+Seventeen significant digits preserve the computed boundaries. The original
+relative 20% threshold, noise floors, ignores and baseline files are unchanged.
+The newer retained candidate recording 42522360297 passes all four actual Go
+scope gates; this does not erase its separate cache comparison failure. New
+current-source measurements remain required. Never replace a failing sample,
+raise a bound, or recalibrate from a failing candidate to clear a gate.

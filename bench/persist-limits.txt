@@ -1,0 +1,35 @@
+# Initial socket/persistence calibration: first five-process Ubicloud recording.
+# Source 9cc2ae0423070fc514c94a25ab5b92e3816889e7; procs 6; see calibration/ubicloud8-sockets-persist-20261108/.
+# Original limits/baselines unchanged. Required metrics cannot disappear.
+require ^BenchmarkPersist200k/gzip=false/restore$ B/op
+limit ^BenchmarkPersist200k/gzip=false/restore$ B/op 454293230.39999998
+require ^BenchmarkPersist200k/gzip=false/restore$ allocs/op
+limit ^BenchmarkPersist200k/gzip=false/restore$ allocs/op 1533604.8
+require ^BenchmarkPersist200k/gzip=false/restore$ ns/op
+limit ^BenchmarkPersist200k/gzip=false/restore$ ns/op 1075477554
+require ^BenchmarkPersist200k/gzip=false/save$ B/op
+limit ^BenchmarkPersist200k/gzip=false/save$ B/op 618880790.39999998
+require ^BenchmarkPersist200k/gzip=false/save$ allocs/op
+limit ^BenchmarkPersist200k/gzip=false/save$ allocs/op 709616.40000000002
+require ^BenchmarkPersist200k/gzip=false/save$ bytes
+limit ^BenchmarkPersist200k/gzip=false/save$ bytes 104746178.40000001
+require ^BenchmarkPersist200k/gzip=false/save$ entries
+minimum ^BenchmarkPersist200k/gzip=false/save$ entries 157605.60000000001
+require ^BenchmarkPersist200k/gzip=false/save$ ns/op
+limit ^BenchmarkPersist200k/gzip=false/save$ ns/op 1380431529.5999999
+require ^BenchmarkPersist200k/gzip=true/restore$ B/op
+limit ^BenchmarkPersist200k/gzip=true/restore$ B/op 269659123.19999999
+require ^BenchmarkPersist200k/gzip=true/restore$ allocs/op
+limit ^BenchmarkPersist200k/gzip=true/restore$ allocs/op 1582636.8
+require ^BenchmarkPersist200k/gzip=true/restore$ ns/op
+limit ^BenchmarkPersist200k/gzip=true/restore$ ns/op 1241052225.5999999
+require ^BenchmarkPersist200k/gzip=true/save$ B/op
+limit ^BenchmarkPersist200k/gzip=true/save$ B/op 242584785.59999999
+require ^BenchmarkPersist200k/gzip=true/save$ allocs/op
+limit ^BenchmarkPersist200k/gzip=true/save$ allocs/op 710306.40000000002
+require ^BenchmarkPersist200k/gzip=true/save$ bytes
+limit ^BenchmarkPersist200k/gzip=true/save$ bytes 10431688.800000001
+require ^BenchmarkPersist200k/gzip=true/save$ entries
+minimum ^BenchmarkPersist200k/gzip=true/save$ entries 157743.20000000001
+require ^BenchmarkPersist200k/gzip=true/save$ ns/op
+limit ^BenchmarkPersist200k/gzip=true/save$ ns/op 805516238.39999998

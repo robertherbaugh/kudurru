@@ -164,7 +164,7 @@ runners. Unit tests cannot substitute for those results.
 | F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F62a | CLI conformance against actual API router | Operations and UI | Integrated 6938fbb; actual router/CLI races and scoped lint pass |
 | F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Integrated c439532; exact wire contracts and API serialization races pass |
-| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Actual local expanded collection completes 40 native commands and seven shape/absolute checks, 136 cases/592 metrics/five samples each; separate original relative gate exits 1 with three suffix-miss regressions. Owner selected Ubicloud 8-core Ubuntu 24.04 (ubicloud-standard-8-ubuntu-2404), retaining GOMAXPROCS6. Original cache/strategy limits are calibrated. Paired Ubicloud run42518988512 performs actual strict same-VM comparisons and fails one blocking/eight cache metrics; strategy passes. New paired run42522360297 on91cb21bb passes blocking-zone/upstream and cache memory but fails cache hit/Set latency; all811 five-value vectors and failures retained. Remaining calibration/final gates stay open |
+| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Actual local expanded collection completes 40 native commands and seven shape/absolute checks, 136 cases/592 metrics/five samples each; separate original relative gate exits 1 with three suffix-miss regressions. Owner selected Ubicloud 8-core Ubuntu 24.04 (ubicloud-standard-8-ubuntu-2404), retaining GOMAXPROCS6. Original cache/strategy limits are calibrated. Paired Ubicloud run42518988512 performs actual strict same-VM comparisons and fails one blocking/eight cache metrics; strategy passes. New paired run42522360297 on91cb21bb passes blocking-zone/upstream and cache memory but fails cache hit/Set latency; all811 five-value vectors and failures retained. Initial socket/persistence bounds now calibrated from first hosted recording42514599389 (D335); current-source and final gates stay open |
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
@@ -636,3 +636,33 @@ no sample, baseline, ignore, original ceiling or corpus was replaced. Final
 current-source performance and remaining implementation/external gates stay open.
 Full artifacts, independent review and all vectors:
 .context/hosted-release-20261108/paired-artifact/ and paired-reviewed-*.
+
+
+### F63/G23 socket and persistence calibration, November 8
+
+D335 establishes the initial bounds from the first complete hosted recording,
+run42514599389 at immutable9cc2ae04, selected Ubicloud eight-core Ubuntu24.04,
+EPYC9454P, Go1.27.3 and original GOMAXPROCS6. The four unchanged workloads retain
+14 cases/58 metrics/290 values, five fresh native processes per suite, exact
+reports/commands/receipts/workload identities and all vectors in
+bench/calibration/ubicloud8-sockets-persist-20261108/.
+
+Each upper bound uses median+max(20%, existing unit noise floor); throughput and
+persisted-entry lower bounds use80% of the initial median. Every exact metric is
+required, and every UDP loss/DoT failure sample must be zero. These new bounds
+preserve all original baseline files, comparisons, thresholds, floors and
+ignores. The collector pins seven limit files; the historical reference retains
+its three original scopes. A failed candidate never replaces calibration.
+
+Gate default races pass51 entries without failures/skips (2.013s);14 Python
+controls pass. An initial nine-significant-digit serialization rounded one
+persistence boundary and failed its control; that draft and failure are retained.
+Seventeen significant digits preserve the exact formula. Configured gate lint
+exits0 with zero issues (2.010s). The actual corrected Go gate passes all four
+scopes of newer retained run42522360297 without additional benchmark sampling.
+Evidence: .context/socket-persist-calibration-20261108/.
+
+This closes initial socket/persistence calibration, not final release gates.
+The original paired cache hit/Set failures, prior failed evidence, heterogeneous
+CPU observations and current-source qualification remain open. No sample was
+retried or replaced; release_qualified remains false.

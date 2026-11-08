@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "go",
+    "run",
+    "./hack/benchgate",
+    "-samples",
+    "5",
+    "-procs",
+    "6",
+    "-strict-cpu",
+    "-threshold",
+    "20",
+    "/home/runner/work/kudurru/kudurru/bin/release-benchmarks/persist.txt"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 138103554048,
+  "pid": 16029,
+  "wall_seconds": 0.2053166489999967,
+  "post_free_bytes": 138103554048,
+  "output_bytes": 65,
+  "group_reaped": true
+}

@@ -102,15 +102,21 @@ func (r *Results) Median(name, unit string) (float64, bool) {
 
 // Rule is a line of the limits file.
 type Rule struct {
-	Ignore bool
-	Name   *regexp.Regexp
-	Unit   string
-	Max    float64
+	Ignore   bool
+	Required bool
+	Minimum  bool
+	Zero     bool
+	Name     *regexp.Regexp
+	Unit     string
+	Max      float64 // bound; a lower bound for Minimum rules
 }
 
 // ParseRules reads the limits file:
 //
 //	limit  <benchmark regexp> <unit> <max>
+//	minimum <benchmark regexp> <unit> <min>
+//	require <benchmark regexp> <unit>
+//	zero <benchmark regexp> <unit> (every sample must be zero)
 //	ignore <benchmark regexp> <unit>
 //
 // Blank lines and '#' comments are skipped.
@@ -125,16 +131,21 @@ func ParseRules(r io.Reader) ([]Rule, error) {
 		f := strings.Fields(line)
 		var rule Rule
 		switch {
-		case f[0] == "limit" && len(f) == 4:
+		case (f[0] == "limit" || f[0] == "minimum") && len(f) == 4:
 			v, err := strconv.ParseFloat(f[3], 64)
 			if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
-				return nil, fmt.Errorf("benchgate: limits line %d: invalid maximum %q", n, f[3])
+				return nil, fmt.Errorf("benchgate: limits line %d: invalid bound %q", n, f[3])
 			}
 			rule.Max = v
+			rule.Minimum = f[0] == "minimum"
+		case f[0] == "require" && len(f) == 3:
+			rule.Required = true
+		case f[0] == "zero" && len(f) == 3:
+			rule.Zero = true
 		case f[0] == "ignore" && len(f) == 3:
 			rule.Ignore = true
 		default:
-			return nil, fmt.Errorf("benchgate: limits line %d: want \"limit <re> <unit> <max>\" or \"ignore <re> <unit>\"", n)
+			return nil, fmt.Errorf("benchgate: limits line %d: want limit/minimum <re> <unit> <bound> or ignore/require/zero <re> <unit>", n)
 		}
 		re, err := regexp.Compile(f[1])
 		if err != nil {
@@ -196,6 +207,24 @@ func Compare(baseline, current *Results, rules []Rule, threshold float64) []Find
 		return false
 	}
 	var out []Finding
+	// Required metric patterns are independent of comparisons and ignores.
+	// Calibration uses exact names, so a missing case or unit cannot make its
+	// limits pass by disappearing from the current report.
+	for _, r := range rules {
+		if !r.Required {
+			continue
+		}
+		found := false
+		for _, name := range current.order {
+			if _, ok := current.Median(name, r.Unit); ok && r.Name.MatchString(name) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, Finding{Name: r.Name.String(), Unit: r.Unit, Status: "missing", Detail: "required metric absent"})
+		}
+	}
 	if baseline != nil {
 		for _, name := range baseline.order {
 			for _, unit := range sortedUnits(baseline.Samples[name]) {
@@ -219,7 +248,22 @@ func Compare(baseline, current *Results, rules []Rule, threshold float64) []Find
 		for _, unit := range sortedUnits(current.Samples[name]) {
 			c, _ := current.Median(name, unit)
 			for _, r := range rules {
-				if !r.Ignore && r.Unit == unit && r.Name.MatchString(name) && c > r.Max {
+				if r.Ignore || r.Required || r.Unit != unit || !r.Name.MatchString(name) {
+					continue
+				}
+				if r.Zero {
+					for _, value := range current.Samples[name][unit] {
+						if value != 0 {
+							out = append(out, Finding{Name: name, Unit: unit, Current: value, Status: "limit", Detail: "nonzero sample; every sample must be zero"})
+							break
+						}
+					}
+					continue
+				}
+				if r.Minimum && c < r.Max {
+					out = append(out, Finding{Name: name, Unit: unit, Current: c, Status: "limit",
+						Detail: fmt.Sprintf("median %s is below the minimum %s", fmtNum(c), fmtNum(r.Max))})
+				} else if !r.Minimum && c > r.Max {
 					out = append(out, Finding{Name: name, Unit: unit, Current: c, Status: "limit",
 						Detail: fmt.Sprintf("median %s exceeds the limit %s", fmtNum(c), fmtNum(r.Max))})
 				}

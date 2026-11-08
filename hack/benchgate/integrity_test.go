@@ -149,3 +149,70 @@ func TestSocketThroughputDirection(t *testing.T) {
 		}
 	}
 }
+
+func TestRequiredMetricsAndThroughputMinimum(t *testing.T) {
+	rules, err := ParseRules(strings.NewReader("require ^BenchmarkSocket$ q/s\nminimum ^BenchmarkSocket$ q/s 100\nlimit ^BenchmarkSocket$ failed 0\nrequire ^BenchmarkSocket$ failed\nignore ^BenchmarkSocket$ q/s\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, body string
+		failures   int
+	}{
+		{"boundary", "BenchmarkSocket-6 1 100 q/s 0 failed\n", 0},
+		{"faster", "BenchmarkSocket-6 1 200 q/s 0 failed\n", 0},
+		{"slower", "BenchmarkSocket-6 1 99 q/s 0 failed\n", 1},
+		{"loss", "BenchmarkSocket-6 1 100 q/s 1 failed\n", 1},
+		{"missing unit", "BenchmarkSocket-6 1 100 ns/op 0 failed\n", 1},
+		{"missing failure counter", "BenchmarkSocket-6 1 100 q/s\n", 1},
+		{"missing case", "BenchmarkOther-6 1 100 q/s 0 failed\n", 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			findings := Compare(nil, mustParse(t, tc.body), rules, .20)
+			failed := 0
+			for _, finding := range findings {
+				if finding.Failed() {
+					failed++
+				}
+			}
+			if failed != tc.failures {
+				t.Fatalf("findings %+v, want %d failures", findings, tc.failures)
+			}
+		})
+	}
+	for _, invalid := range []string{"minimum . q/s NaN", "minimum . q/s +Inf", "minimum . q/s -1", "require .", "require . q/s 0", "require ( q/s"} {
+		if _, err := ParseRules(strings.NewReader(invalid)); err == nil {
+			t.Fatalf("invalid requirement accepted: %s", invalid)
+		}
+	}
+}
+
+func TestZeroRuleDoesNotHideOneFailedSampleBehindMedian(t *testing.T) {
+	rules, err := ParseRules(strings.NewReader("require ^BenchmarkSocket$ lost\nzero ^BenchmarkSocket$ lost\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := strings.Repeat("BenchmarkSocket-6 1 0 lost\n", 5)
+	if findings := Compare(nil, mustParse(t, good), rules, .20); len(findings) != 0 {
+		t.Fatal(findings)
+	}
+	oneFailure := strings.Replace(good, "0 lost", "1 lost", 1)
+	findings := Compare(nil, mustParse(t, oneFailure), rules, .20)
+	if len(findings) != 1 || !findings[0].Failed() || findings[0].Current != 1 {
+		t.Fatal("zero median hid a failed sample", findings)
+	}
+}
+
+func TestRetainedSocketPersistenceCalibration(t *testing.T) {
+	for _, scope := range []string{"udp", "dot", "quic", "persist"} {
+		t.Run(scope, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			code := run([]string{"-samples", "5", "-procs", "6", "-strict-cpu",
+				"-limits", "../../bench/" + scope + "-limits.txt",
+				"../../bench/calibration/ubicloud8-sockets-persist-20261108/" + scope + ".txt"}, &out, &errOut)
+			if code != 0 {
+				t.Fatalf("retained calibration refused: %d\n%s%s", code, &out, &errOut)
+			}
+		})
+	}
+}

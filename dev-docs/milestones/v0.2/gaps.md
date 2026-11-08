@@ -5881,3 +5881,33 @@ miss171.6/174ns, parallel275.4/257.8ns and Set1056/929.4ns. All lookups remain
 0B/0alloc; Set remains128B/1alloc. This single diagnostic pair is not fixed-runner
 or five-process qualification; the earlier hosted failures remain open. Source02
 matches. Evidence: .context/cache-hotpath-20261108/.
+
+
+### F63/G23 socket and persistence calibration, November 8
+
+D335 establishes the initial bounds from the first complete hosted recording,
+run42514599389 at immutable9cc2ae04, selected Ubicloud eight-core Ubuntu24.04,
+EPYC9454P, Go1.27.3 and original GOMAXPROCS6. The four unchanged workloads retain
+14 cases/58 metrics/290 values, five fresh native processes per suite, exact
+reports/commands/receipts/workload identities and all vectors in
+bench/calibration/ubicloud8-sockets-persist-20261108/.
+
+Each upper bound uses median+max(20%, existing unit noise floor); throughput and
+persisted-entry lower bounds use80% of the initial median. Every exact metric is
+required, and every UDP loss/DoT failure sample must be zero. These new bounds
+preserve all original baseline files, comparisons, thresholds, floors and
+ignores. The collector pins seven limit files; the historical reference retains
+its three original scopes. A failed candidate never replaces calibration.
+
+Gate default races pass51 entries without failures/skips (2.013s);14 Python
+controls pass. An initial nine-significant-digit serialization rounded one
+persistence boundary and failed its control; that draft and failure are retained.
+Seventeen significant digits preserve the exact formula. Configured gate lint
+exits0 with zero issues (2.010s). The actual corrected Go gate passes all four
+scopes of newer retained run42522360297 without additional benchmark sampling.
+Evidence: .context/socket-persist-calibration-20261108/.
+
+This closes initial socket/persistence calibration, not final release gates.
+The original paired cache hit/Set failures, prior failed evidence, heterogeneous
+CPU observations and current-source qualification remain open. No sample was
+retried or replaced; release_qualified remains false.

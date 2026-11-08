@@ -35,7 +35,9 @@ SUITES = {
 REPORTS = {"blocking-zone": ("blocking", "zone"),
            **{name: (name,) for name in SUITES if name not in ("blocking", "zone")}}
 LIMIT_FILES = {"blocking-zone": "bench/limits.txt", "cache": "bench/cache-limits.txt",
-               "upstream": "bench/upstream-limits.txt"}
+               "upstream": "bench/upstream-limits.txt",
+               **{name: "bench/" + name + "-limits.txt"
+                  for name in ("udp", "dot", "quic", "persist")}}
 WORKLOAD_ROOTS = ("internal/blocking/", "internal/zone/", "internal/cache/",
                   "internal/upstream/", "internal/dnsserver/")
 
@@ -229,8 +231,7 @@ def execute(output, runner_class, procs, baseline=None):
     if baseline is not None and any(digest(baseline / name) != expected for name, expected in baseline_hashes.items()):
         raise ValueError("baseline changed during comparison")
     result.update(measurement_complete=True, exit_code=int(failed))
-    # Runner labels and a passed relative gate do not calibrate the additional
-    # socket/persistence absolute limits or establish other release requirements.
+    # The scoped performance gates do not establish other release requirements.
     save(output / "result.json", result)
     return int(failed)
 
