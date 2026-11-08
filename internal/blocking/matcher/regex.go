@@ -179,15 +179,15 @@ func (r *Regex) scanSafe(name string, safe bool) (string, uint8, bool) {
 	for {
 		lane := -1
 		for i := range next {
-			if next[i] < end[i] && (lane < 0 || r.batchIDs[next[i]][0] < r.batchIDs[next[lane]][0]) {
+			if next[i] < end[i] && (lane < 0 || r.batchIDs[next[i]][0] < r.batchIDs[next[lane]][0]) { // #nosec G602 -- lane is -1 or a prior index from range next; short circuit excludes -1
 				lane = i
 			}
 		}
 		if lane < 0 {
 			break
 		}
-		batch := next[lane]
-		next[lane]++
+		batch := next[lane] // #nosec G602 -- lane is a range-next index after the negative sentinel check
+		next[lane]++        // #nosec G602 -- same checked range-next index
 		if int(r.batchIDs[batch][0]) >= best {
 			break // no remaining batch can contain an earlier original ID
 		}

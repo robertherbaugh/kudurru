@@ -126,7 +126,7 @@ func anchorFollowerPollerServer(t *testing.T, second func(net.Conn, []byte) []by
 					t.Error("follower response exceeds one frame")
 					return
 				}
-				binary.BigEndian.PutUint16(size[:], uint16(len(response)))
+				binary.BigEndian.PutUint16(size[:], uint16(len(response))) // #nosec G115 -- response length checked against the 65535-byte wire limit above
 				_, _ = conn.Write(append(size[:], response...))
 			}()
 		}
@@ -275,7 +275,8 @@ func TestAnchorFollowerPollerRunJoinsSocketAndRuntime(t *testing.T) {
 				cancel()
 				if !joined {
 					select {
-					case <-done:
+					case err := <-done:
+						t.Logf("follower poller cleanup joined: %v", err)
 					case <-time.After(3 * time.Second):
 						t.Error("follower poller cleanup failed to join")
 					}

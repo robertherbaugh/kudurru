@@ -44,7 +44,7 @@ func oracleMask(oracles []*regexp.Regexp, name string) uint64 {
 func TestAutomatonDifferential(t *testing.T) {
 	expressions := []string{"", "a", "^a", "z$", "^$", "a*", "a+?", "(?:a?)*", "(a|ab)+", `\A(?:ab){2,4}\z`, `(?m)^a$`, `\bword\b`, `\B_\B`, `\w+\W\d`, `[^a-z]+`, `(?s)a.*z`, `(?i)k`, `(?i)s`, `\p{Greek}+`, `\P{Latin}+`, "�", "(?i:Ab)(?-i:C)", ".", "(?s:.)", "x|z", "z", "x", "[[:alpha:]]+", "(?:^|a)b?", `a{0,3}$`, `(?m)\A\b`}
 	names := []string{"", "a", "aaaa", "ab", "abab", "ababab", "word", " word_", "word\n", "\na\n", "xaz", "a\nz", "zx", "AbC", "abC", "abc", "K", "ſ", "Σσς", "é", "\xffa", "a\xc0\x80", "\x00", "_a_", "9._z", strings.Repeat("ab", 300)}
-	rng := rand.New(rand.NewPCG(17, 93))
+	rng := rand.New(rand.NewPCG(17, 93)) // #nosec G404 -- deterministic test corpus, not security-sensitive randomness
 	alphabet := []byte("abxyz_ .\nABC09")
 	for range 500 {
 		name := make([]byte, rng.IntN(70))

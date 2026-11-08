@@ -157,7 +157,7 @@ func TestServingHTTPRequestAdmissionPrecedesFirstCaptureAndRetainsWriter(t *test
 			r.RemoteAddr = "192.0.2.42:1"
 			w := httptest.NewRecorder()
 			entered := false
-			f.h.requestAdmissionMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			f.h.requestAdmissionMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				entered = true
 				if _, err := servinghttp.Identity(r.Context()); err == nil {
 					t.Fatal("charge already held an authentication lease")

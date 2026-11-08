@@ -192,7 +192,7 @@ func TestAutomatonASCIIProofWorkFallback(t *testing.T) {
 		var folded *syntax.Inst
 		for i := range p.Inst {
 			in := &p.Inst[i]
-			if len(in.Rune) == 1 && syntax.Flags(in.Arg)&syntax.FoldCase != 0 {
+			if len(in.Rune) == 1 && syntax.Flags(in.Arg)&syntax.FoldCase != 0 { // #nosec G115 -- actual syntax compiler rune instruction stores only the FoldCase flag
 				folded = in
 				break
 			}

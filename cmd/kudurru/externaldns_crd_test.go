@@ -34,7 +34,7 @@ func TestRunServeDirectDNSEndpointDNSRestartAndDeletion(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	real, err := control.Start()
+	restConfig, err := control.Start()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestRunServeDirectDNSEndpointDNSRestartAndDeletion(t *testing.T) {
 	if err := public.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	admin, err := client.New(real, client.Options{Scheme: scheme})
+	admin, err := client.New(restConfig, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,12 +54,12 @@ func TestRunServeDirectDNSEndpointDNSRestartAndDeletion(t *testing.T) {
 	if err := admin.Get(t.Context(), client.ObjectKey{Name: "kube-system"}, &identity); err != nil {
 		t.Fatal(err)
 	}
-	target, err := url.Parse(real.Host)
+	target, err := url.Parse(restConfig.Host)
 	if err != nil {
 		t.Fatal(err)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.Transport, err = rest.TransportFor(real)
+	proxy.Transport, err = rest.TransportFor(restConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestRunServeDirectDNSEndpointDNSRestartAndDeletion(t *testing.T) {
 	if err := admin.Create(t.Context(), zone); err != nil {
 		t.Fatal(err)
 	}
-	dyn, err := dynamic.NewForConfig(real)
+	dyn, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

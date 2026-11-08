@@ -35,7 +35,7 @@ import (
 func TestRunServeKubeBlockingTwoReplicasRestartAndOutage(t *testing.T) {
 	control := &envtest.Environment{BinaryAssetsDirectory: mountedKubeTestAssets(t), CRDDirectoryPaths: []string{filepath.Join("..", "..", "deploy", "kustomize", "crd", "bases")}, ErrorIfCRDPathMissing: true}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
-	real, err := control.Start()
+	restConfig, err := control.Start()
 	if err != nil {
 		t.Fatal("blocking control plane startup", err)
 	}
@@ -51,7 +51,7 @@ func TestRunServeKubeBlockingTwoReplicasRestartAndOutage(t *testing.T) {
 	if err := public.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	admin, err := client.New(real, client.Options{Scheme: scheme})
+	admin, err := client.New(restConfig, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,12 +59,12 @@ func TestRunServeKubeBlockingTwoReplicasRestartAndOutage(t *testing.T) {
 	if err := admin.Get(t.Context(), client.ObjectKey{Name: "kube-system"}, &ns); err != nil {
 		t.Fatal(err)
 	}
-	target, err := url.Parse(real.Host)
+	target, err := url.Parse(restConfig.Host)
 	if err != nil {
 		t.Fatal(err)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.Transport, err = rest.TransportFor(real)
+	proxy.Transport, err = rest.TransportFor(restConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

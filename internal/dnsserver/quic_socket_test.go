@@ -220,7 +220,10 @@ func TestQUICSocketFailureClosesWholeGroup(t *testing.T) {
 				t.Fatal(err)
 			}
 			select {
-			case <-done:
+			case err := <-done:
+				if err == nil {
+					t.Fatal("failed receive socket did not report an error")
+				}
 			case <-time.After(5 * time.Second):
 				t.Fatal("one failed receive socket did not join the group")
 			}

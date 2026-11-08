@@ -28,8 +28,12 @@ type localPasswordChange struct {
 	used                atomic.Bool
 }
 
-func (LocalPasswordChange) String() string               { return "private password change" }
-func (c LocalPasswordChange) GoString() string           { return c.String() }
+func (LocalPasswordChange) String() string { return "private password change" }
+
+// GoString keeps prepared credentials out of diagnostic formatting.
+func (c LocalPasswordChange) GoString() string { return c.String() }
+
+// MarshalJSON omits prepared credentials.
 func (LocalPasswordChange) MarshalJSON() ([]byte, error) { return []byte(`{"private":true}`), nil }
 
 // MatchesPasswordHash only correlates an acknowledged object with this prepared

@@ -185,18 +185,18 @@ func newBudgetedAutomaton(programs []*syntax.Prog, cacheBytes int, budget *Progr
 	a.inst = make([]syntax.Inst, 0, count)
 	for id, p := range programs {
 		base := len(a.inst)
-		a.starts = append(a.starts, uint32(base+p.Start)) // bounded above
+		a.starts = append(a.starts, uint32(base+p.Start)) // #nosec G115 -- compiled start PC plus base is below 64 * 32768 instructions
 		for _, original := range p.Inst {
 			in := original
 			switch in.Op {
 			case syntax.InstAlt, syntax.InstAltMatch:
-				in.Arg += uint32(base)
-				in.Out += uint32(base)
+				in.Arg += uint32(base) // #nosec G115 -- base is below the 64 * 32768 instruction limit
+				in.Out += uint32(base) // #nosec G115 -- base is below the 64 * 32768 instruction limit
 			case syntax.InstMatch:
 				in.Arg = uint32(id)
 			case syntax.InstFail:
 			default:
-				in.Out += uint32(base)
+				in.Out += uint32(base) // #nosec G115 -- base is below the 64 * 32768 instruction limit
 			}
 			a.inst = append(a.inst, in)
 		}
@@ -277,7 +277,7 @@ func asciiPredicateCost(in *syntax.Inst, work *asciiProofWork) (int64, bool) {
 		return 0, false
 	}
 	cost := 2*length + 2
-	if length == 1 && syntax.Flags(in.Arg)&syntax.FoldCase != 0 {
+	if length == 1 && syntax.Flags(in.Arg)&syntax.FoldCase != 0 { // #nosec G115 -- syntax compiler stores only the FoldCase flag for rune instructions
 		// Discover the actual public Unicode cycle, including non-ASCII
 		// members, with a bound before each step. Never assume its size.
 		start, current := in.Rune[0], in.Rune[0]
@@ -415,7 +415,7 @@ func (a *automaton) step(previous, r rune) uint64 {
 		case syntax.InstCapture, syntax.InstNop:
 			push(in.Out)
 		case syntax.InstEmptyWidth:
-			if syntax.EmptyOp(in.Arg)&context == syntax.EmptyOp(in.Arg) {
+			if syntax.EmptyOp(in.Arg)&context == syntax.EmptyOp(in.Arg) { // #nosec G115 -- syntax compiler stores only defined EmptyOp bits in this instruction
 				push(in.Out)
 			}
 		case syntax.InstMatch:
@@ -445,7 +445,7 @@ func (a *automaton) step(previous, r rune) uint64 {
 }
 
 func subsetHash(pcs []uint32, previous rune) uint64 {
-	h := uint64(previous+2) + 0x9e3779b97f4a7c15
+	h := uint64(previous+2) + 0x9e3779b97f4a7c15 // #nosec G115 -- boundaryRune produces only -1, newline, a, or hyphen
 	for _, pc := range pcs {
 		// Set identity is independent of closure traversal order. Exact
 		// membership is checked below; hash collisions can only cost work.
@@ -458,7 +458,7 @@ func (a *automaton) intern(previous rune) uint32 {
 	previous = boundaryRune(previous)
 	h := subsetHash(a.current, previous)
 	for probe := range min(16, len(a.stateSlots)) {
-		slot := int((h + uint64(probe)) & uint64(len(a.stateSlots)-1))
+		slot := int((h + uint64(probe)) & uint64(len(a.stateSlots)-1)) // #nosec G115 -- loop requires a nonempty bounded slot table; mask bounds the index
 		id := a.stateSlots[slot]
 		if id != 0 {
 			s := &a.states[id-1]
@@ -485,7 +485,7 @@ func (a *automaton) intern(previous rune) uint32 {
 		copy(a.pcs[a.pcCount:], a.current)
 		a.pcCount += len(a.current)
 		a.stateCount++
-		id = uint32(a.stateCount)
+		id = uint32(a.stateCount) // #nosec G115 -- count is bounded by at most 8192 reserved states
 		a.stateSlots[slot] = id
 		return id
 	}
@@ -499,7 +499,7 @@ func (a *automaton) transition(from uint32, symbol uint16) *dfaTransition {
 	}
 	h := uint64(from)*0x9e3779b1 + uint64(symbol)*0x85ebca6b
 	for probe := range min(16, len(a.transitions)) {
-		t := &a.transitions[int((h+uint64(probe))&uint64(len(a.transitions)-1))]
+		t := &a.transitions[int((h+uint64(probe))&uint64(len(a.transitions)-1))] // #nosec G115 -- nonempty bounded table; mask bounds the index
 		if t.from == 0 || t.from == from && t.symbol == symbol {
 			return t
 		}
@@ -510,7 +510,7 @@ func (a *automaton) transition(from uint32, symbol uint16) *dfaTransition {
 func (a *automaton) matchMask(name string) uint64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	mask, _ := a.matchLocked(nil, name)
+	mask, _ := a.matchLocked(nil, name) //nolint:staticcheck // SA1012: nil deliberately selects the uncancelable fast path; diagnostic calls retain their original context
 	return mask
 }
 

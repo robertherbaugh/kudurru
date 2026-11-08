@@ -274,13 +274,13 @@ func TestUnknownCompletionAndTicketCopiesNeverReplay(t *testing.T) {
 	}
 	b.after = nil
 	q := begin(t, l, "a", "user")
-	copy := q
+	copied := q
 	b.after = errors.New("lost completion reply")
 	before := b.calls
 	if err := q.Finish(ctx, true); !errors.Is(err, ErrUnavailable) {
 		t.Fatal(err)
 	}
-	if err := copy.Finish(ctx, true); !errors.Is(err, ErrUnavailable) || b.calls != before+1 {
+	if err := copied.Finish(ctx, true); !errors.Is(err, ErrUnavailable) || b.calls != before+1 {
 		t.Fatal("ticket replay", err, b.calls)
 	}
 	b.before = errors.New("outage")

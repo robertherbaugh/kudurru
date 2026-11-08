@@ -79,7 +79,7 @@ func TestCreateOnlyOwnerMigrationRefusesForeignFieldsAndRace(t *testing.T) {
 		}
 		found := false
 		for _, owner := range after.ManagedFields {
-			if owner.Manager == "foreign-controller" && owner.FieldsV1 != nil && strings.Contains(string(owner.FieldsV1.Raw), "foreign") {
+			if owner.Manager == "foreign-controller" && owner.FieldsV1 != nil && strings.Contains(owner.FieldsV1.GetRawString(), "foreign") {
 				found = true
 			}
 		}

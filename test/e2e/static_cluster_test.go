@@ -162,7 +162,7 @@ func TestStaticClusterProcessesReadOnlyPeerLossRestart(t *testing.T) {
 		t.Cleanup(transport.CloseIdleConnections)
 		client := &staticProcessClient{client: &http.Client{Jar: jar, Transport: transport, Timeout: 5 * time.Second}, base: "http://" + node.Ports.API + api.BasePath}
 		var session api.SessionInfo
-		client.request(t, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "audit-e2e-password-1"}, http.StatusOK, &session)
+		client.request(t, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "audit-e2e-password-1"}, http.StatusOK, &session) // #nosec G101 -- disposable loopback test credential created by this fixture
 		client.csrf = session.CSRF
 		inventory := staticProcessPeers(t, client)
 		for _, peer := range inventory {

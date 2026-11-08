@@ -22,9 +22,11 @@ import (
 )
 
 const (
-	// Prefix, Key and Section identify one optional complete replicated owner.
-	Prefix  = "browser-admission/"
-	Key     = Prefix + "v1/state"
+	// Prefix identifies the optional complete replicated request-budget owner.
+	Prefix = "browser-admission/"
+	// Key identifies its versioned document.
+	Key = Prefix + "v1/state"
+	// Section identifies the replication section containing that document.
 	Section = "runtime"
 	// MaxBytes bounds the document before decoding or staging it.
 	MaxBytes = 512 << 10
@@ -39,10 +41,12 @@ const (
 type Lane string
 
 const (
-	// Start, Callback and CLI have independent, fixed per-prefix policies.
-	Start    Lane = "start"
+	// Start selects the fixed browser-start policy.
+	Start Lane = "start"
+	// Callback selects the fixed browser-callback policy.
 	Callback Lane = "callback"
-	CLI      Lane = "cli"
+	// CLI selects the fixed CLI request policy.
+	CLI Lane = "cli"
 )
 
 func (l Lane) maximum() int {

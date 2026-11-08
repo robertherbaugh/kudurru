@@ -127,8 +127,12 @@ type ticket struct {
 	used     atomic.Bool
 }
 
-func (Ticket) String() string               { return "private login reservation" }
-func (t Ticket) GoString() string           { return t.String() }
+func (Ticket) String() string { return "private login reservation" }
+
+// GoString keeps reservation contents out of diagnostic formatting.
+func (t Ticket) GoString() string { return t.String() }
+
+// MarshalJSON omits private reservation contents.
 func (Ticket) MarshalJSON() ([]byte, error) { return []byte(`{"private":true}`), nil }
 
 func token() string {

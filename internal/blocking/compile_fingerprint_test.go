@@ -91,11 +91,11 @@ func TestCompileFingerprintSniffFailureCannotReusePrevious(t *testing.T) {
 
 // Reference the established fmt-based v3 stream independently of the optimized
 // encoder. Full Parse supplies source CRCs, including format detection.
-func originalV3Fingerprint(t *testing.T, spec Spec, cap int, limit int64) uint32 {
+func originalV3Fingerprint(t *testing.T, spec Spec, capacity int, limit int64) uint32 {
 	t.Helper()
 	h := crc32.NewIEEE()
-	fmt.Fprintf(h, "kudurru-blocking-v3-lazy-dfa\x00%s\x00%d\x00%d\x00", spec.Mode, cap, limit)
-	fmt.Fprintf(h, "external-policy=%t\x00", spec.ExternalPolicy)
+	_, _ = fmt.Fprintf(h, "kudurru-blocking-v3-lazy-dfa\x00%s\x00%d\x00%d\x00", spec.Mode, capacity, limit)
+	_, _ = fmt.Fprintf(h, "external-policy=%t\x00", spec.ExternalPolicy)
 	for _, src := range spec.Sources {
 		rc, err := src.Open()
 		if err != nil {
@@ -110,7 +110,7 @@ func originalV3Fingerprint(t *testing.T, spec Spec, cap int, limit int64) uint32
 		if format == "" {
 			format = parser.FormatAuto
 		}
-		fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, res.CRC32, ExcludeDigest(src.Exclude))
+		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, res.CRC32, ExcludeDigest(src.Exclude))
 	}
 	return h.Sum32()
 }
@@ -120,17 +120,17 @@ func TestCompileFingerprintRetainsV3Encoding(t *testing.T) {
 		t.Run(string(format), func(t *testing.T) {
 			for _, mode := range []Mode{ModeBlock, ModeAllow} {
 				for _, external := range []bool{false, true} {
-					for _, cap := range []int{-1, 0, 1000} {
+					for _, capacity := range []int{-1, 0, 1000} {
 						for _, limit := range []int64{1, 128 << 20} {
 							empty := BytesSource("empty", format, nil)
 							src := BytesSource(strings.Repeat("n", 257)+"\x00é", format, []byte("! Title: original\nordinary.example\n/ads[.]example$/\n"))
 							src.HostsSubdomains = true
 							src.Exclude = []string{"ordinary.example", "unused", "ordinary.example"}
 							spec := Spec{Name: "encoding", Mode: mode, ExternalPolicy: external, Sources: []Source{empty, src}}
-							want := originalV3Fingerprint(t, spec, cap, limit)
-							got, _, err := fingerprint(&spec, cap, limit)
+							want := originalV3Fingerprint(t, spec, capacity, limit)
+							got, _, err := fingerprint(&spec, capacity, limit)
 							if err != nil || got != want {
-								t.Fatalf("v3 identity changed: mode=%s external=%t cap=%d bytes=%d got=%08x want=%08x err=%v", mode, external, cap, limit, got, want, err)
+								t.Fatalf("v3 identity changed: mode=%s external=%t capacity=%d bytes=%d got=%08x want=%08x err=%v", mode, external, capacity, limit, got, want, err)
 							}
 						}
 					}

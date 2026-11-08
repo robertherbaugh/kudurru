@@ -1446,3 +1446,39 @@ Go source matches all race/vet/benchmark receipts; later changes are documentati
 and mock help only. User dashboard/dist bytes remain untouched. F25b behavior is
 implemented; configured lint, fixed-class and final integrated release gates
 remain open. No push, deployment or release.
+
+
+### Integrated configured lint restored, November 8
+
+Built golangci-lint v2.15.0 (the AD workflow's pinned version) with Go 1.27.3
+into a private persistent tool directory. The complete repository scan uses the
+unchanged `.golangci.yml`, concurrency 2 and all packages, with issue truncation
+disabled. Final exit 0, zero issues, 54.091007994s, minimum free 11,519,586,304B.
+Original complete inventory had 39 findings; its numeric failure and the earlier
+36-entry truncated report remain preserved. A subsequent two-finding failure
+also remains preserved.
+
+Corrections cover test error handling, identifiers, public documentation and the
+current Kubernetes FieldsV1 accessor. The QUIC whole-group test now explicitly
+requires a socket failure error. Actual compiled-program instruction/state limits,
+range-index invariants, deterministic test randomness and disposable credentials
+justify narrow line-specific analyzer annotations. The private uncancelable
+matcher path intentionally passes nil to its own helper; context-aware diagnostics
+retain their original context. No analyzer is disabled in repository configuration.
+A Go scanner comparison proves identical noncomment production tokens in all
+five touched production files. No matcher kernel, capacity, proof, default,
+benchmark, baseline or algorithm changed.
+
+Default-race verification passes the three QUIC socket-failure entries and 13
+changed follower-cancellation, fingerprint-oracle and actual API-server ownership
+entries, with zero failures/skips. Wall times 6.213863577s and 41.267271066s;
+minimum free 11,901,157,376B and 11,388,620,800B. Final production-token check and
+whitespace check pass. All commands verify frozen source identities; user
+`dashboard/dist/index.html` bytes remain unchanged. The first archive parser
+attempt failed before source edits, and a first Go token-check invocation rejected
+its file arguments before running; both diagnostic failures are retained.
+
+Evidence: `.context/lint-restoration-20261108/`. This supersedes unavailable-lint
+status for the current root source. Historical F20 relative/missing-scope/CPU
+failures, incomplete F28 activation, HA/AD implementation and external/final
+release gates remain open. No push, deployment or release.
