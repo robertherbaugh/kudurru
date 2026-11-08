@@ -81,10 +81,50 @@ this separate salt. Privileged deletion of the Secret resets its history.
 
 This mount covers Kubernetes local-password login. It does not replace OIDC
 start/callback limits, create shared TOTP replay authority, or make unrelated
-identity/session writes a cross-object transaction. The complete SQLite runtime's
-password and factor limits remain local until their own admitted transaction and
-replication composition is implemented. Static independent stores do not gain
-shared authority from configured peer names.
+identity/session writes a cross-object transaction. Static independent stores do
+not gain shared authority from configured peer names.
+
+## SQLite password admission (D305)
+
+The complete SQLite runtime stages password counters in the original login
+command, under its original HTTP lease, elected writer and dependency pins.
+It uses the same IP-prefix/username policies and document bounds as Kubernetes.
+The optional `runtime/password-admission/v1/state` row belongs to complete
+replication images; safe object exports omit it. Legacy absence initializes on
+the first admitted attempt. Privileged removal explicitly resets this history.
+
+```mermaid
+sequenceDiagram
+    participant H as Original HTTP login
+    participant C as Original SQLite command
+    participant P as Password and factor verifier
+    H->>C: Admit original lease and writer
+    C->>C: Reserve bounded shared counters
+    C->>P: Verify once
+    alt Pre-mutation credential refusal
+        P-->>C: Exact command-bound refusal
+        C->>C: Stage failed counters only
+    else Successful proof
+        P-->>C: Authenticated current account
+        C->>C: Stage result, factor use and enrollment
+    end
+    C->>C: Final original context, clock and authority checks
+    C-->>H: Commit all effects or roll back all effects
+    H->>H: Refuse or seal exact published enrollment
+```
+
+Only a package-issued credential refusal from before authentication-state
+mutation can commit failed counters. Arbitrary errors, later enrollment errors,
+clock rollback, expired contexts and poisoned commands roll back counters and
+authentication effects together. The command is bounded by the earlier original
+deadline or thirty seconds. Malformed state refuses without repair; followers
+retain the exact document through install/restart but cannot mutate it locally.
+
+This mount covers local login, including its supplied TOTP proof. Self-service
+password/factor routes and OIDC attempt limits still have separate local admission;
+enrolled-replica request forwarding remains unmounted. Two adapters sharing one
+Store and physical follower install/restart tests do not prove production
+multi-node forwarding.
 
 ## Coherent authentication owner foundation
 

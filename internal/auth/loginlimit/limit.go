@@ -78,6 +78,21 @@ func New(backend Backend, ip, user Policy, now func() time.Time) (*Limiter, erro
 	return &Limiter{backend: backend, now: now, policies: [2]Policy{ip, user}}, nil
 }
 
+// Validate checks a stored document without applying current-time expiry or
+// changing it. Replica validation must not reinterpret source time locally.
+func Validate(raw []byte, ip, user Policy) error {
+	if len(raw) == 0 || len(raw) > MaxBytes {
+		return ErrState
+	}
+	var header struct{ At time.Time }
+	if err := json.Unmarshal(raw, &header); err != nil {
+		return ErrState
+	}
+	l := &Limiter{policies: [2]Policy{ip, user}}
+	_, err := l.decode(raw, header.At)
+	return err
+}
+
 type pending struct {
 	ID       string    `json:"id"`
 	Sequence uint64    `json:"sequence"`

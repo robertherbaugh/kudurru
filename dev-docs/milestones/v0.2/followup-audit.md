@@ -1132,3 +1132,46 @@ still need same-command persistence and replication composition; OIDC initiation
 limits are distinct. Shared counters do not grant credentials, TOTP replay
 protection or cross-object IAM transactions. Configured lint remains unavailable;
 F46's remaining driver/route work and final G12/G22/release gates stay open.
+
+
+### F46 SQLite original-command password admission (D305), November 8
+
+The mounted login now stages bounded shared IP-prefix/username reservations,
+one password/TOTP verification, result and successful enrollment inside its
+original currentAuthCommand. Only an exact package-issued, command-bound
+pre-mutation credential refusal can commit failed counters. Final errors, clock
+rollback, expiration and poisoned mutations roll back all effects. The earliest
+original deadline/30s bound is retained; no second verification or new lease.
+
+An optional versioned runtime row carries the complete 512KiB/4096-key document.
+Prefix bounds precede allocation; unknown versions/malformed state refuse without
+repair. Replica validation uses stored observation time. Legacy absence initializes
+on first admission; privileged removal resets the operational limit. Safe object
+exports omit it. Original policy/HMAC keys/concurrency semantics are unchanged.
+
+Focused race-02 passes11 entries with no failures/skips (30.250527820s). Full
+security/servingauth/runtimeowners/loginlimit default-race passes324 entries with
+no failures/skips (77.315912087s, minimum14,762,717,184B). Affected vet exits0
+(6.013013003s), and exact11-file gofmt check has empty output. Configured lint
+is unavailable and vet is not its substitute.
+
+Actual HTTP adapters alternate failures against one canonical Store, reject
+locked correct passwords after adapter recreation, and carry exact counter bytes
+through a separate physical follower's pre-captured install, Close/Open and
+read-only authority refusal. Success, final guard failure, clock rollback and
+ignored mutation poison check exact effects. This is not production forwarding.
+
+The full55-top-level HTTP selection completed with58 pass entries and32 failed
+entries, zero skips, numeric1 (268.668862522s, minimum14,658,461,696B). Failures
+are browser-start503/expected302, including fixtures used by external-account
+and RoleBinding tests. Source review identifies original-source currency after
+an own pending/session commit as a candidate cause; investigation is ongoing.
+No full HTTP/release green claim. All receipts and exact freezes are retained
+under `.context/sqlite-login-lockouts-20261108/`.
+
+Earlier race-01 failed because a success fixture used the password-change floor
+itself; the corrected test uses a later time and asserts actual target entry.
+Earlier final-error/clock apparent passes did not reach their intended target
+and remain invalid-target evidence. No production acceptance check was weakened.
+Self-service password/factor routes, OIDC admission, enrolled-replica forwarding,
+configured lint and final F46/G12/G22/release gates remain open.

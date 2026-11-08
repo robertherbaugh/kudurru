@@ -10,6 +10,7 @@ import (
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -106,12 +107,18 @@ func (h *servingHTTP) login(w http.ResponseWriter, r *http.Request) error {
 		return &auth.Error{Status: 403, Key: "local_login_disabled", Message: "local password login is disabled"}
 	}
 	var enrollment security.Enrollment
-	err = h.opts.Runtime.currentAuthCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+	var refused error
+	original, cancel := context.WithTimeout(r.Context(), loginlimit.Lifetime)
+	defer cancel()
+	err = h.opts.Runtime.currentAuthCommand(original, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		var err error
 		observed := h.now()
-		enrollment, err = security.IssueLocal(ctx, tx, deps, servingauth.Credential{Kind: servingauth.Password, Username: req.Username, Value: req.Password, TOTPCode: req.TOTPCode}, observed)
+		enrollment, refused, err = security.IssueLocalWithAdmission(ctx, tx, deps, servingauth.Credential{Kind: servingauth.Password, Username: req.Username, Value: req.Password, TOTPCode: req.TOTPCode}, h.clientKey(r), h.now)
 		if err != nil {
 			return err
+		}
+		if refused != nil {
+			return nil
 		}
 		// Preserve the public IAM login status in the same successful command.
 		var current internalv1.LocalUser
@@ -125,10 +132,19 @@ func (h *servingHTTP) login(w http.ResponseWriter, r *http.Request) error {
 		}
 		return h.enrollmentClock(ctx, tx, enrollment, observed)
 	})
-	h.loginResult(r, req.Username, err)
 	if err != nil {
 		return err
 	}
+	h.opts.Runtime.publisher.Wake()
+	if refused != nil {
+		var locked *loginlimit.Locked
+		if errors.As(refused, &locked) {
+			return &auth.Error{Status: 429, Key: "rate_limited", Message: "too many failed attempts; try again later", RetryAfter: locked.RetryAfter}
+		}
+		h.loginResult(r, req.Username, refused)
+		return refused
+	}
+	h.loginResult(r, req.Username, nil)
 	return h.sealEnrollment(w, r, enrollment)
 }
 

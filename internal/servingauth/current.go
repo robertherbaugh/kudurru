@@ -98,26 +98,26 @@ func authenticateInCommand(ctx context.Context, tx *sqlite.CommandTx, view *View
 	}
 	user, err := view.passwordAccount(ctx, proof.Username, proof.Value)
 	if err != nil {
-		return auth.Principal{}, err
+		return auth.Principal{}, refusePassword(tx, err)
 	}
 	p, err := view.passwordPrincipal(user, now)
 	if err != nil {
-		return auth.Principal{}, err
+		return auth.Principal{}, refusePassword(tx, err)
 	}
 	if user.Spec.TOTPSecret == "" {
 		if proof.TOTPCode != "" {
-			return auth.Principal{}, ErrCredentials
+			return auth.Principal{}, refusePassword(tx, ErrCredentials)
 		}
 		return p, nil
 	}
 	if proof.TOTPCode == "" {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, refusePassword(tx, ErrCredentials)
 	}
 	a := totp.Account{Name: user.Name, UID: string(user.UID)}
 	seed := view.factors[a]
 	step, err := totp.Match(seed, proof.TOTPCode, now)
 	if err != nil {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, refusePassword(tx, ErrCredentials)
 	}
 	state := view.cut.security
 	state.TOTP = slices.Clone(state.TOTP)
@@ -131,7 +131,7 @@ func authenticateInCommand(ctx context.Context, tx *sqlite.CommandTx, view *View
 		}
 		next, err := totp.Advance(row, seed, step)
 		if err != nil {
-			return auth.Principal{}, ErrCredentials
+			return auth.Principal{}, refusePassword(tx, ErrCredentials)
 		}
 		state.TOTP[i] = next
 		found = true

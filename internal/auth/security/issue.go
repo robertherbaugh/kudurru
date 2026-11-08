@@ -67,6 +67,8 @@ func (e Enrollment) SealLogoutHint(view *servingauth.View, now time.Time) (strin
 // Password-only login to a TOTP account remains unavailable. The caller must
 // return any error from its Command callback; dependency freshness and shared
 // lockout/TOTP admission belong to that command's outer gate.
+// IssueLocalWithAdmission is the dedicated wrapper that can retain a typed
+// pre-mutation credential refusal while committing only password counters.
 func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential, now time.Time) (Enrollment, error) {
 	d, err := servingauth.ResolveSessionCurrent(ctx, tx, deps, proof, now)
 	if err != nil {

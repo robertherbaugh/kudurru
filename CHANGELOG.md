@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- SQLite: local-login lockouts persist with the original authentication command
+  and survive restart and complete replica transfer. Failed credentials retain
+  counters; later command failures roll back counters and enrollment together.
+
 - Kubernetes: local-password lockouts share durable IP-prefix and username
   admission across replicas and restart. Concurrent attempts reserve capacity;
   unavailable shared state refuses login without issuing a session.
