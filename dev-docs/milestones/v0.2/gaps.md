@@ -5215,3 +5215,27 @@ is retained; final source differs from race02 only in those comments. This is an
 prerequisite only: durable membership, join tokens, root wiring, current
 revocation/output checks, forwarding and complete HA remain open. Evidence:
 `.context/member-identity-20261108/`.
+
+
+### F60b/G11 captured member replication client, November 8
+
+D324 adds explicit `NewMemberClient` with the node-local D323 identity and each
+original resolved peer's exact CA. Local UUID/key mismatch, missing target trust
+and custom transports refuse. One captured exchange owns a TLS transport with
+connection reuse disabled, so a changed enrollment at the same address cannot
+send through an old connection. Certificate/request lifetime is checked before
+authority observation and final image/command-result admission. A TLS rejection
+cannot create network-loss promotion eligibility; a POST alert or original
+cancellation after complete body read preserves unknown outcome without replay.
+
+Focused default-race4 passes against actual SQLite/TLS image, 304 and command
+paths, same-address changed trust, same-UUID impostor refusing before HTTP,
+explicit dedup retry, credential refusal, and actual committed command with
+cancellation at completed body EOF. Final composed replica/memberidentity/
+follower default-race112 passes without failures/skips (28.271 s), including
+actual remote-TLS refusal classification. Configured scoped lint passes with
+zero issues (6.220 s); source03 differs from qualified source02 only in the
+constructor documentation. This client does not
+supply durable enrollment, current membership/output exclusion or root startup;
+those remain open. Legacy shared-credential transport tests are retained.
+Evidence: `.context/replica-member-client-20261108/`.

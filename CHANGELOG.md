@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- The enrolled replication client verifies the original member identity before
+  sending credentials or commands and retains original deadlines through result
+  admission. TLS refusals do not count as primary network loss.
+
 - Add persistent, independent member TLS identity primitives for enrolled HA;
   enrollment and production transport mounting remain pending.
 

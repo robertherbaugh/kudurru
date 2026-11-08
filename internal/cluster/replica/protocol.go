@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/cluster/memberidentity"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
 
@@ -49,7 +50,12 @@ var (
 )
 
 // Peer comes from enrollment, not discovery or an arbitrary public URL.
-type Peer struct{ MemberID, ClusterID, Address string }
+type Peer struct {
+	MemberID, ClusterID, Address string
+	// Trust is the original independently enrolled member CA. Member clients
+	// require it before dialing; no response or shared CA may replace it.
+	Trust memberidentity.Trust
+}
 
 // PeerResolver returns an enrolled member with its pinned internal address.
 type PeerResolver func(context.Context) (Peer, error)

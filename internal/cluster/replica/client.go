@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
+	"github.com/robertherbaugh/kudurru/internal/cluster/memberidentity"
 	"github.com/robertherbaugh/kudurru/internal/store/follower"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -36,12 +37,31 @@ type ClientOptions struct {
 
 // Client exchanges bounded images and commands with enrolled HTTPS peers.
 type Client struct {
-	opts ClientOptions
-	http *http.Client
+	opts   ClientOptions
+	http   *http.Client
+	member *memberidentity.Identity
 }
 
-// NewClient requires an observer so rejected bodies cannot discard a higher term.
+// NewClient is the shared-credential transport primitive. It requires an
+// observer but does not bind individual member identity; enrolled production
+// callers must use NewMemberClient with independently admitted peer trust.
 func NewClient(o ClientOptions) (*Client, error) {
+	return newClient(o, nil)
+}
+
+// NewMemberClient requires an independent persistent local identity and each
+// resolver's original enrolled peer Trust. Shared credentials still supply the
+// bearer guard, but never target identity. Each exchange owns its TLS transport,
+// so no connection verified under an old enrollment enters a successor attempt.
+// Custom transports are refused; this path always verifies TLS before HTTP.
+func NewMemberClient(o ClientOptions, identity *memberidentity.Identity) (*Client, error) {
+	if identity == nil || identity.Trust().MemberID() == "" || o.Transport != nil {
+		return nil, ErrProtocol
+	}
+	return newClient(o, identity)
+}
+
+func newClient(o ClientOptions, identity *memberidentity.Identity) (*Client, error) {
 	if o.Credentials == nil || o.Self == nil || o.Observer == nil {
 		return nil, errors.New("replica: credentials, local member and authority observer required")
 	}
@@ -56,6 +76,9 @@ func NewClient(o ClientOptions) (*Client, error) {
 	}
 	if o.Tokens == nil {
 		o.Tokens = func() []string { return []string{o.Credentials.Token()} }
+	}
+	if identity != nil {
+		return &Client{opts: o, member: identity}, nil
 	}
 	rt := o.Transport
 	if rt == nil {
@@ -104,6 +127,9 @@ func (c *Client) captureIdentity(ctx context.Context) (requestIdentity, error) {
 		return requestIdentity{}, err
 	}
 	self := c.opts.Self()
+	if c.member != nil && self.MemberID != c.member.Trust().MemberID() {
+		return requestIdentity{}, ErrUnauthorized
+	}
 	tokens := c.opts.Tokens()
 	if len(tokens) == 0 || len(tokens) > 4 {
 		return requestIdentity{}, ErrUnauthorized
@@ -123,6 +149,23 @@ func (c *Client) requestCaptured(ctx context.Context, identity requestIdentity, 
 	address, err := peerAddress(identity.self, peer, path)
 	if err != nil {
 		return nil, err
+	}
+	client := c.http
+	if c.member != nil {
+		if peer.Trust.MemberID() != peer.MemberID {
+			return nil, ErrUntrusted
+		}
+		config, err := c.member.ClientTLS(peer.Trust)
+		if err != nil {
+			return nil, ErrUntrusted
+		}
+		dialer := &net.Dialer{Timeout: c.opts.Timeout}
+		transport := &http.Transport{DialContext: dialer.DialContext, TLSClientConfig: config,
+			TLSHandshakeTimeout: c.opts.Timeout, ResponseHeaderTimeout: c.opts.Timeout,
+			DisableKeepAlives: true}
+		defer transport.CloseIdleConnections()
+		client = &http.Client{Transport: transport, Timeout: c.opts.Timeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 	for _, token := range identity.tokens {
 		if err := ctx.Err(); err != nil {
@@ -145,7 +188,7 @@ func (c *Client) requestCaptured(ctx context.Context, identity requestIdentity, 
 		if etag != "" {
 			req.Header.Set("If-None-Match", etag)
 		}
-		resp, err := c.http.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			var certificate *tls.CertificateVerificationError
 			var unknownCA x509.UnknownAuthorityError
@@ -153,10 +196,28 @@ func (c *Client) requestCaptured(ctx context.Context, identity requestIdentity, 
 			if errors.As(err, &certificate) || errors.As(err, &unknownCA) || errors.As(err, &hostName) {
 				return nil, ErrUntrusted
 			}
+			var remote *net.OpError
+			var alert tls.AlertError
+			if errors.As(err, &alert) || errors.As(err, &remote) && remote.Op == "remote error" {
+				// A TLS protocol/authentication refusal is not evidence of an
+				// unreachable primary. A POST alert can follow dispatch, so its
+				// domain outcome remains unknown rather than authorizing replay.
+				if method == http.MethodPost {
+					return nil, errors.Join(ErrOutcomeUnknown, ErrUntrusted)
+				}
+				return nil, ErrUntrusted
+			}
 			if ctx.Err() != nil && errors.Is(ctx.Err(), context.Canceled) {
 				return nil, ctx.Err()
 			}
 			return nil, errors.Join(ErrUnavailable, err)
+		}
+		if err := c.checkResponse(ctx, peer, resp); err != nil {
+			closeResponse(resp)
+			if method == http.MethodPost {
+				return nil, errors.Join(ErrOutcomeUnknown, err)
+			}
+			return nil, err
 		}
 		// A response rejected without returning it still carries authority. Observe
 		// authenticated metadata before even draining its body; missing metadata
@@ -190,6 +251,9 @@ func closeResponse(r *http.Response) {
 
 // observe authenticates the responder and authority BEFORE any body decode.
 func (c *Client) observe(ctx context.Context, peer Peer, r *http.Response) (replication.Term, error) {
+	if err := c.checkResponse(ctx, peer, r); err != nil {
+		return replication.Term{}, err
+	}
 	if r.TLS == nil || r.TLS.Version < tls.VersionTLS13 || len(r.TLS.VerifiedChains) == 0 {
 		return replication.Term{}, ErrUntrusted
 	}
@@ -208,6 +272,21 @@ func (c *Client) observe(ctx context.Context, peer Peer, r *http.Response) (repl
 	}
 	_, err = c.opts.Observer.ObserveAuthority(ctx, t)
 	return t, err
+}
+
+// checkResponse retains the original request and certificate lifetimes after
+// header/body work. It cannot resolve a new member or adopt new trust.
+func (c *Client) checkResponse(ctx context.Context, peer Peer, r *http.Response) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+		return context.DeadlineExceeded
+	}
+	if c.member != nil && (peer.Trust.MemberID() != peer.MemberID || peer.Trust.VerifyPeer(r.TLS) != nil) {
+		return ErrUntrusted
+	}
+	return ctx.Err()
 }
 func peerProblem(r *http.Response) error {
 	b, err := readBounded(r.Body, 64<<10)
@@ -277,7 +356,7 @@ func (s *Source) Fetch(ctx context.Context, etag string) (follower.Response, err
 		if etag == "" || r.Header.Get("ETag") != etag || term.PrimaryID != peer.MemberID {
 			return reject(ErrProtocol)
 		}
-		if err := ctx.Err(); err != nil {
+		if err := s.client.checkResponse(ctx, peer, r); err != nil {
 			return reject(err)
 		}
 		return follower.Response{Term: term, NotModified: true, ETag: etag}, nil
@@ -297,7 +376,7 @@ func (s *Source) Fetch(ctx context.Context, etag string) (follower.Response, err
 		if !i.Term.Same(term) || r.Header.Get("ETag") != i.Generation().ETag() {
 			return reject(ErrProtocol)
 		}
-		if err := ctx.Err(); err != nil {
+		if err := s.client.checkResponse(ctx, peer, r); err != nil {
 			return reject(err)
 		}
 		return follower.Response{Term: term, Image: &i, ETag: r.Header.Get("ETag")}, nil
@@ -306,6 +385,9 @@ func (s *Source) Fetch(ctx context.Context, etag string) (follower.Response, err
 	}
 }
 func authenticated(r *http.Response, p Peer) bool {
+	if p.Trust.MemberID() != "" && (p.Trust.MemberID() != p.MemberID || p.Trust.VerifyPeer(r.TLS) != nil) {
+		return false
+	}
 	return r.TLS != nil && r.TLS.Version >= tls.VersionTLS13 && len(r.TLS.VerifiedChains) > 0 && len(r.Header.Values(HeaderMember)) == 1 && len(r.Header.Values(HeaderCluster)) == 1 && r.Header.Get(HeaderMember) == p.MemberID && r.Header.Get(HeaderCluster) == p.ClusterID
 }
 
@@ -372,6 +454,9 @@ func (c *Client) Write(ctx context.Context, peer Peer, command Command) (Outcome
 		return Outcome{}, errors.Join(ErrOutcomeUnknown, err)
 	}
 	if err := out.validate(c.opts.MaxResultBytes); err != nil {
+		return Outcome{}, errors.Join(ErrOutcomeUnknown, err)
+	}
+	if err := c.checkResponse(ctx, peer, r); err != nil {
 		return Outcome{}, errors.Join(ErrOutcomeUnknown, err)
 	}
 	return out, nil

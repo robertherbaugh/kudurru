@@ -836,6 +836,24 @@ membership owner, one-time join tokens, root listener/client assembly and
 revocation/output barriers remain to be implemented. Connection pools must be
 scoped to the exact original enrolled trust, never reused for a successor CA.
 
+`replica.NewMemberClient` connects those identities to image and command
+exchanges. It requires the original resolver's exact member CA, rejects a local
+UUID that does not match its private identity, and refuses custom transports.
+Each captured exchange owns a TLS transport with connection reuse disabled;
+a new enrollment at the same address cannot borrow an old verified connection.
+The exact CA is verified before bearer credentials or a command body are sent.
+Original certificate and request deadlines are checked again before authority
+observation and before an image or command result can be accepted. No lookup
+replaces the captured trust after a response. TLS alerts are authentication or
+protocol refusals, not network-loss evidence for promotion. A POST alert or
+cancellation after a complete result preserves an unknown outcome; the client
+never dispatches a replacement command itself.
+
+The existing `NewClient` is the shared-credential transport primitive used by
+legacy tests; it does not establish independent member identity. Root enrolled
+assembly must select `NewMemberClient` and supply the current membership owner
+and final membership/output exclusions. Those production mounts remain pending.
+
 Peer-image acquisition captures its finite lifetime, local member and detached
 token vector before resolving a peer. All body validation retains that original
 bound; expired resolution cannot dial, and canceled completed bytes cannot

@@ -240,3 +240,8 @@ member CA trust and standard mutual TLS verification. Expanded race21 passes
 without failures/skips; configured scoped lint passes with zero issues. Durable membership, one-time enrollment, root
 mounting and final revocation/output barriers remain open; this prerequisite
 is not full F60b/G11 completion.
+
+D324 adds an explicit replication client bound to original independent member
+trust before HTTP, with no cross-enrollment connection reuse or mutation replay.
+Focused race4 and composed transport/follower/identity race112 pass without
+failures/skips; configured scoped lint passes with zero issues. Durable membership and production enrollment/root mounts remain open.
