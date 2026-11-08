@@ -5569,3 +5569,61 @@ final-current-source qualification remain open. Complete downloaded artifacts,
 independent vectors/review, original inputs and control-test evidence are under
 `.context/hosted-release-20261108/`. Original failures and external release gates
 remain unchanged.
+
+### G23 current-source actual Knot, November 8
+
+The pinned Knot DNS 3.6.2 executable (image digest 174b0fcb24c6c3bc5065c9d1ce46b588eec607a5f32bc40ff0cda60150f00bd9)
+passes the actual current-checkout catalog/NOTIFY/TSIG acceptance under race:
+nine test pass entries, no failures/skips, 31.855 seconds. Signed transfer and
+query/unsigned/wrong-key/unknown-key/policy/source refusals plus mounted doctor
+checks execute. All 4,638 frozen identities match; the test removes only its own
+private-daemon containers/network. No residual fixture container remains. Earlier
+Knot skips and private-daemon setup/pull failures remain recorded. Evidence:
+`.context/knot-current-20261108/`. No production release or deployment occurred.
+
+### G04 integration promotion fixture cleanup and publication, November 8
+
+The preserved old hosted shard 1 log reveals an actual 30-minute timeout in
+TestIntegrationRuntimeActualReplicaPromotionFencesHeldObservation. Its observation
+assertion failed, then LIFO cleanup joined the intentionally blocked provider
+before releasing its barrier. Fixture barrier releases now run as defers before
+runtime cleanups, including the independent replacement case. Failure diagnostics
+report primary/follower presence and replica poll count without private data.
+The original assertion did not reproduce in ten cleanup-corrected local race
+iterations; this does not establish its cause or waive the hosted failure.
+
+The fixture also waited for provider Ready without first requiring its complete
+inventory publication. It now retains the original published observation before
+the single held Sync and compares the follower's timestamps to that same value.
+No refused operation is retried, no source proof is replaced, and no production
+behavior or original assertion is relaxed. All 42 integration race entries pass
+without failures/skips in 221.764 seconds; configured command-package lint passes
+with zero issues in 28.047 seconds. Frozen identities match. Evidence:
+`.context/integration-failover-20261108/`. Hosted run 42514564260 was canceled by
+normal PR concurrency after pushing 86a3ff91; its prior e2e/shard2 failures and
+shard1 timeout/log are retained. The fresh run remains independently required.
+
+### F63/G23 immutable reference result and heterogeneous CPU pool, November 8
+
+Actual reference run 42517712186 measured exact original 0cc9565e under controls
+86a3ff91. All twenty native commands exit zero; all groups reap, no resource stop,
+366.648 seconds total native wall, minimum free 138,759,421,952 bytes. All three
+report hashes verify. Five samples supply 45 cases and 219 metric keys. The
+reference's original blocking/zone gate exits 1: old CNAME p99 median 2,090 ns
+exceeds the unchanged 2,000 ns ceiling. Its five values are 2,090, 2,280, 2,230,
+1,950 and 1,730 ns. Cache and strategy shape checks exit zero. The aggregate
+correctly retains exit1, measurement_complete=true and release_qualified=false.
+
+Native headers identify AMD EPYC 9224, whereas candidate run 42514599389 used
+AMD EPYC 9454P. Both requested the exact owner-selected Ubicloud eight-core
+Ubuntu 24.04 label and retained GOMAXPROCS6. That pool label therefore does not
+pin a CPU model across jobs. These two runs cannot satisfy the strict CPU-match
+comparison. Reference exact-miss p50 median190ns is recorded but cannot clear
+the prior candidate/local regression. No sample or baseline is replaced.
+
+Next measurement design must place original reference and candidate in one VM,
+retaining both source manifests, every failed reference limit and the original
+strict comparison. It must not select replacement samples until a desired CPU
+or result appears. New absolute calibration and final candidate qualification
+remain open. Complete reference artifacts and failure evidence are retained
+under `.context/hosted-release-20261108/reference-artifact/`.

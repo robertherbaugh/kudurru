@@ -2546,3 +2546,18 @@ reference measurements on Ubicloud; eight control tests and YAML validation
 pass, but no reference execution is claimed. Same-class comparisons, additional
 absolute calibration and final-source gates remain open; see gaps.md and
 bench/README.md.
+
+Current-source actual Knot race passes nine entries without skips. The preserved
+old hosted command shard exposed an observation assertion followed by a fixture
+cleanup deadlock. Cleanup now releases held providers first and the test captures
+its original published inventory before the challenged Sync. Ten diagnostic
+race iterations and all 42 final integration race entries pass; scoped lint is
+clean. The original timeout/assertion remains retained, not labeled a flake.
+
+Hosted immutable benchmark reference run 42517712186 completes all twenty native
+measurements but fails the old CNAME ceiling (2,090ns >2,000ns). It ran on EPYC
+9224; the candidate ran on EPYC9454P under the same Ubicloud label. Neither the
+failed reference nor that CPU mismatch is waived. A paired original/candidate
+measurement in one VM is the next concrete step; no replacement sample or new
+baseline is approved by these results. Fresh security on 86a3ff91 is green;
+full hosted CI and the remaining implementation/external gates stay open.

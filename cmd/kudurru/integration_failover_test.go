@@ -71,7 +71,7 @@ func TestIntegrationRuntimeIndependentReplacementJoinsOldProvider(t *testing.T) 
 			entered, stopping, stopped, successor := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
 			var release sync.Once
 			releaseStop := func() { release.Do(func() { close(stopped) }) }
-			t.Cleanup(releaseStop)
+			defer releaseStop() // Unblock providers before runtime cleanup joins them.
 			var aPolls, bPolls, bStops atomic.Int32
 			var joined atomic.Bool
 			otherPath := filepath.Join(t.TempDir(), "independent")
@@ -146,7 +146,7 @@ func TestIntegrationRuntimeActualReplicaPromotionFencesHeldObservation(t *testin
 	entered, release := make(chan struct{}), make(chan struct{})
 	var releaseOnce sync.Once
 	releaseHeld := func() { releaseOnce.Do(func() { close(release) }) }
-	t.Cleanup(releaseHeld)
+	defer releaseHeld() // FailNow must unblock the held provider before cleanup joins it.
 	var primaryPolls, replicaPolls atomic.Int32
 	primary, path := integrationFixture(t, nil, func(string) (integration.Integration, error) {
 		return &integrationProbe{observe: func(_ context.Context, h ih.OwnerHost) (ih.SourceSnapshot, error) {
@@ -161,6 +161,18 @@ func TestIntegrationRuntimeActualReplicaPromotionFencesHeldObservation(t *testin
 	d := integrationApply(t, primary, integrationDefinition("inventory", path))
 	owner := integrationOwner(primary, d)
 	integrationReadyCommand(t, primary, owner)
+	// Provider readiness can precede complete inventory publication. Retain
+	// the original published observation before starting the single held Sync;
+	// a later primary capture may be temporarily unavailable during publication.
+	var before *inventory.Client
+	awaitServingRuntime(t, primary, func() bool {
+		snapshot := integrationInventory(t, primary)
+		if snapshot == nil {
+			return false
+		}
+		before = snapshot.Lookup(netip.MustParseAddr("192.0.2.19"), time.Now())
+		return before != nil
+	})
 	result := make(chan error, 1)
 	go func() { _, err := primary.integrations.host.Sync(t.Context(), owner, ""); result <- err }()
 	integrationAwaitSignal(t, entered)
@@ -208,10 +220,9 @@ func TestIntegrationRuntimeActualReplicaPromotionFencesHeldObservation(t *testin
 	}
 	runServingFixture(t, follower)
 	awaitServingRuntime(t, follower, func() bool { return follower.publisher.Status().ProtectedReady })
-	before := integrationInventory(t, primary).Lookup(netip.MustParseAddr("192.0.2.19"), time.Now())
 	after := integrationInventory(t, follower).Lookup(netip.MustParseAddr("192.0.2.19"), time.Now())
 	if before == nil || after == nil || !before.ExpiresAt.Equal(after.ExpiresAt) || !before.ObservedAt.Equal(after.ObservedAt) || replicaPolls.Load() != 0 {
-		t.Fatal("follower renewed original observation or acquired provider authority")
+		t.Fatalf("follower renewed original observation or acquired provider authority: primary_present=%t follower_present=%t replica_polls=%d", before != nil, after != nil, replicaPolls.Load())
 	}
 	promoted, err := st.Promote(t.Context(), replication.PromoteRequest{ExpectedTerm: image.Term, ExpectedInstalled: installed, RequestID: "integration-failover"})
 	if err != nil {
