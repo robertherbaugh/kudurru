@@ -66,6 +66,9 @@ func (s *servingRuntime) Run(ctx context.Context) error {
 	g.Go(func() error { return s.providers.Run(ctx) })
 	if s.anchors != nil {
 		g.Go(func() error { return s.anchors.watch(ctx, s.publisher.Wake) })
+		if s.anchors.admission != nil {
+			g.Go(func() error { return s.superviseAnchorFollower(ctx) })
+		}
 	}
 	if s.opts.TSIG != nil {
 		g.Go(func() error { return s.opts.TSIG.Run(ctx) })

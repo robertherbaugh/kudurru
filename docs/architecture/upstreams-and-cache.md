@@ -296,14 +296,16 @@ sequenceDiagram
 
 ### Automatic root-anchor lifecycle status
 
-Static trust anchors remain the default. Standalone SQLite nodes can explicitly
+Static trust anchors remain the default. SQLite nodes can explicitly
 select `upstreams.recursion.managedTopology: direct` in host configuration, then
 `anchorMode: managed` with DNSSEC enabled and explicit DS seeds. Direct declares
 that every client reaches the node's listeners without dnsdist or another caching
 proxy; configured PROXYv2 peers are rejected. This declaration cannot discover
 undeclared proxies. It is host-only, requires restart, and is separate from the
 cluster's root policy. The default `disabled` topology never activates managed
-serving. Enrolled primary/follower and edge-backed activation remain unavailable.
+serving. Enrolled primary writers use the elected updater; enrolled followers
+mount an independent deny-only supervisor. Edge-backed activation remains
+unavailable, and full enrolled HA orchestration/acceptance is still separate.
 
 The root runtime adopts direct topology under bounded startup preparation and
 retains that exact admission through its lifetime. It mounts one elected updater
@@ -343,9 +345,9 @@ either. Complete images require both `managed-root-anchors-v1` and
 `managed-root-runtime-v1`. Followers capture their original receiver state before
 source acquisition, then install the primary's history without initializing a
 new one. Old images and binaries refuse across the schema/feature boundary;
-received images are never converted. Direct standalone activation mounts the
-elected updater and immutable complete-image resolver publication; follower and
-edge-backed activation remain separately gated.
+received images are never converted. Direct activation mounts the elected
+updater or local follower supervisor and immutable complete-image resolver
+publication; edge-backed activation remains separately gated.
 
 The SQLite poll bridge captures the normal update, local denial and paired
 post-denial update from one committed owner/authority cut before acquisition.
@@ -363,7 +365,7 @@ complete frame, before parsing or correlation; that response is terminal even
 when malformed, truncated or refused. The updater scheduler selects TCP upfront,
 without resolver lookup, cached responses or a second receipt after truncation.
 These helpers retain the original socket/signature and SQLite boundaries when
-used by the admitted direct standalone writer.
+used by the admitted direct writer.
 
 The private updater scheduler retains one original elected target, borrowed host
 and session clock. Each due acquisition has a fresh lifetime bounded to 30 seconds
@@ -387,7 +389,7 @@ services continue; the caller joins it before releasing the borrowed host. A
 complete receipt remains terminal even when cancellation races final admission.
 Cancellation of an incomplete socket acquisition can join without inventing a
 received observation. Only a new elected term or incarnation clears the terminal
-record. Direct standalone writer episodes mount this adapter after admission.
+record. Direct writer episodes mount this adapter after admission.
 
 A separate private follower adapter captures actual installed managed history,
 canonical policy and the local denial attempt before its own numeric TCP
@@ -411,8 +413,18 @@ settings identity. Authentication, complete-input, admission, completion or
 promotion refusal stops the loop; confirmed local denial also stops it.
 Generation/authority broadcasts and bounded waits preserve the publisher's
 separate denial notice. Caller and runtime cancellation join the original socket
-and wait. The follower poller remains unmounted; direct topology refuses enrolled
-roles until that lifecycle and its activation admission are implemented.
+and wait. The admitted direct runtime mounts a supervisor around this worker.
+Before the first operation, only absent initial images and actual awaiting or
+dormant owners may wait for a managed install. Once started, a captured operation's
+refusal is terminal. Its supervisor retains that result across ordinary installs,
+which increment SQLite's local incarnation; only a different member or authority
+term can admit another child. It cancels and joins old children before moving to
+a successor term, and parks failures without stopping unrelated serving work.
+A successful local denial retires the exact published input and survives reopen;
+no follower observation changes the canonical accepted owner. A same-term install
+can invalidate an active poller's exact incarnation, but cannot rescue that
+refused operation. Full automatic HA enrollment, forwarding and partition/rejoin
+qualification remain separate.
 
 The `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit

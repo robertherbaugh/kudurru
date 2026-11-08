@@ -118,10 +118,16 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	return step, nil
 }
 
-// runAnchorFollowerPoller remains unmounted pending managed activation. Its
-// caller must join it before releasing the original runtime. It never creates
-// canonical state and stops after confirmed local denial or a terminal refusal.
+// The supervisor joins the original epoch before allowing a successor. This
+// worker never creates canonical state and stops after denial or refusal.
 func (s *servingRuntime) runAnchorFollowerPoller(ctx context.Context) error {
+	if s == nil || s.opts.Store == nil {
+		return errAnchorPolicy
+	}
+	return s.runAnchorFollowerEpoch(ctx, followerEpoch(s.opts.Store.Authority()))
+}
+
+func (s *servingRuntime) runAnchorFollowerEpoch(ctx context.Context, epoch anchorFollowerEpoch) error {
 	if s == nil || s.life == nil || s.opts.Store == nil || ctx == nil {
 		return errAnchorPolicy
 	}
@@ -138,7 +144,7 @@ func (s *servingRuntime) runAnchorFollowerPoller(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	u := anchorFollowerPoller{runtime: s, clock: clock}
+	u := anchorFollowerPoller{runtime: s, clock: clock, epoch: epoch}
 	for {
 		changed, authority := s.opts.Store.GenerationChanges(), s.opts.Store.AuthorityChanges()
 		step, err := u.step(ctx)

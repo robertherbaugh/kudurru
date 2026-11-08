@@ -16,8 +16,8 @@ import (
 // A host declaration alone cannot construct this runtime-owned admission. The
 // exact root owner adopts it under finite startup preparation; published inputs
 // retain the runtime lifetime, never the canceled preparation context. This
-// tranche admits only explicit direct standalone deployments, not remote edges
-// or enrolled followers whose local denial supervisor is not yet mounted.
+// admission covers explicit direct SQLite deployments. Enrolled followers have
+// a separately joined deny-only supervisor; remote edges remain unavailable.
 type rootAnchorAdmission struct {
 	owner  *rootAnchorOwner
 	life   context.Context
@@ -29,7 +29,11 @@ func (a *rootAnchorAdmission) current() bool {
 		return false
 	}
 	authority, blocked := a.owner.store.ServingAuthority()
-	return !blocked && authority.Mode == replication.Standalone && authority.MemberID == a.member && authority.Writable()
+	return !blocked && directAnchorRole(authority) && authority.MemberID == a.member
+}
+
+func directAnchorRole(a replication.Authority) bool {
+	return a.Writable() || a.Mode == replication.Follower
 }
 
 func (s *servingRuntime) admitDirectAnchors(ctx context.Context) error {
@@ -42,7 +46,7 @@ func (s *servingRuntime) admitDirectAnchors(ctx context.Context) error {
 		return nil
 	}
 	authority, blocked := s.opts.Store.ServingAuthority()
-	if blocked || authority.Mode != replication.Standalone || !authority.Writable() || authority.MemberID == "" {
+	if blocked || !directAnchorRole(authority) || authority.MemberID == "" {
 		return errAnchorPolicy
 	}
 	if err := original.Err(); err != nil {

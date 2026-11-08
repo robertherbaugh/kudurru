@@ -215,7 +215,7 @@ func TestDirectAnchorDisabledDoesNotGrantManagedPublication(t *testing.T) {
 	}
 }
 
-func TestDirectAnchorRefusesEnrolledFollowerActivation(t *testing.T) {
+func TestDirectAnchorEnrolledFollowerWaitsWithoutInitializing(t *testing.T) {
 	base := newServingRuntimeFixture(t)
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
@@ -239,14 +239,18 @@ func TestDirectAnchorRefusesEnrolledFollowerActivation(t *testing.T) {
 	cfg.Upstreams.Recursion.ManagedTopology = "direct"
 	opts := base.opts
 	opts.Store, opts.Config = peer, cfg
-	if s, err := newServingRuntime(t.Context(), opts); !errors.Is(err, errAnchorPolicy) || s != nil {
-		if s != nil {
-			_ = s.Close(t.Context())
-		}
-		t.Fatal("direct startup admitted an enrolled follower without a denial worker", err)
+	s, err := newServingRuntime(t.Context(), opts)
+	if err != nil {
+		t.Fatal("direct follower startup", err)
+	}
+	t.Cleanup(func() { _ = s.Close(t.Context()) })
+	runServingFixture(t, s)
+	ready, err := s.anchorFollowerReady(t.Context(), followerEpoch(before))
+	if err != nil || ready || s.publisher.Status().ProtectedReady {
+		t.Fatal("empty enrolled follower initialized managed history", ready, err)
 	}
 	after := peer.Authority()
 	if !after.Term.Same(before.Term) || after.Mode != before.Mode || after.Incarnation != before.Incarnation || after.Installed != before.Installed {
-		t.Fatal("refused direct startup changed original follower authority")
+		t.Fatal("waiting direct startup changed original follower authority")
 	}
 }

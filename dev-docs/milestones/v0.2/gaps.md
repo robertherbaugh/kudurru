@@ -4905,3 +4905,55 @@ production behavior changed in this tranche. Earlier failures remain preserved.
 Configured command-package lint exits0/zero issues (15.0280 s). All-anchor-loss
 retirement, follower supervision/activation, edge topology and external RFC
 interoperability remain open; this is not full F28 or release qualification.
+
+
+### F28 direct follower supervisor and actual revocation output (D318)
+
+Direct SQLite activation now admits enrolled primary/follower roles. The complete
+runtime mounts a deny-only follower supervisor; initial absent/dormant data waits
+without acquiring trust or initializing canonical state. Every captured child
+retains its exact installed incarnation. Terminal results survive later installs
+within the same member/authority term, including their local incarnation changes.
+Role/term changes cancel and join old acquisition before successor work; failures
+park without ending unrelated runtime services. Edge topology and full HA
+enrollment/forwarding/promotion orchestration remain separately incomplete.
+
+Evidence `.context/anchor-follower-supervisor-20261108/` retains source01..05
+and every numeric outcome. The first focused ordinary command passes3/fails2:
+one failure exposes supervisor rearm on InstallReplica's incarnation increment;
+the other compares raw producer/receiver documents across canonicalization.
+The supervisor now retains terminal results by member/term while preserving the
+individual poller's stricter checks. The fixture verifies installed generation
+and exact receiver bytes before/after. Corrected ordinary passes5/no skips; the
+final composed anchor/root/runtime default-race passes106/no skips (128.5986 s).
+Promotion now requires actual peer EOF before runtime shutdown. Original failed
+commands remain failures.
+
+A separate actual runServe test bootstraps a primary from a real signed response,
+then installs its complete image on an enrolled follower with target capture
+before source read. The mounted follower serves all six transports while its
+independent acquisition is held; authenticated REVOKE then retires output to
+empty unsigned SERVFAIL and readiness/auth503. Actual close/open/runServe
+restart preserves denial, exact canonical image and the two total root fetches.
+Ordinary1 passes (29.8483 s); default-race1 passes/no skips (32.2512 s). This
+proves local follower denial, not canonical follower progress or accelerated
+RFC hold-down. The outer raw cache is disabled in this fixture; previous cache
+retirement evidence remains separately recorded. All-anchor-loss canonical
+writer/restart composition, edge activation, RFC interoperability and remaining
+HA/AD/performance/external release requirements remain open.
+
+Final static follow-up: docs generator exits0 and full config/reference ordinary
+checks pass354/no skips. The first full lint exits1: unchecked joined-child result
+and two lostcancel diagnostics. An explicit child object now owns cancellation
+and completion; canceled old-epoch results are consumed without permitting retry.
+Final affected default-race on source06 passes6/no skips (43.2701 s), including
+all mounted follower transport/restart and peer-EOF cases. The broader106 result
+remains tied to its prior source03; it is not silently relabeled as source06.
+
+Second full lint fails one S1005 discarded-value diagnostic. Source07 records
+non-cancellation errors from joined children instead; final full configured
+lint exits0/zero issues (29.2496 s). This last change adds completion logging
+only; source06's six race results retain their exact source fingerprint. Same-term
+install after a successful normal observation still needs a bounded fresh-poll
+continuation; terminal old operations must never be rearmed. That follow-up
+remains explicit rather than claiming complete automatic follower liveness.
