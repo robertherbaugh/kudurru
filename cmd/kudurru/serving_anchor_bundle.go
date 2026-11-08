@@ -248,7 +248,14 @@ func (s *recursiveRootSeal) captureRead(ctx context.Context) (*recursiveRootRead
 // must finish actual writes/inserts before returning; no Store/publisher calls,
 // new acquisition or resource release belongs inside. Check is borrowed only.
 func (s *recursiveRootSeal) withRead(read *recursiveRootRead, fn func(func() error) error) error {
-	if s == nil || read == nil || read.seal != s || fn == nil {
+	return s.withReadCurrent(read, s.current, fn)
+}
+
+// Only a root-issued UPDATE completion may substitute the original writer and
+// dependency check for data-generation currency. The original mode/R attempt
+// and its lifetime remain mandatory for both kinds of emission.
+func (s *recursiveRootSeal) withReadCurrent(read *recursiveRootRead, dependencyCurrent func() bool, fn func(func() error) error) error {
+	if s == nil || read == nil || read.seal != s || fn == nil || dependencyCurrent == nil {
 		return serving.ErrComponents
 	}
 	invoke := func(check func() error) error {
@@ -256,7 +263,7 @@ func (s *recursiveRootSeal) withRead(read *recursiveRootRead, fn func(func() err
 			if err := check(); err != nil {
 				return err
 			}
-			if !s.current() {
+			if !dependencyCurrent() {
 				return serving.ErrDependency
 			}
 			return nil

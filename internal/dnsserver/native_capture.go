@@ -122,8 +122,11 @@ func serveCapturedNative(h *Handler, e *env, proto pipeline.Proto, w dns.Respons
 	request, keys, cleanup, err := h.captureTransport(context.Background(), r, client, frame.received)
 	defer cleanup()
 	if err != nil {
-		if h.Output == nil && request.Ctx.Err() == nil {
-			_ = w.WriteMsg(servfail(r))
+		if request.Ctx.Err() == nil {
+			// No captured data or signer is available. Emit only an empty,
+			// unsigned refusal under the original transport lifetime.
+			refusal := &capturedNativeWriter{ResponseWriter: w, ctx: request.Ctx, frame: frame}
+			_ = refusal.WriteMsg(servfail(r))
 		}
 		return
 	}

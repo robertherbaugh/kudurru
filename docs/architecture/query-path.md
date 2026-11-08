@@ -94,6 +94,16 @@ shared UDP writes cannot wait beyond the original bound. A successful local
 flush or FIN remains an actual effect even if a later admission check reports an
 error. It is not reset, replayed or presented as evidence of remote receipt.
 
+Ordinary answers retain the complete data-generation check. A native UPDATE's
+own commit retires that generation, so its root command adapter issues a private
+completion receipt for only the exact empty acknowledgment it returned. Final
+pipeline binding refuses substituted messages, changed response codes, answer
+data and transfers. Emission retains the original elected writer, dependency
+installations, immutable keys, signature deadline and pre-command mode/retirement
+attempt. This response permission cannot authorize another command or transfer
+frame. A startup capture failure instead emits only an empty unsigned SERVFAIL,
+with no baseline signer, under the original transport deadline through flush/FIN.
+
 The guarded handler's bare `Resolve` method refuses answer export because it has
 no synchronous serialization handoff. SQLite API dig captures its original
 output attempt before pipeline work, retains its response and serving lease

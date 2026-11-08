@@ -115,10 +115,27 @@ func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRu
 		if err != nil {
 			return pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusAuthoritative), nil
 		}
-		defer release()
+		transferred := false
+		defer func() {
+			if !transferred {
+				release()
+			}
+		}()
 		request := *req
 		request.Ctx = bound
-		return update(&request)
+		response, err := update(&request)
+		if response != nil {
+			// The original writer binding remains alive through actual output,
+			// including a committed command whose publication acknowledgment failed.
+			response.AddCleanup(release)
+			transferred = true
+			if err == nil {
+				if output, ok := dnsserver.CapturedOutput(&request).(*rootAnchorOutput); ok {
+					output.completeUpdate(&request, response, &p.writer)
+				}
+			}
+		}
+		return response, err
 	}
 	return p, nil
 }

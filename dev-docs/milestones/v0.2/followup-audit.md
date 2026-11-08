@@ -1743,3 +1743,35 @@ lint passes after two test-only switch cleanups; affected-package vet and
 dashboard typecheck pass. Original failures and every source freeze remain in
 `.context/tsig-management-integration-20261108/`. Production Kubernetes authority,
 remaining original final-authority cases and release gates remain open.
+
+
+### November 8 — native UPDATE acknowledgment and startup refusal
+
+D313 separates the exact empty response returned by the actual root UPDATE
+adapter from ordinary DNS data. The private completion retains original writer,
+verified immutable keys/dependency installations, request/signature deadlines and
+pre-command mode/retirement read attempt. Binding after the pipeline rejects
+changed response codes, replaced messages, answer data and transfers. Ordinary
+queries retain their complete generation check; a separate UPDATE invalidates a
+held query. No command retry, replacement capture or new Store lookup is added.
+Unavailable startup captures emit only empty unsigned SERVFAIL through the
+original transport deadline, with partial lease cleanup and no baseline signer.
+
+The unchanged original startup/native UPDATE-NOTIFY-transfer tests now pass.
+Full DNS-server and primaryruntime race qualification passed 581 entries with
+four existing measurement/helper skips, no failures (133.607475977 seconds).
+The broad mounted race passed 36 entries, including actual background TCP/TLS,
+management and encrypted restart, native transfer and anchor barriers. It failed
+the deliberate writer-fencing test and its parent because the optional fixture
+classified the intended driver exit as unexpected. That outcome is preserved.
+The fixture now accepts only the explicitly expected loss of its original term
+with the actual unavailable error. The corrected output/primary selection passes
+14 entries, no failures/skips (55.705224212 seconds), including signed TCP/UDP
+acknowledgments and final data/key/writer/cleanup/deadline refusals. Production
+bytes are unchanged between these race selections. Full configured root lint
+passes (83.564644963 seconds, zero issues); affected-package vet passes.
+
+Earlier new-fixture missing-preparation-bound failures and the stopped original
+run remain in `.context/dns-response-admission-20261108/`; no original deadlines
+or production guards were relaxed. These scoped checks do not complete the
+remaining F07a/Kubernetes, managed activation, HA, performance or release gates.

@@ -17,6 +17,8 @@ type rootAnchorOutput struct {
 	seal  *recursiveRootSeal
 	read  *recursiveRootRead
 	state atomic.Uint32
+	ack   *rootUpdateAcknowledgment
+	bound bool
 }
 
 const (
@@ -50,7 +52,14 @@ func (o *rootAnchorOutput) Emit(fn func() error) error {
 			o.state.Store(anchorOutputTerminal)
 		}
 	}()
-	err := o.seal.withRead(o.read, func(check func() error) error {
+	current := o.seal.current
+	if o.ack != nil {
+		if !o.bound {
+			return serving.ErrDependency
+		}
+		current = o.ack.current
+	}
+	err := o.seal.withReadCurrent(o.read, current, func(check func() error) error {
 		if err := check(); err != nil {
 			return err
 		}
@@ -66,7 +75,7 @@ func (o *rootAnchorOutput) Emit(fn func() error) error {
 
 // Next precedes the next iterator pull. Failure never rescues an old frame.
 func (o *rootAnchorOutput) Next() error {
-	if o == nil || !o.state.CompareAndSwap(anchorOutputWritten, anchorOutputBusy) {
+	if o == nil || o.ack != nil || !o.state.CompareAndSwap(anchorOutputWritten, anchorOutputBusy) {
 		return serving.ErrDependency
 	}
 	completed := false

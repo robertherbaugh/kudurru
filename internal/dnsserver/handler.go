@@ -135,6 +135,11 @@ func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 		}
 		return servfail(r), nil, cleanup
 	}
+	if output, ok := CapturedOutput(req).(ResponseOutput); ok {
+		if err := output.BindResponse(resp); err != nil {
+			return nil, nil, cleanup
+		}
+	}
 	if retained, _ := ctx.Value(transportResponseKey{}).(*transportResponse); retained != nil {
 		retained.security = resp.Security
 	}

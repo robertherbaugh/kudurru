@@ -44,19 +44,27 @@ import (
 )
 
 type primaryNetworkFixture struct {
-	store           *sqlite.Store
-	publisher       *serving.Publisher
-	keys            *dnsserver.StaticKeyring
-	keyrings        *servingbuild.KeyringOwner
-	runtime         *primaryRuntime
-	chain           *pipeline.Chain
-	listeners       *dnsserver.Registry
-	pause           atomic.Bool
-	pauseNotify     atomic.Bool
-	entered, resume chan struct{}
+	store            *sqlite.Store
+	publisher        *serving.Publisher
+	keys             *dnsserver.StaticKeyring
+	keyrings         *servingbuild.KeyringOwner
+	runtime          *primaryRuntime
+	chain            *pipeline.Chain
+	listeners        *dnsserver.Registry
+	pause            atomic.Bool
+	pauseNotify      atomic.Bool
+	expectWriterLoss atomic.Bool // only the explicit post-command fencing case
+	entered, resume  chan struct{}
 }
 
 func newPrimaryNetworkFixture(t *testing.T, notify ...func(*primaryRuntime) pipeline.Next) *primaryNetworkFixture {
+	t.Helper()
+	return newPrimaryNetworkFixtureWithOutput(t, nil, notify...)
+}
+
+// An optional observer enables the actual root output composition and controls
+// the boundary after the completed command, without changing production hooks.
+func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer, notify ...func(*primaryRuntime) pipeline.Next) *primaryNetworkFixture {
 	t.Helper()
 	f := &primaryNetworkFixture{entered: make(chan struct{}, 1), resume: make(chan struct{}, 1)}
 	scheme, err := runtimekinds.NewScheme()
@@ -123,7 +131,19 @@ func newPrimaryNetworkFixture(t *testing.T, notify ...func(*primaryRuntime) pipe
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.publisher, err = serving.New(serving.Options{Source: source, Prepare: builder.Prepare, Required: serving.CompleteManifest(), DependencyChanges: f.keyrings.Changes, RetryInterval: time.Millisecond})
+	prepare := builder.Prepare
+	var preparationTimeout time.Duration
+	if observer != nil {
+		preparationTimeout = 30 * time.Second
+		anchors, err := newRootAnchorOwner(t.Context(), f.store, host)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prepare = func(ctx context.Context, candidate serving.Candidate) (serving.Prepared, error) {
+			return anchors.prepare(ctx, candidate, builder)
+		}
+	}
+	f.publisher, err = serving.New(serving.Options{Source: source, Prepare: prepare, Required: serving.CompleteManifest(), DependencyChanges: f.keyrings.Changes, RetryInterval: time.Millisecond, PreparationTimeout: preparationTimeout})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +157,11 @@ func newPrimaryNetworkFixture(t *testing.T, notify ...func(*primaryRuntime) pipe
 	go func() { done <- f.publisher.Run(ctx) }()
 	go func() {
 		done <- f.store.Elector("primary").Run(ctx, func(term context.Context) {
+			original, _ := sqlite.WriterTokenFromContext(term)
 			if err := f.runtime.Run(term); err != nil && term.Err() == nil {
+				if observer != nil && f.expectWriterLoss.Load() && !f.store.Authority().Term.Same(original.Term()) && errors.Is(err, pr.ErrUnavailable) {
+					return // The test deliberately replaced this exact writer's authority.
+				}
 				t.Error("primary driver ended early", err)
 			}
 		}, nil)
@@ -188,7 +212,12 @@ func newPrimaryNetworkFixture(t *testing.T, notify ...func(*primaryRuntime) pipe
 		return lease, err
 	})
 	logger := slog.New(slog.DiscardHandler)
-	f.listeners, err = dnsserver.NewRegistry(dnsserver.Options{Handler: &dnsserver.Handler{Chain: f.chain, Logger: logger}, Logger: logger, TSIG: f.keys, Sockets: 1})
+	handler := &dnsserver.Handler{Chain: f.chain, Logger: logger}
+	if observer != nil {
+		f.chain.Observe(observer)
+		handler.Capture, handler.Keys, handler.Output = capture, servingbuild.DNSKeys, captureRootAnchorOutput
+	}
+	f.listeners, err = dnsserver.NewRegistry(dnsserver.Options{Handler: handler, Logger: logger, TSIG: f.keys, Sockets: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

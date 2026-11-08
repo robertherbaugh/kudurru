@@ -650,6 +650,13 @@ proof can recover publication without repeating semantics. New native requests
 receive new retry identities, so this does not claim cross-request deduplication.
 Diagnostics cannot change the wire result even if their callback panics.
 
+After that adapter returns, root binds its exact empty acknowledgment to the
+original writer, verified key, dependency installations and pre-command output
+attempt. The command's own data-generation advance does not invalidate this
+receipt. Ordinary answers retain their full generation check. Response replacement,
+added data, key/writer loss or original deadline expiry refuses emission without
+replaying the mutation or undoing an already committed effect.
+
 The command assembly binds these adapters to the original elected SQLite writer,
 complete leases and the same current keyring/policy guard. SQLite `serve.go`
 mounts it into the actual DNS listeners, with the complete driver owning automatic

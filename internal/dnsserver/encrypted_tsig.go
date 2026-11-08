@@ -86,12 +86,21 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 			}
 		}()
 		if err != nil {
-			expired := captured.Ctx.Err() != nil
-			cleanup()
-			if expired || h.Output != nil {
+			if captured.Ctx.Err() != nil {
 				return nil, nil
 			}
-			return packEncryptedReply(servfail(req))
+			// A capture failure can return only this empty unsigned refusal.
+			// Keep cancellation and the original deadline through flush/FIN;
+			// neither a partial output capability nor a baseline key is used.
+			refusal, packErr := packEncryptedReply(servfail(req))
+			if packErr != nil {
+				return nil, packErr
+			}
+			refusal.deadline, _ = captured.Ctx.Deadline()
+			refusal.check, refusal.close = captured.Ctx.Err, cleanup
+			refusal.cache = "no-store"
+			handedOff = true
+			return refusal, nil
 		}
 		capturedKeys = keys
 		ctx = captured.Ctx

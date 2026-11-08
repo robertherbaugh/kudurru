@@ -28,6 +28,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- SQLite native UPDATE acknowledgments survive their own committed generation
+  change while retaining original writer, key and deadline checks. Ordinary DNS
+  answers still reject stale generations. Unavailable startup captures return
+  empty unsigned SERVFAIL responses without borrowing file-backed keys.
+
 - Replication primitives retain request deadlines through peer authorization
   and coordinator queueing. Forwarded command expiry is checked at the actual
   SQLite commit/no-op boundary, including deduplication responses. Production
