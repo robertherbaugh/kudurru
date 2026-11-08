@@ -779,6 +779,15 @@ complete logical image; it is separate from the YAML backup/apply format.
 The server transport, startup selection and coherent serving/authentication
 publication are being integrated; these packages alone do not enable HA.
 
+Peer-image acquisition captures its finite lifetime, local member and detached
+token vector before resolving a peer. All body validation retains that original
+bound; expired resolution cannot dial, and canceled completed bytes cannot
+return an accepted image. Reads may try the originally captured rotation tokens
+after a pre-authentication refusal. A command POST makes one credential attempt,
+disables transport body replay and retains the earlier command expiry. An
+ambiguous timeout remains an unknown outcome. These transport checks do not
+replace member enrollment or mount static HA at startup.
+
 ```mermaid
 flowchart LR
     P["Primary transaction"] --> I["Complete image<br/>term + revision + digest<br/>exact kind manifest"]

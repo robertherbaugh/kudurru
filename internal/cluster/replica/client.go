@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -64,7 +65,9 @@ func NewClient(o ClientOptions) (*Client, error) {
 	return &Client{opts: o, http: &http.Client{Transport: rt, Timeout: o.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 func (c *Client) address(peer Peer, path string) (string, error) {
-	self := c.opts.Self()
+	return peerAddress(c.opts.Self(), peer, path)
+}
+func peerAddress(self, peer Peer, path string) (string, error) {
 	if !validID(peer.MemberID) || !validID(peer.ClusterID) || !validID(self.MemberID) || !validID(self.ClusterID) || peer.ClusterID != self.ClusterID {
 		return "", replication.ErrWrongCluster
 	}
@@ -85,24 +88,57 @@ func (c *Client) address(peer Peer, path string) (string, error) {
 	}
 	return u.String(), nil
 }
+
+// requestIdentity samples memory-only callbacks once for the entire exchange.
+// Copy the token slice so a later rotation cannot replace a captured attempt.
+type requestIdentity struct {
+	self   Peer
+	tokens []string
+}
+
+func (c *Client) captureIdentity(ctx context.Context) (requestIdentity, error) {
+	if c == nil || ctx == nil {
+		return requestIdentity{}, ErrProtocol
+	}
+	if err := ctx.Err(); err != nil {
+		return requestIdentity{}, err
+	}
+	self := c.opts.Self()
+	tokens := c.opts.Tokens()
+	if len(tokens) == 0 || len(tokens) > 4 {
+		return requestIdentity{}, ErrUnauthorized
+	}
+	return requestIdentity{self: self, tokens: slices.Clone(tokens)}, ctx.Err()
+}
+
 func (c *Client) request(ctx context.Context, peer Peer, method, path string, body []byte, etag string) (*http.Response, error) {
-	address, err := c.address(peer, path)
+	identity, err := c.captureIdentity(ctx)
 	if err != nil {
 		return nil, err
 	}
-	tokens := c.opts.Tokens()
-	if len(tokens) == 0 || len(tokens) > 4 {
-		return nil, ErrUnauthorized
+	return c.requestCaptured(ctx, identity, peer, method, path, body, etag)
+}
+
+func (c *Client) requestCaptured(ctx context.Context, identity requestIdentity, peer Peer, method, path string, body []byte, etag string) (*http.Response, error) {
+	address, err := peerAddress(identity.self, peer, path)
+	if err != nil {
+		return nil, err
 	}
-	for _, token := range tokens {
+	for _, token := range identity.tokens {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		req, err := http.NewRequestWithContext(ctx, method, address, bytes.NewReader(body))
 		if err != nil {
 			return nil, ErrProtocol
 		}
-		self := c.opts.Self()
+		// A mutation has one body dispatch, including transport-level retries.
+		if method == http.MethodPost {
+			req.GetBody = nil
+		}
 		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set(HeaderMember, self.MemberID)
-		req.Header.Set(HeaderCluster, self.ClusterID)
+		req.Header.Set(HeaderMember, identity.self.MemberID)
+		req.Header.Set(HeaderCluster, identity.self.ClusterID)
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
@@ -134,6 +170,9 @@ func (c *Client) request(ctx context.Context, peer Peer, method, path string, bo
 		}
 		if resp.StatusCode == http.StatusUnauthorized {
 			closeResponse(resp)
+			if method == http.MethodPost {
+				return nil, ErrUnauthorized
+			}
 			continue
 		}
 		if redirect {
@@ -207,11 +246,21 @@ var _ follower.Source = (*Source)(nil)
 
 // Fetch observes authenticated authority before decoding even a rejected image.
 func (s *Source) Fetch(ctx context.Context, etag string) (follower.Response, error) {
+	if s == nil || ctx == nil {
+		return follower.Response{}, ErrProtocol
+	}
+	// Resolve, identity sampling and body consumption share the original bound.
+	ctx, cancel := context.WithTimeout(ctx, s.client.opts.Timeout)
+	defer cancel()
+	identity, err := s.client.captureIdentity(ctx)
+	if err != nil {
+		return follower.Response{}, err
+	}
 	peer, err := s.opts.Resolve(ctx)
 	if err != nil {
 		return follower.Response{}, err
 	}
-	r, err := s.client.request(ctx, peer, http.MethodGet, PathImage, nil, etag)
+	r, err := s.client.requestCaptured(ctx, identity, peer, http.MethodGet, PathImage, nil, etag)
 	if err != nil {
 		return follower.Response{}, err
 	}
@@ -227,6 +276,9 @@ func (s *Source) Fetch(ctx context.Context, etag string) (follower.Response, err
 	case http.StatusNotModified:
 		if etag == "" || r.Header.Get("ETag") != etag || term.PrimaryID != peer.MemberID {
 			return reject(ErrProtocol)
+		}
+		if err := ctx.Err(); err != nil {
+			return reject(err)
 		}
 		return follower.Response{Term: term, NotModified: true, ETag: etag}, nil
 	case http.StatusOK:
@@ -245,6 +297,9 @@ func (s *Source) Fetch(ctx context.Context, etag string) (follower.Response, err
 		if !i.Term.Same(term) || r.Header.Get("ETag") != i.Generation().ETag() {
 			return reject(ErrProtocol)
 		}
+		if err := ctx.Err(); err != nil {
+			return reject(err)
+		}
 		return follower.Response{Term: term, Image: &i, ETag: r.Header.Get("ETag")}, nil
 	default:
 		return reject(peerProblem(r))
@@ -257,6 +312,11 @@ func authenticated(r *http.Response, p Peer) bool {
 // Write never automatically retries an ambiguous exchange. Caller retains the
 // immutable command ID/body/lifetime and may retry explicitly after promotion.
 func (c *Client) Write(ctx context.Context, peer Peer, command Command) (Outcome, error) {
+	if c == nil || ctx == nil {
+		return Outcome{}, ErrProtocol
+	}
+	ctx, cancel := context.WithTimeout(ctx, c.opts.Timeout)
+	defer cancel()
 	if IsForwarded(ctx) || sqlite.HasWriterToken(ctx) {
 		return Outcome{}, ErrLoop
 	}
@@ -264,6 +324,8 @@ func (c *Client) Write(ctx context.Context, peer Peer, command Command) (Outcome
 	if err := command.validate(now, DefaultCommandLifetime); err != nil {
 		return Outcome{}, err
 	}
+	ctx, cancelCommand := context.WithDeadline(ctx, command.NotAfter)
+	defer cancelCommand()
 	if command.ExpectedTerm.ClusterID != peer.ClusterID {
 		return Outcome{}, replication.ErrWrongCluster
 	}

@@ -3785,3 +3785,24 @@ five-process/fixed-class completion claim. All historical36 measured failures,
 20 missing zone keys and older limitations remain. Configured lint is pending.
 All3967 frozen root paths match; exact receipts/commands/all comparisons are in
 `.context/f20-root-anchored-start-20261108/result.md`.
+
+
+### F65/F67 original peer transport prerequisite
+
+Peer image acquisition now establishes a finite scope before identity sampling
+and resolution, copies one original local member/token vector and retains that
+scope through body validation. Expired resolution cannot dial; cancellation at
+complete image EOF cannot return a success. Command POST has one credential
+attempt and no transport GetBody replay; command.NotAfter can only shorten the
+original timeout. Unknown completion stays unknown. Captured GET credential
+rotation and higher-term observation remain supported.
+
+Five new declarations include real TLS/original-token behavior and actual SQL
+domain non-entry after a refused POST. The first configured-timeout assertion
+incorrectly compared deadlines created at different instants; failed source and
+receipt remain. Corrected focused race7 and final full replica/follower race59
+pass without skips/failures; vet exits0. All3968 frozen root identities match.
+Exact commands, limits and outcomes: `.context/ha-original-transport-20261108/`.
+Configured lint remains pending the missing executable. Static startup,
+individual enrollment proof, CLI/API mounting, promotion and actual partition/
+rejoin still require implementation. This does not activate HA or managed roots.

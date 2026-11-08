@@ -168,7 +168,7 @@ runners. Unit tests cannot substitute for those results.
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
-| F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Queued: missing |
+| F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Active prerequisites: original peer identity/token capture, pre-resolution lifetime and no POST credential/body replay pass full replica/follower race59 and vet. Static configuration, enrolled-member authority, production mounts and two-node acceptance remain missing; configured lint pending |
 | F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Integrated b3f6986/5048c61; actual restart, chart/Compose and volume ownership checks pass |
 | F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Queued: partial |
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
