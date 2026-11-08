@@ -29,7 +29,7 @@ CPU text and processor count do not establish a named fixed runner class.
 The committed baseline and limits cover blocking and zone lookup. New metrics
 are reported separately; they do not acquire calibrated performance limits merely
 by appearing in the output. Cache/strategy, socket and persistence qualification
-and the fixed-class runner remain tracked in the v0.2 completion ledger. Preserve
+on the selected fixed runner remain tracked in the v0.2 completion ledger. Preserve
 failed runs when fixing code; do not replace samples or reset the baseline to
 clear a regression.
 
@@ -37,16 +37,21 @@ clear a regression.
 
 The manual **release benchmark measurements** workflow also collects the
 response cache, upstream strategies, UDP/DoT/QUIC sockets, and `Persist200k`.
-Supply the explicitly selected fixed runner label and processor count. The
-workflow records measurements; a successful job is not release qualification.
-The runner choice, new cache/strategy absolute limits, baseline calibration,
-and final comparison still need review on that actual runner. A CPU model
-string or a caller-provided label does not establish a fixed runner class.
+The owner selected **Ubicloud 8-core Ubuntu 24.04** on November 8, 2026. The
+workflow pins `ubicloud-standard-8-ubuntu-2404` and retains `GOMAXPROCS=6`, the
+original benchmark processor count. The eight-core host does not change the
+workloads to eight processors. The same class and processor count apply to
+baseline calibration and candidate comparison.
+
+The workflow records measurements; a successful job is not release qualification.
+New cache/strategy absolute limits, baseline calibration and final comparison
+still need review on that actual runner. Local sandbox measurements, matching CPU
+text or merely passing this label to the script cannot close the hosted gate.
 
 For a clean committed checkout on the selected runner:
 
 ```sh
-python3 hack/bench-release.py --runner-class SELECTED_LABEL --procs 6 \
+python3 hack/bench-release.py --runner-class ubicloud-standard-8-ubuntu-2404 --procs 6 \
   --output bin/release-benchmark-recording
 ```
 
@@ -71,7 +76,7 @@ After separately reviewing and retaining a baseline artifact, compare on the
 same actual runner:
 
 ```sh
-python3 hack/bench-release.py --runner-class SELECTED_LABEL --procs 6 \
+python3 hack/bench-release.py --runner-class ubicloud-standard-8-ubuntu-2404 --procs 6 \
   --baseline /path/to/reviewed-artifact --output bin/release-benchmark-current
 ```
 

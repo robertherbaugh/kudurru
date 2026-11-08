@@ -5326,3 +5326,18 @@ SQLite/enrollment lint passes with zero issues (8.018 s).
 Root operator routes, publication/output acknowledgment, peer exclusion, join
 transport and full HA assembly remain open.
 Evidence: `.context/enrollment-primary-20261108/`.
+
+### F63/G23 fixed benchmark runner decision, November 8
+
+The owner explicitly selected Ubicloud 8-core Ubuntu 24.04. The measurement
+workflow now pins `ubicloud-standard-8-ubuntu-2404`, with the original
+`GOMAXPROCS=6`, five fresh samples per suite, original corpora and durations.
+The runner-choice decision is resolved. Eight host cores do not silently change
+the original six-processor workload or authorize a baseline/threshold reset.
+
+Actual hosted baseline calibration, additional absolute limits and candidate
+comparison remain open. The workflow currently records evidence; a successful
+recording alone does not qualify the release. The original local gate failure
+(exact1M miss p50 median158ns versus109ns) and every earlier failed result remain
+retained. Local sandbox results cannot close this named-runner gate. No workflow
+execution, push, baseline change or performance completion is claimed here.

@@ -1,16 +1,6 @@
 name: release benchmark measurements
 on:
   workflow_dispatch:
-    inputs:
-      runner_class:
-        description: "Owner-selected fixed runner label (recorded in the artifact)"
-        required: true
-        type: string
-      procs:
-        description: "GOMAXPROCS for every fresh measurement process"
-        required: true
-        default: "6"
-        type: string
 permissions:
   contents: read
 # Do not cancel an in-progress sample or share its measurement runner with
@@ -20,7 +10,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   measure:
-    runs-on: ${{ inputs.runner_class }}
+    # Owner selected Ubicloud 8-core Ubuntu 24.04 on November 8, 2026.
+    # Retain the original six-processor workload on the eight-core host.
+    runs-on: ubicloud-standard-8-ubuntu-2404
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,8 +26,8 @@ jobs:
         run: python3 -B -m unittest discover -s hack -p test_bench_release.py
       - name: Record original workloads in fresh processes
         env:
-          BENCH_RUNNER_CLASS: ${{ inputs.runner_class }}
-          BENCH_PROCS: ${{ inputs.procs }}
+          BENCH_RUNNER_CLASS: ubicloud-standard-8-ubuntu-2404
+          BENCH_PROCS: "6"
         run: >-
           python3 hack/bench-release.py --output bin/release-benchmarks
           --runner-class "$BENCH_RUNNER_CLASS" --procs "$BENCH_PROCS"

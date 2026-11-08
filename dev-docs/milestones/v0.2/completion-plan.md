@@ -164,7 +164,7 @@ runners. Unit tests cannot substitute for those results.
 | F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F62a | CLI conformance against actual API router | Operations and UI | Integrated 6938fbb; actual router/CLI races and scoped lint pass |
 | F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Integrated c439532; exact wire contracts and API serialization races pass |
-| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Actual local expanded collection completes 40 native commands and seven shape/absolute checks, 136 cases/592 metrics/five samples each; separate original relative gate exits 1 with three suffix-miss regressions. Named class choice, calibrated baselines/limits and hosted qualification remain open |
+| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Actual local expanded collection completes 40 native commands and seven shape/absolute checks, 136 cases/592 metrics/five samples each; separate original relative gate exits 1 with three suffix-miss regressions. Owner selected Ubicloud 8-core Ubuntu 24.04 (ubicloud-standard-8-ubuntu-2404), retaining GOMAXPROCS6. Calibrated baselines/limits and hosted qualification remain open |
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
@@ -332,3 +332,18 @@ SQLite/enrollment lint passes with zero issues (8.018 s).
 Root operator routes, publication/output acknowledgment, peer exclusion, join
 transport and full HA assembly remain open.
 Evidence: `.context/enrollment-primary-20261108/`.
+
+### F63/G23 fixed benchmark runner decision, November 8
+
+The owner explicitly selected Ubicloud 8-core Ubuntu 24.04. The measurement
+workflow now pins `ubicloud-standard-8-ubuntu-2404`, with the original
+`GOMAXPROCS=6`, five fresh samples per suite, original corpora and durations.
+The runner-choice decision is resolved. Eight host cores do not silently change
+the original six-processor workload or authorize a baseline/threshold reset.
+
+Actual hosted baseline calibration, additional absolute limits and candidate
+comparison remain open. The workflow currently records evidence; a successful
+recording alone does not qualify the release. The original local gate failure
+(exact1M miss p50 median158ns versus109ns) and every earlier failed result remain
+retained. Local sandbox results cannot close this named-runner gate. No workflow
+execution, push, baseline change or performance completion is claimed here.
