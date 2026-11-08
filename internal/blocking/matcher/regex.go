@@ -172,7 +172,7 @@ func (r *Regex) scan(name string) (string, uint8, bool) {
 func (r *Regex) scanSafe(name string, safe bool) (string, uint8, bool) {
 	next := [2]int{0, r.unindexedBatches}
 	end := [2]int{r.unindexedBatches, len(r.batches)}
-	if safe && !r.hasIndexedGram(name) {
+	if safe && !r.hasIndexedCandidate(name) {
 		end[1] = next[1]
 	}
 	best := len(r.entries)
@@ -221,6 +221,24 @@ func (r *Regex) hasIndexedGram(name string) bool {
 		b := gramBit(g)
 		if r.bits[b>>6]&(1<<(b&63)) != 0 && len(r.index[g]) != 0 {
 			return true
+		}
+	}
+	return false
+}
+
+// hasIndexedCandidate refines a selected-gram hit using the original required
+// literal. A coincidental gram in an unrelated name need not scan every indexed
+// batch. No candidate is excluded unless its complete required literal is absent;
+// callers still bypass this shortcut outside prefilterSafe.
+func (r *Regex) hasIndexedCandidate(name string) bool {
+	if !r.hasIndexedGram(name) {
+		return false
+	}
+	for i := 0; i+gramLen <= len(name); i++ {
+		for _, id := range r.index[gramAt(name, i)] {
+			if strings.Contains(name, r.entries[id].lit) {
+				return true
+			}
 		}
 	}
 	return false
@@ -491,7 +509,7 @@ func (r *Regex) Visit(name string, visit func(string, uint8) bool) {
 	}
 	safe := prefilterSafe(name)
 	cursors := [2]regexCursor{{end: r.unindexedBatches}, {batch: r.unindexedBatches, end: len(r.batches)}}
-	if safe && !r.hasIndexedGram(name) {
+	if safe && !r.hasIndexedCandidate(name) {
 		cursors[1].end = cursors[1].batch
 	}
 	var heads [2]int32

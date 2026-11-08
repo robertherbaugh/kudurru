@@ -1514,3 +1514,49 @@ Evidence: `.context/integrated-qualification-20261108/`. These composed passes d
 not complete F20 performance, F28 activation, enrolled HA, AD implementation,
 Windows/fixed-class acceptance, hosted CI or the remaining release gates.
 No push, deployment, release or waived gate.
+
+
+### Complete local benchmark scope and indexed-literal refinement, November 8
+
+On 859bacf6, all ten original fresh native processes (five blocking, five zone)
+exit 0 with unchanged workloads, baseline, limits and 20%/noise-floor rules.
+GOMAXPROCS=6 and the reported 2.90GHz CPU model match the committed baseline;
+this sandbox is still not a named fixed-class runner. The original Go benchgate
+actually runs and exits 1: 96 ok, 12 improved, four regressions, 300 new metrics,
+zero missing metrics and zero absolute-limit violations. There are 99 case names,
+439 metric vectors and 2,195 values, exactly five per vector. The prior missing
+zone scope is now measured, without rewriting any historical failure.
+
+The four failed medians are exact-list miss p50 163ns versus 109ns; regex-1000
+miss p99 18,434ns versus 12,661ns; suffix-list miss average 175.9ns versus
+140.8ns; and zone CNAME p99 1,545ns versus 1,128ns. Unchanged-list compilation
+is 72,818,058ns with eight allocations; steady 3M RSS is 92.58MiB, below the
+original 150MiB ceiling. This suffix/exact RSS fixture does not qualify regex,
+complete serving or simultaneously held old/new snapshots. All native outcomes,
+full vectors and the numeric gate failure are retained in
+`.context/current-benchmark-gate-20261108/`.
+
+An actual CPU profile of the unchanged original regex-1000 miss workload attributes
+34.58% cumulative sampled CPU to indexed batch exclusion. A coincidental selected
+gram sent a name through all indexed literals. The new refinement uses that same
+index to require at least one complete original literal before scanning its lane.
+It keeps existing sparse dispatch, rule ordering/tags, Visit callbacks, Unicode
+bypass, programs, cache limits, proof budgets and retained accounting unchanged.
+The existing gram tests and benchmark sources remain byte-identical.
+
+Default-race checks pass 93 focused entries with no skips and 656 full
+blocking/parser/matcher/list-fetcher entries with two actual skips (memory helper
+and unconfigured external comparator). A separate actual pinned AdGuard v0.107.79
+race passes all 46 entries without skips; documented deviations are unchanged.
+Independent automaton-oracle fuzzing passes 255 baseline seeds and 197,295
+coordinator executions in 20s requested time; internal input skips are not
+reported as valid-language comparisons. Vet and configured scoped lint exit 0.
+All commands match frozen source. Receipts: `.context/indexed-literal-20261108/`.
+
+The same original 3s CPU-profile workload before/after records 898.7/600.9ns
+average and 18,226/1,455ns p99, both zero B/op and allocations. This diagnostic
+supports the refinement but is not a replacement five-process gate. All four
+pre-fix failures and earlier F20 failures remain evidence. A prepared CRC
+optimization remains unmerged because unchanged compilation passed the actual
+gate. Final-source five-process and fixed-class qualification remain open.
+No push, deployment, release or baseline change.

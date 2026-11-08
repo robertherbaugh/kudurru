@@ -224,7 +224,10 @@ Regexes and contextual patterns share a tagged lazy-DFA executor. Conservative
 literal prefilters retain original rule order; dense and unindexed candidates
 use fixed batches. A sparse route also reuses its sole unindexed batch when
 every original member is admitted, merging its result at the original rule
-positions. A bounded transition arena freezes when full and continues
+positions. A selected gram alone does not require scanning every indexed batch:
+the original full required literal must also occur in the query. This refinement
+is used only on prefilter-safe names; Unicode and other unsafe inputs retain
+exact execution. A bounded transition arena freezes when full and continues
 with exact NFA execution. When every program provably requires the start of
 text, fallback advances current states without retrying starts at later
 boundaries. Invalid syntax and typed resource refusal remain

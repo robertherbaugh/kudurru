@@ -281,6 +281,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Blocking: avoid scanning indexed regex batches after a coincidental gram hit
+  when every original required literal is absent, preserving rule order and
+  exact fallback behavior.
+
 - Browser login and logout can acknowledge their own committed state while
   retaining original writer, dependency, cookie-policy and expiry checks.
 
