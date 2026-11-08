@@ -14,6 +14,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
+	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 )
@@ -532,6 +533,24 @@ func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Stack) handleOIDC(w http.ResponseWriter, r *http.Request) {
+	if s.opts.RequestLimit != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), requestlimit.Lifetime)
+		defer cancel()
+		r = r.WithContext(ctx)
+		lane := requestlimit.Start
+		if strings.HasSuffix(r.URL.Path, "/callback") {
+			lane = requestlimit.Callback
+		}
+		if err := s.opts.RequestLimit.Admit(ctx, lane, requestlimit.ClientKey(s.opts.ClientIP(r))); err != nil {
+			var locked *loginlimit.Locked
+			if errors.As(err, &locked) {
+				writeErr(w, r, &auth.Error{Status: http.StatusTooManyRequests, Key: "rate_limited", Message: "too many login requests; try again later", RetryAfter: locked.RetryAfter})
+			} else {
+				writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "login_limit_unavailable", Message: "shared browser admission is unavailable"})
+			}
+			return
+		}
+	}
 	if reg := s.activeRegistry(); reg != nil {
 		if p, ok := reg.Provider(r.PathValue("idp")); ok {
 			if strings.HasSuffix(r.URL.Path, "/callback") {

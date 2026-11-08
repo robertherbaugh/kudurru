@@ -43,6 +43,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/objcache"
+	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
@@ -77,6 +78,9 @@ type Options struct {
 	Keys keys.Keys
 	// LoginLimit is the actual shared password-admission owner, when mounted.
 	LoginLimit *loginlimit.Limiter
+	// RequestLimit charges browser requests before provider selection; mounted
+	// by the Kubernetes root. A failed shared charge never uses local fallback.
+	RequestLimit *requestlimit.Limiter
 	// TokenMigration resolves completed offline cutover provenance, captured
 	// with current identities. Nil never guesses a legacy credential binding.
 	TokenMigration tokens.MigrationResolver

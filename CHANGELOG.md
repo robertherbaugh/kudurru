@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Kubernetes: browser login starts and callbacks now share durable request
+  budgets across replicas and restart. Conflicts and admission-store outages
+  refuse provider dispatch without local fallback.
+
 - SQLite: browser login starts, callbacks and CLI preparations share durable
   request budgets across adapters and restart. Unavailable or malformed counters
   refuse before authentication; superseded provider requests are not replayed.

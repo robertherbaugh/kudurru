@@ -140,8 +140,8 @@ no cookie. The prepared new hash is opaque, one-use and bound to the original
 still occurs outside locks before shared admission.
 
 SQLite browser starts, callbacks and CLI preparation use the shared request
-budgets below. Kubernetes browser admission and enrolled-replica request
-forwarding remain unmounted. Two adapters sharing one
+budgets below. Kubernetes browser starts and callbacks share the D310 Secret
+budget. Enrolled-replica request forwarding remains unmounted. Two adapters sharing one
 Store and physical follower install/restart tests do not prove production
 multi-node forwarding.
 
@@ -181,6 +181,23 @@ I/O. That request must fail without recapturing its source or replaying the
 exchange. The local attempt latch and concurrency bounds remain additional
 controls, not a distributed guarantee of one exchange. Logout routes are outside
 these login request lanes. The D306 completion predicate remains response-only.
+
+## Shared Kubernetes browser request budgets (D310)
+
+The Kubernetes root mounts the same bounded request policies before provider
+selection. Both start and callback requests, including unknown providers, charge
+`kudurru-browser-admission` in the release namespace. This private Secret is
+separate from password lockouts and stores salted address keys without raw IPs.
+Only a confirmed original-version write permits provider dispatch. Conflicts,
+malformed history, unavailable reads and lost write replies refuse without retry
+or local fallback. A successful charge remains spent after later cancellation.
+
+The original context expires within thirty seconds and stays with the provider
+handler. The API validates the private Secret type, UID, resource version and
+shape; foreign owners are not adopted. Confirmed absence initializes history;
+privileged deletion explicitly resets it. The D309 policy and document bounds
+apply. This budget does not provide a cross-object session transaction or shared
+TOTP replay prevention. Public CLI preparation uses the complete SQLite path.
 
 ## Browser response completion (D306)
 

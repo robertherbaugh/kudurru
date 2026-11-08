@@ -1365,3 +1365,38 @@ This is the complete SQLite HTTP mount. Kubernetes browser admission, enrolled-
 replica forwarding and final F46/G12/G22/release gates remain open. Earlier F20
 performance failures and unrelated runtime/external acceptance gates are unchanged.
 No push or release.
+
+
+### F46 Kubernetes browser request admission (D310), November 8
+
+The actual Kubernetes server charges starts and callbacks before selecting an
+OIDC provider, including unknown-provider requests. It uses the same D309
+five-start/ten-callback prefix policies, one-minute lock, salted address keys and
+512KiB/4096-key bounds. The separate release-namespace Secret
+`kudurru-browser-admission` must have the exact private type, UID, resource version,
+shape and no owner references or deletion timestamp. Confirmed absence may create;
+privileged deletion resets this operational history.
+
+One original request context, bounded by thirty seconds or an earlier deadline,
+spans the direct read, exactly one versioned create/update and provider dispatch.
+There is no write retry, cache or local-counter fallback. Conflicts, malformed
+state, API outages and uncertain write replies refuse dispatch. A committed charge
+survives later cancellation, clock failure or a lost response without refund.
+This adds request admission, not a cross-object authentication transaction or a
+shared TOTP replay authority. Enrolled SQLite forwarding remains separate.
+
+Default-race evidence: backend/document and actual API-server tests pass 22
+entries; two actual runServe replica/restart/outage tests pass; the full Stack
+suite passes 46 entries. All have zero failures/skips and exact frozen input
+matches. Wall times are 18.480313138s, 49.101403396s and 21.055286751s;
+minimum free bytes are 14,020,022,272, 13,847,126,016 and 14,116,102,144.
+Actual Kubernetes tests exercise alternating clients, restart, original-version
+conflicts, retained lost-reply writes, canceled requests and foreign Secrets.
+The mounted route checks both lanes, unknown providers, no cookies, Retry-After
+and admission-store outages. Affected vet exits 0 in 4.010559710s. Existing
+formatting receipt is clean; configured golangci-lint remains unavailable.
+Receipts and input identities: `.context/kube-browser-admission-20261108/`.
+
+F46 enrolled-node forwarding and final driver/release qualification remain open.
+The historical F20 performance failures and other external acceptance gates are
+unchanged. No push, deployment or release.
