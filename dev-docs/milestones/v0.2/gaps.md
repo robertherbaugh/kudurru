@@ -5627,3 +5627,17 @@ strict comparison. It must not select replacement samples until a desired CPU
 or result appears. New absolute calibration and final candidate qualification
 remain open. Complete reference artifacts and failure evidence are retained
 under `.context/hosted-release-20261108/reference-artifact/`.
+
+
+### F63/G23 paired runner control, November 8
+
+The selected Ubicloud pool supplied different CPUs to the candidate and original
+reference, and the reference independently failed its CNAME ceiling. The new
+paired workflow places both existing collectors sequentially in one VM: original
+0cc9565e remains immutable, candidate source is exact, all sixty native process
+receipts and original gates remain mandatory. A failed reference is ineligible
+for comparison and keeps the overall result failed; the independent candidate
+recording does not clear it. Eligible original scopes use the unchanged strict
+Go comparison. No baseline, threshold, corpus or sample replacement is introduced.
+Twelve control tests and workflow YAML validation pass. Hosted paired execution
+and new absolute calibration remain pending; this is not release qualification.

@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Record the candidate or the immutable original reference
+        description: Record the candidate, original reference, or both on one VM
         type: choice
-        options: [candidate, reference]
+        options: [candidate, reference, paired]
         default: candidate
   # Allows an explicitly requested measurement before this workflow is merged
   # to the default branch (where GitHub registers workflow_dispatch).
@@ -21,7 +21,7 @@ concurrency:
 jobs:
   measure:
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.mode != 'reference') ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'candidate') ||
       (github.event.label.name == 'release-benchmarks' &&
        github.event.pull_request.head.repo.full_name == github.repository)
     # Owner selected Ubicloud 8-core Ubuntu 24.04 on November 8, 2026.
@@ -53,6 +53,44 @@ jobs:
         with:
           name: release-benchmarks-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}
           path: bin/release-benchmarks/
+          if-no-files-found: error
+          retention-days: 30
+  paired:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'paired') ||
+      (github.event.label.name == 'release-benchmark-paired' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubicloud-standard-8-ubuntu-2404
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: control
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: 0cc9565e9a878f8223fc1cee5201eb7eca8aacd2
+          path: reference
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: control/go.mod
+          cache: false
+      - name: Check measurement controls
+        working-directory: control
+        run: python3 -B -m unittest discover -s hack -p 'test_bench_*.py'
+      - name: Record both sources on this VM and compare eligible reports
+        working-directory: control
+        run: >-
+          python3 -B hack/bench-paired.py --checkout ../reference
+          --output bin/release-paired
+      - name: Retain both recordings and every failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-paired-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}
+          path: control/bin/release-paired/
           if-no-files-found: error
           retention-days: 30
   reference:

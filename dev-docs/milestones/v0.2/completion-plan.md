@@ -484,3 +484,17 @@ failed reference nor that CPU mismatch is waived. A paired original/candidate
 measurement in one VM is the next concrete step; no replacement sample or new
 baseline is approved by these results. Fresh security on 86a3ff91 is green;
 full hosted CI and the remaining implementation/external gates stay open.
+
+
+### F63/G23 paired runner control, November 8
+
+The selected Ubicloud pool supplied different CPUs to the candidate and original
+reference, and the reference independently failed its CNAME ceiling. The new
+paired workflow places both existing collectors sequentially in one VM: original
+0cc9565e remains immutable, candidate source is exact, all sixty native process
+receipts and original gates remain mandatory. A failed reference is ineligible
+for comparison and keeps the overall result failed; the independent candidate
+recording does not clear it. Eligible original scopes use the unchanged strict
+Go comparison. No baseline, threshold, corpus or sample replacement is introduced.
+Twelve control tests and workflow YAML validation pass. Hosted paired execution
+and new absolute calibration remain pending; this is not release qualification.

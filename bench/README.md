@@ -126,3 +126,30 @@ Reference recording alone does not close the gate. Its actual results must be
 reviewed and compared with the candidate on this class under the unchanged
 relative threshold and noise floors. New cache/strategy absolute calibration
 and final-current-source qualification remain separate requirements.
+
+
+## Paired measurements in one VM
+
+The selected Ubicloud pool is heterogeneous: the candidate recording above
+used EPYC 9454P, while original-reference run 42517712186 used EPYC 9224. The
+reference also failed its unchanged CNAME p99 ceiling (2,090 ns > 2,000 ns).
+Those failures remain retained; the two artifacts are not a valid CPU-matched
+comparison.
+
+The `paired` workflow mode (or `release-benchmark-paired` label on an internal
+PR) runs the immutable original reference and exact candidate sequentially in
+one VM. It uses the existing collectors: twenty original-reference commands,
+forty candidate commands, and their original shape/absolute gates. Both complete
+source manifests and every numeric process receipt are retained. No failed
+sample is retried, replaced, or selected for its CPU or outcome.
+
+Only a complete reference with successful native commands and all three gates
+can enter the three original-scope comparisons. A failed reference still permits
+the independent candidate recording, but refuses comparison and fails the paired
+result. The original Go gate retains five samples, six processors, strict CPU
+matching, the 20% threshold, noise floors and absolute limits. Source changes,
+resource stops, residual descendants and altered artifacts stop remaining work.
+New candidate scopes stay calibration evidence; `release_qualified` remains
+false pending their absolute calibration and all other release requirements.
+Neither collector changes the committed Intel baseline or treats the candidate
+as its own reference.
