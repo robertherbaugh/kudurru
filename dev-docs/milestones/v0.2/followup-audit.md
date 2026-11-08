@@ -949,3 +949,25 @@ Earlier failures and exact bounds remain in gaps.md and
 `.context/ha-static-20261108/`. Separate-process acceptance and configured lint
 remain pending; enrollment/promotion and partition/rejoin are separate open
 requirements. Shared internal credentials are not individual member proof.
+
+
+### F65/F67 separate-process static acceptance, November 8
+
+`TestStaticClusterProcessesReadOnlyPeerLossRestart` now starts two actual
+server processes using the existing synthetic ten-node license fixture, with
+separate SQLite files and original configured peer identities. UDP/TCP DNS,
+authenticated status/digest reads, local leaders, distinct database identities,
+read-only object/settings refusals and one node-local blocking command pass.
+After A exits cleanly, B continues DNS and lists A without claimed readiness;
+A restarts from its original database/config with identity and session intact.
+Mutations are single attempts without replay or deadline extension.
+
+The frozen-source race-enabled E2E harness passes1 top-level test, zero failures
+or skips, child0/wrapper0, wall56.499293604s, minimum17,192,493,056B. Actual server
+binaries use the existing CGO-disabled fixture build, without race instrumentation.
+E2E package vet exits0. All frozen source identities match; exact receipts are in
+`.context/ha-static-process-20261108/`. Existing TestTwoNodes and audit assertions
+remain; only their shared licensed fixture name is generalized. Configured lint,
+enrolled replication/promotion, partition/rejoin and final release gates remain
+open. This evidence does not grant individual member authority from shared
+internal credentials.

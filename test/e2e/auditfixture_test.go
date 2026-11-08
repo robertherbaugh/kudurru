@@ -9,11 +9,11 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 )
 
-// licensedAuditFixture builds a binary that trusts the existing synthetic
-// ten-node license. Only the audit fixtures use it: MainBuild and
+// licensedNodeFixture builds a binary that trusts the existing synthetic
+// ten-node license. Audit and static-cluster fixtures use it: MainBuild and
 // KUDURRU_E2E_BINARY still supply the ordinary binary for other E2Es.
 // A release binary cannot trust this key, so this build is always required.
-func licensedAuditFixture(t *testing.T) (string, []string) {
+func licensedNodeFixture(t *testing.T) (string, []string) {
 	t.Helper()
 	root, err := kudurrutest.ModuleRoot()
 	if err != nil {

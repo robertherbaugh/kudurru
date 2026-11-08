@@ -42,7 +42,7 @@ func TestKubeAuditAcrossReplicas(t *testing.T) {
 	if assets == "" {
 		t.Skip("envtest binaries not found: run `make envtest` or set KUBEBUILDER_ASSETS")
 	}
-	auditBin, nodeEnv := licensedAuditFixture(t)
+	auditBin, nodeEnv := licensedNodeFixture(t)
 	var crds []*apiextensionsv1.CustomResourceDefinition
 	for _, glob := range []string{"deploy/kustomize/crd/bases/*.yaml", "deploy/kustomize/crd/audit/*.yaml"} {
 		files, _ := filepath.Glob(filepath.Join(root, glob))

@@ -91,9 +91,11 @@ the five skipped tests above.
 
 Gaps recorded as follow-ups rather than bugs:
 
-- **E2E-2.** The sqlite driver's membership is hard-coded to
-  `cluster.Self`, so two sqlite nodes cannot be configured to pull list
-  bodies from each other, and each reports itself as leader.
+- **E2E-2 (original finding; static mode implemented November 8).** SQLite
+  originally used only `cluster.Self`. D300 adds configured static peers;
+  the separate-process acceptance below covers status and body reads. Each
+  static twin intentionally remains its own leader. Enrolled primary/follower
+  replication and promotion remain separate requirements.
 - **Admin socket.** The default `/run/kudurru/kudurru.sock` is host-global:
   a second instance on the same host dies at startup. That is how the
   first two-node run failed.
@@ -155,8 +157,8 @@ data dirs and ports, the sqlite driver, and one
 `KUDURRU_ENCRYPTION_KEY`. Both carry a BlockList whose source is an
 adblock list on a local `httptest` server, plus a Policy using it.
 
-serve.go fixes the sqlite membership to `cluster.Self` (E2E-2). The test
-therefore plays node B's resolver against node A's internal listener. It
+This original test uses default `cluster.Self` membership. It
+plays node B's resolver against node A's internal listener. It
 uses `internalapi.NewCredentials` from the shared key and the same
 `internalapi.Client` the resolver uses:
 
@@ -176,6 +178,22 @@ uses `internalapi.NewCredentials` from the shared key and the same
   A client holding another key cannot complete the TLS handshake (the
   derived CA does not match), and plain HTTP gets nothing.
 - **BothNodesBlock.** Both nodes block the listed name.
+
+`TestStaticClusterProcessesReadOnlyPeerLossRestart` in `static_cluster_test.go`
+adds two actual server processes with `cluster.role: static`, configured peers,
+isolated databases and the existing synthetic ten-node license. It verifies
+UDP/TCP DNS, both local leaders and distinct database identities, authenticated
+peer status/list bodies, read-only object/settings refusals and one node-local
+blocking command. Stopping A leaves B serving; A remains listed without claimed
+readiness. Restarting A from its original config/database preserves its identity
+and session. Each mutation is sent once with an original five-second deadline;
+only read readiness observations poll.
+
+The November 8 frozen-source run passed with the race-enabled test harness
+(server binaries use the existing CGO-disabled fixture build), child/wrapper
+exit 0, 56.499s wall and no skips. Package vet also passed. Receipts are under
+`.context/ha-static-process-20261108/`. This is static deployment acceptance,
+not enrolled replication, promotion, partition/rejoin or release qualification.
 
 ## 3. Serve-level resilience (`test/e2e/serve_test.go`)
 

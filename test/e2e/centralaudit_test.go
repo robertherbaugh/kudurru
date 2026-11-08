@@ -25,7 +25,7 @@ import (
 func TestCentralAuditTwoNodes(t *testing.T) {
 	kudurrutest.RequireE2E(t)
 	dsn := centraltest.DSN(t)
-	auditBin, env := licensedAuditFixture(t)
+	auditBin, env := licensedNodeFixture(t)
 	dir := t.TempDir()
 	env = append(env, "KUDURRU_DATABASE__DSN="+dsn)
 	var nodes []*kudurrutest.Node
