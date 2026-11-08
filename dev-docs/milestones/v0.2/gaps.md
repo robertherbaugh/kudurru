@@ -4075,3 +4075,43 @@ Earlier final-error/clock apparent passes did not reach their intended target
 and remain invalid-target evidence. No production acceptance check was weakened.
 Self-service password/factor routes, OIDC admission, enrolled-replica forwarding,
 configured lint and final F46/G12/G22/release gates remain open.
+
+
+### Browser response after its own commit (D306), November 8
+
+Full HTTP regression for D305 exposed 32 failed entries at browser-start 503,
+with 58 passing entries. A new diagnostic proved that BeginBrowser had actually
+committed its pending row, retiring the original source revision while all
+captured dependencies remained current. Its postcommit Browser.Current check
+therefore rejected its own successful command. The diagnostic's numeric1 and
+all earlier failures remain preserved, rather than being treated as unrelated.
+
+The private response helper now retains the exact original RuntimeOwner,
+request lifetime and writer episode. It invokes unchanged original-source,
+provider, HTTP and transaction gates. Only actual successful command completion
+and final original-writer checks return a response-current predicate. That
+predicate excludes the retired source revision but still rejects cancellation,
+writer loss, term/incarnation changes and captured dependency replacement.
+It grants no authentication, provider exchange or mutation. Start/callback still
+observe their exact pending row/enrollment in a complete publication and check
+original cookie policy and expiry before sealing. Final emission also checks the exact acknowledgment publication, so later revocation refuses without resealing. Local logout must commit
+before the optional provider continuation; no provider is recaptured or retried.
+
+Source-03 complete default-race HTTP selection passes 108 entries across 58 top-level tests,
+zero failures/skips, child 0/wrapper 0, wall 371.588192269s,
+minimum 14,489,436,160B. Includes actual TLS login/logout, frozen grants,
+external administration, provider replacement during exchange, cookie-policy
+replacement, invalid proofs, concurrency, ordinary password/factor/session
+routes and the new exact completion targets. New negative targets stage a real
+enrollment before callback/final/poison refusal and verify complete rollback;
+original cancellation, writer stop, equal-key replacement and request release
+invalidate a successful completion. Focused prior source-02 race 10 also passes.
+Final source-04 adds a memory-only check of the exact publication used to seal
+the response. A later canonical revocation invalidates that acknowledgment
+even while the original dependencies remain installed; it does not reseal or
+replay. All affected browser/external-account/frozen-grant/completion races
+pass 52 entries across 23 top-level tests, zero failures/skips,
+wall 146.833130272s, minimum 14,440,554,496B.
+Final root vet exits 0, wall 2.005811144s. Receipts/freezes/original sources
+are retained under `.context/oidc-own-commit-20261108/`. Configured lint remains
+unavailable; full release and remaining F46 routes/forwarding gates stay open.

@@ -267,6 +267,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Browser login and logout can acknowledge their own committed state while
+  retaining original writer, dependency, cookie-policy and expiry checks.
+
 - Blocking: preserve regex rules with IPv4/IPv6 CIDR client modifiers instead
   of mistaking the CIDR slash for the regex delimiter and discarding the rule.
 

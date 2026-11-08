@@ -78,7 +78,8 @@ func (h *servingHTTP) logoutBrowser(w http.ResponseWriter, r *http.Request) erro
 			}
 		}
 	}
-	if err := h.commitLogout(r); err != nil {
+	responseCurrent, err := h.commitLogoutCurrent(r)
+	if err != nil {
 		return err
 	}
 	if err := h.clearLogoutCookies(w, r); err != nil {
@@ -87,10 +88,10 @@ func (h *servingHTTP) logoutBrowser(w http.ResponseWriter, r *http.Request) erro
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	out := api.BrowserLogoutBody{}
-	if browser != nil && browser.Current() && continuation.ValidAt(h.now()) == nil {
+	if browser != nil && responseCurrent() && continuation.ValidAt(h.now()) == nil {
 		sealed, err := v.SealBrowserLogout(continuation, h.now())
 		callback, _, targetErr := browseroidc.LogoutTargets(continuation.Binding())
-		if err == nil && targetErr == nil && browser.Current() && continuation.ValidAt(h.now()) == nil {
+		if err == nil && targetErr == nil && responseCurrent() && continuation.ValidAt(h.now()) == nil {
 			target, _ := url.Parse(callback)
 			out.ContinuePath = strings.TrimSuffix(target.Path, "/callback")
 			if err := h.setCookie(w, r, "_oidc_logout", sealed, continuation.ExpiresAt().Sub(h.now())); err != nil {

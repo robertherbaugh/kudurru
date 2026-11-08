@@ -126,6 +126,36 @@ enrolled-replica request forwarding remains unmounted. Two adapters sharing one
 Store and physical follower install/restart tests do not prove production
 multi-node forwarding.
 
+## Browser response completion (D306)
+
+Browser start, callback and local logout retain their original complete HTTP
+lease and elected writer through command admission. Provider capture/exchange
+still require the original source to be current. A pending-row or session
+commit retires that source revision, so response acknowledgment uses a private
+completion check issued only after the actual command succeeds. It retains the
+same request lifetime, writer episode, term/incarnation and all captured
+dependency installations. Cancellation, writer loss, key/license/provider or
+managed-anchor replacement still refuse; matching bytes cannot replace an
+installation identity.
+
+```mermaid
+flowchart LR
+    A[Original source and provider] --> B[Original admitted command]
+    B --> C[Actual pending or session commit]
+    C --> D[Retained writer and dependency check]
+    D --> E[Exact committed row in complete publication]
+    E --> F[Original cookie policy and expiry]
+    F --> G[Seal response]
+```
+
+This completion check cannot authorize authentication, provider I/O or another
+mutation. The fresh publication is only an acknowledgment of the exact pending
+row/enrollment; no provider or writer is reacquired. Its own memory-only
+source check must still pass immediately before response emission. A later
+canonical change refuses rather than recapturing or resealing. Browser logout confirms
+local revocation before creating an optional remote continuation. A failed
+command or uncertain completion issues no completion check and is never retried.
+
 ## Coherent authentication owner foundation
 
 The complete SQLite runtime exposes dedicated reviewed RoleBinding commands

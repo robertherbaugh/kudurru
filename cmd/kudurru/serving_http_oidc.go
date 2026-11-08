@@ -224,7 +224,7 @@ func (b *servingBrowserHTTP) start(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	attempt := browserAttempt(state, info)
-	err = b.h.opts.Runtime.currentAuthCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+	responseCurrent, err := b.h.currentAuthResponseCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		if !browser.Current() {
 			return servingBrowserUnavailable()
 		}
@@ -234,11 +234,11 @@ func (b *servingBrowserHTTP) start(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	var raw string
-	err = b.h.browserPublication(r.Context(), func(v *servingauth.View) (bool, error) {
+	publicationCurrent, err := b.h.browserPublication(r.Context(), func(v *servingauth.View) (bool, error) {
 		if err := b.h.checkCookiePublication(r, v); err != nil {
 			return false, err
 		}
-		if !browser.Current() || state.ValidAt(b.h.now()) != nil {
+		if !responseCurrent() || state.ValidAt(b.h.now()) != nil {
 			return false, servingBrowserUnavailable()
 		}
 		row, err := v.BrowserAttempt(state.ID(), b.h.now())
@@ -251,7 +251,7 @@ func (b *servingBrowserHTTP) start(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	if !browser.Current() || state.ValidAt(b.h.now()) != nil {
+	if !responseCurrent() || !publicationCurrent() || state.ValidAt(b.h.now()) != nil {
 		return servingBrowserUnavailable()
 	}
 	if err := b.h.setCookie(w, r, "_oidc", raw, state.ExpiresAt().Sub(b.h.now())); err != nil {
@@ -329,7 +329,7 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 		return servingBrowserUnavailable()
 	}
 	var enrollment security.Enrollment
-	err = b.h.opts.Runtime.currentAuthCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+	responseCurrent, err := b.h.currentAuthResponseCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		if !browser.Current() {
 			return servingBrowserUnavailable()
 		}
@@ -344,8 +344,8 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 	var expires time.Time
 	var logoutHint string
 	var logoutHintExpiry time.Time
-	err = b.h.browserPublication(r.Context(), func(view *servingauth.View) (bool, error) {
-		if !browser.Current() {
+	publicationCurrent, err := b.h.browserPublication(r.Context(), func(view *servingauth.View) (bool, error) {
+		if !responseCurrent() {
 			return false, servingBrowserUnavailable()
 		}
 		if err := b.h.checkCookiePublication(r, view); err != nil {
@@ -364,7 +364,7 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	if !browser.Current() || !b.h.now().Before(expires) {
+	if !responseCurrent() || !publicationCurrent() || !b.h.now().Before(expires) {
 		return servingBrowserUnavailable()
 	}
 	if err := b.h.clearCookie(w, r, "_oidc_hint"); err != nil {
@@ -386,8 +386,9 @@ func (b *servingBrowserHTTP) callback(w http.ResponseWriter, r *http.Request) er
 // Postcommit publication is the only permitted fresh capture in this flow. It
 // seals an already committed exact row/enrollment; it cannot authorize commands,
 // exchange codes, select successor resources, or replace the original HTTP lease.
-func (h *servingHTTP) browserPublication(ctx context.Context, ready func(*servingauth.View) (bool, error)) error {
+func (h *servingHTTP) browserPublication(ctx context.Context, ready func(*servingauth.View) (bool, error)) (func() bool, error) {
 	h.opts.Runtime.publisher.Wake()
+	original := ctx
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	for {
@@ -398,23 +399,39 @@ func (h *servingHTTP) browserPublication(ctx context.Context, ready func(*servin
 			v, typed := value.(*servingauth.View)
 			if ok && typed {
 				done, err := ready(v)
-				lease.Release()
 				if err != nil {
-					return err
+					lease.Release()
+					return nil, err
 				}
 				if done {
-					return nil
+					value, ok := lease.Bundle().Component("runtime")
+					owner, typed := value.(*servingbuild.RuntimeOwner)
+					if !ok || !typed {
+						lease.Release()
+						return nil, serving.ErrComponents
+					}
+					_, _, current := owner.NotifyKeys()
+					// Retain only a memory predicate from the exact acknowledgment.
+					// A later source/dependency change refuses emission; it cannot
+					// restart acknowledgment or reauthorize the original command.
+					check := func() bool { return original.Err() == nil && current != nil && current() }
+					lease.Release()
+					if !check() {
+						return nil, serving.ErrSuperseded
+					}
+					return check, nil
 				}
+				lease.Release()
 			} else {
 				lease.Release()
-				return serving.ErrComponents
+				return nil, serving.ErrComponents
 			}
 		} else if !errors.Is(err, serving.ErrPending) {
-			return err
+			return nil, err
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		case <-changed:
 		}
 	}

@@ -285,12 +285,12 @@ func (h *servingHTTP) me(w http.ResponseWriter, r *http.Request) error {
 	}
 	return servingHTTPJSON(w, 200, out)
 }
-func (h *servingHTTP) commitLogout(r *http.Request) error {
+func (h *servingHTTP) commitLogoutCurrent(r *http.Request) (func() bool, error) {
 	proof, err := servinghttp.Credential(r.Context())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = h.opts.Runtime.currentAuthCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+	responseCurrent, err := h.currentAuthResponseCommand(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		if _, err := servingauth.AuthenticateCurrentWithClock(ctx, tx, deps, proof, h.now); err != nil {
 			return err
 		}
@@ -313,10 +313,15 @@ func (h *servingHTTP) commitLogout(r *http.Request) error {
 		return state.Commit(ctx)
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	h.opts.Runtime.publisher.Wake()
-	return nil
+	return responseCurrent, nil
+}
+
+func (h *servingHTTP) commitLogout(r *http.Request) error {
+	_, err := h.commitLogoutCurrent(r)
+	return err
 }
 func (h *servingHTTP) logout(w http.ResponseWriter, r *http.Request) error {
 	if err := h.commitLogout(r); err != nil {
