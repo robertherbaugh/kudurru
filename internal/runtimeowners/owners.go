@@ -10,6 +10,7 @@ import (
 
 	integration "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	loginlimits "github.com/robertherbaugh/kudurru/internal/auth/loginlimit/sqliteadapter"
+	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/inventory/persistence"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -21,6 +22,9 @@ import (
 
 // ValidateEntry checks each registered owner without granting completeness.
 func ValidateEntry(section string, row replication.Entry) error {
+	if err := requestlimit.ValidateEntry(section, row); err != nil {
+		return err
+	}
 	if err := loginlimits.ValidateEntry(section, row); err != nil {
 		return err
 	}
@@ -36,6 +40,9 @@ func ValidateEntry(section string, row replication.Entry) error {
 // ValidateImage requires security, inventory and root-anchor manifests, including
 // explicit empty owners. It never synthesizes missing history from client rows.
 func ValidateImage(image *replication.Image) error {
+	if err := requestlimit.ValidateImage(image); err != nil {
+		return err
+	}
 	if err := loginlimits.ValidateImage(image); err != nil {
 		return err
 	}

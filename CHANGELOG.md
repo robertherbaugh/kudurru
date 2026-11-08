@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- SQLite: browser login starts, callbacks and CLI preparations share durable
+  request budgets across adapters and restart. Unavailable or malformed counters
+  refuse before authentication; superseded provider requests are not replayed.
+
 - SQLite: local-login, TOTP-management and self-service password-change lockouts
   share persistent counters inside the original authentication command, surviving
   restart and complete replica transfer. Failed proofs retain counters; later

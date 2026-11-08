@@ -38,7 +38,6 @@ type servingHTTP struct {
 	adapter            *servinghttp.Adapter
 	mux                *http.ServeMux
 	ipLimit, userLimit *users.Limiter
-	cliPrepareLimit    *cliPreparationAdmission
 }
 
 func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
@@ -74,9 +73,11 @@ func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
 	h.registerRoleBindings()
 	return h, nil
 }
-func (h *servingHTTP) Middleware(next http.Handler) http.Handler { return h.adapter.Middleware(next) }
-func (h *servingHTTP) Handler() http.Handler                     { return h.mux }
-func (h *servingHTTP) Authorizer() rbac.Authorizer               { return h.adapter }
+func (h *servingHTTP) Middleware(next http.Handler) http.Handler {
+	return h.requestAdmissionMiddleware(h.adapter.Middleware(next))
+}
+func (h *servingHTTP) Handler() http.Handler       { return h.mux }
+func (h *servingHTTP) Authorizer() rbac.Authorizer { return h.adapter }
 func (h *servingHTTP) Roles(ctx context.Context, _ auth.Principal) []string {
 	v, p, err := h.readPrincipal(ctx)
 	if err != nil {

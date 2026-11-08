@@ -1306,3 +1306,62 @@ in the archive note; it is not claimed as a prior working-byte archive.
 Configured lint remains unavailable. OIDC budgets, enrolled-replica forwarding,
 Kubernetes factor semantics and final F46/G12/G22/release gates remain open.
 No push or release.
+
+
+### F46 shared SQLite browser request budgets (D309), November 8
+
+Browser starts, callbacks and CLI preparations now charge one bounded replicated
+request-budget document before the first complete HTTP lease capture and before
+credential interpretation. This non-granting command modifies only operational
+counters. It does not authorize a provider, interpret a cookie, acquire an
+identity, or turn the D306 response predicate into a continuation. Only confirmed
+charge completion reaches the existing adapter's initial authentication capture.
+
+The original 30-second-or-earlier request context and exact elected writer remain
+through dispatch, provider I/O and response. Nested writer binding cannot adopt a
+successor, even with the same term/incarnation; provider handles narrow their
+original source currency with the retained writer check. Final command/context/
+clock/poison failures roll back charges. A charge that committed before later
+cancellation remains charged and cannot dispatch or be refunded/retried.
+
+Policies retain thresholds of five starts, ten callbacks and five CLI preparations
+per normalized IP prefix. Each lane resets after a one-minute idle gap; reaching
+its threshold starts a separate one-minute lock. One optional
+`runtime/browser-admission/v1/state` document retains salted hashes, fixed-version
+policy and source time, bounded by 512KiB/4096 live keys across lanes. Unknown,
+empty, malformed or oversized state refuses; live history is never evicted.
+Legacy absence initializes, and privileged removal explicitly resets this
+operational history. Complete follower install/restart retains exact bytes;
+followers cannot charge locally. Safe object exports omit this runtime state.
+
+The existing local per-attempt latch and concurrency caps remain additional
+controls; no distributed exchange-uniqueness claim is made. A second admitted
+callback's counter commit can retire the first callback's original source during
+provider I/O. That first request returns 503 without a second exchange or session.
+The concurrent-callback test now proves the intervening commit changed only the
+budget, retains the one-exchange assertion and requires zero sessions. Its original
+302 expectation and source01 failure (27 pass/two failed entries) are archived.
+Independent actual TLS single-callback success remains positive.
+
+Full requestlimit/runtime-owner default-race: 45 passes, no failures/skips,
+wall 6.613112600s, minimum 14,272,958,464B. The broad source02
+browser/CLI/logout/writer run retained 98 passes, one failure and one skip, wall
+319.369973289s. The failing CLI final-clock fixture lacked the original
+primary runtime in its private clock-only clone; the fixture now carries that
+same actual primary. Its original final-clock refusal assertion is unchanged.
+The skipped installed-Chrome case was subsequently executed explicitly.
+
+Final source03 focused default-race passes 32 entries, no failures/skips,
+wall 71.328128825s, minimum 14,047,240,192B. It includes the actual
+installed Chrome/Playwright TLS browser, corrected final-clock refusal, real
+browser success/concurrent source refusal, shared adapters/follower restart,
+missing-writer refusal, original cancellation/equal-fence replacement and
+transaction rollback/capacity/privacy targets. Affected vet exits 0 in
+2.206111614s. Formatting is clean; configured golangci-lint remains
+unavailable. All raw outcomes, frozen sources, original fixtures and browser
+input hashes are retained under `.context/sqlite-browser-admission-20261108/`.
+
+This is the complete SQLite HTTP mount. Kubernetes browser admission, enrolled-
+replica forwarding and final F46/G12/G22/release gates remain open. Earlier F20
+performance failures and unrelated runtime/external acceptance gates are unchanged.
+No push or release.

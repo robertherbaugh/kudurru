@@ -3,38 +3,18 @@ package main
 import (
 	"context"
 	"net/http"
-	"sync"
-	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/clioidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
-	"github.com/robertherbaugh/kudurru/internal/auth/users"
+	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 )
 
-// cliPreparationAdmission counts requests, not authentication failures. Keys
-// come only from clientKey's normalized IP/prefix; the existing limiter bounds
-// retained keys. Serialize check+charge so concurrent requests share the cap.
-type cliPreparationAdmission struct {
-	mu    sync.Mutex
-	limit *users.Limiter
-}
-
-func (a *cliPreparationAdmission) admit(key string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if d := a.limit.Locked(key); d > 0 {
-		return &auth.Error{Status: 429, Key: "rate_limited", Message: "too many CLI preparations; try again later", RetryAfter: d}
-	}
-	a.limit.Fail(key)
-	return nil
-}
 func (h *servingHTTP) registerCLILogin() {
-	h.cliPrepareLimit = &cliPreparationAdmission{limit: users.NewLimiter(users.LimitPolicy{Failures: 5, Window: time.Minute, Lockout: time.Minute}, h.now)}
 	h.route("GET", "/auth/cli/providers", h.cliProviders)
 	h.route("POST", "/auth/cli/{idp}/prepare", h.cliPrepare)
 	h.route("POST", "/auth/cli/{idp}/verify", h.cliVerify)
@@ -53,6 +33,10 @@ func (h *servingHTTP) capturedCLI(ctx context.Context, id string) (*servingauth.
 		return nil, nil, e
 	}
 	c, e := runtime.CLI(p.Descriptor.Ref, p.ResourceIdentity)
+	if e != nil {
+		return nil, nil, servingCLIUnavailable()
+	}
+	c, e = c.BindCurrent(func() bool { return carriedWriterCurrent(ctx) })
 	if e != nil {
 		return nil, nil, servingCLIUnavailable()
 	}
@@ -78,7 +62,7 @@ func (h *servingHTTP) cliPrepare(w http.ResponseWriter, r *http.Request) error {
 	if e := h.opts.CrossOrigin.Check(r); e != nil {
 		return servingCLIInvalid()
 	}
-	if e := h.cliPrepareLimit.admit(h.clientKey(r)); e != nil {
+	if e := h.checkRequestAdmission(r, requestlimit.CLI); e != nil {
 		return e
 	}
 	var q clioidc.PrepareRequest

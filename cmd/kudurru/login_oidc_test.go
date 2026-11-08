@@ -285,7 +285,7 @@ func TestCLIOIDCVerifyFinalActualClockRegressionRefused(t *testing.T) {
 	f := cliPublicFixture(t)
 	// The HTTP adapter and runtime owners retain their real clocks. Only this
 	// handler's response-time observer changes; no background clock is mutated.
-	runtime := &servingRuntime{opts: f.s.opts, publisher: f.s.publisher}
+	runtime := &servingRuntime{opts: f.s.opts, publisher: f.s.publisher, primary: f.s.primary}
 	f.h.opts.Runtime = runtime
 	var calls atomic.Int64
 	var active atomic.Bool

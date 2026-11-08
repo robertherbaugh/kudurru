@@ -139,10 +139,48 @@ no cookie. The prepared new hash is opaque, one-use and bound to the original
 30-second-or-earlier context through response publication. New-password hashing
 still occurs outside locks before shared admission.
 
-OIDC attempt limits still have separate local admission; enrolled-replica request
-forwarding remains unmounted. Two adapters sharing one
+SQLite browser starts, callbacks and CLI preparation use the shared request
+budgets below. Kubernetes browser admission and enrolled-replica request
+forwarding remain unmounted. Two adapters sharing one
 Store and physical follower install/restart tests do not prove production
 multi-node forwarding.
+
+## Shared SQLite browser request budgets (D309)
+
+An outer request gate charges a separate replicated operational document before
+any cookie/JWT interpretation and before the first complete authentication lease.
+It retains the original request deadline (at most thirty seconds) and exact elected
+writer through the handler. Only a confirmed charge reaches the normal adapter;
+missing state authority, conflicts and uncertain completion refuse without retry
+or local fallback. No prior authentication snapshot is replaced.
+
+```mermaid
+sequenceDiagram
+    participant R as Original HTTP request
+    participant Q as Shared request budget
+    participant A as Complete authentication adapter
+    participant P as Original provider and command
+    R->>Q: Charge IP-prefix lane under original writer/deadline
+    Q-->>R: Confirm commit or refuse
+    R->>A: First complete lease capture after confirmed charge
+    A->>P: Existing original credential/provider flow
+    P-->>R: Verified response or original-source refusal
+```
+
+Starts and CLI preparations each allow five requests per prefix; callbacks allow
+ten. An idle gap longer than one minute resets that lane; reaching its threshold
+starts a one-minute lock. The versioned document stores
+salted address hashes and source time, with 512KiB/4096-key bounds and no live-key
+eviction. Complete replicas preserve it; safe object exports omit it. Legacy
+absence initializes; privileged deletion explicitly resets this operational state.
+Malformed history refuses rather than resetting. Cancellation after a confirmed
+charge retains that charge, without entering authentication or issuing a refund.
+
+A charge is a canonical commit: it can supersede another request during provider
+I/O. That request must fail without recapturing its source or replaying the
+exchange. The local attempt latch and concurrency bounds remain additional
+controls, not a distributed guarantee of one exchange. Logout routes are outside
+these login request lanes. The D306 completion predicate remains response-only.
 
 ## Browser response completion (D306)
 

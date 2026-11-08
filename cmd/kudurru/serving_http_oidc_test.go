@@ -355,21 +355,29 @@ func TestServingHTTPBrowserConcurrentCallbacksAndHostReplacementDuringIO(t *test
 				t.Fatal("token exchange not entered")
 			}
 			if mode == "concurrent" {
+				before, err := f.s.opts.Store.ReadGeneration(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
 				expectServingHTTPStatus(t, f.callback(t, callback, cookie), 429)
+				after, err := f.s.opts.Store.ReadGeneration(t.Context())
+				if err != nil || !requestAdmissionOnly(before, after) {
+					t.Fatal("duplicate callback changed more than its request budget", err)
+				}
 			} else {
 				_ = f.s.opts.License.Set("invalid-replacement", "test")
 			}
 			close(resume)
 			w := <-done
-			if mode == "concurrent" {
-				expectServingHTTPStatus(t, w, 302)
-			} else {
-				expectServingHTTPStatus(t, w, 503)
-			}
+			// The second callback's replicated request charge retired the first
+			// callback's original source during I/O. It must refuse, never recapture
+			// or repeat the exchange. Independent single-callback success remains
+			// covered by TestServingHTTPBrowserActualTLSJWTAndDurableSession.
+			expectServingHTTPStatus(t, w, 503)
 			if f.op.requests.Load() != 1 {
 				t.Fatal("one-shot exchange retried")
 			}
-			if mode == "host" && len(f.security(t).ExternalSessions) != 0 {
+			if len(f.security(t).ExternalSessions) != 0 {
 				t.Fatal("changed host issued enrollment")
 			}
 		})

@@ -23,6 +23,22 @@ type primaryWriterTerm struct {
 	fence primaryruntime.PublicationFence
 }
 
+type primaryWriterBindingKey struct{}
+type primaryWriterBinding struct {
+	owner *primaryWriter
+	term  *primaryWriterTerm
+}
+
+// carriedWriterCurrent checks the original episode synchronously, including
+// before provider I/O; AfterFunc cancellation alone may not have propagated yet.
+func carriedWriterCurrent(ctx context.Context) bool {
+	if ctx == nil || ctx.Err() != nil {
+		return false
+	}
+	b, ok := ctx.Value(primaryWriterBindingKey{}).(primaryWriterBinding)
+	return !ok || b.owner.current(b.term)
+}
+
 func (w *primaryWriter) run(ctx context.Context, run func(context.Context, primaryruntime.PublicationFence) error) error {
 	token, ok := sqlite.WriterTokenFromContext(ctx)
 	if w == nil || w.store == nil || !ok || run == nil || ctx.Err() != nil {
@@ -57,6 +73,9 @@ func (w *primaryWriter) bind(request context.Context, want primaryruntime.Public
 		return nil, nil, primaryruntime.ErrUnavailable
 	}
 	t := w.active.Load()
+	if carried, ok := request.Value(primaryWriterBindingKey{}).(primaryWriterBinding); ok && (carried.owner != w || carried.term != t) {
+		return nil, nil, primaryruntime.ErrUnavailable
+	}
 	if !w.current(t) || !t.fence.Term.Same(want.Term) || t.fence.Incarnation != want.Incarnation {
 		return nil, nil, primaryruntime.ErrUnavailable
 	}
@@ -67,5 +86,6 @@ func (w *primaryWriter) bind(request context.Context, want primaryruntime.Public
 		release()
 		return nil, nil, primaryruntime.ErrUnavailable
 	}
+	ctx = context.WithValue(ctx, primaryWriterBindingKey{}, primaryWriterBinding{owner: w, term: t})
 	return primaryruntime.WithPublicationFence(sqlite.WithWriterToken(ctx, t.token), t.fence), release, nil
 }

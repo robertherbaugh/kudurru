@@ -13,6 +13,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/browseroidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
+	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -25,10 +26,10 @@ import (
 // servingBrowserHTTP has only bounded admission state. Durable pending attempts
 // and current authorization belong to security, not this adapter's limiters.
 type servingBrowserHTTP struct {
-	h                           *servingHTTP
-	mu                          sync.Mutex
-	starts, callbacks, attempts *users.Limiter
-	active                      chan struct{}
+	h        *servingHTTP
+	mu       sync.Mutex
+	attempts *users.Limiter
+	active   chan struct{}
 }
 
 // CapturedBrowserHandler returns the explicit browser adapter for root to install
@@ -36,8 +37,6 @@ type servingBrowserHTTP struct {
 // lease; absence of a ready browser capability never falls back to live Stack.
 func (h *servingHTTP) CapturedBrowserHandler() http.Handler {
 	b := &servingBrowserHTTP{h: h, active: make(chan struct{}, 4)}
-	b.starts = users.NewLimiter(users.LimitPolicy{Failures: 5, Window: time.Minute, Lockout: time.Minute}, h.now)
-	b.callbacks = users.NewLimiter(users.LimitPolicy{Failures: 10, Window: time.Minute, Lockout: time.Minute}, h.now)
 	b.attempts = users.NewLimiter(users.LimitPolicy{Failures: 1, Window: browseroidc.Lifetime, Lockout: browseroidc.Lifetime}, h.now)
 	return b
 }
@@ -64,19 +63,11 @@ func (b *servingBrowserHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *servingBrowserHTTP) admit(r *http.Request, callback bool) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	limit := b.starts
+	lane := requestlimit.Start
 	if callback {
-		limit = b.callbacks
+		lane = requestlimit.Callback
 	}
-	key := b.h.clientKey(r)
-	delay := limit.Locked(key)
-	if delay > 0 {
-		return &auth.Error{Status: 429, Key: "rate_limited", Message: "too many browser login attempts; start again later", RetryAfter: delay}
-	}
-	limit.Fail(key)
-	return nil
+	return b.h.checkRequestAdmission(r, lane)
 }
 
 func (b *servingBrowserHTTP) admitAttempt(attempt string) error {
@@ -110,6 +101,10 @@ func (h *servingHTTP) capturedBrowser(ctx context.Context, id string) (*servinga
 		return nil, nil, servingBrowserUnavailable()
 	}
 	browser, err := owner.Browser(p.Descriptor.Ref, p.ResourceIdentity)
+	if err != nil {
+		return nil, nil, servingBrowserUnavailable()
+	}
+	browser, err = browser.BindCurrent(func() bool { return carriedWriterCurrent(ctx) })
 	if err != nil {
 		return nil, nil, servingBrowserUnavailable()
 	}
