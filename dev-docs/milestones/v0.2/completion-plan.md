@@ -88,7 +88,7 @@ runners. Unit tests cannot substitute for those results.
 | F18b | Reverse-PTR hostname cache | DNS and resolver | Integrated 83c1096; bounded async PTR, actual UDP and mounted SQLite policy/expiry races; scoped lint pass |
 | F18c | UniFi hostname source | DNS and resolver | Integrated 380f43f; actual TLS/SQLite/native/PROXYv2/dnsdist lifecycle races pass. Fixture correction 4337c79 retains the original five-second held-CNAME deadline; repeated focused and full mounted acceptance pass, with earlier failed commands retained in the ledger |
 | F19a | Durable replicated blocking toggle on complete SQLite path | Store and HA | Implemented; final gates open |
-| F19b | Kube runtime annotation publisher/watcher or equivalent cluster toggle | Store and HA | Queued: missing |
+| F19b | Kube runtime annotation publisher/watcher or equivalent cluster toggle | Store and HA | Implemented D301: original bounded ConfigMap CAS, confirmed local application and read reconciliation on all replicas. Actual two-runServe/API-server DNS, shared expiry, restart and outage acceptance passes; driver conflict/lost-reply, original credential/cancellation and audit races plus vet pass. Earlier fixture failures retained; configured lint and final supported-driver gates remain |
 | F20a | AdGuard black-box conformance implementation | DNS and resolver | Implemented; final gates open |
 | F20b | Real AdGuard/container qualification and CI evidence | DNS and resolver | Integrated; final gates open |
 | F20c | Move benchgate to `hack/` | DNS and resolver | Integrated; final gates open |

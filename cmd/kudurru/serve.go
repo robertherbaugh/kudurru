@@ -324,6 +324,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// Retain the concrete authority before any management facade is installed.
 	// Followers receive bootstrap state only in a validated complete replica.
 	sql, _ := st.(*sqlite.Store)
+	kubeStore, _ := st.(*kube.Store)
 	bootstrapWritable := sql == nil || sql.Authority().Writable()
 	var complete *servingRuntime
 	var remoteCache *servingbuild.EdgeCache
@@ -1113,6 +1114,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		zoneNotifyCommand = complete.ZoneNotifyCommand
 		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
 	}
+	var kubeBlocking *kubeBlockingRuntime
+	if kubeStore != nil {
+		kubeBlocking = newKubeBlockingRuntime(kubeStore, bs.Toggle(), reload, authorizer)
+		blockingReads, blockingCommand = kubeBlocking, kubeBlocking.Command
+	}
 
 	// DNS listeners: udp/tcp/dot/doh/doq/doh3 with the shared certificate
 	// store and the authenticated PROXYv2 policy (D45, D56, D67).
@@ -1278,7 +1284,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
-		BlockingReads: blockingReads, BlockingCommand: blockingCommand, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
+		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
@@ -1342,6 +1348,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	add := func(name string, leaderOnly bool, fn func(context.Context) error) error {
 		return runner.Add(name, leaderOnly, fn)
+	}
+	if kubeBlocking != nil {
+		if err := add("blocking-runtime", false, kubeBlocking.Run); err != nil {
+			return err
+		}
 	}
 	if complete != nil {
 		if err := add("serving", false, complete.Run); err != nil {

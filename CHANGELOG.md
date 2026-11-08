@@ -35,6 +35,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   and blocking toggles report node scope.
 - CLI: `cluster status` reports the connected node's store, leader, membership
   count and read-only mode, with table/wide/JSON/YAML output.
+- Kubernetes: blocking toggles persist in the shared runtime ConfigMap and
+  converge across replicas with the same absolute expiry after restart. Conflicts
+  and unknown write outcomes are returned without replaying the change.
 
 - SQLite DNS: load encrypted stored TSIG keys into complete serving snapshots
   and secondary/RPZ acquisition, retaining each request's original key through

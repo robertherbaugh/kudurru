@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"time"
+
+	"github.com/robertherbaugh/kudurru/internal/audit"
 )
 
 // BlockingChange is a detached, fixed-size request to update canonical blocking
@@ -35,6 +37,9 @@ func (s *Server) setBlockingCommand(ctx context.Context, in *setBlockingInput) (
 		change.HasUntil, change.Until = true, *in.Body.Until
 	}
 	state, err := s.opts.BlockingCommand(ctx, change)
+	if s.opts.AuditBlockingCommand {
+		s.recordAction(ctx, "blocking.toggle", audit.Resource{Kind: "blocking"}, err, nil, state)
+	}
 	if err != nil {
 		return nil, err
 	}

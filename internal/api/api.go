@@ -329,11 +329,16 @@ type Options struct {
 	// PolicyListReads supplies original text/RPZ state for complete policy GETs.
 	// Complete mode also requires CanonicalSettings and Catalogue.Read.
 	PolicyListReads PolicyListReadSource
-	// BlockingReads replaces blocking GETs with original complete-cut reads.
+	// BlockingReads replaces blocking GETs with admitted runtime observations.
+	// Complete SQLite retains the original serving cut; Kubernetes reconciles
+	// its durable cluster runtime through the mounted reader.
 	// Nil preserves the legacy node-local toggle projection.
 	BlockingReads BlockingReadSource
 	// BlockingCommand replaces legacy toggle mutation with a current command.
 	BlockingCommand BlockingCommand
+	// AuditBlockingCommand records a runtime action when the command's driver
+	// cannot audit it in its transaction (Kubernetes runtime ConfigMap).
+	AuditBlockingCommand bool
 	// UpstreamReads replaces local upstream health reads with original routes.
 	// Nil preserves legacy live-stage status sampling.
 	UpstreamReads UpstreamReadSource

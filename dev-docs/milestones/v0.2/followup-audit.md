@@ -989,3 +989,44 @@ remain. Success fixtures now use the existing administrator identity; permission
 and refusal assertions are unchanged. Exact frozen-source receipts are under
 `.context/cluster-status-20261108/`. Configured lint remains unavailable.
 Enrollment, join-token, promotion, forwarding and final HA acceptance remain open.
+
+
+### F19b shared Kubernetes blocking runtime (D301), November 8
+
+The actual Kubernetes server assembly now mounts the existing runtime annotation
+contract on the release-namespace `kudurru-runtime` ConfigMap. Each command keeps
+its original five-second-or-earlier context and rechecks authorization before
+reading and before one UID/resourceVersion update or absent-state create.
+Client retries are disabled. No-op commands still use the captured CAS; conflicts
+and lost replies never acquire a new source or repeat the mutation. Confirmed
+commits apply locally; unknown completion is explicit and cannot earn local
+success credit. Independent later reads may observe the actual durable result.
+
+All replicas use serialized bounded one-second read reconciliation and the same
+absolute deadline. Repeated observations, including unrelated resourceVersion
+changes, cannot rearm a locally consumed timer. Startup is enabled until first
+observation; outages retain confirmed DNS state with its original expiry and
+refuse unavailable runtime API reads. Changes retain the existing cache observer.
+The API records the action once through the existing audit seam. Existing RBAC
+already covers the runtime ConfigMap; no schema or privilege expansion.
+
+Final production has driver6, API4, toggle1 and root failure-path2 actual race
+passes. The same combined command retains its startup fixture failure. Final
+actual two-runServe acceptance separately passes1 with real API-server state,
+DNS on both replicas, one disable, restart without expiry renewal, refused
+outage mutation, actual expiry and one enable from the other replica. Final
+mounted child0/wrapper0, wall61.709555064s, minimum16,656,818,176B; affected
+package vet exits0 in11.622499991s. No skips or race diagnostics in those passes.
+
+Earlier mounted failures remain: implicit policy response, upstream edits absent
+from the real settings source, and fast list startup preceding the initial DNS
+assertion. Fixtures now select explicit policy/source and blocking list startup;
+no mutation replay or original deadline extension was added. One earlier mounted
+source also passed before the final unchanged-deadline observation guard.
+The harmless controller-runtime missing-logger diagnostic remains in the log.
+Exact source freezes, raw outcomes and failed sources are retained under
+`.context/kube-blocking-20261108/`. Protected dashboard bytes remain unchanged.
+
+This is eventual shared state, not synchronous acknowledgment by every node,
+cluster-wide transactional IAM admission or same-transaction Kubernetes audit.
+Configured lint remains unavailable and final driver/release gates remain open.

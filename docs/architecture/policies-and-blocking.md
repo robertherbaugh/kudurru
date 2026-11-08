@@ -166,10 +166,31 @@ inline entries, and `blocked_list` otherwise.
 ### Turning blocking off for a while
 
 `POST /api/v1/dns/blocking {blocking: false, timer: 300}` disables blocking
-**on the node that receives the request**, in memory, until the timer ends
-or the process restarts. The API reports `scope: "node"`. The cluster-wide
-toggle that the design record describes is not built: the replication hook
-exists, but nothing implements it.
+until an absolute deadline. Complete SQLite stores canonical
+`Kudurru.status.blocking` in its original authorized command and acknowledges
+the matching complete serving publication. Static SQLite twins retain independent
+local state and report `scope: "node"`; enrolled replication uses the complete
+image, with its separate membership and transport requirements.
+
+Kubernetes stores the release namespace's runtime state in the
+`kudurru-runtime` ConfigMap annotation `kudurru.io/blocking-disabled-until`:
+absent means enabled, `forever` means an indefinite disable, and otherwise the
+value is an absolute RFC 3339 timestamp. A command retains its original bounded
+request and checks authorization before reading and before a single
+resourceVersion/UID-bound update (or create when absent). Conflicts are returned
+without replay. Only a confirmed API-server result changes the local toggle;
+a lost reply returns an unknown outcome, not a rollback or success.
+
+Every replica reconciles this field through a bounded read once per second,
+serialized with its local commands. The API reports `scope: "cluster"`, with
+eventual cross-node observation rather than synchronous acknowledgment from
+every replica. Restart and repeated reads preserve the original deadline.
+The existing cache-flush observer runs when applied state changes. Before first
+observation, DNS keeps blocking enabled; during an outage it retains confirmed
+state and its absolute expiry, while unavailable runtime reads return 503.
+Malformed state is refused rather than silently repaired. Kubernetes auditing
+records the runtime action separately from the ConfigMap write; this path does
+not claim SQLite's same-transaction identity and audit guarantees.
 
 ## Blocked services and safe search
 
