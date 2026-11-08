@@ -24,6 +24,24 @@ var ErrMemberCompletionUnknown = errors.New("store/sqlite: member command comple
 // Copies share consumption and terminal state. It supplies no domain permission.
 type MemberRequest struct{ original *memberRequest }
 
+// OriginalTerm returns informational metadata from the original Primary cut.
+// It never refreshes authority or authorizes a read, command or response.
+func (r *MemberRequest) OriginalTerm() replication.Term {
+	if r == nil || r.original == nil {
+		return replication.Term{}
+	}
+	return r.original.authority.Term
+}
+
+// Deadline is the earlier original request, peer certificate and local CA bound.
+// Transports install it before body acquisition; it grants no current admission.
+func (r *MemberRequest) Deadline() time.Time {
+	if r == nil || r.original == nil {
+		return time.Time{}
+	}
+	return r.original.deadline
+}
+
 const (
 	memberFresh uint32 = iota
 	memberActive
@@ -41,10 +59,15 @@ type memberRequest struct {
 	peer      *memberidentity.PeerAdmission
 	deadline  time.Time
 	state     atomic.Uint32
-	completed atomic.Pointer[replication.Authority]
+	completed atomic.Pointer[memberCompletion]
 }
 
 type memberRequestKey struct{}
+
+type memberCompletion struct {
+	authority replication.Authority
+	command   bool
+}
 
 // CaptureMemberRequest takes ONE bounded read cut of actual Primary authority
 // and complete enrollment. Both local and remote members must be active, and
@@ -173,8 +196,8 @@ func (r *memberRequest) checkOwner(ctx context.Context, tx *sql.Tx) error {
 	return r.check()
 }
 
-func (r *memberRequest) complete(a replication.Authority) {
-	r.completed.Store(&a)
+func (r *memberRequest) complete(a replication.Authority, command bool) {
+	r.completed.Store(&memberCompletion{authority: a, command: command})
 	r.state.CompareAndSwap(memberActive, memberComplete)
 }
 
@@ -252,7 +275,7 @@ func (r *MemberRequest) ReadImage() (_ *replication.Image, result error) {
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	o.complete(a)
+	o.complete(a, false)
 	return image, nil
 }
 
@@ -316,6 +339,17 @@ func (t *CommandTx) enterMember(ctx context.Context) error {
 // A callback error or panic consumes this output; cancellation never releases
 // the exclusion while emit is still running. This is no domain permission grant.
 func (r *MemberRequest) WithOutput(emit func(context.Context) error) error {
+	return r.withOutput(false, emit)
+}
+
+// WithCommandOutput has WithOutput's lifetime, locking and transport contract,
+// but requires actual successful MemberCommand completion. An image receipt
+// cannot authorize a command acknowledgment, including through a copied handle.
+func (r *MemberRequest) WithCommandOutput(emit func(context.Context) error) error {
+	return r.withOutput(true, emit)
+}
+
+func (r *MemberRequest) withOutput(requireCommand bool, emit func(context.Context) error) error {
 	if r == nil || r.original == nil || emit == nil {
 		return enrollment.ErrRefused
 	}
@@ -332,7 +366,7 @@ func (r *MemberRequest) WithOutput(emit func(context.Context) error) error {
 		return err
 	}
 	completed := o.completed.Load()
-	if completed == nil || !reflect.DeepEqual(o.s.Authority(), *completed) {
+	if completed == nil || requireCommand && !completed.command || !reflect.DeepEqual(o.s.Authority(), completed.authority) {
 		return replication.ErrCAS
 	}
 	tx, err := o.s.r.BeginTx(o.ctx, &sql.TxOptions{ReadOnly: true})

@@ -2458,3 +2458,40 @@ All 2,960 source06 identities match final bookkeeping.
 The existing replica server/root routes, original domain output permission pins,
 join transport, operator routes and complete HA assembly remain open. This is
 not production HA completion. Evidence: `.context/member-request-20261108/`.
+
+### F60b/G11 enrolled replication HTTP mount, November 8
+
+D329 adds NewMemberServer with original Store-issued peer admission before body
+acquisition. Mandatory actual read/write deadlines, the earlier request/peer
+lifetime and one concurrency slot cover acquisition through explicit response
+flush. Exact image/304 responses use the original complete cut and authority.
+SQLiteMemberAtomic retains original peer/writer checks around domain authorization,
+mutation and durable dedup. The synchronous command callback must keep domain
+and dependency pins through commit and emit. WithCommandOutput requires the
+actual command completion kind; image receipts cannot acknowledge commands.
+
+Late admission, command-expiry, write or flush failure aborts the actual HTTP
+stream. There is no delayed buffered success after the original output scope.
+Actual member clients retain unknown completion after an acknowledgment is lost
+and preserve one domain effect across an explicit same-command dedup retry.
+Early generic refusals expose no authority metadata. The original bound also
+covers queueing/body acquisition, and an active flush retains its concurrency slot.
+
+Source01 focused race retained 17 passes/3 failed entries: two image comparisons
+included independently sampled image creation timestamps. Source02 compares exact
+generation and complete payload while preserving the actual live response;
+focused race passes 36 entries without failures/skips (23.041 s). Source03 full
+member/enrollment/replica default-race passes 266 entries (68.118 s), no failed or
+skipped tests. Accepted framing has a package-only no-test skip. Final command-kind
+review adds explicit image-receipt refusal; source04 affected member/command race
+passes 146 entries (46.481 s), no failures/skips. Initial lint found context argument
+ordering and a test switch style issue; source05 corrects those without changing
+admission semantics. Final configured scoped lint exits0 with zero issues (4.612 s).
+All 2,962 source05 identities match. Evidence: `.context/member-server-20261108/`.
+
+These are actual HTTP/1 and HTTP/2 library mounts and actual SQLite transactions.
+Production listener/domain assembly, operator activation/join-token/promotion,
+join transport, forwarding and complete HA/restart/rejoin acceptance remain open.
+The test domain is deliberately a transaction fixture, not production RBAC credit.
+The legacy error-only-authorizer server is preserved without enrolled-authority
+credit. No hosted benchmark, push, deployment or release occurred.

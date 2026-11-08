@@ -939,7 +939,28 @@ releases exclusion while the synchronous emitter is still running. A failed or
 uncertain command, source interposition, revocation or copied-handle replay
 cannot emit. Actual HTTP/1 and HTTP/2 mounts must flush protected bytes and 304
 headers within this scope; protocol end-of-stream framing follows handler return.
-The existing replica server and root routes are not yet wired to this boundary.
+`replica.NewMemberServer` mounts this boundary for the image and forwarded-command
+HTTP paths. Root listener/domain assembly remains separate. The legacy `NewServer`
+retains its explicit error-only authorizer and is not enrolled production admission.
+
+The enrolled server acquires its concurrency slot and original finite deadline
+before enrollment or body I/O. Both socket deadlines must be supported; body
+acquisition uses the earlier peer/request deadline. Only the original Store
+request supplies authority headers. Image and exact 304 output hold the Store
+exclusion through explicit flush. A synchronous command handler retains domain
+and dependency pins around `CommandService` with `SQLiteMemberAtomic`, then emits
+inside `WithCommandOutput`. That scope requires an actual command receipt; image
+completion cannot authorize a command acknowledgment. Dedup and domain changes
+share the same original transaction.
+
+The output deadline also respects the original command expiration. Failed writes,
+flush errors, lost original admission and callback failures abort the HTTP stream
+rather than allowing handler-return buffering to emit protected bytes. After a
+command dispatch, an absent acknowledgment leaves the client's outcome unknown;
+it never triggers automatic replay. Generic early refusals carry no current or
+stale authority headers. Actual enrolled HTTP/1 and HTTP/2 tests cover the mount;
+operator/join routes, production domain policies and complete HA startup remain
+open.
 
 `replica.NewMemberClient` connects those identities to image and command
 exchanges. It requires the original resolver's exact member CA, rejects a local

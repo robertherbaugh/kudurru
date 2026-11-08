@@ -22,6 +22,27 @@ func (a SQLiteAtomic) Transact(ctx context.Context, term replication.Term, fn fu
 	return a.Store.Command(ctx, term, func(ctx context.Context, tx *sqlite.CommandTx) error { return fn(ctx, sqliteCommandTx{tx}) })
 }
 
+// SQLiteMemberAtomic binds domain authorization/mutation/dedup to one original
+// enrolled request. A missing or mismatched request cannot fall back to Command.
+// The caller must retain domain dependency pins through completion AND output.
+type SQLiteMemberAtomic struct {
+	Store   *sqlite.Store
+	Request *sqlite.MemberRequest
+}
+
+// Transact consumes the original peer request inside the actual SQLite command.
+func (a SQLiteMemberAtomic) Transact(ctx context.Context, term replication.Term, fn func(context.Context, CommandTx) error) error {
+	if a.Store == nil || a.Request == nil || fn == nil {
+		return ErrUnavailable
+	}
+	if !term.Same(a.Request.OriginalTerm()) {
+		return replication.ErrCAS
+	}
+	return a.Store.MemberCommand(ctx, a.Request, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		return fn(ctx, sqliteCommandTx{tx})
+	})
+}
+
 type sqliteCommandTx struct{ tx *sqlite.CommandTx }
 
 func (t sqliteCommandTx) State() any { return t.tx }
@@ -52,3 +73,4 @@ func (t sqliteCommandTx) PutDedup(ctx context.Context, id string, r DedupRecord)
 }
 
 var _ AtomicCommands = SQLiteAtomic{}
+var _ AtomicCommands = SQLiteMemberAtomic{}

@@ -15,6 +15,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Cluster transport: add enrolled replication routes that retain original peer
+  admission through command completion and explicit HTTP response flushing.
+  Production listener, domain policy and operator-route assembly remain open.
+
 - Cache capacity reload now adjusts shard topology with bounded migration and
   preserves entry scope, security metadata and absolute deadlines.
 - Remove UniFi SDK initialization of fake-data templates from production,

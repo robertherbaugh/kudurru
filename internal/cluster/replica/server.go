@@ -131,6 +131,9 @@ func (s *Server) termHeaders(w http.ResponseWriter, t replication.Term) {
 	w.Header().Set(HeaderTerm, encodeTerm(t))
 }
 func (s *Server) fail(w http.ResponseWriter, err error) {
+	writeProblem(w, err)
+}
+func writeProblem(w http.ResponseWriter, err error) {
 	code, key := problem(err)
 	if code == 401 {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="kudurru-replica"`)

@@ -71,7 +71,7 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 		sqlBoundary.finish(&result)
 		if t != nil && t.member != nil {
 			if succeeded && result == nil && (sqlBoundary.outcome == AnchorCommitted || sqlBoundary.outcome == AnchorUnchanged) {
-				t.member.complete(s.Authority())
+				t.member.complete(s.Authority(), true)
 			} else {
 				t.member.state.Store(memberTerminal)
 				if sqlBoundary.outcome == AnchorUnknown {
