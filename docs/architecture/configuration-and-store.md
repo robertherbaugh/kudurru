@@ -1003,7 +1003,12 @@ of this envelope. The receiver must reverify the original bytes against current
 transaction state before domain effects or dedup reads and retain the verified
 credential deadline through output. Subject references remain claims to compare
 with that verified identity. The raw proof is bound into the command fingerprint;
-dedup persists only its digest and the outcome. Command/proof formatting and
+dedup persists only its digest and the outcome. Version-2 subject credential
+references use the actual API token ID or a purpose-separated SHA-256 digest of
+the exact typed cookie/JWT proof and original provider selector. Cookie/JWT
+principals have no API TokenID, and an optional JWT jti is not required. Reference
+equality alone grants nothing: it is compared only after current raw verification,
+alongside the authenticated subject, provider and issuance time. Command/proof formatting and
 structured logging redact secrets; explicit JSON is transport data and must
 never be used for audit or diagnostic logging. Root domain policy and listener
 assembly remain required.

@@ -37,9 +37,9 @@ func memberFinite(t *testing.T) context.Context {
 	return ctx
 }
 
-func newMemberOutputFixture(t *testing.T) memberOutputFixture {
+func newMemberOutputFixture(t *testing.T, servers ...*providerServer) memberOutputFixture {
 	t.Helper()
-	f := newFixture(t)
+	f := newFixture(t, servers...)
 	local, err := memberidentity.Create(filepath.Join(t.TempDir(), "local.json"), f.store.Authority().MemberID)
 	if err != nil {
 		t.Fatal(err)

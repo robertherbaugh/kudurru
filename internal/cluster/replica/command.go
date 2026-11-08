@@ -17,6 +17,8 @@ const CommandFormat = "kudurru.replica.command"
 
 // SubjectRef carries identity/credential references, never peer-selected rights.
 // The primary owner must verify current credential validity and reload grants.
+// Version 2 derives CredentialID from Credential.Reference: API token ID or an
+// exact cookie/JWT proof digest, never a claimed session ID or invented JWT jti.
 type SubjectRef struct {
 	Kind           auth.PrincipalKind `json:"kind"`
 	ID             string             `json:"id"`

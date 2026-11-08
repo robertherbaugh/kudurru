@@ -9,9 +9,53 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
+
+func TestCredentialReferenceBindsExactTypedProof(t *testing.T) {
+	wire, id := tokens.Generate()
+	proof, err := NewCredentialProof(servingauth.Credential{Kind: servingauth.APIToken, Value: wire})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref, err := proof.Reference(); err != nil || ref != id {
+		t.Fatal("API token reference lost actual token ID", err)
+	}
+	var absent *CredentialProof
+	if _, err := absent.Reference(); err == nil {
+		t.Fatal("absent proof gained reference")
+	}
+	seen := map[string]bool{}
+	for _, raw := range []servingauth.Credential{
+		{Kind: servingauth.Cookie, Value: "same-original-bytes"},
+		{Kind: servingauth.OIDCJWT, Value: "same-original-bytes"},
+		{Kind: servingauth.OIDCJWT, Value: "changed-original-bytes"},
+		{Kind: servingauth.OIDCJWT, Value: "same-original-bytes", ProviderID: "original-provider"},
+	} {
+		proof, err := NewCredentialProof(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reference, err := proof.Reference()
+		if err != nil || !strings.HasPrefix(reference, "sha256:") || seen[reference] || strings.Contains(reference, raw.Value) {
+			t.Fatal("reference lost original proof identity or exposed bytes", err)
+		}
+		seen[reference] = true
+		encoded, err := json.Marshal(proof)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded CredentialProof
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := decoded.Reference(); err != nil || got != reference {
+			t.Fatal("wire round trip changed original reference", err)
+		}
+	}
+}
 
 func TestCredentialProofWireBoundsAndRedaction(t *testing.T) {
 	for _, kind := range []servingauth.CredentialKind{servingauth.APIToken, servingauth.Cookie, servingauth.OIDCJWT} {

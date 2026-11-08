@@ -6175,3 +6175,31 @@ Production root domains, public forwarding ingress/final response, HA listener
 activation/join/promotion and complete restart/partition/rejoin acceptance remain
 open. Cookie/JWT verification here is concrete but its member HTTP wire
 composition remains separate follow-up work. No release qualification is claimed.
+
+
+### F60b/G11 cookie/JWT member HTTP verification, November 8
+
+D340 defines version-2 credential references without inventing an API-token ID
+for cookies or JWTs: API tokens retain their actual ID; cookies/JWTs use a
+purpose-separated SHA-256 digest of the exact typed proof and original provider
+selector. Reference equality grants nothing and follows successful current raw
+verification, alongside verified principal/provider/issuance comparisons. The
+version-1 protocol and mandatory current authorization/dedup rules are unchanged.
+
+The enrolled HTTP/1 and HTTP/2 fixture now sends actual API tokens, sealed
+registered cookies and signed JWTs through the original command, current
+transaction verifier and Store-scoped bounded output. Every transport/proof
+combination refuses invalid raw proof, forged subjects/references, missing proof
+and incompatible versions without state changes. Original dedup replays reach
+the current verifier and refuse after token deletion, session revocation or JWT
+grant removal. Complete persisted images contain none of the original raw
+credentials. The mutation remains an explicitly identified fixture domain.
+
+Focused default races pass 38 entries. Full coordinator/replica races pass 163
+entries without failures/skips (80.201s), with frozen identities unchanged.
+Evidence: .context/member-cookie-jwt-http-20261108/. Root production domains,
+public forwarding/final response, enrolled listener/operator startup and full
+HA restart/partition/rejoin acceptance remain open.
+
+Configured two-package lint passes with zero issues (9.025s); source identities
+remain matched. No qualification beyond the recorded scope is inferred.
