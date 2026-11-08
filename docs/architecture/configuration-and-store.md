@@ -914,6 +914,33 @@ may read durable authority again after that uncertainty. The old writer cannot
 acknowledge success through a new incarnation; caller publication/output admission
 is still required. This is a storage composition API, not a mounted operator route.
 
+`Store.CaptureMemberRequest` supplies original admission for inbound enrolled
+requests. Before body acquisition, it reads Primary authority and the complete
+membership owner in one bounded transaction. Local and remote identities must
+both be active, and the actual TLS verified chain must match the original peer
+CA. The certificate admission retains immutable expiration and terminal state;
+subsequent TLS-field changes and copied handles cannot renew it.
+
+A request permits one image read or one `MemberCommand`. The command carries
+the original writer into the transaction, compares the exact owner, registers
+the postimage fence and checks the original peer again after every domain final
+check. A separate command context cannot detach original cancellation. Waiting
+for the writer lock retains the earlier original request/certificate deadline.
+Domain authentication, current permission and external dependency pins remain
+the caller's separate obligations. Membership is not administrator permission.
+
+Only actual successful read/command completion issues an internal output state.
+`WithOutput` compares the exact resulting authority/generation and original owner
+under the writer lock, then holds it through emission and explicit transport
+flush. Its context carries the earlier original request, peer certificate and
+local CA expiration. The caller must install that deadline on the actual socket
+and acquire all domain/publication pins before entering. Cancellation never
+releases exclusion while the synchronous emitter is still running. A failed or
+uncertain command, source interposition, revocation or copied-handle replay
+cannot emit. Actual HTTP/1 and HTTP/2 mounts must flush protected bytes and 304
+headers within this scope; protocol end-of-stream framing follows handler return.
+The existing replica server and root routes are not yet wired to this boundary.
+
 `replica.NewMemberClient` connects those identities to image and command
 exchanges. It requires the original resolver's exact member CA, rejects a local
 UUID that does not match its private identity, and refuses custom transports.

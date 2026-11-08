@@ -26,6 +26,15 @@ func (t Trust) ValidAt(now time.Time) bool {
 	return t.root != nil && !now.Before(t.root.NotBefore) && now.Before(t.root.NotAfter)
 }
 
+// ExpiresAt returns the original CA's absolute expiration for transport bounds.
+// It grants no trust, enrollment or renewal; invalid trust returns zero.
+func (t Trust) ExpiresAt() time.Time {
+	if t.root == nil {
+		return time.Time{}
+	}
+	return t.root.NotAfter
+}
+
 // SignEnrollment proves possession of this node's original private CA key for
 // a bounded enrollment statement. Purpose separation prevents using this method
 // to sign a certificate, TLS handshake or another protocol's message.

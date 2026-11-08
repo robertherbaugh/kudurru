@@ -46,7 +46,16 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	if err != nil {
 		return err
 	}
-	s.wmu.Lock()
+	if member, ok := ctx.Value(memberRequestKey{}).(*memberRequest); ok {
+		if member == nil || member.s != s || member.state.Load() != memberActive {
+			return replication.ErrInvalid
+		}
+		if err := member.lock(ctx); err != nil {
+			return err
+		}
+	} else {
+		s.wmu.Lock()
+	}
 	defer s.wmu.Unlock()
 	if s.isClosed() {
 		return store.ErrClosed
@@ -57,8 +66,19 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	}
 	sqlBoundary := anchorSQL{tx: tx}
 	var t *CommandTx
+	succeeded := false
 	defer func() {
 		sqlBoundary.finish(&result)
+		if t != nil && t.member != nil {
+			if succeeded && result == nil && (sqlBoundary.outcome == AnchorCommitted || sqlBoundary.outcome == AnchorUnchanged) {
+				t.member.complete(s.Authority())
+			} else {
+				t.member.state.Store(memberTerminal)
+				if sqlBoundary.outcome == AnchorUnknown {
+					result = errors.Join(result, ErrMemberCompletionUnknown)
+				}
+			}
+		}
 		if t != nil && t.primary != nil && sqlBoundary.outcome == AnchorUnknown {
 			// Ambiguous completion cannot leave the old standalone writer usable.
 			// A restart must read the actual atomic membership/authority outcome.
@@ -101,6 +121,12 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	t.active.Store(true)
 	defer t.active.Store(false)
 	ctx = context.WithValue(ctx, commandTxKey{}, t)
+	if member, ok := ctx.Value(memberRequestKey{}).(*memberRequest); ok {
+		t.member = member
+		if err := t.enterMember(ctx); err != nil {
+			return err
+		}
+	}
 	err = fn(ctx, t)
 	t.active.Store(false)
 	if err != nil {
@@ -131,6 +157,11 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 				return err
 			}
 		}
+		if t.member != nil {
+			if err := t.member.check(); err != nil {
+				return err
+			}
+		}
 		if t.localChanged {
 			// Local metadata shares the original admission/rollback boundary,
 			// without advancing or publishing the canonical replicated image.
@@ -140,9 +171,11 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 			if t.anchor != nil {
 				t.anchor.publish(s)
 			}
+			succeeded = true
 			return nil
 		}
 		sqlBoundary.unchanged = true
+		succeeded = true
 		return nil
 	}
 	if err := advanceRevision(ctx, tx, &a); err != nil {
@@ -179,6 +212,11 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 			return err
 		}
 	}
+	if t.member != nil {
+		if err := t.member.check(); err != nil {
+			return err
+		}
+	}
 	if err := sqlBoundary.commit(); err != nil {
 		return err
 	}
@@ -201,6 +239,7 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	for n, m := range t.mutations {
 		s.bus.publish(change{seq: t.rvs[n], typ: m.typ, key: m.key, obj: m.obj})
 	}
+	succeeded = true
 	return nil
 }
 
@@ -226,6 +265,7 @@ type CommandTx struct {
 	anchorLocalInit  *anchorLocal          // typed migration-proven unchanged-Dormant local initialization
 	enrollmentBefore []replication.Entry   // actual owner before first membership mutation
 	primary          *enrollmentPrimary    // same-command initial membership + authority
+	member           *memberRequest        // original enrolled peer, never a claimed header
 }
 
 func (t *CommandTx) valid(ctx context.Context) error {

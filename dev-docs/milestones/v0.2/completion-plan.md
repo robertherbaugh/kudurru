@@ -347,3 +347,39 @@ recording alone does not qualify the release. The original local gate failure
 (exact1M miss p50 median158ns versus109ns) and every earlier failed result remain
 retained. Local sandbox results cannot close this named-runner gate. No workflow
 execution, push, baseline change or performance completion is claimed here.
+
+### F60b/G11 original peer request and output boundary, November 8
+
+D328 adds actual TLS certificate admission and Store-issued original peer
+requests. One bounded read cut requires active local/remote members and exact
+Primary authority before body I/O. A request permits one image or one actual
+command; copied handles share consumption. Original owner/writer checks, the
+membership postimage fence, original cancellation and the final certificate check
+protect actual command completion. The last peer check follows domain checks.
+
+Only a successful actual completion permits one output scope. That scope compares
+the exact resulting authority/generation and original owner and holds wmu through
+bounded emission and explicit flush. Original request/peer-certificate/local-CA
+expiration supplies the earlier transport deadline. Canceled lock waiters return
+without acquiring replacement authority; an active emitter retains exclusion
+until it actually returns. Unknown commit has a distinct error and no output.
+
+Initial source01 focused race 36 passed. Source02 expanded actual HTTP coverage
+reported 44 passes/4 failed entries: the HTTP2 fixture waited for END_STREAM while
+deliberately preventing handler return. Source03 checks protected body bytes or
+304 headers before releasing the handler, then separately checks clean stream
+completion. The original failed receipt remains. Source03 focused race 52 passes
+without failures/skips (22.442 s). Configured lint initially found two test-only
+style/check issues; both are corrected in source04 and lint passes with zero
+issues (2.808 s). Composed member/enrollment/replica default-race passes
+221 entries (55.893 s); command/authentication regressions pass 209 (31.252 s),
+without failures or skips. Final original-writer review also rejects a foreign or
+explicitly zero carried WriterToken at capture and command entry, while retaining
+the exact matching token. Source05 focused race passes 55 entries (22.842 s);
+source06 final carried-token regressions pass 29 entries (18.243 s), without
+failures/skips. Final source06 configured scoped lint passes with zero issues (10.020 s).
+All 2,960 source06 identities match final bookkeeping.
+
+The existing replica server/root routes, original domain output permission pins,
+join transport, operator routes and complete HA assembly remain open. This is
+not production HA completion. Evidence: `.context/member-request-20261108/`.

@@ -52,28 +52,36 @@ func (i *Identity) ServerTLS(peers []Trust) (*tls.Config, error) {
 // not look up current membership or grant domain/administrator permissions.
 // Callers must pass the transport's actual connection state, never claimed data.
 func (t Trust) VerifyPeer(state *tls.ConnectionState) error {
+	_, err := t.peerExpiry(state, time.Now())
+	return err
+}
+
+func (t Trust) peerExpiry(state *tls.ConnectionState, now time.Time) (time.Time, error) {
 	if t.root == nil || state == nil || !state.HandshakeComplete || state.Version < tls.VersionTLS13 || len(state.PeerCertificates) == 0 {
-		return ErrIdentity
+		return time.Time{}, ErrIdentity
 	}
-	now := time.Now()
 	leaf := state.PeerCertificates[0]
-	if leaf.VerifyHostname(memberName(t.member)) != nil {
-		return ErrIdentity
+	if leaf == nil || leaf.VerifyHostname(memberName(t.member)) != nil {
+		return time.Time{}, ErrIdentity
 	}
 	for _, chain := range state.VerifiedChains {
-		if len(chain) < 2 || !bytes.Equal(chain[0].Raw, leaf.Raw) || !bytes.Equal(chain[len(chain)-1].Raw, t.root.Raw) {
+		if len(chain) < 2 || chain[0] == nil || chain[len(chain)-1] == nil || !bytes.Equal(chain[0].Raw, leaf.Raw) || !bytes.Equal(chain[len(chain)-1].Raw, t.root.Raw) {
 			continue
 		}
 		valid := true
+		expires := leaf.NotAfter
 		for _, cert := range chain {
-			if now.Before(cert.NotBefore) || !now.Before(cert.NotAfter) {
+			if cert == nil || now.Before(cert.NotBefore) || !now.Before(cert.NotAfter) {
 				valid = false
 				break
 			}
+			if cert.NotAfter.Before(expires) {
+				expires = cert.NotAfter
+			}
 		}
 		if valid {
-			return nil
+			return expires, nil
 		}
 	}
-	return ErrIdentity
+	return time.Time{}, ErrIdentity
 }

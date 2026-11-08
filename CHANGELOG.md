@@ -28,6 +28,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Cluster storage: retain original peer enrollment, certificate and request
+  lifetimes through image/command admission and bounded output exclusion.
+  Root HA routes and domain authorization mounting remain in progress.
+
 - Cluster storage: initial membership and Primary activation now share one
   authorized transaction with audit and final lifetime checks. Operator routes
   and production HA assembly remain in progress.
