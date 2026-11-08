@@ -5239,3 +5239,27 @@ constructor documentation. This client does not
 supply durable enrollment, current membership/output exclusion or root startup;
 those remain open. Legacy shared-credential transport tests are retained.
 Evidence: `.context/replica-member-client-20261108/`.
+
+### F60b/G11 bounded enrollment owner, November 8
+
+D325 adds immutable complete member/invitation state and bounded canonical wire
+formats. Owner limits are 64 active members, 256 historical identities, 64
+invitations and 512 KiB. Hash-only stored invitations bind original cluster,
+issuer term, exact target and an absolute lifetime of at most ten minutes.
+Purpose-separated possession signatures also bind original timestamps. Accept
+consumes the invitation and adds the member together in one successor; revoked
+UUIDs and signing keys cannot return under replacement certificates. Revocation
+cancels older target invitations; explicit expiry pruning never removes members.
+Opaque admission retains original context, actual time, issuer and before/after
+digests for a terminal final check. It is not a durable commit receipt.
+
+Default-race54 passes without failures/skips (59.722 s), including actual 256-member
+history exhaustion, new-certificate/same-key revocation, valid-but-rewritten
+history refusal, one-time consumption, strict wire decoding, real expiry and
+zero-value admission refusal. Final configured scoped lint passes with zero
+issues (3.649 s); earlier missing-comment and formatting failures are retained.
+Final source04 differs from race-qualified source02 only in comments/whitespace. These pure
+primitives do not supply durable owner migration, join-token routes, operator
+policy, follower install exclusion or root HA mounting. All earlier performance
+failures and external acceptance requirements remain open.
+Evidence: `.context/enrollment-owner-20261108/`.

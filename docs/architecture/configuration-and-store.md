@@ -832,9 +832,44 @@ flowchart LR
 ```
 
 These are identity primitives, not a mounted enrollment flow. The persistent
-membership owner, one-time join tokens, root listener/client assembly and
+membership persistence, join-token routes, root listener/client assembly and
 revocation/output barriers remain to be implemented. Connection pools must be
 scoped to the exact original enrolled trust, never reused for a successor CA.
+
+`internal/cluster/enrollment` supplies the immutable owner and bounded wire
+formats that those mounts will use. An explicit owner retains up to 64 active
+members, 256 permanent historical identities and 64 invitations in a canonical
+512 KiB document. Invitations carry a random 256-bit secret; only its
+purpose-separated hash enters the owner. Each invitation binds the original
+cluster, writer term, exact target and absolute lifetime of at most ten minutes.
+The secret-bearing wire format also carries the original issuer address and CA
+for TLS verification before a joiner sends its proposal. Generic JSON encoding
+of opaque invitations/proposals exposes no fields.
+
+Acceptance verifies the prospective member's purpose-separated key-possession
+signature, including the original invitation timestamps, and consumes the token
+with member addition in one successor state. Revoked UUIDs and signing keys remain
+permanent; issuing a new certificate around a retired key cannot restore it.
+Revocation cancels earlier outstanding invitations for the target. Explicit
+pruning removes expired invitation records only. Capacity exhaustion refuses
+without pruning member history. Complete decoding and transition validation
+reject missing, ambiguous, orphaned or rewritten history.
+
+An opaque admission retains the original finite context, actual clock, exact
+before/after digests, issuer and original certificate/invitation lifetimes for a
+final memory-only check. A refusal permanently closes that admission. It is a
+prepared successor, not evidence of a durable commit. SQLite must still stage the
+whole owner under the original writer and retain the same check through commit;
+missing persisted history must never become an invitation to initialize again.
+
+```mermaid
+flowchart LR
+    O["Explicit owner + original issuer"] --> I["Bounded invitation<br/>hash retained in owner"]
+    I --> W["Authorized secret delivery<br/>original issuer CA and target"]
+    W --> P["Signed proposal<br/>original key and timestamps"]
+    P --> A["One admission<br/>consume + add successor"]
+    A --> S["Pending storage adapter<br/>exact CAS + final check + commit"]
+```
 
 `replica.NewMemberClient` connects those identities to image and command
 exchanges. It requires the original resolver's exact member CA, rejects a local
