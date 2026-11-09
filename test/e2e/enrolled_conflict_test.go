@@ -116,6 +116,7 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 	objects := zoneObjects(map[string]string{"seed": "192.0.2.42"})
 	apiA.request(t, http.MethodPost, "/objects/dnszones", objects[0], http.StatusCreated, nil)
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", objects[1], http.StatusCreated, nil)
+	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
 	enrollment := func(c *staticProcessClient, ready func(api.ClusterEnrollmentInfo) bool) api.ClusterEnrollmentInfo {
 		t.Helper()
 		var result api.ClusterEnrollmentInfo

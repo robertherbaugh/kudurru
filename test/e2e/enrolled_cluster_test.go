@@ -138,6 +138,58 @@ func enrolledProcessRead(t *testing.T, c *staticProcessClient, path string, read
 	}
 }
 
+// enrolledZoneSettled waits until the primary zone's status reconciliation has
+// published Ready for its current generation, its data answers authoritatively
+// over UDP and the zone RV stays unchanged across that answer. A status-only
+// source gap makes the zone unavailable until the driver realigns, and requests
+// holding the retired publication are refused. Reviews and one-time decisions
+// must therefore start after this cascade instead of being replayed after it.
+func enrolledZoneSettled(t *testing.T, c *staticProcessClient, dnsAddr, name, ip string) {
+	t.Helper()
+	read := func() (string, bool) {
+		var zone struct {
+			Metadata struct {
+				ResourceVersion string `json:"resourceVersion"`
+				Generation      int64  `json:"generation"`
+			} `json:"metadata"`
+			Status struct {
+				Conditions []struct {
+					Type               string `json:"type"`
+					Status             string `json:"status"`
+					ObservedGeneration int64  `json:"observedGeneration"`
+				} `json:"conditions"`
+			} `json:"status"`
+		}
+		ready := false
+		enrolledProcessRead(t, c, "/objects/dnszones/e2e-test", func(body []byte) bool {
+			if json.Unmarshal(body, &zone) != nil {
+				return false
+			}
+			for _, condition := range zone.Status.Conditions {
+				ready = ready || condition.Type == "Ready" && condition.Status == "True" && condition.ObservedGeneration == zone.Metadata.Generation
+			}
+			return true
+		})
+		return zone.Metadata.ResourceVersion, ready
+	}
+	answers := func() bool {
+		answer, err := exchange(dnsAddr, name+".e2e.test.", dns.TypeA, false)
+		return err == nil && answer.Rcode == dns.RcodeSuccess && answer.Authoritative && firstA(answer) == ip
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if before, ready := read(); ready && kudurrutest.Eventually(10*time.Second, 50*time.Millisecond, answers) {
+			if after, still := read(); still && after == before {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("primary zone status never settled")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // This uses public activation/invitation and the offline CLI, never fixture SQL,
 // direct image installation, injected transport, or a manually invoked pull.
 // The temporary partition retains the original primary term. Promotion and
@@ -185,6 +237,7 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	objects := zoneObjects(map[string]string{"seed": "192.0.2.42"})
 	apiA.request(t, http.MethodPost, "/objects/dnszones", objects[0], http.StatusCreated, nil)
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", objects[1], http.StatusCreated, nil)
+	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
 	review := func() api.ClusterEnrollmentInfo {
 		var result api.ClusterEnrollmentInfo
 		enrolledProcessRead(t, apiA, "/cluster/enrollment", func(body []byte) bool { return json.Unmarshal(body, &result) == nil })
