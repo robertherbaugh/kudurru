@@ -1953,3 +1953,32 @@ Root TSIG/secondary/NOTIFY/doctor/OpenAPI/CLI-reference selection with envtest
 (`root-race01`): exit 0, 134 passes, one skip (`TestDoctorDatabase`, no
 PostgreSQL). The route description changed, so OpenAPI, both generated clients
 and the CLI reference were regenerated.
+
+
+### F12a Kubernetes RFC 2136: open design decision — November 9, 2026
+
+V2-UPDATE requires recovery "on both drivers". SQLite mounts the atomic UPDATE
+handler and durable primary history; on Kubernetes the authoritative stage has no
+UPDATE handler and answers NOTIMP. The Kubernetes zone-state backend
+(`internal/store/kube/zonestate.go`) exists, but the primary lifecycle runtime and
+its transactional adapter are SQLite-only, and Kubernetes serving builds zones from
+DNSZone/DNSRecordSet objects rather than from committed zone heads.
+
+The blocking question is atomicity. An RFC 2136 message evaluates prerequisites
+over the whole zone and then applies every change or none. Kubernetes has no
+multi-object transaction, and zone data spans independent API objects. Candidate
+designs, none implemented in this pass:
+
+1. One UPDATE-owned record object per zone, written by single-object
+   resourceVersion CAS. Prerequisites are evaluated against a captured complete
+   zone cut and the write is refused unless every other record object of the zone
+   still has its captured resourceVersion. A concurrent API/file writer to another
+   object between the check and the CAS is the residual race that needs a decision.
+2. Mount the primary lifecycle runtime on the Kubernetes zone-state backend and
+   serve committed heads, matching SQLite semantics; this changes the Kubernetes
+   serving model and is substantially larger.
+3. Explicitly not advertise RFC 2136 on Kubernetes in v0.2 (CRD/docs refusal of
+   `policy.update` other than `deny` on that driver) and defer it.
+
+F12a remains open for Kubernetes pending the owner's choice; SQLite behavior and
+evidence are unchanged.
