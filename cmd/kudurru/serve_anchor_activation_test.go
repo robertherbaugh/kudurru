@@ -1,14 +1,19 @@
 package main
 
 import (
+	"net/http"
+	"net/http/cookiejar"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -48,7 +53,7 @@ func TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled(t *testing.T
 		}
 		stop := tsigMountedStart(t, cfg)
 		if phase < 2 {
-			awaitMountedDNS(t, cfg, "answer.anchor.test.", "192.0.2.77")
+			awaitMountedPrimarySettled(t, cfg, "anchor", "answer.anchor.test.", "192.0.2.77")
 		} else {
 			tsigMountedAwaitPendingListeners(t, cfg)
 		}
@@ -98,5 +103,45 @@ func TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled(t *testing.T
 			t.Fatal("restart or disabled topology changed accepted checkpoint")
 		}
 		closeAgain()
+	}
+}
+
+// awaitMountedPrimarySettled waits until the zone's own status reconciliation
+// has published Ready for the current generation AND the driver has realigned
+// its source, so later exchanges do not race the startup status write. A
+// status-only source gap deliberately makes the zone unavailable until that
+// alignment, and retired in-flight answers are dropped (D313/D332). The wait
+// only orders the test after that cascade; every exchange assertion is unchanged.
+func awaitMountedPrimarySettled(t *testing.T, cfg *config.Config, zoneObject, name, address string) {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Jar: jar, Transport: transport, Timeout: 5 * time.Second}
+	base := "http://" + cfg.Listeners.API.Address + api.BasePath
+	awaitMountedDNS(t, cfg, name, address)
+	controlMountedRequest(t, client, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, nil)
+	read := func() (string, bool) {
+		var zone public.DNSZone
+		controlMountedRequest(t, client, base, http.MethodGet, "/objects/dnszones/"+zoneObject, "", nil, http.StatusOK, &zone)
+		ready := meta.FindStatusCondition(zone.Status.Conditions, public.ConditionReady)
+		return zone.ResourceVersion, ready != nil && ready.Status == metav1.ConditionTrue && ready.ObservedGeneration == zone.Generation
+	}
+	deadline := time.Now().Add(time.Minute)
+	for {
+		before, ready := read()
+		if ready {
+			awaitMountedDNS(t, cfg, name, address)
+			if after, still := read(); still && after == before {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("mounted primary zone status never settled", zoneObject)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
