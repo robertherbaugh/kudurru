@@ -69,7 +69,11 @@ func (h *servingHTTP) getRoleBinding(w http.ResponseWriter, r *http.Request) err
 // decodeRoleBindingJSON rejects duplicate keys at every nesting level before
 // strict typed decoding. Review fields cannot be overridden by a second key.
 func decodeRoleBindingJSON(raw []byte, out any) error {
-	invalid := func() error { return servingHTTPInvalid("invalid RoleBinding command") }
+	return decodeReviewedCommandJSON(raw, out, "invalid RoleBinding command")
+}
+
+func decodeReviewedCommandJSON(raw []byte, out any, message string) error {
+	invalid := func() error { return servingHTTPInvalid(message) }
 	if len(raw) > 64<<10 || !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
 		return invalid()
 	}

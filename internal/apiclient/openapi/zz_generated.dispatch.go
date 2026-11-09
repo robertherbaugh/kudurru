@@ -273,6 +273,14 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.GetCluster(ctx, editors...)
 		return response, true, err
 	}
+	if method == "POST" && len(parts) == 2 && parts[0] == "cluster" && parts[1] == "activate" {
+		response, err := c.ActivateClusterWithBody(ctx, contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 2 && parts[0] == "cluster" && parts[1] == "enrollment" {
+		response, err := c.GetClusterEnrollment(ctx, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 1 && parts[0] == "denylist" {
 		response, err := c.ListDenylist(ctx, nil, editors...)
 		return response, true, err

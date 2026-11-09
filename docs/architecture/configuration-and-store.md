@@ -836,7 +836,7 @@ flowchart LR
     V --> A["Original membership and domain authorization<br/>required through final effects"]
 ```
 
-The root listener below mounts retained enrolled identities. Operator activation,
+The root listener below mounts retained enrolled identities. Operator join,
 join-token routes and outgoing forwarding assembly remain unfinished. Connection pools must be
 scoped to the exact original enrolled trust, never reused for a successor CA.
 
@@ -1043,7 +1043,7 @@ authorized duplicates return the retained outcome without reapplying their now
 stale precondition; new commands must satisfy their original version, including
 no-ops. The receipt reports actual completion with publication `pending`, and the
 publisher is woken after the protected scope ends. The production internal
-listener mounts this executor on `MemberServer`; operator activation, public
+listener mounts this executor on `MemberServer`; operator join/promotion, public
 forwarding and other typed root domains remain unfinished.
 
 At startup, a SQLite runtime reads its complete enrollment owner and authority
@@ -1689,4 +1689,52 @@ flowchart LR
     API["API object/settings writes"] --> Refuse["503 read_only"]
     A --> DNSA["Local admitted DNS state"]
     B --> DNSB["Local admitted DNS state"]
+```
+
+### Explicit first-primary activation
+
+`cluster enrollment` reads the complete enrollment owner under the original HTTP
+publication and returns its cluster UUID, local member UUID, source digest and
+owner digest for separate operator review. `cluster activate` requires all four
+values plus a member name, internal host:port address and audit reason. Only the
+complete nonstatic SQLite runtime mounts these routes. They use `cluster.read`
+and `cluster.join`; cookie activation also requires CSRF.
+
+The HTTP adapter establishes the original 30-second bound before capturing a
+publication or interpreting credentials/body bytes. Activation forwards the
+original Store-issued token, never a fresh source capture. The actual current
+command pins writer/provider/host dependencies, reauthorizes the raw proof and
+checks complete dormant enrollment against the reviewed owner. Before that
+command, the original permission/source review permits exclusive creation of
+`member-identity.json` or loading of the existing exact valid local identity.
+Filesystem I/O stays outside the transaction callback, and the command repeats
+all source and authorization checks afterward. Missing active history is never
+initialization authority. A failed command can leave this non-granting private
+file behind, but cannot replace or repair it.
+
+First membership, Standalone-to-Primary authority and attributed audit commit in
+one transaction with original final proof checks. The old memory incarnation is
+retained until actual completion, then fenced. A public receipt reports only
+`committed` and `restartRequired`; it supplies no membership credential, peer
+readiness or publication acknowledgment. Restart mounts the retained listener.
+A canceled/lost response or `completion_unknown` cannot establish rollback;
+inspect retained enrollment (after restart if the old writer is fenced) before
+a new operator decision. The dedicated client disables redirects and replayable
+bodies and sends no implicit review read or retry. Join invitations, joining,
+promotion and outgoing replication remain separate operator/runtime work.
+
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant API
+    participant Command as Current SQLite command
+    participant Disk as Private identity and database
+    Operator->>API: GET /cluster/enrollment
+    API-->>Operator: Original source and owner identities
+    Operator->>API: POST /cluster/activate with exact reviewed identities
+    API->>Command: Original HTTP source, lifetime and raw proof
+    Command->>Command: Current permission, dormant owner and source checks
+    Command->>Disk: Create exclusively or load exact local identity
+    Command->>Disk: Atomic membership, Primary authority and audit commit
+    API-->>Operator: Committed; restart required
 ```

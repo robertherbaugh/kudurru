@@ -336,6 +336,34 @@ kudurru cache flush [name]
 
 Inspect cluster membership and store status.
 
+### kudurru cluster activate
+
+Activate the first member from an explicitly dormant standalone SQLite owner. First inspect cluster enrollment and separately review its four exact identity fields. Pass those fields with the local member name, internal host:port address, and reason. The command sends one request and never refreshes, redirects or retries it. A confirmed commit requires a process restart to mount the enrolled internal listener. A lost or unknown response does not prove rollback: inspect enrollment before a new decision.
+
+```text
+kudurru cluster activate [flags]
+```
+
+Flags:
+
+```text
+      --address string         Reachable internal member host:port
+      --cluster-id string      Exact reviewed clusterID
+      --member-id string       Exact reviewed memberID
+      --name string            Local member name
+      --owner-digest string    Exact reviewed ownerDigest
+      --reason string          Audit reason for activating HA
+      --source-digest string   Exact reviewed sourceDigest
+```
+
+### kudurru cluster enrollment
+
+Review the local SQLite enrollment source.
+
+```text
+kudurru cluster enrollment
+```
+
 ### kudurru cluster status
 
 Read the connected node's store driver, epoch, reported leader, member count and read-only mode. Static twins each report their own local leader and store identity. This observation does not establish quorum, peer health or permission to promote a node. Use kudurru nodes for individual node readiness.

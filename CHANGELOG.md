@@ -6,6 +6,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Added
+
+- `cluster enrollment` and reviewed `cluster activate` initialize the first
+  SQLite HA primary through the authenticated API, with atomic audit and an
+  explicit restart-required receipt.
+
 ### Changed
 
 - DHCP: a reservation can move a client that leases another address

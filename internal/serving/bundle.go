@@ -226,6 +226,15 @@ func (l *Lease) Bundle() *Bundle {
 	return l.bundle
 }
 
+// SourceToken returns the original Store-issued source of this lease. It is a
+// comparison operand only; callers still need current command/output admission.
+func (l *Lease) SourceToken() (sqlite.GenerationToken, error) {
+	if l == nil || l.released.Load() || l.bundle == nil {
+		return sqlite.GenerationToken{}, ErrReleased
+	}
+	return l.bundle.token, nil
+}
+
 // Clone returns another owned lease. Do not race resource use against Release.
 func (l *Lease) Clone() (*Lease, error) {
 	if l == nil || l.released.Load() || !l.bundle.retain() {

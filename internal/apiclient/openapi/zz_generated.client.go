@@ -2117,6 +2117,17 @@ func (e ListUnblockRequestsParamsState) Valid() bool {
 	}
 }
 
+// ActivateClusterCommand defines model for ActivateClusterCommand.
+type ActivateClusterCommand struct {
+	Address      string `json:"address"`
+	ClusterID    string `json:"clusterID"`
+	MemberID     string `json:"memberID"`
+	Name         string `json:"name"`
+	OwnerDigest  string `json:"ownerDigest"`
+	Reason       string `json:"reason"`
+	SourceDigest string `json:"sourceDigest"`
+}
+
 // Actor defines model for Actor.
 type Actor struct {
 	Auth   *string   `json:"auth,omitempty"`
@@ -2613,6 +2624,24 @@ type ClientsBody struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// ClusterActivationReceipt defines model for ClusterActivationReceipt.
+type ClusterActivationReceipt struct {
+	ClusterID       string `json:"clusterID"`
+	Committed       bool   `json:"committed"`
+	MemberID        string `json:"memberID"`
+	RestartRequired bool   `json:"restartRequired"`
+}
+
+// ClusterEnrollmentInfo defines model for ClusterEnrollmentInfo.
+type ClusterEnrollmentInfo struct {
+	ClusterID    string `json:"clusterID"`
+	Dormant      bool   `json:"dormant"`
+	MemberID     string `json:"memberID"`
+	Mode         string `json:"mode"`
+	OwnerDigest  string `json:"ownerDigest"`
+	SourceDigest string `json:"sourceDigest"`
 }
 
 // ClusterInfo defines model for ClusterInfo.
@@ -6498,6 +6527,9 @@ type PutClientgroupsJSONRequestBody PutClientgroupsJSONBody
 // BatchDeleteClientgroupsJSONRequestBody defines body for BatchDeleteClientgroups for application/json ContentType.
 type BatchDeleteClientgroupsJSONRequestBody = BatchDeleteInputBody
 
+// ActivateClusterJSONRequestBody defines body for ActivateCluster for application/json ContentType.
+type ActivateClusterJSONRequestBody = ActivateClusterCommand
+
 // CreateDenylistEntriesJSONRequestBody defines body for CreateDenylistEntries for application/json ContentType.
 type CreateDenylistEntriesJSONRequestBody = DomainEntriesCreate
 
@@ -7262,6 +7294,31 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /cluster (the `GetCluster` operationId).
 	GetCluster(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ActivateClusterWithBody Activate an explicitly reviewed standalone SQLite primary
+	//
+	// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
+	ActivateClusterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ActivateCluster Activate an explicitly reviewed standalone SQLite primary
+	//
+	// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
+	ActivateCluster(ctx context.Context, body ActivateClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetClusterEnrollment Review the complete local enrollment source
+	//
+	// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+	//
+	// Corresponds with GET /cluster/enrollment (the `GetClusterEnrollment` operationId).
+	GetClusterEnrollment(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDenylist List Denylist entries
 	//
@@ -9788,6 +9845,61 @@ func (c *Client) ListClients(ctx context.Context, params *ListClientsParams, req
 // Corresponds with GET /cluster (the `GetCluster` operationId).
 func (c *Client) GetCluster(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetClusterRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ActivateClusterWithBody Activate an explicitly reviewed standalone SQLite primary
+//
+// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
+func (c *Client) ActivateClusterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewActivateClusterRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ActivateCluster Activate an explicitly reviewed standalone SQLite primary
+//
+// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
+func (c *Client) ActivateCluster(ctx context.Context, body ActivateClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewActivateClusterRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetClusterEnrollment Review the complete local enrollment source
+//
+// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+//
+// Corresponds with GET /cluster/enrollment (the `GetClusterEnrollment` operationId).
+func (c *Client) GetClusterEnrollment(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetClusterEnrollmentRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -15823,6 +15935,73 @@ func NewGetClusterRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/cluster")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewActivateClusterRequest calls the generic ActivateCluster builder with application/json body
+func NewActivateClusterRequest(server string, body ActivateClusterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewActivateClusterRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewActivateClusterRequestWithBody constructs an http.Request for the ActivateCluster method, with any body, and a specified content type
+func NewActivateClusterRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/cluster/activate")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetClusterEnrollmentRequest constructs an http.Request for the GetClusterEnrollment method
+func NewGetClusterEnrollmentRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/cluster/enrollment")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -23547,6 +23726,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /cluster (the `GetCluster` operationId).
 	GetClusterWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterResponse, error)
 
+	// ActivateClusterWithBodyWithResponse Activate an explicitly reviewed standalone SQLite primary
+	//
+	// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
+	ActivateClusterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ActivateClusterResponse, error)
+
+	// ActivateClusterWithResponse Activate an explicitly reviewed standalone SQLite primary
+	//
+	// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
+	ActivateClusterWithResponse(ctx context.Context, body ActivateClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*ActivateClusterResponse, error)
+
+	// GetClusterEnrollmentWithResponse Review the complete local enrollment source
+	//
+	// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /cluster/enrollment (the `GetClusterEnrollment` operationId).
+	GetClusterEnrollmentWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterEnrollmentResponse, error)
+
 	// ListDenylistWithResponse List Denylist entries
 	//
 	// Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
@@ -30455,6 +30661,186 @@ func (r GetClusterResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetClusterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ActivateClusterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ClusterActivationReceipt
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ActivateClusterResponse) GetJSON200() *ClusterActivationReceipt {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ActivateClusterResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ActivateClusterResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ActivateClusterResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ActivateClusterResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ActivateClusterResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ActivateClusterResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ActivateClusterResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ActivateClusterResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ActivateClusterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ActivateClusterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ActivateClusterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ActivateClusterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetClusterEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ClusterEnrollmentInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetClusterEnrollmentResponse) GetJSON200() *ClusterEnrollmentInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetClusterEnrollmentResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetClusterEnrollmentResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetClusterEnrollmentResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetClusterEnrollmentResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetClusterEnrollmentResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetClusterEnrollmentResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetClusterEnrollmentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetClusterEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetClusterEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetClusterEnrollmentResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -43394,6 +43780,51 @@ func (c *ClientWithResponses) GetClusterWithResponse(ctx context.Context, reqEdi
 	return ParseGetClusterResponse(rsp)
 }
 
+// ActivateClusterWithBodyWithResponse Activate an explicitly reviewed standalone SQLite primary
+//
+// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
+func (c *ClientWithResponses) ActivateClusterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ActivateClusterResponse, error) {
+	rsp, err := c.ActivateClusterWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseActivateClusterResponse(rsp)
+}
+
+// ActivateClusterWithResponse Activate an explicitly reviewed standalone SQLite primary
+//
+// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
+func (c *ClientWithResponses) ActivateClusterWithResponse(ctx context.Context, body ActivateClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*ActivateClusterResponse, error) {
+	rsp, err := c.ActivateCluster(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseActivateClusterResponse(rsp)
+}
+
+// GetClusterEnrollmentWithResponse Review the complete local enrollment source
+//
+// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /cluster/enrollment (the `GetClusterEnrollment` operationId).
+func (c *ClientWithResponses) GetClusterEnrollmentWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterEnrollmentResponse, error) {
+	rsp, err := c.GetClusterEnrollment(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetClusterEnrollmentResponse(rsp)
+}
+
 // ListDenylistWithResponse List Denylist entries
 //
 // Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
@@ -50582,6 +51013,156 @@ func ParseGetClusterResponse(rsp *http.Response) (*GetClusterResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ClusterInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseActivateClusterResponse parses an HTTP response from a ActivateClusterWithResponse call
+func ParseActivateClusterResponse(rsp *http.Response) (*ActivateClusterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ActivateClusterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ClusterActivationReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetClusterEnrollmentResponse parses an HTTP response from a GetClusterEnrollmentWithResponse call
+func ParseGetClusterEnrollmentResponse(rsp *http.Response) (*GetClusterEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetClusterEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ClusterEnrollmentInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

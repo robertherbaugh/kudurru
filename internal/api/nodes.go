@@ -112,6 +112,7 @@ type DiagnosisMessage struct {
 type messagesOutput struct{ Body *List[DiagnosisMessage] }
 
 func (s *Server) registerNodes() {
+	s.registerClusterEnrollment()
 	s.registerVIPEvents()
 	cl := perm{resource: "cluster", verb: "read"}
 	register(s, operation(http.MethodGet, "/nodes", "listNodes", "Nodes of the cluster", "cluster"), cl, s.listNodes)

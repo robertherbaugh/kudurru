@@ -157,7 +157,7 @@ runners. Unit tests cannot substitute for those results.
 | F58b | `/queries/export` API and query-log link | Operations and UI | Implemented; filtered bounded download, API/privacy races, 20 UI cases and actual mounted DNS/history export pass |
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
-| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Operator activation, join-token, promotion and forwarding remain open; status grants no promotion eligibility |
+| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); join-token, join, promotion and forwarding remain open; status grants no promotion eligibility |
 | F60c | `integrations …` CLI | Store and HA | Active D291/D295/D298: reviewed API/CLI, standalone conformance and SQLite Tier-B clients/actions mount implemented; mounted TLS/router races, full provider races and scoped lint pass. Merged 180-operation contracts pass; hooks/record ownership, remaining driver/restart and final contract gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
@@ -1077,3 +1077,55 @@ The exact first-image follower listener regression is corrected (D344): all 21
 composed storage/root race entries and scoped lint pass without changed original
 fixtures or deadlines. The earlier HTTP/3 refusal did not reproduce; hosted
 final-source qualification and the other open items remain required.
+
+
+### F60b/G11 reviewed first-primary API and CLI, November 9
+
+D345 mounts complete enrollment review and first-primary activation on the
+authenticated nonstatic SQLite router and generated client. The operator must
+supply exact separately reviewed cluster/member/source/owner identities, local
+name/address and audit reason. Original publication capture precedes body input;
+a finite 30-second request, current raw proof, cluster.join and cookie CSRF
+protect the same transaction as membership, Primary authority and audit.
+Private identity creation is exclusive; an existing exact valid identity is
+retained, and missing/corrupt/permissive keys are never repaired.
+
+The dedicated CLI sends one request without redirects, replayable bodies,
+implicit review refresh or retry. The public receipt reports only actual commit
+and required restart. Unknown completion retains its distinct error and cannot
+be inferred as rollback. Join-token, join, promotion, outgoing acquisition,
+public forwarding, other typed domains and complete HA acceptance remain open.
+
+Initial focused races pass all 15 entries without failures/skips (77.782s wall),
+including actual-router CLI success, stale review, source/token revocation during
+body acquisition, cancellation, original deadline, identity refusal/retention
+and cookie CSRF. Generated OpenAPI/client dispatch is current. Additional audit
+rollback, one-shot client and composed storage/listener qualification follow; no
+release gate is closed by this scoped work. Evidence:
+.context/cluster-activation-20261109/.
+
+Composed default races pass all 73 entries across root commands, HTTP source
+ownership, enrollment persistence, API and client packages (132.353s wall),
+with no failures/skips and all frozen identities matched. This includes actual
+audit-trigger rollback after identity creation; current permission ordering;
+redirect/unknown-outcome refusal; original storage commit, unknown completion,
+physical restart and follower-install acceptance; and retained root listener
+restart with HTTP/1 and HTTP/2 member trust. OpenAPI and CLI reference drift
+checks pass. Source review corrected capability admission to follow declared
+permission checks; no earlier refused request was replayed.
+
+Final source keeps identity filesystem I/O outside Command: original published
+permission and exact dormant-source review precede file acquisition, and the
+transaction independently repeats current proof/source/owner admission. The
+corrected activation/CLI selection passes all 14 race entries (95.245s wall).
+The source-token zero/released/canceled checks separately pass both race entries.
+Final configured five-package lint passes with zero issues (46.505s), and all
+frozen identities including the protected dashboard artifact match. No original
+assertions, deadlines, benchmark thresholds or workload inputs changed.
+
+Hosted CI 42545168959 on predecessor 73d4b057 reports an actual QUIC data race
+in TestQUICSocketDNSAcrossMigration/doh3/sockets=1: ConnectionState reads the
+send-connection pointer/capabilities while switchToNewPath replaces it. The full
+failed shard log is retained under .context/hosted-release-73d4b057-20261109/.
+That source is not CI-qualified; the race is the next corrective work. The
+paired release measurement 42545184734 is still running, with no gate claim.

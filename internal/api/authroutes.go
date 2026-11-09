@@ -153,6 +153,12 @@ func withRateLimit(op huma.Operation) huma.Operation {
 // and authorized like any other, then the original request is handed to
 // the auth handler untouched.
 func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any) {
+	s.forwardWithCapability(op, p, reqExample, respExample, nil)
+}
+
+// forwardWithCapability checks concrete runtime availability only after the
+// declared authentication and permission middleware. It grants no authority.
+func (s *Server) forwardWithCapability(op huma.Operation, p perm, reqExample, respExample any, available func() error) {
 	reg := s.api.OpenAPI().Components.Schemas
 	if reqExample != nil {
 		op.RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
@@ -179,6 +185,11 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 		op.Parameters = append(op.Parameters, &huma.Param{Name: m[1], In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
 	}
 	serve := func(body []byte) (*huma.StreamResponse, error) {
+		if available != nil {
+			if err := available(); err != nil {
+				return nil, err
+			}
+		}
 		if s.opts.AuthHandler == nil {
 			return nil, errNotImplemented("authentication (no auth handler is configured)")
 		}

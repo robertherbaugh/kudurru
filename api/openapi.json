@@ -1,6 +1,56 @@
 {
   "components": {
     "schemas": {
+      "ActivateClusterCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "maxLength": 320,
+            "minLength": 1,
+            "type": "string"
+          },
+          "clusterID": {
+            "maxLength": 36,
+            "minLength": 36,
+            "type": "string"
+          },
+          "memberID": {
+            "maxLength": 36,
+            "minLength": 36,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 63,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ownerDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sourceDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "reason",
+          "clusterID",
+          "memberID",
+          "sourceDigest",
+          "ownerDigest"
+        ],
+        "type": "object"
+      },
       "Actor": {
         "additionalProperties": false,
         "properties": {
@@ -1361,6 +1411,70 @@
           "scope",
           "nodes",
           "partial"
+        ],
+        "type": "object"
+      },
+      "ClusterActivationReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "clusterID": {
+            "type": "string"
+          },
+          "committed": {
+            "type": "boolean"
+          },
+          "memberID": {
+            "type": "string"
+          },
+          "restartRequired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "committed",
+          "clusterID",
+          "memberID",
+          "restartRequired"
+        ],
+        "type": "object"
+      },
+      "ClusterEnrollmentInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "clusterID": {
+            "maxLength": 36,
+            "minLength": 36,
+            "type": "string"
+          },
+          "dormant": {
+            "type": "boolean"
+          },
+          "memberID": {
+            "maxLength": 36,
+            "minLength": 36,
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "ownerDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "sourceDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "dormant",
+          "clusterID",
+          "memberID",
+          "sourceDigest",
+          "ownerDigest"
         ],
         "type": "object"
       },
@@ -17575,6 +17689,210 @@
           }
         },
         "summary": "Store, leader and shape",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "cluster",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/cluster/activate": {
+      "post": {
+        "description": "Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.",
+        "operationId": "activateCluster",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateClusterCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterActivationReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Activate an explicitly reviewed standalone SQLite primary",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "cluster",
+          "scope": "cluster",
+          "verb": "join"
+        }
+      }
+    },
+    "/cluster/enrollment": {
+      "get": {
+        "description": "Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.",
+        "operationId": "getClusterEnrollment",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterEnrollmentInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Review the complete local enrollment source",
         "tags": [
           "cluster"
         ],

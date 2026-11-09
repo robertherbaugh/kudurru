@@ -71,10 +71,11 @@ func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
 	h.registerLocalUsers()
 	h.registerExternalUsers()
 	h.registerRoleBindings()
+	h.registerClusterEnrollment()
 	return h, nil
 }
 func (h *servingHTTP) Middleware(next http.Handler) http.Handler {
-	return h.requestAdmissionMiddleware(h.adapter.Middleware(next))
+	return h.clusterEnrollmentLifetime(h.requestAdmissionMiddleware(h.adapter.Middleware(next)))
 }
 func (h *servingHTTP) Handler() http.Handler       { return h.mux }
 func (h *servingHTTP) Authorizer() rbac.Authorizer { return h.adapter }

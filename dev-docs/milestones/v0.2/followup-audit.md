@@ -3222,3 +3222,55 @@ as substantial costs. It does not establish a safe concurrency replacement.
 Evidence: .context/cache-lookup-metadata-20261109/ and
 .context/cache-shard-isolation-20261109/. Original benchmark bodies, thresholds,
 baselines and the prior hosted cache/upstream failures remain unchanged.
+
+
+### F60b/G11 reviewed first-primary API and CLI, November 9
+
+D345 mounts complete enrollment review and first-primary activation on the
+authenticated nonstatic SQLite router and generated client. The operator must
+supply exact separately reviewed cluster/member/source/owner identities, local
+name/address and audit reason. Original publication capture precedes body input;
+a finite 30-second request, current raw proof, cluster.join and cookie CSRF
+protect the same transaction as membership, Primary authority and audit.
+Private identity creation is exclusive; an existing exact valid identity is
+retained, and missing/corrupt/permissive keys are never repaired.
+
+The dedicated CLI sends one request without redirects, replayable bodies,
+implicit review refresh or retry. The public receipt reports only actual commit
+and required restart. Unknown completion retains its distinct error and cannot
+be inferred as rollback. Join-token, join, promotion, outgoing acquisition,
+public forwarding, other typed domains and complete HA acceptance remain open.
+
+Initial focused races pass all 15 entries without failures/skips (77.782s wall),
+including actual-router CLI success, stale review, source/token revocation during
+body acquisition, cancellation, original deadline, identity refusal/retention
+and cookie CSRF. Generated OpenAPI/client dispatch is current. Additional audit
+rollback, one-shot client and composed storage/listener qualification follow; no
+release gate is closed by this scoped work. Evidence:
+.context/cluster-activation-20261109/.
+
+Composed default races pass all 73 entries across root commands, HTTP source
+ownership, enrollment persistence, API and client packages (132.353s wall),
+with no failures/skips and all frozen identities matched. This includes actual
+audit-trigger rollback after identity creation; current permission ordering;
+redirect/unknown-outcome refusal; original storage commit, unknown completion,
+physical restart and follower-install acceptance; and retained root listener
+restart with HTTP/1 and HTTP/2 member trust. OpenAPI and CLI reference drift
+checks pass. Source review corrected capability admission to follow declared
+permission checks; no earlier refused request was replayed.
+
+Final source keeps identity filesystem I/O outside Command: original published
+permission and exact dormant-source review precede file acquisition, and the
+transaction independently repeats current proof/source/owner admission. The
+corrected activation/CLI selection passes all 14 race entries (95.245s wall).
+The source-token zero/released/canceled checks separately pass both race entries.
+Final configured five-package lint passes with zero issues (46.505s), and all
+frozen identities including the protected dashboard artifact match. No original
+assertions, deadlines, benchmark thresholds or workload inputs changed.
+
+Hosted CI 42545168959 on predecessor 73d4b057 reports an actual QUIC data race
+in TestQUICSocketDNSAcrossMigration/doh3/sockets=1: ConnectionState reads the
+send-connection pointer/capabilities while switchToNewPath replaces it. The full
+failed shard log is retained under .context/hosted-release-73d4b057-20261109/.
+That source is not CI-qualified; the race is the next corrective work. The
+paired release measurement 42545184734 is still running, with no gate claim.
