@@ -1072,3 +1072,8 @@ pass; unchanged static lifecycle passes at four/eight scheduler threads, while
 the two-thread failure remains recorded. Hosted 5afee4cb CI fails first-image
 follower/pending-TSIG startup and one signed HTTP/3 exchange; these are current
 correction work, and no final-source gate is marked complete.
+
+The exact first-image follower listener regression is corrected (D344): all 21
+composed storage/root race entries and scoped lint pass without changed original
+fixtures or deadlines. The earlier HTTP/3 refusal did not reproduce; hosted
+final-source qualification and the other open items remain required.

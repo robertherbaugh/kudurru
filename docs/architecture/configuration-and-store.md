@@ -1521,7 +1521,12 @@ the startup config-provider manifest and joins old work before replacement.
 License and manager/catalog/key changes wake complete preparation. Native signed
 UPDATE, license replacement recovery, follower restart/promotion and joined
 shutdown are tested through this assembly. A newly enrolled follower remains
-running but unavailable while awaiting its first replica. The same runtime
+running but unavailable while awaiting its first replica.
+The internal listener recognizes only the exact enrollment migration sentinel
+with no installed generation or installation history on a read-only receiver.
+It keeps ordinary listeners running, without issuing member trust or creating
+identity files. Missing, malformed or previously initialized enrollment still
+fails startup; first activation of member routes requires restart. The same runtime
 publishes after a valid installation without initializing local owner roots;
 malformed installed owner inventories still fail startup. SQLite `serve.go` now
 mounts this assembly into the actual DNS and HTTP listeners. Readiness uses the

@@ -6339,3 +6339,21 @@ and pending-TSIG follower abort at member listener setup with invalid complete
 enrollment; a separate signed HTTP/3 restart exchange reports H3_INTERNAL_ERROR.
 Other jobs, including the second Go shard, pass. These are retained failures to
 correct, not evidence of final-source or release completion.
+
+
+### G21 pending follower listener correction, November 9
+
+D344 fixes the member-listener abort reproduced in hosted run42539324120.
+Only the exact migration sentinel with no installed generation/history on an
+Unenrolled/Follower receiver returns a distinct pending result. Root leaves
+member routes disabled; missing/corrupt/extra/previously installed histories
+remain errors. Original mounted tests and readiness bounds are unchanged.
+
+The new SQLite pending/corruption tests and existing first-image follower,
+pending-TSIG, four-phase six-transport encrypted restart, live member revocation
+and enrolled-listener restart cases pass 21 race entries with no skips/failures.
+Packages take 3.320s and 42.545s; compilation plus execution takes 142.110s.
+Configured command/SQLite lint passes with zero issues (66.158s); frozen source
+identities match. Evidence: .context/pending-member-listener-20261109/.
+The prior hosted HTTP/3 refusal remains recorded and did not reproduce in this
+composed run; no cause or final hosted qualification is inferred.

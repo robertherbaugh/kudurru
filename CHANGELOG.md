@@ -15,6 +15,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- SQLite followers awaiting their first image keep operational listeners alive
+  without activating member routes or inventing enrollment history.
+
 - Provider acquisition retains source changes that arrive during reconciliation
   and stops revalidating unchanged successful images on every retry tick.
 

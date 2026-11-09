@@ -10,6 +10,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/cluster/memberidentity"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
 const memberIdentityFile = "member-identity.json"
@@ -23,6 +24,11 @@ func (s *servingRuntime) prepareMemberListener(ctx context.Context, credentials 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	a, owner, err := s.opts.Store.ReadMemberEnrollment(ctx)
+	if errors.Is(err, sqlite.ErrMemberEnrollmentPending) {
+		// No complete enrollment exists yet. Keep ordinary pending-follower
+		// listeners operational without creating identity or member routes.
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
