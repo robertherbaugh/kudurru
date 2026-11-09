@@ -59,30 +59,6 @@ func (a *MemberAcquisition) Peer() enrollment.Member {
 	return a.original.peer
 }
 
-func (s *Store) lockMemberAcquisition(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if s.wmu.TryLock() {
-		return nil
-	}
-	tick := time.NewTicker(time.Millisecond)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-tick.C:
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if s.wmu.TryLock() {
-				return nil
-			}
-		}
-	}
-}
-
 // WithMemberAcquisition admits only an already enrolled nonwritable receiver
 // and its exact retained private-identity trust. The original context must
 // expire within 30 seconds BEFORE queueing. The callback must perform only one
@@ -106,7 +82,7 @@ func (s *Store) WithMemberAcquisition(ctx context.Context, local memberidentity.
 	if err := s.rejectAnchorReentry(ctx); err != nil {
 		return err
 	}
-	if err := s.lockMemberAcquisition(ctx); err != nil {
+	if err := s.lockWriterContext(ctx); err != nil {
 		return err
 	}
 	defer s.wmu.Unlock()

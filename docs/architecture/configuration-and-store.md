@@ -1844,3 +1844,9 @@ flowchart LR
     E --> F[Validate and install through original capture]
     F --> G[Publish complete serving bundle]
 ```
+
+
+Promotion also uses cancellation-aware Store lock admission. Its original
+finite authorization and installed-generation CAS remain unchanged, but a queued
+cancellation/deadline now returns without waiting for another member's network
+exchange to release the lock. No detached waiter remains able to promote later.

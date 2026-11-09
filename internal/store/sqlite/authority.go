@@ -414,7 +414,9 @@ func (s *Store) promote(ctx context.Context, req replication.PromoteRequest, che
 	if err := checkPromotion(ctx, check); err != nil {
 		return replication.Authority{}, err
 	}
-	s.wmu.Lock()
+	if err := s.lockWriterContext(ctx); err != nil {
+		return replication.Authority{}, err
+	}
 	defer s.wmu.Unlock()
 	if s.isClosed() {
 		return replication.Authority{}, store.ErrClosed

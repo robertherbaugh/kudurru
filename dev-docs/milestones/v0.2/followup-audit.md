@@ -3502,3 +3502,19 @@ release_qualified=false. Later source changes, final hosted checks, remaining
 features and external Windows/two-VM acceptance are not closed by it. Evidence:
 .context/hosted-release-9963dec2-20261109/paired-artifact/ and the independently
 verified paired-reviewed-summary.json / paired-reviewed-vectors.csv.
+
+
+### Promotion queue lifetime, November 9
+
+D352 corrects the next original-lifetime gap exposed by the actual enrolled
+acquisition mount: promotion could wait past its deadline behind a retained
+network exchange. The new actual-TLS/SQLite preimage test fails at the queue
+boundary; the correction reuses cancellation-aware writer-lock admission without
+changing authorization, installed-generation CAS, eligibility or final checks.
+Focused acquisition/promotion races pass seven entries, related SQLite/replica
+authority races pass 104, and the final deadline/cancel regression passes three.
+There are no failures/skips in those corrected runs. Scoped lint passes with zero
+issues (6.617s). The first lint's two unchecked cleanup-channel results were
+corrected with explicit cancellation assertions and requalified. Original failed
+preimage and lint evidence remain under .context/promotion-queue-20261109/.
+The operator promotion API/CLI and full HA acceptance remain open.
