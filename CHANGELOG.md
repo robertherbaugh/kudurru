@@ -25,6 +25,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Honor follower-pull cancellation while waiting behind another acquisition.
+
 - Avoid redundant startup image validation on SQLite nodes while retaining
   complete source checks, original readiness deadlines and final admission.
 

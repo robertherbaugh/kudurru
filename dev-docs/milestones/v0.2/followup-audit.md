@@ -3428,3 +3428,26 @@ for enrollment review, activation and join-token, now regenerated from the
 existing contract. Both API and CLI reference-drift tests pass (25.056s wall).
 The failed hosted log is retained. Final hosted checks and the failed fixed-runner performance
 comparison remain separate; no complete release qualification is claimed.
+
+
+### Follower acquisition queue correction, November 9
+
+D350 corrects an unbounded mutex wait after the follower pull had already
+established its finite lifetime. Cancellation-aware admission retains the same
+serialization through acquisition and installation, with no detached waiter or
+late source capture. A queued refusal does not rewrite the active pull's status.
+The new actual SQLite/held-source regression reproduces both canceled and expired
+waiters outwaiting their original lifetime on the preimage. With the correction,
+all 108 follower/replica default-race entries pass without failures/skips (31.059s
+wall); configured two-package lint passes with zero issues (7.216s). Source
+identities and the protected dashboard artifact match. Evidence:
+.context/follower-pull-admission-20261109/. The failed preimage remains preserved.
+Production enrolled acquisition, join/promotion/forwarding and full HA acceptance
+remain open.
+
+A separate ordinary blocking-evaluation frame extraction was withdrawn after one
+unchanged 14-leaf before/after diagnostic showed mixed results and worse target
+misses, despite a smaller frame. Exact original bytes were restored and verified;
+no production optimization or gate credit was retained. Evidence:
+.context/blocking-evaluate-frame-20261109/. Paired Ubicloud run 42554034011 is
+measuring 9963dec2 after the qualified cache correction; it has no outcome yet.

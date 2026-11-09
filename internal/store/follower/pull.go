@@ -59,6 +59,32 @@ func (p *Puller) remember(g replication.Generation, err error, contact bool) {
 	}
 }
 
+// Queued callers keep their original lifetime and never start a detached lock
+// waiter. The admitted pull retains exclusive acquisition through installation.
+func (p *Puller) lockPull(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p.pullMu.TryLock() {
+		return nil
+	}
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if p.pullMu.TryLock() {
+				return nil
+			}
+		}
+	}
+}
+
 // Pull fetches and installs one image after checking authority and image identity.
 func (p *Puller) Pull(ctx context.Context) (err error) {
 	if ctx == nil {
@@ -72,8 +98,13 @@ func (p *Puller) Pull(ctx context.Context) (err error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	p.pullMu.Lock()
+	if err := p.lockPull(ctx); err != nil {
+		return err
+	}
 	defer p.pullMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	defer func() {
 		if err != nil {
 			p.remember(replication.Generation{}, err, false)

@@ -1535,7 +1535,10 @@ config-provider manifest and joins old work before replacement.
 License and manager/catalog/key changes wake complete preparation. Native signed
 UPDATE, license replacement recovery, follower restart/promotion and joined
 shutdown are tested through this assembly. A newly enrolled follower remains
-running but unavailable while awaiting its first replica.
+running but unavailable while awaiting its first replica. Concurrent follower pulls retain their original
+finite context while waiting for serialized acquisition. Cancellation releases a
+queued caller before source or anchor acquisition and does not change the active
+pull's contact status; the admitted pull keeps exclusion through installation.
 The internal listener recognizes only the exact enrollment migration sentinel
 with no installed generation or installation history on a read-only receiver.
 It keeps ordinary listeners running, without issuing member trust or creating
