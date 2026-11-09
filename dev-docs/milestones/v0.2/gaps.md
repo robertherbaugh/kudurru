@@ -6357,3 +6357,19 @@ Configured command/SQLite lint passes with zero issues (66.158s); frozen source
 identities match. Evidence: .context/pending-member-listener-20261109/.
 The prior hosted HTTP/3 refusal remains recorded and did not reproduce in this
 composed run; no cause or final hosted qualification is inferred.
+
+
+### F21c/F63 retained cache diagnostics, November 9
+
+Two source experiments were archived and fully withdrawn. Deferring provenance
+copying passed 82 cache/stage race entries after correcting a new test's
+serialized-versus-monotonic clock comparison (initial 81 pass/one failure
+retained), but the unchanged original BenchmarkGet parallel-hit diagnostic was
+262.2 ns versus 223.4 ns before. Wider shard separation measured 288.0 ns. Both
+are single-process local observations with zero allocations, not fixed-class
+gates; no optimization is retained. A bounded original parallel-hit CPU profile
+shows shared reader-count atomics, shard locking and Prometheus counter updates
+as substantial costs. It does not establish a safe concurrency replacement.
+Evidence: .context/cache-lookup-metadata-20261109/ and
+.context/cache-shard-isolation-20261109/. Original benchmark bodies, thresholds,
+baselines and the prior hosted cache/upstream failures remain unchanged.
