@@ -827,6 +827,16 @@ upstream)`. Client identity and Policy are **not** in the key: blocking runs
 before the cache on the way in and inspects the answer again on the way out,
 so one cached answer can serve every client safely.
 
+Query lookups load immutable shard addressing, lock the selected shard, and
+confirm that exact descriptor is still installed. They avoid a shared reader
+counter on the normal path. Complete cache mutations suspend this admission;
+a racing lookup releases its shard before waiting at the publication lock and
+resamples time after the wait. Every completed mutation publishes a fresh
+descriptor identity, including flushes without a topology change. Resizing drains
+all old shard locks before moving entries and releases retired map capacity.
+Fills, dumps, inspections and invalidations keep their existing lock order,
+generation fencing, accounting and deadlines (D348).
+
 ### What the cache stage does with a query
 
 ```mermaid

@@ -91,19 +91,29 @@ type Cache struct {
 	// Resize takes it before publication, so a blocked dump never queues a
 	// publication writer that would stop new queries or current commands.
 	topology sync.RWMutex
-	// publication protects the shard topology and invalidation epoch. Acquire
-	// it before shard locks; insert and shard require it to be held.
+	// publication protects the shard topology and invalidation epoch for
+	// mutations and inspections. Acquire it before shard locks; insert and
+	// shard require it. Query lookup uses the descriptor checked by lockLookup.
 	publication sync.RWMutex
-	generation  atomic.Uint64
-	shards      []shard
-	mask        uint64
-	seed        maphash.Seed
-	staleTTL    atomic.Int64
-	threshold   atomic.Uint32
-	window      atomic.Int64
-	now         func() time.Time
-	m           *Metrics
-	flight      singleflight.Group
+	// lookup publishes immutable shard addressing for query readers. Writers
+	// suspend it before changing the complete cache view; racing lookups fall
+	// back to publication rather than joining its shared reader counter.
+	lookup     atomic.Pointer[lookupTopology]
+	generation atomic.Uint64
+	shards     []shard
+	mask       uint64
+	seed       maphash.Seed
+	staleTTL   atomic.Int64
+	threshold  atomic.Uint32
+	window     atomic.Int64
+	now        func() time.Time
+	m          *Metrics
+	flight     singleflight.Group
+}
+
+type lookupTopology struct {
+	shards []shard
+	mask   uint64
 }
 
 type entry struct {
@@ -188,6 +198,7 @@ func New(opts Options) *Cache {
 		c.shards[i].m = make(map[Key]*entry)
 		c.shards[i].capacity = shardCapacity(maxEntries, n, i)
 	}
+	c.lookup.Store(&lookupTopology{shards: c.shards, mask: c.mask})
 	return c
 }
 
@@ -232,8 +243,18 @@ func (c *Cache) Resize(maxEntries int) {
 	}
 	c.topology.Lock()
 	defer c.topology.Unlock()
-	c.publication.Lock()
-	defer c.publication.Unlock()
+	original := c.lockPublication()
+	defer c.unlockPublication()
+	// A fast lookup that entered before suspension may still hold an old
+	// shard. Drain those readers before moving any entry or changing capacity.
+	for i := range original.shards {
+		original.shards[i].mu.Lock()
+	}
+	defer func() {
+		for i := range original.shards {
+			original.shards[i].mu.Unlock()
+		}
+	}()
 	n := shardCount(maxEntries)
 	// Rebuild after a substantial shrink too, so retained map buckets follow
 	// the smaller bound even when the number of shards stays the same.
@@ -258,6 +279,8 @@ func (c *Cache) Resize(maxEntries int) {
 				c.trim(sh)
 				e = previous
 			}
+			// Waiting lookups retain only the old addressing, not its map capacity.
+			old[i].m = nil
 		}
 	}
 	for i := range c.shards {
@@ -283,6 +306,45 @@ func (c *Cache) shard(k Key) *shard {
 	return &c.shards[maphash.String(c.seed, string(k))&c.mask]
 }
 
+// lockPublication suspends fast lookup admission under the existing writer
+// gate. Other cache writers retain their publication -> shard lock order.
+func (c *Cache) lockPublication() *lookupTopology {
+	c.publication.Lock()
+	return c.lookup.Swap(nil)
+}
+
+func (c *Cache) unlockPublication() {
+	// Each publication gets a new identity, even without resharding. A
+	// delayed lookup must refresh its clock after flush/rebind as well.
+	c.lookup.Store(&lookupTopology{shards: c.shards, mask: c.mask})
+	c.publication.Unlock()
+}
+
+// lockLookup returns a locked current shard and the original lookup clock.
+// A descriptor is usable only after validation under its selected shard lock.
+// Resize drains all old shard locks before moving entries. Every complete-view
+// writer suspends fast admission; a racing lookup releases its shard before
+// taking publication, so it cannot invert the existing writer lock order.
+func (c *Cache) lockLookup(k Key) (*shard, int64) {
+	if topology := c.lookup.Load(); topology != nil {
+		now := c.nanos()
+		sh := &topology.shards[maphash.String(c.seed, string(k))&topology.mask]
+		sh.mu.Lock()
+		if c.lookup.Load() == topology {
+			return sh, now
+		}
+		sh.mu.Unlock()
+	}
+	c.publication.RLock()
+	// Refresh the clock after waiting for a complete publication, before
+	// acquiring the shard. The injected clock is never called under a shard.
+	now := c.nanos()
+	sh := c.shard(k)
+	sh.mu.Lock()
+	c.publication.RUnlock()
+	return sh, now
+}
+
 func (c *Cache) nanos() int64 { return c.now().UnixNano() }
 
 // Get looks k up for a query. Entries past their stale window are removed
@@ -292,12 +354,8 @@ func (c *Cache) nanos() int64 { return c.now().UnixNano() }
 // refresh makes it a miss). A fresh hit moves the entry to the front of the
 // LRU and feeds the prefetch accounting.
 func (c *Cache) Get(k Key) (l Lookup, ok bool) {
-	c.publication.RLock()
-	defer c.publication.RUnlock()
 	c.m.request()
-	now := c.nanos()
-	sh := c.shard(k)
-	sh.mu.Lock()
+	sh, now := c.lockLookup(k)
 	e := sh.m[k]
 	if e == nil {
 		sh.mu.Unlock()
@@ -504,8 +562,8 @@ func (c *Cache) MarkRefreshFailed(k Key, d time.Duration) {
 
 // Delete removes k.
 func (c *Cache) Delete(k Key) {
-	c.publication.Lock()
-	defer c.publication.Unlock()
+	c.lockPublication()
+	defer c.unlockPublication()
 	c.generation.Add(1)
 	sh := c.shard(k)
 	sh.mu.Lock()
@@ -527,8 +585,8 @@ func (c *Cache) Flush() {
 // FlushCount removes every entry and returns the number actually removed.
 // It fences earlier detached fills even when the cache is already empty.
 func (c *Cache) FlushCount() int {
-	c.publication.Lock()
-	defer c.publication.Unlock()
+	c.lockPublication()
+	defer c.unlockPublication()
 	c.generation.Add(1)
 	total := 0
 	for i := range c.shards {
@@ -568,8 +626,8 @@ func (c *Cache) FlushName(name string) int {
 		normalized = append(normalized, '.')
 	}
 	name = string(normalized)
-	c.publication.Lock()
-	defer c.publication.Unlock()
+	c.lockPublication()
+	defer c.unlockPublication()
 	c.generation.Add(1)
 	total := 0
 	for i := range c.shards {
@@ -596,8 +654,8 @@ func (c *Cache) FlushName(name string) int {
 // name, folded to lower case; "." matches every entry. It walks the whole
 // cache, so it is for rare operator actions such as deleting a zone.
 func (c *Cache) FlushZone(apex string) int {
-	c.publication.Lock()
-	defer c.publication.Unlock()
+	c.lockPublication()
+	defer c.unlockPublication()
 	c.generation.Add(1)
 	apex = strings.ToLower(apex)
 	if !strings.HasSuffix(apex, ".") {

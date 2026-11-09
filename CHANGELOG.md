@@ -25,6 +25,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Reduce lock contention for parallel response-cache hits while preserving
+  complete flushes, resizes, restored scopes and expiration checks.
+
 - DNS over QUIC and HTTP/3: synchronize connection state during path migration
   and capability reads when the sender disables UDP segmentation offload.
 

@@ -1225,3 +1225,26 @@ publication capture reporting generation pending, and a phase-1 signed HTTP/3
 restart exchange reporting H3_INTERNAL_ERROR. Full logs and terminal status are
 preserved under .context/hosted-release-73d4b057-20261109/. These require separate
 correction/qualification; this commit does not claim full CI or release success.
+
+
+### G23 cache reader admission correction, November 9
+
+D348 removes the shared publication-reader counter from ordinary cache Get.
+Per-shard locking validates exact immutable addressing; every complete mutation
+suspends lookup admission, and fallback resamples time after the full publication.
+Resizing drains old readers and releases retired maps. New concurrency tests
+cover delayed readers across resize/flush, expiry while held, and a deliberately
+partial two-shard flush. Original tests, workloads, limits and baselines remain.
+
+All 92 cache/persistence/stage race entries pass, followed by all 18 mounted
+DNS/flush/growth/HTTP-inspection/anchor entries; neither run fails or skips.
+One original BenchmarkGet process per source, GOMAXPROCS=6 and 1s per case,
+measures hit 844.5 to 762.8 ns, miss 174.6 to 154.8 ns and parallel hit 237.7 to
+164.8 ns (0.693310896x). Every case retains zero bytes/allocations per operation.
+This local diagnostic supports the correction but cannot close the failed fixed-
+runner gate. Configured lint follows. Evidence:
+.context/cache-reader-admission-20261109/. All prior measured failures remain.
+
+Final configured cache/stage lint passes with zero issues (5.217s). All frozen
+identities match; original benchmark/fixture/limit files and the protected
+dashboard artifact remain unchanged. Fixed-runner qualification remains open.

@@ -6,8 +6,8 @@ import "github.com/robertherbaugh/kudurru/internal/pipeline"
 // this process's publication epoch. Live old workers/entries are untouched.
 // Call once for each captured scope before its first lookup.
 func (c *Cache) RebindRestored(scope pipeline.CacheScope) {
-	c.publication.Lock()
-	defer c.publication.Unlock()
+	c.lockPublication()
+	defer c.unlockPublication()
 	var entries []*entry
 	for i := range c.shards {
 		sh := &c.shards[i]
