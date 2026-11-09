@@ -1510,8 +1510,13 @@ SQLite publication, concurrent owner changes, missing list bodies, rollback,
 retirement, restart, replica installation, promotion and native UDP/TCP listeners.
 The root SQLite assembly now connects providerhost, coordinator, complete
 publication, current command pins, primary driver and status projection. Its
-always-on workers perform acquisition and publication on every role; a separate
-writer entry retains the original elector token, resets provider floors, reconciles
+always-on workers perform acquisition and publication on every role. Provider
+acquisition subscribes to source, authority and host changes before reading and
+retains those subscriptions through the next wait, including changes during
+resource release. Successful reconciliation waits for those notifications,
+resource changes or the original host deadline; only failed attempts use the
+bounded retry timer. Complete-image validation and final token checks still run
+on every reconciliation. A separate writer entry retains the original elector token, resets provider floors, reconciles
 the startup config-provider manifest and joins old work before replacement.
 License and manager/catalog/key changes wake complete preparation. Native signed
 UPDATE, license replacement recovery, follower restart/promotion and joined

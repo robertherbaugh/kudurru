@@ -1065,3 +1065,10 @@ recorded; local annotations explain the intentionally insecure temporary key
 mode and byte-only fixture reads. Assertions, production behavior and original
 bounds are unchanged. Final source04 identities and protected dashboard bytes
 match. No new claim closes the reproduced static startup or release gates.
+
+Provider acquisition now preserves notifications across reconciliation and waits
+for actual changes after success (D343). All 73 coordinator races and scoped lint
+pass; unchanged static lifecycle passes at four/eight scheduler threads, while
+the two-thread failure remains recorded. Hosted 5afee4cb CI fails first-image
+follower/pending-TSIG startup and one signed HTTP/3 exchange; these are current
+correction work, and no final-source gate is marked complete.

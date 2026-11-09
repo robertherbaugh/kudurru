@@ -6310,3 +6310,32 @@ recorded; local annotations explain the intentionally insecure temporary key
 mode and byte-only fixture reads. Assertions, production behavior and original
 bounds are unchanged. Final source04 identities and protected dashboard bytes
 match. No new claim closes the reproduced static startup or release gates.
+
+
+### G21/F65 provider acquisition scheduling, November 9
+
+D343 corrects a lost-notification window after successful reconciliation and
+removes periodic full-image validation after success. Subscriptions precede
+reads and survive host release; original host deadlines and bounded error
+retries remain. Complete validators, Store barriers and command admission are
+unchanged. The original implementation fails the new idle-poll and held-release
+regression assertions. The final minimal source passes all 73 coordinator race
+entries (65.843s package / 70.152s wall) and configured lint with zero issues
+(8.829s). The new tests' initial cleanup failures remain in the receipts; cleanup
+now joins under an independent bounded context.
+
+The unchanged static-twin lifecycle test passes once with GOMAXPROCS=8
+(50.507s package) and once with GOMAXPROCS=4 (52.540s, matching ordinary CI's
+four cores). Its original per-node 20-second readiness bounds are unchanged.
+The earlier GOMAXPROCS=2 failure remains open. Successful race tests at other
+processor counts are not a performance-gate waiver. Experimental planning
+caches, schema memoization and canonical-JSON refinements did not resolve that
+failure and were archived and removed before final qualification. No such
+optimization is included. Exact frozen source and all results are retained in
+.context/static-startup-20261109/.
+
+Hosted CI 42539324120 on predecessor 5afee4cb is FAIL. The first-image follower
+and pending-TSIG follower abort at member listener setup with invalid complete
+enrollment; a separate signed HTTP/3 restart exchange reports H3_INTERNAL_ERROR.
+Other jobs, including the second Go shard, pass. These are retained failures to
+correct, not evidence of final-source or release completion.

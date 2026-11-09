@@ -137,10 +137,10 @@ func (c *Coordinator) Run(ctx context.Context) (runErr error) {
 	resourceChanges := c.opts.Resources.Changes()
 	timer := time.NewTimer(0)
 	defer timer.Stop()
+	generation := c.opts.Store.GenerationChanges()
+	authority := c.opts.Store.AuthorityChanges()
+	host := c.opts.HostChanges()
 	for {
-		generation := c.opts.Store.GenerationChanges()
-		authority := c.opts.Store.AuthorityChanges()
-		host := c.opts.HostChanges()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -154,6 +154,12 @@ func (c *Coordinator) Run(ctx context.Context) (runErr error) {
 			c.signal()
 		case <-timer.C:
 		}
+		// Subscribe BEFORE reading and retain these subscriptions through the
+		// next wait. A change during reconciliation must not disappear between
+		// its final token check and the next subscription.
+		generation = c.opts.Store.GenerationChanges()
+		authority = c.opts.Store.AuthorityChanges()
+		host = c.opts.HostChanges()
 		opctx, finish := context.WithTimeout(ctx, c.opts.OperationTimeout)
 		deadline, e := c.reconcile(opctx)
 		finish()
@@ -166,7 +172,15 @@ func (c *Coordinator) Run(ctx context.Context) (runErr error) {
 			default:
 			}
 		}
-		timer.Reset(deadlineDelay(c.opts.Now(), deadline, c.opts.RetryInterval))
+		switch {
+		case e != nil:
+			timer.Reset(deadlineDelay(c.opts.Now(), deadline, c.opts.RetryInterval))
+		case !deadline.IsZero():
+			timer.Reset(max(deadline.Sub(c.opts.Now()), 0))
+		}
+		// Successful unbounded host policy needs only source, authority, host
+		// or resource notifications. Revalidating the whole unchanged image on
+		// every retry tick competes with actual startup and publication work.
 	}
 }
 

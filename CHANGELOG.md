@@ -15,6 +15,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Provider acquisition retains source changes that arrive during reconciliation
+  and stops revalidating unchanged successful images on every retry tick.
+
 - Cluster failover: a verified primary that aborts HTTP remains authenticated
   contact, so response refusal cannot create a missed-pull promotion window.
 

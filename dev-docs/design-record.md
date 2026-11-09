@@ -1990,3 +1990,5 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 | **Rollup** | Pre-aggregated query-log tables (`rollup_1m/_1h/_1d` and per-client/qtype/upstream/domain/list/zone variants) that power dashboards without scanning facts. |
 | **Scatter-gather** | Cluster-scope API calls fan out to every node's `/internal/*` with a 2 s timeout and merge results (`partial: true` on failure). |
 | **Seam** | An interface or schema field that exists in v0.1 so a deferred feature can be added without a rewrite (§13.1). |
+
+| D343 | Provider acquisition wake ownership | Subscribe before reconciliation and retain the same source/authority/host notifications through the next wait. After success, wait for changes or the original host deadline; retain bounded retry on failure. | Resubscribing after release loses changes, while retrying unchanged successful images wastes complete-validation work. | Memoized authority or skipped validators; renewed host deadlines; claiming lower-core startup or release performance qualification from this scheduler fix |
