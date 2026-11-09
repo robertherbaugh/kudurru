@@ -364,6 +364,27 @@ Review the local SQLite enrollment source.
 kudurru cluster enrollment
 ```
 
+### kudurru cluster join-token
+
+Issue one invitation for a target member from a separately reviewed primary. Supply all four identity fields from cluster enrollment, the target name and internal host:port, an absolute RFC3339 expiry (within ten minutes), and an audit reason. The response contains a bearer secret: transfer it privately to the intended member. Only its hash is retained by the primary. This command never refreshes, redirects or retries; a lost or unknown response does not prove rollback. Do not replay it.
+
+```text
+kudurru cluster join-token [flags]
+```
+
+Flags:
+
+```text
+      --address string         Target internal member host:port
+      --cluster-id string      Exact reviewed clusterID
+      --expires-at string      Original absolute invitation expiry (RFC3339, at most ten minutes)
+      --member-id string       Exact reviewed primary memberID
+      --name string            Target member name
+      --owner-digest string    Exact reviewed ownerDigest
+      --reason string          Audit reason for issuing the invitation
+      --source-digest string   Exact reviewed sourceDigest
+```
+
 ### kudurru cluster status
 
 Read the connected node's store driver, epoch, reported leader, member count and read-only mode. Static twins each report their own local leader and store identity. This observation does not establish quorum, peer health or permission to promote a node. Use kudurru nodes for individual node readiness.

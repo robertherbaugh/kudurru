@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 )
 
 // ClusterEnrollmentReview is an explicit observation for operator review. Its
@@ -38,6 +39,25 @@ type ClusterActivationReceipt struct {
 	RestartRequired bool   `json:"restartRequired"`
 }
 
+// ClusterJoinTokenCommand retains an absolute invitation expiry. The server
+// never renews it after body acquisition, a refusal, or a lost response.
+type ClusterJoinTokenCommand struct {
+	ClusterEnrollmentReview
+	Name      string    `json:"name" minLength:"1" maxLength:"63"`
+	Address   string    `json:"address" minLength:"1" maxLength:"320"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Reason    string    `json:"reason" minLength:"1" maxLength:"512"`
+}
+
+// ClusterJoinTokenReceipt contains a bearer secret intentionally exported only
+// under the original command's confirmed completion and bounded output scope.
+// It must not be logged, placed in a URL or stored as unsealed response dedup.
+type ClusterJoinTokenReceipt struct {
+	Committed  bool      `json:"committed"`
+	Invitation string    `json:"invitation"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+}
+
 // ClusterEnrollmentRuntime excludes legacy, central and Kubernetes fallbacks.
 type ClusterEnrollmentRuntime interface{ ClusterEnrollmentAvailable() bool }
 
@@ -48,9 +68,14 @@ func (s *Server) registerClusterEnrollment() {
 	}{
 		{http.MethodGet, "/cluster/enrollment", "getClusterEnrollment", "Review the complete local enrollment source", "read", nil, ClusterEnrollmentInfo{}},
 		{http.MethodPost, "/cluster/activate", "activateCluster", "Activate an explicitly reviewed standalone SQLite primary", "join", ActivateClusterCommand{}, ClusterActivationReceipt{}},
+		{http.MethodPost, "/cluster/join-token", "issueClusterJoinToken", "Issue an invitation from an explicitly reviewed primary", "join", ClusterJoinTokenCommand{}, ClusterJoinTokenReceipt{}},
 	} {
 		op := operation(route.method, route.path, route.id, route.summary, "cluster")
 		op.Description = "Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision."
+		if route.path == "/cluster/join-token" {
+			op.BodyReadTimeout = 30 * time.Second // root clamps this to the earlier original bound
+			op.Description = "Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member."
+		}
 		available := func() error {
 			runtime, ok := s.opts.CanonicalSettings.(ClusterEnrollmentRuntime)
 			if s.staticMode() || !ok || !runtime.ClusterEnrollmentAvailable() || s.opts.AuthHandler == nil {

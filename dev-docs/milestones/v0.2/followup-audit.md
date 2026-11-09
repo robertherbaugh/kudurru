@@ -3328,3 +3328,45 @@ Both that earlier failure and these measured failures remain preserved. Release
 performance is NOT qualified; no rerun or baseline relaxation closes it. Evidence:
 .context/hosted-release-73d4b057-20261109/paired-reviewed-summary.json and
 paired-reviewed-vectors.csv, with the complete original artifact alongside.
+
+
+### F60b/G11 reviewed invitation issuance, November 9
+
+D347 mounts `cluster join-token` and POST /cluster/join-token on the complete
+enrolled Primary runtime. Exact separately reviewed identities, target intent,
+absolute expiry, current cluster.join and cookie CSRF protect one command. A
+Store-issued request is captured before body acquisition; real SQL completion
+issues the only output scope while publisher/resource/host/writer pins remain
+held. Secret output is deadline-bound and explicitly flushed before releasing
+those pins. Only its hash and attributed audit persist. Unknown completion and
+committed-but-unavailable output remain distinct, with no redirect or replay.
+
+Initial composed races pass 40 entries across Store, coordinator, root router,
+API and client. The final generated-contract/router/client selection passes
+242 entries with zero failures/skips, including actual HTTP/1 and HTTP/2, CLI,
+source interposition during body acquisition, invalid/reviewed expiry, cookie
+CSRF, actual audit-trigger rollback, output-flush failure after commit, and an
+incomplete real HTTP body bounded by its original 150ms request. The Store
+selection includes actual SQLite 1811 rollback and 787 unknown completion,
+no-op/write receipt separation, cancellation and one-use copied handles.
+
+OpenAPI and generated dispatch now contain 188 operations; CLI reference
+generation passes. Evidence: .context/operator-command-output-20261109/. Broader
+Store/coordinator regression and configured lint follow. Joining, promotion,
+outgoing acquisition/forwarding, driver/AD work and release gates remain open.
+
+Final full SQLite default-race qualification passes 709 entries with zero
+failures/skips (551.572s wall). Coordinator regression separately passes all
+74 entries. The preceding combined command's 240-second SQLite package timeout
+is retained: 573 SQLite passes plus 74 coordinator passes, with no assertion
+failure before timeout. The successful rerun used a 10-minute package bound;
+no fixture deadlines or workloads changed. Configured five-package lint passes
+with zero issues (77.781s); frozen source and protected dashboard identities match.
+
+Hosted predecessor CI 42545168959 completed with both Go shards failing.
+Besides the reproduced QUIC race corrected by D346, shard 1 retains recovered-
+anchor startup failure with an adjacent ops-port bind collision, an anchor
+publication capture reporting generation pending, and a phase-1 signed HTTP/3
+restart exchange reporting H3_INTERNAL_ERROR. Full logs and terminal status are
+preserved under .context/hosted-release-73d4b057-20261109/. These require separate
+correction/qualification; this commit does not claim full CI or release success.

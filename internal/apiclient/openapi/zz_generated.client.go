@@ -2658,6 +2658,25 @@ type ClusterInfo struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// ClusterJoinTokenCommand defines model for ClusterJoinTokenCommand.
+type ClusterJoinTokenCommand struct {
+	Address      string    `json:"address"`
+	ClusterID    string    `json:"clusterID"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+	MemberID     string    `json:"memberID"`
+	Name         string    `json:"name"`
+	OwnerDigest  string    `json:"ownerDigest"`
+	Reason       string    `json:"reason"`
+	SourceDigest string    `json:"sourceDigest"`
+}
+
+// ClusterJoinTokenReceipt defines model for ClusterJoinTokenReceipt.
+type ClusterJoinTokenReceipt struct {
+	Committed  bool      `json:"committed"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	Invitation string    `json:"invitation"`
+}
+
 // Condition defines model for Condition.
 type Condition struct {
 	LastTransitionTime time.Time `json:"lastTransitionTime"`
@@ -6530,6 +6549,9 @@ type BatchDeleteClientgroupsJSONRequestBody = BatchDeleteInputBody
 // ActivateClusterJSONRequestBody defines body for ActivateCluster for application/json ContentType.
 type ActivateClusterJSONRequestBody = ActivateClusterCommand
 
+// IssueClusterJoinTokenJSONRequestBody defines body for IssueClusterJoinToken for application/json ContentType.
+type IssueClusterJoinTokenJSONRequestBody = ClusterJoinTokenCommand
+
 // CreateDenylistEntriesJSONRequestBody defines body for CreateDenylistEntries for application/json ContentType.
 type CreateDenylistEntriesJSONRequestBody = DomainEntriesCreate
 
@@ -7319,6 +7341,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /cluster/enrollment (the `GetClusterEnrollment` operationId).
 	GetClusterEnrollment(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueClusterJoinTokenWithBody Issue an invitation from an explicitly reviewed primary
+	//
+	// Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
+	IssueClusterJoinTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueClusterJoinToken Issue an invitation from an explicitly reviewed primary
+	//
+	// Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
+	IssueClusterJoinToken(ctx context.Context, body IssueClusterJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDenylist List Denylist entries
 	//
@@ -9900,6 +9940,44 @@ func (c *Client) ActivateCluster(ctx context.Context, body ActivateClusterJSONRe
 // Corresponds with GET /cluster/enrollment (the `GetClusterEnrollment` operationId).
 func (c *Client) GetClusterEnrollment(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetClusterEnrollmentRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// IssueClusterJoinTokenWithBody Issue an invitation from an explicitly reviewed primary
+//
+// Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
+func (c *Client) IssueClusterJoinTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueClusterJoinTokenRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// IssueClusterJoinToken Issue an invitation from an explicitly reviewed primary
+//
+// Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
+func (c *Client) IssueClusterJoinToken(ctx context.Context, body IssueClusterJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueClusterJoinTokenRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -16015,6 +16093,46 @@ func NewGetClusterEnrollmentRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewIssueClusterJoinTokenRequest calls the generic IssueClusterJoinToken builder with application/json body
+func NewIssueClusterJoinTokenRequest(server string, body IssueClusterJoinTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewIssueClusterJoinTokenRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewIssueClusterJoinTokenRequestWithBody constructs an http.Request for the IssueClusterJoinToken method, with any body, and a specified content type
+func NewIssueClusterJoinTokenRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/cluster/join-token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -23753,6 +23871,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /cluster/enrollment (the `GetClusterEnrollment` operationId).
 	GetClusterEnrollmentWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterEnrollmentResponse, error)
 
+	// IssueClusterJoinTokenWithBodyWithResponse Issue an invitation from an explicitly reviewed primary
+	//
+	// Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
+	IssueClusterJoinTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueClusterJoinTokenResponse, error)
+
+	// IssueClusterJoinTokenWithResponse Issue an invitation from an explicitly reviewed primary
+	//
+	// Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
+	IssueClusterJoinTokenWithResponse(ctx context.Context, body IssueClusterJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueClusterJoinTokenResponse, error)
+
 	// ListDenylistWithResponse List Denylist entries
 	//
 	// Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
@@ -30841,6 +30977,103 @@ func (r GetClusterEnrollmentResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetClusterEnrollmentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type IssueClusterJoinTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ClusterJoinTokenReceipt
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON200() *ClusterJoinTokenReceipt {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r IssueClusterJoinTokenResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r IssueClusterJoinTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r IssueClusterJoinTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r IssueClusterJoinTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r IssueClusterJoinTokenResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -43825,6 +44058,36 @@ func (c *ClientWithResponses) GetClusterEnrollmentWithResponse(ctx context.Conte
 	return ParseGetClusterEnrollmentResponse(rsp)
 }
 
+// IssueClusterJoinTokenWithBodyWithResponse Issue an invitation from an explicitly reviewed primary
+//
+// Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
+func (c *ClientWithResponses) IssueClusterJoinTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueClusterJoinTokenResponse, error) {
+	rsp, err := c.IssueClusterJoinTokenWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueClusterJoinTokenResponse(rsp)
+}
+
+// IssueClusterJoinTokenWithResponse Issue an invitation from an explicitly reviewed primary
+//
+// Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
+func (c *ClientWithResponses) IssueClusterJoinTokenWithResponse(ctx context.Context, body IssueClusterJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueClusterJoinTokenResponse, error) {
+	rsp, err := c.IssueClusterJoinToken(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueClusterJoinTokenResponse(rsp)
+}
+
 // ListDenylistWithResponse List Denylist entries
 //
 // Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
@@ -51195,6 +51458,88 @@ func ParseGetClusterEnrollmentResponse(rsp *http.Response) (*GetClusterEnrollmen
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseIssueClusterJoinTokenResponse parses an HTTP response from a IssueClusterJoinTokenWithResponse call
+func ParseIssueClusterJoinTokenResponse(rsp *http.Response) (*IssueClusterJoinTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &IssueClusterJoinTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ClusterJoinTokenReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

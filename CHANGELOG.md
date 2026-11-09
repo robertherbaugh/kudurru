@@ -8,6 +8,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- `cluster join-token` issues a reviewed, expiring member invitation through the
+  authenticated SQLite API, with atomic audit and a bounded secret response
+  emitted only after confirmed commit.
+
 - `cluster enrollment` and reviewed `cluster activate` initialize the first
   SQLite HA primary through the authenticated API, with atomic audit and an
   explicit restart-required receipt.

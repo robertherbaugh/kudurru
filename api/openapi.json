@@ -1521,6 +1521,82 @@
         ],
         "type": "object"
       },
+      "ClusterJoinTokenCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "maxLength": 320,
+            "minLength": 1,
+            "type": "string"
+          },
+          "clusterID": {
+            "maxLength": 36,
+            "minLength": 36,
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "memberID": {
+            "maxLength": 36,
+            "minLength": 36,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 63,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ownerDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sourceDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "expiresAt",
+          "reason",
+          "clusterID",
+          "memberID",
+          "sourceDigest",
+          "ownerDigest"
+        ],
+        "type": "object"
+      },
+      "ClusterJoinTokenReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "committed": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "invitation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "committed",
+          "invitation",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "Condition": {
         "additionalProperties": false,
         "properties": {
@@ -17900,6 +17976,123 @@
           "resource": "cluster",
           "scope": "cluster",
           "verb": "read"
+        }
+      }
+    },
+    "/cluster/join-token": {
+      "post": {
+        "description": "Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.",
+        "operationId": "issueClusterJoinToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterJoinTokenCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterJoinTokenReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Issue an invitation from an explicitly reviewed primary",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "cluster",
+          "scope": "cluster",
+          "verb": "join"
         }
       }
     },

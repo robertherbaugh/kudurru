@@ -46,7 +46,15 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	if err != nil {
 		return err
 	}
-	if member, ok := ctx.Value(memberRequestKey{}).(*memberRequest); ok {
+	output, _ := ctx.Value(commandOutputKey{}).(*commandOutputInvocation)
+	if output != nil {
+		if output.request == nil || output.request.s != s || output.emit == nil || output.request.state.Load() != commandOutputActive || ctx.Value(memberRequestKey{}) != nil || anchor != nil {
+			return replication.ErrInvalid
+		}
+		if err := output.request.lock(ctx); err != nil {
+			return err
+		}
+	} else if member, ok := ctx.Value(memberRequestKey{}).(*memberRequest); ok {
 		if member == nil || member.s != s || member.state.Load() != memberActive {
 			return replication.ErrInvalid
 		}
@@ -104,6 +112,9 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 				}
 			}
 		}
+		if output != nil {
+			output.finish(ctx, succeeded, sqlBoundary, &result)
+		}
 	}()
 	a, err := s.checkWriter(ctx, tx)
 	if err != nil {
@@ -111,6 +122,14 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	}
 	if !a.Term.Same(expected) {
 		return replication.ErrCAS
+	}
+	if output != nil {
+		if err := output.request.check(); err != nil {
+			return err
+		}
+		if !output.request.token.Matches(a) {
+			return replication.ErrCAS
+		}
 	}
 	t = &CommandTx{s: s, tx: tx, q: cachedTx{tx: tx, c: s.ws}, authority: a, anchor: anchor}
 	if anchor != nil {
@@ -121,6 +140,11 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	t.active.Store(true)
 	defer t.active.Store(false)
 	ctx = context.WithValue(ctx, commandTxKey{}, t)
+	if output != nil {
+		if err := t.RequireCommitCheck(func(context.Context) error { return output.request.check() }); err != nil {
+			return err
+		}
+	}
 	if member, ok := ctx.Value(memberRequestKey{}).(*memberRequest); ok {
 		t.member = member
 		if err := t.enterMember(ctx); err != nil {

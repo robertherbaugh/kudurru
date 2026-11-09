@@ -836,8 +836,9 @@ flowchart LR
     V --> A["Original membership and domain authorization<br/>required through final effects"]
 ```
 
-The root listener below mounts retained enrolled identities. Operator join,
-join-token routes and outgoing forwarding assembly remain unfinished. Connection pools must be
+The root listener below mounts retained enrolled identities. Reviewed operator
+join-token issuance is mounted below; joining and outgoing forwarding remain
+unfinished. Connection pools must be
 scoped to the exact original enrolled trust, never reused for a successor CA.
 
 `internal/cluster/enrollment` supplies the immutable owner and bounded wire
@@ -1720,8 +1721,8 @@ readiness or publication acknowledgment. Restart mounts the retained listener.
 A canceled/lost response or `completion_unknown` cannot establish rollback;
 inspect retained enrollment (after restart if the old writer is fenced) before
 a new operator decision. The dedicated client disables redirects and replayable
-bodies and sends no implicit review read or retry. Join invitations, joining,
-promotion and outgoing replication remain separate operator/runtime work.
+bodies and sends no implicit review read or retry. Invitation issuance is mounted
+below; joining, promotion and outgoing replication remain separate runtime work.
 
 ```mermaid
 sequenceDiagram
@@ -1732,9 +1733,48 @@ sequenceDiagram
     Operator->>API: GET /cluster/enrollment
     API-->>Operator: Original source and owner identities
     Operator->>API: POST /cluster/activate with exact reviewed identities
+    API->>Disk: After original review, create or load exact local identity
     API->>Command: Original HTTP source, lifetime and raw proof
-    Command->>Command: Current permission, dormant owner and source checks
-    Command->>Disk: Create exclusively or load exact local identity
+    Command->>Command: Repeat current permission, dormant owner and source checks
     Command->>Disk: Atomic membership, Primary authority and audit commit
     API-->>Operator: Committed; restart required
 ```
+
+
+### Reviewed invitation issuance and command output
+
+`cluster join-token` sends one `POST /cluster/join-token` with the four exact
+identities from a separate enrollment review, target name/address, absolute
+RFC3339 expiry (at most ten minutes) and audit reason. Only an enrolled SQLite
+Primary may issue. The original 30-second bound precedes lease/proof acquisition;
+inside that lease, root checks `cluster.join` and cookie CSRF and captures a
+Store-issued `CommandOutputRequest` before Huma reads any body bytes. A transport
+wrapper clamps body-deadline resets to that earlier original bound and interrupts
+canceled reads. It refuses unsupported deadline controls before mutation.
+
+The actual command retains publisher -> provider resource -> host -> Store
+exclusion, verifies the original raw credential against current state, and
+checks the exact original source and reviewed complete enrollment owner. It
+stages only the invitation hash and attributed audit in one transaction. The
+invitation's explicit secret export remains private until actual SQL completion.
+A domain proposal, caller-supplied outcome, successful callback or ambiguous
+driver completion cannot create an output receipt. Copies share one use.
+
+After confirmed commit (or a confirmed generic command no-op), the Store finalizer
+retains its existing writer lock and issues one authenticated output context.
+The coordinator retains all outer exclusions through emission. Root shortens
+output to the original credential, invitation and issuer-CA expirations, installs
+the real transport deadline, writes headers/body, and explicitly flushes within
+that same scope. Cancellation callbacks are joined before locks release. Output
+callbacks cannot call Store, acquire dependency locks or escape asynchronously.
+
+A failed output preserves actual commit independently. Before output starts,
+`committed_output_unavailable` reports that the hash committed without a usable
+secret response. After any output starts, failure aborts the HTTP handler so no
+error response or deferred flush follows outside the scope. Unknown SQL completion
+remains `completion_unknown`; neither error permits replay. The dedicated client
+disables redirects, replayable bodies and retries. The receipt is a bearer secret
+for private delivery, never a log entry or unsealed response-dedup record.
+
+This mounts invitation issuance, not remote joining, promotion, outgoing image
+acquisition or partition/rejoin acceptance. Member TLS routes remain separate.

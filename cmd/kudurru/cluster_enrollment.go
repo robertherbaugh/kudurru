@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/spf13/cobra"
@@ -55,4 +56,45 @@ unknown response does not prove rollback: inspect enrollment before a new decisi
 	activate.Flags().StringVar(&in.Address, "address", "", "Reachable internal member host:port")
 	activate.Flags().StringVar(&in.Reason, "reason", "", "Audit reason for activating HA")
 	root.AddCommand(activate)
+	addClusterJoinTokenCommand(root, o)
+}
+
+func addClusterJoinTokenCommand(root *cobra.Command, o *cliOpts) {
+	var in api.ClusterJoinTokenCommand
+	var expires string
+	command := &cobra.Command{Use: "join-token", Short: "Issue an invitation from an explicitly reviewed primary", Args: cobra.NoArgs,
+		Long: `Issue one invitation for a target member from a separately reviewed primary.
+Supply all four identity fields from cluster enrollment, the target name and internal
+host:port, an absolute RFC3339 expiry (within ten minutes), and an audit reason.
+The response contains a bearer secret: transfer it privately to the intended member.
+Only its hash is retained by the primary. This command never refreshes, redirects or
+retries; a lost or unknown response does not prove rollback. Do not replay it.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := o.format(); err != nil {
+				return err
+			}
+			var err error
+			in.ExpiresAt, err = time.Parse(time.RFC3339, expires)
+			if err != nil || !validClusterReview(in.ClusterEnrollmentReview) || in.Name == "" || in.Address == "" || in.Reason == "" {
+				return errors.New("all four reviewed identity flags, --name, --address, --expires-at (RFC3339) and --reason are required")
+			}
+			c, _, err := o.client()
+			if err != nil {
+				return err
+			}
+			var out api.ClusterJoinTokenReceipt
+			if err := c.IssueClusterJoinToken(cmd.Context(), in, &out); err != nil {
+				return err
+			}
+			return o.render(cmd, out, nil)
+		}}
+	command.Flags().StringVar(&in.ClusterID, "cluster-id", "", "Exact reviewed clusterID")
+	command.Flags().StringVar(&in.MemberID, "member-id", "", "Exact reviewed primary memberID")
+	command.Flags().StringVar(&in.SourceDigest, "source-digest", "", "Exact reviewed sourceDigest")
+	command.Flags().StringVar(&in.OwnerDigest, "owner-digest", "", "Exact reviewed ownerDigest")
+	command.Flags().StringVar(&in.Name, "name", "", "Target member name")
+	command.Flags().StringVar(&in.Address, "address", "", "Target internal member host:port")
+	command.Flags().StringVar(&expires, "expires-at", "", "Original absolute invitation expiry (RFC3339, at most ten minutes)")
+	command.Flags().StringVar(&in.Reason, "reason", "", "Audit reason for issuing the invitation")
+	root.AddCommand(command)
 }

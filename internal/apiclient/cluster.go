@@ -11,3 +11,9 @@ import (
 func (c *Client) ActivateCluster(ctx context.Context, in, out any) error {
 	return c.do(ctx, http.MethodPost, "/cluster/activate", nil, in, out, true)
 }
+
+// IssueClusterJoinToken sends one reviewed invitation request without redirects,
+// replayable bodies, automatic source refresh or retries after ambiguous output.
+func (c *Client) IssueClusterJoinToken(ctx context.Context, in, out any) error {
+	return c.do(ctx, http.MethodPost, "/cluster/join-token", nil, in, out, true)
+}
