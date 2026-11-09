@@ -331,6 +331,7 @@ func (c *Cache) lockLookup(k Key) (*shard, int64) {
 		sh := &topology.shards[maphash.String(c.seed, string(k))&topology.mask]
 		sh.mu.Lock()
 		if c.lookup.Load() == topology {
+			// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- ownership transfers to Get, the sole caller, which unlocks every hit/miss/stale branch
 			return sh, now
 		}
 		sh.mu.Unlock()
@@ -342,6 +343,7 @@ func (c *Cache) lockLookup(k Key) (*shard, int64) {
 	sh := c.shard(k)
 	sh.mu.Lock()
 	c.publication.RUnlock()
+	// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- ownership transfers to Get, the sole caller, which unlocks every hit/miss/stale branch
 	return sh, now
 }
 
