@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -81,9 +83,16 @@ type recursiveRootSeal struct {
 
 func (s *recursiveRootSeal) current() bool {
 	if s == nil || s.dependencyCurrent == nil || !s.dependencyCurrent() {
+		if s != nil && s.dependencyCurrent != nil {
+			fmt.Fprintln(os.Stderr, "TEMPDIAG seal dependencyCurrent=false")
+		}
 		return false
 	}
-	return s.inputCurrent()
+	ok := s.inputCurrent()
+	if !ok {
+		fmt.Fprintln(os.Stderr, "TEMPDIAG seal inputCurrent=false")
+	}
+	return ok
 }
 
 // Recursive/policy DNS responses retain their immutable policy through ordinary

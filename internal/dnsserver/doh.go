@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"fmt"
+	"os"
 	"github.com/robertherbaugh/kudurru/internal/clientid"
 
 	"context"
@@ -102,6 +104,7 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer out.Close()
 	if !out.current() {
+		fmt.Fprintln(os.Stderr, "TEMPDIAG doh current=false")
 		// A pipeline drop: abort the exchange without a response (HTTP/2
 		// and HTTP/3 reset the stream, HTTP/1.1 closes the connection).
 		panic(http.ErrAbortHandler)
@@ -148,6 +151,7 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Keep actual completion distinct from a later admission error. An
 		// abort after a successful flush can reset already delivered bytes.
 		if !flushed {
+			fmt.Fprintln(os.Stderr, "TEMPDIAG doh emit err:", err)
 			panic(http.ErrAbortHandler)
 		}
 	}

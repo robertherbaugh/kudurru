@@ -1,6 +1,7 @@
 package servingbuild
 
 import (
+	"os"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -210,7 +211,13 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	}
 	current := func() bool {
 		authority, blocked := opts.Authority()
-		return !blocked && candidate.Token.Matches(authority) && owners.dependenciesCurrent()
+		m := candidate.Token.Matches(authority)
+		dc := deps.Current()
+		ac := owners.anchor == nil || owners.anchor.Input().Current()
+		if blocked || !m || !dc || !ac {
+			fmt.Fprintf(os.Stderr, "TEMPDIAG semantic blocked=%v match=%v deps=%v anchor=%v tokenAuth=%+v now=%+v\n", blocked, m, dc, ac, candidate.Token.Authority(), authority)
+		}
+		return !blocked && m && dc && ac
 	}
 	owners.current = current
 	owners.resolution, err = upstreamstage.NewView(owners.upstreams, validator, owners.config.DNSSEC.Enabled, current)

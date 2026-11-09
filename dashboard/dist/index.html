@@ -2,14 +2,45 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- web.Handler rewrites this href to the configured path prefix. -->
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="same-origin" />
     <title>kudurru</title>
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f3ea" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#182522" />
+    <!-- public/: copied to the dist root; the paths resolve against <base href>. -->
+    <link rel="icon" href="./favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" href="./icon-192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <link rel="manifest" href="./manifest.json" />
+    <script type="module" crossorigin src="./assets/index-CI8jxBgG.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-hePW80VL.js">
+    <link rel="modulepreload" crossorigin href="./assets/react-BvB9BS1T.js">
+    <link rel="modulepreload" crossorigin href="./assets/tanstack-query-DVUZ4_av.js">
+    <link rel="modulepreload" crossorigin href="./assets/padding.stylex-Dr3_zhAB.js">
+    <link rel="modulepreload" crossorigin href="./assets/container.stylex-Cy4CBsdN.js">
+    <link rel="modulepreload" crossorigin href="./assets/Tooltip-fsGj8Eer.js">
+    <link rel="modulepreload" crossorigin href="./assets/Feedback-CFz1QvAF.js">
+    <link rel="modulepreload" crossorigin href="./assets/createLucideIcon-DQw4omeQ.js">
+    <link rel="modulepreload" crossorigin href="./assets/check-C7natY5j.js">
+    <link rel="modulepreload" crossorigin href="./assets/clock-CQzWE0sv.js">
+    <link rel="modulepreload" crossorigin href="./assets/theme-By_bSCsn.js">
+    <link rel="modulepreload" crossorigin href="./assets/useDevWarning-tAF0TgNv.js">
+    <link rel="modulepreload" crossorigin href="./assets/format-BiYP4wBj.js">
+    <link rel="modulepreload" crossorigin href="./assets/Section-Dv_Ku16S.js">
+    <link rel="modulepreload" crossorigin href="./assets/SelectField-bvTP_GIu.js">
+    <link rel="modulepreload" crossorigin href="./assets/rr-BM5UDIak.js">
+    <link rel="modulepreload" crossorigin href="./assets/managedBy-62AM0OiB.js">
+    <link rel="modulepreload" crossorigin href="./assets/lists-BUukvIDk.js">
+    <link rel="modulepreload" crossorigin href="./assets/serviceCatalogue-DHWh-pqO.js">
+    <link rel="modulepreload" crossorigin href="./assets/policies-CqZEEDJx.js">
+    <link rel="stylesheet" crossorigin href="./assets/theme-4ji1J71Y.css">
+    <link rel="stylesheet" crossorigin href="./assets/index-B4Oh4vQZ.css">
   </head>
   <body>
-    <!-- kudurru:placeholder -->
-    <h1>kudurru</h1>
-    <p>This binary was built without the dashboard bundle. Run <code>make dashboard-build</code> (needs Bun) before <code>make build</code>, or use a release image. The API under <code>api/v1</code> and the <code>kudurru</code> CLI work regardless.</p>
+    <div id="root"></div>
+    <noscript>The kudurru dashboard needs JavaScript. The API lives under api/v1 and the CLI is <code>kudurru</code>.</noscript>
   </body>
 </html>
