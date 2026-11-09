@@ -143,7 +143,7 @@ tests cannot substitute for any external result.
 | F32 | Persist node-scope API changes or remove write half | Operations and UI | Integrated ffcf20e/bd47907; SQLite durable reset/host precedence; unsupported node writes refused with UI capability; actual restart/envtest/UI checks pass |
 | F33 | Remote `GET /nodes/{name}/health` | Operations and UI | Integrated; final gates open |
 | F34 | `/auth/me` exposes zone-scoped permissions | IAM and access | Implemented; final gates open |
-| F35a | Read external-dns `DNSEndpoint` CRs directly | Zones and AD | Implemented D302/D303: elected bounded read-only source reconciles UID-owned native children with original source/zone checks and destination CAS. Actual Kubernetes permissions/watch/refusal and mounted DNS/restart/deletion races pass; legacy ownership regressions, vet, docs drift and Helm rendering pass. Separate API objects are not an atomic transaction; multi-node lease-loss/partition and final G09/G21/G22 gates remain |
+| F35a | Read external-dns `DNSEndpoint` CRs directly | Zones and AD | Implemented D302/D303: elected bounded read-only source reconciles UID-owned native children with original source/zone checks and destination CAS. Actual Kubernetes permissions/watch/refusal and mounted DNS/restart/deletion races pass; legacy ownership regressions, vet, docs drift and Helm rendering pass. Separate API objects are not an atomic transaction; two-replica lease-loss/partition acceptance passes (November 9); final G09/G21/G22 gates remain |
 | F35b | `kudurru externaldns-webhook` sidecar subcommand | Zones and AD | Implemented D288 loopback relay to existing webhook; actual TLS/router and Kubernetes-backed CLI CRUD/ownership, cancellation/refusal races and lint pass |
 | F35c | external-dns webhook authentication | Zones and AD | Integrated; final gates open |
 | F36 | Serve object lists from live snapshot instead of store | Operations and UI | Implemented; final gates open |
@@ -1858,3 +1858,29 @@ intentional G117 password marshals (one production member payload, one fixture).
 
 Settings, other IAM administration, OIDC/browser/device logins on followers and
 remaining typed domains still require the primary.
+
+
+### F35a multi-node lease loss and partition acceptance — November 9, 2026
+
+`TestRunServeDirectDNSEndpointLeaseLossAndPartition` runs two mounted `runServe`
+replicas against one envtest API server, each through its own proxy that can
+partition it, including already established watch connections, without stopping
+the process. Replica A acquires the actual `kudurru-controller` Lease and both
+replicas serve the generated record. Partitioning A from the API server lets the
+Lease expire; B acquires it with no test intervention and alone reconciles a
+changed DNSEndpoint, while partitioned A keeps answering from its last valid data.
+After the partition heals, A converges to B's result and never reclaims the Lease;
+exactly one generated child exists throughout. Deleting the source withdraws the
+record on both replicas and leaves no children.
+
+Evidence under `.context/externaldns-failover-20261109/`: `race03` passes (26.1 s);
+`race04` repeats both DNSEndpoint mounted tests three times with default race,
+six passes, no failures/skips. Scoped lint passes. `race01`/`race02` are retained:
+they failed because the harness's `offlineServeConfig` sets the process-global
+KUBECONFIG, so building B's configuration before starting A routed both replicas
+through B's proxy and A kept renewing. Each replica now starts before the next
+configuration is built; no product code or assertion changed.
+
+This closes the multi-node lease-loss/partition gap recorded for F35a. Source,
+zone and child remain separate API objects (eventual controller, not a
+cross-object transaction); final G09/G21/G22 gates remain.

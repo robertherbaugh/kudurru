@@ -7154,3 +7154,29 @@ intentional G117 password marshals (one production member payload, one fixture).
 
 Settings, other IAM administration, OIDC/browser/device logins on followers and
 remaining typed domains still require the primary.
+
+
+### F35a multi-node lease loss and partition acceptance — November 9, 2026
+
+`TestRunServeDirectDNSEndpointLeaseLossAndPartition` runs two mounted `runServe`
+replicas against one envtest API server, each through its own proxy that can
+partition it, including already established watch connections, without stopping
+the process. Replica A acquires the actual `kudurru-controller` Lease and both
+replicas serve the generated record. Partitioning A from the API server lets the
+Lease expire; B acquires it with no test intervention and alone reconciles a
+changed DNSEndpoint, while partitioned A keeps answering from its last valid data.
+After the partition heals, A converges to B's result and never reclaims the Lease;
+exactly one generated child exists throughout. Deleting the source withdraws the
+record on both replicas and leaves no children.
+
+Evidence under `.context/externaldns-failover-20261109/`: `race03` passes (26.1 s);
+`race04` repeats both DNSEndpoint mounted tests three times with default race,
+six passes, no failures/skips. Scoped lint passes. `race01`/`race02` are retained:
+they failed because the harness's `offlineServeConfig` sets the process-global
+KUBECONFIG, so building B's configuration before starting A routed both replicas
+through B's proxy and A kept renewing. Each replica now starts before the next
+configuration is built; no product code or assertion changed.
+
+This closes the multi-node lease-loss/partition gap recorded for F35a. Source,
+zone and child remain separate API objects (eventual controller, not a
+cross-object transaction); final G09/G21/G22 gates remain.
