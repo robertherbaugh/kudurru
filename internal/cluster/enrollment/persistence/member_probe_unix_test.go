@@ -136,3 +136,60 @@ func TestMemberProbeRefusesUnboundAndForgedAuthority(t *testing.T) {
 		t.Fatal("unlisted destination entered an outgoing probe", err)
 	}
 }
+
+func TestMemberProbeRevocationAfterHandshakeRefusesBothDirections(t *testing.T) {
+	f := promotedProbeFixture(t)
+	connection := peerConnection(t, f.local, f.remote)
+	term := f.mirror.Authority().Term
+	if err := f.revoke(t); err != nil {
+		t.Fatal(err)
+	}
+	before := f.s.Authority()
+	called := false
+	err := f.s.ObserveMemberProbe(finite(t), term.ClusterID, f.remote.Trust().MemberID(), term, &connection,
+		func(context.Context, string, replication.Term, func() error) error { called = true; return nil })
+	if err == nil || called || !reflect.DeepEqual(before, f.s.Authority()) {
+		t.Fatal("revoked peer used retained TLS to fence or emit", err)
+	}
+	err = f.s.WithMemberProbe(finite(t), f.local.Trust(), f.remote.Trust().MemberID(),
+		func(context.Context, *sqlite.MemberAcquisition) error { called = true; return nil })
+	if err == nil || called || !reflect.DeepEqual(before, f.s.Authority()) {
+		t.Fatal("outgoing probe admitted a revoked peer", err)
+	}
+}
+
+// This exercises authenticated metadata conflict semantics. It is not public
+// three-process conflicting-promotion or explicit branch-recovery acceptance.
+func TestMemberProbeEqualEpochConflictRetainsInstalledBranchAcrossRestart(t *testing.T) {
+	f := newMemberFixture(t)
+	before := f.s.Authority()
+	conflicting := before.Term
+	conflicting.PrimaryID = f.remote.Trust().MemberID()
+	called := false
+	err := f.s.ObserveMemberProbe(finite(t), conflicting.ClusterID, conflicting.PrimaryID, conflicting, &f.tls,
+		func(_ context.Context, member string, current replication.Term, check func() error) error {
+			called = true
+			if member != before.MemberID || !current.Same(before.Term) {
+				t.Fatal("conflict selected the announced branch for emission")
+			}
+			return check()
+		})
+	if err != nil || !called {
+		t.Fatal("authenticated conflict observation failed", err)
+	}
+	got := f.s.Authority()
+	if got.Mode != replication.Conflict || got.Writable() || got.Conflict == nil || !got.Conflict.Same(conflicting) ||
+		!got.Term.Same(before.Term) || !got.Installed.Same(before.Installed) || got.InstallSequence != before.InstallSequence {
+		t.Fatal("conflict metadata selected or installed a branch")
+	}
+	if _, err := f.s.WriterToken(); err == nil {
+		t.Fatal("conflicting peer announcement retained writer admission")
+	}
+	if err := f.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restarted := open(t, f.path, replication.Standalone)
+	if !reflect.DeepEqual(got, restarted.Authority()) {
+		t.Fatal("restart lost the conflict or changed installed branch")
+	}
+}

@@ -6967,3 +6967,33 @@ domains, Kubernetes authority/ownership, supported-driver and final release
 qualification remain open. AD/Windows and independent-VM VIP acceptance remain
 owner-deferred under D353/D358. Prior hosted HTTP/2 failure remains unexplained.
 No release publication or overall completion is claimed.
+
+
+### D359 final local compatibility checkpoint — November 9, 2026
+
+Added actual-TLS revocation-after-handshake refusal in both directions and an
+equal-epoch conflict case that preserves the installed branch, refuses writers
+and retains exact conflict authority across physical restart. The conflict test
+covers metadata semantics, not public three-process conflicting promotions or
+operator branch recovery.
+
+On the unchanged production source committed as `57128ac7`, with these two tests:
+
+- Full enrollment-persistence and replica default-race suites: `compat-race08`,
+  exit 0, 269 test pass entries, zero failures/skips, 86.161 seconds wall.
+- Mounted command-package join, reconciliation, promotion, retained acquisition,
+  forwarding and member-listener default-race selection: `root-race09`, exit 0,
+  52 test pass entries, zero failures/skips, 141.295 seconds wall.
+- Final changed-test package lint: `lint10`, exit 0, zero issues, 6.416 seconds.
+
+All source freezes match. Prior focused/process/lint/SAST evidence remains in
+`.context/member-authority-20261109/`; no timing or qualification is inferred for
+unrun scopes. The protected pre-existing dashboard build bytes remain unchanged.
+
+Hosted kind runs 42567930338 (`50b5c2ea`) and 42568087573 (`57128ac7`) both fail
+before cluster creation: the pinned kind tool download receives HTTP 504, curl
+exit 22. Raw failed logs are retained. Both official download paths subsequently
+respond HTTP 200 to read-only sandbox HEAD requests; that is not a successful
+hosted install or Kubernetes qualification. No acceptance assertion or tool
+version was changed. Final-source hosted CI/security/performance and the other
+implementation/acceptance gaps remain open; no release was published.

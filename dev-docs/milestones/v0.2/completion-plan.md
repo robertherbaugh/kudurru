@@ -181,7 +181,7 @@ tests cannot substitute for any external result.
 | F58b | `/queries/export` API and query-log link | Operations and UI | Implemented; filtered bounded download, API/privacy races, 20 UI cases and actual mounted DNS/history export pass |
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
-| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial remote join is mounted (D355) and explicit incomplete-join reconciliation retains original intent (D356); original follower blocking forwarding is mounted (D357), with 254 compatibility race entries and scoped lint/SAST passing; other mutation domains and partition/rejoin remain open; status grants no promotion eligibility |
+| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial remote join is mounted (D355) and explicit incomplete-join reconciliation retains original intent (D356); original follower blocking forwarding is mounted (D357), with 254 compatibility race entries and scoped lint/SAST passing; D359 bounded peer authority observation and two-process promoted rejoin pass, including 321 subsequent compatibility race entries; three-process conflicting promotions, branch recovery and other mutation domains remain open; status grants no promotion eligibility |
 | F60c | `integrations …` CLI | Store and HA | Active D291/D295/D298: reviewed API/CLI, standalone conformance and SQLite Tier-B clients/actions mount implemented; mounted TLS/router races, full provider races and scoped lint pass. Merged 180-operation contracts pass; hooks/record ownership, remaining driver/restart and final contract gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
@@ -1671,3 +1671,33 @@ domains, Kubernetes authority/ownership, supported-driver and final release
 qualification remain open. AD/Windows and independent-VM VIP acceptance remain
 owner-deferred under D353/D358. Prior hosted HTTP/2 failure remains unexplained.
 No release publication or overall completion is claimed.
+
+
+### D359 final local compatibility checkpoint — November 9, 2026
+
+Added actual-TLS revocation-after-handshake refusal in both directions and an
+equal-epoch conflict case that preserves the installed branch, refuses writers
+and retains exact conflict authority across physical restart. The conflict test
+covers metadata semantics, not public three-process conflicting promotions or
+operator branch recovery.
+
+On the unchanged production source committed as `57128ac7`, with these two tests:
+
+- Full enrollment-persistence and replica default-race suites: `compat-race08`,
+  exit 0, 269 test pass entries, zero failures/skips, 86.161 seconds wall.
+- Mounted command-package join, reconciliation, promotion, retained acquisition,
+  forwarding and member-listener default-race selection: `root-race09`, exit 0,
+  52 test pass entries, zero failures/skips, 141.295 seconds wall.
+- Final changed-test package lint: `lint10`, exit 0, zero issues, 6.416 seconds.
+
+All source freezes match. Prior focused/process/lint/SAST evidence remains in
+`.context/member-authority-20261109/`; no timing or qualification is inferred for
+unrun scopes. The protected pre-existing dashboard build bytes remain unchanged.
+
+Hosted kind runs 42567930338 (`50b5c2ea`) and 42568087573 (`57128ac7`) both fail
+before cluster creation: the pinned kind tool download receives HTTP 504, curl
+exit 22. Raw failed logs are retained. Both official download paths subsequently
+respond HTTP 200 to read-only sandbox HEAD requests; that is not a successful
+hosted install or Kubernetes qualification. No acceptance assertion or tool
+version was changed. Final-source hosted CI/security/performance and the other
+implementation/acceptance gaps remain open; no release was published.
