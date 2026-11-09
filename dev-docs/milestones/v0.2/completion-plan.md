@@ -1608,3 +1608,31 @@ Remaining typed forwarding, partition/rejoin, Kubernetes authority/management an
 ownership, supported-driver acceptance, assigned two-VM Linux acceptance and
 final-source hosted/performance/release checks remain open. AD/Windows stays
 owner-deferred preview under D353. No release publication or completion claim.
+
+
+### F60b/G11 separate-process partition catch-up and restart — November 9, 2026
+
+`TestEnrolledClusterProcessesPartitionCatchupAndRestart` runs two real server
+processes with independent data directories and private identities. Public
+activation and invitation APIs precede the real offline join CLI; there is no
+fixture SQL, injected member transport, direct image installation or manual pull.
+A loopback TCP relay controls connectivity while actual member TLS terminates in
+the servers. The original primary term is unchanged throughout this case.
+
+The actual follower forwards blocking with HTTP 202, then its scheduled worker
+installs and publishes the committed state. During partition, UDP/TCP DNS retains
+its valid original authoritative answers and a forwarded write refuses. The
+primary independently creates and deletes records; reconnection automatically
+installs both effects. The refused command is not replayed. Physical follower and
+primary restarts preserve exact private-identity hashes, current primary ownership,
+blocking state and authoritative data, including absence of the deleted record.
+
+Evidence: `.context/enrolled-process-20261109/process02.json`: exit 0, one test
+pass, zero failures/skips, 100.499 seconds wall including builds; test 63.65 seconds.
+The harness runs with default race instrumentation; child servers use the existing
+CGO-disabled synthetic-license acceptance build, not a production signing key or
+race-instrumented child binary. All 4,781 source identities match. Scoped E2E lint
+`lint04` exits 0/zero issues in 16.666 seconds. Original dashboard bytes remain
+untouched and unstaged. This closes the unchanged-term process scenario only;
+promotion/conflict reconnection, other mutation domains and supported-driver/final
+release gates remain open. VM and AD deferrals retain their separate decisions.

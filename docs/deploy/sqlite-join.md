@@ -3,8 +3,10 @@
 This path requires an activated SQLite primary running the enrolled internal
 listener and a private invitation issued for the receiver's exact name and
 internal address. It is separate from static twins and Kubernetes storage.
-Full partition/rejoin qualification remains open. An explicit incomplete-join
-recovery path is described below.
+Separate-process acceptance covers temporary partition with the same primary,
+automatic addition/deletion catch-up, forwarding and physical restart. Promoted
+primary and conflicting-primary reconnection remain under qualification. An
+explicit incomplete-join recovery path is described below.
 
 1. On the primary, review `cluster enrollment` and issue `cluster join-token`
    using that exact review, target, absolute expiry and audit reason. Transfer
