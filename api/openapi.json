@@ -1597,6 +1597,110 @@
         ],
         "type": "object"
       },
+      "ClusterPromoteCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmNode": {
+            "maxLength": 63,
+            "minLength": 1,
+            "type": "string"
+          },
+          "installed": {
+            "$ref": "#/components/schemas/Generation"
+          },
+          "memberID": {
+            "maxLength": 36,
+            "minLength": 36,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "requestID": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmNode",
+          "requestID",
+          "reason",
+          "memberID",
+          "installed"
+        ],
+        "type": "object"
+      },
+      "ClusterPromotionInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "eligible": {
+            "type": "boolean"
+          },
+          "installed": {
+            "$ref": "#/components/schemas/Generation"
+          },
+          "memberID": {
+            "maxLength": 36,
+            "minLength": 36,
+            "type": "string"
+          },
+          "missedPulls": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "unreachableSeconds": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node",
+          "mode",
+          "eligible",
+          "reason",
+          "missedPulls",
+          "unreachableSeconds",
+          "memberID",
+          "installed"
+        ],
+        "type": "object"
+      },
+      "ClusterPromotionReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "committed": {
+            "type": "boolean"
+          },
+          "memberID": {
+            "type": "string"
+          },
+          "requestID": {
+            "type": "string"
+          },
+          "term": {
+            "$ref": "#/components/schemas/Term"
+          }
+        },
+        "required": [
+          "committed",
+          "memberID",
+          "requestID",
+          "term"
+        ],
+        "type": "object"
+      },
       "Condition": {
         "additionalProperties": false,
         "properties": {
@@ -4332,6 +4436,28 @@
           "flushed",
           "node",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "Generation": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "term": {
+            "$ref": "#/components/schemas/Term"
+          }
+        },
+        "required": [
+          "term",
+          "revision",
+          "digest"
         ],
         "type": "object"
       },
@@ -9396,6 +9522,35 @@
           "keyName",
           "algorithm",
           "source"
+        ],
+        "type": "object"
+      },
+      "Term": {
+        "additionalProperties": false,
+        "properties": {
+          "clusterID": {
+            "type": "string"
+          },
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "primaryID": {
+            "type": "string"
+          },
+          "primaryName": {
+            "type": "string"
+          },
+          "promotionID": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clusterID",
+          "epoch",
+          "primaryID",
+          "promotionID"
         ],
         "type": "object"
       },
@@ -18093,6 +18248,210 @@
           "resource": "cluster",
           "scope": "cluster",
           "verb": "join"
+        }
+      }
+    },
+    "/cluster/promote": {
+      "post": {
+        "description": "Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.",
+        "operationId": "promoteCluster",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterPromoteCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterPromotionReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Promote an explicitly reviewed enrolled follower",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "cluster",
+          "scope": "cluster",
+          "verb": "promote"
+        }
+      }
+    },
+    "/cluster/promotion": {
+      "get": {
+        "description": "Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.",
+        "operationId": "getClusterPromotion",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterPromotionInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Review local follower promotion eligibility",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "cluster",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },

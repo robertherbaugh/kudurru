@@ -6682,3 +6682,45 @@ issues (6.617s). The first lint's two unchecked cleanup-channel results were
 corrected with explicit cancellation assertions and requalified. Original failed
 preimage and lint evidence remain under .context/promotion-queue-20261109/.
 The operator promotion API/CLI and full HA acceptance remain open.
+
+
+### Reviewed operator promotion API and CLI, November 9
+
+D354 mounts operator promotion through the retained-member Coordinator. The
+original HTTP proof/source and at most 30-second lifetime precede body reads.
+`cluster promotion -o json` supplies the complete reviewed generation/member;
+`cluster promote --review FILE --confirm-node NAME --request-id ID --reason TEXT`
+sends one explicit decision without redirects, source refresh or automatic replay.
+Current cluster.promote and cookie CSRF are mandatory. Coordinator queue and real
+publication pin precede all lower dependency exclusions and actual installed-image
+CAS. Final original credential/time/source checks retain those exclusions through
+SQL completion. Canonical attributed audit and promotion commit together; unknown
+completion stays distinct from success/rollback. The committed receipt makes no
+publication or peer-convergence claim. Generated API/client/reference contracts
+now include 190 operations.
+
+The final mounted default-race selection passes four entries: two root cases and
+two public API refusal cases. Actual TLS primary loss and production monotonic
+eligibility lead to one authenticated CLI promotion, new-term whole publication,
+physical restart and retained private CA/audit. Viewer, wrong-node, stale-source,
+slow-body and independently revoked held-source requests refuse. Cookie CSRF is
+checked before body acquisition. The first image remains explicit fixture
+administration; initial network-join acceptance is separate.
+
+Full replica/servingauth/apiclient races pass 99/213/318 entries. Focused SQLite
+and public schema races pass 18/5 entries, including actual SQL 1811 audit rollback
+and 787 commit failure, original final-proof refusal, duplicate and restart.
+Configured scoped lint passes with zero issues (8.820s); final changes after the
+race manifest are an interface comment and unused test-parameter rename only.
+Generated client and CLI/API references are refreshed. Evidence is retained under
+.context/promotion-mount-20261109/ with source and numeric receipts.
+
+The broader local API run is explicitly incomplete: 434 passing entries, one
+actual missing-PostgreSQL skip, then its four-minute package timeout in
+TestQueryExportPartialAndBounds. The existing large migration case passed before
+the timeout. This run exits 1; it is not full API acceptance. Earlier import-name,
+missing fixture Hasher, expected-installed fixture CAS and lint findings remain
+preserved. Hosted CI 42553837447 on 9963dec2 has since completed successfully
+(all 22 jobs); later commits still require their own hosted results.
+Initial remote join, remaining typed forwarding, Kubernetes barriers and complete
+HA/final release gates remain open. AD preview deferral remains D353.

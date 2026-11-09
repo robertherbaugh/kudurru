@@ -62,6 +62,7 @@ type ClusterJoinTokenReceipt struct {
 type ClusterEnrollmentRuntime interface{ ClusterEnrollmentAvailable() bool }
 
 func (s *Server) registerClusterEnrollment() {
+	s.registerClusterPromotion()
 	for _, route := range []struct {
 		method, path, id, summary, verb string
 		request, response               any

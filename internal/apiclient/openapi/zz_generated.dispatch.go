@@ -285,6 +285,14 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.IssueClusterJoinTokenWithBody(ctx, contentType, body, editors...)
 		return response, true, err
 	}
+	if method == "POST" && len(parts) == 2 && parts[0] == "cluster" && parts[1] == "promote" {
+		response, err := c.PromoteClusterWithBody(ctx, contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 2 && parts[0] == "cluster" && parts[1] == "promotion" {
+		response, err := c.GetClusterPromotion(ctx, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 1 && parts[0] == "denylist" {
 		response, err := c.ListDenylist(ctx, nil, editors...)
 		return response, true, err

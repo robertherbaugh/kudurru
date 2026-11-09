@@ -2677,6 +2677,35 @@ type ClusterJoinTokenReceipt struct {
 	Invitation string    `json:"invitation"`
 }
 
+// ClusterPromoteCommand defines model for ClusterPromoteCommand.
+type ClusterPromoteCommand struct {
+	ConfirmNode string     `json:"confirmNode"`
+	Installed   Generation `json:"installed"`
+	MemberID    string     `json:"memberID"`
+	Reason      string     `json:"reason"`
+	RequestID   string     `json:"requestID"`
+}
+
+// ClusterPromotionInfo defines model for ClusterPromotionInfo.
+type ClusterPromotionInfo struct {
+	Eligible           bool       `json:"eligible"`
+	Installed          Generation `json:"installed"`
+	MemberID           string     `json:"memberID"`
+	MissedPulls        int64      `json:"missedPulls"`
+	Mode               string     `json:"mode"`
+	Node               string     `json:"node"`
+	Reason             string     `json:"reason"`
+	UnreachableSeconds float64    `json:"unreachableSeconds"`
+}
+
+// ClusterPromotionReceipt defines model for ClusterPromotionReceipt.
+type ClusterPromotionReceipt struct {
+	Committed bool   `json:"committed"`
+	MemberID  string `json:"memberID"`
+	RequestID string `json:"requestID"`
+	Term      Term   `json:"term"`
+}
+
 // Condition defines model for Condition.
 type Condition struct {
 	LastTransitionTime time.Time `json:"lastTransitionTime"`
@@ -3583,6 +3612,13 @@ type FlushResult struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// Generation defines model for Generation.
+type Generation struct {
+	Digest   string `json:"digest"`
+	Revision int64  `json:"revision"`
+	Term     Term   `json:"term"`
 }
 
 // IAMUser defines model for IAMUser.
@@ -5269,6 +5305,15 @@ type TSIGKeyMetadata struct {
 // TSIGKeyMetadataSource defines model for TSIGKeyMetadata.Source.
 type TSIGKeyMetadataSource string
 
+// Term defines model for Term.
+type Term struct {
+	ClusterID   string  `json:"clusterID"`
+	Epoch       int64   `json:"epoch"`
+	PrimaryID   string  `json:"primaryID"`
+	PrimaryName *string `json:"primaryName,omitempty"`
+	PromotionID string  `json:"promotionID"`
+}
+
 // TimeseriesBody defines model for TimeseriesBody.
 type TimeseriesBody struct {
 	Approximate bool          `json:"approximate"`
@@ -6552,6 +6597,9 @@ type ActivateClusterJSONRequestBody = ActivateClusterCommand
 // IssueClusterJoinTokenJSONRequestBody defines body for IssueClusterJoinToken for application/json ContentType.
 type IssueClusterJoinTokenJSONRequestBody = ClusterJoinTokenCommand
 
+// PromoteClusterJSONRequestBody defines body for PromoteCluster for application/json ContentType.
+type PromoteClusterJSONRequestBody = ClusterPromoteCommand
+
 // CreateDenylistEntriesJSONRequestBody defines body for CreateDenylistEntries for application/json ContentType.
 type CreateDenylistEntriesJSONRequestBody = DomainEntriesCreate
 
@@ -7359,6 +7407,31 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
 	IssueClusterJoinToken(ctx context.Context, body IssueClusterJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PromoteClusterWithBody Promote an explicitly reviewed enrolled follower
+	//
+	// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /cluster/promote (the `PromoteCluster` operationId).
+	PromoteClusterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PromoteCluster Promote an explicitly reviewed enrolled follower
+	//
+	// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /cluster/promote (the `PromoteCluster` operationId).
+	PromoteCluster(ctx context.Context, body PromoteClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetClusterPromotion Review local follower promotion eligibility
+	//
+	// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+	//
+	// Corresponds with GET /cluster/promotion (the `GetClusterPromotion` operationId).
+	GetClusterPromotion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDenylist List Denylist entries
 	//
@@ -9978,6 +10051,61 @@ func (c *Client) IssueClusterJoinTokenWithBody(ctx context.Context, contentType 
 // Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
 func (c *Client) IssueClusterJoinToken(ctx context.Context, body IssueClusterJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewIssueClusterJoinTokenRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PromoteClusterWithBody Promote an explicitly reviewed enrolled follower
+//
+// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /cluster/promote (the `PromoteCluster` operationId).
+func (c *Client) PromoteClusterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPromoteClusterRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PromoteCluster Promote an explicitly reviewed enrolled follower
+//
+// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /cluster/promote (the `PromoteCluster` operationId).
+func (c *Client) PromoteCluster(ctx context.Context, body PromoteClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPromoteClusterRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetClusterPromotion Review local follower promotion eligibility
+//
+// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+//
+// Corresponds with GET /cluster/promotion (the `GetClusterPromotion` operationId).
+func (c *Client) GetClusterPromotion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetClusterPromotionRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -16133,6 +16261,73 @@ func NewIssueClusterJoinTokenRequestWithBody(server string, contentType string, 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPromoteClusterRequest calls the generic PromoteCluster builder with application/json body
+func NewPromoteClusterRequest(server string, body PromoteClusterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPromoteClusterRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPromoteClusterRequestWithBody constructs an http.Request for the PromoteCluster method, with any body, and a specified content type
+func NewPromoteClusterRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/cluster/promote")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetClusterPromotionRequest constructs an http.Request for the GetClusterPromotion method
+func NewGetClusterPromotionRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/cluster/promotion")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -23889,6 +24084,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /cluster/join-token (the `IssueClusterJoinToken` operationId).
 	IssueClusterJoinTokenWithResponse(ctx context.Context, body IssueClusterJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueClusterJoinTokenResponse, error)
 
+	// PromoteClusterWithBodyWithResponse Promote an explicitly reviewed enrolled follower
+	//
+	// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /cluster/promote (the `PromoteCluster` operationId).
+	PromoteClusterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PromoteClusterResponse, error)
+
+	// PromoteClusterWithResponse Promote an explicitly reviewed enrolled follower
+	//
+	// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /cluster/promote (the `PromoteCluster` operationId).
+	PromoteClusterWithResponse(ctx context.Context, body PromoteClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*PromoteClusterResponse, error)
+
+	// GetClusterPromotionWithResponse Review local follower promotion eligibility
+	//
+	// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /cluster/promotion (the `GetClusterPromotion` operationId).
+	GetClusterPromotionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterPromotionResponse, error)
+
 	// ListDenylistWithResponse List Denylist entries
 	//
 	// Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
@@ -31074,6 +31296,186 @@ func (r IssueClusterJoinTokenResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r IssueClusterJoinTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PromoteClusterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ClusterPromotionReceipt
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PromoteClusterResponse) GetJSON200() *ClusterPromotionReceipt {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PromoteClusterResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PromoteClusterResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PromoteClusterResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PromoteClusterResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PromoteClusterResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PromoteClusterResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PromoteClusterResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PromoteClusterResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PromoteClusterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PromoteClusterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PromoteClusterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PromoteClusterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetClusterPromotionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ClusterPromotionInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetClusterPromotionResponse) GetJSON200() *ClusterPromotionInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetClusterPromotionResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetClusterPromotionResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetClusterPromotionResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetClusterPromotionResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetClusterPromotionResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetClusterPromotionResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetClusterPromotionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetClusterPromotionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetClusterPromotionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetClusterPromotionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -44088,6 +44490,51 @@ func (c *ClientWithResponses) IssueClusterJoinTokenWithResponse(ctx context.Cont
 	return ParseIssueClusterJoinTokenResponse(rsp)
 }
 
+// PromoteClusterWithBodyWithResponse Promote an explicitly reviewed enrolled follower
+//
+// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /cluster/promote (the `PromoteCluster` operationId).
+func (c *ClientWithResponses) PromoteClusterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PromoteClusterResponse, error) {
+	rsp, err := c.PromoteClusterWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePromoteClusterResponse(rsp)
+}
+
+// PromoteClusterWithResponse Promote an explicitly reviewed enrolled follower
+//
+// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /cluster/promote (the `PromoteCluster` operationId).
+func (c *ClientWithResponses) PromoteClusterWithResponse(ctx context.Context, body PromoteClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*PromoteClusterResponse, error) {
+	rsp, err := c.PromoteCluster(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePromoteClusterResponse(rsp)
+}
+
+// GetClusterPromotionWithResponse Review local follower promotion eligibility
+//
+// Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /cluster/promotion (the `GetClusterPromotion` operationId).
+func (c *ClientWithResponses) GetClusterPromotionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterPromotionResponse, error) {
+	rsp, err := c.GetClusterPromotion(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetClusterPromotionResponse(rsp)
+}
+
 // ListDenylistWithResponse List Denylist entries
 //
 // Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
@@ -51540,6 +51987,156 @@ func ParseIssueClusterJoinTokenResponse(rsp *http.Response) (*IssueClusterJoinTo
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePromoteClusterResponse parses an HTTP response from a PromoteClusterWithResponse call
+func ParsePromoteClusterResponse(rsp *http.Response) (*PromoteClusterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PromoteClusterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ClusterPromotionReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetClusterPromotionResponse parses an HTTP response from a GetClusterPromotionWithResponse call
+func ParseGetClusterPromotionResponse(rsp *http.Response) (*GetClusterPromotionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetClusterPromotionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ClusterPromotionInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

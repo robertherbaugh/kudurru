@@ -33,6 +33,9 @@ type CoordinatorOptions struct {
 	Interval, Timeout time.Duration
 	Served            ServingPin
 	AuthorizeOperator func(context.Context) (PromotionAuthorization, error)
+	// WithOperator retains root dependency exclusions synchronously inside the
+	// actual publication pin. Exactly one authorization form is required.
+	WithOperator PromotionAuthorizationScope
 	// Elapsed is a monotonic duration since coordinator startup, not wall time.
 	// Default time.Since(start), including Go's monotonic clock. Tests inject it.
 	Elapsed func() time.Duration
@@ -67,12 +70,16 @@ type PromoteRequest struct {
 	ExpectedTerm      replication.Term
 	ExpectedInstalled replication.Generation
 	RequestID         string
+	Reason            string
 }
 
 // NewCoordinator begins a fresh missed-pull window regardless of persisted state.
 func NewCoordinator(o CoordinatorOptions) (*Coordinator, error) {
-	if o.Store == nil || o.Source == nil || o.NodeName == "" || o.Served == nil || o.AuthorizeOperator == nil {
+	if o.Store == nil || o.Source == nil || o.NodeName == "" || o.Served == nil {
 		return nil, errors.New("replica: store, source, node, serving pin and operator authorizer required")
+	}
+	if (o.AuthorizeOperator == nil) == (o.WithOperator == nil) {
+		return nil, errors.New("replica: exactly one original operator authorizer required")
 	}
 	if o.Interval <= 0 {
 		o.Interval = 5 * time.Second
@@ -222,6 +229,9 @@ func (c *Coordinator) Promote(ctx context.Context, req PromoteRequest) (replicat
 		return replication.Authority{}, err
 	}
 	defer leave()
+	if c.opts.WithOperator != nil {
+		return c.promoteScoped(ctx, req)
+	}
 	authorization, err := c.opts.AuthorizeOperator(ctx)
 	if authorization.Release != nil {
 		defer authorization.Release()
@@ -276,3 +286,6 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		}
 	}
 }
+
+// NodeName returns the immutable local confirmation name.
+func (c *Coordinator) NodeName() string { return c.opts.NodeName }

@@ -170,7 +170,7 @@ tests cannot substitute for any external result.
 | F58b | `/queries/export` API and query-log link | Operations and UI | Implemented; filtered bounded download, API/privacy races, 20 UI cases and actual mounted DNS/history export pass |
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
-| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; initial join, promotion and forwarding remain open; status grants no promotion eligibility |
+| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial join and remaining forwarding remain open; status grants no promotion eligibility |
 | F60c | `integrations …` CLI | Store and HA | Active D291/D295/D298: reviewed API/CLI, standalone conformance and SQLite Tier-B clients/actions mount implemented; mounted TLS/router races, full provider races and scoped lint pass. Merged 180-operation contracts pass; hooks/record ownership, remaining driver/restart and final contract gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
@@ -1386,3 +1386,45 @@ issues (6.617s). The first lint's two unchecked cleanup-channel results were
 corrected with explicit cancellation assertions and requalified. Original failed
 preimage and lint evidence remain under .context/promotion-queue-20261109/.
 The operator promotion API/CLI and full HA acceptance remain open.
+
+
+### Reviewed operator promotion API and CLI, November 9
+
+D354 mounts operator promotion through the retained-member Coordinator. The
+original HTTP proof/source and at most 30-second lifetime precede body reads.
+`cluster promotion -o json` supplies the complete reviewed generation/member;
+`cluster promote --review FILE --confirm-node NAME --request-id ID --reason TEXT`
+sends one explicit decision without redirects, source refresh or automatic replay.
+Current cluster.promote and cookie CSRF are mandatory. Coordinator queue and real
+publication pin precede all lower dependency exclusions and actual installed-image
+CAS. Final original credential/time/source checks retain those exclusions through
+SQL completion. Canonical attributed audit and promotion commit together; unknown
+completion stays distinct from success/rollback. The committed receipt makes no
+publication or peer-convergence claim. Generated API/client/reference contracts
+now include 190 operations.
+
+The final mounted default-race selection passes four entries: two root cases and
+two public API refusal cases. Actual TLS primary loss and production monotonic
+eligibility lead to one authenticated CLI promotion, new-term whole publication,
+physical restart and retained private CA/audit. Viewer, wrong-node, stale-source,
+slow-body and independently revoked held-source requests refuse. Cookie CSRF is
+checked before body acquisition. The first image remains explicit fixture
+administration; initial network-join acceptance is separate.
+
+Full replica/servingauth/apiclient races pass 99/213/318 entries. Focused SQLite
+and public schema races pass 18/5 entries, including actual SQL 1811 audit rollback
+and 787 commit failure, original final-proof refusal, duplicate and restart.
+Configured scoped lint passes with zero issues (8.820s); final changes after the
+race manifest are an interface comment and unused test-parameter rename only.
+Generated client and CLI/API references are refreshed. Evidence is retained under
+.context/promotion-mount-20261109/ with source and numeric receipts.
+
+The broader local API run is explicitly incomplete: 434 passing entries, one
+actual missing-PostgreSQL skip, then its four-minute package timeout in
+TestQueryExportPartialAndBounds. The existing large migration case passed before
+the timeout. This run exits 1; it is not full API acceptance. Earlier import-name,
+missing fixture Hasher, expected-installed fixture CAS and lint findings remain
+preserved. Hosted CI 42553837447 on 9963dec2 has since completed successfully
+(all 22 jobs); later commits still require their own hosted results.
+Initial remote join, remaining typed forwarding, Kubernetes barriers and complete
+HA/final release gates remain open. AD preview deferral remains D353.

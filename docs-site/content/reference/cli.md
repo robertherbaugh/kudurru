@@ -385,6 +385,31 @@ Flags:
       --source-digest string   Exact reviewed sourceDigest
 ```
 
+### kudurru cluster promote
+
+Promote one enrolled follower after reviewing cluster promotion -o json. Save that response in a local file and pass --review with the exact local --confirm-node, a unique --request-id and an audit --reason. The server repeats permission, source, serving agreement and continuous primary-loss checks. The command never refreshes, redirects or retries. A lost response does not prove rollback: inspect current state before a new decision. A committed receipt does not claim new-term publication or remote convergence.
+
+```text
+kudurru cluster promote [flags]
+```
+
+Flags:
+
+```text
+      --confirm-node string   Exact reviewed local node name
+      --reason string         Audit reason for promoting this follower
+      --request-id string     Unique identifier for this operator decision
+      --review string         Local file containing separately reviewed cluster promotion JSON
+```
+
+### kudurru cluster promotion
+
+Review local follower promotion eligibility.
+
+```text
+kudurru cluster promotion
+```
+
 ### kudurru cluster status
 
 Read the connected node's store driver, epoch, reported leader, member count and read-only mode. Static twins each report their own local leader and store identity. This observation does not establish quorum, peer health or permission to promote a node. Use kudurru nodes for individual node readiness.

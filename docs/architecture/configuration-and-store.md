@@ -1833,7 +1833,8 @@ refuses the old attempt. An accepted 304 also crosses that boundary before
 successful-contact bookkeeping. The publisher independently installs the complete
 serving bundle. The runtime cancels and joins the Coordinator on shutdown; it
 never grants operator promotion. This mounts retained enrolled acquisition, not
-initial remote join, command forwarding, promotion or full partition/rejoin HA.
+initial remote join, command forwarding or full partition/rejoin HA. Explicit
+operator promotion is described below.
 
 ```mermaid
 flowchart LR
@@ -1850,3 +1851,52 @@ Promotion also uses cancellation-aware Store lock admission. Its original
 finite authorization and installed-generation CAS remain unchanged, but a queued
 cancellation/deadline now returns without waiting for another member's network
 exchange to release the lock. No detached waiter remains able to promote later.
+
+
+### Reviewed operator promotion
+
+Retained enrolled SQLite nodes expose `GET /cluster/promotion` and
+`POST /cluster/promote`. The review reports the complete installed generation,
+local member/node and current missed-pull eligibility. It grants no permission.
+A promotion needs current `cluster.promote`, cookie CSRF when applicable, the
+separately reviewed generation/member, exact node confirmation, a request ID and
+an audit reason. Static, legacy and unmounted runtimes refuse this capability.
+
+For an already enrolled follower, save and inspect a review before making the
+separate decision (the configured CLI context supplies authentication):
+
+```sh
+kudurru -o json cluster promotion > promotion-review.json
+kudurru cluster promote --review promotion-review.json --confirm-node node-b   --request-id promote-node-b-20261109 --reason "Reviewed primary outage"
+```
+
+The server repeats actual continuous primary-loss/two-interval eligibility and
+served/installed agreement. The original at-most-30-second lifetime includes
+proof, body, queueing and commit; the socket wrapper prevents later framework
+body-deadline resets from extending it. The Coordinator acquires its queue and
+actual publication pin before root pins provider resources, host/license/auth
+keys, TSIG, catalog and transferred managers. It never nests another publication
+pin. Root verifies the original raw token/cookie/JWT against that exact complete
+View. Final memory/time checks retain credential expiry, original source and all
+lower exclusions through the concrete Store installed-generation CAS.
+
+```mermaid
+flowchart LR
+    Review[Saved source and explicit operator intent] --> Proof[Original HTTP proof and finite lifetime]
+    Proof --> Queue[Coordinator queue and publication pin]
+    Queue --> Pins[All lower dependency exclusions]
+    Pins --> Commit[Installed-image CAS plus atomic promotion audit]
+    Commit --> Receipt[Confirmed committed receipt]
+    Commit --> Unknown[Unknown commit remains unknown]
+```
+
+A confirmed duplicate in the storage primitive rechecks original authorization
+without creating a second term/audit. The public client does not retry or refresh
+its review, and refuses redirects and replayable requests. Audit failure rolls
+back the transition; a driver commit error becomes `completion_unknown` and
+permits neither success nor an assumption of rollback. Inspect current state
+before a new operator decision after an unknown/lost response. The public
+committed receipt describes only the durable transition; whole publication and
+peer convergence are separate. Startup acquisition has no operator proof and
+cannot invoke this path. Initial remote joining and complete partition/rejoin
+acceptance remain separate work.

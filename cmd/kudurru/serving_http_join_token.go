@@ -28,12 +28,17 @@ type clusterOutputRequestKey struct{}
 // cannot be replaced after a slow or interposed body read.
 func (h *servingHTTP) captureClusterOutput(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != h.opts.RoutePrefix+"/cluster/join-token" {
+		promotion := r.URL.Path == h.opts.RoutePrefix+"/cluster/promote"
+		if r.Method != http.MethodPost || !promotion && r.URL.Path != h.opts.RoutePrefix+"/cluster/join-token" {
 			next.ServeHTTP(w, r)
 			return
 		}
 		capture := func() (*sqlite.CommandOutputRequest, error) {
-			v, _, err := h.permission(r.Context(), "cluster", "join")
+			verb := "join"
+			if promotion {
+				verb = "promote"
+			}
+			v, _, err := h.permission(r.Context(), "cluster", verb)
 			if err != nil {
 				return nil, err
 			}
@@ -50,6 +55,12 @@ func (h *servingHTTP) captureClusterOutput(next http.Handler) http.Handler {
 			token, err := servinghttp.SourceToken(r.Context())
 			if err != nil {
 				return nil, err
+			}
+			if promotion {
+				if !h.opts.Runtime.ClusterPromotionAvailable() {
+					return nil, promotionUnavailable()
+				}
+				return nil, nil
 			}
 			if token.Authority().Mode != replication.Primary {
 				return nil, clusterIssueConflict()
@@ -78,7 +89,10 @@ func (h *servingHTTP) captureClusterOutput(next http.Handler) http.Handler {
 				<-done
 			}
 		}()
-		next.ServeHTTP(bounded, r.WithContext(context.WithValue(r.Context(), clusterOutputRequestKey{}, request)))
+		if request != nil {
+			r = r.WithContext(context.WithValue(r.Context(), clusterOutputRequestKey{}, request))
+		}
+		next.ServeHTTP(bounded, r)
 	})
 }
 

@@ -17,3 +17,8 @@ func (c *Client) ActivateCluster(ctx context.Context, in, out any) error {
 func (c *Client) IssueClusterJoinToken(ctx context.Context, in, out any) error {
 	return c.do(ctx, http.MethodPost, "/cluster/join-token", nil, in, out, true)
 }
+
+// PromoteCluster sends one reviewed decision without redirects or automatic replay.
+func (c *Client) PromoteCluster(ctx context.Context, in, out any) error {
+	return c.do(ctx, http.MethodPost, "/cluster/promote", nil, in, out, true)
+}

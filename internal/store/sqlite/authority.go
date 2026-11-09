@@ -387,7 +387,7 @@ func (s *Store) observeAuthorityLocked(ctx context.Context, term replication.Ter
 // Promote is the atomic store CAS. The coordinator enforces monotonic primary
 // unreachability/two-pull-interval and human confirmation before calling it.
 func (s *Store) Promote(ctx context.Context, req replication.PromoteRequest) (replication.Authority, error) {
-	return s.promote(ctx, req, nil)
+	return s.promote(ctx, req, nil, nil)
 }
 
 // PromoteChecked retains the caller's original pinned authorization through the
@@ -404,10 +404,10 @@ func (s *Store) PromoteChecked(ctx context.Context, req replication.PromoteReque
 	if _, finite := ctx.Deadline(); !finite {
 		return replication.Authority{}, replication.ErrInvalid
 	}
-	return s.promote(ctx, req, check)
+	return s.promote(ctx, req, check, nil)
 }
 
-func (s *Store) promote(ctx context.Context, req replication.PromoteRequest, check func(context.Context) error) (replication.Authority, error) {
+func (s *Store) promote(ctx context.Context, req replication.PromoteRequest, check func(context.Context) error, audit *AuditEntry) (replication.Authority, error) {
 	if req.RequestID == "" || len(req.RequestID) > 256 {
 		return replication.Authority{}, replication.ErrInvalid
 	}
@@ -473,10 +473,19 @@ func (s *Store) promote(ctx context.Context, req replication.PromoteRequest, che
 	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, strconv.FormatUint(s.head.Load(), 10), metaFeedCompacted); err != nil {
 		return a, err
 	}
+	if audit != nil {
+		audit.Time = s.opts.Now()
+		if err := insertAudit(ctx, cachedTx{tx: tx, c: s.ws}, audit); err != nil {
+			return before, err
+		}
+	}
 	if err := checkPromotion(ctx, check); err != nil {
 		return before, err
 	}
 	if err := tx.Commit(); err != nil {
+		if audit != nil {
+			return before, errors.Join(ErrPromotionCompletionUnknown, err)
+		}
 		return a, err
 	}
 	s.compacted.Store(s.head.Load())

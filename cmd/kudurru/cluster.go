@@ -13,6 +13,7 @@ import (
 func newClusterCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "cluster", Short: "Inspect cluster membership and store status"}
 	addClusterEnrollmentCommands(cmd, o)
+	addClusterPromotionCommands(cmd, o)
 	cmd.AddCommand(&cobra.Command{
 		Use: "status", Short: "Show the connected node's cluster status", Args: cobra.NoArgs,
 		Long: `Read the connected node's store driver, epoch, reported leader, member count

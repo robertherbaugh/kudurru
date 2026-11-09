@@ -97,12 +97,8 @@ func (s *servingRuntime) prepareMemberServices(ctx context.Context, credentials 
 	}
 	coordinator, err := clusterreplica.NewCoordinator(clusterreplica.CoordinatorOptions{
 		Store: s.opts.Store, Source: source, NodeName: name,
-		Served: s.publisher.Pin,
-		AuthorizeOperator: func(context.Context) (clusterreplica.PromotionAuthorization, error) {
-			// The acquisition worker never grants operator promotion. The
-			// public route must retain its own current administrator proof.
-			return clusterreplica.PromotionAuthorization{}, clusterreplica.ErrForbidden
-		},
+		Served:       s.publisher.Pin,
+		WithOperator: s.withPromotionAuthorization,
 	})
 	if err != nil {
 		return nil, nil, err

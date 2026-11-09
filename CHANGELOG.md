@@ -14,6 +14,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Reviewed enrolled-follower promotion through the API and `cluster promotion` /
+  `cluster promote`, with original credential/source checks, atomic audit,
+  bounded body/queue lifetime and explicit unknown-completion handling.
+
 - Retained enrolled SQLite followers now acquire and publish complete images
   from their primary over mutual TLS, with bounded cancellation and joined shutdown.
 
