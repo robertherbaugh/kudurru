@@ -91,7 +91,7 @@ func (s *Store) WithMemberForward(ctx context.Context, local memberidentity.Trus
 	if err := o.ctx.Err(); err != nil {
 		return err
 	}
-	return s.withMemberAcquisition(ctx, o.local, &o.token, func(scope context.Context, acquisition *MemberAcquisition) error {
+	return s.withMemberAcquisition(ctx, o.local, &o.token, "", func(scope context.Context, acquisition *MemberAcquisition) error {
 		o.acquisition.Store(acquisition.original)
 		defer o.acquisition.Store(nil)
 		scope = context.WithValue(scope, memberForwardKey{}, o)

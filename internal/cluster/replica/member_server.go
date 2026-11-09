@@ -80,9 +80,10 @@ func NewMemberServer(o MemberServerOptions) (*MemberServer, error) {
 func (s *MemberServer) Mount(mux *http.ServeMux) {
 	mux.HandleFunc(PathImage, s.serve)
 	mux.HandleFunc(PathWrite, s.serve)
+	mux.HandleFunc(PathAuthority, s.serve)
 }
 
-// Handler returns only the enrolled image and command routes.
+// Handler returns only the enrolled image, command and authority routes.
 func (s *MemberServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.Mount(mux)
@@ -118,6 +119,10 @@ func (s *MemberServer) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.RawQuery != "" {
 		writeProblem(w, ErrProtocol)
+		return
+	}
+	if r.URL.Path == PathAuthority {
+		s.authority(w, r.WithContext(ctx))
 		return
 	}
 	request, err := s.opts.Store.CaptureMemberRequest(ctx, r.Header.Get(HeaderCluster), r.Header.Get(HeaderMember), r.TLS)

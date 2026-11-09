@@ -25,6 +25,7 @@ import (
 const (
 	PathImage                    = "/internal/replication/v1/image"
 	PathWrite                    = "/internal/replication/v1/write"
+	PathAuthority                = "/internal/replication/v1/authority"
 	HeaderMember                 = "X-Kudurru-Replica-Member"
 	HeaderCluster                = "X-Kudurru-Replica-Cluster"
 	HeaderTerm                   = "X-Kudurru-Replica-Term"

@@ -96,3 +96,16 @@ The dashboard and CLI distinguish the receipt from that observation. There are
 no automatic retries or redirects. A lost or expired response does not prove
 rollback; inspect state before deciding on another mutation. Other public
 mutation domains and full partition/rejoin acceptance remain unfinished.
+
+
+## Reconnecting an old primary
+
+A retained primary periodically exchanges terms with current enrolled peers over
+mutual TLS. When it observes an authenticated successor, it durably fences writes;
+a later independent follower pull validates, installs and publishes that image.
+This does not automatically promote a node or select a conflicting branch.
+
+The two-process acceptance test now covers public promotion after primary loss
+and automatic old-primary rejoin after restart, preserving private identities.
+Three-process conflicting promotions and explicit branch recovery still require
+qualification. Independent-VM VIP acceptance is owner-deferred follow-up.

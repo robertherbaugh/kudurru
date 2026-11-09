@@ -143,6 +143,15 @@ func enrolledProcessRead(t *testing.T, c *staticProcessClient, path string, read
 // The temporary partition retains the original primary term. Promotion and
 // conflicting-primary recovery have separate acceptance requirements.
 func TestEnrolledClusterProcessesPartitionCatchupAndRestart(t *testing.T) {
+	testEnrolledProcesses(t, false)
+}
+
+func TestEnrolledClusterProcessesPromoteAndRejoin(t *testing.T) {
+	testEnrolledProcesses(t, true)
+}
+
+func testEnrolledProcesses(t *testing.T, promote bool) {
+	t.Helper()
 	kudurrutest.RequireE2E(t)
 	bin, env := licensedNodeFixture(t)
 	key := make([]byte, 32)
@@ -298,6 +307,40 @@ func TestEnrolledClusterProcessesPartitionCatchupAndRestart(t *testing.T) {
 	stop(primary)
 	if !checkDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess) {
 		t.Fatal("stopped primary interrupted retained follower DNS")
+	}
+	if promote {
+		var review api.ClusterPromotionInfo
+		enrolledProcessRead(t, apiB, "/cluster/promotion", func(body []byte) bool {
+			return json.Unmarshal(body, &review) == nil && review.Eligible
+		})
+		var promotion api.ClusterPromotionReceipt
+		apiB.request(t, http.MethodPost, "/cluster/promote", api.ClusterPromoteCommand{ClusterPromotionReview: review.ClusterPromotionReview,
+			ConfirmNode: b.Name, RequestID: "process-promotion", Reason: "independently observed primary loss"}, http.StatusOK, &promotion)
+		if !promotion.Committed || promotion.Term.Epoch != joined.Installed.Term.Epoch+1 || promotion.Term.PrimaryID != review.MemberID {
+			t.Fatal("actual operator promotion lost the original term transition")
+		}
+		enrolledProcessRead(t, apiB, "/cluster/enrollment", func(body []byte) bool {
+			var info api.ClusterEnrollmentInfo
+			return json.Unmarshal(body, &info) == nil && info.Mode == "primary"
+		})
+		apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": true}, http.StatusOK, nil)
+		primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
+		// Only production scheduled peer observations/pulls may fence and install.
+		// No test calls ObserveAuthority, installs an image, or retries a mutation.
+		enrolledProcessRead(t, apiA, "/cluster/enrollment", func(body []byte) bool {
+			var info api.ClusterEnrollmentInfo
+			return json.Unmarshal(body, &info) == nil && info.Mode == "follower" && info.MemberID == activated.MemberID
+		})
+		enrolledProcessRead(t, apiA, "/dns/blocking", func(body []byte) bool {
+			var status api.BlockingState
+			return json.Unmarshal(body, &status) == nil && status.Blocking
+		})
+		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
+		awaitDNS(primary, "seed", "", dns.RcodeNameError)
+		if identity(a) != aIdentity || identity(b) != bIdentity {
+			t.Fatal("promotion/reconnection replaced private member identities")
+		}
+		return
 	}
 	primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
 	awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)

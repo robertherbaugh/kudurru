@@ -14,6 +14,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Enrolled SQLite primaries periodically exchange authenticated peer terms. A
+  returning old primary fences its writes before a later independent follower
+  pull installs the successor image. Two-process promotion and rejoin acceptance
+  passes; conflicting promotions and explicit branch recovery remain unqualified.
+
 - Enrolled SQLite followers forward blocking toggles once to their original
   primary with retained source, credential and deadline checks. HTTP 202 reports
   a confirmed primary commit with serving publication pending; the dashboard and

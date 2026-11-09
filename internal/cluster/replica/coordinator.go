@@ -140,6 +140,15 @@ func (c *Coordinator) Pull(ctx context.Context) error {
 		return err
 	}
 	defer release()
+	// Primary processes do not pull their own images. They still need actual
+	// enrolled-peer term contact after a partition. This concrete metadata path
+	// never contributes a missed-pull window or promotion eligibility. A fence
+	// retires this attempt; installation starts on a later independent pull.
+	if c.opts.Store.Authority().Mode == replication.Primary {
+		if source, ok := c.opts.Source.(*EnrolledSource); ok {
+			return source.ObserveNextPeer(ctx)
+		}
+	}
 	err = c.puller.Pull(ctx)
 	now := c.tickLocked()
 	var exchange *ExchangeError

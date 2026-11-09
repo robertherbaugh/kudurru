@@ -2038,3 +2038,38 @@ An unaccepted member fails current-roster TLS without sending another proposal.
 The initial operation's deadline is not refreshed; the operator deliberately
 starts a distinct bounded observation. Full partition/rejoin qualification is
 still separate from this recovery path.
+
+
+### Enrolled peer authority observation
+
+A writable SQLite primary uses each scheduled Coordinator turn to contact one
+live enrolled peer in round-robin order. The exchange carries only its original
+term and has a two-second outgoing lifetime. The Store selects actual current
+peer trust/address and retains membership exclusion through mutual TLS and
+response consumption. It grants no missed-pull or promotion eligibility.
+
+The receiving authority route uses nonblocking writer admission: simultaneous
+outgoing exchanges cannot queue on each other's held Store locks. It verifies
+the sender against the actual nonrevoked roster, persists a higher or conflicting
+term through the existing authority transition, and flushes its resulting term
+under the same membership and original certificate/deadline bounds. Older terms
+never downgrade authority. A durable fence survives canceled output. The exchange
+installs no image and chooses no conflicting branch.
+
+```mermaid
+sequenceDiagram
+    participant Old as Returning primary
+    participant Peer as Promoted enrolled peer
+    participant Pull as Later follower pull
+    Old->>Peer: Original bounded term probe over member TLS
+    Peer->>Peer: Try membership exclusion and authenticate current roster
+    Peer-->>Old: Flush actual term under original bounds
+    Old->>Old: Authenticate response and durably fence
+    Note over Old,Pull: End original metadata attempt
+    Pull->>Peer: Independently capture and acquire successor image
+    Pull->>Old: Validate, install and publish complete state
+```
+
+Separate-process acceptance covers public join, partition, promotion, old-primary
+restart and automatic rejoin with original private identities. Three-process
+conflicting promotions and explicit branch recovery remain separate requirements.

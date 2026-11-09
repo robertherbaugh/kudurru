@@ -2,6 +2,7 @@ package replica
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
@@ -25,7 +26,10 @@ type EnrolledSourceOptions struct {
 // EnrolledSource acquires from the actual installed primary membership. No
 // caller-supplied peer resolver, replacement trust or transport is accepted.
 // It neither initializes enrollment nor installs images itself.
-type EnrolledSource struct{ opts EnrolledSourceOptions }
+type EnrolledSource struct {
+	opts        EnrolledSourceOptions
+	probeCursor atomic.Uint64
+}
 
 // NewEnrolledSource binds acquisition to the retained local identity and Store.
 func NewEnrolledSource(o EnrolledSourceOptions) (*EnrolledSource, error) {

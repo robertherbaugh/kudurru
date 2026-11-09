@@ -117,8 +117,9 @@ func peerAddress(self, peer Peer, path string) (string, error) {
 // requestIdentity samples memory-only callbacks once for the entire exchange.
 // Copy the token slice so a later rotation cannot replace a captured attempt.
 type requestIdentity struct {
-	self   Peer
-	tokens []string
+	self         Peer
+	tokens       []string
+	announcement *replication.Term
 }
 
 func (c *Client) captureIdentity(ctx context.Context) (requestIdentity, error) {
@@ -195,6 +196,9 @@ func (c *Client) requestCaptured(ctx context.Context, identity requestIdentity, 
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set(HeaderMember, identity.self.MemberID)
 		req.Header.Set(HeaderCluster, identity.self.ClusterID)
+		if identity.announcement != nil {
+			req.Header.Set(HeaderTerm, encodeTerm(*identity.announcement))
+		}
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}

@@ -6932,3 +6932,38 @@ race-instrumented child binary. All 4,781 source identities match. Scoped E2E li
 untouched and unstaged. This closes the unchanged-term process scenario only;
 promotion/conflict reconnection, other mutation domains and supported-driver/final
 release gates remain open. VM and AD deferrals retain their separate decisions.
+
+
+### F60b/G11 authenticated peer observation and promoted rejoin — November 9, 2026 (D359)
+
+Writable enrolled SQLite primaries now perform one bounded metadata-only peer
+exchange per scheduled Coordinator turn. Actual current roster trust and member
+TLS authenticate both sides; receiver TryLock refuses cyclic peer-lock waits.
+Higher/conflicting terms use the existing durable authority transition. The
+original attempt installs no image, chooses no conflict branch and supplies no
+promotion eligibility. After fencing, only a later independent follower pull
+captures and installs the successor. Output failure cannot erase a durable fence.
+
+Evidence in `.context/member-authority-20261109/`: `lower-race02` exits 0 with
+39 test pass entries and zero failures/skips (31.864 seconds wall); `process03`
+exits 0 with both separate-process scenarios passing and zero failures/skips
+(164.731 seconds wall). The promoted-rejoin scenario uses public activation,
+invitation, offline join, scheduled loss eligibility and reviewed promotion,
+then restarts the old primary. Only production scheduled peer observations and
+pulls fence/install/publish the successor. Private identity hashes and actual
+UDP/TCP authoritative data remain intact. Default race instruments the harness;
+CGO-disabled synthetic-license child server binaries are not race-instrumented.
+All frozen source identities match; subsequent source changes only clarify two
+comments. Scoped lint `lint05` exits 0 with zero issues in 36.479 seconds;
+pinned Semgrep 1.181.0 `sast06` scans all nine changed production files with zero
+findings/errors, exit 0 in 6.616 seconds. Both final-source freezes match.
+Broader compatibility races and final hosted checks remain separate requirements.
+The older hosted CI 42563990848 was still pending when the owner requested an
+immediate push; the push canceled it. Its prior/final status is retained, with no
+pass inferred. The new remote commits require their own hosted qualification.
+
+Three-process conflicting promotions/branch recovery, other forwarded mutation
+domains, Kubernetes authority/ownership, supported-driver and final release
+qualification remain open. AD/Windows and independent-VM VIP acceptance remain
+owner-deferred under D353/D358. Prior hosted HTTP/2 failure remains unexplained.
+No release publication or overall completion is claimed.

@@ -71,13 +71,25 @@ func (a *MemberAcquisition) Peer() enrollment.Member {
 // transaction is held during network I/O. Replica installation occurs later
 // under its separately precaptured original anchor/source admission.
 func (s *Store) WithMemberAcquisition(ctx context.Context, local memberidentity.Trust, fn func(context.Context, *MemberAcquisition) error) error {
-	return s.withMemberAcquisition(ctx, local, nil, fn)
+	return s.withMemberAcquisition(ctx, local, nil, "", fn)
+}
+
+// WithMemberProbe captures an enrolled primary's original peer and authority
+// for one bounded metadata exchange. The target is selected from the actual
+// roster under wmu, never from caller-supplied trust or an address. The same
+// no-reentry, cancellation and joined-I/O contract as WithMemberAcquisition
+// applies. It supplies no image installation or domain mutation authority.
+func (s *Store) WithMemberProbe(ctx context.Context, local memberidentity.Trust, target string, fn func(context.Context, *MemberAcquisition) error) error {
+	if target == "" || target == local.MemberID() {
+		return enrollment.ErrRefused
+	}
+	return s.withMemberAcquisition(ctx, local, nil, target, fn)
 }
 
 // original, when present, is the caller's already captured complete source.
 // Its admission occurs under the same exclusion as membership and transport;
 // waiting for wmu must never adopt a successor generation.
-func (s *Store) withMemberAcquisition(ctx context.Context, local memberidentity.Trust, original *GenerationToken, fn func(context.Context, *MemberAcquisition) error) error {
+func (s *Store) withMemberAcquisition(ctx context.Context, local memberidentity.Trust, original *GenerationToken, probe string, fn func(context.Context, *MemberAcquisition) error) error {
 	if ctx == nil || fn == nil || HasWriterToken(ctx) || ctx.Value(memberAcquisitionKey{}) != nil {
 		return replication.ErrInvalid
 	}
@@ -100,10 +112,15 @@ func (s *Store) withMemberAcquisition(ctx context.Context, local memberidentity.
 	if err != nil {
 		return err
 	}
-	if owner.State() == nil || (a.Mode != replication.Follower && a.Mode != replication.Fenced) ||
-		a.Conflict != nil || a.Divergence != nil || a.Term.PrimaryID == a.MemberID ||
+	admitted := (probe == "" && (a.Mode == replication.Follower || a.Mode == replication.Fenced) && a.Term.PrimaryID != a.MemberID) ||
+		(probe != "" && a.Mode == replication.Primary && a.Writable())
+	if owner.State() == nil || !admitted || a.Conflict != nil || a.Divergence != nil ||
 		local.MemberID() != a.MemberID || !local.ValidAt(time.Now()) {
 		return enrollment.ErrRefused
+	}
+	target := a.Term.PrimaryID
+	if probe != "" {
+		target = probe
 	}
 	var peer enrollment.Member
 	found := false
@@ -114,7 +131,7 @@ func (s *Store) withMemberAcquisition(ctx context.Context, local memberidentity.
 		if member.ID == a.MemberID {
 			found = member.Trust.Fingerprint() == local.Fingerprint()
 		}
-		if member.ID == a.Term.PrimaryID {
+		if member.ID == target {
 			peer = member
 		}
 	}
