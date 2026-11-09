@@ -57,86 +57,159 @@ delete/recreate identity to bypass an uncertain result. No daemon starts here.`,
 	cmd.Flags().StringVar(&o.address, "confirm-address", "", "Exact reviewed target internal host:port")
 	cmd.Flags().BoolVar(&o.offline, "offline", false, "Acknowledge that all local kudurru processes are stopped")
 	root.AddCommand(cmd)
+	addClusterJoinReconcileCommand(root)
 }
 
-func runClusterJoin(parent context.Context, o clusterJoinOptions) (result *clusterreplica.JoinResult, err error) {
+func addClusterJoinReconcileCommand(root *cobra.Command) {
+	var o clusterJoinOptions
+	cmd := &cobra.Command{Use: "join-reconcile", Short: "Recover an incomplete offline join using its retained identity and intent", Args: cobra.NoArgs,
+		Long: `Observe an earlier join using its exact original invitation, private identity and
+durable local intent. Stop all local kudurru processes first. The existing receiver
+must still be Unenrolled and never installed. This command never sends a proposal,
+creates an identity, repairs data or discovers a replacement primary.
+
+The original invitation may have expired, but both original member CAs must remain
+valid. Current member TLS must already admit this receiver and the complete image
+must retain its exact consumed invitation. A new explicit 30-second attempt fetches
+and installs one image. A successful observed result is not a new primary commit or
+serving publication. Missing intent or provenance requires separate investigation.`,
+		RunE: func(c *cobra.Command, _ []string) error {
+			result, err := runClusterJoinReconcile(c.Context(), o)
+			if result != nil {
+				err = errors.Join(err, json.NewEncoder(c.OutOrStdout()).Encode(result))
+			}
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&o.directory, "data-dir", "", "Existing incomplete receiver directory; never created or repaired")
+	cmd.Flags().StringVar(&o.invitation, "invitation-file", "", "Private exact original invitation or join-token JSON receipt file")
+	cmd.Flags().StringVar(&o.name, "confirm-name", "", "Exact original target member name")
+	cmd.Flags().StringVar(&o.address, "confirm-address", "", "Exact original target internal host:port")
+	cmd.Flags().BoolVar(&o.offline, "offline", false, "Acknowledge that all local kudurru processes are stopped")
+	root.AddCommand(cmd)
+}
+
+type offlineJoinResult struct {
+	initial    *clusterreplica.JoinResult
+	reconciled *clusterreplica.JoinReconciliationResult
+}
+
+func runClusterJoin(parent context.Context, o clusterJoinOptions) (*clusterreplica.JoinResult, error) {
+	result, err := runOfflineJoin(parent, o, false)
+	return result.initial, err
+}
+
+func runClusterJoinReconcile(parent context.Context, o clusterJoinOptions) (*clusterreplica.JoinReconciliationResult, error) {
+	result, err := runOfflineJoin(parent, o, true)
+	return result.reconciled, err
+}
+
+func runOfflineJoin(parent context.Context, o clusterJoinOptions, reconcile bool) (result offlineJoinResult, err error) {
 	if !o.offline || o.directory == "" || o.invitation == "" || o.name == "" || o.address == "" {
-		return nil, errors.New("--offline, --data-dir, --invitation-file, --confirm-name and --confirm-address are required")
+		return result, errors.New("--offline, --data-dir, --invitation-file, --confirm-name and --confirm-address are required")
 	}
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	// #nosec G304 -- operator-selected private invitation; bounded read, no logging
 	f, err := os.Open(o.invitation)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(f, enrollment.MaxInvitationBytes+4097))
 	err = errors.Join(readErr, f.Close())
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	if len(raw) > enrollment.MaxInvitationBytes+4096 {
-		return nil, enrollment.ErrInvalid
+		return result, enrollment.ErrInvalid
 	}
 	wire := strings.TrimSpace(string(raw))
 	if strings.HasPrefix(wire, "{") {
 		var receipt api.ClusterJoinTokenReceipt
 		if json.Unmarshal(raw, &receipt) != nil || !receipt.Committed {
-			return nil, enrollment.ErrInvalid
+			return result, enrollment.ErrInvalid
 		}
 		wire = receipt.Invitation
 	}
-	invitation, err := enrollment.ParseInvitation(wire)
-	if err != nil {
-		return nil, err
+	var invitation enrollment.Invitation
+	var observation enrollment.JoinObservation
+	var name, address, cluster string
+	if reconcile {
+		observation, err = enrollment.ParseJoinObservation(wire)
+		name, address = observation.Target()
+		cluster = observation.ClusterID()
+	} else {
+		invitation, err = enrollment.ParseInvitation(wire)
+		name, address = invitation.Target()
+		cluster = invitation.ClusterID()
 	}
-	name, address := invitation.Target()
+	if err != nil {
+		return result, err
+	}
 	if o.name != name || o.address != address {
-		return nil, errors.New("invitation target does not match the separately confirmed name/address")
+		return result, errors.New("invitation target does not match the separately confirmed name/address")
 	}
 	key, previous, err := readEncryptionKeys()
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	if len(key) == 0 {
-		return nil, errors.New("joining requires the original shared KUDURRU_ENCRYPTION_KEY or _FILE")
+		return result, errors.New("joining requires the original shared KUDURRU_ENCRYPTION_KEY or _FILE")
 	}
 	credentials, err := internalapi.NewCredentials(internalapi.CredentialOptions{Key: key, PreviousKey: previous, NodeName: name})
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	v, err := validator.New()
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	schema, err := servingbuild.NewSchema(scheme, v, runtimeowners.ValidateEntry, runtimeowners.ValidateImage)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return result, err
 	}
 	// Mkdir (not MkdirAll) refuses any existing path, including empty directories
 	// and symlinks. Failures retain all newly created evidence and private keys.
-	if err := os.Mkdir(o.directory, 0700); err != nil {
-		return nil, err
+	opts := sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: privateStoreKinds(), Identity: name, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage}
+	var s *sqlite.Store
+	if reconcile {
+		s, err = sqlite.OpenExisting(ctx, filepath.Join(o.directory, sqlite.FileName), opts)
+	} else {
+		if err := os.Mkdir(o.directory, 0700); err != nil {
+			return result, err
+		}
+		s, err = sqlite.CreateJoinReceiver(ctx, filepath.Join(o.directory, sqlite.FileName), opts)
 	}
-	s, err := sqlite.CreateJoinReceiver(ctx, filepath.Join(o.directory, sqlite.FileName), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: privateStoreKinds(), Identity: name, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	defer func() { err = errors.Join(err, s.Close()) }()
-	identity, err := memberidentity.Create(filepath.Join(o.directory, memberIdentityFile), s.Authority().MemberID)
+	var identity *memberidentity.Identity
+	if reconcile {
+		identity, err = memberidentity.Load(filepath.Join(o.directory, memberIdentityFile), s.Authority().MemberID)
+	} else {
+		identity, err = memberidentity.Create(filepath.Join(o.directory, memberIdentityFile), s.Authority().MemberID)
+	}
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	if _, err := s.BindAnchorLifecycle(ctx); err != nil {
-		return nil, err
+		return result, err
 	}
-	out, err := clusterreplica.JoinReceiver(ctx, s, identity, invitation, credentials, schema.PrimaryImageOptions(ctx, invitation.ClusterID()).Validation)
-	return &out, err
+	validation := schema.PrimaryImageOptions(ctx, cluster).Validation
+	if reconcile {
+		out, err := clusterreplica.ReconcileJoinReceiver(ctx, s, identity, observation, credentials, validation)
+		result.reconciled = &out
+		return result, err
+	}
+	out, err := clusterreplica.JoinReceiver(ctx, s, identity, invitation, credentials, validation)
+	result.initial = &out
+	return result, err
 }

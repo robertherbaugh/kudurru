@@ -2,7 +2,10 @@ package sqlite
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"sync/atomic"
@@ -22,13 +25,41 @@ type InitialJoin struct{ original *initialJoin }
 type initialJoin struct {
 	s          *Store
 	ctx        context.Context
-	invitation enrollment.Invitation
+	invitation joinBinding
+	intent     string
 	local      memberidentity.Trust
 	life       anchorOriginalLifetime
 	used       atomic.Bool
 }
 
 type initialJoinKey struct{}
+
+// Only the concrete public entry points below choose this binding. External
+// implementations cannot inject a historical-lifetime exemption.
+type joinBinding interface {
+	ClusterID() string
+	IssuingPeer() (enrollment.Issuer, string, memberidentity.Trust)
+	CheckLifetime(memberidentity.Trust) error
+	CheckAccepted(*enrollment.State, memberidentity.Trust) error
+	JoinFingerprint() (string, error)
+}
+
+const metaJoinIntent = "local_join_intent_v1"
+
+// Node-local metadata, never part of a replicated/public image. No secret or
+// private key is retained. Exact immutable bytes bind one original local cut.
+type joinIntent struct {
+	Format     int    `json:"format"`
+	Invitation string `json:"invitation"`
+	Member     string `json:"member"`
+	CA         string `json:"ca"`
+	Carrier    string `json:"carrier"`
+	Authority  string `json:"authority"`
+}
+
+// ErrJoinIntentUnknown means intent SQL completion was not confirmed. No
+// proposal is dispatched, and this process closes admission conservatively.
+var ErrJoinIntentUnknown = errors.New("store/sqlite: join intent completion unknown")
 
 // CreateJoinReceiver exclusively creates a never-enrolled database under the
 // caller's original finite context. The parent must already be an explicitly
@@ -58,9 +89,20 @@ func CreateJoinReceiver(ctx context.Context, path string, opts Options) (*Store,
 }
 
 // CaptureInitialJoin requires an explicitly unenrolled pristine receiver whose
-// physical migration carrier was already bound. Missing historical data and
-// standalone/follower databases refuse, including previously installed images.
+// physical migration carrier was already bound. Before returning it durably
+// records immutable intent. Any existing intent refuses another proposal capture.
 func (s *Store) CaptureInitialJoin(ctx context.Context, invitation enrollment.Invitation, local memberidentity.Trust) (*InitialJoin, error) {
+	return s.captureJoin(ctx, invitation, local, false)
+}
+
+// CaptureJoinReconciliation observes a retained incomplete join under a new
+// explicit finite operation. It requires the exact existing intent and never
+// creates, repairs or renews it. Capture must precede network acquisition.
+func (s *Store) CaptureJoinReconciliation(ctx context.Context, observation enrollment.JoinObservation, local memberidentity.Trust) (*InitialJoin, error) {
+	return s.captureJoin(ctx, observation, local, true)
+}
+
+func (s *Store) captureJoin(ctx context.Context, invitation joinBinding, local memberidentity.Trust, reconcile bool) (request *InitialJoin, result error) {
 	life, err := captureAnchorLifetime(ctx)
 	if err != nil {
 		return nil, err
@@ -78,11 +120,39 @@ func (s *Store) CaptureInitialJoin(ctx context.Context, invitation enrollment.In
 	if !anchorAwaitingInstallCursor(cell.cursor) || cell.installed != (replication.Generation{}) {
 		return nil, replication.ErrCAS
 	}
-	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	fingerprint, err := invitation.JoinFingerprint()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback() }()
+	carrier := sha256.Sum256([]byte(cell.cursor.local.raw))
+	raw, err := json.Marshal(joinIntent{Format: 1, Invitation: fingerprint, Member: local.MemberID(), CA: local.Fingerprint(), Carrier: hex.EncodeToString(carrier[:]), Authority: cell.authority})
+	if err != nil {
+		return nil, err
+	}
+	o.intent = string(raw)
+	if err := s.lockWriterContext(ctx); err != nil {
+		return nil, err
+	}
+	defer s.wmu.Unlock()
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	boundary := anchorSQL{tx: tx}
+	defer func() {
+		boundary.finish(&result)
+		if boundary.outcome == AnchorUnknown {
+			s.anchorBlocked.Store(true)
+			cell.source.closed.Store(true)
+			cell.source.mode.closeMemory()
+			request = nil
+			result = errors.Join(result, ErrJoinIntentUnknown)
+		}
+	}()
+	operation := &anchorOperation{source: cell.source, before: cell.cursor, installed: cell.installed, authorityCut: cell.authority, originalLife: &cell.life, awaitingInstall: true}
+	if err := operation.enterInstall(ctx, s, tx, ""); err != nil {
+		return nil, err
+	}
 	a, err := readAuthority(ctx, tx)
 	if err != nil {
 		return nil, err
@@ -93,8 +163,40 @@ func (s *Store) CaptureInitialJoin(ctx context.Context, invitation enrollment.In
 	if err := pristineJoin(ctx, tx, a); err != nil {
 		return nil, err
 	}
+	if reconcile {
+		if err := o.checkIntent(ctx, tx); err != nil {
+			return nil, err
+		}
+	} else {
+		// Plain INSERT deliberately refuses an existing intent, even identical.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, metaJoinIntent, o.intent); err != nil {
+			return nil, err
+		}
+	}
+	if err := o.check(); err != nil {
+		return nil, err
+	}
+	if s.anchorBlocked.Load() || s.anchors.Load() != cell.source || cell.source.closed.Load() || cell.source.cursor.Load() != cell.cursor {
+		return nil, replication.ErrCAS
+	}
+	if reconcile {
+		boundary.unchanged = true
+	} else if err := boundary.commit(); err != nil {
+		return nil, err
+	}
 	o.ctx = captured
 	return &InitialJoin{original: o}, o.check()
+}
+
+func (o *initialJoin) checkIntent(ctx context.Context, tx *sql.Tx) error {
+	var raw string
+	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, metaJoinIntent).Scan(&raw); err != nil {
+		return err
+	}
+	if raw != o.intent {
+		return replication.ErrCAS
+	}
+	return nil
 }
 
 func pristineJoin(ctx context.Context, q *sql.Tx, a replication.Authority) error {

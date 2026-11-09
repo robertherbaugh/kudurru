@@ -6773,3 +6773,63 @@ raw JSON; none concerns a changed production path. Earlier `lint12` unchecked
 test closes and `lint15` fixture-file G304 findings remain preserved; test closes
 and narrow test-only provenance annotations correct them. The pre-existing
 `dashboard/dist/index.html` bytes remain untouched and excluded from staging.
+
+
+### Incomplete-join reconciliation — November 9, 2026 (D356)
+
+Initial join now commits exclusive immutable node-local intent before proposal
+dispatch, binding the exact invitation fingerprint, member CA and pristine
+migration carrier/authority. No bearer secret enters that metadata or public
+images. Existing intent refuses another proposal capture; unconfirmed intent SQL
+completion fences local admission and dispatch is refused.
+
+The explicit offline `cluster join-reconcile` command opens current-schema
+existing data and the retained private identity. Its new finite observation is
+captured before one current-member TLS image GET; it never sends another POST.
+The opaque historical input preserves original expiry and cannot create a
+proposal. Even after invitation expiry, exact local intent, currently valid CAs,
+original primary term and complete consumed-ticket/target provenance are required.
+The first image, authority and local carrier install atomically. Missing intent,
+changed identity, pruned provenance, an unaccepted member and an already installed
+receiver refuse. Observed membership is not a new primary commit or serving
+publication. Older incomplete receivers without intent are not silently repaired.
+
+Focused default-race `race04` passes all 54 actual entries with no failures/skips
+in 107.025 seconds. This includes actual CLI/TLS reconciliation after a real
+expired invitation and first-image validation failure, physical restart/private
+CA retention, no acceptance replay, missing/changed intent, same-UUID replacement
+CA, cancellation, original lock deadline, shared-cell consumption and actual
+SQLite 1811/787 intent/install boundaries. `ordinary02` preserves one incorrect
+new test assumption about structural proposal signing; source03 tests expiry at
+actual Accept instead. Its 48 other entries passed. Evidence is retained under
+`.context/join-reconciliation-20261109/`; broader qualification follows below.
+
+Remaining typed/public forwarding, Kubernetes authority/management and ownership,
+full supported-driver/partition/rejoin/independent-VM acceptance, and final-source
+hosted/performance/deployment gates remain open. AD remains owner-deferred preview
+under D353. No release publication or completion claim follows from this scope.
+
+The broader `lower-race05` command reached its original 420-second outer bound
+and was terminated (child -15; wrapper 241) after 1,009 actual pass entries, zero
+test failures/skips. Enrollment, persistence and replica packages completed
+successfully; the accepted-owner package has no tests. SQLite was interrupted in
+TestWatchSlowConsumerCatchesUp, so this is **not** a full SQLite pass. The existing
+10,000-object test completed; no test deadline or assertion was changed. All
+source hashes matched and the owned process group is empty. Full final-source
+hosted coverage remains required.
+
+Final scoped qualification: `lint08` exits 0 with zero issues (15.434 seconds);
+`generate09` completes `make docs-gen` (41.486 seconds). Pinned Semgrep 1.181.0
+`sast10` exits 0 with zero findings across all seven changed production files,
+using the unchanged five policy sets and nine exclusions, a read-only source
+mount and 126 applicable rules (6.821 seconds). Full hosted SAST remains a
+separate final-source gate. `lint06` retains its two test-only findings; source07
+only renames the copied request variable and annotates the intentional generic
+JSON secrecy assertion. Production bytes match race-passing source03. The
+protected dashboard artifact remains unchanged and unstaged.
+
+Predecessor hosted CI 42559340879 on 0a1a44cb completed with one failing test:
+TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled received an HTTP/2
+INTERNAL_ERROR during its DoH exchange. Other test shard passed; ci-ok correctly
+failed. Its raw log is retained for a separate investigation. This recovery scope
+does not explain or close that failure, or qualify the overall release.

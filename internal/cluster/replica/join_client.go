@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster/enrollment"
+	"github.com/robertherbaugh/kudurru/internal/cluster/enrollment/accepted"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/cluster/memberidentity"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -50,29 +51,71 @@ func JoinReceiver(ctx context.Context, s *sqlite.Store, identity *memberidentity
 	}
 	issuer, address, trust := invitation.IssuingPeer()
 	term := result.Primary.Term
-	self := Peer{MemberID: identity.Trust().MemberID(), ClusterID: invitation.ClusterID()}
-	peer := Peer{MemberID: issuer.MemberID, ClusterID: self.ClusterID, Address: address, Trust: trust}
-	client, err := NewMemberClient(ClientOptions{Credentials: credentials, Self: func() Peer { return self }, Observer: joiningTerm{term: term}}, identity)
-	if err != nil {
-		return result, err
-	}
-	source, err := NewSource(client, SourceOptions{Resolve: func(context.Context) (Peer, error) { return peer, nil }, Validation: validation})
-	if err != nil {
-		return result, err
-	}
-	response, err := source.Fetch(ctx, "")
-	if err != nil {
-		return result, err
-	}
-	if response.Image == nil || response.NotModified {
-		return result, ErrProtocol
-	}
-	validated, err := s.ValidateImage(ctx, *response.Image)
+	validated, err := fetchJoinImage(ctx, s, identity, credentials, validation, issuer, address, trust, term)
 	if err != nil {
 		return result, err
 	}
 	result.Installed, err = s.InstallJoinedReplica(original, validated)
 	return result, err
+}
+
+// JoinReconciliationResult describes a later observation and local installation.
+// It makes no new primary-commit claim and never proves serving publication.
+type JoinReconciliationResult struct {
+	Observed  bool                   `json:"observed"`
+	MemberID  string                 `json:"memberID"`
+	Installed replication.Generation `json:"installed"`
+}
+
+// ReconcileJoinReceiver performs only one current-member TLS image GET, never
+// a proposal POST. The explicit new attempt requires retained local intent,
+// original identity and original issuer. No prior deadline is silently renewed.
+func ReconcileJoinReceiver(ctx context.Context, s *sqlite.Store, identity *memberidentity.Identity, observation enrollment.JoinObservation, credentials *internalapi.Credentials, validation replication.Validation) (JoinReconciliationResult, error) {
+	var result JoinReconciliationResult
+	if ctx == nil || s == nil || identity == nil || credentials == nil {
+		return result, ErrProtocol
+	}
+	original, err := s.CaptureJoinReconciliation(ctx, observation, identity.Trust())
+	if err != nil {
+		return result, err
+	}
+	issuer, address, trust := observation.IssuingPeer()
+	term := replication.Term{ClusterID: observation.ClusterID(), PrimaryID: issuer.MemberID, Epoch: issuer.Epoch, PromotionID: issuer.PromotionID}
+	validated, err := fetchJoinImage(ctx, s, identity, credentials, validation, issuer, address, trust, term)
+	if err != nil {
+		return result, err
+	}
+	owner, err := accepted.DecodeRows(validated.Image().Payload.Membership, term.ClusterID)
+	if err != nil {
+		return result, err
+	}
+	if err := observation.CheckAccepted(owner.State(), identity.Trust()); err != nil {
+		return result, err
+	}
+	result.Observed, result.MemberID = true, identity.Trust().MemberID()
+	result.Installed, err = s.InstallJoinedReplica(original, validated)
+	return result, err
+}
+
+func fetchJoinImage(ctx context.Context, s *sqlite.Store, identity *memberidentity.Identity, credentials *internalapi.Credentials, validation replication.Validation, issuer enrollment.Issuer, address string, trust memberidentity.Trust, term replication.Term) (*replication.Validated, error) {
+	self := Peer{MemberID: identity.Trust().MemberID(), ClusterID: term.ClusterID}
+	peer := Peer{MemberID: issuer.MemberID, ClusterID: self.ClusterID, Address: address, Trust: trust}
+	client, err := NewMemberClient(ClientOptions{Credentials: credentials, Self: func() Peer { return self }, Observer: joiningTerm{term: term}}, identity)
+	if err != nil {
+		return nil, err
+	}
+	source, err := NewSource(client, SourceOptions{Resolve: func(context.Context) (Peer, error) { return peer, nil }, Validation: validation})
+	if err != nil {
+		return nil, err
+	}
+	response, err := source.Fetch(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	if response.Image == nil || response.NotModified {
+		return nil, ErrProtocol
+	}
+	return s.ValidateImage(ctx, *response.Image)
 }
 
 // A never-enrolled receiver cannot observe/commit a remote term before the

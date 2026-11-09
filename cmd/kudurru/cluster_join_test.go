@@ -33,6 +33,10 @@ import (
 // Primary activation is fixture administration. Invitation acceptance, first
 // image and local term pinning below use the real mounted protocol and CLI.
 func joinPrimaryFixture(t *testing.T) (*servingRuntime, *internalapi.Credentials, func(string) enrollment.Invitation) {
+	return joinPrimaryLifetimeFixture(t, time.Minute)
+}
+
+func joinPrimaryLifetimeFixture(t *testing.T, lifetime time.Duration) (*servingRuntime, *internalapi.Credentials, func(string) enrollment.Invitation) {
 	t.Helper()
 	p := newServingRuntimeFixture(t)
 	p.opts.Config.Node.DataDir = t.TempDir()
@@ -115,7 +119,7 @@ func joinPrimaryFixture(t *testing.T) (*servingRuntime, *internalapi.Credentials
 		var inv enrollment.Invitation
 		if err := p.opts.Store.Command(ctx, w.Term(), func(ctx context.Context, tx *sqlite.CommandTx) error {
 			var e error
-			_, inv, e = persistence.Issue(ctx, tx, original, name, "127.0.0.2:8082", time.Now().Add(time.Minute))
+			_, inv, e = persistence.Issue(ctx, tx, original, name, "127.0.0.2:8082", time.Now().Add(lifetime))
 			return e
 		}); err != nil {
 			t.Fatal(err)

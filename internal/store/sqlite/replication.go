@@ -276,6 +276,9 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 		if err := pristineJoin(ctx, tx, a); err != nil {
 			return replication.Generation{}, err
 		}
+		if err := join.checkIntent(ctx, tx); err != nil {
+			return replication.Generation{}, err
+		}
 		// Pinning and first complete image are one transaction. The captured
 		// anchor/authority checks above used the original UNENROLLED cut.
 		a.Term, a.Mode, a.MaxObservedEpoch = image.Term, replication.Follower, image.Term.Epoch

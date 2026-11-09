@@ -3,7 +3,8 @@
 This path requires an activated SQLite primary running the enrolled internal
 listener and a private invitation issued for the receiver's exact name and
 internal address. It is separate from static twins and Kubernetes storage.
-Full partition/rejoin qualification and recovery of an incomplete join remain open.
+Full partition/rejoin qualification remains open. An explicit incomplete-join
+recovery path is described below.
 
 1. On the primary, review `cluster enrollment` and issue `cluster join-token`
    using that exact review, target, absolute expiry and audit reason. Transfer
@@ -41,5 +42,39 @@ result. The primary may have accepted membership even if the receiver could not
 confirm the response or install its first image. Do not replay the proposal,
 replace the local identity, delete the directory or issue a successor invitation
 as an automatic recovery step. Inspect the retained primary and local state
-before a separate operator decision. Automated incomplete-join reconciliation is
-not implemented by this command.
+before a separate operator decision. The initial command never retries a failed
+or uncertain proposal automatically.
+
+## Recover an incomplete join
+
+Keep the receiver stopped. With the original invitation file, encryption
+configuration, database and private member identity, run:
+
+```sh
+kudurru cluster join-reconcile --offline \
+  --data-dir /var/lib/kudurru/new-receiver \
+  --invitation-file /run/private/receiver-invitation.json \
+  --confirm-name receiver \
+  --confirm-address 10.0.0.12:8082
+```
+
+This is a new, explicitly requested 30-second observation. It sends no join
+proposal and creates or repairs no local identity or database. It requires the
+immutable local intent committed before the original proposal was dispatched.
+That record binds the exact invitation, original member CA and never-installed
+local state; the invitation secret itself is not stored there.
+
+The primary must already admit the retained member over mutual TLS. Recovery
+fetches one image from the original primary CA, address and term, and requires
+the exact consumed invitation and member identity in that image. The invitation
+may have expired: it is historical evidence here, not renewed permission to join.
+Both original CAs must still be valid. Missing or pruned invitation history,
+replacement identity, changed primary term, missing intent, already installed
+data, or a primary that never accepted the original member all refuse recovery.
+Older incomplete receivers without this durable intent cannot use this path.
+
+Require a successful command with `observed: true` and a nonempty `installed`
+generation before normal startup. `observed` reports existing membership, not a
+new primary commit. Neither field establishes serving publication or convergence.
+On refusal, retain all evidence for investigation; do not delete intent, replace
+identity or automatically submit another proposal.

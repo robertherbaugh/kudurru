@@ -68,6 +68,10 @@ func (i Invitation) Encode() (string, error) {
 // ParseInvitation retains the exact bounded operator-delivered target, server
 // identity and original absolute expiry. It performs no discovery or clock reset.
 func ParseInvitation(encoded string) (Invitation, error) {
+	return parseInvitation(encoded, false)
+}
+
+func parseInvitation(encoded string, historical bool) (Invitation, error) {
 	if len(encoded) > MaxInvitationBytes {
 		return Invitation{}, ErrInvalid
 	}
@@ -84,7 +88,7 @@ func ParseInvitation(encoded string) (Invitation, error) {
 		return Invitation{}, err
 	}
 	now := time.Now()
-	if w.Version != 1 || !validUUID(w.Cluster) || !validUUID(w.ID) || !validIssuer(w.Issuer) || !validTarget(w.Name, w.Address) || !validTarget("issuer", w.IssuerAddress) || len(w.Secret) != 32 || now.Before(w.IssuedAt) || !now.Before(w.ExpiresAt) || w.ExpiresAt.Sub(w.IssuedAt) > MaxInvitationLifetime {
+	if w.Version != 1 || !validUUID(w.Cluster) || !validUUID(w.ID) || !validIssuer(w.Issuer) || !validTarget(w.Name, w.Address) || !validTarget("issuer", w.IssuerAddress) || len(w.Secret) != 32 || w.IssuedAt.IsZero() || !w.IssuedAt.Before(w.ExpiresAt) || now.Before(w.IssuedAt) || (!historical && !now.Before(w.ExpiresAt)) || w.ExpiresAt.Sub(w.IssuedAt) > MaxInvitationLifetime {
 		return Invitation{}, ErrRefused
 	}
 	trust, err := memberidentity.ParseTrust(w.Issuer.MemberID, w.IssuerCA)

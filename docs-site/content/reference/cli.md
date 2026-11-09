@@ -384,6 +384,26 @@ Flags:
       --offline                  Acknowledge that all local kudurru processes are stopped
 ```
 
+### kudurru cluster join-reconcile
+
+Observe an earlier join using its exact original invitation, private identity and durable local intent. Stop all local kudurru processes first. The existing receiver must still be Unenrolled and never installed. This command never sends a proposal, creates an identity, repairs data or discovers a replacement primary.
+
+The original invitation may have expired, but both original member CAs must remain valid. Current member TLS must already admit this receiver and the complete image must retain its exact consumed invitation. A new explicit 30-second attempt fetches and installs one image. A successful observed result is not a new primary commit or serving publication. Missing intent or provenance requires separate investigation.
+
+```text
+kudurru cluster join-reconcile [flags]
+```
+
+Flags:
+
+```text
+      --confirm-address string   Exact original target internal host:port
+      --confirm-name string      Exact original target member name
+      --data-dir string          Existing incomplete receiver directory; never created or repaired
+      --invitation-file string   Private exact original invitation or join-token JSON receipt file
+      --offline                  Acknowledge that all local kudurru processes are stopped
+```
+
 ### kudurru cluster join-token
 
 Issue one invitation for a target member from a separately reviewed primary. Supply all four identity fields from cluster enrollment, the target name and internal host:port, an absolute RFC3339 expiry (within ten minutes), and an audit reason. The response contains a bearer secret: transfer it privately to the intended member. Only its hash is retained by the primary. This command never refreshes, redirects or retries; a lost or unknown response does not prove rollback. Do not replay it.

@@ -791,7 +791,7 @@ loopback compatibility and refusal behavior.
 
 ## Not built yet
 
-Public command forwarding, incomplete-join reconciliation and full partition/rejoin
+Public command forwarding and full partition/rejoin
 acceptance remain unfinished. Initial remote joining and reviewed operator
 promotion are mounted as described below. Retained enrolled followers mount
 the acquisition worker. The `raft` driver (v1.0) and a general `roles:` setting remain
@@ -1914,7 +1914,12 @@ original cluster encryption key. It creates one private local identity and binds
 the actual never-installed migration carrier. Existing standalone/follower data,
 missing or changed history, and existing directories are refused.
 
-The original finite attempt is captured before network acquisition. A distinct
+The original finite attempt is captured before network acquisition. Under the
+original writer-lock deadline, an exclusive node-local metadata insert records
+the invitation fingerprint, local CA and exact migration carrier/authority.
+The purpose-separated fingerprint covers canonical invitation bytes without
+persisting its bearer secret. Existing intent is never replaced. Unconfirmed
+local commit refuses dispatch and closes admission. A distinct
 `<primary UUID>.join.kudurru.invalid` SNI selects only the invitation handler on
 the internal socket. Its separate server-only leaf retains the original member
 name and join alias. Normal TLS 1.3 chain/hostname verification uses the original
@@ -1945,7 +1950,7 @@ sequenceDiagram
     participant Receiver
     participant Primary
     Operator->>Receiver: Original invitation + reviewed target + shared key configuration
-    Receiver->>Receiver: Create pristine directory/identity; capture finite original local cut
+    Receiver->>Receiver: Create pristine directory/identity; capture cut and commit immutable intent
     Receiver->>Primary: Invitation-CA TLS; one signed proposal
     Primary->>Primary: Original source/owner CAS; membership + audit commit
     Primary-->>Receiver: Confirmed primary acceptance
@@ -1960,5 +1965,44 @@ identity and encryption configuration. This does not start a daemon, publish a
 serving bundle or establish cluster convergence. Failure preserves the new
 directory and identity. Primary acceptance can be durable while local installation
 is incomplete; preserve and inspect both ends, without replay or identity repair.
-Explicit reconciliation of that incomplete state remains separate work. See the
+Explicit reconciliation uses the separate observation path below. See the
 [offline join guide](../deploy/sqlite-join.md).
+
+### Explicit observation of an incomplete join
+
+`cluster join-reconcile` opens only an existing current-schema receiver and its
+original private identity. It never initializes, migrates or repairs missing
+inputs. Before network work, a new explicit finite observation captures the
+actual still-Unenrolled, never-installed source and requires the exact durable
+intent. The same intent and source are checked again inside first-image SQL
+admission. Copies share consumption; successful installation prevents another
+first-image operation.
+
+The opaque `JoinObservation` exposes no proposal method or conversion to an
+invitation. It preserves original issue/expiry bytes while allowing an expired
+invitation to identify historical acceptance. Current member mutual TLS, valid
+original CAs, and exact consumed-ticket/target/issuer provenance in the complete
+image are mandatory. The only network operation is one image GET to the original
+address/CA/term, with no proposal POST, discovery, redirects or automatic retry.
+Changed terms and missing or pruned historical tickets refuse. Receivers created
+before durable intent was implemented require separate investigation.
+
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant Receiver
+    participant Primary
+    Operator->>Receiver: Explicit join-reconcile with original private inputs
+    Receiver->>Receiver: Open existing data/identity; capture finite cut; match durable intent
+    Receiver->>Primary: Current member mutual TLS; one complete-image GET
+    Primary-->>Receiver: Image retaining original consumed invitation and member CA
+    Receiver->>Receiver: Validate provenance; original-cut CAS; atomic first installation
+    Receiver-->>Operator: Existing membership observed; separate installed generation
+```
+
+The result reports observed membership and actual local installation separately;
+it never claims a new primary commit, serving publication or peer convergence.
+An unaccepted member fails current-roster TLS without sending another proposal.
+The initial operation's deadline is not refreshed; the operator deliberately
+starts a distinct bounded observation. Full partition/rejoin qualification is
+still separate from this recovery path.

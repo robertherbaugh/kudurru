@@ -35,7 +35,14 @@ func (i Invitation) CheckLifetime(local memberidentity.Trust) error {
 // consumed invitation, target CA and original primary. It is an observation,
 // never a replacement acceptance or permission to replay a used invitation.
 func (i Invitation) CheckAccepted(s *State, local memberidentity.Trust) error {
-	if s == nil || s.ClusterID() != i.cluster || i.CheckLifetime(local) != nil {
+	if i.CheckLifetime(local) != nil {
+		return ErrRefused
+	}
+	return i.checkAccepted(s, local)
+}
+
+func (i Invitation) checkAccepted(s *State, local memberidentity.Trust) error {
+	if s == nil || s.ClusterID() != i.cluster {
 		return ErrRefused
 	}
 	found := false
