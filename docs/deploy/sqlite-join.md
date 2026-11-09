@@ -113,8 +113,15 @@ record editor uses (`POST /zones/{zone}/records`, `DELETE
 /zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import` and `DELETE
 /zones/{zone}`) are forwarded the same way: the primary runs the route's own
 plan, including all-or-nothing imports, and returns its exact output or refusal.
-Settings, identity, integrations and other mutation domains still require the
-primary.
+Local password login works on a follower too: the follower prepares a new
+session identifier and CSRF secret, forwards the username, password, factor code
+and client address once to the primary, and keeps the CSRF secret itself. The
+primary applies the shared lockout counters, password, factor and local-login
+policy and enrolls the session in one command; refused attempts still count
+there. The follower answers after its own pull installs the session, so the
+cookie works on every member. A login that cannot reach the primary returns `503`
+and is not attempted. Settings, other identity administration, integrations and
+remaining mutation domains still require the primary.
 
 
 ## Reconnecting an old primary

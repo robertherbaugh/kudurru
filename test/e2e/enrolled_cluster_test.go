@@ -332,6 +332,27 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	}
 	enrolledProcessRead(t, apiA, "/dns/blocking", blockingOff)
 	enrolledProcessRead(t, apiB, "/dns/blocking", blockingOff)
+	// A fresh client logs in through the follower: the primary admits it under
+	// the shared counters and the follower seals the session after installing it.
+	freshJar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshTransport := &http.Transport{}
+	t.Cleanup(freshTransport.CloseIdleConnections)
+	fresh := &staticProcessClient{client: &http.Client{Jar: freshJar, Transport: freshTransport, Timeout: 35 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, base: apiB.base}
+	if status := enrolledProcessStatus(t, fresh, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "wrong-e2e-password-9"}); status != http.StatusUnauthorized { // #nosec G101 -- deliberately wrong fixture credential
+		t.Fatal("follower did not relay the primary's credential refusal", status)
+	}
+	var followerLogin api.SessionInfo
+	fresh.request(t, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "audit-e2e-password-1"}, http.StatusOK, &followerLogin) // #nosec G101 -- disposable loopback fixture credential
+	if followerLogin.CSRF == "" || followerLogin.Principal.Name != "admin" {
+		t.Fatal("follower login did not return a usable session")
+	}
+	fresh.csrf = followerLogin.CSRF
+	enrolledProcessRead(t, fresh, "/auth/me", func([]byte) bool { return true })
+	enrolledProcessRead(t, &staticProcessClient{client: fresh.client, base: apiA.base, csrf: fresh.csrf}, "/auth/me", func([]byte) bool { return true })
 	// Canonical object writes through the follower commit once on the primary
 	// with its exact public result; the follower serves them after its pull.
 	viaFollower := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",

@@ -11,8 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/security"
+	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/cluster/memberidentity"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
@@ -314,5 +319,104 @@ func TestRootMemberZoneCommandActualHTTP(t *testing.T) {
 	}
 	if err := h.f.s.opts.Store.Get(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "api-editor"}, &stored); err == nil && len(stored.Spec.Endpoints) != 0 {
 		t.Fatal("forwarded delete left the record")
+	}
+}
+
+// A forwarded local login runs the primary's shared admission and enrolls the
+// follower-prepared session; no password or CSRF secret becomes durable.
+func TestRootMemberLoginCommandActualHTTP(t *testing.T) {
+	h := newRootMemberHarness(t)
+	hash, err := users.NewHasher(1).Hash(t.Context(), "forwarded-login-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, err := h.f.s.opts.Store.WriterToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.f.s.opts.Store.Command(sqlite.WithWriterToken(t.Context(), writer), writer.Term(), func(ctx context.Context, tx *sqlite.CommandTx) error {
+		var user internalv1.LocalUser
+		if err := tx.Get(ctx, store.Key{Kind: "LocalUser", Name: "root-command"}, &user); err != nil {
+			return err
+		}
+		user.Spec.PasswordHash = hash
+		_, err := tx.Apply(ctx, &user, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h.f.s.publisher.Wake()
+	login := func(id, password string, mutate func(*clusterreplica.Command)) (int, memberLoginResult, string) {
+		t.Helper()
+		_, prepared := security.NewForwardedEnrollment()
+		// #nosec G117 -- disposable fixture password in a test-only member command
+		payload, err := json.Marshal(memberLogin{Username: "root-command", Password: password, ClientKey: "192.0.2.200", SessionID: prepared.ID, CSRFHash: prepared.CSRFHash,
+			Nonce: "nonce-that-is-long-enough-for-the-forwarded-login-check"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := clusterreplica.Command{Format: clusterreplica.CommandFormat, Version: 1, ID: id, ExpectedTerm: h.f.s.opts.Store.Authority().Term,
+			Hops: 1, IssuedAt: h.f.now, NotAfter: h.f.now.Add(time.Minute), Operation: memberLocalLogin,
+			Subject: clusterreplica.SubjectRef{Kind: auth.KindUser, ID: "local:root-command", Provider: "local", CredentialKind: "session", CredentialID: prepared.ID, IssuedAt: h.f.now},
+			Payload: payload}
+		if mutate != nil {
+			mutate(&c)
+		}
+		status, out := h.send(c)
+		var result memberLoginResult
+		if status == http.StatusOK && json.Unmarshal(out.Body, &result) != nil {
+			t.Fatal("undecodable login result")
+		}
+		return status, result, prepared.ID
+	}
+	// Login may need the fresh password hash in a published view; retry only
+	// this fixture's first distinct attempt until the hash is current.
+	var status int
+	var result memberLoginResult
+	var session string
+	if !kudurrutestEventually(10*time.Second, func() bool {
+		status, result, session = login(uuid.NewString(), "forwarded-login-password-1", nil)
+		return status == http.StatusOK && result.Committed
+	}) {
+		t.Fatal("forwarded login refused", status, result)
+	}
+	if result.SessionID != session {
+		t.Fatal("primary did not enroll the follower-prepared session")
+	}
+	image, err := h.f.s.opts.Store.ReadGeneration(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(image)
+	if err != nil || !bytes.Contains(encoded, []byte(session)) || bytes.Contains(encoded, []byte("forwarded-login-password-1")) {
+		t.Fatal("session not durable, or the password entered the image", err)
+	}
+	// A wrong password is a retained refusal; its counters commit.
+	status, refused, _ := login("wrong-password", "not-the-password-2", nil)
+	if status != http.StatusOK || refused.Committed || refused.Status != http.StatusUnauthorized || !refused.Credentials {
+		t.Fatal("credential refusal not retained", status, refused)
+	}
+	for name, mutate := range map[string]func(*clusterreplica.Command){
+		"subject mismatch": func(c *clusterreplica.Command) { c.Subject.ID = "local:someone-else" },
+		"session mismatch": func(c *clusterreplica.Command) { c.Subject.CredentialID = "other" },
+		"version 2":        func(c *clusterreplica.Command) { c.Version = 2 },
+		"wrong operation":  func(c *clusterreplica.Command) { c.Operation = memberBlockingToggle },
+	} {
+		if status, out, _ := login("bad-"+name, "forwarded-login-password-1", mutate); *h.sendErr == nil && status == http.StatusOK && out.Committed {
+			t.Fatal("invalid forwarded login succeeded:", name)
+		}
+	}
+}
+
+func kudurrutestEventually(d time.Duration, cond func() bool) bool {
+	deadline := time.Now().Add(d)
+	for {
+		if cond() {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }

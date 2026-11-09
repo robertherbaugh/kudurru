@@ -14,6 +14,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Local password login on an enrolled SQLite follower is admitted by the
+  primary under the shared lockout counters; the follower keeps the session's
+  CSRF secret, forwards only its hash and seals the cookie once it installs the
+  session. The password is never persisted.
+
 - Enrolled SQLite followers forward canonical object writes and deletes
   (zones, record sets, block lists, client groups, policies) and the zone
   convenience commands (record upsert/delete, import, zone delete) to their primary.

@@ -77,8 +77,8 @@ type rootMemberZoneDomain struct {
 }
 
 func (d *rootMemberZoneDomain) bind(deps servingauth.Dependencies) { d.deps = deps }
-func (d *rootMemberZoneDomain) outputLifetime() *servingauth.CredentialLifetime {
-	return d.lifetime
+func (d *rootMemberZoneDomain) output(scope context.Context, write func(context.Context) error) error {
+	return credentialOutput(scope, d.lifetime, write)
 }
 
 func (d *rootMemberZoneDomain) Authorize(ctx context.Context, tx clusterreplica.CommandTx, command clusterreplica.Command) (context.Context, error) {

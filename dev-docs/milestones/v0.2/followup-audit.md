@@ -3971,3 +3971,35 @@ Evidence under `.context/object-forward-20261109/`:
 A first root test run exposed a harness omission (no ZoneCommand on its API server);
 the domain correctly refused with `zone command forwarding unavailable`. Settings,
 IAM/login admission, integrations and other domains are still primary-only.
+
+
+### F46/F60b follower local login through shared primary admission — November 9, 2026 (D363)
+
+Local password login on an enrolled SQLite follower now forwards one version-1
+`auth.login` member command. The follower first applies its node-local request
+budget, factor pacing and local-login setting, then generates the session ID and
+CSRF secret and forwards only the CSRF hash, the normalized username, password,
+factor code and client key, plus a random nonce. The primary runs
+`security.IssueForwardedLocalWithAdmission`: the same shared IP/username counters,
+password and factor verification, account/grant and local-login policy as its own
+route, enrolling exactly the prepared session. Lockouts and credential refusals
+are retained results whose counters commit; other failures roll back. The follower
+explicitly pulls, then seals the cookie with its own secret once its complete view
+contains the session. Neither the password, the CSRF secret nor a cookie is
+persisted, and the dedup fingerprint includes the unstored nonce.
+
+Evidence under `.context/object-forward-20261109/`: the real two-process partition
+scenario (`login-process01`) passes in 62.8 s. A fresh client gets the primary's
+exact 401 for a wrong password through the follower, then logs in there, and the
+returned session authenticates `/auth/me` on both the follower and the primary.
+`TestRootMemberLoginCommandActualHTTP` passes over actual member mTLS: committed
+prepared session, password absent from the durable image, retained 401 refusal
+with counters, and refused subject/session/version/operation mismatches. Full
+`internal/auth/...` default race `auth-race01`: exit 0, 833 passes, four envtest
+skips. Affected root default-race selection `root-race08` (login, session, password,
+factor, OIDC and the forwarding/cluster set): exit 0, 410 passes, one opt-in
+skip (installed-Chrome browser test). Scoped lint passes with two annotated,
+intentional G117 password marshals (one production member payload, one fixture).
+
+Settings, other IAM administration, OIDC/browser/device logins on followers and
+remaining typed domains still require the primary.

@@ -163,7 +163,7 @@ tests cannot substitute for any external result.
 | F44b | Cluster-wide production use on every advertised driver/route | IAM and access | D294 public SQLite RoleBinding API/CLI integrated c44b67d; actual TLS/router/replica focused races and lint pass. Merged 180-operation contracts pass; file/inline security effects integrated 91443d7 with real OP/startup/restart/replica races and lint. Kubernetes accepted-authority and final composed gates remain open |
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |
 | F45b | External per-user disable / log out everywhere administration | IAM and access | Implemented D289 on complete SQLite: exact UID/revision API/CLI/UI, atomic credential/audit revocation, actual TLS/router/restart/replica races, nine dashboard tests and lint/contracts pass; unsupported Stack explicitly refuses |
-| F46 | Share login lockout counters across replicas | IAM and access | Kubernetes password admission implemented D304 with actual two-runServe/CAS/restart/outage races. SQLite login implemented D305: original-command counters and enrollment, typed pre-mutation refusals, exact rollback and physical follower restart; focused race11/full owner-auth race324 and vet pass. Browser own-commit regression fixed D306; complete HTTP race 108/58 top-level plus final browser race 52/23 and vet pass, earlier failures retained. SQLite TOTP management shares counters in D307: focused race 24, full security/loginlimit race 110 and vet pass. SQLite password changes share counters in D308: full security race 105, focused HTTP race 18 and vet pass. SQLite browser/CLI request budgets mounted D309 before the first auth capture: full owner race 45, final focused race 32 including installed Chrome, and vet pass; earlier concurrency/partial-fixture failures retained. Kubernetes browser admission mounted D310 with backend race 22, two actual mounted replica/restart/outage passes, full Stack race 46 and vet pass. Enrolled-replica forwarding and final gates remain |
+| F46 | Share login lockout counters across replicas | IAM and access | Kubernetes password admission implemented D304 with actual two-runServe/CAS/restart/outage races. SQLite login implemented D305: original-command counters and enrollment, typed pre-mutation refusals, exact rollback and physical follower restart; focused race11/full owner-auth race324 and vet pass. Browser own-commit regression fixed D306; complete HTTP race 108/58 top-level plus final browser race 52/23 and vet pass, earlier failures retained. SQLite TOTP management shares counters in D307: focused race 24, full security/loginlimit race 110 and vet pass. SQLite password changes share counters in D308: full security race 105, focused HTTP race 18 and vet pass. SQLite browser/CLI request budgets mounted D309 before the first auth capture: full owner race 45, final focused race 32 including installed Chrome, and vet pass; earlier concurrency/partial-fixture failures retained. Kubernetes browser admission mounted D310 with backend race 22, two actual mounted replica/restart/outage passes, full Stack race 46 and vet pass. D363 enrolled-follower local login forwards to the primary's shared admission with real two-process acceptance; OIDC/browser/device logins on followers and final gates remain |
 | F47 | Bound offline Kubernetes SA tokens or periodically TokenReview | IAM and access | Integrated 101b614/9e7b177/41a7694; real envtest and races pass |
 | F48a | `autoProvision: never` and `syncGroups` with user store | IAM and access | Implemented; final gates open |
 | F48b | RP-initiated logout | IAM and access | Integrated 2947b02/6f278bf; actual TLS OP/login/revocation/logout/callback, source/credential/expiry refusals, scoped races and dashboard tests pass |
@@ -1826,3 +1826,35 @@ Evidence under `.context/object-forward-20261109/`:
 A first root test run exposed a harness omission (no ZoneCommand on its API server);
 the domain correctly refused with `zone command forwarding unavailable`. Settings,
 IAM/login admission, integrations and other domains are still primary-only.
+
+
+### F46/F60b follower local login through shared primary admission — November 9, 2026 (D363)
+
+Local password login on an enrolled SQLite follower now forwards one version-1
+`auth.login` member command. The follower first applies its node-local request
+budget, factor pacing and local-login setting, then generates the session ID and
+CSRF secret and forwards only the CSRF hash, the normalized username, password,
+factor code and client key, plus a random nonce. The primary runs
+`security.IssueForwardedLocalWithAdmission`: the same shared IP/username counters,
+password and factor verification, account/grant and local-login policy as its own
+route, enrolling exactly the prepared session. Lockouts and credential refusals
+are retained results whose counters commit; other failures roll back. The follower
+explicitly pulls, then seals the cookie with its own secret once its complete view
+contains the session. Neither the password, the CSRF secret nor a cookie is
+persisted, and the dedup fingerprint includes the unstored nonce.
+
+Evidence under `.context/object-forward-20261109/`: the real two-process partition
+scenario (`login-process01`) passes in 62.8 s. A fresh client gets the primary's
+exact 401 for a wrong password through the follower, then logs in there, and the
+returned session authenticates `/auth/me` on both the follower and the primary.
+`TestRootMemberLoginCommandActualHTTP` passes over actual member mTLS: committed
+prepared session, password absent from the durable image, retained 401 refusal
+with counters, and refused subject/session/version/operation mismatches. Full
+`internal/auth/...` default race `auth-race01`: exit 0, 833 passes, four envtest
+skips. Affected root default-race selection `root-race08` (login, session, password,
+factor, OIDC and the forwarding/cluster set): exit 0, 410 passes, one opt-in
+skip (installed-Chrome browser test). Scoped lint passes with two annotated,
+intentional G117 password marshals (one production member payload, one fixture).
+
+Settings, other IAM administration, OIDC/browser/device logins on followers and
+remaining typed domains still require the primary.

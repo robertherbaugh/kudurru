@@ -1061,7 +1061,15 @@ other failure rolls back. A `zones.command` runs the primary's own zone route
 function with its plan executed in the member transaction: the plan's sealed
 requirements are reauthorized exactly as in `ZoneCommand`, and a plan whose
 `Apply` started but did not finish always rolls back rather than being retained
-as a refusal. Settings, IAM and other typed root domains remain unfinished.
+as a refusal. A version-1 `auth.login` command carries no prior credential:
+its payload holds the normalized username, password, factor code, client key, a
+follower-prepared session ID and CSRF hash, and a random nonce. The primary runs
+`IssueForwardedLocalWithAdmission`, which applies the same shared counters and
+policy as its own login and enrolls the session with exactly that ID and hash;
+credential refusals and lockouts are retained results whose counters commit.
+The dedup record keeps only a fingerprint whose input includes the unstored
+nonce, so it is no password oracle. Settings, other IAM administration and
+remaining typed root domains are unfinished.
 
 ```mermaid
 sequenceDiagram

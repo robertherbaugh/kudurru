@@ -81,6 +81,15 @@ func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depe
 // claimed principal. Its callers obtain d by actual password/factor verification
 // in this same command, before their own local password mutation if any.
 func issueLocalDecision(ctx context.Context, tx *sqlite.CommandTx, d servingauth.SessionDecision, now time.Time) (Enrollment, error) {
+	csrf := randomID()
+	e, err := issueLocalDecisionWith(ctx, tx, d, now, randomID(), servingauth.CSRFHash(csrf))
+	e.csrf = csrf
+	return e, err
+}
+
+// issueLocalDecisionWith stages one session row with the supplied ID and CSRF
+// hash. The returned Enrollment carries no CSRF secret.
+func issueLocalDecisionWith(ctx context.Context, tx *sqlite.CommandTx, d servingauth.SessionDecision, now time.Time, id, csrfHash string) (Enrollment, error) {
 	if d.Principal.Kind != auth.KindUser || d.Principal.Provider != "local" || d.Principal.AccountUID == "" || d.Settings == nil {
 		return Enrollment{}, servingauth.ErrUnsupported
 	}
@@ -98,11 +107,10 @@ func issueLocalDecision(ctx context.Context, tx *sqlite.CommandTx, d servingauth
 	if err := s.CollectExpired(now); err != nil {
 		return Enrollment{}, err
 	}
-	id, csrf := randomID(), randomID()
 	_, err = s.Enroll(servingauth.SessionRecord{
 		ID: id, Account: servingauth.AccountRef{Kind: "LocalUser", Name: d.Principal.Name, UID: d.Principal.AccountUID},
 		Provider: "local", IssuedAt: now.UTC(), ExpiresAt: now.Add(cfg.SessionLifetime).UTC(), IdleExpiresAt: now.Add(cfg.SessionIdleTimeout).UTC(),
-		Grants: d.Grants, CSRFHash: servingauth.CSRFHash(csrf),
+		Grants: d.Grants, CSRFHash: csrfHash,
 	})
 	if err != nil {
 		return Enrollment{}, err
@@ -110,7 +118,7 @@ func issueLocalDecision(ctx context.Context, tx *sqlite.CommandTx, d servingauth
 	if err := s.Commit(ctx); err != nil {
 		return Enrollment{}, err
 	}
-	return Enrollment{id: id, csrf: csrf}, nil
+	return Enrollment{id: id}, nil
 }
 
 func localLoginControls(d servingauth.SessionDecision) (config.AuthControls, error) {

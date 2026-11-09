@@ -106,6 +106,9 @@ func (h *servingHTTP) login(w http.ResponseWriter, r *http.Request) error {
 	if cfg.Auth.LocalLogin == config.LocalLoginDisabled {
 		return &auth.Error{Status: 403, Key: "local_login_disabled", Message: "local password login is disabled"}
 	}
+	if handled, err := h.forwardLogin(w, r, req); handled {
+		return err
+	}
 	var enrollment security.Enrollment
 	var refused error
 	original, cancel := context.WithTimeout(r.Context(), loginlimit.Lifetime)
@@ -151,14 +154,20 @@ func (h *servingHTTP) login(w http.ResponseWriter, r *http.Request) error {
 // enrollmentClock captures detached durable bounds after IssueLocal, never
 // authenticating or consuming a factor again. The final check is memory/clock only.
 func (h *servingHTTP) enrollmentClock(ctx context.Context, tx *sqlite.CommandTx, e security.Enrollment, observed time.Time) error {
+	return sessionClockCheck(ctx, tx, e.ID(), observed, h.now)
+}
+
+// sessionClockCheck registers the staged session's detached durable bounds as
+// a final memory/clock-only commit check.
+func sessionClockCheck(ctx context.Context, tx *sqlite.CommandTx, id string, observed time.Time, clock func() time.Time) error {
 	state, err := servingHTTPSecurity(ctx, tx)
 	if err != nil {
 		return err
 	}
 	for _, row := range state.Sessions {
-		if row.ID == e.ID() {
+		if row.ID == id {
 			return tx.RequireCommitCheck(func(ctx context.Context) error {
-				now := h.now()
+				now := clock()
 				if err := ctx.Err(); err != nil {
 					return err
 				}
@@ -184,8 +193,14 @@ func (h *servingHTTP) factorAdmission(name, code string) error {
 	return nil
 }
 func (h *servingHTTP) sealEnrollment(w http.ResponseWriter, r *http.Request, e security.Enrollment) error {
+	return h.sealEnrollmentWithin(w, r, e, 5*time.Second)
+}
+
+// sealEnrollmentWithin waits up to limit for a complete view containing the
+// committed enrollment. A follower waits for its own installation of it.
+func (h *servingHTTP) sealEnrollmentWithin(w http.ResponseWriter, r *http.Request, e security.Enrollment, limit time.Duration) error {
 	h.opts.Runtime.publisher.Wake()
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), limit)
 	defer cancel()
 	for {
 		changed := h.opts.Runtime.publisher.Subscribe()

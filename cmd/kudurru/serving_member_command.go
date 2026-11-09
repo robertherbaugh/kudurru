@@ -31,8 +31,14 @@ type memberBlockingChange struct {
 // domains are blocking.toggle and the canonical public object writes/deletes;
 // status, IAM and other writes refuse. Public forwarding is mounted separately.
 func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqlite.MemberRequest, command clusterreplica.Command, emit func(context.Context, clusterreplica.Outcome) error) error {
-	if s == nil || ctx == nil || request == nil || emit == nil || command.Version != 2 ||
-		(command.Operation != memberBlockingToggle && command.Operation != memberObjectWrite && command.Operation != memberObjectDelete && command.Operation != memberZoneCommand) {
+	if s == nil || ctx == nil || request == nil || emit == nil {
+		return clusterreplica.ErrProtocol
+	}
+	switch {
+	case command.Version == 1 && command.Operation == memberLocalLogin:
+		// A login carries the password in its payload instead of a prior proof.
+	case command.Version == 2 && (command.Operation == memberBlockingToggle || command.Operation == memberObjectWrite || command.Operation == memberObjectDelete || command.Operation == memberZoneCommand):
+	default:
 		return clusterreplica.ErrProtocol
 	}
 	status := s.primary.driver.Status()
@@ -71,11 +77,7 @@ func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqli
 		}
 		return tx.RequireCommitCheck(check)
 	}, func(scope context.Context) error {
-		lifetime := domain.outputLifetime()
-		if lifetime == nil {
-			return clusterreplica.ErrForbidden
-		}
-		return lifetime.WithOutput(scope, func(output context.Context) error {
+		return domain.output(scope, func(output context.Context) error {
 			if err := check(output); err != nil {
 				return err
 			}
@@ -95,7 +97,16 @@ func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqli
 type rootMemberDomain interface {
 	clusterreplica.Domain
 	bind(servingauth.Dependencies)
-	outputLifetime() *servingauth.CredentialLifetime
+	// output emits under the domain's verified credential lifetime. A domain
+	// without a prior credential (login) emits only under the command scope.
+	output(context.Context, func(context.Context) error) error
+}
+
+func credentialOutput(scope context.Context, lifetime *servingauth.CredentialLifetime, write func(context.Context) error) error {
+	if lifetime == nil {
+		return clusterreplica.ErrForbidden
+	}
+	return lifetime.WithOutput(scope, write)
 }
 
 func (s *servingRuntime) memberCommandDomain(operation string) rootMemberDomain {
@@ -104,17 +115,19 @@ func (s *servingRuntime) memberCommandDomain(operation string) rootMemberDomain 
 		return &rootMemberObjectDomain{runtime: s}
 	case memberZoneCommand:
 		return &rootMemberZoneDomain{runtime: s}
+	case memberLocalLogin:
+		return &rootMemberLoginDomain{runtime: s}
 	}
 	return &rootMemberBlockingDomain{runtime: s}
 }
 
 func (d *rootMemberBlockingDomain) bind(deps servingauth.Dependencies) { d.deps = deps }
-func (d *rootMemberBlockingDomain) outputLifetime() *servingauth.CredentialLifetime {
-	return d.lifetime
+func (d *rootMemberBlockingDomain) output(scope context.Context, write func(context.Context) error) error {
+	return credentialOutput(scope, d.lifetime, write)
 }
 func (d *rootMemberObjectDomain) bind(deps servingauth.Dependencies) { d.deps = deps }
-func (d *rootMemberObjectDomain) outputLifetime() *servingauth.CredentialLifetime {
-	return d.lifetime
+func (d *rootMemberObjectDomain) output(scope context.Context, write func(context.Context) error) error {
+	return credentialOutput(scope, d.lifetime, write)
 }
 
 type rootMemberBlockingDomain struct {
