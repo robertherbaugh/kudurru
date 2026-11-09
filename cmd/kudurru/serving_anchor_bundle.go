@@ -198,8 +198,10 @@ func (o *rootAnchorOwner) prepare(ctx context.Context, candidate serving.Candida
 	}
 	// This inert original-token check establishes this owner's actual Store;
 	// it does not acquire R or grant publication. The real complete swap still
-	// applies the original managed registration under its own mode/R hold.
-	if err := o.store.PublishIfCurrent(ctx, candidate.Token, sqlite.PublicationOptions{}, func() error {
+	// applies the original managed registration under its own mode/R hold. It
+	// carries the token's own disposition: a fenced or conflicted cut is checked
+	// as the DNS-only last-good publication it is, never as a writable one.
+	if err := o.store.PublishIfCurrent(ctx, candidate.Token, sqlite.PublicationOptions{DNSOnly: candidate.Token.DNSOnly()}, func() error {
 		if !seal.current() {
 			return serving.ErrDependency
 		}
