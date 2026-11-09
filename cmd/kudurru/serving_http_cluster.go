@@ -32,7 +32,7 @@ func (s *servingRuntime) ClusterEnrollmentAvailable() bool {
 // acquisition. The handler never starts a replacement deadline after decoding.
 func (h *servingHTTP) clusterEnrollmentLifetime(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == h.opts.RoutePrefix+"/cluster/promotion" || r.URL.Path == h.opts.RoutePrefix+"/cluster/promote" || r.URL.Path == h.opts.RoutePrefix+"/cluster/activate" || r.URL.Path == h.opts.RoutePrefix+"/cluster/enrollment" || r.URL.Path == h.opts.RoutePrefix+"/cluster/join-token" {
+		if r.Method == http.MethodPost && r.URL.Path == h.opts.RoutePrefix+"/dns/blocking" || r.URL.Path == h.opts.RoutePrefix+"/cluster/promotion" || r.URL.Path == h.opts.RoutePrefix+"/cluster/promote" || r.URL.Path == h.opts.RoutePrefix+"/cluster/activate" || r.URL.Path == h.opts.RoutePrefix+"/cluster/enrollment" || r.URL.Path == h.opts.RoutePrefix+"/cluster/join-token" {
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
 			r = r.WithContext(ctx)

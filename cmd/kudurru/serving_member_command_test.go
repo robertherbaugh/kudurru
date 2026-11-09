@@ -27,6 +27,10 @@ import (
 // Enrollment setup is explicit fixture administration. The HTTP server below
 // uses the production listener assembly; operator activation remains separate.
 func enrollServingMemberFixture(t *testing.T, s *servingRuntime, identityPath ...string) (*memberidentity.Identity, *memberidentity.Identity) {
+	return enrollServingMemberFixtureAt(t, s, "127.0.0.1:8082", uuid.NewString(), identityPath...)
+}
+
+func enrollServingMemberFixtureAt(t *testing.T, s *servingRuntime, address, receiverID string, identityPath ...string) (*memberidentity.Identity, *memberidentity.Identity) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
@@ -52,9 +56,13 @@ func enrollServingMemberFixture(t *testing.T, s *servingRuntime, identityPath ..
 		}
 	}
 	write(func(ctx context.Context, tx *sqlite.CommandTx) error {
-		return tx.StageEnrollmentPrimary(ctx, cut, local, "primary", "127.0.0.1:8082")
+		return tx.StageEnrollmentPrimary(ctx, cut, local, "primary", address)
 	})
-	remote, err := memberidentity.Create(filepath.Join(t.TempDir(), "remote.json"), uuid.NewString())
+	remotePath := filepath.Join(t.TempDir(), "remote.json")
+	if len(identityPath) > 1 {
+		remotePath = identityPath[1]
+	}
+	remote, err := memberidentity.Create(remotePath, receiverID)
 	if err != nil {
 		t.Fatal(err)
 	}

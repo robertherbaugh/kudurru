@@ -62,6 +62,21 @@ func (e AuthStatusLocalLoginMode) Valid() bool {
 	}
 }
 
+// Defines values for BlockingCommandReceiptPublication.
+const (
+	BlockingCommandReceiptPublicationPending BlockingCommandReceiptPublication = "pending"
+)
+
+// Valid indicates whether the value is a known member of the BlockingCommandReceiptPublication enum.
+func (e BlockingCommandReceiptPublication) Valid() bool {
+	switch e {
+	case BlockingCommandReceiptPublicationPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BlockingStateScope.
 const (
 	BlockingStateScopeCluster BlockingStateScope = "cluster"
@@ -2318,6 +2333,19 @@ type BlockedItem struct {
 	Status     string    `json:"status"`
 	Ts         time.Time `json:"ts"`
 }
+
+// BlockingCommandReceipt defines model for BlockingCommandReceipt.
+type BlockingCommandReceipt struct {
+	Committed       bool                              `json:"committed"`
+	Disabled        bool                              `json:"disabled"`
+	DisabledUntil   *time.Time                        `json:"disabledUntil,omitempty"`
+	Publication     BlockingCommandReceiptPublication `json:"publication"`
+	ResourceVersion string                            `json:"resourceVersion"`
+	SettingsUID     string                            `json:"settingsUID"`
+}
+
+// BlockingCommandReceiptPublication defines model for BlockingCommandReceipt.Publication.
+type BlockingCommandReceiptPublication string
 
 // BlockingState defines model for BlockingState.
 type BlockingState struct {
@@ -7530,12 +7558,16 @@ type ClientInterface interface {
 
 	// SetBlockingWithBody Enable blocking, or disable it for a while
 	//
+	// An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /dns/blocking (the `SetBlocking` operationId).
 	SetBlockingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetBlocking Enable blocking, or disable it for a while
+	//
+	// An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -10343,6 +10375,8 @@ func (c *Client) GetBlocking(ctx context.Context, reqEditors ...RequestEditorFn)
 
 // SetBlockingWithBody Enable blocking, or disable it for a while
 //
+// An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /dns/blocking (the `SetBlocking` operationId).
@@ -10359,6 +10393,8 @@ func (c *Client) SetBlockingWithBody(ctx context.Context, contentType string, bo
 }
 
 // SetBlocking Enable blocking, or disable it for a while
+//
+// An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -24218,12 +24254,16 @@ type ClientWithResponsesInterface interface {
 
 	// SetBlockingWithBodyWithResponse Enable blocking, or disable it for a while
 	//
+	// An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /dns/blocking (the `SetBlocking` operationId).
 	SetBlockingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetBlockingResponse, error)
 
 	// SetBlockingWithResponse Enable blocking, or disable it for a while
+	//
+	// An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -32332,6 +32372,8 @@ type SetBlockingResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *BlockingState
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *BlockingCommandReceipt
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -32353,6 +32395,11 @@ type SetBlockingResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r SetBlockingResponse) GetJSON200() *BlockingState {
 	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r SetBlockingResponse) GetJSON202() *BlockingCommandReceipt {
+	return r.JSON202
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
@@ -44720,6 +44767,8 @@ func (c *ClientWithResponses) GetBlockingWithResponse(ctx context.Context, reqEd
 
 // SetBlockingWithBodyWithResponse Enable blocking, or disable it for a while
 //
+// An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /dns/blocking (the `SetBlocking` operationId).
@@ -44732,6 +44781,8 @@ func (c *ClientWithResponses) SetBlockingWithBodyWithResponse(ctx context.Contex
 }
 
 // SetBlockingWithResponse Enable blocking, or disable it for a while
+//
+// An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -52896,6 +52947,13 @@ func ParseSetBlockingResponse(rsp *http.Response) (*SetBlockingResponse, error) 
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest BlockingCommandReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest Error

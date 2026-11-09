@@ -2,7 +2,7 @@
 // in their keys, so switching "all nodes" / one node refetches everything.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk, useApi, useCan, useScopeParams } from './context';
-import type { BlockingState, LicenseInfo } from './types';
+import type { BlockingCommandResult, LicenseInfo } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList } from './types';
 
 /** GET /stats/summary feeds the tiles and the sidebar (§10 principle 1). */
@@ -28,8 +28,13 @@ export function useSetBlocking() {
   return useMutation({
     mutationFn: (v: { blocking: boolean; timer?: number; until?: string }) =>
       v.until && !v.blocking ? api.runtime.setBlockingUntil(v.until) : api.runtime.setBlocking(v.blocking, v.timer),
-    onSuccess: (state: BlockingState) => {
-      qc.setQueryData(qk.blocking, state);
+    onSuccess: (result: BlockingCommandResult) => {
+      if ('publication' in result) {
+        // A primary commit is not this node's observed serving state.
+        void qc.invalidateQueries({ queryKey: qk.blocking });
+      } else {
+        qc.setQueryData(qk.blocking, result);
+      }
     },
   });
 }

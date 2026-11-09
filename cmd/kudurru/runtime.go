@@ -12,6 +12,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/spf13/cobra"
 
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/cli"
 )
@@ -200,6 +201,11 @@ type blockingState struct {
 	Until    *time.Time `json:"until,omitempty"`
 }
 
+type blockingCommandResult struct {
+	blockingState
+	api.BlockingCommandReceipt
+}
+
 // newBlockingCmd is `kudurru blocking status|enable|disable [5m]`.
 func newBlockingCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "blocking", Short: "Show or toggle blocking"}
@@ -227,6 +233,23 @@ func newBlockingCmd(o *cliOpts) *cobra.Command {
 		}
 		return err
 	}
+	showCommand := func(cmd *cobra.Command, result blockingCommandResult) error {
+		if result.Publication == "" {
+			return show(cmd, result.blockingState)
+		}
+		if !result.Committed || result.Publication != "pending" {
+			return fmt.Errorf("invalid blocking command receipt")
+		}
+		format, err := o.format()
+		if err != nil {
+			return err
+		}
+		if format.Structured() {
+			return cli.WriteStructured(cmd.OutOrStdout(), format, result.BlockingCommandReceipt)
+		}
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), "blocking change committed on primary; local serving publication pending")
+		return err
+	}
 	status := &cobra.Command{
 		Use:   "status",
 		Short: "Show whether blocking is on",
@@ -252,11 +275,11 @@ func newBlockingCmd(o *cliOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var st blockingState
+			var st blockingCommandResult
 			if err := c.Post(cmd.Context(), "/dns/blocking", nil, map[string]any{"blocking": true}, &st); err != nil {
 				return err
 			}
-			return show(cmd, st)
+			return showCommand(cmd, st)
 		},
 	}
 	var until string
@@ -284,11 +307,11 @@ func newBlockingCmd(o *cliOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var st blockingState
+			var st blockingCommandResult
 			if err := c.Post(cmd.Context(), "/dns/blocking", nil, body, &st); err != nil {
 				return err
 			}
-			return show(cmd, st)
+			return showCommand(cmd, st)
 		},
 	}
 	disable.Flags().StringVar(&until, "until", "", "re-enable at this RFC 3339 time")

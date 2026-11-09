@@ -616,6 +616,41 @@
         ],
         "type": "object"
       },
+      "BlockingCommandReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "committed": {
+            "type": "boolean"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "disabledUntil": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "publication": {
+            "enum": [
+              "pending"
+            ],
+            "type": "string"
+          },
+          "resourceVersion": {
+            "type": "string"
+          },
+          "settingsUID": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "committed",
+          "settingsUID",
+          "resourceVersion",
+          "disabled",
+          "publication"
+        ],
+        "type": "object"
+      },
       "BlockingState": {
         "additionalProperties": false,
         "properties": {
@@ -19551,6 +19586,7 @@
         }
       },
       "post": {
+        "description": "An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.",
         "operationId": "setBlocking",
         "requestBody": {
           "content": {
@@ -19572,6 +19608,16 @@
               }
             },
             "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockingCommandReceipt"
+                }
+              }
+            },
+            "description": "Primary committed; serving publication pending"
           },
           "400": {
             "content": {

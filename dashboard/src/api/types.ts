@@ -442,6 +442,9 @@ export type TOTPRecoverRequest = S['TOTPRecoverRequest'];
 // Runtime
 
 /** GET|POST /dns/blocking (internal/api runtime.go). */
+export type BlockingCommandReceipt = S['BlockingCommandReceipt'];
+export type BlockingCommandResult = BlockingState | BlockingCommandReceipt;
+
 export interface BlockingState {
   blocking: boolean;
   /** Seconds left until blocking re-enables; absent when indefinite. */

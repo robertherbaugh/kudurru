@@ -6844,3 +6844,52 @@ failures/skips, exit 0, 156.527 seconds; source identities matched. This local
 nonreproduction does not close the hosted HTTP/2 INTERNAL_ERROR or establish a
 production fix. Evidence: `.context/anchor-doh-ci-20261109/`. Final-source hosted
 acceptance remains required.
+
+
+### F60b/G11 original follower blocking forwarding — November 9, 2026 (D357)
+
+The enrolled SQLite follower now captures its original complete HTTP source,
+private identity and finite attempt before reading a blocking command body.
+One 30-second lifetime begins before authentication; strict body decoding resolves
+relative timers once against the pre-body observation. Actual publication,
+provider, host, key, catalog and transferred-owner exclusions precede Store
+membership/source admission and the one member-mTLS POST. Queueing cannot adopt
+a successor generation, term or credential. The primary independently verifies
+the raw proof, checks the original settings version and commits the blocking
+effect, attributed audit and dedup result atomically.
+
+The authenticated HTTP 202 receipt confirms primary commit with publication
+pending. It does not install a follower image or claim local serving convergence.
+Headers/body are explicitly flushed under the original source and credential,
+certificate, provider and host bounds. Dashboard refetch preserves observed local
+state; CLI text/JSON distinguishes the pending receipt. OpenAPI and both generated
+clients include the response. Other mutation domains remain closed.
+
+Evidence: `.context/member-forward-20261109/`. Final compatibility `compat-race20`
+passes 254 actual test entries, zero failures/test skips, exit 0, 133.547 seconds;
+the generated OpenAPI Go package has no test files. It includes actual HTTP1/2
+follower forwarding, original held-body source refusal, later explicit Coordinator
+installation/publication, join, promotion, listener/restart and current-command
+compatibility. Focused lower `race02` passes 12 entries; root/CLI `race09` passes
+six. The composed fixture uses independent per-node auth-key owners; its later
+pull is explicit so receipt-before-install can be observed. This is not automated
+convergence or partition/rejoin acceptance.
+
+Scoped Go lint `lint15` exits 0/zero issues; dashboard BlockingControl has ten
+passing tests, typecheck and scoped ESLint pass. Pinned Semgrep 1.181.0 `sast21`
+scans all 18 changed production files with the original five policy sets/nine
+exclusions: exit 0, zero findings/errors, 9.226 seconds. All frozen source hashes
+match; the original dashboard dist modification remains untouched and unstaged.
+
+Earlier lint findings, root test build errors and `race07` failure/interruption
+remain retained. That fixture mistakenly shared the same exclusive auth-key owner
+between primary and follower; the preserved owned-child stack shows the resulting
+wait. Independent receiver options correct only fixture ownership. No production
+lock, assertion, deadline or admission was weakened. `eslint18` records an invalid
+Bun invocation (exit 1); corrected cwd invocation `eslint19` passes. These results
+do not explain the earlier hosted managed-anchor HTTP/2 failure.
+
+Remaining typed forwarding, partition/rejoin, Kubernetes authority/management and
+ownership, supported-driver acceptance, assigned two-VM Linux acceptance and
+final-source hosted/performance/release checks remain open. AD/Windows stays
+owner-deferred preview under D353. No release publication or completion claim.

@@ -25,14 +25,7 @@ const blockingPublicationWait = 10 * time.Second
 
 var blockingToggleAttrs = rbac.Attributes{Resource: "blocking", Verb: "toggle", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}
 
-type blockingReceipt struct {
-	Committed       bool       `json:"committed"`
-	SettingsUID     string     `json:"settingsUID"`
-	ResourceVersion string     `json:"resourceVersion"`
-	Disabled        bool       `json:"disabled"`
-	DisabledUntil   *time.Time `json:"disabledUntil,omitempty"`
-	Publication     string     `json:"publication"`
-}
+type blockingReceipt = api.BlockingCommandReceipt
 
 func invalidBlocking(message string) error {
 	return &api.Error{Status: http.StatusBadRequest, Body: api.ErrorBody{Key: api.KeyInvalid, Message: message}}

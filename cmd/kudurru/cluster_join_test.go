@@ -220,11 +220,11 @@ func TestClusterJoinActualTLSCLIAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
-	listener, coordinator, err := runtime.prepareMemberServices(t.Context(), credentials)
+	listener, coordinator, forward, err := runtime.prepareMemberServices(t.Context(), credentials)
 	if err != nil || listener == nil || coordinator == nil {
 		t.Fatal("joined receiver failed retained startup", err)
 	}
-	runtime.member = coordinator
+	runtime.member, runtime.memberForward = coordinator, forward
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	if err := coordinator.Pull(ctx); err != nil {

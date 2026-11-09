@@ -71,6 +71,13 @@ func (a *MemberAcquisition) Peer() enrollment.Member {
 // transaction is held during network I/O. Replica installation occurs later
 // under its separately precaptured original anchor/source admission.
 func (s *Store) WithMemberAcquisition(ctx context.Context, local memberidentity.Trust, fn func(context.Context, *MemberAcquisition) error) error {
+	return s.withMemberAcquisition(ctx, local, nil, fn)
+}
+
+// original, when present, is the caller's already captured complete source.
+// Its admission occurs under the same exclusion as membership and transport;
+// waiting for wmu must never adopt a successor generation.
+func (s *Store) withMemberAcquisition(ctx context.Context, local memberidentity.Trust, original *GenerationToken, fn func(context.Context, *MemberAcquisition) error) error {
 	if ctx == nil || fn == nil || HasWriterToken(ctx) || ctx.Value(memberAcquisitionKey{}) != nil {
 		return replication.ErrInvalid
 	}
@@ -86,6 +93,9 @@ func (s *Store) WithMemberAcquisition(ctx context.Context, local memberidentity.
 		return err
 	}
 	defer s.wmu.Unlock()
+	if original != nil && (original.source != s || original.DNSOnly() || !original.Matches(s.Authority())) {
+		return replication.ErrCAS
+	}
 	a, owner, err := s.ReadMemberEnrollment(ctx)
 	if err != nil {
 		return err

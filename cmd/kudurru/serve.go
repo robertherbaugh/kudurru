@@ -1616,7 +1616,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 	if complete != nil {
-		internalOpts.Enrolled, complete.member, err = complete.prepareMemberServices(ctx, internalCreds)
+		internalOpts.Enrolled, complete.member, complete.memberForward, err = complete.prepareMemberServices(ctx, internalCreds)
 		if err != nil {
 			return fmt.Errorf("prepare member listener: %w", err)
 		}

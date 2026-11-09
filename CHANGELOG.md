@@ -14,6 +14,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Enrolled SQLite followers forward blocking toggles once to their original
+  primary with retained source, credential and deadline checks. HTTP 202 reports
+  a confirmed primary commit with serving publication pending; the dashboard and
+  CLI keep that receipt separate from observed node state.
+
 - Offline `cluster join` for a pristine SQLite receiver, using an original
   invitation-pinned TLS route, signed member possession, atomic acceptance audit,
   and atomic first-image/authority installation. Failure retains the local

@@ -64,29 +64,30 @@ type servingRuntimeOptions struct {
 // Manager acquisition, the store, license loader and key owners remain borrowed.
 // The root joins RunWriter before stopping public serving and calling Close.
 type servingRuntime struct {
-	opts         servingRuntimeOptions
-	schema       *servingbuild.Schema
-	member       *clusterreplica.Coordinator
-	publisher    *serving.Publisher
-	providers    *providercoordinator.Coordinator
-	host         *providerhost.Owner
-	resources    *providerresources.Owner
-	primary      *primaryRuntime
-	anchorPin    currentguard.PinFunc
-	anchors      *rootAnchorOwner
-	anchorWriter anchorWriterControl
-	status       *servingbuild.PrimaryStatus
-	integrations *integrationRuntime
-	catalog      *servingbuild.CatalogRuntime
-	local        []providerregistry.DesiredConfig
-	life         context.Context
-	cancel       context.CancelFunc
-	lifecycle    chan struct{}
-	mu           sync.Mutex
-	workers      sync.WaitGroup
-	running      bool
-	writing      bool
-	closing      bool
+	opts          servingRuntimeOptions
+	schema        *servingbuild.Schema
+	member        *clusterreplica.Coordinator
+	memberForward *clusterreplica.EnrolledForwarder
+	publisher     *serving.Publisher
+	providers     *providercoordinator.Coordinator
+	host          *providerhost.Owner
+	resources     *providerresources.Owner
+	primary       *primaryRuntime
+	anchorPin     currentguard.PinFunc
+	anchors       *rootAnchorOwner
+	anchorWriter  anchorWriterControl
+	status        *servingbuild.PrimaryStatus
+	integrations  *integrationRuntime
+	catalog       *servingbuild.CatalogRuntime
+	local         []providerregistry.DesiredConfig
+	life          context.Context
+	cancel        context.CancelFunc
+	lifecycle     chan struct{}
+	mu            sync.Mutex
+	workers       sync.WaitGroup
+	running       bool
+	writing       bool
+	closing       bool
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {

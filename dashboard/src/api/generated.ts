@@ -911,6 +911,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cluster/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate an explicitly reviewed standalone SQLite primary
+         * @description Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+         */
+        post: operations["activateCluster"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cluster/enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review the complete local enrollment source
+         * @description Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
+         */
+        get: operations["getClusterEnrollment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cluster/join-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue an invitation from an explicitly reviewed primary
+         * @description Complete enrolled Primary SQLite runtime only. Requires current cluster.join, cookie CSRF when applicable, exact separately reviewed source/owner identities, target name/address and absolute expiresAt (at most ten minutes). Source capture precedes body acquisition. The bearer invitation is emitted only after confirmed commit, under the original finite authorization and Store output exclusions; only its hash is stored. No automatic refresh, redirect or retry. A lost response does not prove rollback; do not replay this command. Transfer the invitation privately to the intended joining member.
+         */
+        post: operations["issueClusterJoinToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cluster/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote an explicitly reviewed enrolled follower
+         * @description Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+         */
+        post: operations["promoteCluster"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cluster/promotion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review local follower promotion eligibility
+         * @description Complete enrolled SQLite runtime only. Promotion requires current cluster.promote permission, cookie CSRF when applicable, the separately reviewed complete installed generation and member ID, exact local node confirmation, a request ID and an audit reason. The original request is bounded to thirty seconds including proof, body, queue and commit. Requires continuous primary unreachability across two pull intervals and agreement with the served image. Audit and promotion commit together. A lost or unknown response does not prove rollback; inspect current state before a new decision. No automatic refresh, redirect or replay. A committed receipt does not assert new-term publication or remote convergence.
+         */
+        get: operations["getClusterPromotion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/denylist": {
         parameters: {
             query?: never;
@@ -1024,7 +1124,10 @@ export interface paths {
         /** Blocking state of this node */
         get: operations["getBlocking"];
         put?: never;
-        /** Enable blocking, or disable it for a while */
+        /**
+         * Enable blocking, or disable it for a while
+         * @description An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback.
+         */
         post: operations["setBlocking"];
         delete?: never;
         options?: never;
@@ -2699,6 +2802,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActivateClusterCommand: {
+            address: string;
+            clusterID: string;
+            memberID: string;
+            name: string;
+            ownerDigest: string;
+            reason: string;
+            sourceDigest: string;
+        };
         Actor: {
             auth?: string;
             groups?: string[] | null;
@@ -2849,6 +2961,16 @@ export interface components {
             status: string;
             /** Format: date-time */
             ts: string;
+        };
+        BlockingCommandReceipt: {
+            committed: boolean;
+            disabled: boolean;
+            /** Format: date-time */
+            disabledUntil?: string;
+            /** @enum {string} */
+            publication: "pending";
+            resourceVersion: string;
+            settingsUID: string;
         };
         BlockingState: {
             blocking: boolean;
@@ -3137,6 +3259,20 @@ export interface components {
              */
             took_ms: number;
         };
+        ClusterActivationReceipt: {
+            clusterID: string;
+            committed: boolean;
+            memberID: string;
+            restartRequired: boolean;
+        };
+        ClusterEnrollmentInfo: {
+            clusterID: string;
+            dormant: boolean;
+            memberID: string;
+            mode: string;
+            ownerDigest: string;
+            sourceDigest: string;
+        };
         ClusterInfo: {
             clusterID?: string;
             driver: string;
@@ -3152,6 +3288,48 @@ export interface components {
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
+        };
+        ClusterJoinTokenCommand: {
+            address: string;
+            clusterID: string;
+            /** Format: date-time */
+            expiresAt: string;
+            memberID: string;
+            name: string;
+            ownerDigest: string;
+            reason: string;
+            sourceDigest: string;
+        };
+        ClusterJoinTokenReceipt: {
+            committed: boolean;
+            /** Format: date-time */
+            expiresAt: string;
+            invitation: string;
+        };
+        ClusterPromoteCommand: {
+            confirmNode: string;
+            installed: components["schemas"]["Generation"];
+            memberID: string;
+            reason: string;
+            requestID: string;
+        };
+        ClusterPromotionInfo: {
+            eligible: boolean;
+            installed: components["schemas"]["Generation"];
+            memberID: string;
+            /** Format: int64 */
+            missedPulls: number;
+            mode: string;
+            node: string;
+            reason: string;
+            /** Format: double */
+            unreachableSeconds: number;
+        };
+        ClusterPromotionReceipt: {
+            committed: boolean;
+            memberID: string;
+            requestID: string;
+            term: components["schemas"]["Term"];
         };
         Condition: {
             /** Format: date-time */
@@ -3938,6 +4116,12 @@ export interface components {
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
+        };
+        Generation: {
+            digest: string;
+            /** Format: int64 */
+            revision: number;
+            term: components["schemas"]["Term"];
         };
         IAMUser: {
             builtinAdmin: boolean;
@@ -5487,6 +5671,14 @@ export interface components {
             /** @enum {string} */
             source: "file" | "store";
             uid?: string;
+        };
+        Term: {
+            clusterID: string;
+            /** Format: int64 */
+            epoch: number;
+            primaryID: string;
+            primaryName?: string;
+            promotionID: string;
         };
         TimeseriesBody: {
             approximate: boolean;
@@ -11351,6 +11543,442 @@ export interface operations {
             };
         };
     };
+    activateCluster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateClusterCommand"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterActivationReceipt"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getClusterEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterEnrollmentInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    issueClusterJoinToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClusterJoinTokenCommand"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterJoinTokenReceipt"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    promoteCluster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClusterPromoteCommand"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterPromotionReceipt"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getClusterPromotion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterPromotionInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listDenylist: {
         parameters: {
             query?: {
@@ -12202,6 +12830,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BlockingState"];
+                };
+            };
+            /** @description Primary committed; serving publication pending */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockingCommandReceipt"];
                 };
             };
             /** @description Bad Request */

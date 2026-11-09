@@ -791,7 +791,7 @@ loopback compatibility and refusal behavior.
 
 ## Not built yet
 
-Public command forwarding and full partition/rejoin
+Public forwarding beyond the blocking toggle and full partition/rejoin
 acceptance remain unfinished. Initial remote joining and reviewed operator
 promotion are mounted as described below. Retained enrolled followers mount
 the acquisition worker. The `raft` driver (v1.0) and a general `roles:` setting remain
@@ -1048,8 +1048,8 @@ stale precondition; new commands must satisfy their original version, including
 no-ops. The receipt reports actual completion with publication `pending`, and the
 publisher is woken after the protected scope ends. The production internal
 listener mounts this executor on `MemberServer`. Initial joining and operator
-promotion are described below; public forwarding and other typed root domains
-remain unfinished.
+promotion are described below. Public blocking forwarding is mounted as described
+below; other typed root domains remain unfinished.
 
 At startup, a SQLite runtime reads its complete enrollment owner and authority
 from one bounded transaction. Explicit dormant enrollment retains the legacy
@@ -1085,7 +1085,7 @@ Handshake trust does not grant request or domain authority. The existing request
 capture checks current local/remote enrollment and retains its original owner,
 writer and certificate lifetime through effects and output. Revocation therefore
 refuses subsequent requests on an established TLS connection as well as new
-handshakes. Outgoing image installation, public command forwarding and full
+handshakes. Outgoing image installation, remaining public command forwarding and full
 partition/rejoin acceptance remain separate work.
 
 The output deadline also respects the original command expiration. Failed writes,
@@ -1338,6 +1338,38 @@ revision, which the command's own commit supersedes; original host, provider,
 catalog, key and managed-anchor dependency checks remain required. Other users
 of the old image still fail its full currency check. If commit succeeds but publication cannot be acknowledged, 503
 includes a `committed: true` hint and the exact receipt; it does not imply rollback.
+
+Enrolled followers intercept this POST before body acquisition. One Store-issued
+`MemberForwardRequest` retains the original complete HTTP token, local CA and
+30-second request lifetime; copies share one consumption. After decoding,
+publication, provider, host, auth/DNS key, catalog and transferred-owner exclusions
+surround the exact Store membership/source exclusion, one member-mTLS POST and
+public response flush. Queueing never replaces the source. Original credential,
+provider, host-entitlement and certificate bounds shorten actual I/O deadlines.
+The primary independently verifies the raw proof and original settings version;
+there is no mutation replay, redirect, fallback or local image installation.
+
+An authenticated complete primary receipt becomes HTTP 202 with `committed: true`
+and `publication: pending`. It does not assert this follower's serving state.
+Clients use a subsequent GET for that observation. Dashboard receipt handling
+invalidates the local observation without replacing it with requested state;
+the CLI reports pending publication. Failed/expired output may follow a real
+commit, so clients must not interpret loss as rollback or automatically retry.
+Other public mutation domains remain closed on followers.
+
+```mermaid
+sequenceDiagram
+    participant U as Original HTTP request
+    participant F as Enrolled follower
+    participant P as Enrolled primary
+    U->>F: Capture complete source and finite attempt before body
+    F->>F: Decode; pin publication, dependencies and original membership
+    F->>P: One mutual-TLS command with raw proof and absolute intent
+    P->>P: Current authorization, version CAS, effect/audit/dedup commit
+    P-->>F: Authenticated committed receipt; publication pending
+    F-->>U: Flush HTTP 202 under original exclusions and bounds
+    F->>F: Release; later independent pull and complete publication
+```
 
 Persisted deadlines have whole-second precision. Relative timers round up to the
 next UTC second, adding less than one second; fractional absolute `until` values

@@ -22,6 +22,18 @@ type BlockingChange struct {
 // with an explicit committed receipt, never a claim that the write rolled back.
 type BlockingCommand func(context.Context, BlockingChange) (*BlockingState, error)
 
+// BlockingCommandReceipt reports an actual primary commit separately from
+// serving publication. An enrolled follower returns it with HTTP 202; clients
+// observe GET /dns/blocking on each node for subsequent serving state.
+type BlockingCommandReceipt struct {
+	Committed       bool       `json:"committed"`
+	SettingsUID     string     `json:"settingsUID"`
+	ResourceVersion string     `json:"resourceVersion"`
+	Disabled        bool       `json:"disabled"`
+	DisabledUntil   *time.Time `json:"disabledUntil,omitempty"`
+	Publication     string     `json:"publication" enum:"pending"`
+}
+
 func (s *Server) setBlockingCommand(ctx context.Context, in *setBlockingInput) (*blockingOutput, error) {
 	if s.opts.BlockingCommand == nil {
 		return nil, errUnavailable("canonical blocking command unavailable")

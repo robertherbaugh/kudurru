@@ -5,9 +5,11 @@ import (
 	"errors"
 	"net/http"
 	"net/netip"
+	"reflect"
 	"strings"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
@@ -142,7 +144,11 @@ func (s *Server) registerRuntime() {
 		perm{resource: "cache", verb: "read"}, s.inspectCache)
 	register(s, operation(http.MethodGet, "/dns/blocking", "getBlocking", "Blocking state of this node", "runtime"),
 		perm{resource: "blocking", verb: "read"}, s.getBlocking)
-	register(s, operation(http.MethodPost, "/dns/blocking", "setBlocking", "Enable blocking, or disable it for a while", "runtime"),
+	toggle := operation(http.MethodPost, "/dns/blocking", "setBlocking", "Enable blocking, or disable it for a while", "runtime")
+	toggle.Description = "An enrolled SQLite follower forwards one original bounded command to its enrolled primary. HTTP 202 confirms the primary commit with publication pending; GET this endpoint to observe local serving state. No automatic retry or redirect occurs. A lost reply does not prove rollback."
+	receipt := s.api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[BlockingCommandReceipt](), true, "")
+	toggle.Responses = map[string]*huma.Response{"202": {Description: "Primary committed; serving publication pending", Content: map[string]*huma.MediaType{"application/json": {Schema: receipt}}}}
+	register(s, toggle,
 		perm{resource: "blocking", verb: "toggle"}, s.setBlocking)
 	register(s, operation(http.MethodPost, "/cache/flush", "flushCache", "Flush the response cache (or one name)", "runtime"),
 		perm{resource: "cache", verb: "flush"}, s.flushCache)

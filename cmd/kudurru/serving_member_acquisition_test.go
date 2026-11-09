@@ -168,8 +168,8 @@ func TestRootRetainedMemberAcquisitionPublicationRestartAndRevocation(t *testing
 		}
 		t.Cleanup(func() { _ = s.Close(context.Background()) })
 		setup, stopSetup := context.WithTimeout(t.Context(), 5*time.Second)
-		listener, coordinator, err := s.prepareMemberServices(setup, credentials)
-		s.member = coordinator
+		listener, coordinator, forward, err := s.prepareMemberServices(setup, credentials)
+		s.member, s.memberForward = coordinator, forward
 		stopSetup()
 		if err != nil || listener == nil || s.member == nil {
 			t.Fatal("retained follower did not mount acquisition", err)

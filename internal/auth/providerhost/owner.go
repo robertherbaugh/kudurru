@@ -149,6 +149,34 @@ func (o *Owner) PinHostCurrent(ctx context.Context, fn func(func() bool) error) 
 		})
 	})
 }
+
+// PinHostBounded retains the same actual host exclusion as PinHostCurrent and
+// shortens the original attempt to this exact entitlement's expiration. Bounded
+// forwarding must apply this context to actual transport I/O. It may not read
+// Store or reacquire owner locks except in the established lower lock order.
+func (o *Owner) PinHostBounded(ctx context.Context, fn func(context.Context, func() bool) error) error {
+	if fn == nil {
+		return ErrInvalid
+	}
+	return o.PinHostCurrent(ctx, func(current func() bool) error {
+		// PinHostCurrent holds gate.RLock for this exact installed generation.
+		if until := o.value.Load().until; !until.IsZero() {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, until)
+			defer cancel()
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := fn(ctx, current); err != nil {
+			return err
+		}
+		if !current() {
+			return ErrStale
+		}
+		return ctx.Err()
+	})
+}
 func copyGeneration(g *generation) (*generation, error) {
 	if g.serial == math.MaxUint64 || len(g.baseline) > providerregistry.MaxAuthorities {
 		return nil, ErrBounds

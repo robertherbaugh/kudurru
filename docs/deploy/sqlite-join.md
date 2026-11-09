@@ -78,3 +78,19 @@ generation before normal startup. `observed` reports existing membership, not a
 new primary commit. Neither field establishes serving publication or convergence.
 On refusal, retain all evidence for investigation; do not delete intent, replace
 identity or automatically submit another proposal.
+
+
+## Commands through a follower
+
+After retained enrolled services start, `POST /api/v1/dns/blocking` can send one
+bounded command to the original enrolled primary. The primary rechecks the
+original raw credential and settings version and commits the status, audit and
+dedup result atomically. A relative timer is resolved before the network exchange.
+
+HTTP 202 reports `committed: true` with `publication: pending`; it does not claim
+that the receiving follower is already serving the new state. Read
+`GET /api/v1/dns/blocking` on the node to observe its subsequent publication.
+The dashboard and CLI distinguish the receipt from that observation. There are
+no automatic retries or redirects. A lost or expired response does not prove
+rollback; inspect state before deciding on another mutation. Other public
+mutation domains and full partition/rejoin acceptance remain unfinished.

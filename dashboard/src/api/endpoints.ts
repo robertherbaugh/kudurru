@@ -18,6 +18,7 @@ import type {
   TOTPConfirmRequest,
   TOTPRecoverRequest,
   BlockingState,
+  BlockingCommandResult,
   ClientsResult,
   ClientTimeseries,
   ClusterInfo,
@@ -226,8 +227,8 @@ export function endpoints(c: ApiClient) {
     runtime: {
       blocking: () => c.get<BlockingState>('/dns/blocking'),
       setBlocking: (blocking: boolean, timer?: number) =>
-        c.post<BlockingState>('/dns/blocking', timer ? { blocking, timer } : { blocking }),
-      setBlockingUntil: (until: string) => c.post<BlockingState>('/dns/blocking', { blocking: false, until }),
+        c.post<BlockingCommandResult>('/dns/blocking', timer ? { blocking, timer } : { blocking }),
+      setBlockingUntil: (until: string) => c.post<BlockingCommandResult>('/dns/blocking', { blocking: false, until }),
       flushCache: (name?: string) => c.post<{ flushed: number }>('/cache/flush', name ? { name } : {}),
       dig: (req: DnsQueryRequest) => c.post<DnsQueryResult>('/dns/query', req),
     },
