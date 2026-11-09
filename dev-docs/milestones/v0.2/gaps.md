@@ -6833,3 +6833,14 @@ TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled received an HTTP/
 INTERNAL_ERROR during its DoH exchange. Other test shard passed; ci-ok correctly
 failed. Its raw log is retained for a separate investigation. This recovery scope
 does not explain or close that failure, or qualify the overall release.
+
+
+### Managed-anchor hosted DoH investigation — November 9, 2026
+
+The retained predecessor CI failure (42559340879 on 0a1a44cb) remains unexplained.
+Phase/protocol diagnostics preserve all original lifecycle assertions and bounds.
+One bounded default-race invocation repeated the test ten times: ten passes, no
+failures/skips, exit 0, 156.527 seconds; source identities matched. This local
+nonreproduction does not close the hosted HTTP/2 INTERNAL_ERROR or establish a
+production fix. Evidence: `.context/anchor-doh-ci-20261109/`. Final-source hosted
+acceptance remains required.

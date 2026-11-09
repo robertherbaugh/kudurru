@@ -42,6 +42,7 @@ func TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled(t *testing.T
 	closeStore()
 	var version accepted.Version
 	for phase := range 3 {
+		t.Logf("managed anchor lifecycle phase=%d", phase)
 		if phase == 2 {
 			cfg.Upstreams.Recursion.ManagedTopology = "disabled"
 		}
@@ -52,6 +53,7 @@ func TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled(t *testing.T
 			tsigMountedAwaitPendingListeners(t, cfg)
 		}
 		for _, protocol := range []string{"udp", "tcp", "dot", "doh", "doq", "doh3"} {
+			t.Logf("managed anchor exchange phase=%d protocol=%s", phase, protocol)
 			query := new(dns.Msg)
 			query.SetQuestion("answer.anchor.test.", dns.TypeA)
 			query.Id = 0 // DoQ requires the DNS message ID to be zero.
