@@ -1,5 +1,16 @@
 # v0.2 continuing completion plan
 
+## Owner decision: independent-VM VIP acceptance deferred, November 9, 2026
+
+No disposable Linux VM pair is available. The owner explicitly moved F68c's
+independent two-VM keepalived acceptance to follow-up, alongside the AD lab work
+(D358). It remains unqualified, with its original lameduck, drain, node-loss and
+restart requirements retained. It is outside the current completion scope; no
+VM assignment or provisioning question remains pending. Existing container
+keepalived evidence and kind/MetalLB acceptance cover their actual environments.
+Kind or minikube on one host does not establish independent-host VRRP/L2 failure
+behavior. Available container/Kubernetes checks and other non-AD work continue.
+
 ## Owner decision: AD remains preview, November 9, 2026
 
 The owner confirmed that no AD lab is available and explicitly deferred the
@@ -186,7 +197,7 @@ tests cannot substitute for any external result.
 | F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Actual two-runServe static membership/status/body/refusal/local-control/peer-loss/restart race passes. Separate server-process acceptance also passes with actual DNS, authenticated body reads, local-only control and durable identity/session restart; D349 corrects the reproduced node-b startup validation failure; the original two-core race acceptance now passes, with earlier failures preserved. Enrolled primary/follower promotion, partition/rejoin and final G11/G22/G24 remain open |
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
 | F68b | Knot catalog consumer interoperability | Zones and AD | Integrated 6aa58ed; actual pinned Knot 3.6.2 catalog/NOTIFY/TSIG acceptance and repeated races pass |
-| F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; original VM qualification remains external |
+| F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; independent-VM acceptance explicitly deferred by owner to follow-up (D358), unqualified and outside this completion pass |
 | F69 | Central reads for retired node via scope=node&node=other | Observability and release | Integrated a4e38ce; actual PostgreSQL isolation and mounted history/export races pass |
 | F70 | Prune unreferenced central dictionaries | Observability and release | Integrated eef61bd/b1a29e8/a7304d8; actual PostgreSQL 17 races and lint pass |
 | F71 | Summarize facts of permanently stopped sources' last partial hour | Observability and release | Integrated 123148b/f8fbb85; source-owned recovery and real PostgreSQL races pass; ambiguous legacy input retains explicit provenance gate |
@@ -209,7 +220,7 @@ tests cannot substitute for any external result.
 | G21 | Per-feature production wiring, API/CLI/UI/schema/permissions/docs and original-proof behavior. |
 | G22 | Supported-driver upgrade, mixed-version rejection, cold start, restart, promotion, partition and rejoin. |
 | G23 | Actual BIND/Knot/AdGuard/dnsdist/Windows results plus fixed-class bounds; no skipped comparator credited. |
-| G24 | Applicable release checklist, Compose/Kubernetes, two-VM VIP, licensing and artifact checks; no release publication implied. |
+| G24 | Applicable release checklist, Compose/Kubernetes, licensing and artifact checks; independent two-VM VIP acceptance is owner-deferred follow-up (D358), not passed; no release publication implied. |
 | G25 | Keep this plan, audit closures, gap ledger, changelog and PR consistent with exact commits/results. |
 
 Current integrated static check: golangci-lint v2.15.0 scans all root packages

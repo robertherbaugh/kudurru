@@ -163,6 +163,10 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 
 ## Needs the project owner's hardware
 
+The owner deferred the independent two-VM keepalived test to follow-up on
+November 9, 2026 (D358): no disposable VM pair exists. Keep the original test
+below unqualified; container and kind/MetalLB checks retain their own evidence.
+
 | Item | Source | Target |
 |---|---|---|
 | Spikes (a) dnsdist console directives under YAML, (b) PROXYv2 + chashed with a real dnsdist and `kdig +quic/+tls/+https`, (h) keepalived 2.4.3 on two VMs (lameduck keeps the VIP, `vip drain` moves it, node loss moves it). Spike (f), kind + MetalLB, runs on GitHub's runners in the kind workflow (hack/kind-e2e.sh) | week-1 spikes, dnsserver spike | deployment acceptance (dev-docs/release-checklist.md §3) |

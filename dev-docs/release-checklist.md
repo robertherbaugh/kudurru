@@ -169,6 +169,12 @@ Historical dry runs made during v0.1.0-rc.1 preparation:
 
 ## 3. Checks before GA (CI and the owner's hardware)
 
+For the current v0.2 completion pass, the owner deferred independent two-VM
+keepalived acceptance to follow-up on November 9, 2026 (D358). No VM pair is
+available. The original hardware criteria below remain unpassed; the existing
+container keepalived and kind/MetalLB results qualify only those environments.
+The separate AD/Windows deferral is D353.
+
 These gate the GA release (an rc may ship without them, listed as known
 gaps in the notes).
 

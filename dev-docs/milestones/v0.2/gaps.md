@@ -1,5 +1,16 @@
 # v0.2.0 implementation and validation gaps
 
+## Owner decision: independent-VM VIP acceptance deferred, November 9, 2026
+
+No disposable Linux VM pair is available. The owner explicitly moved F68c's
+independent two-VM keepalived acceptance to follow-up, alongside the AD lab work
+(D358). It remains unqualified, with its original lameduck, drain, node-loss and
+restart requirements retained. It is outside the current completion scope; no
+VM assignment or provisioning question remains pending. Existing container
+keepalived evidence and kind/MetalLB acceptance cover their actual environments.
+Kind or minikube on one host does not establish independent-host VRRP/L2 failure
+behavior. Available container/Kubernetes checks and other non-AD work continue.
+
 ## Owner decision: AD remains preview, November 9, 2026
 
 The owner confirmed that no AD lab is available and explicitly deferred the
