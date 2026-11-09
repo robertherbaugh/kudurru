@@ -93,3 +93,19 @@ func (p *Prepared) CheckTx(ctx context.Context, tx *sqlite.CommandTx) error {
 	}
 	return p.source.CheckTx(ctx, tx)
 }
+
+// ClusterID returns the original source's cluster identity.
+func (p *Prepared) ClusterID() string {
+	if p == nil || p.source == nil {
+		return ""
+	}
+	return p.source.cluster
+}
+
+// Baseline returns the original immutable file-key baseline.
+func (p *Prepared) Baseline() *dnsserver.StaticKeyring {
+	if p == nil {
+		return nil
+	}
+	return p.baseline
+}

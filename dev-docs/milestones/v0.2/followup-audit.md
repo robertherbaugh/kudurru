@@ -4062,3 +4062,39 @@ Kubernetes, DNSEndpoint, offline, RoleBinding, stack, cold start): exit 0, 100
 passes, no skips. Scoped lint passes after a whitespace-only gofmt alignment of the
 new files. The Kubernetes RoleBinding write API (create/replace/delete through
 Kudurru) remains SQLite-only; on Kubernetes, RoleBindings are managed as CRs.
+
+
+### F07a Kubernetes stored TSIG management and hot reload — November 9, 2026 (D365)
+
+Kubernetes nodes previously loaded stored TSIG keys once at startup and answered
+the `/tsigkeys` management routes as unavailable. After a successful startup
+preparation, each node now rereads the complete stored source every ten seconds
+and after its own commands. A changed source that prepares with the original
+sealer and file baseline replaces the signing/verification ring in place and
+wakes secondary managers; a changed source that does not prepare withdraws
+stored and file signatures (fail closed, as at startup) until a later source
+prepares; a failed read keeps the current ring.
+
+Create, replace, reseal and revoke run on Kubernetes through `kubeTSIGLive`. Each
+requires the node's published complete source cut to still be current, then
+writes one object with its exact resourceVersion. Because the API server assigns
+UIDs, create provisions a carrier and re-seals it bound to its assigned UID; a
+failed bind deletes exactly that carrier once (`ErrProvisional`). A carrier that
+cannot be opened is removable only by exact UID and resourceVersion. Receipts
+report publication on the issuing node; other nodes adopt within ten seconds.
+
+Evidence under `.context/kube-tsig-management-20261109/`: envtest
+`TestRunServeKubeStoredTSIGManagementHotRotation` (`race04`, 18.2 s) creates a key
+through the API, verifies signed TCP answers, refuses a stale binding with 409,
+replaces it (the new key signs and the old key is refused), keeps it across a
+restart, revokes it (refused), then adopts a key another writer created directly
+without a restart. `TestApplyStoreTwoPhaseCreateCompensationAndUnusableRevoke`
+covers bind failure compensation, a stale-source refusal and exact unusable-carrier
+removal. Full `internal/tsigkeys` and `internal/dnsserver` default race
+(`lib-race01`): exit 0, 643 passes, four opt-in measurement skips. Scoped lint
+passes. `race01`/`race02` are retained: the first probe assumed BADKEY, while an
+unknown key on this path answers NOTAUTH with TSIG BADSIG; both are refusals.
+Root TSIG/secondary/NOTIFY/doctor/OpenAPI/CLI-reference selection with envtest
+(`root-race01`): exit 0, 134 passes, one skip (`TestDoctorDatabase`, no
+PostgreSQL). The route description changed, so OpenAPI, both generated clients
+and the CLI reference were regenerated.

@@ -32079,7 +32079,7 @@
         }
       },
       "post": {
-        "description": "SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
+        "description": "Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
         "operationId": "createStoredTSIGKey",
         "requestBody": {
           "content": {
@@ -32226,7 +32226,7 @@
     },
     "/tsigkeys/{keyName}/replace": {
       "post": {
-        "description": "SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
+        "description": "Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
         "operationId": "replaceStoredTSIGKey",
         "parameters": [
           {
@@ -32384,7 +32384,7 @@
     },
     "/tsigkeys/{keyName}/reseal": {
       "post": {
-        "description": "SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
+        "description": "Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
         "operationId": "resealStoredTSIGKey",
         "parameters": [
           {
@@ -32542,7 +32542,7 @@
     },
     "/tsigkeys/{keyName}/revoke": {
       "post": {
-        "description": "SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
+        "description": "Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.",
         "operationId": "revokeStoredTSIGKey",
         "parameters": [
           {

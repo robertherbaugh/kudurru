@@ -14,6 +14,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Stored TSIG keys can be created, replaced, resealed and revoked through the API
+  on Kubernetes, and every node reloads the stored source without a restart. A
+  changed source that cannot be prepared withdraws signing rather than keeping a
+  revoked key.
+
 - Local password login on an enrolled SQLite follower is admitted by the
   primary under the shared lockout counters; the follower keeps the session's
   CSRF secret, forwards only its hash and seals the cookie once it installs the

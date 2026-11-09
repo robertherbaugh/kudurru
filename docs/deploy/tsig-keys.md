@@ -1,10 +1,9 @@
 # Stored TSIG keys
 
-Complete SQLite nodes can manage encrypted TSIG credentials through the
-authenticated API. Only the `admin` role has `tsigkeys.read`, `tsigkeys.write`
-and `tsigkeys.delete` by default. File-configured keys are listed as read-only;
-a stored key cannot shadow a file key. Kubernetes management currently returns
-an unavailable-capability response and does not fall back to Secret writes.
+Complete SQLite and Kubernetes nodes can manage encrypted TSIG credentials
+through the authenticated API. Only the `admin` role has `tsigkeys.read`,
+`tsigkeys.write` and `tsigkeys.delete` by default. File-configured keys are
+listed as read-only; a stored key cannot shadow a file key.
 
 Use HTTPS and the existing bearer-token or cookie/CSRF authentication flow.
 Keep secret input out of command arguments and logs. Requests are limited to
@@ -69,9 +68,21 @@ failure leave signed DNS, signed transfers and signed NOTIFY unavailable. A file
 key does not bypass an unknown stored source. Unsigned DNS from a valid saved
 snapshot remains available independently.
 
-Successful startup keys remain immutable for the process lifetime. Changes to
-stored credentials or recovery after a failed preparation require restart;
-Kubernetes has no hot TSIG administration or rotation endpoint. The startup warning
-reports unavailable preparation without exposing private source data. Kubernetes
-Secret provisioning must bind ciphertext to the actual Secret UID; this reader
-never creates, repairs or reseals credentials.
+A failed startup preparation still requires a restart. After a successful
+startup, each node rereads the complete stored source every ten seconds and after
+its own commands. A changed source that prepares replaces the signing and
+verification ring in place; a changed source that does not prepare withdraws
+stored and file signatures, as at startup, until a later source prepares. A failed
+read keeps the current ring. The startup warning reports unavailable preparation
+without exposing private source data.
+
+On Kubernetes the same `/tsigkeys` commands apply. Each command first requires the
+node's published complete source to still be current, then writes one object
+with its exact resourceVersion. Because Kubernetes assigns object UIDs, create is
+two-phase: a provisional carrier is created and immediately re-sealed bound to
+its assigned UID. If that second step fails, the node deletes exactly that
+carrier once and reports the failure. If a carrier that cannot be opened remains,
+for example after a crash between the two steps, signed DNS is withdrawn until it
+is removed with `revoke` using its exact `uid` and `resourceVersion`. Other nodes
+adopt every change within ten seconds; a receipt's `published` reflects only the
+node that ran the command.

@@ -2510,7 +2510,7 @@ export interface paths {
         put?: never;
         /**
          * Create an absent stored TSIG key
-         * @description SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+         * @description Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
          */
         post: operations["createStoredTSIGKey"];
         delete?: never;
@@ -2530,7 +2530,7 @@ export interface paths {
         put?: never;
         /**
          * Replace a reviewed stored TSIG key
-         * @description SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+         * @description Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
          */
         post: operations["replaceStoredTSIGKey"];
         delete?: never;
@@ -2550,7 +2550,7 @@ export interface paths {
         put?: never;
         /**
          * Reseal a reviewed stored TSIG key
-         * @description SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+         * @description Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
          */
         post: operations["resealStoredTSIGKey"];
         delete?: never;
@@ -2570,7 +2570,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke a reviewed stored TSIG key
-         * @description SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+         * @description Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
          */
         post: operations["revokeStoredTSIGKey"];
         delete?: never;

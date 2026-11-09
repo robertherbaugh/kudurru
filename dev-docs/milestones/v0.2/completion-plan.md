@@ -87,7 +87,7 @@ tests cannot substitute for any external result.
 | F05 | Cache parsed endpoints per record-set object | Zones and AD | Integrated eb20ac7; composed actual-driver and parser races pass |
 | F06a | Separate NOTIFY TSIG key field in ZonePolicy | Zones and AD | Integrated c80c6f2/46d7641; actual sender and composed SQLite/Kubernetes schema races pass |
 | F06b | Per-zone `notifySource` | Zones and AD | Integrated c80c6f2/46d7641; actual source/refusal races and UI unit tests pass |
-| F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Active D292: SQLite captured listener and secondary/RPZ activation integrated f725fdf; merged mounted races and scoped lint pass. SQLite management/API/generated clients now composed on schema8; final-clock and actual commit-error cases pass, external API races17 and full lint pass. Mounted DNS startup refusal and own-UPDATE acknowledgment corrected in D313; core races581/4 opt-in-helper skips, corrected output races14 and full lint pass. Observed Kubernetes identity prerequisite integrated 038fc54f. D314 startup-only stored keys now mount all six transports, secondary and NOTIFY; actual envtest restart/outage/wrong-owner races, 650 core race entries, 31 compatibility entries, full lint and vet pass. Kubernetes management/current authority and final gates remain open |
+| F07a | Encrypted store-backed internal TSIGKey | Zones and AD | Active D292: SQLite captured listener and secondary/RPZ activation integrated f725fdf; merged mounted races and scoped lint pass. SQLite management/API/generated clients now composed on schema8; final-clock and actual commit-error cases pass, external API races17 and full lint pass. Mounted DNS startup refusal and own-UPDATE acknowledgment corrected in D313; core races581/4 opt-in-helper skips, corrected output races14 and full lint pass. Observed Kubernetes identity prerequisite integrated 038fc54f. D314 startup-only stored keys now mount all six transports, secondary and NOTIFY; actual envtest restart/outage/wrong-owner races, 650 core race entries, 31 compatibility entries, full lint and vet pass. D365 Kubernetes stored-key management and hot reload pass mounted envtest acceptance and 134 root/643 library races; final gates remain open |
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Integrated a6bf8e1; actual encrypted wire and native mutation-refusal races pass; immutable installed keyrings |
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Implemented D261/D331; authenticated SQLite native/CLI and actual Kubernetes stored/file/restart/refusal races pass; final gates open |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |
@@ -1917,3 +1917,39 @@ Kubernetes, DNSEndpoint, offline, RoleBinding, stack, cold start): exit 0, 100
 passes, no skips. Scoped lint passes after a whitespace-only gofmt alignment of the
 new files. The Kubernetes RoleBinding write API (create/replace/delete through
 Kudurru) remains SQLite-only; on Kubernetes, RoleBindings are managed as CRs.
+
+
+### F07a Kubernetes stored TSIG management and hot reload — November 9, 2026 (D365)
+
+Kubernetes nodes previously loaded stored TSIG keys once at startup and answered
+the `/tsigkeys` management routes as unavailable. After a successful startup
+preparation, each node now rereads the complete stored source every ten seconds
+and after its own commands. A changed source that prepares with the original
+sealer and file baseline replaces the signing/verification ring in place and
+wakes secondary managers; a changed source that does not prepare withdraws
+stored and file signatures (fail closed, as at startup) until a later source
+prepares; a failed read keeps the current ring.
+
+Create, replace, reseal and revoke run on Kubernetes through `kubeTSIGLive`. Each
+requires the node's published complete source cut to still be current, then
+writes one object with its exact resourceVersion. Because the API server assigns
+UIDs, create provisions a carrier and re-seals it bound to its assigned UID; a
+failed bind deletes exactly that carrier once (`ErrProvisional`). A carrier that
+cannot be opened is removable only by exact UID and resourceVersion. Receipts
+report publication on the issuing node; other nodes adopt within ten seconds.
+
+Evidence under `.context/kube-tsig-management-20261109/`: envtest
+`TestRunServeKubeStoredTSIGManagementHotRotation` (`race04`, 18.2 s) creates a key
+through the API, verifies signed TCP answers, refuses a stale binding with 409,
+replaces it (the new key signs and the old key is refused), keeps it across a
+restart, revokes it (refused), then adopts a key another writer created directly
+without a restart. `TestApplyStoreTwoPhaseCreateCompensationAndUnusableRevoke`
+covers bind failure compensation, a stale-source refusal and exact unusable-carrier
+removal. Full `internal/tsigkeys` and `internal/dnsserver` default race
+(`lib-race01`): exit 0, 643 passes, four opt-in measurement skips. Scoped lint
+passes. `race01`/`race02` are retained: the first probe assumed BADKEY, while an
+unknown key on this path answers NOTAUTH with TSIG BADSIG; both are refusals.
+Root TSIG/secondary/NOTIFY/doctor/OpenAPI/CLI-reference selection with envtest
+(`root-race01`): exit 0, 134 passes, one skip (`TestDoctorDatabase`, no
+PostgreSQL). The route description changed, so OpenAPI, both generated clients
+and the CLI reference were regenerated.

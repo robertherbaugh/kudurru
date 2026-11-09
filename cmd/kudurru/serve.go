@@ -594,6 +594,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var rings *servingbuild.KeyringOwner
 	var tsigSource *tsigRuntime
 	var kubeTSIG *kubeTSIGStartup
+	var kubeTSIGManaged *kubeTSIGLive
 	if sql != nil {
 		authKeys, err = newAuthKeyOwner(ctx, encKeys)
 		if err != nil {
@@ -619,6 +620,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 		defer kubeTSIG.Close()
+		// Hot stored-key replacement and management (F07a, D365).
+		kubeTSIGManaged = newKubeTSIGLive(kubeTSIG, kubeStore, kubeStore, sealer)
+		liveCtx, stopLive := context.WithCancel(ctx)
+		liveDone := make(chan struct{})
+		go func() { defer close(liveDone); kubeTSIGManaged.run(liveCtx) }()
+		defer func() { stopLive(); <-liveDone }()
 	}
 	secondaryCluster := sha256.Sum256(append([]byte("kudurru/secondary/cluster/v1:"), encKey...))
 	secondaryOptions := secondary.Options{
@@ -639,7 +646,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		secondaryOptions.ReceiverForKeys = func(keys *dnsserver.StaticKeyring) secondary.Receiver {
 			return &secondary.TransferClient{Keyring: keys}
 		}
-		secondaryOptions.KeysChanged = kubeTSIG.changes
+		secondaryOptions.KeysChanged = kubeTSIGManaged.changes
 	}
 	secondaries, err := secondary.New(secondaryOptions)
 	if err != nil {
@@ -1160,6 +1167,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		zoneNotifyCommand = complete.ZoneNotifyCommand
 		tsigKeyReads, tsigKeyCommand = complete.TSIGKeyReads, complete.TSIGKeyCommand
 		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
+	}
+	if kubeTSIGManaged != nil {
+		tsigKeyReads, tsigKeyCommand = kubeTSIGManaged.reads, kubeTSIGManaged.command
 	}
 	var kubeBlocking *kubeBlockingRuntime
 	if kubeStore != nil {

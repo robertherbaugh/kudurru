@@ -8457,7 +8457,7 @@ type ClientInterface interface {
 
 	// CreateStoredTSIGKeyWithBody Create an absent stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -8466,7 +8466,7 @@ type ClientInterface interface {
 
 	// CreateStoredTSIGKey Create an absent stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -8475,7 +8475,7 @@ type ClientInterface interface {
 
 	// ReplaceStoredTSIGKeyWithBody Replace a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -8484,7 +8484,7 @@ type ClientInterface interface {
 
 	// ReplaceStoredTSIGKey Replace a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -8493,7 +8493,7 @@ type ClientInterface interface {
 
 	// ResealStoredTSIGKeyWithBody Reseal a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -8502,7 +8502,7 @@ type ClientInterface interface {
 
 	// ResealStoredTSIGKey Reseal a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -8511,7 +8511,7 @@ type ClientInterface interface {
 
 	// RevokeStoredTSIGKeyWithBody Revoke a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -8520,7 +8520,7 @@ type ClientInterface interface {
 
 	// RevokeStoredTSIGKey Revoke a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -12624,7 +12624,7 @@ func (c *Client) ListTSIGKeyMetadata(ctx context.Context, reqEditors ...RequestE
 
 // CreateStoredTSIGKeyWithBody Create an absent stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -12643,7 +12643,7 @@ func (c *Client) CreateStoredTSIGKeyWithBody(ctx context.Context, contentType st
 
 // CreateStoredTSIGKey Create an absent stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -12662,7 +12662,7 @@ func (c *Client) CreateStoredTSIGKey(ctx context.Context, body CreateStoredTSIGK
 
 // ReplaceStoredTSIGKeyWithBody Replace a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -12681,7 +12681,7 @@ func (c *Client) ReplaceStoredTSIGKeyWithBody(ctx context.Context, keyName strin
 
 // ReplaceStoredTSIGKey Replace a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -12700,7 +12700,7 @@ func (c *Client) ReplaceStoredTSIGKey(ctx context.Context, keyName string, body 
 
 // ResealStoredTSIGKeyWithBody Reseal a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -12719,7 +12719,7 @@ func (c *Client) ResealStoredTSIGKeyWithBody(ctx context.Context, keyName string
 
 // ResealStoredTSIGKey Reseal a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -12738,7 +12738,7 @@ func (c *Client) ResealStoredTSIGKey(ctx context.Context, keyName string, body R
 
 // RevokeStoredTSIGKeyWithBody Revoke a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -12757,7 +12757,7 @@ func (c *Client) RevokeStoredTSIGKeyWithBody(ctx context.Context, keyName string
 
 // RevokeStoredTSIGKey Revoke a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -25263,7 +25263,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateStoredTSIGKeyWithBodyWithResponse Create an absent stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25272,7 +25272,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateStoredTSIGKeyWithResponse Create an absent stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25281,7 +25281,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReplaceStoredTSIGKeyWithBodyWithResponse Replace a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25290,7 +25290,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReplaceStoredTSIGKeyWithResponse Replace a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25299,7 +25299,7 @@ type ClientWithResponsesInterface interface {
 
 	// ResealStoredTSIGKeyWithBodyWithResponse Reseal a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25308,7 +25308,7 @@ type ClientWithResponsesInterface interface {
 
 	// ResealStoredTSIGKeyWithResponse Reseal a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25317,7 +25317,7 @@ type ClientWithResponsesInterface interface {
 
 	// RevokeStoredTSIGKeyWithBodyWithResponse Revoke a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25326,7 +25326,7 @@ type ClientWithResponsesInterface interface {
 
 	// RevokeStoredTSIGKeyWithResponse Revoke a reviewed stored TSIG key
 	//
-	// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+	// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -46586,7 +46586,7 @@ func (c *ClientWithResponses) ListTSIGKeyMetadataWithResponse(ctx context.Contex
 
 // CreateStoredTSIGKeyWithBodyWithResponse Create an absent stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46601,7 +46601,7 @@ func (c *ClientWithResponses) CreateStoredTSIGKeyWithBodyWithResponse(ctx contex
 
 // CreateStoredTSIGKeyWithResponse Create an absent stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46616,7 +46616,7 @@ func (c *ClientWithResponses) CreateStoredTSIGKeyWithResponse(ctx context.Contex
 
 // ReplaceStoredTSIGKeyWithBodyWithResponse Replace a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46631,7 +46631,7 @@ func (c *ClientWithResponses) ReplaceStoredTSIGKeyWithBodyWithResponse(ctx conte
 
 // ReplaceStoredTSIGKeyWithResponse Replace a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46646,7 +46646,7 @@ func (c *ClientWithResponses) ReplaceStoredTSIGKeyWithResponse(ctx context.Conte
 
 // ResealStoredTSIGKeyWithBodyWithResponse Reseal a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46661,7 +46661,7 @@ func (c *ClientWithResponses) ResealStoredTSIGKeyWithBodyWithResponse(ctx contex
 
 // ResealStoredTSIGKeyWithResponse Reseal a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46676,7 +46676,7 @@ func (c *ClientWithResponses) ResealStoredTSIGKeyWithResponse(ctx context.Contex
 
 // RevokeStoredTSIGKeyWithBodyWithResponse Revoke a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46691,7 +46691,7 @@ func (c *ClientWithResponses) RevokeStoredTSIGKeyWithBodyWithResponse(ctx contex
 
 // RevokeStoredTSIGKeyWithResponse Revoke a reviewed stored TSIG key
 //
-// SQLite complete runtime only. One current transaction under original credential, writer and source fences; no mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
+// Complete SQLite runtime: one current transaction under original credential, writer and source fences. Kubernetes: the exact current complete stored source, then one exact-version write per object (create binds a provisional carrier to its assigned UID); other replicas adopt the change within ten seconds. No mutation replay. A 202 receipt confirms commit without bounded publication acknowledgment. Errors may have an uncertain commit outcome: inspect fresh metadata before further action. File keys are read-only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

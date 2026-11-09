@@ -734,8 +734,34 @@ credential, source, encryption/provider owners and elected writer, then runs
 once in the current transaction with final lifetime checks and safe audit.
 Replace, revoke and reseal require the reviewed UID and resourceVersion. File
 keys remain read-only. The virtual `tsigkeys.kudurru.io` permission does not grant
-access to Kubernetes Secrets; the Kubernetes management capability remains
-unavailable.
+access to Kubernetes Secrets.
+
+On Kubernetes the same routes run through `kubeTSIGLive` (D365). A command first
+rereads the complete stored source and requires it to equal the node's published
+cut, then `Mutation.ApplyStore` writes one object with its exact resourceVersion.
+Create is two-phase because the API server assigns UIDs: a provisional carrier is
+created and re-sealed bound to the assigned UID, and a failed bind deletes exactly
+that carrier once. `RevokeUnusable` removes a carrier that cannot be opened by its
+exact UID and resourceVersion. Every node rereads the source every ten seconds; a
+changed source that prepares replaces the ring and wakes secondary managers, a
+changed unpreparable source withdraws signing, and a failed read keeps the ring.
+
+```mermaid
+sequenceDiagram
+    participant C as Admin client
+    participant N as Kubernetes node A
+    participant K as Kubernetes API
+    participant M as Node B
+    C->>N: POST /tsigkeys (create)
+    N->>K: List TSIG carriers (must equal published cut)
+    N->>K: Create provisional carrier
+    K-->>N: Assigned UID, resourceVersion
+    N->>K: Update carrier sealed to that UID (exact resourceVersion)
+    N->>N: Reread and prepare, replace ring
+    N-->>C: 201 receipt (published on node A)
+    M->>K: Periodic reread (10 s)
+    M->>M: Prepare, replace ring
+```
 
 Publication observation retains the original ten-second command bound and any
 earlier request deadline. It reauthenticates the same raw credential and checks
