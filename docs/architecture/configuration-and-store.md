@@ -791,8 +791,10 @@ loopback compatibility and refusal behavior.
 
 ## Not built yet
 
-Production enrolled `follower` coordination (v0.2), the `raft` driver (v1.0)
-and a general `roles:` setting remain unmounted. Static file-managed twins
+Initial remote joining, operator promotion and command forwarding for enrolled
+HA remain unfinished. Retained enrolled followers mount the acquisition worker
+described below. The `raft` driver (v1.0) and a general `roles:` setting remain
+unmounted. Static file-managed twins
 and authenticated remote health reads are available separately. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
 for the plan.
 
@@ -1738,7 +1740,8 @@ A canceled/lost response or `completion_unknown` cannot establish rollback;
 inspect retained enrollment (after restart if the old writer is fenced) before
 a new operator decision. The dedicated client disables redirects and replayable
 bodies and sends no implicit review read or retry. Invitation issuance is mounted
-below; joining, promotion and outgoing replication remain separate runtime work.
+below; joining and promotion remain separate runtime work. Retained outgoing
+image acquisition is mounted as described below.
 
 ```mermaid
 sequenceDiagram
@@ -1792,5 +1795,52 @@ remains `completion_unknown`; neither error permits replay. The dedicated client
 disables redirects, replayable bodies and retries. The receipt is a bearer secret
 for private delivery, never a log entry or unsealed response-dedup record.
 
-This mounts invitation issuance, not remote joining, promotion, outgoing image
-acquisition or partition/rejoin acceptance. Member TLS routes remain separate.
+This mounts invitation issuance, not remote joining, promotion or partition/rejoin
+acceptance. Retained outgoing image acquisition is described below.
+
+
+### Retained enrolled follower acquisition
+
+At startup, the complete SQLite runtime loads the original local member identity
+and prepares both the enrolled listener and the existing replica Coordinator.
+Both are installed before workers start. Pending or explicitly dormant enrollment
+creates neither identity nor member services. Listener preparation itself does
+not mutate workers in a running runtime. Each exchange builds pure validators
+from the immutable local schema using that exchange's original context; the
+five-second startup context is never retained for later validation.
+
+Before source I/O, the follower Puller retains the original anchor, authority and
+installed-source admission. The outgoing EnrolledSource then acquires a separate
+Store-issued MemberAcquisition: only a complete enrolled Follower/Fenced receiver
+with no conflict/divergence, its exact active local CA, and the actual active
+primary address/trust can enter. The original lifetime is at most 30 seconds
+including queueing, and both CA expirations shorten it. Cancellation-aware mutex
+admission creates no detached waiter.
+
+The Store writer lock excludes membership replacement and local promotion
+through one bounded TLS request, body decode and response-term observation. No
+SQL transaction or other owner gate is held during this network work. The
+callback cannot reenter Store; its only allowed effect is the scope's serial,
+one-attempt authority observer. Actual response TLS must verify against the
+captured peer before metadata is observed. Higher authenticated authority fences
+immediately but invalidates this acquisition before body acceptance. Ignoring a
+failed observation cannot produce success. Copies share the scope, which closes
+before the Store lock releases.
+
+After acquisition releases the lock, complete validation and installation cross
+the Puller's original captured admission. An intervening source/authority change
+refuses the old attempt. An accepted 304 also crosses that boundary before
+successful-contact bookkeeping. The publisher independently installs the complete
+serving bundle. The runtime cancels and joins the Coordinator on shutdown; it
+never grants operator promotion. This mounts retained enrolled acquisition, not
+initial remote join, command forwarding, promotion or full partition/rejoin HA.
+
+```mermaid
+flowchart LR
+    A[Original follower install capture] --> B[Store enrollment and authority exclusion]
+    B --> C[Bounded mutual TLS exchange]
+    C --> D[Verify actual peer and observe term before body]
+    D --> E[Release acquisition exclusion]
+    E --> F[Validate and install through original capture]
+    F --> G[Publish complete serving bundle]
+```

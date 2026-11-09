@@ -8,6 +8,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Retained enrolled SQLite followers now acquire and publish complete images
+  from their primary over mutual TLS, with bounded cancellation and joined shutdown.
+
 - `cluster join-token` issues a reviewed, expiring member invitation through the
   authenticated SQLite API, with atomic audit and a bounded secret response
   emitted only after confirmed commit.

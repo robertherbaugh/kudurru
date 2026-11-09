@@ -3451,3 +3451,54 @@ misses, despite a smaller frame. Exact original bytes were restored and verified
 no production optimization or gate credit was retained. Evidence:
 .context/blocking-evaluate-frame-20261109/. Paired Ubicloud run 42554034011 is
 measuring 9963dec2 after the qualified cache correction; it has no outcome yet.
+
+
+### Retained enrolled acquisition and publication, November 9
+
+D351 mounts the existing replica Coordinator for retained enrolled SQLite nodes.
+Startup loads the exact private identity and installs prepared listener/worker
+before Run. Every exchange constructs pure validators under its own original
+context. A Store-issued scope holds membership/authority exclusion across one
+bounded mutual-TLS exchange without a SQL transaction; cancellation-aware queue
+admission, original CA expirations, actual peer verification and one-attempt term
+observation prevent replacement or renewed authority. Higher terms fence and
+retire the old acquisition. The original Puller capture still admits actual
+installation, 304 acceptance and successful-contact bookkeeping. Shutdown joins
+the worker. Initial remote join, operator promotion, forwarding and complete
+partition/rejoin acceptance remain open.
+
+The actual mounted listener/command/acquisition race selection passes 20 entries,
+including scheduled successor acquisition/publication, physical database restart
+with the retained private CA, 304, remote revocation and joined shutdown. Full
+enrollment/member-identity/replica/follower races pass 313 entries (105.209s wall);
+SQLite authority/enrollment/fencing/promotion/replica races pass 111 (39.885s).
+No selected test fails or skips; the accepted-owner package has no test files.
+Configured four-package lint passes with zero issues (71.148s). The final lint
+changes are comments and a test-local variable rename only; race source09 and
+lint source14 manifests retain that distinction. The protected dashboard artifact
+and all original test/assertion/deadline/benchmark files remain unchanged.
+
+Earlier preparation failures are retained: missing optional host label, a runtime
+setup guard incompatible with the original command fixture, a compile-only return
+arity error, and four lint naming/comment findings. None is reported as a pass.
+Evidence: .context/member-acquisition-20261109/.
+
+### Paired Ubicloud performance acceptance on 9963dec2, November 9
+
+Run 42554034011 passes all three strict same-VM relative comparisons and all seven
+candidate absolute gates on the owner-selected ubicloud-standard-8-ubuntu-2404
+class, Go 1.27.3, GOMAXPROCS=6, five fresh processes per workload. The historical
+reference's three absolute gates also pass, making the comparison eligible.
+Independent review verifies all source blobs, report digests, numeric outcomes,
+full group reaping and all five-value vectors: reference 45 cases/219 keys/1,095
+values; candidate 136 cases/592 keys/2,960 values. All 60 native commands and 13
+native gate/comparison commands exit zero, with no missing or failed gate keys.
+
+Both recordings used AMD Ryzen 9 7950X3D. The previous failed paired run used
+EPYC 9454P, so cross-run gains cannot be attributed entirely to the cache change.
+The earlier 18 relative and seven absolute failures remain preserved. This is
+measured performance acceptance for 9963dec2; the recorder deliberately retains
+release_qualified=false. Later source changes, final hosted checks, remaining
+features and external Windows/two-VM acceptance are not closed by it. Evidence:
+.context/hosted-release-9963dec2-20261109/paired-artifact/ and the independently
+verified paired-reviewed-summary.json / paired-reviewed-vectors.csv.

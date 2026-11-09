@@ -287,7 +287,16 @@ func (c *Client) observe(ctx context.Context, peer Peer, r *http.Response) (repl
 	if t.ClusterID != peer.ClusterID {
 		return t, replication.ErrWrongCluster
 	}
-	_, err = c.opts.Observer.ObserveAuthority(ctx, t)
+	if observer, ok := c.opts.Observer.(interface {
+		ObserveMemberAuthority(context.Context, replication.Term, *tls.ConnectionState) (replication.Authority, error)
+	}); ok {
+		if c.member == nil {
+			return t, ErrUntrusted
+		}
+		_, err = observer.ObserveMemberAuthority(ctx, t, r.TLS)
+	} else {
+		_, err = c.opts.Observer.ObserveAuthority(ctx, t)
+	}
 	return t, err
 }
 

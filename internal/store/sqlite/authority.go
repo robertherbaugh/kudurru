@@ -320,6 +320,11 @@ func (s *Store) ObserveAuthority(ctx context.Context, term replication.Term) (re
 	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
+	return s.observeAuthorityLocked(ctx, term)
+}
+
+// The caller retains wmu and has authenticated the original enrolled peer.
+func (s *Store) observeAuthorityLocked(ctx context.Context, term replication.Term) (replication.Authority, error) {
 	if s.isClosed() {
 		return replication.Authority{}, store.ErrClosed
 	}

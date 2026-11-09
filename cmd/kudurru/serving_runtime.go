@@ -19,6 +19,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
+	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
@@ -64,6 +65,8 @@ type servingRuntimeOptions struct {
 // The root joins RunWriter before stopping public serving and calling Close.
 type servingRuntime struct {
 	opts         servingRuntimeOptions
+	schema       *servingbuild.Schema
+	member       *clusterreplica.Coordinator
 	publisher    *serving.Publisher
 	providers    *providercoordinator.Coordinator
 	host         *providerhost.Owner
@@ -141,6 +144,7 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
+	s.schema = schema
 	authSchema := servingauth.Schema{Scheme: scheme, Kinds: schema.PrimaryImageOptions(ctx, o.Store.Info().ClusterID).Validation.Kinds, SchemaVersion: store.SchemaVersion}
 	s.resources, err = providerresources.New(providerresources.Options{Now: o.Now})
 	if err != nil {

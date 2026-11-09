@@ -10,6 +10,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/cluster/memberidentity"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
@@ -21,37 +22,45 @@ const memberIdentityFile = "member-identity.json"
 // listeners observe membership changes for each new handshake, and every
 // request separately retains the original Store membership through output.
 func (s *servingRuntime) prepareMemberListener(ctx context.Context, credentials *internalapi.Credentials) (*internalapi.EnrolledListener, error) {
+	listener, _, err := s.prepareMemberServices(ctx, credentials)
+	return listener, err
+}
+
+// prepareMemberServices prepares the listener and outgoing worker without
+// starting either. Root installs both before Run; preparing a listener alone
+// never changes the workers of an already running runtime.
+func (s *servingRuntime) prepareMemberServices(ctx context.Context, credentials *internalapi.Credentials) (*internalapi.EnrolledListener, *clusterreplica.Coordinator, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	a, owner, err := s.opts.Store.ReadMemberEnrollment(ctx)
 	if errors.Is(err, sqlite.ErrMemberEnrollmentPending) {
 		// No complete enrollment exists yet. Keep ordinary pending-follower
 		// listeners operational without creating identity or member routes.
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if owner.State() == nil {
 		// A separately installed read-only image can retain explicit dormant
 		// enrollment. It supplies DNS data, never enrolled member routes.
-		return nil, nil
+		return nil, nil, nil
 	}
 	if credentials == nil {
-		return nil, errors.New("enrolled membership requires internal listener credentials")
+		return nil, nil, errors.New("enrolled membership requires internal listener credentials")
 	}
 	identity, err := memberidentity.Load(filepath.Join(s.opts.Config.Node.DataDir, memberIdentityFile), a.MemberID)
 	if err != nil {
-		return nil, errors.New("enrolled membership requires the original local member identity")
+		return nil, nil, errors.New("enrolled membership requires the original local member identity")
 	}
 	if _, err := memberListenerPeers(owner, identity.Trust()); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	server, err := clusterreplica.NewMemberServer(clusterreplica.MemberServerOptions{
 		Store: s.opts.Store, Credentials: credentials, ExecuteScoped: s.executeMemberCommand,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	peers := func(ctx context.Context) ([]memberidentity.Trust, error) {
 		current, owner, err := s.opts.Store.ReadMemberEnrollment(ctx)
@@ -63,7 +72,42 @@ func (s *servingRuntime) prepareMemberListener(ctx context.Context, credentials 
 		}
 		return memberListenerPeers(owner, identity.Trust())
 	}
-	return internalapi.NewEnrolledListener(identity, peers, server.Handler())
+	listener, err := internalapi.NewEnrolledListener(identity, peers, server.Handler())
+	if err != nil {
+		return nil, nil, err
+	}
+	source, err := clusterreplica.NewEnrolledSource(clusterreplica.EnrolledSourceOptions{
+		Store: s.opts.Store, Identity: identity, Credentials: credentials,
+		Validation: func(original context.Context) replication.Validation {
+			// The immutable schema is reused, but each exchange owns its
+			// validators' lifetime. Setup's five-second context is never retained.
+			return s.schema.PrimaryImageOptions(original, a.Term.ClusterID).Validation
+		},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	name := s.opts.Config.Node.Name
+	if name == "" {
+		for _, member := range owner.State().Members() {
+			if member.ID == a.MemberID {
+				name = member.Name
+			}
+		}
+	}
+	coordinator, err := clusterreplica.NewCoordinator(clusterreplica.CoordinatorOptions{
+		Store: s.opts.Store, Source: source, NodeName: name,
+		Served: s.publisher.Pin,
+		AuthorizeOperator: func(context.Context) (clusterreplica.PromotionAuthorization, error) {
+			// The acquisition worker never grants operator promotion. The
+			// public route must retain its own current administrator proof.
+			return clusterreplica.PromotionAuthorization{}, clusterreplica.ErrForbidden
+		},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return listener, coordinator, nil
 }
 
 func memberListenerPeers(owner accepted.Owner, local memberidentity.Trust) ([]memberidentity.Trust, error) {

@@ -64,6 +64,9 @@ func (s *servingRuntime) Run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return s.publisher.Run(ctx) })
 	g.Go(func() error { return s.providers.Run(ctx) })
+	if s.member != nil {
+		g.Go(func() error { return s.member.Run(ctx) })
+	}
 	if s.anchors != nil {
 		g.Go(func() error { return s.anchors.watch(ctx, s.publisher.Wake) })
 		if s.anchors.admission != nil {

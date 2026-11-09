@@ -95,7 +95,7 @@ runners. Unit tests cannot substitute for those results.
 | F20d | Lazy-DFA regex engine | DNS and resolver | Integrated D293 with parent modifier-aware fingerprint/parser fixes. Root core race835 (2 actual helper/comparator skips), mounted API/command race47, pinned comparator46 and vet pass. Original12 single diagnostic has all58 metrics: unchanged1M 67115699ns/19allocs; regex1000 p99 18276ns remains adverse. Historical five-process arithmetic FAIL remains 36 measured regressions plus20 missing zone keys, with CPU differences and official/static gates open. Sparse shared-batch dispatch passes focused race88/core race452 (2 actual skips) and vet; one original12 sample improves policy Evaluate miss to740.5ns but regex1000 p99 17691ns and unchanged18allocs remain adverse. Fingerprint allocation fix passes focused101/core race641 (2 actual skips), pinned comparator46 and vet; original1M diagnostic reaches8allocs at79681673ns, preserving first10alloc guard failure and all earlier performance evidence. Proven anchored-start fallback passes focused race98/core467, pinned comparator46, vet and bounded oracle fuzz157288 executions; original69/all291 metrics retain3 arithmetic regressions and original12 regex1000 p99 18550ns remains adverse. Full configured root lint v2.15.0 passes. Complete original five-process blocking+zone gate on 859bacf6 exits1 with four regressions and no missing metrics; actual source-profile-guided literal refinement passes focused93/core656 races, pinned comparator46, fuzz197295, vet and scoped lint. Original regex1000 diagnostic p99 improves18226 to1455ns; final-source five-process/fixed-class gates remain open |
 | F21a | `upstreams.importFile` dnsmasq import | DNS and resolver | Implemented; bounded canonical translation, refusal/ownership/restart and real mounted DNS routes pass |
 | F21b | Response-cache inspect REST | DNS and resolver | Implemented bounded exact-key metadata read; real mounted DNS/API and held-publication/ABA races pass; generated 157-operation client and API/reference contracts updated |
-| F21c | Cache/strategy benchmark limits | DNS and resolver | Original cache/strategy ceilings calibrated from Ubicloud reference and enforced; retained candidate fails both scopes; final-source qualification remains open |
+| F21c | Cache/strategy benchmark limits | DNS and resolver | Original cache/strategy ceilings calibrated from Ubicloud reference and enforced; paired Ubicloud 42554034011 on 9963dec2 passes both scopes and all absolute limits. Earlier failures remain preserved; later-source/final qualification remains open |
 | F22a | QUIC max connections / TCP queries / idle timeout config keys | DNS and resolver | Implemented; actual transport/config/mounted races pass |
 | F22b | DoH `Alt-Svc` | DNS and resolver | Implemented; actual HTTPS/HTTP3 and full transport races pass |
 | F22c | RFC 8467 response padding | DNS and resolver | Implemented; actual encrypted/plaintext/TSIG and full transport races pass |
@@ -157,7 +157,7 @@ runners. Unit tests cannot substitute for those results.
 | F58b | `/queries/export` API and query-log link | Operations and UI | Implemented; filtered bounded download, API/privacy races, 20 UI cases and actual mounted DNS/history export pass |
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
-| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); join, promotion and forwarding remain open; status grants no promotion eligibility |
+| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; initial join, promotion and forwarding remain open; status grants no promotion eligibility |
 | F60c | `integrations …` CLI | Store and HA | Active D291/D295/D298: reviewed API/CLI, standalone conformance and SQLite Tier-B clients/actions mount implemented; mounted TLS/router races, full provider races and scoped lint pass. Merged 180-operation contracts pass; hooks/record ownership, remaining driver/restart and final contract gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
@@ -1306,3 +1306,54 @@ misses, despite a smaller frame. Exact original bytes were restored and verified
 no production optimization or gate credit was retained. Evidence:
 .context/blocking-evaluate-frame-20261109/. Paired Ubicloud run 42554034011 is
 measuring 9963dec2 after the qualified cache correction; it has no outcome yet.
+
+
+### Retained enrolled acquisition and publication, November 9
+
+D351 mounts the existing replica Coordinator for retained enrolled SQLite nodes.
+Startup loads the exact private identity and installs prepared listener/worker
+before Run. Every exchange constructs pure validators under its own original
+context. A Store-issued scope holds membership/authority exclusion across one
+bounded mutual-TLS exchange without a SQL transaction; cancellation-aware queue
+admission, original CA expirations, actual peer verification and one-attempt term
+observation prevent replacement or renewed authority. Higher terms fence and
+retire the old acquisition. The original Puller capture still admits actual
+installation, 304 acceptance and successful-contact bookkeeping. Shutdown joins
+the worker. Initial remote join, operator promotion, forwarding and complete
+partition/rejoin acceptance remain open.
+
+The actual mounted listener/command/acquisition race selection passes 20 entries,
+including scheduled successor acquisition/publication, physical database restart
+with the retained private CA, 304, remote revocation and joined shutdown. Full
+enrollment/member-identity/replica/follower races pass 313 entries (105.209s wall);
+SQLite authority/enrollment/fencing/promotion/replica races pass 111 (39.885s).
+No selected test fails or skips; the accepted-owner package has no test files.
+Configured four-package lint passes with zero issues (71.148s). The final lint
+changes are comments and a test-local variable rename only; race source09 and
+lint source14 manifests retain that distinction. The protected dashboard artifact
+and all original test/assertion/deadline/benchmark files remain unchanged.
+
+Earlier preparation failures are retained: missing optional host label, a runtime
+setup guard incompatible with the original command fixture, a compile-only return
+arity error, and four lint naming/comment findings. None is reported as a pass.
+Evidence: .context/member-acquisition-20261109/.
+
+### Paired Ubicloud performance acceptance on 9963dec2, November 9
+
+Run 42554034011 passes all three strict same-VM relative comparisons and all seven
+candidate absolute gates on the owner-selected ubicloud-standard-8-ubuntu-2404
+class, Go 1.27.3, GOMAXPROCS=6, five fresh processes per workload. The historical
+reference's three absolute gates also pass, making the comparison eligible.
+Independent review verifies all source blobs, report digests, numeric outcomes,
+full group reaping and all five-value vectors: reference 45 cases/219 keys/1,095
+values; candidate 136 cases/592 keys/2,960 values. All 60 native commands and 13
+native gate/comparison commands exit zero, with no missing or failed gate keys.
+
+Both recordings used AMD Ryzen 9 7950X3D. The previous failed paired run used
+EPYC 9454P, so cross-run gains cannot be attributed entirely to the cache change.
+The earlier 18 relative and seven absolute failures remain preserved. This is
+measured performance acceptance for 9963dec2; the recorder deliberately retains
+release_qualified=false. Later source changes, final hosted checks, remaining
+features and external Windows/two-VM acceptance are not closed by it. Evidence:
+.context/hosted-release-9963dec2-20261109/paired-artifact/ and the independently
+verified paired-reviewed-summary.json / paired-reviewed-vectors.csv.
