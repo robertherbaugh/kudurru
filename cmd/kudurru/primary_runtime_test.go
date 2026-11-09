@@ -159,7 +159,7 @@ func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer
 		done <- f.store.Elector("primary").Run(ctx, func(term context.Context) {
 			original, _ := sqlite.WriterTokenFromContext(term)
 			if err := f.runtime.Run(term); err != nil && term.Err() == nil {
-				if observer != nil && f.expectWriterLoss.Load() && errors.Is(err, pr.ErrUnavailable) {
+				if f.expectWriterLoss.Load() && errors.Is(err, pr.ErrUnavailable) {
 					current, blocked := f.store.ServingAuthority()
 					// ObserveAuthority blocks the original writer before its SQL
 					// commit publishes the successor term and cancels the elector.

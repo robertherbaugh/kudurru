@@ -161,6 +161,8 @@ func TestDoctorNotifyCannotAdoptNewPublicationKeysOrWriter(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "writer":
+				// Only this explicitly fenced original token may end the driver.
+				f.expectWriterLoss.Store(true)
 				term := f.store.Authority().Term
 				term.Epoch++
 				term.PrimaryID = "doctor-successor"
