@@ -1,9 +1,21 @@
-# v0.2: replace Windows DNS in a single-domain AD forest
+# Preview: replace Windows DNS in a single-domain AD forest
 
 **Status:** scope agreed with the project owner on 2026-10-15; functional
 outline for implementation planning. This document describes requirements,
 not features that already work. See decision D222 in the
 [design record](design-record.md#16-decision-log).
+
+## Owner decision: AD remains preview, November 9, 2026
+
+The owner confirmed that no AD lab is available and explicitly deferred the
+remaining AD feature work and real Windows acceptance to a future agent.
+AD1–AD12, the AD-specific portions of F11–F15, and G16–G19 remain **preview**:
+they are unfinished and unqualified, not passed, and are outside the current
+non-AD completion scope. Their original requirements and evidence remain below
+for the future handoff. No Windows lab provisioning is pending in this work.
+Shared RFC 2136, TSIG, supported-driver, HA and general release requirements
+remain in scope independently of AD. Linux/Samba evidence cannot establish
+Windows compatibility or justify production AD DNS replacement. See D353.
 
 ## 1. Outcome and supported topology
 

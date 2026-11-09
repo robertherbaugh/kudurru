@@ -33,9 +33,10 @@ deployments.
 Cloudflare split-horizon and UniFi inventory integrations are planned;
 they are not current capabilities.
 
-## Planned: Active Directory DNS
+## Preview: Active Directory DNS
 
-Planned for **v0.2.0**, AD DNS replacement targets an existing single-domain
+AD DNS replacement remains **preview**, with implementation and Windows
+qualification deferred to future work. It targets an existing single-domain
 forest, including multiple domain controllers and AD sites. The goal is to
 make kudurru the authoritative source for the migrated zones so Windows DNS
 can remain stopped on every domain controller. AD DS continues to provide
@@ -54,8 +55,8 @@ The planned scope includes:
 
 Completion requires Windows qualification with all DC DNS services stopped
 and no DNS forwarding or update proxy back to them for the migrated zones.
-This is planned work; the current release does not provide complete AD DNS
-replacement.
+The current release does not provide complete or production-qualified AD DNS
+replacement. No supported Windows matrix is claimed.
 
 ## Pricing
 

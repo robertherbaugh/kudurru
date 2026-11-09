@@ -1,5 +1,18 @@
 # v0.2 follow-up evidence audit
 
+## Owner decision: AD remains preview, November 9, 2026
+
+The owner confirmed that no AD lab is available and explicitly deferred the
+remaining AD feature work and real Windows acceptance to a future agent.
+AD1–AD12, the AD-specific portions of F11–F15, and G16–G19 remain **preview**:
+they are unfinished and unqualified, not passed, and are outside the current
+non-AD completion scope. Their original requirements and evidence remain below
+for the future handoff. No Windows lab provisioning is pending in this work.
+Shared RFC 2136, TSIG, supported-driver, HA and general release requirements
+remain in scope independently of AD. Linux/Samba evidence cannot establish
+Windows compatibility or justify production AD DNS replacement. See D353.
+
+
 Audited 2026-10-31 at `b42fa24` for PR #54. This is the substantive G20
 inventory against [followups.md](../../followups.md) and the original
 [G05–G24 review](gaps.md). It does not change either document's requirements,

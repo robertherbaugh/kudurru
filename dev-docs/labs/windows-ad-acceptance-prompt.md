@@ -1,4 +1,8 @@
-# Disposable Windows AD acceptance prompt
+# Future handoff: disposable Windows AD acceptance prompt
+
+On November 9, 2026, the owner deferred the remaining AD implementation and
+Windows acceptance to a future agent (D353). AD remains preview; this prompt
+is retained for that future work, not an active provisioning request.
 
 The owner currently has no Windows AD or two-VM keepalived lab. The v0.2 work
 therefore uses isolated Linux Docker labs for the protocols they can exercise.

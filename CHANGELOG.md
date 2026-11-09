@@ -6,6 +6,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Preview
+
+- Active Directory DNS replacement remains unfinished preview work. The owner
+  deferred the remaining implementation and real Windows qualification to a
+  future effort; no production AD replacement or Windows support matrix is claimed.
+
 ### Added
 
 - Retained enrolled SQLite followers now acquire and publish complete images

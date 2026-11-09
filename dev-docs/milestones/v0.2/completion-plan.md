@@ -1,5 +1,18 @@
 # v0.2 continuing completion plan
 
+## Owner decision: AD remains preview, November 9, 2026
+
+The owner confirmed that no AD lab is available and explicitly deferred the
+remaining AD feature work and real Windows acceptance to a future agent.
+AD1–AD12, the AD-specific portions of F11–F15, and G16–G19 remain **preview**:
+they are unfinished and unqualified, not passed, and are outside the current
+non-AD completion scope. Their original requirements and evidence remain below
+for the future handoff. No Windows lab provisioning is pending in this work.
+Shared RFC 2136, TSIG, supported-driver, HA and general release requirements
+remain in scope independently of AD. Linux/Samba evidence cannot establish
+Windows compatibility or justify production AD DNS replacement. See D353.
+
+
 Baseline: PR #54 at `6fe025e`, 2026-10-31. This working plan keeps every
 original F subrequirement and G gate visible while implementation continues.
 The [audit](followup-audit.md) supplies the exact acceptance requirement;
@@ -35,19 +48,19 @@ mutation replay.
 4. Complete recursive DNS caching/anchor/cookie packages with external RFC
    interoperability and bounded-work evidence; retain all transport/cache and
    client-policy isolation requirements.
-5. Complete AD discovery, principal/record permissions, aging, migration and
-   rollback, followed by real Windows/DC/member/DHCP acceptance. The owner has no Windows or two-VM lab and authorized disposable Docker
-   acceptance instead. Implement isolated container keepalived/AD protocol
-   checks and provide a concrete Windows lab prompt. Samba cannot certify
-   Windows DC/member/DHCP behavior; retain that exact external gate.
+5. Preserve the AD preview handoff under D353. The owner deferred the remaining
+   AD implementation and Windows matrix to a future agent; no Windows lab is
+   assigned. Continue shared DNS/HA and non-AD deployment acceptance. Existing
+   Linux/Samba protocol evidence remains distinct from Windows qualification.
 6. Finish all public contracts, upgrade/failure, performance/interoperability
    and deployment/release gates on the final artifacts. Publishing a release,
    changing release branches or deploying to production is not part of this work.
 
 F23 is published with explicit owner authorization; its immutable catalog URL
 and provenance are documented. Continue the remaining implementation and gates.
-Fixed-class performance and Windows/two-VM acceptance require their named
-runners. Unit tests cannot substitute for those results.
+Fixed-class performance and non-AD deployment acceptance require their named
+runners. Windows acceptance remains deferred preview work under D353. Unit
+tests cannot substitute for any external result.
 
 ## Complete subrequirement inventory
 
@@ -70,18 +83,18 @@ runners. Unit tests cannot substitute for those results.
 | F09b | Production integration-host wiring and failover | Zones and AD | SQLite mount integrated 687371f; Kubernetes atomic-source and Delete dependencies remain |
 | F10a | Reload inline objects without restart | Zones and AD | Integrated 71c0393; whole-source refusal and actual mounted reload races pass |
 | F10b | `Policy/default` as explicit fallback | Zones and AD | Implemented; final gates open |
-| F11a | Server-side Kerberos/GSS-TSIG/TKEY feasibility implementation | Zones and AD | Queued: partial |
-| F11b | Real Windows DC/member/DHCP; SPN provisioning/rotation; edge/VIP routing | Zones and AD | External acceptance/decision open |
+| F11a | Server-side Kerberos/GSS-TSIG/TKEY feasibility implementation | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F11b | Real Windows DC/member/DHCP; SPN provisioning/rotation; edge/VIP routing | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
 | F12a | Atomic RFC 2136 storage for each advertised driver | Zones and AD | Queued: partial |
-| F12b | Principal/record ownership and AD permission translation | Zones and AD | Queued: missing |
-| F12c | Imported-record adoption for legitimate AD registrants | Zones and AD | Queued: partial |
-| F12d | Durable content/security/aging replication and fenced failover | Zones and AD | Queued: partial |
-| F13a | AD discovery/import metadata and blocker reports | Zones and AD | Queued: missing |
-| F13b | Shadow, final write handoff, reconciliation, lossless rollback | Zones and AD | Queued: missing |
-| F14a | Windows DHCP, enabled name protection and shared credentials | Zones and AD | External acceptance/decision open |
-| F14b | Aging/scavenging with static-record protection | Zones and AD | Queued: missing |
-| F14c | AD administration/diagnostics/backup and restore | Zones and AD | Queued: partial |
-| F15 | Windows acceptance with every DC DNS service stopped | Zones and AD | External acceptance/decision open |
+| F12b | Principal/record ownership and AD permission translation | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F12c | Imported-record adoption for legitimate AD registrants | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F12d | Durable content/security/aging replication and fenced failover | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F13a | AD discovery/import metadata and blocker reports | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F13b | Shadow, final write handoff, reconciliation, lossless rollback | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F14a | Windows DHCP, enabled name protection and shared credentials | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F14b | Aging/scavenging with static-record protection | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F14c | AD administration/diagnostics/backup and restore | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
+| F15 | Windows acceptance with every DC DNS service stopped | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
 | F16 | Current-hour query stats beyond 100k distinct names | DNS and resolver | Integrated 8b98f41; exact local/central index, real migrations/races and 1M-row scale checks pass; parent composed PostgreSQL/API/SQLite races pass |
 | F17 | `$important` / `$badfilter` | DNS and resolver | Implemented; final gates open |
 | F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Integrated 50773f9; generated schemas and composed mounted/publication races pass |

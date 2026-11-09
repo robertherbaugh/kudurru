@@ -1,5 +1,18 @@
 # v0.2.0 implementation and validation gaps
 
+## Owner decision: AD remains preview, November 9, 2026
+
+The owner confirmed that no AD lab is available and explicitly deferred the
+remaining AD feature work and real Windows acceptance to a future agent.
+AD1–AD12, the AD-specific portions of F11–F15, and G16–G19 remain **preview**:
+they are unfinished and unqualified, not passed, and are outside the current
+non-AD completion scope. Their original requirements and evidence remain below
+for the future handoff. No Windows lab provisioning is pending in this work.
+Shared RFC 2136, TSIG, supported-driver, HA and general release requirements
+remain in scope independently of AD. Linux/Samba evidence cannot establish
+Windows compatibility or justify production AD DNS replacement. See D353.
+
+
 Baseline: 2026-10-31, PR [#54](https://github.com/robertherbaugh/kudurru/pull/54),
 commit `8c63961`. This is a working completion ledger, not release approval.
 The [feature packages](README.md#feature-packages-and-acceptance-criteria),
