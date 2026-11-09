@@ -21,6 +21,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- DNS over QUIC and HTTP/3: synchronize connection state during path migration
+  and capability reads when the sender disables UDP segmentation offload.
+
 - SQLite followers awaiting their first image keep operational listeners alive
   without activating member routes or inventing enrollment history.
 

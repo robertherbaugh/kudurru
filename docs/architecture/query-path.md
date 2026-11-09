@@ -523,3 +523,14 @@ among tied groups in the winning tier exempts; lower-tier or disabled groups do
 not contribute. Exemption does not bypass message validation, DNS policy or
 ACLs, and grants no authentication. Unmatched and non-exempt clients retain
 the existing shared prefix budgets, slip/drop behavior and bucket bounds.
+
+### QUIC connection-state synchronization
+
+The pinned QUIC event loop publishes a migrated sender under its connection-state
+mutex. Public state and address readers capture that same sender under the same
+mutex, so an HTTP/3 request cannot observe a partially initialized replacement.
+The independent send queue records permanent GSO refusal with an atomic flag;
+capability readers retain the existing per-path fallback behavior. These local
+changes complement CID retirement and leave routing, deadlines and socket counts
+unchanged. Actual DoQ/HTTP3 migration tests exercise concurrent state/address
+inspection on one original connection with one and three listener sockets.

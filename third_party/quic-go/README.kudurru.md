@@ -5,7 +5,7 @@ v0.63.0 module. `UPSTREAM.json` records the SHA-256 of every original file;
 `LICENSE` is the unchanged upstream license. The root Go module uses a local
 replacement, and the root Dockerfile includes it before dependency resolution.
 
-The local production change is in `path_manager.go`: retain the active probing
+The path-retirement change is in `path_manager.go`: retain the active probing
 path's ID when clearing the candidate path list, then retire that ID on the next
 switch. The original implementation lost the reference without releasing its
 reserved connection ID. Repeated migrations exhausted the peer's finite supply
@@ -42,3 +42,17 @@ integration fixtures, interop tools, dashboard fixtures and inactive upstream
 GitHub configuration follow the repository's development-fixture exclusions.
 `UPSTREAM.json` remains the original source manifest, including original module
 pins, so every local difference remains independently reviewable.
+
+Connection migration also publishes the replacement sender under the same
+mutex used by `ConnectionState`; `LocalAddr` and `RemoteAddr` snapshot the sender
+under that mutex. Event-loop packet handling retains its existing ownership.
+The sender's permanent GSO-refusal flag is atomic because the send queue writes
+it while connection/state readers inspect capabilities. Packet fallback and
+per-path GSO reset behavior are unchanged.
+
+Hosted race detection exposed unsynchronized replacement during real HTTP/3
+migration. New concurrent DoQ/HTTP3 state/address tests reproduced that race on
+the original bytes; `send_conn_concurrent_test.go` independently reproduced the
+GSO flag race with actual send fallback. Both failed receipts are preserved in
+`.context/quic-state-race-20261109/`. Original upstream and application assertions
+and `UPSTREAM.json` remain unchanged.

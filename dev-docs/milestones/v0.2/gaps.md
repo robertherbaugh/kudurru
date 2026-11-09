@@ -6425,3 +6425,33 @@ send-connection pointer/capabilities while switchToNewPath replaces it. The full
 failed shard log is retained under .context/hosted-release-73d4b057-20261109/.
 That source is not CI-qualified; the race is the next corrective work. The
 paired release measurement 42545184734 is still running, with no gate claim.
+
+
+### G21 QUIC migration state race, November 9
+
+Hosted 73d4b057 shard 2 fails the unchanged HTTP/3 socket-migration test with
+concurrent ConnectionState and switchToNewPath sender accesses. A new real
+DoQ/HTTP3 concurrent state/address test reproduces this on original vendored
+bytes (exit 1, three failed leaves plus parent, one passing leaf). A separate
+upstream sender test reproduces the GSO-failure flag race (exit 1, one failure).
+Both failures and the complete hosted trace are retained.
+
+D346 synchronizes publication and public address snapshots with the existing
+connection-state mutex, and makes the send queue's GSO-refusal flag atomic.
+Packet fallback, path/CID retirement, socket counts and original deadlines are
+unchanged. Original tests and the upstream source manifest remain byte-identical.
+The new and original application QUIC tests pass 26 race entries; upstream
+sender/path/GSO tests pass 25 race entries. Neither selection skips tests.
+
+The full DNS-server default-race suite passes 381 entries without failures
+(55.534s wall), with four actual opt-in measurement/helper skips: TestSpikeMeasure,
+TestSpikeDoQGoroutines, TestSpikeDoQHelper and TestMeasureAXFR100k. These do not
+qualify the separate performance measurements. Upstream module vet passes
+(6.416s). Frozen source identities match throughout. Evidence:
+.context/quic-state-race-20261109/. Final lint/hosted qualification remains
+separate; no earlier HTTP/3 signed-exchange cause or release success is inferred.
+
+Final configured DNS-server lint passes with zero issues (14.434s wall). All
+source03 identities match, including the original socket fixture, upstream
+manifest and protected dashboard artifact. The reproduced preimage failures
+remain retained; no hosted final-source or performance completion is inferred.
