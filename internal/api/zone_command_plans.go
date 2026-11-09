@@ -41,6 +41,10 @@ func (s *Server) runZoneCommand(ctx context.Context, target ZoneCommandTarget, p
 	if s.opts.ZoneCommand == nil {
 		return errUnavailable("current zone command unavailable")
 	}
+	// A primary member executor runs a forwarded plan in its own transaction.
+	if exec, ok := ctx.Value(zoneExecuteKey{}).(ZoneExecute); ok && exec != nil {
+		return storeError(exec(ctx, target, prepare))
+	}
 	return storeError(s.opts.ZoneCommand(ctx, target, prepare))
 }
 

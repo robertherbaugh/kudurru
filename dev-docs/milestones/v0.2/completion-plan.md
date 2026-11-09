@@ -181,7 +181,7 @@ tests cannot substitute for any external result.
 | F58b | `/queries/export` API and query-log link | Operations and UI | Implemented; filtered bounded download, API/privacy races, 20 UI cases and actual mounted DNS/history export pass |
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
-| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial remote join is mounted (D355) and explicit incomplete-join reconciliation retains original intent (D356); original follower blocking forwarding is mounted (D357), with 254 compatibility race entries and scoped lint/SAST passing; D359 bounded peer authority observation and two-process promoted rejoin pass, including 321 subsequent compatibility race entries; D360 fenced/conflicted DNS-only publication and D361 offline audited branch recovery pass three-process conflicting-promotion acceptance with 748 SQLite, 433 cluster and 274 root race entries; other mutation domains and enrolled IAM/login admission remain open; status grants no promotion eligibility |
+| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial remote join is mounted (D355) and explicit incomplete-join reconciliation retains original intent (D356); original follower blocking forwarding is mounted (D357), with 254 compatibility race entries and scoped lint/SAST passing; D359 bounded peer authority observation and two-process promoted rejoin pass, including 321 subsequent compatibility race entries; D360 fenced/conflicted DNS-only publication and D361 offline audited branch recovery pass three-process conflicting-promotion acceptance with 748 SQLite, 433 cluster and 274 root race entries; D362 typed follower forwarding of canonical object writes and zone commands passes real two-process acceptance; settings, IAM/login admission and other domains remain open; status grants no promotion eligibility |
 | F60c | `integrations …` CLI | Store and HA | Active D291/D295/D298: reviewed API/CLI, standalone conformance and SQLite Tier-B clients/actions mount implemented; mounted TLS/router races, full provider races and scoped lint pass. Merged 180-operation contracts pass; hooks/record ownership, remaining driver/restart and final contract gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
@@ -1779,3 +1779,50 @@ Kubernetes TSIG/RFC 2136/integration/authority/lease work, F28 and G21–G24
 deployment qualification, and final-source hosted CI/security/fixed-runner
 performance. AD/Windows and independent-VM VIP acceptance remain owner-deferred
 under D353/D358. No release is published or claimed.
+
+
+### F60b/G11 typed follower forwarding of objects and zone commands — November 9, 2026 (D362)
+
+An enrolled SQLite follower now forwards the public canonical object surface
+(`POST`/`PUT`/`DELETE` under `/objects/` for zones, record sets, block lists,
+client groups and policies) and the four zone convenience commands the
+dashboard record editor uses (record upsert/delete, import, zone delete). Each
+request starts its 30-second bound before body read and captures the original
+source; the follower normalizes, admits the credential early under the existing
+forward pins and sends one version-2 `objects.write`/`objects.delete`/
+`zones.command`. The primary repeats normalization and runs the public API's own
+command body (or route function and plan) inside the member transaction, with
+exact old/new-scope or sealed-plan reauthorization of the raw credential. The
+effect, its audit row and the dedup record commit together. Clean pre-mutation
+client refusals (`400/404/409/412/413`) are retained and relayed exactly; a plan
+whose Apply began and did not finish always rolls back; an exchange lost after
+send answers `503 completion_unknown`. Nothing is retried or redirected, and the
+receipt does not claim follower-local convergence.
+
+Evidence under `.context/object-forward-20261109/`:
+
+- Real two-process `TestEnrolledClusterProcessesPartitionCatchupAndRestart`
+  (`process02`): pass in 70.8 s with forwarded create (201), stale If-Match
+  relayed as 412, update, delete, zone-editor upsert, relayed missing-zone 404 and
+  record delete, each converging in UDP/TCP DNS on both nodes; a write sent during
+  partition returns 503 and is never applied or replayed after reconnection.
+- Root member tests over actual member mTLS (`root-race06`):
+  `TestRootMemberObjectCommandActualHTTP` (commit, exactly one attributed audit
+  row, dedup replay, retained 412/409 refusals, forged subject, payload/operation
+  mismatch, unsupported kind, invalid raw proof, revoked credential, raw token
+  absent from the durable image) and `TestRootMemberZoneCommandActualHTTP`
+  (upsert, retained 404, mismatched/unknown inputs, delete).
+- API seam unit tests: repeated normalization/key refusals, refusal classification
+  and invalid primary output.
+- Full `internal/api/...` default race `api-race02`: exit 0, 646 passes, three
+  environmental skips (two PostgreSQL, one envtest).
+
+- Root affected default-race selection `root-race07` (member, forward, object, zone,
+  cluster, blocking, promotion, join, enrollment, fencing, replica, follower, CLI
+  reference, doctor, anchor): exit 0, 419 passes, one skip (`TestDoctorDatabase`, no
+  PostgreSQL). E2E `process03`: both enrolled two-process scenarios, the
+  three-process conflict scenario and the static-twin process scenario pass.
+
+A first root test run exposed a harness omission (no ZoneCommand on its API server);
+the domain correctly refused with `zone command forwarding unavailable`. Settings,
+IAM/login admission, integrations and other domains are still primary-only.

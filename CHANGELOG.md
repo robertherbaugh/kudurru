@@ -14,6 +14,13 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Enrolled SQLite followers forward canonical object writes and deletes
+  (zones, record sets, block lists, client groups, policies) and the zone
+  convenience commands (record upsert/delete, import, zone delete) to their primary.
+  The primary reruns the public route's own validation and command, re-authorizes
+  the original credential and commits effect, audit and deduplication together;
+  the follower returns its exact result or refusal and never retries.
+
 - Explicit offline branch recovery after conflicting SQLite promotions:
   `cluster resolution --offline` reviews a stopped member's recorded conflict and
   `cluster resolve --offline` keeps that member's branch at a new epoch, with the

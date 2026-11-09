@@ -94,8 +94,27 @@ that the receiving follower is already serving the new state. Read
 `GET /api/v1/dns/blocking` on the node to observe its subsequent publication.
 The dashboard and CLI distinguish the receipt from that observation. There are
 no automatic retries or redirects. A lost or expired response does not prove
-rollback; inspect state before deciding on another mutation. Other public
-mutation domains and full partition/rejoin acceptance remain unfinished.
+rollback; inspect state before deciding on another mutation.
+
+Canonical object writes are forwarded the same way: `POST`, `PUT` and `DELETE`
+under `/api/v1/objects/` for DNS zones, record sets, block lists, client groups
+and policies (including `kudurru apply` and the dashboard object editors). The
+follower normalizes the document, sends it once and returns the primary's exact
+public result: the committed object, or the primary's own refusal such as `412`
+for a stale `If-Match` or `409` for an existing object. The primary repeats
+normalization and validation, re-authorizes the original credential against
+the object it actually reads, and commits the write, its audit event and the
+command's deduplication record together. The follower serves the result only
+after its next pull, so an immediate read on the follower can still show the
+previous state. An unreachable primary refuses the write (`503`); an exchange
+lost after sending answers `503 completion_unknown`, and the object must be
+inspected before a new decision. The zone convenience commands the dashboard's
+record editor uses (`POST /zones/{zone}/records`, `DELETE
+/zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import` and `DELETE
+/zones/{zone}`) are forwarded the same way: the primary runs the route's own
+plan, including all-or-nothing imports, and returns its exact output or refusal.
+Settings, identity, integrations and other mutation domains still require the
+primary.
 
 
 ## Reconnecting an old primary

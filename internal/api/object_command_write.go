@@ -19,8 +19,35 @@ import (
 // commandWriteObject receives only the normalized, sanitized document. All
 // decisions that depend on existing state belong to the concrete command.
 func (s *Server) commandWriteObject(ctx context.Context, req writeRequest, manager string, u *unstructured.Unstructured, key store.Key) (writeResult, error) {
+	if s.opts.ObjectForward != nil {
+		document, err := json.Marshal(u.Object)
+		if err != nil {
+			return writeResult{}, err
+		}
+		out, handled, err := s.opts.ObjectForward(ctx, ForwardedObject{Operation: ForwardedWrite, Kind: string(req.kind.kind),
+			Namespace: key.Namespace, Name: key.Name, Manager: manager, CreateOnly: req.createOnly, IfMatch: req.ifMatch, Document: document})
+		if handled {
+			if err != nil {
+				return writeResult{}, storeError(err)
+			}
+			return forwardedWriteResult(req.kind, key, out)
+		}
+	}
 	var result writeResult
-	err := s.opts.ObjectCommand(ctx, key, func(ctx context.Context, tx *sqlite.CommandTx, authorize ObjectAuthorize) error {
+	err := s.opts.ObjectCommand(ctx, key, s.writeCommandBody(req, manager, u, key, &result))
+	if err != nil {
+		return writeResult{}, storeError(err)
+	}
+	if result.obj == nil {
+		return writeResult{}, errUnavailable("current object command returned no result")
+	}
+	return result, nil
+}
+
+// writeCommandBody is the exact transaction body of one canonical write, shared
+// by the local current command and a follower-forwarded primary command.
+func (s *Server) writeCommandBody(req writeRequest, manager string, u *unstructured.Unstructured, key store.Key, result *writeResult) func(context.Context, *sqlite.CommandTx, ObjectAuthorize) error {
+	return func(ctx context.Context, tx *sqlite.CommandTx, authorize ObjectAuthorize) error {
 		if tx == nil || authorize == nil {
 			return errUnavailable("current object command unavailable")
 		}
@@ -42,16 +69,9 @@ func (s *Server) commandWriteObject(ctx context.Context, req writeRequest, manag
 				return err
 			}
 		}
-		result, err = prepared.apply(ctx, tx)
+		*result, err = prepared.apply(ctx, tx)
 		return err
-	})
-	if err != nil {
-		return writeResult{}, storeError(err)
 	}
-	if result.obj == nil {
-		return writeResult{}, errUnavailable("current object command returned no result")
-	}
-	return result, nil
 }
 
 // preparedCommandWrite separates validated same-tx preparation from staging so
@@ -158,7 +178,18 @@ func (s *Server) commandDeleteObject(ctx context.Context, k kindInfo, key store.
 	if err := s.readOnly(); err != nil {
 		return err
 	}
-	err := s.opts.ObjectCommand(ctx, key, func(ctx context.Context, tx *sqlite.CommandTx, authorize ObjectAuthorize) error {
+	if s.opts.ObjectForward != nil {
+		_, handled, err := s.opts.ObjectForward(ctx, ForwardedObject{Operation: ForwardedDelete, Kind: string(k.kind), Namespace: key.Namespace, Name: key.Name, IfMatch: ifMatch})
+		if handled {
+			return storeError(err)
+		}
+	}
+	return storeError(s.opts.ObjectCommand(ctx, key, deleteCommandBody(k, key, ifMatch)))
+}
+
+// deleteCommandBody is the exact transaction body of one canonical delete.
+func deleteCommandBody(k kindInfo, key store.Key, ifMatch string) func(context.Context, *sqlite.CommandTx, ObjectAuthorize) error {
+	return func(ctx context.Context, tx *sqlite.CommandTx, authorize ObjectAuthorize) error {
 		if tx == nil || authorize == nil {
 			return errUnavailable("current object command unavailable")
 		}
@@ -194,8 +225,7 @@ func (s *Server) commandDeleteObject(ctx context.Context, k kindInfo, key store.
 		// Command holds SQLite's writer lock from the exact read through delete;
 		// no separate DeleteOptions RV is necessary or available in this seam.
 		return tx.Delete(ctx, key, apiDeleteOptions(owner))
-	})
-	return storeError(err)
+	}
 }
 
 // commandScan bounds transaction-local scans shared by zone and Policy guards.

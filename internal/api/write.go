@@ -148,61 +148,14 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 	if err := s.readOnly(); err != nil {
 		return writeResult{}, err
 	}
-	manager := req.manager
-	if manager == "" {
-		manager = store.ManagerAPI
+	manager, u, key, err := s.normalizeWrite(req)
+	if err != nil {
+		return writeResult{}, err
 	}
-	k := req.kind
-	if req.body == nil {
-		return writeResult{}, errInvalid("body: an api/v1alpha1 object is required")
-	}
-	u := &unstructured.Unstructured{Object: normalizeNumbers(runtime.DeepCopyJSONValue(toJSONValue(req.body))).(map[string]any)}
-	if raw, err := json.Marshal(u.Object); err == nil && len(raw) > MaxObjectBytes {
-		return writeResult{}, newError(http.StatusRequestEntityTooLarge, KeyTooLarge,
-			fmt.Sprintf("the object is %d bytes; the limit is %d (the etcd request cap)", len(raw), MaxObjectBytes), "split it into several objects")
-	}
-	if u.GetAPIVersion() == "" {
-		u.SetAPIVersion(v1alpha1.GroupVersion.String())
-	}
-	if u.GetKind() == "" {
-		u.SetKind(string(k.kind))
-	}
-	if u.GetKind() != string(k.kind) {
-		return writeResult{}, errInvalid("kind: %q does not match the URL kind %s", u.GetKind(), k.kind)
-	}
-	if gv := u.GetAPIVersion(); gv != v1alpha1.GroupVersion.String() {
-		return writeResult{}, errInvalid("apiVersion: %q is not served (want %s)", gv, v1alpha1.GroupVersion.String())
-	}
-	if req.name != "" {
-		switch u.GetName() {
-		case "":
-			u.SetName(req.name)
-		case req.name:
-		default:
-			return writeResult{}, errInvalid("metadata.name: %q does not match the URL name %q", u.GetName(), req.name)
-		}
-	}
-	if u.GetName() == "" {
-		return writeResult{}, errInvalid("metadata.name: required")
-	}
-	if k.namespaced {
-		ns := req.namespace
-		switch {
-		case u.GetNamespace() == "" && ns != "":
-			u.SetNamespace(ns)
-		case u.GetNamespace() == "":
-			u.SetNamespace(s.opts.DefaultNamespace)
-		case ns != "" && u.GetNamespace() != ns:
-			return writeResult{}, errInvalid("metadata.namespace: %q does not match the URL namespace %q", u.GetNamespace(), ns)
-		}
-	} else if u.GetNamespace() != "" {
-		return writeResult{}, errInvalid("metadata.namespace: %s is cluster-scoped and takes no namespace", k.kind)
-	}
-	sanitizeDocument(u)
-	key := keyFor(k, u.GetNamespace(), u.GetName())
 	if s.opts.ObjectCommand != nil {
 		return s.commandWriteObject(ctx, req, manager, u, key)
 	}
+	k := req.kind
 
 	existing := k.newObject()
 	if err := s.opts.Store.Get(ctx, key, existing); errors.Is(err, store.ErrNotFound) {
@@ -277,6 +230,63 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 		res = ResultCreated
 	}
 	return writeResult{obj: written, result: res, key: key}, nil
+}
+
+// normalizeWrite builds the sanitized canonical document and key of one write.
+// A forwarded write repeats it on the primary; follower output is never trusted.
+func (s *Server) normalizeWrite(req writeRequest) (string, *unstructured.Unstructured, store.Key, error) {
+	manager := req.manager
+	if manager == "" {
+		manager = store.ManagerAPI
+	}
+	k := req.kind
+	if req.body == nil {
+		return "", nil, store.Key{}, errInvalid("body: an api/v1alpha1 object is required")
+	}
+	u := &unstructured.Unstructured{Object: normalizeNumbers(runtime.DeepCopyJSONValue(toJSONValue(req.body))).(map[string]any)}
+	if raw, err := json.Marshal(u.Object); err == nil && len(raw) > MaxObjectBytes {
+		return "", nil, store.Key{}, newError(http.StatusRequestEntityTooLarge, KeyTooLarge,
+			fmt.Sprintf("the object is %d bytes; the limit is %d (the etcd request cap)", len(raw), MaxObjectBytes), "split it into several objects")
+	}
+	if u.GetAPIVersion() == "" {
+		u.SetAPIVersion(v1alpha1.GroupVersion.String())
+	}
+	if u.GetKind() == "" {
+		u.SetKind(string(k.kind))
+	}
+	if u.GetKind() != string(k.kind) {
+		return "", nil, store.Key{}, errInvalid("kind: %q does not match the URL kind %s", u.GetKind(), k.kind)
+	}
+	if gv := u.GetAPIVersion(); gv != v1alpha1.GroupVersion.String() {
+		return "", nil, store.Key{}, errInvalid("apiVersion: %q is not served (want %s)", gv, v1alpha1.GroupVersion.String())
+	}
+	if req.name != "" {
+		switch u.GetName() {
+		case "":
+			u.SetName(req.name)
+		case req.name:
+		default:
+			return "", nil, store.Key{}, errInvalid("metadata.name: %q does not match the URL name %q", u.GetName(), req.name)
+		}
+	}
+	if u.GetName() == "" {
+		return "", nil, store.Key{}, errInvalid("metadata.name: required")
+	}
+	if k.namespaced {
+		ns := req.namespace
+		switch {
+		case u.GetNamespace() == "" && ns != "":
+			u.SetNamespace(ns)
+		case u.GetNamespace() == "":
+			u.SetNamespace(s.opts.DefaultNamespace)
+		case ns != "" && u.GetNamespace() != ns:
+			return "", nil, store.Key{}, errInvalid("metadata.namespace: %q does not match the URL namespace %q", u.GetNamespace(), ns)
+		}
+	} else if u.GetNamespace() != "" {
+		return "", nil, store.Key{}, errInvalid("metadata.namespace: %s is cluster-scoped and takes no namespace", k.kind)
+	}
+	sanitizeDocument(u)
+	return manager, u, keyFor(k, u.GetNamespace(), u.GetName()), nil
 }
 
 // deleteObject deletes one object as manager "api" (bootstrap defaults

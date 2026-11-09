@@ -629,7 +629,7 @@ func (s *Server) zoneAloneDeletable(ctx context.Context, z *v1alpha1.DNSZone) er
 // transactions, record sets first and the zone last where it does not.
 func (s *Server) deleteZone(ctx context.Context, in *deleteZoneInput) (*deleteZoneOutput, error) {
 	if s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil {
-		return s.commandDeleteZone(ctx, in)
+		return forwardZone(ctx, s, ZoneCommandDeleteZone, in.Zone, in, s.commandDeleteZone)
 	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
@@ -810,7 +810,7 @@ func (s *Server) splitRef(ref, defNS string) (string, string) {
 
 func (s *Server) upsertZoneRecord(ctx context.Context, in *upsertRecordInput) (*recordOutput, error) {
 	if s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil {
-		return s.commandUpsertZoneRecord(ctx, in)
+		return forwardZone(ctx, s, ZoneCommandUpsertRecord, in.Zone, in, s.commandUpsertZoneRecord)
 	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
@@ -922,7 +922,7 @@ func (s *Server) upsertRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, k ki
 
 func (s *Server) deleteZoneRecord(ctx context.Context, in *deleteRecordInput) (*emptyOutput, error) {
 	if s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil {
-		return s.commandDeleteZoneRecord(ctx, in)
+		return forwardZone(ctx, s, ZoneCommandDeleteRecord, in.Zone, in, s.commandDeleteZoneRecord)
 	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
@@ -1003,7 +1003,7 @@ func (s *Server) deleteRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, in *
 
 func (s *Server) importZone(ctx context.Context, in *importInput) (*importOutput, error) {
 	if s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil {
-		return s.commandImportZone(ctx, in)
+		return forwardZone(ctx, s, ZoneCommandImport, in.Zone, in, s.commandImportZone)
 	}
 	if err := s.readOnly(); err != nil {
 		return nil, err

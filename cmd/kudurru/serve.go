@@ -1049,6 +1049,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var nodeConfigCommand api.NodeConfigCommand
 	var cacheFlushCommand api.CacheFlushCommand
 	var objectCommand api.ObjectCommand
+	var objectForward api.ObjectForward
+	var zoneForward api.ZoneForward
 	var objectReads api.ObjectReadSource
 	var infoMessageReads api.InfoMessageReadSource
 	var sourceBodyReads api.SourceBodyReadSource
@@ -1128,6 +1130,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		dnsQueryOutput = captureRootAnchorQueryOutput
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
+		objectForward, zoneForward = complete.ObjectForward, complete.ZoneForward
 		brandingReads = complete.Branding
 		blockPagePreview = servingBrandingPreview{runtime: complete, server: blockPage, cache: &brandCache}
 		nodeConfigCommand, err = newServingNodeCommand(complete, reload, logLevel)
@@ -1329,7 +1332,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectReads: objectReads, ZoneCommand: zoneCommand, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,
@@ -1355,6 +1358,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	})
 	if err != nil {
 		return err
+	}
+	if complete != nil {
+		// Primary-side execution of follower-forwarded object commands uses the
+		// same public command bodies as this API server.
+		complete.objectAPI.Store(apiSrv)
 	}
 	var edns *externaldns.Server
 	if cfg.ExternalDNS.Webhook.Enabled {

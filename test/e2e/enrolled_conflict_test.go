@@ -48,6 +48,9 @@ func enrolledProcessStatus(t *testing.T, c *staticProcessClient, method, path st
 	if c.csrf != "" {
 		r.Header.Set("X-Kudurru-CSRF", c.csrf)
 	}
+	if c.ifMatch != "" {
+		r.Header.Set("If-Match", c.ifMatch)
+	}
 	response, err := c.client.Do(r)
 	if err != nil {
 		t.Fatal("enrolled request failed", method, path, err)

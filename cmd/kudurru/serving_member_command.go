@@ -27,11 +27,12 @@ type memberBlockingChange struct {
 	Until    *time.Time `json:"until,omitempty"`
 }
 
-// executeMemberCommand is the root-owned scoped member executor. The current
-// closed domain is blocking.toggle; arbitrary object/status or IAM writes refuse.
-// Listener/operator activation and public forwarding are separate mounts.
+// executeMemberCommand is the root-owned scoped member executor. The closed
+// domains are blocking.toggle and the canonical public object writes/deletes;
+// status, IAM and other writes refuse. Public forwarding is mounted separately.
 func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqlite.MemberRequest, command clusterreplica.Command, emit func(context.Context, clusterreplica.Outcome) error) error {
-	if s == nil || ctx == nil || request == nil || emit == nil || command.Version != 2 || command.Operation != memberBlockingToggle {
+	if s == nil || ctx == nil || request == nil || emit == nil || command.Version != 2 ||
+		(command.Operation != memberBlockingToggle && command.Operation != memberObjectWrite && command.Operation != memberObjectDelete && command.Operation != memberZoneCommand) {
 		return clusterreplica.ErrProtocol
 	}
 	status := s.primary.driver.Status()
@@ -56,12 +57,12 @@ func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqli
 		return ctx.Err()
 	}
 	var outcome clusterreplica.Outcome
-	domain := &rootMemberBlockingDomain{runtime: s}
+	domain := s.memberCommandDomain(command.Operation)
 	committed, err := s.providers.WithMemberCommandOutput(ctx, target, request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		if err := check(ctx); err != nil {
 			return err
 		}
-		domain.deps = deps
+		domain.bind(deps)
 		service := clusterreplica.CommandService{Domain: domain, Now: s.opts.Now}
 		var err error
 		outcome, err = service.StageSQLite(ctx, tx, command)
@@ -70,7 +71,11 @@ func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqli
 		}
 		return tx.RequireCommitCheck(check)
 	}, func(scope context.Context) error {
-		return domain.lifetime.WithOutput(scope, func(output context.Context) error {
+		lifetime := domain.outputLifetime()
+		if lifetime == nil {
+			return clusterreplica.ErrForbidden
+		}
+		return lifetime.WithOutput(scope, func(output context.Context) error {
 			if err := check(output); err != nil {
 				return err
 			}
@@ -84,6 +89,32 @@ func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqli
 		s.publisher.Wake()
 	}
 	return err
+}
+
+// rootMemberDomain is one closed typed member-command domain.
+type rootMemberDomain interface {
+	clusterreplica.Domain
+	bind(servingauth.Dependencies)
+	outputLifetime() *servingauth.CredentialLifetime
+}
+
+func (s *servingRuntime) memberCommandDomain(operation string) rootMemberDomain {
+	switch operation {
+	case memberObjectWrite, memberObjectDelete:
+		return &rootMemberObjectDomain{runtime: s}
+	case memberZoneCommand:
+		return &rootMemberZoneDomain{runtime: s}
+	}
+	return &rootMemberBlockingDomain{runtime: s}
+}
+
+func (d *rootMemberBlockingDomain) bind(deps servingauth.Dependencies) { d.deps = deps }
+func (d *rootMemberBlockingDomain) outputLifetime() *servingauth.CredentialLifetime {
+	return d.lifetime
+}
+func (d *rootMemberObjectDomain) bind(deps servingauth.Dependencies) { d.deps = deps }
+func (d *rootMemberObjectDomain) outputLifetime() *servingauth.CredentialLifetime {
+	return d.lifetime
 }
 
 type rootMemberBlockingDomain struct {

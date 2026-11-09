@@ -21,9 +21,10 @@ import (
 )
 
 type staticProcessClient struct {
-	client *http.Client
-	base   string
-	csrf   string
+	client  *http.Client
+	base    string
+	csrf    string
+	ifMatch string
 }
 
 // Every command is one original attempt, with no body replay or retry. Read
@@ -50,6 +51,9 @@ func (c *staticProcessClient) request(t *testing.T, method, path string, body an
 	}
 	if c.csrf != "" {
 		r.Header.Set("X-Kudurru-CSRF", c.csrf)
+	}
+	if c.ifMatch != "" {
+		r.Header.Set("If-Match", c.ifMatch)
 	}
 	response, err := c.client.Do(r)
 	if err != nil {

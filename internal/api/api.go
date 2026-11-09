@@ -345,6 +345,12 @@ type Options struct {
 	// ObjectCommand admits canonical object writes in the supplied current
 	// transaction. Nil retains the legacy object-management implementation.
 	ObjectCommand ObjectCommand
+	// ObjectForward hands canonical object writes on an enrolled SQLite
+	// follower to its original primary. Requires ObjectCommand.
+	ObjectForward ObjectForward
+	// ZoneForward hands zone convenience commands on an enrolled SQLite
+	// follower to its original primary. Requires ZoneCommand.
+	ZoneForward ZoneForward
 	// MigrationCommand admits bounded journal and destination programs.
 	MigrationCommand MigrationCommand
 	MigrationReads   MigrationReadSource

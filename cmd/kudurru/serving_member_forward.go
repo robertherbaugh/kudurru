@@ -14,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
+	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
@@ -130,7 +131,7 @@ func (h *servingHTTP) forwardBlocking(w http.ResponseWriter, r *http.Request, to
 	if err != nil {
 		return err
 	}
-	return s.withMemberForward(r.Context(), view, raw, func(ctx context.Context, principal auth.Principal, lifetime *servingauth.CredentialLifetime, current func(context.Context) error) error {
+	return s.withMemberForward(r.Context(), view, raw, blockingToggleAttrs, func(ctx context.Context, principal auth.Principal, lifetime *servingauth.CredentialLifetime, current func(context.Context) error) error {
 		proof, err := clusterreplica.NewCredentialProof(raw)
 		if err != nil {
 			return err
@@ -178,7 +179,7 @@ func (h *servingHTTP) forwardBlocking(w http.ResponseWriter, r *http.Request, to
 // catalog -> transferred owners -> Store. All remain excluded through both the
 // member POST and public response flush. No writer gate or SQL transaction is
 // held while acquiring the remote response, and no replacement lease is captured.
-func (s *servingRuntime) withMemberForward(ctx context.Context, view *servingauth.View, proof servingauth.Credential, fn func(context.Context, auth.Principal, *servingauth.CredentialLifetime, func(context.Context) error) error) error {
+func (s *servingRuntime) withMemberForward(ctx context.Context, view *servingauth.View, proof servingauth.Credential, attrs rbac.Attributes, fn func(context.Context, auth.Principal, *servingauth.CredentialLifetime, func(context.Context) error) error) error {
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	stop := context.AfterFunc(s.life, func() { cancel(); close(done) })
@@ -231,7 +232,7 @@ func (s *servingRuntime) withMemberForward(ctx context.Context, view *servingaut
 						if err := check(ctx); err != nil {
 							return err
 						}
-						principal, _, lifetime, err := view.AuthorizeOriginalTransition(ctx, proof, blockingToggleAttrs, s.opts.Now)
+						principal, _, lifetime, err := view.AuthorizeOriginalTransition(ctx, proof, attrs, s.opts.Now)
 						if err != nil {
 							return err
 						}

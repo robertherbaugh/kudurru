@@ -1049,7 +1049,32 @@ no-ops. The receipt reports actual completion with publication `pending`, and th
 publisher is woken after the protected scope ends. The production internal
 listener mounts this executor on `MemberServer`. Initial joining and operator
 promotion are described below. Public blocking forwarding is mounted as described
-below; other typed root domains remain unfinished.
+below. The executor also accepts version-2 `objects.write` and `objects.delete`
+commands: it decodes the forwarded normalized object, asks the public API server
+for the exact command body its own `/objects` route runs, and executes that body
+inside the member command transaction. The body's `authorize` callback
+re-authorizes the original raw credential against the exact old/new scopes of
+the object the primary reads, so the write, its audit row and the dedup record
+commit together. A clean pre-mutation client refusal (`400`, `404`, `409`,
+`412`, `413`) is retained as the command's result and relayed unchanged; any
+other failure rolls back. A `zones.command` runs the primary's own zone route
+function with its plan executed in the member transaction: the plan's sealed
+requirements are reauthorized exactly as in `ZoneCommand`, and a plan whose
+`Apply` started but did not finish always rolls back rather than being retained
+as a refusal. Settings, IAM and other typed root domains remain unfinished.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F as Follower API
+    participant P as Primary member executor
+    C->>F: PUT /objects/dnsrecordsets/default/www
+    F->>F: Normalize document, early admission, capture source (30 s)
+    F->>P: objects.write (member mTLS, raw credential proof)
+    P->>P: Same command body, exact reauthorization, effect + audit + dedup
+    P-->>F: Outcome: committed object or exact refusal
+    F-->>C: Primary's public result (served locally after the next pull)
+```
 
 At startup, a SQLite runtime reads its complete enrollment owner and authority
 from one bounded transaction. Explicit dormant enrollment retains the legacy

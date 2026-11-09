@@ -332,11 +332,49 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	}
 	enrolledProcessRead(t, apiA, "/dns/blocking", blockingOff)
 	enrolledProcessRead(t, apiB, "/dns/blocking", blockingOff)
+	// Canonical object writes through the follower commit once on the primary
+	// with its exact public result; the follower serves them after its pull.
+	viaFollower := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
+		"metadata": map[string]any{"name": "via-follower", "namespace": "default"},
+		"spec": map[string]any{"zoneRef": map[string]any{"name": "e2e-test"}, "endpoints": []any{
+			map[string]any{"dnsName": "forwarded.e2e.test.", "recordType": "A", "targets": []string{"192.0.2.44"}}}}}
+	var created map[string]any
+	apiB.request(t, http.MethodPost, "/objects/dnsrecordsets", viaFollower, http.StatusCreated, &created)
+	awaitDNS(primary, "forwarded", "192.0.2.44", dns.RcodeSuccess)
+	awaitDNS(follower, "forwarded", "192.0.2.44", dns.RcodeSuccess)
+	// A stale precondition is the primary's exact public refusal, not applied.
+	stale := enrolledProcessStatus(t, &staticProcessClient{client: apiB.client, base: apiB.base, csrf: apiB.csrf, ifMatch: "1"}, http.MethodPut,
+		"/objects/dnsrecordsets/default/via-follower", viaFollower)
+	if stale != http.StatusPreconditionFailed {
+		t.Fatal("follower did not relay the primary's precondition refusal", stale)
+	}
+	viaFollower["spec"].(map[string]any)["endpoints"] = []any{map[string]any{"dnsName": "forwarded.e2e.test.", "recordType": "A", "targets": []string{"192.0.2.45"}}}
+	apiB.request(t, http.MethodPut, "/objects/dnsrecordsets/default/via-follower", viaFollower, http.StatusOK, nil)
+	awaitDNS(follower, "forwarded", "192.0.2.45", dns.RcodeSuccess)
+	apiB.request(t, http.MethodDelete, "/objects/dnsrecordsets/default/via-follower", nil, http.StatusNoContent, nil)
+	awaitDNS(primary, "forwarded", "", dns.RcodeNameError)
+	awaitDNS(follower, "forwarded", "", dns.RcodeNameError)
+	// Zone convenience commands (the dashboard's record editor) forward too.
+	apiB.request(t, http.MethodPost, "/zones/e2e-test/records", map[string]any{"dnsName": "editor", "recordType": "A", "targets": []string{"192.0.2.47"}}, http.StatusCreated, nil)
+	awaitDNS(follower, "editor", "192.0.2.47", dns.RcodeSuccess)
+	if status := enrolledProcessStatus(t, apiB, http.MethodPost, "/zones/missing-zone/records", map[string]any{"dnsName": "x", "recordType": "A", "targets": []string{"192.0.2.48"}}); status != http.StatusNotFound {
+		t.Fatal("follower did not relay the primary's missing-zone refusal", status)
+	}
+	apiB.request(t, http.MethodDelete, "/zones/e2e-test/records/editor/A", nil, http.StatusNoContent, nil)
+	awaitDNS(follower, "editor", "", dns.RcodeNameError)
+	awaitDNS(primary, "editor", "", dns.RcodeNameError)
 	relay.partition(true)
 	if !checkDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess) {
 		t.Fatal("partition interrupted valid local DNS")
 	}
 	apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": true}, http.StatusServiceUnavailable, nil)
+	// A forwarded object write that cannot reach the primary is refused and
+	// is never applied or replayed after reconnection.
+	refused := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
+		"metadata": map[string]any{"name": "partitioned", "namespace": "default"},
+		"spec": map[string]any{"zoneRef": map[string]any{"name": "e2e-test"}, "endpoints": []any{
+			map[string]any{"dnsName": "partitioned.e2e.test.", "recordType": "A", "targets": []string{"192.0.2.46"}}}}}
+	apiB.request(t, http.MethodPost, "/objects/dnsrecordsets", refused, http.StatusServiceUnavailable, nil)
 	newRecord := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
 		"metadata": map[string]any{"name": "successor", "namespace": "default"},
 		"spec": map[string]any{"zoneRef": map[string]any{"name": "e2e-test"}, "endpoints": []any{
@@ -352,6 +390,9 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	awaitDNS(follower, "seed", "", dns.RcodeNameError)
 	awaitDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess)
 	enrolledProcessRead(t, apiB, "/dns/blocking", blockingOff)
+	if !checkDNS(follower, "partitioned", "", dns.RcodeNameError) || !checkDNS(primary, "partitioned", "", dns.RcodeNameError) {
+		t.Fatal("refused partitioned write was applied or replayed")
+	}
 	stop(follower)
 	follower = kudurrutest.StartReady(t, bin, b, kudurrutest.Options{Env: env})
 	awaitDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess)

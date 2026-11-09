@@ -9,10 +9,12 @@ import (
 	"net/netip"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerhost"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
@@ -88,6 +90,10 @@ type servingRuntime struct {
 	running       bool
 	writing       bool
 	closing       bool
+
+	// objectAPI is the public API server whose object command bodies execute
+	// follower-forwarded object mutations on this primary. Nil refuses them.
+	objectAPI atomic.Pointer[api.Server]
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {
