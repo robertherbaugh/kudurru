@@ -14,10 +14,17 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Explicit offline branch recovery after conflicting SQLite promotions:
+  `cluster resolution --offline` reviews a stopped member's recorded conflict and
+  `cluster resolve --offline` keeps that member's branch at a new epoch, with the
+  prior rows quarantined and a `cluster.resolve` audit event in the same
+  transaction. Other members adopt it through scheduled peer exchanges and never
+  replay their discarded writes. Three-process acceptance passes.
+
 - Enrolled SQLite primaries periodically exchange authenticated peer terms. A
   returning old primary fences its writes before a later independent follower
   pull installs the successor image. Two-process promotion and rejoin acceptance
-  passes; conflicting promotions and explicit branch recovery remain unqualified.
+  passes.
 
 - Enrolled SQLite followers forward blocking toggles once to their original
   primary with retained source, credential and deadline checks. HTTP 202 reports
@@ -54,6 +61,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   action that prefills the reservation from a lease.
 
 ### Fixed
+
+- A fenced or conflicted SQLite node now publishes its last-good data as a
+  DNS-only bundle and keeps answering DNS from it. Previously its preparation
+  was always checked as a writable publication and failed, so the retired bundle
+  answered SERVFAIL until the node installed a successor.
 
 - Honor promotion cancellation while waiting behind an active member exchange.
 

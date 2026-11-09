@@ -1202,7 +1202,36 @@ Every mutation checks its captured member/term/incarnation token inside the
 writer transaction. Observing an authenticated higher epoch durably fences
 the old primary; equal-epoch conflicting promotions stop writes until an
 explicit branch resolution. Failed fence persistence also blocks writes in
-memory. SQLite uses `synchronous=FULL` for all writer connections, including
+memory. A fenced or conflicted node publishes its last-good image as a DNS-only
+bundle: DNS keeps answering from it, while protected HTTP, authentication and
+writer work stay closed. The root anchor owner checks that candidate as the
+DNS-only publication its token describes.
+
+Branch resolution is a host-local offline operation, because a conflicted node
+has no protected HTTP surface. `kudurru cluster resolution --offline` reads the
+stopped member's authority, installed generation and recorded conflict or
+divergence. `cluster resolve --offline` takes that saved review, rechecks it
+under the exclusive database lock and calls `Store.ResolveAudited`: one
+transaction quarantines the prior rows, keeps the reviewed image, allocates an
+epoch above `MaxObservedEpoch` with this member as primary and inserts a
+`cluster.resolve` audit row. A lost COMMIT acknowledgment is reported as unknown.
+After restart, the member's scheduled peer exchanges fence the other branch,
+whose next pull quarantines its own rows and installs the kept image.
+
+```mermaid
+sequenceDiagram
+    participant B as Member B (kept branch)
+    participant C as Member C (discarded branch)
+    Note over B,C: Isolated promotions at epoch e+1, conflicting writes
+    B->>C: Scheduled peer exchange (member mTLS)
+    Note over B,C: Both durably record Conflict; writes refused, DNS-only last-good
+    Note over B: Operator stops B, runs cluster resolution / resolve --offline
+    Note over B: One transaction: quarantine, epoch e+2, audit cluster.resolve
+    B->>C: Next scheduled exchange announces e+2
+    Note over C: Fenced at e+2
+    C->>B: Next pull fetches the complete image
+    Note over C: Quarantines its own rows, installs and serves B's branch
+``` SQLite uses `synchronous=FULL` for all writer connections, including
 reconnections and standalone databases. Restoring a public backup remains an
 apply operation subject to the same writer fence.
 

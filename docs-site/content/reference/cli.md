@@ -450,6 +450,42 @@ Review local follower promotion eligibility.
 kudurru cluster promotion
 ```
 
+### kudurru cluster resolution
+
+Read the durable conflict or divergence state of a stopped enrolled SQLite member. Stop the local kudurru process first; the normal exclusive database lock refuses a running server. Writers on a conflicted member stay refused and its HTTP API is closed while DNS continues from its last valid local data. Save this JSON output and pass it to cluster resolve on the member whose branch should survive. Nothing is modified.
+
+```text
+kudurru cluster resolution [flags]
+```
+
+Flags:
+
+```text
+      --data-dir string   Existing stopped member data directory
+      --offline           Acknowledge that all local kudurru processes are stopped
+```
+
+### kudurru cluster resolve
+
+Keep this member's branch after a durable equal-epoch promotion conflict or divergence. Run cluster resolution --offline on the member whose data should survive, save its JSON, and pass it with --review, the exact --confirm-node, a unique --request-id and an audit --reason. To keep another member's branch, run this on that member instead. Stop the local kudurru process first.
+
+One 30-second attempt rechecks the exact reviewed term, installed generation and conflict/divergence, allocates a new epoch above every observed term, retains the prior rows as private quarantine and commits a host-attributed audit event in the same transaction. Start the member afterwards: other members adopt the new term only through later scheduled authenticated peer exchanges, quarantine their own branch when they install this one and never replay its writes. Never replay this command after an unknown result; review current state first.
+
+```text
+kudurru cluster resolve [flags]
+```
+
+Flags:
+
+```text
+      --confirm-node string   Exact reviewed local member name
+      --data-dir string       Existing stopped member data directory
+      --offline               Acknowledge that all local kudurru processes are stopped
+      --reason string         Audit reason for keeping this branch
+      --request-id string     Unique identifier for this operator decision
+      --review string         Local file containing the saved cluster resolution JSON
+```
+
 ### kudurru cluster status
 
 Read the connected node's store driver, epoch, reported leader, member count and read-only mode. Static twins each report their own local leader and store identity. This observation does not establish quorum, peer health or permission to promote a node. Use kudurru nodes for individual node readiness.

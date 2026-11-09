@@ -6997,3 +6997,81 @@ respond HTTP 200 to read-only sandbox HEAD requests; that is not a successful
 hosted install or Kubernetes qualification. No acceptance assertion or tool
 version was changed. Final-source hosted CI/security/performance and the other
 implementation/acceptance gaps remain open; no release was published.
+
+
+### F60b/G11 conflicting promotions and offline branch recovery — November 9, 2026 (D360/D361)
+
+`TestEnrolledProcessConflictResolution` runs three real server processes with
+independent data directories and identities, each reached only through its own
+connectivity relay. Public activation, invitations and offline joins precede
+loss of the primary. B and C are each promoted while isolated from the lost
+primary and from each other, then accept conflicting record writes. After the
+partition heals, only production scheduled peer exchanges record durable
+equal-epoch conflict on both: writes return 503 and protected HTTP closes, while
+UDP/TCP authoritative DNS keeps answering each member's last-good branch,
+including after a physical restart of C.
+
+That last property initially failed (D360). `process06` shows both conflicted
+members answering SERVFAIL for every name; `process09`–`process12` diagnostics
+(temporary logging, since removed) located `prepare_failed: replication: writer
+fenced` in the root anchor owner's inert token check, which always ran as a
+writable publication. It now passes the token's own DNS-only disposition. The
+in-process regression `TestRootAnchorPreparationPublishesFencedDNSOnly` fails
+without the fix (`dnsonly-race03-unfixed`, publisher never reaches `dns_only`)
+and passes with it. Protected HTTP stays closed on DNS-only bundles.
+
+Branch recovery is host-local and offline (D361), because a conflicted member
+has no authenticated HTTP surface; the first online-route design was withdrawn
+after `process03`/`process04` showed `generation_pending` on the conflicted node.
+`cluster resolution --offline` refuses a running member's locked database and
+reports the exact recorded conflict; `cluster resolve --offline` refuses another
+member's review, a wrong confirmation, a missing reason and a repeat after commit.
+The accepted decision commits quarantine, epoch e+2, the kept generation and a
+`cluster.resolve` audit row atomically. C and the restarted original primary then
+fence, quarantine their own rows and install B's branch through scheduled exchanges
+and pulls alone; C's divergent record is absent everywhere and is never replayed.
+C forwards a blocking command to B with HTTP 202. Physical restarts retain the
+resolved authority and data; all three private identity hashes are unchanged.
+
+Evidence under `.context/conflict-resolution-20261109/`:
+
+- Store `ResolveAudited` focused race `store-race01`: three tests (atomic audit,
+  injected audit 1811, final-proof refusal, invalid attribution, duplicate without
+  second audit, restart; actual 787 unknown COMMIT; stale conflict operand) pass.
+- Full SQLite default race `sqlite-race01`: exit 0, 748 test pass entries, zero
+  failures/skips, 6m22s wall.
+- `./internal/cluster/...` default race `cluster-race01`: exit 0, 433 passes; one
+  actual skip, `TestLeaseHandoff` (no local envtest assets); the accepted-owner
+  package has no tests.
+- Affected root selection `root-race01` (`Anchor|Doctor|Primary|Cluster|Join|
+  Promot|Member|Enroll|Fenc|Replica|Follower|CLIReference`): exit 0, 274 passes;
+  one actual skip, `TestDoctorDatabase` (no PostgreSQL DSN). It includes the
+  managed-anchor transport test and the doctor writer case below.
+- All three enrolled-process scenarios `process15`: exit 0, three passes
+  (30.9 s, 49.8 s, 68.2 s), 2m41s wall including builds. The harness is
+  race-instrumented; CGO-disabled synthetic-license child servers are not.
+- Scoped lint `lint02`: zero issues. Pinned Semgrep 1.181.0 `sast01` with the
+  unchanged five policy sets and nine exclusions over the five changed production
+  files, read-only source mount: exit 0, zero findings/errors, 7.3 s.
+- `source01` freezes all 15 changed paths; every later check matches it. The
+  protected pre-existing dashboard build modification remains untouched and unstaged.
+
+Hosted status for predecessor `ffd18d41`: security rerun (attempt 2) and kind
+rerun (attempt 2) both pass; attempt-1 504 download logs are retained under
+`.context/hosted-ffd18d41-20261109/`. CI 42568583609 failed: lint (golangci-lint
+download 504) and `go test 1/2` with two test failures. (1)
+`TestDoctorNotifyCannotAdoptNewPublicationKeysOrWriter/writer`: the fixture's
+elector reported the deliberately fenced driver's `ErrUnavailable` before its term
+was canceled. The exact-token writer-loss tolerance already used by the output
+fixture now also applies when this case declares the loss; no assertion changed.
+(2) `TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled` failed again,
+now `H3_INTERNAL_ERROR` on DoH3 in phase 1 (earlier: HTTP/2 INTERNAL_ERROR on DoH,
+CI 42559340879). It passes locally in `root-race01`. An unconfirmed hypothesis is
+a post-start canonical commit retiring an in-flight authoritative answer, which
+HTTP transports abort. It remains **unexplained and open**.
+
+Remaining: other forwarded mutation domains and enrolled IAM/login admission,
+Kubernetes TSIG/RFC 2136/integration/authority/lease work, F28 and G21–G24
+deployment qualification, and final-source hosted CI/security/fixed-runner
+performance. AD/Windows and independent-VM VIP acceptance remain owner-deferred
+under D353/D358. No release is published or claimed.

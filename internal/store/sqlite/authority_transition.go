@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -75,6 +76,10 @@ func (s *Store) EnablePrimary(ctx context.Context, expected replication.Generati
 // The caller supplies operator authorization/confirmation and serves the new
 // complete bundle before exposing success to clients.
 func (s *Store) ResolveConflict(ctx context.Context, chosen *replication.Validated, req replication.ResolveRequest) (replication.Authority, error) {
+	return s.resolve(ctx, chosen, req, nil, nil)
+}
+
+func (s *Store) resolve(ctx context.Context, chosen *replication.Validated, req replication.ResolveRequest, check func(context.Context) error, audit *AuditEntry) (replication.Authority, error) {
 	if chosen == nil || req.RequestID == "" || len(req.RequestID) > 256 {
 		return replication.Authority{}, replication.ErrInvalid
 	}
@@ -93,13 +98,13 @@ func (s *Store) ResolveConflict(ctx context.Context, chosen *replication.Validat
 	var authority replication.Authority
 	err := s.withAnchorInstall(ctx, image, func(original context.Context, operation *anchorOperation) error {
 		var result error
-		authority, result = s.resolveConflict(original, image, req, operation)
+		authority, result = s.resolveConflict(original, image, req, operation, check, audit)
 		return result
 	})
 	return authority, err
 }
 
-func (s *Store) resolveConflict(ctx context.Context, image replication.Image, req replication.ResolveRequest, operation *anchorOperation) (authority replication.Authority, result error) {
+func (s *Store) resolveConflict(ctx context.Context, image replication.Image, req replication.ResolveRequest, operation *anchorOperation, check func(context.Context) error, audit *AuditEntry) (authority replication.Authority, result error) {
 	defer func() {
 		if operation.mode == nil {
 			s.flushAnchorSourceClosed()
@@ -108,7 +113,17 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 	if (operation.scope != nil || operation.awaitingInstall) && !operation.installed.Same(req.ExpectedInstalled) {
 		return replication.Authority{}, replication.ErrCAS
 	}
-	s.wmu.Lock()
+	if err := checkPromotion(ctx, check); err != nil {
+		return replication.Authority{}, err
+	}
+	if audit != nil {
+		// Audited operator resolution queues within its original lifetime.
+		if err := s.lockWriterContext(ctx); err != nil {
+			return replication.Authority{}, err
+		}
+	} else {
+		s.wmu.Lock()
+	}
 	defer s.wmu.Unlock()
 	if s.isClosed() {
 		return replication.Authority{}, store.ErrClosed
@@ -144,6 +159,9 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 			return a, err
 		}
 		if err := operation.check(); err != nil {
+			return a, err
+		}
+		if err := checkPromotion(ctx, check); err != nil {
 			return a, err
 		}
 		boundary.unchanged = true
@@ -183,6 +201,7 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 	if err := s.replaceReplicaRows(ctx, tx, image); err != nil {
 		return a, err
 	}
+	before := a
 	parent := image.Generation()
 	a.Parent = &parent
 	a.Term = replication.Term{ClusterID: a.Term.ClusterID, Epoch: a.MaxObservedEpoch + 1, PrimaryID: a.MemberID, PromotionID: uuid.NewString(), PrimaryName: s.opts.Identity}
@@ -201,10 +220,22 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 	if err := writeAuthority(ctx, tx, a); err != nil {
 		return a, err
 	}
+	if audit != nil {
+		audit.Time = s.opts.Now()
+		if err := insertAudit(ctx, cachedTx{tx: tx, c: s.ws}, audit); err != nil {
+			return before, err
+		}
+	}
 	if err := operation.check(); err != nil {
 		return a, err
 	}
+	if err := checkPromotion(ctx, check); err != nil {
+		return before, err
+	}
 	if err := boundary.commit(); err != nil {
+		if audit != nil {
+			return before, errors.Join(ErrResolutionCompletionUnknown, err)
+		}
 		return a, err
 	}
 	operation.publish(s)

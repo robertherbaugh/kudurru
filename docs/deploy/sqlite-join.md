@@ -4,9 +4,9 @@ This path requires an activated SQLite primary running the enrolled internal
 listener and a private invitation issued for the receiver's exact name and
 internal address. It is separate from static twins and Kubernetes storage.
 Separate-process acceptance covers temporary partition with the same primary,
-automatic addition/deletion catch-up, forwarding and physical restart. Promoted
-primary and conflicting-primary reconnection remain under qualification. An
-explicit incomplete-join recovery path is described below.
+automatic addition/deletion catch-up, forwarding and physical restart, promoted
+primary rejoin, and three-member conflicting promotions with explicit offline
+branch recovery. An explicit incomplete-join recovery path is described below.
 
 1. On the primary, review `cluster enrollment` and issue `cluster join-token`
    using that exact review, target, absolute expiry and audit reason. Transfer
@@ -107,5 +107,40 @@ This does not automatically promote a node or select a conflicting branch.
 
 The two-process acceptance test now covers public promotion after primary loss
 and automatic old-primary rejoin after restart, preserving private identities.
-Three-process conflicting promotions and explicit branch recovery still require
-qualification. Independent-VM VIP acceptance is owner-deferred follow-up.
+Independent-VM VIP acceptance is owner-deferred follow-up.
+
+
+## Recover from conflicting promotions
+
+Manual promotion is epoch fencing, not consensus. If two followers are promoted
+while isolated from each other, both accept writes at the same epoch. When they
+reconnect, their scheduled peer exchange records a durable conflict on both:
+writes are refused and the HTTP API closes (it reports `generation_pending`),
+while each member keeps answering DNS from its last valid local data, including
+after a restart. Nothing chooses a branch automatically.
+
+Decide which member's data should survive, then on that member only:
+
+```sh
+# Stop kudurru on the member first; the database lock refuses a running server.
+kudurru cluster resolution --offline --data-dir /var/lib/kudurru > resolution.json
+# Inspect resolution.json: mode, term, conflict and "resolvable": true.
+kudurru cluster resolve --offline --data-dir /var/lib/kudurru --review resolution.json \
+  --confirm-node node-b --request-id resolve-2026-11-09 --reason "keep node-b changes"
+```
+
+`cluster resolve` rechecks the exact saved review, allocates a new epoch above
+every observed term, keeps this member's rows (its prior image is also retained as
+private quarantine) and writes a `cluster.resolve` audit event attributed to
+`host:offline-cli` in the same transaction. Start the member again. The other
+members adopt the new term only through their next scheduled authenticated peer
+exchange, quarantine their own branch when they install this one and serve it.
+Writes that only exist on a discarded branch are not replayed; re-apply any you
+still need through the new primary. A returning older primary is fenced and
+follows the same way.
+
+Do not resolve on more than one member, and never repeat the command after an
+unknown result: run `cluster resolution` again and decide from the current state.
+The command needs the member's data directory and its retained
+`member-identity.json`, and makes no network connection. Running it on a member
+without a recorded conflict or divergence refuses without changes.
