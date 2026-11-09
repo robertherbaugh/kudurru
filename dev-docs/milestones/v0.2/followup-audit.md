@@ -3304,3 +3304,27 @@ Final configured DNS-server lint passes with zero issues (14.434s wall). All
 source03 identities match, including the original socket fixture, upstream
 manifest and protected dashboard artifact. The reproduced preimage failures
 remain retained; no hosted final-source or performance completion is inferred.
+
+
+### Fixed-runner paired measurement, November 9: failed
+
+Ubicloud run 42545184734 completed on 73d4b057 with five fresh processes per
+scope and GOMAXPROCS=6. Both sides report AMD EPYC 9454P and Go 1.27.3.
+Independent artifact review matches all 406 reference and 4,715 candidate
+source identities to their commits, every report digest and all numerical
+receipts. All 60 measurement commands exited 0 and reaped their process groups;
+1,095 reference and 2,960 candidate metric values each form five-value vectors.
+
+The historical reference passes all three absolute gates, so THIS paired
+comparison is eligible. The candidate fails cache and upstream absolute gates:
+parallel cache hit is 173.6 ns against 156.48 ns, and six upstream latency
+measurements exceed their unchanged limits. Blocking/zone, UDP, DoT, QUIC and
+persistence absolute gates pass. Paired relative comparisons fail with seven
+blocking/zone regressions, one cache regression and ten upstream regressions.
+There are no missing comparison keys. All thresholds and workloads are unchanged.
+
+This result does not inherit the previous run's reference-ineligibility refusal.
+Both that earlier failure and these measured failures remain preserved. Release
+performance is NOT qualified; no rerun or baseline relaxation closes it. Evidence:
+.context/hosted-release-73d4b057-20261109/paired-reviewed-summary.json and
+paired-reviewed-vectors.csv, with the complete original artifact alongside.
