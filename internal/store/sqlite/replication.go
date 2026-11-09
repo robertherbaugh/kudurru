@@ -32,16 +32,12 @@ func (s *Store) replicationValidation(ctx context.Context) replication.Validatio
 			return fmt.Errorf("%w: source object metadata", replication.ErrInvalid)
 		}
 		// Validation/defaulting runs on a copy, never the source document.
-		check := obj.DeepCopyObject().(store.Object)
-		if err := s.validate(ctx, check, nil); err != nil {
-			return err
-		}
-		// Main validation covers the entire document for kinds without a
-		// status subresource, including self-validating private runtime kinds.
-		if s.opts.Validator.HasStatusSubresource(store.KindOf(obj)) {
-			if err := s.validateStatus(ctx, obj.DeepCopyObject().(store.Object), obj.DeepCopyObject().(store.Object)); err != nil {
+		if _, private := s.selfValidated(obj); private {
+			if err := s.validate(ctx, obj.DeepCopyObject().(store.Object), nil); err != nil {
 				return err
 			}
+		} else if err := s.opts.Validator.ValidateStored(ctx, obj); err != nil {
+			return err
 		}
 		if s.opts.ValidateReplicaObject != nil {
 			return s.opts.ValidateReplicaObject(append(json.RawMessage(nil), raw...))

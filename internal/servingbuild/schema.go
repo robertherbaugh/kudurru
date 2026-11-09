@@ -100,13 +100,7 @@ func (s *Schema) validation(ctx context.Context) replication.Validation {
 		if !s.public[store.KindOf(object)] {
 			return object.(interface{ Validate() error }).Validate()
 		}
-		if err := s.validator.Validate(ctx, object.DeepCopyObject().(store.Object), nil); err != nil {
-			return err
-		}
-		if s.validator.HasStatusSubresource(store.KindOf(object)) {
-			return s.validator.ValidateStatus(ctx, object.DeepCopyObject().(store.Object), object.DeepCopyObject().(store.Object))
-		}
-		return nil
+		return s.validator.ValidateStored(ctx, object)
 	}}
 }
 

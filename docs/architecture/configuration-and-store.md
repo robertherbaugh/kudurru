@@ -1433,6 +1433,17 @@ pointer. Compilation, downloads, and resource retirement happen outside that
 barrier. `zonecache.Prepare` supplies strict complete-object view preparation
 without watches or per-builder last-good substitutions.
 
+`ReadValidatedServingCandidate` retains complete local validation with that same
+transaction's token. Provider reconciliation projects defensive copies of this
+checked image; arbitrary candidate capture still performs Store validation.
+Neither the checked image nor its projections grant publication authority.
+Public CRD spec/status validation can reuse a successful exact encoded-object
+fingerprint within the immutable Validator's 256-entry FIFO. Keys include the
+kind and validation modes; the cache retains no documents or decoded secrets,
+and failures are never cached. Strict decoding, source metadata, complete-image
+digests and sections, private owners, custom validators and current authority
+checks still run. Write admission and defaulting retain their original methods.
+
 Requests hold leases. Replacement releases the publisher's reference, while
 old pools and other resources remain alive until the final request or stream
 releases its lease. DNS capture needs no database read and may use last-good
@@ -1517,8 +1528,10 @@ retains those subscriptions through the next wait, including changes during
 resource release. Successful reconciliation waits for those notifications,
 resource changes or the original host deadline; only failed attempts use the
 bounded retry timer. Complete-image validation and final token checks still run
-on every reconciliation. A separate writer entry retains the original elector token, resets provider floors, reconciles
-the startup config-provider manifest and joins old work before replacement.
+on every reconciliation; the provider projection retains the Store read's
+validation result instead of repeating it. A separate writer entry retains the
+original elector token, resets provider floors, reconciles the startup
+config-provider manifest and joins old work before replacement.
 License and manager/catalog/key changes wake complete preparation. Native signed
 UPDATE, license replacement recovery, follower restart/promotion and joined
 shutdown are tested through this assembly. A newly enrolled follower remains

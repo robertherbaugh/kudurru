@@ -55,28 +55,44 @@ func (t GenerationToken) DNSOnly() bool {
 // ReadServingCandidate returns an image and token from ONE read transaction.
 // The image remains installed data until an actual serving publisher uses it.
 func (s *Store) ReadServingCandidate(ctx context.Context) (*replication.Image, GenerationToken, error) {
+	image, _, token, err := s.readServingCandidate(ctx, false)
+	return image, token, err
+}
+
+// ReadValidatedServingCandidate retains the complete local validation result
+// from the same read transaction as the publication token. Consumers can derive
+// their own projections from its defensive copies without repeating Store
+// validation. It does not grant publication or command authority.
+func (s *Store) ReadValidatedServingCandidate(ctx context.Context) (*replication.Validated, GenerationToken, error) {
+	_, validated, token, err := s.readServingCandidate(ctx, true)
+	return validated, token, err
+}
+
+func (s *Store) readServingCandidate(ctx context.Context, requireValidation bool) (*replication.Image, *replication.Validated, GenerationToken, error) {
 	if s.isClosed() {
-		return nil, GenerationToken{}, store.ErrClosed
+		return nil, nil, GenerationToken{}, store.ErrClosed
 	}
 	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, GenerationToken{}, err
+		return nil, nil, GenerationToken{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	image, err := s.readGeneration(ctx, tx)
 	if err != nil {
-		return nil, GenerationToken{}, err
+		return nil, nil, GenerationToken{}, err
 	}
-	if s.opts.ValidateReplicaImage != nil {
-		if _, err := s.ValidateImage(ctx, *image); err != nil {
-			return nil, GenerationToken{}, err
+	var validated *replication.Validated
+	if requireValidation || s.opts.ValidateReplicaImage != nil {
+		validated, err = s.ValidateImage(ctx, *image)
+		if err != nil {
+			return nil, nil, GenerationToken{}, err
 		}
 	}
 	a, err := readAuthority(ctx, tx)
 	if err != nil {
-		return nil, GenerationToken{}, err
+		return nil, nil, GenerationToken{}, err
 	}
-	return image, GenerationToken{source: s, generation: image.Generation(), authority: a}, nil
+	return image, validated, GenerationToken{source: s, generation: image.Generation(), authority: a}, nil
 }
 
 // PublicationOptions explicitly permits a fenced/conflicted last-good cut for

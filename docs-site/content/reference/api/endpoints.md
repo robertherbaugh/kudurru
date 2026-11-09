@@ -90,6 +90,9 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | Method | Path | Summary | Permission |
 |---|---|---|---|
 | GET | `/api/v1/cluster` | Store, leader and shape | `cluster.read` (cluster) |
+| POST | `/api/v1/cluster/activate` | Activate an explicitly reviewed standalone SQLite primary | `cluster.join` (cluster) |
+| GET | `/api/v1/cluster/enrollment` | Review the complete local enrollment source | `cluster.read` (cluster) |
+| POST | `/api/v1/cluster/join-token` | Issue an invitation from an explicitly reviewed primary | `cluster.join` (cluster) |
 | GET | `/api/v1/doctor` | The checks of `kudurru doctor` as this node sees them | `settings.read` (cluster) |
 | GET | `/api/v1/edge` | dnsdist backends and VIP owners | `edge.read` (cluster) |
 | GET | `/api/v1/edge/vip/stream` | Local observed VIP transitions (Server-Sent Events) | `edge.read` (cluster) |

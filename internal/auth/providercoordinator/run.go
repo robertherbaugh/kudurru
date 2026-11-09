@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
+	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
@@ -61,11 +62,16 @@ func (c *Coordinator) signal() {
 // outside that writer callback but inside the SAME exclusive resource guard.
 // This path never calls Command and works on followers without writer tokens.
 func (c *Coordinator) reconcile(ctx context.Context) (time.Time, error) {
-	image, token, err := c.opts.Store.ReadServingCandidate(ctx)
+	validated, token, err := c.opts.Store.ReadValidatedServingCandidate(ctx)
 	if err != nil {
 		return time.Time{}, err
 	}
-	r, sources, err := c.image(ctx, image)
+	image := validated.Image()
+	cut, err := servingauth.CaptureImage(ctx, &image, c.opts.Schema)
+	if err != nil {
+		return time.Time{}, err
+	}
+	r, sources, err := c.validatedImage(ctx, validated, cut)
 	if err != nil {
 		return time.Time{}, err
 	}

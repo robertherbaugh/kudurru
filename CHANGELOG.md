@@ -25,6 +25,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Avoid redundant startup image validation on SQLite nodes while retaining
+  complete source checks, original readiness deadlines and final admission.
+
 - Reduce lock contention for parallel response-cache hits while preserving
   complete flushes, resizes, restored scopes and expiration checks.
 

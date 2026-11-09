@@ -157,6 +157,10 @@ func (d *Driver) Run(ctx context.Context, w Writer) error {
 		}
 	}()
 	restored := false
+	var index roster
+	var prepared *pr.PreparedImage
+	var token sqlite.GenerationToken
+	readRequired := true
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {
@@ -165,21 +169,34 @@ func (d *Driver) Run(ctx context.Context, w Writer) error {
 			return ctx.Err()
 		case <-authority:
 			authority = d.o.Store.AuthorityChanges()
+			readRequired = true
 		case <-generation:
 			generation = d.o.Store.GenerationChanges()
+			readRequired = true
 		case <-publication:
 			publication = d.o.Publication.Subscribe()
 		case <-d.wake:
+			readRequired = true
 		case <-timer.C:
 		}
 		if !d.current(w) {
 			return pr.ErrUnavailable
 		}
 		opctx, stop := context.WithTimeout(ctx, d.o.Timeout)
-		index, p, token, err := d.read(opctx)
+		var err error
+		// Timers and publication observations schedule work on the same
+		// immutable roster. They do not create a new source image. In
+		// particular, a publisher's preparation notification must not start
+		// another full image validation competing with that preparation.
+		// Every source/authority change and explicit Wake rereads; actual
+		// mutations still perform their original transaction admission.
+		if readRequired || prepared == nil || !token.Matches(d.o.Store.Authority()) {
+			index, prepared, token, err = d.read(opctx)
+			readRequired = err != nil
+		}
 		if err == nil && !restored {
 			var restore *pr.Restore
-			restore, err = d.o.Runtime.PrepareRestore(p)
+			restore, err = d.o.Runtime.PrepareRestore(prepared)
 			if err == nil {
 				err = d.o.Store.PublishIfCurrent(opctx, token, sqlite.PublicationOptions{}, func() error {
 					if !d.current(w) {

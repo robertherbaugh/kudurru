@@ -65,7 +65,8 @@ import (
 // Validator validates kudurru objects against the embedded CRDs. It is safe
 // for concurrent use; build one per process with New and share it.
 type Validator struct {
-	kinds map[store.Kind]*kindSchema
+	kinds  map[store.Kind]*kindSchema
+	stored storedValidationCache
 }
 
 // New builds a Validator from the CRDs compiled into the binary.

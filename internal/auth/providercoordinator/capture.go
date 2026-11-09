@@ -93,6 +93,12 @@ func (c *Coordinator) image(ctx context.Context, image *replication.Image) (*pro
 	if err != nil {
 		return nil, nil, err
 	}
+	return c.validatedImage(ctx, validated, cut)
+}
+
+// Only actual complete Store validation supplies this private projection.
+// Arbitrary candidate capture above still performs every local validator.
+func (c *Coordinator) validatedImage(ctx context.Context, validated *replication.Validated, cut *servingauth.Cut) (*providerregistry.Registry, []servingauth.ProviderDescriptor, error) {
 	copyImage := validated.Image()
 	if err := security.ValidateImage(&copyImage); err != nil {
 		return nil, nil, err

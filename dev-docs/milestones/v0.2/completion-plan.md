@@ -168,9 +168,9 @@ runners. Unit tests cannot substitute for those results.
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
-| F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Implemented D300 static SQLite twins: bounded host peers, local leadership, enrolled-database refusal, API/UI/public block-page read-only boundaries, authenticated status/digest reads and node-local controls. Two actual runServe assemblies pass peer-loss/restart acceptance; full affected package races and vet pass after one enum-fixture correction. Separate-process DNS/status/body/refusal/local-control/peer-loss/restart acceptance and E2E vet also pass; full configured root lint now passes. The November 9 local two-core race run reproduces node-b readiness failure on both current source and parent 4bc1d7f0; retained prior passes do not close that failure. Enrolled primary/follower authority is separate F60b/G11 work |
+| F65 | `cluster.role: static` / Compose read-only HA membership | Store and HA | Implemented D300 static SQLite twins: bounded host peers, local leadership, enrolled-database refusal, API/UI/public block-page read-only boundaries, authenticated status/digest reads and node-local controls. Two actual runServe assemblies pass peer-loss/restart acceptance; full affected package races and vet pass after one enum-fixture correction. Separate-process DNS/status/body/refusal/local-control/peer-loss/restart acceptance and E2E vet also pass; full configured root lint now passes. D349 corrects repeated startup validation; the original two-core static peer-loss/restart race test now passes with all deadlines unchanged. Earlier current/parent node-b failures remain preserved; final hosted gates stay open. Enrolled primary/follower authority is separate F60b/G11 work |
 | F66 | Separate querylog.db / local.db path keys and volumes | Observability and release | Integrated b3f6986/5048c61; actual restart, chart/Compose and volume ownership checks pass |
-| F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Actual two-runServe static membership/status/body/refusal/local-control/peer-loss/restart race passes. Separate server-process acceptance also passes with actual DNS, authenticated body reads, local-only control and durable identity/session restart; The November 9 local node-b readiness failure is reproduced on the committed parent and remains open. Enrolled primary/follower promotion, partition/rejoin and final G11/G22/G24 remain open |
+| F67 | E2E-2 static SQLite cluster, peer list bodies, correct leader | Store and HA | Actual two-runServe static membership/status/body/refusal/local-control/peer-loss/restart race passes. Separate server-process acceptance also passes with actual DNS, authenticated body reads, local-only control and durable identity/session restart; D349 corrects the reproduced node-b startup validation failure; the original two-core race acceptance now passes, with earlier failures preserved. Enrolled primary/follower promotion, partition/rejoin and final G11/G22/G24 remain open |
 | F68a | AdGuard Home black-box e2e | Zones and AD | Integrated; final gates open |
 | F68b | Knot catalog consumer interoperability | Zones and AD | Integrated 6aa58ed; actual pinned Knot 3.6.2 catalog/NOTIFY/TSIG acceptance and repeated races pass |
 | F68c | Two-VM keepalived failover acceptance | Zones and AD | Container alternative passes 12/12; original VM qualification remains external |
@@ -1248,3 +1248,38 @@ runner gate. Configured lint follows. Evidence:
 Final configured cache/stage lint passes with zero issues (5.217s). All frozen
 identities match; original benchmark/fixture/limit files and the protected
 dashboard artifact remain unchanged. Fixed-runner qualification remains open.
+
+
+### Startup validation correction, November 9
+
+D349 retains complete Store validation with its same-transaction token for
+provider reconciliation, reuses the primary driver's unchanged planning roster
+across scheduling-only hints, and bounds successful public CRD fingerprints to
+256 entries per immutable Validator. Keys include kind, encoded document digest
+and validation modes. No document or decoded secret is retained. Failed checks
+never enter the cache. Strict decode, source metadata, complete-image integrity,
+private owners/custom validators and final source/writer/dependency/publication
+checks remain; ordinary write admission/defaulting/status methods are unchanged.
+
+The original recovered-anchor, direct-anchor bootstrap and stored-TSIG restart
+race selection passes all three tests without failures/skips (96.625s wall).
+Both recovered-trust restarts retain their original 10-second readiness deadlines
+and all six transports. The actual static twins peer-loss/restart and enrollment-
+refusal selection also passes both tests at GOMAXPROCS=2 (53.134s wall), correcting
+the reproduced node-b readiness failure without fixture changes. Earlier failed
+Store-only and driver-only attempts remain recorded; neither alone fixed startup.
+
+Full affected-package default-race qualification passes 1,346 entries: SQLite
+712, Validator 333, provider coordinator 74, primary driver 9 and serving builder
+218. There are zero failures/skips (438.587s wall). Configured lint on all five
+packages passes with zero issues (50.707s). Every frozen source identity matches,
+including the protected dashboard artifact. Evidence:
+.context/serving-validated-cut-20261109/; retained profiles and temporary traces
+are under .context/hosted-root-refusals-20261109/. Instrumentation was removed
+before qualification; original fixtures, deadlines, workloads and gates remain.
+
+Hosted b176922a run 42551432186 exposed a stale generated API endpoint reference
+for enrollment review, activation and join-token, now regenerated from the
+existing contract. Both API and CLI reference-drift tests pass (25.056s wall).
+The failed hosted log is retained. Final hosted checks and the failed fixed-runner performance
+comparison remain separate; no complete release qualification is claimed.

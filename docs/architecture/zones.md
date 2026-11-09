@@ -591,6 +591,14 @@ head. Diagnostics separate installed state, exact publication acknowledgment and
 active local eligibility. A missing current background guard disables every
 background write, including no-op reconciliation.
 
+The driver retains its immutable validated planning roster and exact Store token
+for one writer run. Timer and publication hints reuse that roster while its
+authority cursor matches; source or authority changes, explicit Wake and failed
+reads require another complete read. This prevents publication preparation from
+triggering competing validations of unchanged data. Each actual mutation still
+uses its original transaction admission, and current-time eligibility and exact
+publication acknowledgment remain independent checks.
+
 `servingbuild.PrimaryPublication` acknowledges commits through one protected
 complete publisher lease. It compares the caller's exact writable term and local
 incarnation, persisted lifecycle identity, sequence, phase, parent witnesses and

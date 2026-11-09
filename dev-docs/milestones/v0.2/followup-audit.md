@@ -3393,3 +3393,38 @@ runner gate. Configured lint follows. Evidence:
 Final configured cache/stage lint passes with zero issues (5.217s). All frozen
 identities match; original benchmark/fixture/limit files and the protected
 dashboard artifact remain unchanged. Fixed-runner qualification remains open.
+
+
+### Startup validation correction, November 9
+
+D349 retains complete Store validation with its same-transaction token for
+provider reconciliation, reuses the primary driver's unchanged planning roster
+across scheduling-only hints, and bounds successful public CRD fingerprints to
+256 entries per immutable Validator. Keys include kind, encoded document digest
+and validation modes. No document or decoded secret is retained. Failed checks
+never enter the cache. Strict decode, source metadata, complete-image integrity,
+private owners/custom validators and final source/writer/dependency/publication
+checks remain; ordinary write admission/defaulting/status methods are unchanged.
+
+The original recovered-anchor, direct-anchor bootstrap and stored-TSIG restart
+race selection passes all three tests without failures/skips (96.625s wall).
+Both recovered-trust restarts retain their original 10-second readiness deadlines
+and all six transports. The actual static twins peer-loss/restart and enrollment-
+refusal selection also passes both tests at GOMAXPROCS=2 (53.134s wall), correcting
+the reproduced node-b readiness failure without fixture changes. Earlier failed
+Store-only and driver-only attempts remain recorded; neither alone fixed startup.
+
+Full affected-package default-race qualification passes 1,346 entries: SQLite
+712, Validator 333, provider coordinator 74, primary driver 9 and serving builder
+218. There are zero failures/skips (438.587s wall). Configured lint on all five
+packages passes with zero issues (50.707s). Every frozen source identity matches,
+including the protected dashboard artifact. Evidence:
+.context/serving-validated-cut-20261109/; retained profiles and temporary traces
+are under .context/hosted-root-refusals-20261109/. Instrumentation was removed
+before qualification; original fixtures, deadlines, workloads and gates remain.
+
+Hosted b176922a run 42551432186 exposed a stale generated API endpoint reference
+for enrollment review, activation and join-token, now regenerated from the
+existing contract. Both API and CLI reference-drift tests pass (25.056s wall).
+The failed hosted log is retained. Final hosted checks and the failed fixed-runner performance
+comparison remain separate; no complete release qualification is claimed.
