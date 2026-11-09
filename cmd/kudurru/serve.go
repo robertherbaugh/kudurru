@@ -676,6 +676,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var (
 		internalClient *internalapi.Client
 		internalSrv    *internalapi.Server
+		internalOpts   internalapi.ServerOptions
 		internalCreds  *internalapi.Credentials
 		listResolver   *listfetcher.Resolver
 		qlTail         *querylog.Tail
@@ -694,7 +695,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		internalCreds = creds
 		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
-		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
+		internalOpts = internalapi.ServerOptions{
 			Event: func(e internalapi.Event) bool { return secondaries.Trigger(e.Identity) },
 			Querylog: func(ctx context.Context, q internalapi.QuerylogRequest) (*internalapi.QuerylogResponse, error) {
 				out, err := internalapi.ReadLocalQuerylog(ctx, qlLogs.reader(), q)
@@ -742,9 +743,6 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 				return zl
 			},
 			Registerer: reg, Logger: logger,
-		})
-		if err != nil {
-			return err
 		}
 	} else if cfg.Store.Driver == "kube" {
 		return errors.New("KUDURRU_ENCRYPTION_KEY (or listeners.internal.tokenFile) is required for the internal listener in Kubernetes")
@@ -1617,7 +1615,17 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
-	if internalSrv != nil {
+	if complete != nil {
+		internalOpts.Enrolled, err = complete.prepareMemberListener(ctx, internalCreds)
+		if err != nil {
+			return fmt.Errorf("prepare member listener: %w", err)
+		}
+	}
+	if internalCreds != nil {
+		internalSrv, err = internalapi.NewServer(internalOpts)
+		if err != nil {
+			return err
+		}
 		if err := add("internal", false, internalSrv.Run); err != nil {
 			return err
 		}

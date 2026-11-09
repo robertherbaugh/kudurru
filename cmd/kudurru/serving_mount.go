@@ -12,7 +12,10 @@ import (
 func (s *servingRuntime) ready() (bool, []string) {
 	lease, err := s.publisher.CaptureHTTP(s.life)
 	if err != nil {
-		return false, []string{"complete serving generation unavailable"}
+		// Status reports bounded local lifecycle labels, never private owner
+		// data or raw preparation errors. Keep the unavailable decision while
+		// distinguishing failed preparation from an unserved current cut.
+		return false, []string{"complete serving generation unavailable: " + s.publisher.Status().Reason}
 	}
 	defer lease.Release()
 	value, _ := lease.Bundle().Component("runtime")

@@ -836,9 +836,8 @@ flowchart LR
     V --> A["Original membership and domain authorization<br/>required through final effects"]
 ```
 
-These are identity primitives, not a mounted enrollment flow. The persistent
-join-token routes, root listener/client assembly and revocation/output barriers
-remain to be implemented. Connection pools must be
+The root listener below mounts retained enrolled identities. Operator activation,
+join-token routes and outgoing forwarding assembly remain unfinished. Connection pools must be
 scoped to the exact original enrolled trust, never reused for a successor CA.
 
 `internal/cluster/enrollment` supplies the immutable owner and bounded wire
@@ -992,8 +991,8 @@ start a flush. Selecting both executor forms is invalid.
 active transaction. Its result remains a proposal until the enclosing actual
 `MemberCommand` succeeds. Ended transactions refuse staging. This connects the
 coordinator to the enrolled HTTP adapter without nesting an output guard or
-mistaking staged results for acknowledgments; root still supplies production
-credential handling, typed domain policy and listener assembly.
+mistaking staged results for acknowledgments. The root supplies credential
+handling and the bounded blocking domain described below.
 
 Command envelope version 2 carries a bounded raw API token, session cookie or
 compact JWT, including an optional original JWT provider selector. It carries no
@@ -1010,8 +1009,8 @@ principals have no API TokenID, and an optional JWT jti is not required. Referen
 equality alone grants nothing: it is compared only after current raw verification,
 alongside the authenticated subject, provider and issuance time. Command/proof formatting and
 structured logging redact secrets; explicit JSON is transport data and must
-never be used for audit or diagnostic logging. Root domain policy and listener
-assembly remain required.
+never be used for audit or diagnostic logging. Every additional root domain
+requires its own current policy and typed execution.
 
 `ReauthorizeCurrentForOutput` performs the same current raw-proof authorization
 and final commit-time validation, then returns opaque `CredentialLifetime`
@@ -1025,7 +1024,7 @@ callbacks before releasing the enclosing output guard. Nil/unverified evidence
 and unbounded contexts refuse output. This evidence supplies no permission or
 completion receipt; output failure cannot undo a committed command. Enrolled
 HTTP/1 and HTTP/2 composition uses the derived context without replacing the
-private Store scope. Production root domain/listener assembly remains open.
+private Store scope.
 
 The root now supplies a closed `blocking.toggle` member-command executor. It
 accepts version 2 only, requires an exact `Kudurru/default` resource version and
@@ -1043,9 +1042,46 @@ verified credential lifetime through one Store-admitted HTTP response. Exact
 authorized duplicates return the retained outcome without reapplying their now
 stale precondition; new commands must satisfy their original version, including
 no-ops. The receipt reports actual completion with publication `pending`, and the
-publisher is woken after the protected scope ends. The scoped executor can mount
-on `MemberServer`; production listener/operator activation, public forwarding and
-other typed root domains remain separate unfinished assembly.
+publisher is woken after the protected scope ends. The production internal
+listener mounts this executor on `MemberServer`; operator activation, public
+forwarding and other typed root domains remain unfinished.
+
+At startup, a SQLite runtime reads its complete enrollment owner and authority
+from one bounded transaction. Explicit dormant enrollment retains the legacy
+listener and creates no private identity. Enrolled history requires internal
+credentials and the original mode-0600 `member-identity.json` under `node.dataDir`.
+Missing, permissive, foreign or same-UUID replacement keys refuse startup. The
+local CA must exactly match its active enrolled entry. This startup path neither
+activates membership nor repairs state; first activation requires a restart to
+mount the listener.
+
+The existing internal socket selects member TLS only for the exact local
+`<UUID>.member.kudurru.invalid` SNI. Each such handshake reads current complete
+enrollment under a five-second bound and requires TLS 1.3 mutual authentication
+against active peer CAs; session resumption is disabled. No active remote peers
+means every member handshake refuses while the listener can still start.
+Unknown member names refuse instead of selecting legacy TLS. Legacy status/list
+traffic retains its own TLS credentials, token guard and routes. HTTP Host
+cannot select either identity or route set. The enrolled path serves only the
+member routes; it still requires the shared token in addition to actual peer TLS.
+
+```mermaid
+flowchart TD
+    S["Existing internal TLS socket"] --> N{"Actual TLS SNI"}
+    N -->|"Exact local member name"| M["Current complete enrollment<br/>TLS 1.3 mutual authentication"]
+    N -->|"Legacy name"| L["Legacy TLS and token guard<br/>status/list routes"]
+    N -->|"Unknown member name"| X["Refuse handshake"]
+    M --> R["CaptureMemberRequest before body I/O<br/>original owner, peer and writer"]
+    R --> I["Complete image or typed blocking command"]
+    I --> O["Store-admitted bounded write and flush"]
+```
+
+Handshake trust does not grant request or domain authority. The existing request
+capture checks current local/remote enrollment and retains its original owner,
+writer and certificate lifetime through effects and output. Revocation therefore
+refuses subsequent requests on an established TLS connection as well as new
+handshakes. Outgoing image installation, public command forwarding and full
+partition/rejoin acceptance remain separate work.
 
 The output deadline also respects the original command expiration. Failed writes,
 flush errors, lost original admission and callback failures abort the HTTP stream

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -26,13 +25,16 @@ import (
 )
 
 // Enrollment setup is explicit fixture administration. The HTTP server below
-// mounts the actual root executor; production listener/operator activation is
-// separate and is not claimed by this test.
-func enrollServingMemberFixture(t *testing.T, s *servingRuntime) (*memberidentity.Identity, *memberidentity.Identity) {
+// uses the production listener assembly; operator activation remains separate.
+func enrollServingMemberFixture(t *testing.T, s *servingRuntime, identityPath ...string) (*memberidentity.Identity, *memberidentity.Identity) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	local, err := memberidentity.Create(filepath.Join(t.TempDir(), "local.json"), s.opts.Store.Authority().MemberID)
+	path := filepath.Join(t.TempDir(), "local.json")
+	if len(identityPath) != 0 {
+		path = identityPath[0]
+	}
+	local, err := memberidentity.Create(path, s.opts.Store.Authority().MemberID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,23 +105,19 @@ func TestRootMemberBlockingCommandActualHTTP(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			var local, remote *memberidentity.Identity
-			f := newServingCommandFixture(t, func(s *servingRuntime) { local, remote = enrollServingMemberFixture(t, s) })
+			f := newServingCommandFixture(t, func(s *servingRuntime) {
+				s.opts.Config.Node.DataDir = t.TempDir()
+				local, remote = enrollServingMemberFixture(t, s, filepath.Join(s.opts.Config.Node.DataDir, memberIdentityFile))
+			})
 			credentials, err := internalapi.NewCredentials(internalapi.CredentialOptions{Key: bytes.Repeat([]byte{37}, 32), NodeName: "root-member-command"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			server, err := clusterreplica.NewMemberServer(clusterreplica.MemberServerOptions{Store: f.s.opts.Store, Credentials: credentials, ExecuteScoped: f.s.executeMemberCommand, Timeout: 5 * time.Second})
+			enrolled, err := f.s.prepareMemberListener(t.Context(), credentials)
 			if err != nil {
 				t.Fatal(err)
 			}
-			serverTLS, err := local.ServerTLS([]memberidentity.Trust{remote.Trust()})
-			if err != nil {
-				t.Fatal(err)
-			}
-			live := httptest.NewUnstartedServer(server.Handler())
-			live.EnableHTTP2, live.TLS = useHTTP2, serverTLS
-			live.StartTLS()
-			defer live.Close()
+			url := serveRootMemberListener(t, internalapi.ServerOptions{Credentials: credentials, Enrolled: enrolled})
 			clientTLS, err := remote.ClientTLS(local.Trust())
 			if err != nil {
 				t.Fatal(err)
@@ -132,7 +130,7 @@ func TestRootMemberBlockingCommandActualHTTP(t *testing.T) {
 				if err != nil {
 					return nil, nil, err
 				}
-				r, err := http.NewRequestWithContext(t.Context(), http.MethodPost, live.URL+clusterreplica.PathWrite, bytes.NewReader(body))
+				r, err := http.NewRequestWithContext(t.Context(), http.MethodPost, url+clusterreplica.PathWrite, bytes.NewReader(body))
 				if err != nil {
 					return nil, nil, err
 				}

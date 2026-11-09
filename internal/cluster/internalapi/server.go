@@ -90,6 +90,9 @@ type ListOpener interface {
 
 // ServerOptions configures a Server.
 type ServerOptions struct {
+	// Enrolled optionally mounts separately authenticated member routes on the
+	// same socket. Legacy shared credentials never select these routes.
+	Enrolled *EnrolledListener
 	// Event queues an authenticated peer hint without rebroadcasting it.
 	// False reports an inapplicable generation or a full queue.
 	Event func(Event) bool
@@ -226,11 +229,14 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		mux.HandleFunc("GET "+PathCatalogueAdGuard, s.handleCatalogueImport)
 	}
 	s.handler = s.guard(mux)
+	if opts.Enrolled != nil {
+		s.handler = opts.Enrolled.routes(s.handler)
+	}
 	return s, nil
 }
 
-// Handler returns the routes behind the rate limiter and the token check,
-// without TLS (for tests and embedding).
+// Handler returns the legacy guarded routes and optional enrolled TLS dispatch.
+// Embedded member requests still require actual authenticated TLS state.
 func (s *Server) Handler() http.Handler { return s.handler }
 
 // Run listens on Address with TLS and serves until ctx ends. It is an
@@ -246,9 +252,13 @@ func (s *Server) Run(ctx context.Context) error {
 
 // Serve serves TLS on ln until ctx ends, then shuts down gracefully.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	tlsConfig := s.opts.Credentials.ServerTLS()
+	if s.opts.Enrolled != nil {
+		tlsConfig = s.opts.Enrolled.tlsConfig(tlsConfig)
+	}
 	srv := &http.Server{
 		Handler:           s.handler,
-		TLSConfig:         s.opts.Credentials.ServerTLS(),
+		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		IdleTimeout:       60 * time.Second,

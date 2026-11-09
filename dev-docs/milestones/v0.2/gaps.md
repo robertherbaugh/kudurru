@@ -6248,3 +6248,65 @@ enrolled HTTP server. Production listener/operator activation, public forwarding
 and final public responses, other typed root domains and full HA acceptance
 remain open. Existing public blocking commands and their publication contract
 remain separate. This is not completion of F60b/G11 or release qualification.
+
+
+### F60b/G11 retained enrolled listener startup, November 9
+
+D342 mounts existing enrolled SQLite history on the production internal socket.
+The exact local member SNI selects TLS 1.3 mutual authentication; legacy TLS,
+status/list credentials and routes stay separate. Every handshake reads bounded
+complete enrollment, while each actual request still captures the original
+Store owner, peer certificate and writer before body acquisition and retains
+those checks through command/image output. HTTP Host cannot select a route set.
+The root blocking executor is mounted directly. Startup requires the original
+private mode-0600 member-identity.json and active exact local CA; missing,
+permissive or same-UUID replacement identities refuse without repair. Explicit
+dormant enrollment leaves member routes disabled, including installed read-only
+images. First activation requires restart; no operator activation is implied.
+
+The initial focused races pass 19 entries. The final exact startup/root-command
+selection passes 23 entries with no failures/skips (56.912s), including actual
+runServe twice, unchanged private identity/enrollment, HTTP/2 image reads and
+HTTP/1+HTTP/2 root blocking commands. Complete internalapi/memberidentity/replica
+races pass 184 entries without failures/skips (32.662s). Source identities match.
+The subsequent readiness diagnostic adds the publisher's bounded lifecycle
+reason without private object errors or altered admission/deadline behavior.
+
+The broader selector inadvertently included unrelated CLI TLS/browser suites.
+It retained 111 pass entries, one installed-Chrome skip, a static-twin node-b
+readiness failure and the command package's four-minute timeout. One exact
+current-source diagnostic reproduces the static failure. The committed parent
+4bc1d7f0 in an isolated checkout also reproduces the same failure under the same
+bounds, proving it predates these listener changes. The added readiness reason
+reports preparing. A bounded race CPU profile retains another failure and shows
+substantial complete-image validation/preparation and race-instrumentation cost;
+it does not establish a safe correction or justify relaxing validators, tests
+or release performance limits. All failed runs and the isolated parent remain.
+Evidence: .context/member-listener-startup-20261108/.
+
+Operator activation/join/promotion, outgoing replica acquisition/public command
+forwarding, remaining typed root domains, the pre-existing static startup
+failure and complete HA/release acceptance remain open. This is scoped listener
+qualification, not F60b/G11 completion or release qualification.
+
+
+### G21 hosted predecessor qualification, November 9
+
+Hosted CI 42535008378 on d9cc74ed completed successfully: both Go shards,
+all six command-package batches, browser suite and ci-ok pass. Website, AD DNS,
+license-server, Compose, docs, security, dev-image, edge and kind workflows also
+completed successfully on that same source. The earlier stub convergence,
+stored-TSIG exchange and UPDATE writer-fixture failures remain preserved; this
+run does not establish the previously unreproduced TSIG cause. It also does not
+erase the later local GOMAXPROCS=2 static-twin readiness failure reproduced on
+parent 4bc1d7f0. The three subsequent credential/root-command commits and retained
+listener work require their own hosted run. No final-source or release completion
+is inferred. Private logs and terminal receipts:
+.context/hosted-release-d9cc74ed-20261109/.
+
+Retained-listener configured command/internalapi/SQLite lint passes with zero
+issues (45.898s). The first lint result's three test-only gosec findings remain
+recorded; local annotations explain the intentionally insecure temporary key
+mode and byte-only fixture reads. Assertions, production behavior and original
+bounds are unchanged. Final source04 identities and protected dashboard bytes
+match. No new claim closes the reproduced static startup or release gates.
