@@ -170,7 +170,7 @@ tests cannot substitute for any external result.
 | F58b | `/queries/export` API and query-log link | Operations and UI | Implemented; filtered bounded download, API/privacy races, 20 UI cases and actual mounted DNS/history export pass |
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open |
-| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial join and remaining forwarding remain open; status grants no promotion eligibility |
+| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial remote join is mounted (D355), with incomplete-join reconciliation and remaining forwarding open; status grants no promotion eligibility |
 | F60c | `integrations …` CLI | Store and HA | Active D291/D295/D298: reviewed API/CLI, standalone conformance and SQLite Tier-B clients/actions mount implemented; mounted TLS/router races, full provider races and scoped lint pass. Merged 180-operation contracts pass; hooks/record ownership, remaining driver/restart and final contract gates remain |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
@@ -1428,3 +1428,52 @@ preserved. Hosted CI 42553837447 on 9963dec2 has since completed successfully
 (all 22 jobs); later commits still require their own hosted results.
 Initial remote join, remaining typed forwarding, Kubernetes barriers and complete
 HA/final release gates remain open. AD preview deferral remains D353.
+
+
+### Initial remote join scope — November 9, 2026 (D355)
+
+Mounted offline `cluster join` into a nonexistent private directory, original
+invitation-CA TLS on a distinct SNI, original shared-credential guard and signed
+member possession. Primary source/enrollment/output capture precedes proposal
+body acquisition; one-time acceptance and attributed audit commit atomically.
+The receiver captures the actual never-installed authority/anchor cut before
+contact, then installs the original primary term, complete image and local anchor
+carrier in one transaction. Existing data, independent source changes, expired
+or canceled attempts and repeated invitations refuse. Output distinguishes
+primary acceptance from local installation; failures preserve identity and never
+trigger replay, trust discovery or implicit repair.
+
+Evidence under `.context/initial-join-20261109/`: `join04` ordinary exit 0,
+22 actual pass entries; `lower-race08` exit 0, 373 race entries across member
+identity/internal transport/enrollment/persistence/replication; `root-race10`
+exit 0, 37 race entries across affected SQLite and root command paths. There are
+no test failures/skips in those passing selections (accepted-owner has no test
+files). Actual CLI/TLS first image, physical reopen/private-CA retention,
+subsequent enrolled acquisition, wrong shared key, original pre-body source
+interposition, one-time acceptance, cancellation, bounded lock queue and actual
+SQLite 1811/787 boundaries are covered. Primary activation remains explicit
+fixture administration; these are not independent VM or full partition/rejoin
+acceptance. Preserve `compile02`'s TLS handshake-callback failure and
+`boundaries06`'s test-wrapper compile failure; both are corrected in later checks.
+
+Incomplete-join reconciliation, remaining public/typed forwarding, complete HA
+and final-source hosted/performance/driver/deployment qualification remain open.
+AD remains owner-deferred preview under D353. No release is published or implied.
+
+Hosted security on prior source `0a1a44cb` found two Semgrep missing-unlock
+warnings in `Cache.lockLookup`. Both returns intentionally transfer the locked
+shard to its sole caller, `Get`, whose hit/miss/expired/stale branches all unlock.
+Narrow annotated exceptions document that ownership; no cache behavior or rule
+configuration is changed. The final configured scan result is recorded below.
+
+Final qualification for this join scope: `final-race14` exit 0, 14 actual race
+entries, including exclusive original-deadline database creation and existing-file
+refusal; `lint17` exit 0, zero issues; `generate18` exit 0, updated CLI reference.
+Pinned Semgrep 1.181.0 (`sast19`) exit 0, zero findings across 2,539 scanned files,
+including every changed production path and the cache helper. The same five
+configured policy sets and nine existing exclusions were used with a read-only
+source mount. Its 18 partial-parser warnings in unchanged paths remain in the
+raw JSON; none concerns a changed production path. Earlier `lint12` unchecked
+test closes and `lint15` fixture-file G304 findings remain preserved; test closes
+and narrow test-only provenance annotations correct them. The pre-existing
+`dashboard/dist/index.html` bytes remain untouched and excluded from staging.

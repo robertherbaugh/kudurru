@@ -14,6 +14,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Offline `cluster join` for a pristine SQLite receiver, using an original
+  invitation-pinned TLS route, signed member possession, atomic acceptance audit,
+  and atomic first-image/authority installation. Failure retains the local
+  identity; incomplete-join reconciliation and full HA acceptance remain open.
+
 - Reviewed enrolled-follower promotion through the API and `cluster promotion` /
   `cluster promote`, with original credential/source checks, atomic audit,
   bounded body/queue lifetime and explicit unknown-completion handling.

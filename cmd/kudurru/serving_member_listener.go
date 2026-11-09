@@ -72,7 +72,11 @@ func (s *servingRuntime) prepareMemberServices(ctx context.Context, credentials 
 		}
 		return memberListenerPeers(owner, identity.Trust())
 	}
-	listener, err := internalapi.NewEnrolledListener(identity, peers, server.Handler())
+	join, err := clusterreplica.NewJoinServer(s.opts.Store, identity, credentials)
+	if err != nil {
+		return nil, nil, err
+	}
+	listener, err := internalapi.NewEnrollingListener(identity, peers, server.Handler(), join)
 	if err != nil {
 		return nil, nil, err
 	}

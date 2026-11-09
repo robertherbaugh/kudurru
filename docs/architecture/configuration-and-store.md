@@ -791,9 +791,10 @@ loopback compatibility and refusal behavior.
 
 ## Not built yet
 
-Initial remote joining, operator promotion and command forwarding for enrolled
-HA remain unfinished. Retained enrolled followers mount the acquisition worker
-described below. The `raft` driver (v1.0) and a general `roles:` setting remain
+Public command forwarding, incomplete-join reconciliation and full partition/rejoin
+acceptance remain unfinished. Initial remote joining and reviewed operator
+promotion are mounted as described below. Retained enrolled followers mount
+the acquisition worker. The `raft` driver (v1.0) and a general `roles:` setting remain
 unmounted. Static file-managed twins
 and authenticated remote health reads are available separately. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
 for the plan.
@@ -839,8 +840,8 @@ flowchart LR
 ```
 
 The root listener below mounts retained enrolled identities. Reviewed operator
-join-token issuance is mounted below; joining and outgoing forwarding remain
-unfinished. Connection pools must be
+join-token issuance and initial remote joining are mounted below; outgoing
+forwarding remains unfinished. Connection pools must be
 scoped to the exact original enrolled trust, never reused for a successor CA.
 
 `internal/cluster/enrollment` supplies the immutable owner and bounded wire
@@ -1046,8 +1047,9 @@ authorized duplicates return the retained outcome without reapplying their now
 stale precondition; new commands must satisfy their original version, including
 no-ops. The receipt reports actual completion with publication `pending`, and the
 publisher is woken after the protected scope ends. The production internal
-listener mounts this executor on `MemberServer`; operator join/promotion, public
-forwarding and other typed root domains remain unfinished.
+listener mounts this executor on `MemberServer`. Initial joining and operator
+promotion are described below; public forwarding and other typed root domains
+remain unfinished.
 
 At startup, a SQLite runtime reads its complete enrollment owner and authority
 from one bounded transaction. Explicit dormant enrollment retains the legacy
@@ -1740,8 +1742,8 @@ A canceled/lost response or `completion_unknown` cannot establish rollback;
 inspect retained enrollment (after restart if the old writer is fenced) before
 a new operator decision. The dedicated client disables redirects and replayable
 bodies and sends no implicit review read or retry. Invitation issuance is mounted
-below; joining and promotion remain separate runtime work. Retained outgoing
-image acquisition is mounted as described below.
+below; initial joining and promotion are mounted in their separate scopes
+described later. Retained outgoing image acquisition is mounted below.
 
 ```mermaid
 sequenceDiagram
@@ -1795,7 +1797,8 @@ remains `completion_unknown`; neither error permits replay. The dedicated client
 disables redirects, replayable bodies and retries. The receipt is a bearer secret
 for private delivery, never a log entry or unsealed response-dedup record.
 
-This mounts invitation issuance, not remote joining, promotion or partition/rejoin
+This issuance scope is separate from the joining and promotion paths below and
+from partition/rejoin
 acceptance. Retained outgoing image acquisition is described below.
 
 
@@ -1833,8 +1836,8 @@ refuses the old attempt. An accepted 304 also crosses that boundary before
 successful-contact bookkeeping. The publisher independently installs the complete
 serving bundle. The runtime cancels and joins the Coordinator on shutdown; it
 never grants operator promotion. This mounts retained enrolled acquisition, not
-initial remote join, command forwarding or full partition/rejoin HA. Explicit
-operator promotion is described below.
+command forwarding or full partition/rejoin HA. Initial joining and explicit
+operator promotion are described below.
 
 ```mermaid
 flowchart LR
@@ -1898,5 +1901,64 @@ permits neither success nor an assumption of rollback. Inspect current state
 before a new operator decision after an unknown/lost response. The public
 committed receipt describes only the durable transition; whole publication and
 peer convergence are separate. Startup acquisition has no operator proof and
-cannot invoke this path. Initial remote joining and complete partition/rejoin
-acceptance remain separate work.
+cannot invoke this path. Complete partition/rejoin acceptance remains separate
+work; initial remote joining is described next.
+
+
+### Initial remote join into a pristine receiver
+
+`cluster join` is an explicit offline operation using local OS permissions and an
+independently delivered invitation file. It requires a new, nonexistent data
+directory, the separately confirmed target name/address, and the configured
+original cluster encryption key. It creates one private local identity and binds
+the actual never-installed migration carrier. Existing standalone/follower data,
+missing or changed history, and existing directories are refused.
+
+The original finite attempt is captured before network acquisition. A distinct
+`<primary UUID>.join.kudurru.invalid` SNI selects only the invitation handler on
+the internal socket. Its separate server-only leaf retains the original member
+name and join alias. Normal TLS 1.3 chain/hostname verification uses the original
+invitation CA before bearer bytes are sent. Ordinary member SNI still requires
+current-roster mutual TLS; HTTP Host never chooses privilege or trust. The join
+handler additionally verifies the configured internal token and signed
+possession of the joining member's private CA.
+
+Before reading a proposal body, the primary captures its actual complete source,
+writer, enrollment owner and one command/output attempt. The exact one-use
+invitation consumption, member addition and attributed audit share one SQL
+transaction. Actual writer exclusion remains held through bounded explicit
+response flush. The receipt confirms only primary acceptance; unknown completion
+or lost output never authorizes replay. The client sends one proposal without
+redirects, replacement credentials, trust discovery or retries.
+
+After confirmed acceptance, one mutual-TLS fetch obtains the first complete
+image. The receiver validates the consumed original invitation, exact local and
+primary CAs, target and issuer term. Under the original local capture, one SQL
+transaction pins the term and replaces the complete image together with its
+private anchor carrier. Source/cancellation/time refusal precedes installation;
+actual ambiguous commit closes local admission. There is no intermediate enrolled
+receiver that can acquire a replacement install capture after network input.
+
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant Receiver
+    participant Primary
+    Operator->>Receiver: Original invitation + reviewed target + shared key configuration
+    Receiver->>Receiver: Create pristine directory/identity; capture finite original local cut
+    Receiver->>Primary: Invitation-CA TLS; one signed proposal
+    Primary->>Primary: Original source/owner CAS; membership + audit commit
+    Primary-->>Receiver: Confirmed primary acceptance
+    Receiver->>Primary: Original member mutual TLS; first complete-image read
+    Primary-->>Receiver: Complete image under membership/output exclusion
+    Receiver->>Receiver: Original local CAS; atomic term + first-image + anchor installation
+    Receiver-->>Operator: Separate primary and installation receipts
+```
+
+The new receiver can then start the retained follower path with the same private
+identity and encryption configuration. This does not start a daemon, publish a
+serving bundle or establish cluster convergence. Failure preserves the new
+directory and identity. Primary acceptance can be durable while local installation
+is incomplete; preserve and inspect both ends, without replay or identity repair.
+Explicit reconciliation of that incomplete state remains separate work. See the
+[offline join guide](../deploy/sqlite-join.md).

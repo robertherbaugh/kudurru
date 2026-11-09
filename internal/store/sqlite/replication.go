@@ -231,7 +231,13 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 	if (operation.scope != nil || operation.awaitingInstall) && !operation.installed.Same(opts.ExpectedInstalled) {
 		return replication.Generation{}, replication.ErrCAS
 	}
-	s.wmu.Lock()
+	if ctx.Value(initialJoinKey{}) != nil {
+		if err := s.lockWriterContext(ctx); err != nil {
+			return replication.Generation{}, err
+		}
+	} else {
+		s.wmu.Lock()
+	}
 	defer s.wmu.Unlock()
 	if s.isClosed() {
 		return replication.Generation{}, store.ErrClosed
@@ -258,6 +264,21 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 	}
 	if err := operation.enterInstall(ctx, s, tx, a.Term.ClusterID); err != nil {
 		return replication.Generation{}, err
+	}
+	join, _ := ctx.Value(initialJoinKey{}).(*initialJoin)
+	if join != nil {
+		if join.s != s || !join.used.Load() || join.local.MemberID() != a.MemberID || operation.originalLife == nil || !anchorAwaitingInstallCursor(operation.before) {
+			return replication.Generation{}, replication.ErrInvalid
+		}
+		if err := join.check(); err != nil {
+			return replication.Generation{}, err
+		}
+		if err := pristineJoin(ctx, tx, a); err != nil {
+			return replication.Generation{}, err
+		}
+		// Pinning and first complete image are one transaction. The captured
+		// anchor/authority checks above used the original UNENROLLED cut.
+		a.Term, a.Mode, a.MaxObservedEpoch = image.Term, replication.Follower, image.Term.Epoch
 	}
 	if image.Term.ClusterID != a.Term.ClusterID {
 		return replication.Generation{}, replication.ErrWrongCluster
@@ -350,6 +371,11 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 	}
 	if err := operation.check(); err != nil {
 		return replication.Generation{}, err
+	}
+	if join != nil {
+		if err := join.check(); err != nil {
+			return replication.Generation{}, err
+		}
 	}
 	if err := boundary.commit(); err != nil {
 		return replication.Generation{}, err

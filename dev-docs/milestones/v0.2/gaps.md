@@ -6724,3 +6724,52 @@ preserved. Hosted CI 42553837447 on 9963dec2 has since completed successfully
 (all 22 jobs); later commits still require their own hosted results.
 Initial remote join, remaining typed forwarding, Kubernetes barriers and complete
 HA/final release gates remain open. AD preview deferral remains D353.
+
+
+### Initial remote join scope — November 9, 2026 (D355)
+
+Mounted offline `cluster join` into a nonexistent private directory, original
+invitation-CA TLS on a distinct SNI, original shared-credential guard and signed
+member possession. Primary source/enrollment/output capture precedes proposal
+body acquisition; one-time acceptance and attributed audit commit atomically.
+The receiver captures the actual never-installed authority/anchor cut before
+contact, then installs the original primary term, complete image and local anchor
+carrier in one transaction. Existing data, independent source changes, expired
+or canceled attempts and repeated invitations refuse. Output distinguishes
+primary acceptance from local installation; failures preserve identity and never
+trigger replay, trust discovery or implicit repair.
+
+Evidence under `.context/initial-join-20261109/`: `join04` ordinary exit 0,
+22 actual pass entries; `lower-race08` exit 0, 373 race entries across member
+identity/internal transport/enrollment/persistence/replication; `root-race10`
+exit 0, 37 race entries across affected SQLite and root command paths. There are
+no test failures/skips in those passing selections (accepted-owner has no test
+files). Actual CLI/TLS first image, physical reopen/private-CA retention,
+subsequent enrolled acquisition, wrong shared key, original pre-body source
+interposition, one-time acceptance, cancellation, bounded lock queue and actual
+SQLite 1811/787 boundaries are covered. Primary activation remains explicit
+fixture administration; these are not independent VM or full partition/rejoin
+acceptance. Preserve `compile02`'s TLS handshake-callback failure and
+`boundaries06`'s test-wrapper compile failure; both are corrected in later checks.
+
+Incomplete-join reconciliation, remaining public/typed forwarding, complete HA
+and final-source hosted/performance/driver/deployment qualification remain open.
+AD remains owner-deferred preview under D353. No release is published or implied.
+
+Hosted security on prior source `0a1a44cb` found two Semgrep missing-unlock
+warnings in `Cache.lockLookup`. Both returns intentionally transfer the locked
+shard to its sole caller, `Get`, whose hit/miss/expired/stale branches all unlock.
+Narrow annotated exceptions document that ownership; no cache behavior or rule
+configuration is changed. The final configured scan result is recorded below.
+
+Final qualification for this join scope: `final-race14` exit 0, 14 actual race
+entries, including exclusive original-deadline database creation and existing-file
+refusal; `lint17` exit 0, zero issues; `generate18` exit 0, updated CLI reference.
+Pinned Semgrep 1.181.0 (`sast19`) exit 0, zero findings across 2,539 scanned files,
+including every changed production path and the cache helper. The same five
+configured policy sets and nine existing exclusions were used with a read-only
+source mount. Its 18 partial-parser warnings in unchanged paths remain in the
+raw JSON; none concerns a changed production path. Earlier `lint12` unchecked
+test closes and `lint15` fixture-file G304 findings remain preserved; test closes
+and narrow test-only provenance annotations correct them. The pre-existing
+`dashboard/dist/index.html` bytes remain untouched and excluded from staging.

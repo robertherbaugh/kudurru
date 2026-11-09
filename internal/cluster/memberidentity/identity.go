@@ -36,10 +36,11 @@ type diskIdentity struct {
 // Identity owns one private node CA. Its signing key never enters replica images
 // or shared credentials. Leaf certificates rotate without replacing enrollment.
 type Identity struct {
-	trust Trust
-	key   ed25519.PrivateKey
-	mu    sync.Mutex
-	leaf  *tls.Certificate
+	trust    Trust
+	key      ed25519.PrivateKey
+	mu       sync.Mutex
+	leaf     *tls.Certificate
+	joinLeaf *tls.Certificate
 }
 
 // Trust is one independently enrolled member CA. Its certificate is public, but
@@ -195,6 +196,10 @@ func decode(raw []byte, member string) (*Identity, error) {
 }
 
 func (i *Identity) certificate() (*tls.Certificate, error) {
+	return i.certificateForEnrollment(false)
+}
+
+func (i *Identity) certificateForEnrollment(join bool) (*tls.Certificate, error) {
 	if i == nil || i.trust.root == nil {
 		return nil, ErrIdentity
 	}
@@ -205,8 +210,12 @@ func (i *Identity) certificate() (*tls.Certificate, error) {
 	if now.Before(root.NotBefore) || !now.Before(root.NotAfter) {
 		return nil, ErrIdentity
 	}
-	if i.leaf != nil && !now.Before(i.leaf.Leaf.NotBefore) && now.Before(i.leaf.Leaf.NotAfter.Add(-time.Hour)) {
-		return i.leaf, nil
+	cache := &i.leaf
+	if join {
+		cache = &i.joinLeaf
+	}
+	if *cache != nil && !now.Before((*cache).Leaf.NotBefore) && now.Before((*cache).Leaf.NotAfter.Add(-time.Hour)) {
+		return *cache, nil
 	}
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -227,6 +236,10 @@ func (i *Identity) certificate() (*tls.Certificate, error) {
 		KeyUsage:    x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
+	if join {
+		template.DNSNames = append(template.DNSNames, i.trust.EnrollmentServerName())
+		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	}
 	der, err := x509.CreateCertificate(rand.Reader, template, root, pub, i.key)
 	if err != nil {
 		return nil, err
@@ -235,6 +248,6 @@ func (i *Identity) certificate() (*tls.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	i.leaf = &tls.Certificate{Certificate: [][]byte{der, root.Raw}, PrivateKey: key, Leaf: leaf}
-	return i.leaf, nil
+	*cache = &tls.Certificate{Certificate: [][]byte{der, root.Raw}, PrivateKey: key, Leaf: leaf}
+	return *cache, nil
 }
