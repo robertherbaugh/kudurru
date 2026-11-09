@@ -78,6 +78,10 @@ type Options struct {
 	Keys keys.Keys
 	// LoginLimit is the actual shared password-admission owner, when mounted.
 	LoginLimit *loginlimit.Limiter
+	// GrantFloors persists RoleBinding revocation floors across replicas and
+	// restarts (Kubernetes). With it, pre-resolved session grants are refused
+	// until the floors first load.
+	GrantFloors GrantFloorStore
 	// RequestLimit charges browser requests before provider selection; mounted
 	// by the Kubernetes root. A failed shared charge never uses local fallback.
 	RequestLimit *requestlimit.Limiter
@@ -173,6 +177,7 @@ type Stack struct {
 	cop      *http.CrossOriginProtection
 	admin    *adminsock.Server
 
+	floors       *grantFloors
 	roleBindings *objcache.Cache[*internalv1.RoleBinding]
 	idps         *objcache.Cache[*internalv1.IdentityProvider]
 	configIDPs   []*internalv1.IdentityProvider
@@ -238,8 +243,11 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.bindings, err = eerbac.NewBindingSource(s.perms, static, eerbac.SourceOptions{Logger: log, Now: opts.Now}); err != nil {
+	if s.bindings, err = eerbac.NewBindingSource(s.perms, static, eerbac.SourceOptions{Logger: log, Now: opts.Now, DurableFloors: opts.GrantFloors != nil}); err != nil {
 		return nil, err
+	}
+	if opts.GrantFloors != nil {
+		s.floors = newGrantFloors(opts.GrantFloors, s.bindings)
 	}
 
 	// Kubernetes identities (kube driver only).
@@ -453,6 +461,9 @@ func (s *Stack) Run(ctx context.Context) error {
 	wg.Go(func() { _ = s.tokens.Run(ctx) })
 	wg.Go(func() { _ = s.roleBindings.Run(ctx) })
 	wg.Go(func() { _ = s.idps.Run(ctx) })
+	if s.floors != nil {
+		wg.Go(func() { s.floors.run(ctx) })
+	}
 	wg.Wait()
 	return nil
 }

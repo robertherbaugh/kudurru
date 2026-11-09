@@ -1005,6 +1005,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	stackOpts.Kube = restCfg
 	if kubeStore != nil {
+		stackOpts.GrantFloors = kubeStore
 		stackOpts.RequestLimit, err = requestlimit.New(kubeStore, nil)
 		if err != nil {
 			return err

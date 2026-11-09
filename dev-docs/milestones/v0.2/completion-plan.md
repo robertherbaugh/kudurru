@@ -160,7 +160,7 @@ tests cannot substitute for any external result.
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Integrated e60001f; real pinned all-frontend leaf checks, held DoT, invalid-pair retention and child-restart acceptance pass |
 | F43c | Console spike (a) gates both changes | Edge and VIP | D275: actual dnsdist 2.1.3 YAML console, live DNS/cert/invalid-cert/PID/restart checks pass; established-connection limit recorded |
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |
-| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | D294 public SQLite RoleBinding API/CLI integrated c44b67d; actual TLS/router/replica focused races and lint pass. Merged 180-operation contracts pass; file/inline security effects integrated 91443d7 with real OP/startup/restart/replica races and lint. Kubernetes accepted-authority and final composed gates remain open |
+| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | D294 public SQLite RoleBinding API/CLI integrated c44b67d; actual TLS/router/replica focused races and lint pass. Merged 180-operation contracts pass; file/inline security effects integrated 91443d7 with real OP/startup/restart/replica races and lint. D364 durable Kubernetes grant revocation floors pass unit, envtest store and 100 mounted kube races; final composed gates remain open |
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |
 | F45b | External per-user disable / log out everywhere administration | IAM and access | Implemented D289 on complete SQLite: exact UID/revision API/CLI/UI, atomic credential/audit revocation, actual TLS/router/restart/replica races, nine dashboard tests and lint/contracts pass; unsupported Stack explicitly refuses |
 | F46 | Share login lockout counters across replicas | IAM and access | Kubernetes password admission implemented D304 with actual two-runServe/CAS/restart/outage races. SQLite login implemented D305: original-command counters and enrollment, typed pre-mutation refusals, exact rollback and physical follower restart; focused race11/full owner-auth race324 and vet pass. Browser own-commit regression fixed D306; complete HTTP race 108/58 top-level plus final browser race 52/23 and vet pass, earlier failures retained. SQLite TOTP management shares counters in D307: focused race 24, full security/loginlimit race 110 and vet pass. SQLite password changes share counters in D308: full security race 105, focused HTTP race 18 and vet pass. SQLite browser/CLI request budgets mounted D309 before the first auth capture: full owner race 45, final focused race 32 including installed Chrome, and vet pass; earlier concurrency/partial-fixture failures retained. Kubernetes browser admission mounted D310 with backend race 22, two actual mounted replica/restart/outage passes, full Stack race 46 and vet pass. D363 enrolled-follower local login forwards to the primary's shared admission with real two-process acceptance; OIDC/browser/device logins on followers and final gates remain |
@@ -1884,3 +1884,36 @@ configuration is built; no product code or assertion changed.
 This closes the multi-node lease-loss/partition gap recorded for F35a. Source,
 zone and child remain separate API objects (eventual controller, not a
 cross-object transaction); final G09/G21/G22 gates remain.
+
+
+### F44b durable Kubernetes grant revocation floors — November 9, 2026 (D364)
+
+On the Kubernetes driver, sealed sessions carry the grants resolved at sign-in.
+The binding source refused such a frozen grant after a binding change removed it,
+but only through an in-memory revocation time on each replica: a restarted
+replica, or one that never observed the removal, honored the earlier session
+again once the binding was re-granted. Local `User` subjects were already covered
+durably by `sessionsValidAfter`; group-based and OIDC frozen grants were not.
+
+Each replica now persists the revocations it observes into the namespace Secret
+`kudurru-grant-floors` (`kudurru.io/grant-floors`), as a commutative per-grant
+maximum under resourceVersion CAS with bounded retry, and merges every replica's
+floors into its binding source every five seconds and on each local revocation.
+With durable floors configured, frozen grants are refused until the first merge;
+live bindings and built-in authority still apply. Floors never decrease, and
+malformed content refuses instead of resetting. A removal while no replica runs
+remains unobservable and is documented.
+
+Evidence under `.context/kube-grant-floors-20261109/`:
+`TestBindingSourceDurableFloorsSurviveRestartAndRegrant` (fail-closed before
+load, persisted floor, fresh-memory replica after regrant refuses the old session
+and admits a later login, older merges cannot lower, legacy behavior unchanged);
+envtest `TestGrantFloorsMergeAcrossReplicasAndRestart` (empty read, 40 concurrent
+merges from two stores, monotonic floors, restart, malformed refusal). Default
+race with envtest assets across `ee/rbac`, `internal/auth/stack` and
+`internal/store/kube` (`race01`): exit 0, 271 passes, three opt-in measurement
+skips. Mounted root Kubernetes selection with envtest (`root-race01`: Kube,
+Kubernetes, DNSEndpoint, offline, RoleBinding, stack, cold start): exit 0, 100
+passes, no skips. Scoped lint passes after a whitespace-only gofmt alignment of the
+new files. The Kubernetes RoleBinding write API (create/replace/delete through
+Kudurru) remains SQLite-only; on Kubernetes, RoleBindings are managed as CRs.

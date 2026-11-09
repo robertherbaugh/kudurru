@@ -1054,7 +1054,19 @@ fails the build when a route declares no permission.
 | `admin` | `*.*` |
 
 A binding gives a role at a scope (`cluster` or `zone:<name>`) to users,
-groups (the prefixed IdP group names) or service accounts. Kubernetes
+groups (the prefixed IdP group names) or service accounts.
+
+On the Kubernetes driver a session carries the grants resolved at sign-in
+(D48), not the groups that matched. A frozen grant is honored only while a
+current binding still provides it and no binding change removed it after the
+session's grants were resolved. Each replica records such removals as
+revocation floors, persists them in the `kudurru-grant-floors` Secret (a
+commutative maximum under resourceVersion CAS) and periodically merges every
+replica's floors. A restarted replica, or one that missed the change, therefore
+cannot revive an earlier session after the binding is granted again. Until a
+replica first loads the floors, frozen grants are refused; live bindings and
+built-in authority still apply. A removal that happens while no replica is
+running is not observed. Kubernetes
 identities can instead be authorized by Kubernetes RBAC through
 SubjectAccessReview on the `kudurru.io` resources, including virtual ones
 such as `querylogs` and `caches`; a request is allowed when either path

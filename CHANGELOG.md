@@ -74,6 +74,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Kubernetes: removing a RoleBinding now durably revokes earlier sessions'
+  frozen grants on every replica. Replicas share revocation floors in a
+  `kudurru-grant-floors` Secret, so a restart or a replica that missed the change
+  cannot revive an old session after the binding is granted again.
+
 - A fenced or conflicted SQLite node now publishes its last-good data as a
   DNS-only bundle and keeps answering DNS from it. Previously its preparation
   was always checked as a writable publication and failed, so the retired bundle

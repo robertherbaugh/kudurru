@@ -7180,3 +7180,36 @@ configuration is built; no product code or assertion changed.
 This closes the multi-node lease-loss/partition gap recorded for F35a. Source,
 zone and child remain separate API objects (eventual controller, not a
 cross-object transaction); final G09/G21/G22 gates remain.
+
+
+### F44b durable Kubernetes grant revocation floors — November 9, 2026 (D364)
+
+On the Kubernetes driver, sealed sessions carry the grants resolved at sign-in.
+The binding source refused such a frozen grant after a binding change removed it,
+but only through an in-memory revocation time on each replica: a restarted
+replica, or one that never observed the removal, honored the earlier session
+again once the binding was re-granted. Local `User` subjects were already covered
+durably by `sessionsValidAfter`; group-based and OIDC frozen grants were not.
+
+Each replica now persists the revocations it observes into the namespace Secret
+`kudurru-grant-floors` (`kudurru.io/grant-floors`), as a commutative per-grant
+maximum under resourceVersion CAS with bounded retry, and merges every replica's
+floors into its binding source every five seconds and on each local revocation.
+With durable floors configured, frozen grants are refused until the first merge;
+live bindings and built-in authority still apply. Floors never decrease, and
+malformed content refuses instead of resetting. A removal while no replica runs
+remains unobservable and is documented.
+
+Evidence under `.context/kube-grant-floors-20261109/`:
+`TestBindingSourceDurableFloorsSurviveRestartAndRegrant` (fail-closed before
+load, persisted floor, fresh-memory replica after regrant refuses the old session
+and admits a later login, older merges cannot lower, legacy behavior unchanged);
+envtest `TestGrantFloorsMergeAcrossReplicasAndRestart` (empty read, 40 concurrent
+merges from two stores, monotonic floors, restart, malformed refusal). Default
+race with envtest assets across `ee/rbac`, `internal/auth/stack` and
+`internal/store/kube` (`race01`): exit 0, 271 passes, three opt-in measurement
+skips. Mounted root Kubernetes selection with envtest (`root-race01`: Kube,
+Kubernetes, DNSEndpoint, offline, RoleBinding, stack, cold start): exit 0, 100
+passes, no skips. Scoped lint passes after a whitespace-only gofmt alignment of the
+new files. The Kubernetes RoleBinding write API (create/replace/delete through
+Kudurru) remains SQLite-only; on Kubernetes, RoleBindings are managed as CRs.
