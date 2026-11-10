@@ -90,7 +90,7 @@
           {
             "name": "cliClientID",
             "label": "CLI client ID",
-            "help": "Public client ID for signing in from the command line (kudurru login, v0.2); ID tokens issued to it are accepted as bearer tokens. Empty for none.",
+            "help": "Public client ID for signing in from the command line (kudurru login --provider); ID tokens issued to it are accepted as bearer tokens. Empty for none.",
             "type": "string"
           },
           {
