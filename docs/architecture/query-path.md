@@ -108,10 +108,11 @@ original dependency installations, anchor input and finite output attempt.
 Only internal pipeline provenance permits this behavior; wire AA/AD bits do not.
 An unavailable local zone may emit an empty SERVFAIL without claiming a data
 generation, and so may a query whose upstream failed or timed out: the client
-gets the refusal instead of waiting for its own timeout. Ingress-only node-health and CHAOS identity replies also retain
-the original complete route during a failed settings preparation; their internal
-status establishes provenance, not a canonical zone-data grant. These retained
-responses cannot start a transfer continuation.
+gets the refusal instead of waiting for its own timeout. Ingress-only
+node-health and CHAOS identity replies also retain the original complete route
+during a failed settings preparation; their internal status establishes
+provenance, not a canonical zone-data grant. These retained responses cannot
+start a transfer continuation.
 API dig and native resolver cache mutations keep the complete generation check.
 
 A native UPDATE's
