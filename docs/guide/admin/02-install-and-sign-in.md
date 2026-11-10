@@ -118,7 +118,9 @@ container. After each change of the file, restart the container with
    See the note below.
 3. Enter `admin` in **Username**.
 4. Enter the content of `secrets/admin_password` in **Password**.
-5. Click **Sign in**.
+5. Keep **Authenticator code** empty. You use it only after you set up an
+   authenticator ([Chapter 9](09-people-and-tokens.md#use-an-authenticator)).
+6. Click **Sign in**.
 
 NOTE: kudurru makes a self-signed certificate at the first start. Browsers
 warn about it. To remove the warning, set `listeners.api.tls.certFile` and
@@ -127,7 +129,7 @@ TLS if a reverse proxy in front of kudurru terminates it.
 
 Figure 1 shows the sign-in page.
 
-![The sign-in page with the kudurru logo, a yellow message about default credentials, the fields Username and Password, and two buttons for single sign-on.](../images/signin.png)
+![The sign-in page with the kudurru logo, a yellow message about default credentials, the fields Username, Password and Authenticator code, and two buttons for single sign-on.](../images/signin.png)
 
 *Figure 1. The sign-in page.*
 
