@@ -7,6 +7,7 @@ To assign client addresses, use the [DHCP walkthrough](../guide/dhcp/README.md).
 |---|---|---|
 | One container (Docker, Podman) | [docker.md](docker.md) | `deploy/compose/single`, `deploy/compose/single-edge` |
 | Three hosts with a VIP (dnsdist + keepalived, `ha-static`) | [compose-ha.md](compose-ha.md) | `deploy/compose/ha/node-{a,b,c}` |
+| SQLite nodes that replicate: one primary and its followers | [sqlite-cluster.md](sqlite-cluster.md) | none; the commands are on that page |
 | Kubernetes with Helm | [helm.md](helm.md) | `deploy/helm/kudurru`, `deploy/helm/kudurru-crds` |
 | Kubernetes with kustomize | [kustomize.md](kustomize.md) | `deploy/kustomize/` |
 | Linux packages (deb, rpm, apk) with systemd | [docker.md#linux-packages-and-systemd](docker.md#linux-packages-and-systemd) | `deploy/systemd` |
@@ -21,6 +22,23 @@ Blocked services and safe search, and the runtime catalogue URL: [blocked-servic
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
 The optional DHCPv4 server included in v0.1.0: [dhcp.md](dhcp.md).
+
+More pages, by task:
+
+| Task | Page |
+|---|---|
+| Add a member to an enrolled SQLite cluster, recover a join, take an old primary back, recover from two promotions | [sqlite-join.md](sqlite-join.md) |
+| Put `local.db` or the query log on separate storage | [sqlite-storage.md](sqlite-storage.md) |
+| Accept RFC 2136 dynamic updates (`nsupdate`) for a zone | [dynamic-updates.md](dynamic-updates.md) |
+| Create, replace and revoke stored TSIG keys | [tsig-keys.md](tsig-keys.md) |
+| Validate DNSSEC on forwarded answers; trust anchors and exceptions | [dnssec-validation.md](dnssec-validation.md) |
+| Rewrite, filter and check forwarded answers (DNS64, rebinding protection) | [response-processing.md](response-processing.md) |
+| Limit client networks and refuse query types | [dns-controls.md](dns-controls.md) |
+| Match clients by MAC address, hostname or client ID | [client-identity.md](client-identity.md) |
+| Run Cloudflare, UniFi and webhook integrations on SQLite | [integrations.md](integrations.md) |
+| Create, replace and delete role bindings; role bindings on Kubernetes | [rolebindings.md](rolebindings.md) |
+| Move the identity data of a Kubernetes installation to v0.2 | [iam-upgrade.md](iam-upgrade.md) |
+| Provide and rotate the VRRP HMAC key files of the keepalived supervisor | [vrrp-keys.md](vrrp-keys.md) |
 
 Built-in DHCPv4 is disabled by default and runs on Linux with either store:
 SQLite standalone or three-node quorum failover, or the Kubernetes store with
