@@ -184,30 +184,54 @@ stateDiagram-v2
     Armed --> Terminating: delete request
     Terminating --> Terminating: apply that keeps Delete
     Terminating --> [*]: cleanup owner clears the finalizer
-    Terminating --> [*]: apply Retain (release, nothing cleaned)
+    Terminating --> [*]: apply Retain, declared or defaulted (release, nothing cleaned)
 ```
 
 - **SQLite** decides the finalizer at admission, inside `Apply`: the
-  defaulted policy `Delete` arms it in the same write as the spec, so no
-  instance can own external state unarmed. A manager's whole-object apply
-  without finalizers, a `Force` takeover and an apply during termination all
-  keep it. Changing the policy to `Retain` removes it, which on a terminating
-  object is the release. A delete request is the file reconciler's orphan
-  delete, because Integrations are file-declared on SQLite; re-adding the
-  document does not finalize or revive the object.
+  defaulted policy `Delete` arms it in the same write as the spec, so every
+  write of a `Delete` Integration stores it armed. A manager's whole-object
+  apply without finalizers, a `Force` takeover and an apply during
+  termination all keep it. Changing the policy to `Retain` removes it, which
+  on a terminating object is the release. The rule reads the defaulted
+  policy, so a document that omits `deletionPolicy` is a change to `Retain`
+  too. The audit row of an apply that drops the finalizer says so
+  (`disarmed: ...` on a live object, `released without cleanup: ...` on a
+  terminating one, where the action is `integration.finalize`), because no
+  cleanup ran.
+- Admission acts on writes only. A live `Delete` Integration that is stored
+  without the finalizer (a database written before admission armed it, or a
+  live finalizer removal) is not armed by being read. The file reconciler
+  closes that gap for declared objects: it applies the document of such an
+  object on its next pass even though the document is unchanged, which arms
+  the object and changes nothing else. Until that pass the object is unarmed,
+  so the cleanup job's root must still check the finalizer inside every
+  intent and source commit before it lets a `Delete` instance own external
+  state; that check lands with the job, and `Delete` instances are refused
+  until then.
+- A delete request is the file reconciler's orphan delete, because
+  Integrations are file-declared on SQLite. It is made and counted once:
+  while the object waits with its deletion timestamp, later passes leave it
+  alone and report nothing. Re-adding the document with `Delete` does not
+  finalize or revive the object. Re-adding it with `Retain`, or without a
+  `deletionPolicy` line, releases it; the reconciler logs that pass as
+  `objects: finalized` instead of an ordinary update.
 - **Kubernetes** has no kudurru admission, so the driver never arms the
   finalizer on its own (nothing would clear it while no host runs there). It
   carries a finalizer the elected host armed through server-side apply and
   through the `Force` takeover, which otherwise removes every field the new
-  manager omits.
+  manager omits. The reconciler's extra apply of an unchanged `Delete`
+  document is a no-op at the apiserver there and is reported as unchanged.
 - The only other writer is `store.FinalizerWriter.UpdateFinalizer`, a
   metadata-only change bound to the exact UID and resource version the
   caller observed. It keeps manager, spec, status and generation, never
   retries on a newer object, and removes a terminating object when its last
   finalizer goes. SQLite offers it inside a command transaction
   (`CommandTx.UpdateFinalizer`), so finalization can commit together with
-  its checks and audit; Kubernetes uses a merge patch with the observed
-  resource version under the separate field manager `kudurru-finalizer`.
+  its checks and audit; Kubernetes uses a merge patch under the separate
+  field manager `kudurru-finalizer`. The patch replaces the whole finalizer
+  list, so it carries the observed resource version as the apiserver's
+  optimistic lock: a change between the driver's read and its write is a
+  conflict, and a finalizer another actor added in between survives.
 
 The planner has an explicit cleanup mode (`plan.Input.Cleanup`). It refuses
 desired records and per-record policies and plans deletes only. A record set

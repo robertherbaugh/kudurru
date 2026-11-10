@@ -20,12 +20,24 @@ An Integration declared with `deletionPolicy: Delete` is stored with the
 reserved finalizer `kudurru.io/integration-cleanup`. You do not list it in the
 document and cannot remove it by editing the document. Removing the document
 then leaves the object in place with a deletion timestamp instead of deleting
-it, and declaring it again does not cancel the deletion. Until the cleanup job
+it, and declaring it again with `deletionPolicy: Delete` does not cancel the
+deletion. The delete is requested once: while the object waits, later loads
+of the objects directory report no further deletion. Until the cleanup job
 is mounted, release such an object by declaring it once more with
 `deletionPolicy: Retain`: that removes the terminating object without
 contacting the provider and leaves its remote records where they are. The
 still-declared document then creates a new `Retain` instance, which you can
 remove normally.
+
+`Retain` is the default, so a document without a `deletionPolicy` line
+releases a terminating object in the same way. Keep the `deletionPolicy:
+Delete` line when you re-add a document, or restore an older copy of it, for
+an Integration that is still waiting for cleanup; otherwise its records stay
+at the provider. A release is logged as `objects: finalized` and recorded in
+the audit log as `integration.finalize` with the reason `released without
+cleanup: deletionPolicy is Retain; dropped kudurru.io/integration-cleanup`.
+Changing a live Integration from `Delete` to `Retain`, or dropping the line,
+is recorded as an update with the reason `disarmed: ...`.
 
 ## Credentials and permissions
 
