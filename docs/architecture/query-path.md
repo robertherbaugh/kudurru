@@ -505,7 +505,7 @@ configured rewrites, DNS64, AAAA filtering, NXDOMAIN handling and rebinding.
 Recursive upstream groups already answer RFC 6303 and special-use names and validate their answers. NSID is not implemented, and
 the `epoch` in the health TXT is always `0`.
 
-## DHCP lease records (v0.1.0)
+## DHCP lease records
 
 Identification samples DHCP hostnames alongside the captured provider inventory.
 Alias and dependency queries retain those original names; a new client query

@@ -39,7 +39,14 @@ erDiagram
 
 Primary, forward, secondary, and stub zones are served. The other
 types in the schema (`external`, `catalog`, `secondaryCatalog`) are accepted
-but get `Ready=False, reason Unsupported`.
+by admission and are not served. On Kubernetes the controller gives such a
+zone `Ready=False, reason Unsupported` (`zoneVerdict` in `internal/controller`).
+The complete SQLite runtime has no such verdict: `servingzones.Prepare`
+refuses the whole candidate while the object exists, so the node reports
+`prepare_failed`, answers 503 `generation_pending` on the API, also for the
+deletion of that object, and stops answering for its own zones, across a
+restart. Nothing in the API removes the object then; the data directory has
+to be put back from a copy. Do not apply these types on SQLite.
 
 Use one DNSZone per canonical apex. If different objects claim the same
 apex, the serving builder logs the conflict and installs unavailable coverage

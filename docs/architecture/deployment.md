@@ -27,8 +27,8 @@ Static twins intentionally report separate database identities and local
 leaders. This status is not a quorum or promotion-eligibility check; use
 `kudurru nodes` to inspect individual readiness.
 
-The v0.1.0 [DHCPv4 server](dhcp.md) is opt-in, runs on Linux with either
-store, and independent allocators must never share a pool. On the Kubernetes
+The [DHCPv4 server](dhcp.md), included since v0.1.0, is opt-in and runs on
+Linux with either store, and independent allocators must never share a pool. On the Kubernetes
 store, scopes are `DHCPScope` objects, leases are `DHCPLease` objects, and
 the holder of the `kudurru-dhcp` Lease serves clients that a router relays
 to a LoadBalancer address (`dhcp.enabled`, `dhcp.serverAddress`); see

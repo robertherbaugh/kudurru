@@ -1,6 +1,6 @@
 # DHCPv4 and lease state
 
-DHCPv4 is an optional **v0.1.0 feature**, disabled by default. It runs on Linux
+DHCPv4 is an optional feature, included since v0.1.0 and disabled by default. It runs on Linux
 with either store. With the SQLite store, each node owns its setup and lease
 databases and supports multiple directly attached and relayed IPv4 subnets.
 With the Kubernetes store, scopes are `DHCPScope` objects, leases are
