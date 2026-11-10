@@ -334,7 +334,15 @@ func (p *pass) apply(ctx context.Context, it item) {
 	}
 
 	unchanged := existing != nil && !force && store.ManagedBy(existing) == manager && sameContent(existing, obj, manager)
-	if !guardedBinding && unchanged {
+	// sameContent does not compare finalizers, and the store decides the
+	// reserved one on writes only (D367). A live Integration stored with
+	// deletionPolicy Delete but without its cleanup finalizer (written before
+	// admission armed it, or disarmed by a live finalizer removal) must not
+	// stay unarmed behind an unchanged document, so that document is applied:
+	// a driver with admission arms the object and changes nothing else, a
+	// driver without admission writes nothing.
+	arm := unchanged && store.ReservedFinalizerUnarmed(existing)
+	if !guardedBinding && unchanged && !arm {
 		p.rep.Unchanged++
 		p.r.remember(it.key, docHash, existing.GetResourceVersion())
 		return
@@ -372,17 +380,27 @@ func (p *pass) apply(ctx context.Context, it item) {
 		return
 	}
 	p.r.remember(it.key, docHash, written.GetResourceVersion())
-	if unchanged {
+	if unchanged && (!arm || written.GetResourceVersion() == existing.GetResourceVersion()) {
 		p.rep.Unchanged++
 		return
 	}
 	if note != nil {
 		p.diag(*note)
 	}
-	if existing == nil {
+	switch {
+	case existing == nil:
 		p.rep.Created++
 		p.r.log.Info("objects: created", "object", it.key.String(), "source", d.source)
-	} else {
+	case store.Terminated(written):
+		// The declaration cleared the last finalizer of an object that was
+		// being deleted, so the store removed it: an Integration released
+		// by a declared or defaulted deletionPolicy Retain, with nothing
+		// cleaned at its provider (D367). The audit row carries the reason;
+		// a document that is still declared creates a new object next pass.
+		p.rep.Updated++
+		p.r.log.Info("objects: finalized", "object", it.key.String(), "source", d.source,
+			"detail", "the declaration removed the last finalizer of an object that was being deleted")
+	default:
 		p.rep.Updated++
 		p.r.log.Info("objects: updated", "object", it.key.String(), "source", d.source)
 	}
@@ -462,6 +480,14 @@ func (p *pass) deleteIfOrphan(ctx context.Context, kind store.Kind, obj store.Ob
 	}
 	from := strings.TrimPrefix(owner, filePrefix)
 	if p.sourceBroken(from) {
+		return
+	}
+	// Deletion was already requested and the object waits for its finalizers
+	// (an Integration with deletionPolicy Delete waits for cleanup, D367).
+	// Asking again changes nothing in any driver, so it is neither a
+	// deletion of this pass nor worth a log line on every poll.
+	if obj.GetDeletionTimestamp() != nil {
+		p.r.log.Debug("objects: deletion pending", "object", key.String(), "source", from, "finalizers", obj.GetFinalizers())
 		return
 	}
 	var err error

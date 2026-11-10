@@ -15,7 +15,15 @@
 //     by file objects.d/zones.yaml";
 //   - the ownership ledger is the store itself: an object whose managedBy
 //     starts with "file:" and that no source declares any more is deleted,
-//     so deleting a document (or its file) deletes the object;
+//     so deleting a document (or its file) deletes the object. An object
+//     with finalizers stays, with a deletion timestamp, until they are
+//     cleared (an Integration with deletionPolicy Delete waits for cleanup,
+//     D367); the delete is requested and counted once, and later loads
+//     leave the waiting object alone;
+//   - an unchanged document is not applied again, with one exception: a
+//     live Integration whose policy is Delete but whose stored object lacks
+//     the reserved cleanup finalizer is applied once more, so a driver with
+//     admission arms it (store.ReservedFinalizerUnarmed);
 //   - nothing aborts a load: invalid YAML, unknown kinds or fields, invalid
 //     objects, duplicate declarations and objects owned by the API or an
 //     integration each become a Diagnosis while the rest is applied, and

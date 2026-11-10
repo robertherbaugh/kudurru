@@ -571,6 +571,28 @@ func TestSQLiteObjectSourceIntegrationCleanupFinalizer(t *testing.T) {
 	if got := stored(); got == nil || !store.HasFinalizer(got, store.IntegrationCleanupFinalizer) || !got.Spec.Suspend || got.UID != armed.UID {
 		t.Fatal("editing the document stripped the cleanup finalizer")
 	}
+	// Admission arms on writes. A live object stored with Delete but without
+	// the finalizer (a database written before admission armed it, or a live
+	// finalizer removal) is armed by the next pass over its unchanged
+	// document, in this process and after a restart, and by nothing else.
+	for _, restart := range []bool{false, true} {
+		live := stored()
+		if _, err := st.UpdateFinalizer(ctx, key, store.FinalizerOptions{Finalizer: store.IntegrationCleanupFinalizer, Remove: true,
+			ExpectedUID: string(live.UID), ExpectedResourceVersion: live.ResourceVersion}); err != nil {
+			t.Fatal("live finalizer removal")
+		}
+		if restart {
+			l = sourceLoader(t, st, newSQLiteObjectSources(st), dir)
+		}
+		rep := load("unchanged declaration over an unarmed object")
+		got := stored()
+		if rep.Updated != 1 || got == nil || !store.HasFinalizer(got, store.IntegrationCleanupFinalizer) || got.Generation != live.Generation || got.UID != armed.UID || got.DeletionTimestamp != nil {
+			t.Fatal("an unchanged Delete document left its live object without the cleanup finalizer")
+		}
+		if rep := load("unchanged declaration over the armed object"); rep.Unchanged != 1 || stored().ResourceVersion != got.ResourceVersion {
+			t.Fatal("the armed object was rewritten by its unchanged document")
+		}
+	}
 
 	// Removing the document is the delete request: the object stays, with
 	// everything cleanup needs.
@@ -583,8 +605,13 @@ func TestSQLiteObjectSourceIntegrationCleanupFinalizer(t *testing.T) {
 		deleting.Spec.DeletionPolicy != public.IntegrationDeletionDelete || deleting.Spec.Credentials["apiKey"].File == "" {
 		t.Fatal("removing an armed Integration document did not leave a visible terminating object")
 	}
-	// Later passes without the document change nothing.
-	load("repeated removal pass")
+	// Later passes without the document change nothing and report nothing:
+	// the one delete request stands until cleanup or release.
+	for range 2 {
+		if rep := load("repeated removal pass"); rep.Deleted != 0 || rep.Updated != 0 || rep.Created != 0 {
+			t.Fatal("a repeated removal pass reported the terminating object as deleted again")
+		}
+	}
 	if got := stored(); got == nil || got.ResourceVersion != deleting.ResourceVersion {
 		t.Fatal("a repeated removal pass changed the terminating object")
 	}
@@ -609,6 +636,15 @@ func TestSQLiteObjectSourceIntegrationCleanupFinalizer(t *testing.T) {
 	load("release by declared Retain")
 	if stored() != nil {
 		t.Fatal("declared Retain did not release the terminating object")
+	}
+	// The release is on the audit trail as what it is: no cleanup ran.
+	entries, err := st.ReadAudit(t.Context(), sqlite.AuditQuery{Kind: "Integration", Name: "cleanup"})
+	if err != nil || len(entries) == 0 {
+		t.Fatal("integration audit read")
+	}
+	if last := entries[len(entries)-1]; last.Action != "integration.finalize" || last.Manager != store.ManagerFile(filepath.Base(dir)+"/integration.yaml") ||
+		last.Reason != "released without cleanup: deletionPolicy is Retain; dropped "+store.IntegrationCleanupFinalizer {
+		t.Fatal("the release audit row does not say that the policy, not a cleanup, removed the finalizer")
 	}
 	if rep := load("declaration after release"); rep.Created != 1 {
 		t.Fatal("released document was not created again")
