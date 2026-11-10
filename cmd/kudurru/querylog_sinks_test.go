@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -169,6 +170,97 @@ func (d *exportDoubles) builds(name string) int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.built[name]
+}
+
+// TestQuerylogRuntimeChangedSinkEntryCountsQueriesInFlight drives the reload
+// subscriber of the Kubernetes driver while queries keep arriving. Every
+// change of the entry replaces the sink, and a query that read the replaced
+// route just before the swap can find its sink retired. Each query the
+// collector accepted is then written once by an instance of the sink or
+// counted as dropped for its name; none disappears.
+func TestQuerylogRuntimeChangedSinkEntryCountsQueriesInFlight(t *testing.T) {
+	doubles := useExportDoubles(t)
+	export := doubles.add("export", &exportSink{})
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Node.DataDir = t.TempDir()
+	cfg.Querylog.Exclude.SUDN = false
+	entry := func(batch int) []config.QuerylogSink {
+		return []config.QuerylogSink{{Name: "export", Type: config.QuerylogSinkSlog, BatchSize: batch}}
+	}
+	cfg.Querylog.Sinks = entry(100)
+	reg := prometheus.NewRegistry()
+	logger := slog.New(slog.DiscardHandler)
+	r, err := newQuerylogRuntime(t.Context(), cfg, reg, logger, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.close(context.Background()) })
+	reload := config.NewReloadable(cfg)
+	subscribeReload(t.Context(), reload, reloadTargets{logger: logger, qlOwner: r})
+
+	stop := make(chan struct{})
+	var accepted atomic.Uint64
+	var enqueuers sync.WaitGroup
+	for range 4 {
+		enqueuers.Go(func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				// The log observer of this path enqueues through the collector.
+				if r.async.Enqueue(&querylog.Event{Time: time.Now(), Name: "q.example.", Client: netip.MustParseAddr("192.0.2.8"), QType: 1, QClass: 1}) {
+					accepted.Add(1)
+				}
+			}
+		})
+	}
+	const reloads = 200
+	current := cfg
+	for i := range reloads {
+		next := *current
+		next.Querylog.Sinks = entry(101 + i%7) // any change is a new sink under the same name
+		reload.Set(&next)
+		current = &next
+		if ok, why := r.ready(); !ok {
+			t.Fatal("reload was not applied:", why)
+		}
+		time.Sleep(200 * time.Microsecond)
+	}
+	close(stop)
+	enqueuers.Wait()
+	// Counters are exact in a float64 far beyond what a test enqueues.
+	want := float64(accepted.Load())
+	var sent, dropped float64
+	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		sent, _ = gatherSinkMetric(t, reg, "kudurru_sink_sent_total", map[string]string{"sink": "export"})
+		dropped, _ = gatherSinkMetric(t, reg, "kudurru_querylog_dropped_total", map[string]string{"stage": "sink", "sink": "export"})
+		if sent+dropped >= want || time.Now().After(deadline) {
+			break
+		}
+	}
+	if sent+dropped != want {
+		t.Fatalf("the collector accepted %.0f queries; sink export wrote %.0f and counted %.0f dropped: %.0f are unaccounted for", want, sent, dropped, want-sent-dropped)
+	}
+	ids := export.ids()
+	if float64(len(ids)) != sent {
+		t.Errorf("the sink instances wrote %d events, kudurru_sink_sent_total says %.0f", len(ids), sent)
+	}
+	seen := make(map[uint64]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			t.Fatalf("query %d was written twice", id)
+		}
+		seen[id] = true
+	}
+	if builds := doubles.builds("export"); builds != reloads+1 {
+		t.Errorf("the entry changed %d times and its sink was built %d times, want %d", reloads, builds, reloads+1)
+	}
+	t.Logf("accepted %.0f, written %.0f, counted as dropped %.0f", want, sent, dropped)
 }
 
 func gatherSinkMetric(t *testing.T, reg prometheus.Gatherer, family string, labels map[string]string) (float64, bool) {

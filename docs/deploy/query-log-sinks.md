@@ -86,7 +86,7 @@ the copy for that destination is lost.
 
 | Metric | Meaning |
 |---|---|
-| `kudurru_querylog_dropped_total{stage="sink",sink="<name>"}` | queries lost for this sink (queue overflow or an abandoned batch) |
+| `kudurru_querylog_dropped_total{stage="sink",sink="<name>"}` | queries lost for this sink (queue overflow, an abandoned batch, or a query caught by a change of the sink's entry) |
 | `kudurru_sink_sent_total{sink}` | queries the destination accepted |
 | `kudurru_sink_errors_total{sink}` | failed attempts to open or write |
 | `kudurru_sink_queue_length{sink}` | queries waiting now |
@@ -105,7 +105,11 @@ The series of a sink disappear when it is removed from the settings.
 - An entry that is not changed keeps running across unrelated settings
   changes.
 - Changing any field of an entry replaces that sink: the old one finishes
-  what it holds, the new one starts with new queries.
+  what it holds, the new one starts with new queries. On Kubernetes, a query
+  that is being recorded at the very moment of the change can miss both. It
+  is counted as dropped for that sink, is not sent to the new one, and stays
+  in the local database. This is rare, but the drop alert fires on any
+  drop, so changing a sink on a busy server can trigger it once.
 - A removed sink gets no new queries. It writes what its queue holds for up
   to five seconds, counts what remains as dropped, and closes once requests
   that began before the change have finished (an open live view can delay

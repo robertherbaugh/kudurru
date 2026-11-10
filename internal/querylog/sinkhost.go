@@ -177,6 +177,9 @@ type SinkHost struct {
 	clock     clock.WithTickerAndDelayedExecution
 	drain     time.Duration
 
+	// stopping is set by Close; offer reads it without the lock.
+	stopping atomic.Bool
+
 	mu     sync.Mutex
 	closed bool
 	// live are the sinks at least one route references, by spec key.
@@ -190,7 +193,11 @@ type SinkHost struct {
 // sinkCounters are shared by every worker of one sink name, so a changed
 // entry keeps its series while the old worker drains.
 type sinkCounters struct {
-	users       int // unfinished workers; under SinkHost.mu
+	users int // unfinished workers; under SinkHost.mu
+	// referenced counts the workers of the name that a route still
+	// references: above zero while the name is configured. It is written
+	// under SinkHost.mu and read by offer without it.
+	referenced  atomic.Int32
 	sent        atomic.Uint64
 	dropped     atomic.Uint64
 	errors      atomic.Uint64
@@ -251,7 +258,9 @@ func (s *SinkSet) Names() []string {
 // Release returns the reference. It is idempotent and nil-safe. A sink that
 // no set references anymore stops accepting once the collector has offered
 // it every event that was already queued, drains within the host's bound
-// and closes.
+// and closes. Release only when the route can admit no more events: an
+// event that a released route still delivers finds its sink retired and is
+// lost for it (counted while the name is still configured, see missed).
 func (s *SinkSet) Release() {
 	if s == nil {
 		return
@@ -265,6 +274,7 @@ func (s *SinkSet) Release() {
 				if h.live[w.key] == w {
 					delete(h.live, w.key)
 				}
+				w.counters.referenced.Add(-1)
 				idle = append(idle, w)
 			}
 		}
@@ -333,6 +343,7 @@ func (h *SinkHost) Prepare(specs []SinkSpec) (*SinkSet, error) {
 			h.names[w.spec.Name] = c
 		}
 		c.users++
+		c.referenced.Add(1)
 		w.counters = c
 		h.live[w.key] = w
 		h.unfinished[w] = struct{}{}
@@ -433,6 +444,7 @@ func (h *SinkHost) Collect(ch chan<- prometheus.Metric) {
 // ignores cancellation keeps its goroutine and is never closed under its
 // own write. Close may be called again to join.
 func (h *SinkHost) Close(ctx context.Context) error {
+	h.stopping.Store(true)
 	h.mu.Lock()
 	h.closed = true
 	workers := make([]*sinkWorker, 0, len(h.unfinished))
@@ -490,6 +502,7 @@ type sinkWorker struct {
 // only caller. The first event starts the sink.
 func (w *sinkWorker) offer(item sinkItem) {
 	if w.retired.Load() {
+		w.missed()
 		return
 	}
 	select {
@@ -500,6 +513,33 @@ func (w *sinkWorker) offer(item sinkItem) {
 	default:
 		w.drop(1, "queue full", nil)
 	}
+}
+
+// missed accounts for an event that reached this sink after it retired.
+//
+// A route whose references were returned can still deliver an event where
+// requests do not hold their route: Async.Enqueue reads the adopted route
+// and then queues, so a reload that replaces the route in between (the
+// reload subscriber of the Kubernetes driver) leaves that event with the
+// predecessor. When the entry was changed, the name is still configured and
+// the event is a loss for it: it is counted, and it is not handed to the
+// successor, whose route made its own privacy decision. When the entry was
+// removed, no sink was to receive the event and nothing is counted, so the
+// removed name's series stay gone. A request that holds a complete
+// publication never gets here: the publication returns its references only
+// after its last request.
+//
+// The other way here is a host that was closed while the collector could
+// not drain; those events are lost with the shutdown and counted too.
+func (w *sinkWorker) missed() {
+	if w.counters.referenced.Load() == 0 {
+		return
+	}
+	reason := "sink replaced"
+	if w.host.stopping.Load() {
+		reason = "sink host stopped"
+	}
+	w.drop(1, reason, nil)
 }
 
 func (w *sinkWorker) start() {

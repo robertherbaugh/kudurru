@@ -216,7 +216,10 @@ func (r *querylogRuntime) reload(ctx context.Context, cfg config.Querylog) error
 		return errors.New("querylog: prepared route was not adopted")
 	}
 	// The successor holds its references before the predecessor's are
-	// returned, so a sink both name keeps running.
+	// returned, so a sink both name keeps running. Requests on this path do
+	// not hold their route: a query that read the predecessor just before
+	// the adoption is still recorded locally, but a sink whose entry changed
+	// has retired by then and counts it as dropped (D371).
 	r.own(route)
 	return nil
 }

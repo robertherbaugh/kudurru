@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -521,6 +522,153 @@ func TestSinkChangedEntryStartsANewSinkAndDrainsTheOld(t *testing.T) {
 	if st := f.status("x"); st.Sent != 3 || st.Type != "test" {
 		t.Errorf("the name's counters must continue across the change: %+v", st)
 	}
+}
+
+// sinkSeries reports whether any metric family keeps a series labeled with
+// the sink name.
+func (f *fanFixture) sinkSeries(name string) []string {
+	f.t.Helper()
+	families, err := f.reg.Gather()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var out []string
+	for _, family := range families {
+		for _, m := range family.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "sink" && l.GetValue() == name {
+					out = append(out, family.GetName())
+				}
+			}
+		}
+	}
+	return out
+}
+
+// TestSinkEventInFlightAtReplacementIsCounted: where requests do not hold
+// their route (the reload subscriber of the Kubernetes driver), an
+// enqueuer may have read the collector's route just before a reload
+// replaced it and queue its event after the old instance of a changed entry
+// has retired. That event is not handed to the new instance, which belongs
+// to a route with its own privacy decision; it is counted for the name. A
+// name that was removed receives nothing and counts nothing.
+func TestSinkEventInFlightAtReplacementIsCounted(t *testing.T) {
+	f := newFanFixture(t, nil, nil)
+	first := f.route(nil, nil, spec("x"))
+	first.Enqueue(ev("192.0.2.1", "old."))
+	waitFor(t, "first instance", func() bool { return len(f.get("x").names()) == 1 })
+	old := f.get("x")
+	f.sink("x", &fanSink{})
+	changed := spec("x")
+	changed.BatchSize = 2
+	second := f.route(nil, first, changed) // the reload adopts the successor ...
+	first.Release()                        // ... then returns the predecessor's references
+	waitFor(t, "old instance closed", func() bool { _, closes, _ := old.state(); return closes == 1 })
+	// The enqueuer that had read the old route queues its event only now.
+	if !first.Enqueue(ev("192.0.2.1", "in-flight.")) {
+		t.Fatal("the collector refused the in-flight event")
+	}
+	second.Enqueue(ev("192.0.2.1", "new-1."))
+	second.Enqueue(ev("192.0.2.1", "new-2."))
+	waitFor(t, "second instance", func() bool { return len(f.get("x").names()) == 2 })
+	if _, n := f.primary.count(); n != 4 {
+		t.Fatalf("primary sink has %d events, want 4", n)
+	}
+	if got := old.names(); !reflect.DeepEqual(got, []string{"old."}) {
+		t.Errorf("the retired instance wrote %v", got)
+	}
+	if got := f.get("x").names(); !reflect.DeepEqual(got, []string{"new-1.", "new-2."}) {
+		t.Errorf("the new instance wrote %v: an event of the replaced route must not move to it", got)
+	}
+	if st := f.status("x"); st.Sent != 3 || st.Dropped != 1 {
+		t.Errorf("4 events were recorded locally; sink x wrote %d and counted %d dropped, want 3 and 1", st.Sent, st.Dropped)
+	}
+	if got := f.dropped("x"); got != 1 {
+		t.Errorf("dropped{stage=sink,sink=x} = %v, want 1", got)
+	}
+
+	// Remove x. A late event of a route that named it is not a loss: the
+	// sink is gone, and its series must not come back.
+	third := f.route(nil, second)
+	second.Release()
+	waitFor(t, "removed sink to be forgotten", func() bool { return f.status("x").Name == "" })
+	if !second.Enqueue(ev("192.0.2.1", "after-removal.")) {
+		t.Fatal("the collector refused the late event")
+	}
+	waitFor(t, "primary sink", func() bool { _, n := f.primary.count(); return n == 5 })
+	if st := f.status("x"); st.Name != "" {
+		t.Errorf("a removed sink is reported again: %+v", st)
+	}
+	if got := f.sinkSeries("x"); len(got) != 0 {
+		t.Errorf("a late event revived series of the removed sink: %v", got)
+	}
+	if got := len(f.get("x").names()); got != 2 {
+		t.Errorf("the removed sink received an event after removal (%d)", got)
+	}
+	third.Release()
+}
+
+// TestSinkReplacementAccountsForEveryAcceptedEvent drives the same path
+// under load through Async.Enqueue, which reads the adopted route and then
+// queues: while an entry is replaced again and again, every event the
+// collector accepted is either written by an instance of the sink or counted
+// as dropped for its name.
+func TestSinkReplacementAccountsForEveryAcceptedEvent(t *testing.T) {
+	f := newFanFixture(t, nil, nil)
+	entry := spec("x")
+	entry.QueueSize, entry.BatchSize, entry.Interval = 4096, 64, 5*time.Millisecond
+	current := f.route(nil, nil, entry)
+	stop := make(chan struct{})
+	var accepted atomic.Uint64
+	var enqueuers sync.WaitGroup
+	for range 4 {
+		enqueuers.Go(func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if f.async.Enqueue(ev("192.0.2.1", "q.")) {
+					accepted.Add(1)
+				}
+			}
+		})
+	}
+	for i := range 300 {
+		next := entry
+		next.BatchSize = 16 + i%8 // any change is a new sink under the same name
+		successor := f.route(nil, current, next)
+		current.Release()
+		current = successor
+		time.Sleep(200 * time.Microsecond)
+	}
+	close(stop)
+	enqueuers.Wait()
+	if err := f.async.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// The collector has offered everything it accepted. The last instance
+	// is still referenced, so the name's counters are still reported.
+	want := accepted.Load()
+	var st SinkStatus
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		st = f.status("x")
+		if st.Sent+st.Dropped >= want || time.Now().After(deadline) {
+			break
+		}
+	}
+	written := uint64(len(f.get("x").names()))
+	if st.Sent != written {
+		t.Errorf("sink x wrote %d events, its counter says %d", written, st.Sent)
+	}
+	if st.Sent+st.Dropped != want {
+		t.Fatalf("the collector accepted %d events; sink x wrote %d and counted %d dropped: the rest is unaccounted for", want, st.Sent, st.Dropped)
+	}
+	if _, n := f.primary.count(); uint64(n) != want { // #nosec G115 -- a count is never negative
+		t.Errorf("primary sink has %d of %d events", n, want)
+	}
+	t.Logf("accepted %d, written %d, counted as dropped %d", want, st.Sent, st.Dropped)
 }
 
 // TestSinkPrepareRefusals: a refused set changes nothing.

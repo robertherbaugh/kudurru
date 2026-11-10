@@ -171,8 +171,10 @@ A batch is written again only when the sink reports that the destination did
 not apply it (a refused connection, an explicit "try again", optionally with
 the wait the destination asked for). Any other failure has an unknown outcome
 and drops the batch at once; it is never replayed and never moved to another
-sink. An exhausted attempt budget drops the batch too. Every drop is counted
-in `kudurru_querylog_dropped_total{stage="sink",sink="<name>"}` and logged at
+sink. An exhausted attempt budget drops the batch too. Queue overflow, an
+abandoned batch, what a retiring sink could not write within its drain bound
+and a query caught by the replacement of its sink (below) are each counted in
+`kudurru_querylog_dropped_total{stage="sink",sink="<name>"}` and logged at
 the first loss and at each tenfold total.
 
 The privacy transform runs before the sink queues, so an additional sink
@@ -203,6 +205,18 @@ publication, which does not name the sink. The close follows the release of
 the older publication, so a request that still holds it (a held DNS query, or
 an open dashboard stream on the complete SQLite runtime) delays the close and
 keeps the sink's series visible, but sends it nothing new.
+
+On the complete SQLite runtime a publication returns its references only
+after its last request, so a request never reaches a sink that has stopped.
+On Kubernetes, settings are applied through the reload subscriber, where a
+query reads the adopted route and is then queued. A reload that lands between
+those two steps leaves the query with the route it read, and its sink may
+have retired by the time the collector offers it. Such a query is never
+handed to the sink that replaced it: a route's privacy mode and its sinks are
+one captured decision. When the entry was changed, the name is still
+configured and the query is counted as dropped for it; when the entry was
+removed, no sink was to receive it and nothing is counted. In both cases the
+primary sink and the live tail have the query.
 
 Shutdown drains the collector first, then closes `querylog.db` while the
 additional sinks drain beside it under the same deadline. A sink that ignores
