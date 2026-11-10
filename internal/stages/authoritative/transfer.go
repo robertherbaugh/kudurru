@@ -51,8 +51,9 @@ var (
 
 // Metrics are the stage's Prometheus instruments.
 type Metrics struct {
-	// Transfers counts zone transfers by zone, direction ("out"; "in" is
-	// for secondary zones in v0.2) and result.
+	// Transfers counts zone transfers by zone, direction and result. Only
+	// "out" is recorded here; inbound secondary transfers are counted by
+	// internal/secondary (kudurru_secondary_refresh_total).
 	Transfers *prometheus.CounterVec
 }
 

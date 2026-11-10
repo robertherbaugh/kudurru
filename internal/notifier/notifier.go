@@ -22,8 +22,8 @@
 // with exponential backoff while it stays silent; a definitive answer
 // (an error rcode, a TSIG failure) is not retried. A newer serial
 // supersedes the round in flight for the zone, so bursts coalesce into
-// one NOTIFY per target. NOTIFY in stays NOTIMP until secondary zones
-// (v0.2).
+// one NOTIFY per target. Inbound NOTIFY for secondary zones is handled by
+// internal/secondary (NotifyReceiver), not by this package.
 package notifier
 
 import (

@@ -18,8 +18,8 @@ See the LICENSE file in the repository root.
 // `manifests`); controller-gen only generates its deepcopy functions.
 //
 // Secret material never appears in plain text: passwords are Argon2id PHC
-// strings, API tokens are SHA-256 hashes, and the reserved TOTP seed is
-// sealed with the cluster encryption key before it is stored (v0.2).
+// strings, API tokens are SHA-256 hashes, and the TOTP seed is sealed with
+// the cluster encryption key before it is stored.
 //
 // +kubebuilder:object:generate=true
 package v1alpha1

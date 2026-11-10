@@ -8,15 +8,17 @@ import (
 // +kubebuilder:validation:Enum=primary;forward;secondary;stub;external;catalog;secondaryCatalog
 type ZoneType string
 
-// Zone types; the version in the comment is when the type becomes servable.
+// Zone types. Primary, forward, secondary and stub zones are served. The
+// schema also accepts external, catalog and secondaryCatalog, but no zone is
+// built for them: the controller reports Ready=False with reason Unsupported.
 const (
 	ZoneTypePrimary          ZoneType = "primary"
 	ZoneTypeForward          ZoneType = "forward"
-	ZoneTypeSecondary        ZoneType = "secondary"        // v0.2
-	ZoneTypeStub             ZoneType = "stub"             // v0.2
-	ZoneTypeExternal         ZoneType = "external"         // v0.2
-	ZoneTypeCatalog          ZoneType = "catalog"          // v1.0
-	ZoneTypeSecondaryCatalog ZoneType = "secondaryCatalog" // v1.0
+	ZoneTypeSecondary        ZoneType = "secondary"        // served since v0.2
+	ZoneTypeStub             ZoneType = "stub"             // served since v0.2
+	ZoneTypeExternal         ZoneType = "external"         // not served
+	ZoneTypeCatalog          ZoneType = "catalog"          // not served; planned for v1.0
+	ZoneTypeSecondaryCatalog ZoneType = "secondaryCatalog" // not served; planned for v1.0
 )
 
 // AccessMode is Technitium's six-way access vocabulary applied to queries,

@@ -1,10 +1,12 @@
 // Package store is the persistence seam every driver implements
 // (dev-docs/design-record.md §4.3). Serving code never reads the store on the
-// query path; it reads snapshots materialised by zonecache.
+// query path; it reads snapshots materialized by zonecache.
 //
-// Drivers: kube (CRDs via the apiserver) and sqlite (state.db) in v0.1,
-// follower in v0.2, raft in v1.0. Every driver must pass the conformance
-// suite in internal/store/conformance.
+// Drivers: kube (CRDs via the apiserver) and sqlite (state.db). Since v0.2
+// a sqlite store can also be an enrolled primary or follower: the follower
+// package supplies the pull loop that installs the primary's complete image
+// into the local sqlite mirror. A raft driver is planned for v1.0. Every
+// driver must pass the conformance suite in internal/store/conformance.
 package store
 
 import (
@@ -225,8 +227,9 @@ type SnapshotOptions struct {
 	Safe bool
 }
 
-// Elector is the leader-election primitive each driver provides:
-// Lease (kube), always-leader (sqlite), never-leader (follower), raft.
+// Elector is the leader-election primitive each driver provides: a Lease
+// (kube), or the store's durable write authority (sqlite: a standalone node
+// or enrolled primary leads; a follower, fenced or conflicted node does not).
 //
 // Run campaigns until ctx is cancelled and returns nil then; losing
 // leadership never returns from Run (D44, D78). Each leadership period is a

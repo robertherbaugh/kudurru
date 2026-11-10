@@ -38,8 +38,9 @@ type LocalUserSpec struct {
 	// (the first-boot admin). The v0.2 IAM write API must refuse to set it.
 	// +optional
 	BuiltinAdmin bool `json:"builtinAdmin,omitempty"`
-	// TOTPSecret is reserved for v0.2 TOTP: the seed sealed with the
-	// cluster encryption key, never plain text.
+	// TOTPSecret is the account's TOTP seed, sealed with the cluster
+	// encryption key and never plain text; empty when no authenticator is
+	// enrolled.
 	// +optional
 	TOTPSecret string `json:"totpSecret,omitempty"`
 }

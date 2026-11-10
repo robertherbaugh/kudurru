@@ -313,7 +313,9 @@ type identity struct {
 // The errors are field paths into the DNSZone (spec.zoneName,
 // spec.policy.queryACL[2], ...); when there are any the zone cannot be
 // built and the Builder is nil. Zone types other than primary and forward
-// are rejected until their release (secondary, stub and external in v0.2).
+// are rejected here. Secondary and stub zones are built from transferred or
+// discovered data by BuildSecondary and BuildStub instead; external, catalog
+// and secondaryCatalog zones are not served.
 //
 // Errors in the transfer and notify parts of spec.policy do not stop the
 // zone from being served; they fail closed instead (transfers denied, a
