@@ -119,22 +119,23 @@ A follower request has one 30-second lifetime, which starts before the body is
 read, and stays bound to the data the follower had installed when the request
 began. `POST /api/v1/apply` and `:batchDelete` send one command for each
 document or name, in order, inside that single request, and answer `200` with
-one result for each item as they do on the primary. An item carries its own
-error and is not applied (`errorKey` `unavailable`) when the lifetime has ended
-("the request's 30-second forwarding lifetime ended") or when the follower
-installed newer data in the meantime ("the follower's source changed"). The
-last case is the usual one for a long apply: the follower's next pull, five
-seconds by default, installs the earlier documents of the same request. An item
+one result for each item as they do on the primary. The primary answers each
+command before any of its other writers can run, so its own follow-up work on
+an earlier item, such as writing the status of an object that the request just
+created, does not disturb the answer for the next item.
+
+An item carries its own error and is not applied (`errorKey` `unavailable`)
+when the lifetime has ended ("the request's 30-second forwarding lifetime
+ended") or when the follower installed newer data in the meantime ("the
+follower's source changed"). The last case is the one to expect for a long
+apply: the follower's next pull, five seconds by default, installs the earlier
+documents of the same request, and every later document is then refused. A
+single-item route answers `503 unavailable` with the same messages. An item
 whose exchange with the primary fails, including an unreachable primary,
-reports `completion_unknown`: the follower cannot tell whether the primary
-received it, so inspect that object before a new decision. The primary also
-withholds its acknowledgment when its own state advances again before the
-answer is sent, so a later item can report `completion_unknown` although it
-was committed. That happens most often right after an earlier item of the same
-request created an object, while the primary writes that object's status.
-Earlier items stay committed and nothing is replayed. Check the per-item
-results and run the apply again (committed documents report `unchanged`), or
-send a multi-document apply or a large restore to the primary.
+reports `completion_unknown`, as a single write does. Earlier items stay
+committed and nothing is replayed. Check the per-item results and run the
+apply again (committed documents report `unchanged`), or send an apply of many
+documents or a large restore to the primary.
 
 The zone convenience commands the dashboard's
 record editor uses (`POST /zones/{zone}/records`, `DELETE

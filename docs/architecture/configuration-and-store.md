@@ -970,6 +970,18 @@ releases exclusion while the synchronous emitter is still running. A failed or
 uncertain command, source interposition, revocation or copied-handle replay
 cannot emit. Actual HTTP/1 and HTTP/2 mounts must flush protected bytes and 304
 headers within this scope; protocol end-of-stream framing follows handler return.
+
+`MemberCommand` followed by `WithCommandOutput` releases the writer lock between
+completion and output, so any other commit in between is a source interposition
+and the acknowledgment is withheld. `MemberCommandWithOutput` runs the same
+output admission in the command's finalizer, after confirmed SQL completion and
+before the writer lock is released. No other writer can then advance the
+generation between a command's commit and its acknowledgment, and the peer is
+not left with an unknown outcome for a command that committed. The exact
+authority, owner, certificate and deadline comparisons are unchanged, and a
+refused or failed output still reports the completion separately. An image
+read keeps the two-step form: a newer generation must never be answered with
+an older image.
 `replica.NewMemberServer` mounts this boundary for the image and forwarded-command
 HTTP paths. Root assembly (`prepareMemberServices` in `cmd/kudurru`) installs it
 on the enrolled listener with the root command executor. The legacy `NewServer`
@@ -983,7 +995,9 @@ exclusion through explicit flush. A synchronous command handler retains domain
 and dependency pins around `CommandService` with `SQLiteMemberAtomic`, then emits
 inside `WithCommandOutput`. That scope requires an actual command receipt; image
 completion cannot authorize a command acknowledgment. Dedup and domain changes
-share the same original transaction.
+share the same original transaction. The root's scoped executor stages the
+command with `StageSQLite` inside `MemberCommandWithOutput` instead, so its
+acknowledgment leaves under the writer exclusion of the command's own commit.
 
 `providercoordinator.WithMemberCommandOutput` supplies a separate bounded
 composition for a trusted root domain callback. It holds publication, provider
@@ -1066,7 +1080,10 @@ restart a timer. It validates current effective configuration and stages the
 canonical status and dedup result in the same concrete transaction.
 
 The handler retains the original running writer, provider/host exclusions and
-verified credential lifetime through one Store-admitted HTTP response. Exact
+verified credential lifetime through one Store-admitted HTTP response, which
+the Store emits before it releases the writer lock of the command's commit.
+Writers that take no publication gate, such as status reconciliation, wait for
+that response instead of withholding it. Exact
 authorized duplicates return the retained outcome without reapplying their now
 stale precondition; new commands must satisfy their original version, including
 no-ops. The receipt reports actual completion with publication `pending`, and the
@@ -1117,7 +1134,7 @@ sequenceDiagram
     F->>F: Normalize document, early admission, capture source (30 s)
     F->>P: objects.write (member mTLS, raw credential proof)
     P->>P: Same command body, exact reauthorization, effect + audit + dedup
-    P-->>F: Outcome: committed object or exact refusal
+    P-->>F: Outcome before the writer lock is released: committed object or exact refusal
     F-->>C: Primary's public result (served locally after the next pull)
 ```
 

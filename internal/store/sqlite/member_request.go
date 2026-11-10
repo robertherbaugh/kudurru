@@ -284,7 +284,41 @@ func (r *MemberRequest) ReadImage() (_ *replication.Image, result error) {
 // never samples a replacement WriterToken. Domain authentication, authorization,
 // mutation and dedup must use fn's CommandTx. Callers retain their original
 // external dependency exclusions through completion and subsequent output.
+// The writer exclusion is released at completion: a later WithCommandOutput
+// refuses when any other commit came first. A caller that acknowledges the
+// command to its peer uses MemberCommandWithOutput instead.
 func (s *Store) MemberCommand(ctx context.Context, r *MemberRequest, fn func(context.Context, *CommandTx) error) error {
+	return s.memberCommand(ctx, r, fn, nil)
+}
+
+// MemberCommandWithOutput is MemberCommand and WithCommandOutput under ONE
+// writer exclusion. emit runs in the command's finalizer, after the actual SQL
+// completion and before wmu is released, so no other writer can advance the
+// generation between this command's commit and its acknowledgment. Output
+// admission is WithCommandOutput's, unchanged: the exact resulting authority,
+// the original owner, peer certificate and deadline are all compared again, and
+// a refused output is withheld. committed reports actual successful completion
+// (including a no-op) independently of a later output refusal, cancellation or
+// transport error; it is never a reason to replay. emit obeys WithOutput's
+// contract and must return before any other Store call can proceed.
+func (s *Store) MemberCommandWithOutput(ctx context.Context, r *MemberRequest, fn func(context.Context, *CommandTx) error, emit func(context.Context) error) (bool, error) {
+	if emit == nil {
+		return false, enrollment.ErrRefused
+	}
+	emission := &memberEmission{emit: emit}
+	err := s.memberCommand(ctx, r, fn, emission)
+	return emission.committed, err
+}
+
+// memberEmission carries one acknowledgment into the command that it follows.
+type memberEmission struct {
+	emit      func(context.Context) error
+	committed bool
+}
+
+type memberEmissionKey struct{}
+
+func (s *Store) memberCommand(ctx context.Context, r *MemberRequest, fn func(context.Context, *CommandTx) error, emission *memberEmission) error {
 	if r == nil || r.original == nil || r.original.s != s || ctx == nil || fn == nil {
 		return enrollment.ErrRefused
 	}
@@ -308,11 +342,29 @@ func (s *Store) MemberCommand(ctx context.Context, r *MemberRequest, fn func(con
 		cancel()
 	}()
 	ctx = context.WithValue(WithWriterToken(ctx, writer), memberRequestKey{}, o)
+	if emission != nil {
+		ctx = context.WithValue(ctx, memberEmissionKey{}, emission)
+	}
 	err = s.Command(ctx, o.authority.Term, fn)
 	if err != nil {
 		o.state.Store(memberTerminal)
 	}
 	return err
+}
+
+// finish runs in Command's finalizer for a completed member command, while wmu
+// is still held. Only confirmed completion reaches it; a proposal or a callback
+// return cannot. The acknowledgment is admitted exactly as a later
+// WithCommandOutput would admit it, without the release in between.
+func (e *memberEmission) finish(r *memberRequest) error {
+	if !r.state.CompareAndSwap(memberComplete, memberOutput) {
+		return enrollment.ErrRefused
+	}
+	defer r.state.Store(memberTerminal)
+	if err := r.ctx.Err(); err != nil {
+		return r.refuse(err)
+	}
+	return r.outputHeld(true, e.emit)
 }
 
 func (t *CommandTx) enterMember(ctx context.Context) error {
@@ -391,31 +443,37 @@ func (r *MemberRequest) withOutput(requireCommand bool, emit func(context.Contex
 		return err
 	}
 	defer o.s.wmu.Unlock()
-	if err := o.check(); err != nil {
+	return o.outputHeld(requireCommand, emit)
+}
+
+// outputHeld admits and runs one output. The caller holds wmu and has moved
+// the request to memberOutput.
+func (r *memberRequest) outputHeld(requireCommand bool, emit func(context.Context) error) error {
+	if err := r.check(); err != nil {
 		return err
 	}
-	completed := o.completed.Load()
-	if completed == nil || requireCommand && !completed.command || !reflect.DeepEqual(o.s.Authority(), completed.authority) {
+	completed := r.completed.Load()
+	if completed == nil || requireCommand && !completed.command || !reflect.DeepEqual(r.s.Authority(), completed.authority) {
 		return replication.ErrCAS
 	}
-	tx, err := o.s.r.BeginTx(o.ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := r.s.r.BeginTx(r.ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := o.checkOwner(o.ctx, tx); err != nil {
+	if err := r.checkOwner(r.ctx, tx); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	if err := o.check(); err != nil {
+	if err := r.check(); err != nil {
 		return err
 	}
-	outputCtx, cancel := context.WithDeadline(o.ctx, o.deadline)
+	outputCtx, cancel := context.WithDeadline(r.ctx, r.deadline)
 	defer cancel()
-	if err := emit(context.WithValue(outputCtx, memberOutputKey{}, o)); err != nil {
+	if err := emit(context.WithValue(outputCtx, memberOutputKey{}, r)); err != nil {
 		return err
 	}
-	return o.check()
+	return r.check()
 }

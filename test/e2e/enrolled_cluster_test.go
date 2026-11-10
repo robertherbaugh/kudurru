@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -416,38 +417,50 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 			return found == want
 		}
 	}
-	var applied api.List[api.ApplyResult]
-	apiB.request(t, http.MethodPost, "/apply", []any{listDoc("via-apply")}, http.StatusOK, &applied)
-	if len(applied.Items) != 1 || applied.Items[0].Result != api.ResultCreated || applied.Items[0].ErrorKey != "" || applied.Items[0].ResourceVersion == "" {
-		t.Fatalf("apply through the follower did not commit: %+v", applied.Items)
+	// `kudurru apply` of two new documents is two exchanges in one request,
+	// each answered with the primary's committed result. The second document
+	// follows the first at once, while the primary reconciles the object that
+	// the first one created. The primary answers under the writer exclusion of
+	// a command's own commit, so that reconciliation cannot make the follower
+	// report completion_unknown for a document that committed. Each request
+	// starts right after the follower converged: its next pull, which would
+	// refuse the request's remaining documents, is seconds away.
+	const applyRounds = 4
+	var appliedRecords []string
+	for round := range applyRounds {
+		list, record, address := fmt.Sprintf("via-apply-%d", round), fmt.Sprintf("applied-%d", round), fmt.Sprintf("192.0.2.%d", 60+round)
+		var applied api.List[api.ApplyResult]
+		apiB.request(t, http.MethodPost, "/apply", []any{listDoc(list), recordDoc(record, address)}, http.StatusOK, &applied)
+		if len(applied.Items) != 2 {
+			t.Fatalf("two-document apply through the follower lost a per-document result: %+v", applied.Items)
+		}
+		for _, item := range applied.Items {
+			if item.Result != api.ResultCreated || item.ErrorKey != "" || item.Error != "" || item.ResourceVersion == "" {
+				t.Fatalf("round %d: apply of two new documents through the follower did not answer both as committed: %+v", round, applied.Items)
+			}
+		}
+		enrolledProcessRead(t, apiA, "/blocklists", hasList(list, true))
+		enrolledProcessRead(t, apiB, "/blocklists", hasList(list, true))
+		awaitDNS(primary, record, address, dns.RcodeSuccess)
+		awaitDNS(follower, record, address, dns.RcodeSuccess)
+		appliedRecords = append(appliedRecords, record)
 	}
-	enrolledProcessRead(t, apiA, "/blocklists", hasList("via-apply", true))
-	enrolledProcessRead(t, apiB, "/blocklists", hasList("via-apply", true))
-	// Two documents are two exchanges in one request, each with its own
-	// result. The first is already stored, so it writes nothing on the primary:
-	// the primary withholds its acknowledgment (completion_unknown) from a
-	// write when its state advances again before the answer, as it does while
-	// it reconciles a document just created by the same request.
-	apiB.request(t, http.MethodPost, "/apply", []any{listDoc("via-apply"), recordDoc("applied", "192.0.2.49")}, http.StatusOK, &applied)
-	if len(applied.Items) != 2 || applied.Items[0].Result != api.ResultUnchanged || applied.Items[1].Result != api.ResultCreated ||
-		applied.Items[0].ErrorKey != "" || applied.Items[1].ErrorKey != "" || applied.Items[1].ResourceVersion == "" {
-		t.Fatalf("two-document apply through the follower lost a per-document result: %+v", applied.Items)
-	}
-	awaitDNS(primary, "applied", "192.0.2.49", dns.RcodeSuccess)
-	awaitDNS(follower, "applied", "192.0.2.49", dns.RcodeSuccess)
 	apiB.request(t, http.MethodPut, "/blocklists/default/via-editor", listDoc("via-editor"), http.StatusCreated, nil)
 	enrolledProcessRead(t, apiA, "/blocklists", hasList("via-editor", true))
 	enrolledProcessRead(t, apiB, "/blocklists", hasList("via-editor", true))
 	apiB.request(t, http.MethodDelete, "/blocklists/default/via-editor", nil, http.StatusNoContent, nil)
 	enrolledProcessRead(t, apiA, "/blocklists", hasList("via-editor", false))
 	enrolledProcessRead(t, apiB, "/blocklists", hasList("via-editor", false))
+	// Batch deletion sends one command for each name and answers each.
 	var removed api.Processed
-	apiB.request(t, http.MethodPost, "/dnsrecordsets:batchDelete", map[string]any{"names": []string{"applied"}}, http.StatusOK, &removed)
-	if len(removed.Processed.Success) != 1 || len(removed.Processed.Errors) != 0 {
-		t.Fatal("batch deletion through the follower did not commit")
+	apiB.request(t, http.MethodPost, "/dnsrecordsets:batchDelete", map[string]any{"names": appliedRecords}, http.StatusOK, &removed)
+	if len(removed.Processed.Success) != len(appliedRecords) || len(removed.Processed.Errors) != 0 {
+		t.Fatalf("batch deletion through the follower did not answer every name as committed: %+v", removed.Processed)
 	}
-	awaitDNS(primary, "applied", "", dns.RcodeNameError)
-	awaitDNS(follower, "applied", "", dns.RcodeNameError)
+	for _, record := range appliedRecords {
+		awaitDNS(primary, record, "", dns.RcodeNameError)
+		awaitDNS(follower, record, "", dns.RcodeNameError)
+	}
 	relay.partition(true)
 	if !checkDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess) {
 		t.Fatal("partition interrupted valid local DNS")

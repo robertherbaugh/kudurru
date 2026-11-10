@@ -11,7 +11,8 @@ import (
 )
 
 // WithMemberCommandOutput retains publication -> resource -> host exclusions
-// through the original MemberCommand and its one Store-admitted response.
+// through the original member command and its one Store-admitted response,
+// which the Store emits under the writer exclusion of that command's commit.
 // committed means actual successful command completion (including a no-op),
 // independently of later cancellation, output refusal or a transport error.
 //
@@ -20,7 +21,7 @@ import (
 // Root also retains the original credential bounds through emit. emit may only
 // write and explicitly flush its prepared response under the supplied deadline;
 // it must interrupt canceled I/O, never reenter Store, acquire locks, wait for
-// publication or call MemberRequest.WithCommandOutput again. No callback may
+// publication or call MemberRequest.WithCommandOutput. No callback may
 // escape this synchronous scope. Authority/dependency replacements use their
 // separate exclusive protocols, not this ordinary member-command path.
 func (c *Coordinator) WithMemberCommandOutput(ctx context.Context, target serving.TermActivation, request *sqlite.MemberRequest, fn CurrentCommandFunc, emit func(context.Context) error) (committed bool, result error) {
@@ -59,7 +60,12 @@ func (c *Coordinator) WithMemberCommandOutput(ctx context.Context, target servin
 				}
 				operation, cancel := context.WithDeadline(ctx, deadline)
 				defer cancel()
-				err = c.opts.Store.MemberCommand(operation, request, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				// The acknowledgment leaves under the writer exclusion of the
+				// command's own commit. A writer that does not take the
+				// publication gate, such as a status reconciler, therefore
+				// cannot advance the generation in between and turn a
+				// committed command into an unknown outcome for the peer.
+				committed, err = c.opts.Store.MemberCommandWithOutput(operation, request, func(ctx context.Context, tx *sqlite.CommandTx) error {
 					registry, err := registryCurrent(ctx, tx)
 					if err != nil {
 						return err
@@ -80,28 +86,23 @@ func (c *Coordinator) WithMemberCommandOutput(ctx context.Context, target servin
 					auth.ExpectedIdentity = auth.Identity
 					auth.ConfigProviders, auth.ProviderResources = deps.ConfigProviders, deps.ProviderResources
 					return fn(ctx, tx, auth)
-				})
-				if err != nil {
-					return err
-				}
-				committed = true
-				if !host.ValidUntil.IsZero() && host.ValidUntil.Before(deadline) {
-					deadline = host.ValidUntil
-				}
-				output, cancelOutput := context.WithDeadline(operation, deadline)
-				defer cancelOutput()
-				check := func() error {
-					if err := c.writerCurrent(output, target); err != nil {
-						return err
+				}, func(original context.Context) error {
+					if !host.ValidUntil.IsZero() && host.ValidUntil.Before(deadline) {
+						deadline = host.ValidUntil
 					}
-					if !c.hostCurrent(host) {
-						return ErrStale
+					output, cancelOutput := context.WithDeadline(operation, deadline)
+					defer cancelOutput()
+					check := func() error {
+						if err := c.writerCurrent(output, target); err != nil {
+							return err
+						}
+						if !c.hostCurrent(host) {
+							return ErrStale
+						}
+						return pin.CurrentAt(c.opts.Now())
 					}
-					return pin.CurrentAt(c.opts.Now())
-				}
-				return request.WithCommandOutput(func(original context.Context) error {
 					// A separately carried command context must not detach the
-					// original peer cancellation after MemberCommand returns.
+					// original peer cancellation after the command completes.
 					// Keep both contexts joined until actual emission has ended.
 					// Derive from the Store-issued context so the transport can
 					// authenticate this exact active output scope. Join the root
@@ -126,6 +127,7 @@ func (c *Coordinator) WithMemberCommandOutput(ctx context.Context, target servin
 					}
 					return check()
 				})
+				return err
 			})
 		})
 	})

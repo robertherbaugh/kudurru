@@ -47,6 +47,7 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 		return err
 	}
 	output, _ := ctx.Value(commandOutputKey{}).(*commandOutputInvocation)
+	var emission *memberEmission
 	if output != nil {
 		if output.request == nil || output.request.s != s || output.emit == nil || output.request.state.Load() != commandOutputActive || ctx.Value(memberRequestKey{}) != nil || anchor != nil {
 			return replication.ErrInvalid
@@ -56,6 +57,9 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 		}
 	} else if member, ok := ctx.Value(memberRequestKey{}).(*memberRequest); ok {
 		if member == nil || member.s != s || member.state.Load() != memberActive {
+			return replication.ErrInvalid
+		}
+		if emission, _ = ctx.Value(memberEmissionKey{}).(*memberEmission); emission != nil && (emission.emit == nil || anchor != nil) {
 			return replication.ErrInvalid
 		}
 		if err := member.lock(ctx); err != nil {
@@ -80,6 +84,9 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 		if t != nil && t.member != nil {
 			if succeeded && result == nil && (sqlBoundary.outcome == AnchorCommitted || sqlBoundary.outcome == AnchorUnchanged) {
 				t.member.complete(s.Authority(), true)
+				if emission != nil {
+					emission.committed = true
+				}
 			} else {
 				t.member.state.Store(memberTerminal)
 				if sqlBoundary.outcome == AnchorUnknown {
@@ -114,6 +121,11 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 		}
 		if output != nil {
 			output.finish(ctx, succeeded, sqlBoundary, &result)
+		}
+		if emission != nil && emission.committed && result == nil {
+			// The acknowledgment of a member command leaves under the writer
+			// exclusion of its own commit, like a local command's output.
+			result = emission.finish(t.member)
 		}
 	}()
 	a, err := s.checkWriter(ctx, tx)

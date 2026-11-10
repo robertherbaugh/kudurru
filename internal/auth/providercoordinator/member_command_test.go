@@ -7,6 +7,7 @@ import (
 	"net"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -356,5 +357,83 @@ func TestMemberCommandOutputRetainsOriginalPeerCancellationDuringEmission(t *tes
 	})
 	if !entered || !committed || !errors.Is(err, context.Canceled) {
 		t.Fatal("original cancellation lost", entered, committed, err)
+	}
+}
+
+// observedContext runs a test callback wherever the Store consults the
+// original peer request directly: before it queues for the writer exclusion to
+// admit a separate output, or under that exclusion when the output belongs to
+// the command.
+type observedContext struct {
+	context.Context
+	observe func()
+}
+
+func (c observedContext) Err() error { c.observe(); return c.Context.Err() }
+
+// A writer that takes no publication gate, such as a status reconciler, cannot
+// come between a member command's commit and its acknowledgment. The peer
+// would otherwise learn nothing about a command that committed.
+func TestMemberCommandOutputAcknowledgesBeforeAnUngatedWriter(t *testing.T) {
+	f := newMemberOutputFixture(t)
+	ctx, target := writer(t, f.store)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	otherCtx, other := ctx, make(chan error, 1)
+	var queued, acknowledged atomic.Bool
+	sawAcknowledged := false
+	original := observedContext{Context: ctx, observe: func() {
+		// Once the command has staged its effect, give the queued writer
+		// every chance to commit before the acknowledgment is admitted.
+		if !queued.Load() || acknowledged.Load() {
+			return
+		}
+		select {
+		case err := <-other:
+			other <- err
+		case <-time.After(100 * time.Millisecond):
+		}
+	}}
+	request, err := f.store.CaptureMemberRequest(original, target.Term.ClusterID, f.remote, &f.connection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := f.store.ReadGeneration(t.Context())
+	committed, err := f.coordinator.WithMemberCommandOutput(ctx, target, request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+		if err := f.authorize(ctx, tx, deps); err != nil {
+			return err
+		}
+		if err := tx.PutSection(ctx, "dedup", replication.Entry{Key: "member-output", Data: []byte(`{"ok":true}`)}); err != nil {
+			return err
+		}
+		go func() {
+			other <- f.store.Command(otherCtx, target.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				sawAcknowledged = acknowledged.Load()
+				return tx.PutSection(ctx, "runtime", replication.Entry{Key: "status", Data: []byte(`{}`)})
+			})
+		}()
+		queued.Store(true)
+		return nil
+	}, func(output context.Context) error {
+		if err := request.CheckCommandOutput(output); err != nil {
+			return err
+		}
+		acknowledged.Store(true)
+		return nil
+	})
+	if !committed || err != nil || !acknowledged.Load() {
+		t.Fatal("a committed member command was not acknowledged", committed, err)
+	}
+	select {
+	case err := <-other:
+		if err != nil || !sawAcknowledged {
+			t.Fatal("the other writer did not follow the acknowledgment", sawAcknowledged, err)
+		}
+	case <-ctx.Done():
+		t.Fatal("the other writer never proceeded")
+	}
+	after, _ := f.store.ReadGeneration(t.Context())
+	if after.Revision != before.Revision+2 {
+		t.Fatal("wrong durable outcome", before.Revision, after.Revision)
 	}
 }
