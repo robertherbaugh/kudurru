@@ -2152,7 +2152,7 @@
                   {
                     "value": "zonegroup",
                     "label": "Zone group",
-                    "help": "The role applies to the zone group named in scope.name (reserved: zone groups arrive in v0.2)."
+                    "help": "The role applies to the zone group named in scope.name (reserved: zone groups are not implemented, so a binding with this scope grants nothing)."
                   },
                   {
                     "value": "clientgroup",

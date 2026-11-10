@@ -65,7 +65,8 @@ type ServiceAccountList struct {
 // BindingScope narrows a role binding (§8.5).
 // +kubebuilder:validation:XValidation:rule="!has(self.kind) || self.kind == 'cluster' ? !has(self.name) || self.name.size() == 0 : has(self.name) && self.name.size() > 0",message="cluster scope has no name; other scopes require a name"
 type BindingScope struct {
-	// Kind is cluster, zone, zonegroup (v0.2) or clientgroup (reserved).
+	// Kind is cluster or zone. zonegroup and clientgroup are reserved: they are
+	// accepted, but no request carries such a scope, so the binding grants nothing.
 	// +kubebuilder:validation:Enum=cluster;zone;zonegroup;clientgroup
 	// +optional
 	Kind string `json:"kind,omitempty"`

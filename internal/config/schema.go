@@ -159,7 +159,7 @@ var (
 	bindingScopes = []Option{
 		{Value: "cluster", Label: "Cluster", Help: "The role applies everywhere."},
 		{Value: "zone", Label: "Zone", Help: "The role applies to the zone named in scope.name."},
-		{Value: "zonegroup", Label: "Zone group", Help: "The role applies to the zone group named in scope.name (reserved: zone groups arrive in v0.2)."},
+		{Value: "zonegroup", Label: "Zone group", Help: "The role applies to the zone group named in scope.name (reserved: zone groups are not implemented, so a binding with this scope grants nothing)."},
 		{Value: "clientgroup", Label: "Client group", Help: "The role applies to the client group named in scope.name (reserved for v1.0)."},
 	}
 	subjectKinds = []Option{

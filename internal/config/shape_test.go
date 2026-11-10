@@ -348,6 +348,31 @@ func TestRBACRolesMatchPermissions(t *testing.T) {
 	}
 }
 
+// TestReservedBindingScopeHelp: no request carries a zonegroup or clientgroup
+// scope (internal/rbac only matches a binding scope against the cluster and
+// zone scopes that routes present), so a binding with one of them grants
+// nothing. The help must say that the scope is reserved, and it must not name
+// the v0.2 line: "zone groups arrive in v0.2" shipped in the v0.2.0 schema
+// although zone groups do not exist.
+func TestReservedBindingScopeHelp(t *testing.T) {
+	seen := 0
+	for _, o := range bindingScopes {
+		if o.Value != "zonegroup" && o.Value != "clientgroup" {
+			continue
+		}
+		seen++
+		if !strings.Contains(o.Help, "reserved") {
+			t.Errorf("scope %s: help does not say that the scope is reserved: %q", o.Value, o.Help)
+		}
+		if strings.Contains(o.Help, "v0.2") {
+			t.Errorf("scope %s: help promises the scope for v0.2: %q", o.Value, o.Help)
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("found %d reserved scopes among %d binding scopes, want 2", seen, len(bindingScopes))
+	}
+}
+
 func TestFieldErrorsPaths(t *testing.T) {
 	err := validateWith(t, "querylog.sink", "kafka")
 	fes := FieldErrors(err)

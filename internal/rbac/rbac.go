@@ -21,12 +21,14 @@ var permissionsYAML []byte
 // ScopeKind is what a binding or attribute set is scoped to.
 type ScopeKind string
 
-// Scope kinds; the version in the comment is when the scope becomes bindable.
+// Scope kinds. Routes present cluster and zone scopes only. zonegroup and
+// clientgroup are reserved: a binding may name one, but no request carries
+// such a scope, so the binding grants nothing.
 const (
 	ScopeCluster     ScopeKind = "cluster"
 	ScopeZone        ScopeKind = "zone"
-	ScopeZoneGroup   ScopeKind = "zonegroup"   // v0.2
-	ScopeClientGroup ScopeKind = "clientgroup" // v1.0
+	ScopeZoneGroup   ScopeKind = "zonegroup"   // reserved
+	ScopeClientGroup ScopeKind = "clientgroup" // reserved, planned for v1.0
 )
 
 // Scope narrows a binding.
