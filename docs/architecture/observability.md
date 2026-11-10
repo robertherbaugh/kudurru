@@ -9,7 +9,7 @@ Three signals, three homes, and none of them goes through the store:
 | **Health** | can this node take traffic now? | `:8081/healthz/*` |
 
 Plus the **audit** trail of who changed what. Code: `internal/stages/log`,
-`internal/querylog` (collector, privacy, tail) and
+`internal/querylog` (collector, privacy, tail, additional-sink host) and
 `internal/querylog/sqlitelog` (writer, rollups, retention, reader),
 `internal/metrics`, `internal/health`, `internal/audit`.
 
@@ -97,9 +97,13 @@ flowchart LR
     CH --> COL["collector (one goroutine)<br/>exclusions, privacy mode,<br/>stamp the ID"]
     COL --> TAIL["live tail<br/>ring of 65 536 + SSE subscribers"]
     COL --> BATCH["batch: 1000 events or 1 s"]
-    PUB["original DNS publication<br/>enabled, sink, privacy owner"] -.-> OBS
+    PUB["original DNS publication<br/>enabled, sink, privacy owner,<br/>additional sinks"] -.-> OBS
     BATCH -->|"captured SQLite sink"| DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups + domain/hour index, one transaction")]
     BATCH -->|"captured slog sink"| SLOG["structured logger"]
+    COL -->|"non-blocking offer,<br/>after privacy"| SQ[["one bounded queue per<br/>querylog.sinks entry<br/>10 000 events"]]
+    SQ -->|"full: drop and count"| SDROP["kudurru_querylog_dropped_total<br/>{stage=sink, sink=name}"]
+    SQ --> SW["one goroutine per sink<br/>batch, timeout, bounded attempts"]
+    SW --> EXT["additional sink<br/>(log lines today)"]
     TAIL --> API["dashboard: live tail,<br/>block page reasons"]
     DB --> API2["dashboard: query log,<br/>stats, top lists,<br/>bounded JSON export"]
 ```
@@ -127,7 +131,7 @@ sink. DNS admission never waits for sink preparation, writes or final drain.
 
 The root prepares sinks before accepting a complete publication. Failure keeps
 the previous coherent DNS/logging bundle and reports unavailable readiness.
-There is at most one slog sink and one lazily opened SQLite writer. Once opened,
+The primary route has at most one slog sink and one lazily opened SQLite writer. Once opened,
 local history, purge, retention, maintenance and configured central shipping keep
 that writer through disabled/slog modes. A disabled or slog restart opens retained
 local history too; a missing database remains lazy unless enabled SQLite needs
@@ -138,6 +142,77 @@ context, then closes SQLite after the consumer joins. A timed-out batch is
 canceled and counted, never replayed at a successor sink. The caller returns on
 its deadline even if an external slog handler ignores cancellation; that single
 pending consumer keeps its sink and is not replaced or closed underneath I/O.
+
+### Additional sinks
+
+`querylog.sinks` lists up to eight additional destinations that receive every
+recorded query next to the primary sink (`querylog.sink`). The collector
+remains the only reader of the hand-off queue. After it has applied the
+exclusions and the privacy mode, stamped the ID and published to the tail, it
+offers the same immutable event to the queue of each additional sink without
+waiting. Everything behind that offer belongs to the one sink
+(`internal/querylog/sinkhost.go`, decision D371):
+
+| Per sink | Default | What it bounds |
+|---|---|---|
+| `queueSize` | 10 000 events | memory; when the queue is full the event is dropped for this sink only and counted |
+| `batchSize`, `flushInterval` | 1000 events, 1 s | one write per batch or interval, whichever comes first |
+| `timeout` | 10 s | opening the destination and each write attempt |
+| `attempts`, `retryBackoff` | 3, 1 s doubling to 30 s | how often one batch is written when the destination says it was not stored and may be sent again |
+
+A slow, stalled or failing sink therefore cannot delay a DNS answer, the
+SQLite commit or the live tail: the query path only ever does the
+non-blocking hand-off to the collector, and the collector only ever does a
+non-blocking offer to a sink queue. The sink's goroutine is the only thing
+that waits for the destination. While it waits, its own queue fills and its
+own overflow is counted.
+
+A batch is written again only when the sink reports that the destination did
+not apply it (a refused connection, an explicit "try again", optionally with
+the wait the destination asked for). Any other failure has an unknown outcome
+and drops the batch at once; it is never replayed and never moved to another
+sink. An exhausted attempt budget drops the batch too. Every drop is counted
+in `kudurru_querylog_dropped_total{stage="sink",sink="<name>"}` and logged at
+the first loss and at each tenfold total.
+
+The privacy transform runs before the sink queues, so an additional sink
+never holds or sees an untransformed event, and an excluded query never
+enters a sink queue. Under `nothing` no per-query event is offered to an
+additional sink, the rule the live tail follows. `querylog.enabled: false`
+stops every sink. Events carry no DNS wire data; a raw export is a separate
+audited contract and not part of this host.
+
+Sinks follow the captured-publication model of the primary sink. Preparing a
+configuration builds the sink objects but opens nothing; a sink is opened
+from its own goroutine when the first event reaches it, and reopened with
+backoff while the destination is down, so an unreachable exporter never
+delays startup or a reload. Every prepared route holds one reference on each
+of its sinks:
+
+- an entry that did not change keeps its queue, goroutine and connection
+  across reloads and publications;
+- a new entry starts with the first query answered under a publication that
+  names it, and is never fed from the tail or from `querylog.db`;
+- an entry that is removed, or changed in any field, stops accepting once the
+  last publication that named it is released and the collector has offered it
+  everything that was already queued; it then writes what its queue holds
+  within five seconds, counts the rest, and closes.
+
+Removal takes effect for new queries at once: they are answered under the new
+publication, which does not name the sink. The close follows the release of
+the older publication, so a request that still holds it (a held DNS query, or
+an open dashboard stream on the complete SQLite runtime) delays the close and
+keeps the sink's series visible, but sends it nothing new.
+
+Shutdown drains the collector first, then closes `querylog.db` while the
+additional sinks drain beside it under the same deadline. A sink that ignores
+cancellation keeps its goroutine and is never closed under its own write.
+
+The only type today is `slog` (one structured log line per query next to the
+database, at most one, and not together with `querylog.sink: slog`). The
+settings schema accepts exactly the types the server can build.
+[Additional query-log sinks](../deploy/query-log-sinks.md) is the operator
+guide.
 
 **Privacy is applied once, at the collector**, before anything is stored or
 shown: `full`, `anonymize_client` (a /24 or /48 prefix, or a daily
@@ -254,6 +329,7 @@ never client addresses or query names.
 | Control plane | `kudurru_leader`, `kudurru_controller_reconcile_duration_seconds`, `kudurru_objects_diagnoses` |
 | Blocking | `kudurru_blocking_enabled`, `kudurru_blockpage_requests_total` |
 | Query log | `kudurru_querylog_events_total`, `kudurru_querylog_dropped_total{stage,sink}`, `kudurru_querylog_db_bytes`, `kudurru_querylog_write_duration_seconds` |
+| Additional query-log sinks | `kudurru_sink_sent_total{sink}`, `kudurru_sink_errors_total{sink}` (failed attempts to open, write, flush or close), `kudurru_sink_queue_length{sink}`, `kudurru_sink_last_success_timestamp_seconds{sink}`; one series per configured `querylog.sinks` name, removed with the sink |
 | API | `kudurru_api_requests_total`, `kudurru_api_request_duration_seconds` |
 | Edge and VIP | `kudurru_edge_renders_total`, `kudurru_edge_dnsdist_restarts_total`, `kudurru_edge_backend_up`, `kudurru_vip_master` (on the supervisors' own ports) |
 
