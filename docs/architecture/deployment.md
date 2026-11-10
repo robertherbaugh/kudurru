@@ -15,6 +15,7 @@ container.
 | Kubernetes | kube (CRDs) | every replica (Deployment ≥ 2) | Lease holder | `deploy/helm/kudurru`, `deploy/kustomize/` |
 | Kubernetes standalone | sqlite on a PVC | 1 (StatefulSet) | itself | `deploy/helm/kudurru` `mode: standalone` |
 | Compose HA (static twins) | sqlite on each node | every node, behind dnsdist, one VIP | each node for itself | `deploy/compose/ha/node-{a,b,c}` |
+| Enrolled SQLite primary and followers | sqlite on each member; followers install the primary's complete image | every member | the enrolled primary | no shipped example; [join guide](../deploy/sqlite-join.md) |
 
 Operator docs: [deploy/](../deploy/README.md). This page shows how the
 pieces talk to each other.
@@ -378,14 +379,44 @@ In Kubernetes without a VIP, the Service follows readiness on `:8081`, the
 lameduck `preStop` drains a pod before it stops, and the edge re-renders
 within 5 s of an EndpointSlice change.
 
-## Not built yet
+## Twins, enrolled members and what is not built
 
 `kudurru serve` does not write the keepalived weight file itself (only
 `kudurru vip drain` and `vip rebalance` do), so "prefer-not" (weight 60) is
-unused. The compose twins have no read-only mode, and a zone transfer from
-twins should name one node, because each twin stamps its own serials. The
-follower driver (v0.2) and raft (v1.0) replace twins with one writable
-primary.
+unused.
+
+Static twins (`cluster.role: static`) are read-only through the API: object,
+cluster-setting, credential and provider mutations answer `503 read_only`, and
+configuration changes arrive through the files distributed to every node.
+A zone transfer from twins should name one node, because each twin keeps its
+own database and stamps its own serials.
+
+An enrolled SQLite cluster is the alternative with one writable primary:
+followers install the primary's complete image over member mutual TLS and
+answer DNS from it, a follower forwards a fixed set of typed commands to the
+primary, and promotion is a reviewed operator command, never automatic
+([SQLite replication](configuration-and-store.md#sqlite-replication-foundation),
+[join guide](../deploy/sqlite-join.md)). A fenced or conflicted member keeps
+answering DNS from its last good image while its API stays closed. There is no
+`raft` store driver.
+
+```mermaid
+flowchart LR
+    subgraph twins["Static twins"]
+        direction TB
+        Files["Identical distributed files"] --> TwinA["Node A: own state.db, own leader"]
+        Files --> TwinB["Node B: own state.db, own leader"]
+        TwinWrite["API write"] --> ReadOnly["503 read_only"]
+    end
+    subgraph enrolled["Enrolled SQLite cluster"]
+        direction TB
+        FollowerWrite["Forwarded API command on a follower"] --> Typed["Typed command, member mTLS"]
+        Typed --> Primary["Primary: commit + audit"]
+        Primary --> Image["Complete image"]
+        Image --> Followers["Followers install and answer DNS"]
+        Operator["Operator: reviewed promotion"] --> Followers
+    end
+```
 
 ### Service-provider annotations
 
@@ -401,7 +432,8 @@ MetalLB sharing key for externally managed address allocation.
 The named chart annotation helper is checked against the Go ServiceProvider
 annotation contract across direct, sidecar, separate Deployment and DaemonSet
 edge topologies. These annotations request allocation; they do not prove which
-node currently announces an address. Owner observation remains a separate task.
+node currently announces an address. Owner observation is the separate
+read-only path described next.
 
 ### Read-only Service VIP ownership
 

@@ -361,12 +361,12 @@ erDiagram
 
 | Kind | Scope | Public or internal | Purpose |
 |---|---|---|---|
-| `DNSZone` | cluster | public (CRD) | authority over a name: primary or forward |
+| `DNSZone` | cluster | public (CRD) | authority over a name: primary, forward, secondary or stub |
 | `DNSRecordSet` | namespaced | public | records (external-dns `Endpoint` shape) added to a zone |
 | `BlockList` | namespaced | public | block or allow rules from sources |
 | `ClientGroup` | namespaced | public | who a client is |
-| `Integration` | namespaced | public | provider settings and credential references; execution host in progress |
-| `Kudurru` | cluster, name `default` | public | generated cluster settings and replicated blocking status; serving integration in progress |
+| `Integration` | namespaced | public | provider settings and credential references; the execution host runs on the complete SQLite runtime ([integrations](integrations.md)) |
+| `Kudurru` | cluster, name `default` | public | canonical cluster settings and replicated blocking status on the complete SQLite runtime; Kubernetes keeps the settings ConfigMap flow ([Settings](#settings)) and its own blocking runtime state |
 | `Policy` | namespaced | public | what a group gets: lists, schedule, upstream group, safe search |
 | `UnblockRequest` | namespaced | public | a block-page request and its decision |
 | `DHCPScope` | cluster | public | a DHCPv4 pool, its options, relays and reservations (served with the Kubernetes store, D180) |
@@ -632,8 +632,8 @@ apiserver outage.
 stateDiagram-v2
     direction LR
     [*] --> Follower
-    Follower --> Leader: wins the Lease (kube)<br/>or at once (sqlite)
-    Leader --> Follower: lease not renewed within 10 s
+    Follower --> Leader: wins the Lease (kube)<br/>or holds write authority (sqlite)
+    Leader --> Follower: lease not renewed within 10 s (kube)<br/>or authority fenced or replaced (sqlite)
     state Leader {
         [*] --> running
         running: controller, notifier, list fetcher,<br/>unblock janitor, allow/deny sync, audit retention,<br/>central database janitor
@@ -645,6 +645,14 @@ stateDiagram-v2
 Leader loops are idempotent and level-triggered: they read the store, compare
 with the status, and write only the difference. A new leader picks up where
 the old one stopped without special hand-over.
+
+The SQLite elector follows durable write authority instead of a lease. A
+standalone node, and each static twin, leads itself from the start. In an
+enrolled cluster only the primary's authority is writable, so only it runs the
+leader-only loops; a follower starts them when a reviewed promotion makes it
+primary, and a primary stops them when it is fenced or records a conflict.
+Each leadership term carries its writer token, which every mutation checks
+again inside its transaction.
 
 ### The controller
 
@@ -765,7 +773,7 @@ sequenceDiagram
     participant R as reload subscribers
     SRC->>W: change (fsnotify + 10 s poll)
     W->>M: read both sources and ownership revision
-    M->>M: replace UI-owned sections; report file conflicts
+    M->>M: replace UI-owned sections#59; report file conflicts
     M->>W: validated effective cluster settings
     W->>R: log level, upstream groups (swap + cache flush),<br/>control, cache, blocking, block page, rate limiter,<br/>query log privacy, edge cache flush
 ```
@@ -791,11 +799,15 @@ loopback compatibility and refusal behavior.
 
 ## Not built yet
 
-Public forwarding beyond the blocking toggle and full partition/rejoin
-acceptance remain unfinished. Initial remote joining and reviewed operator
-promotion are mounted as described below. Retained enrolled followers mount
-the acquisition worker. The `raft` driver (v1.0) and a general `roles:` setting remain
-unmounted. Static file-managed twins
+The `raft` driver (v1.0) and a general `roles:` setting are not built, and a
+follower is never promoted automatically. The enrolled SQLite path below is
+mounted: first-primary activation, invitation issuance, initial remote
+joining, retained follower acquisition, reviewed operator promotion, peer
+authority observation and offline conflict resolution. An enrolled follower
+forwards a closed set of typed commands to its primary (the blocking toggle,
+canonical object writes, four zone commands and local password login); the
+paragraph on the root member-command executor below names what is not
+forwarded. Static file-managed twins
 and authenticated remote health reads are available separately. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
 for the plan.
 
@@ -805,8 +817,11 @@ Schema 2 adds durable member/authority metadata, owned extension sections and
 private recovery images. `internal/store/replication` defines a versioned
 complete logical image; it is separate from the YAML backup/apply format.
 `internal/store/follower` supplies a local-read facade and a bounded pull loop.
-The server transport, startup selection and coherent serving/authentication
-publication are being integrated; these packages alone do not enable HA.
+These packages alone do not enable HA: the complete SQLite runtime mounts them
+with the member transport, startup selection and coherent serving and
+authentication publication described in the rest of this section and in the
+enrollment subsections that start at
+[Explicit first-primary activation](#explicit-first-primary-activation).
 
 ### Per-member TLS identity foundation
 
@@ -840,12 +855,12 @@ flowchart LR
 ```
 
 The root listener below mounts retained enrolled identities. Reviewed operator
-join-token issuance and initial remote joining are mounted below; outgoing
-forwarding remains unfinished. Connection pools must be
+join-token issuance, initial remote joining and outgoing typed command
+forwarding are mounted below. Connection pools must be
 scoped to the exact original enrolled trust, never reused for a successor CA.
 
 `internal/cluster/enrollment` supplies the immutable owner and bounded wire
-formats that those mounts will use. An explicit owner retains up to 64 active
+formats that those mounts use. An explicit owner retains up to 64 active
 members, 256 permanent historical identities and 64 invitations in a canonical
 512 KiB document. Invitations carry a random 256-bit secret; only its
 purpose-separated hash enters the owner. Each invitation binds the original
@@ -948,7 +963,8 @@ uncertain command, source interposition, revocation or copied-handle replay
 cannot emit. Actual HTTP/1 and HTTP/2 mounts must flush protected bytes and 304
 headers within this scope; protocol end-of-stream framing follows handler return.
 `replica.NewMemberServer` mounts this boundary for the image and forwarded-command
-HTTP paths. Root listener/domain assembly remains separate. The legacy `NewServer`
+HTTP paths. Root assembly (`prepareMemberServices` in `cmd/kudurru`) installs it
+on the enrolled listener with the root command executor. The legacy `NewServer`
 retains its explicit error-only authorizer and is not enrolled production admission.
 
 The enrolled server acquires its concurrency slot and original finite deadline
@@ -1110,7 +1126,7 @@ flowchart TD
     N -->|"Legacy name"| L["Legacy TLS and token guard<br/>status/list routes"]
     N -->|"Unknown member name"| X["Refuse handshake"]
     M --> R["CaptureMemberRequest before body I/O<br/>original owner, peer and writer"]
-    R --> I["Complete image or typed blocking command"]
+    R --> I["Complete image or typed member command"]
     I --> O["Store-admitted bounded write and flush"]
 ```
 
@@ -1118,17 +1134,18 @@ Handshake trust does not grant request or domain authority. The existing request
 capture checks current local/remote enrollment and retains its original owner,
 writer and certificate lifetime through effects and output. Revocation therefore
 refuses subsequent requests on an established TLS connection as well as new
-handshakes. Outgoing image installation, remaining public command forwarding and full
-partition/rejoin acceptance remain separate work.
+handshakes. Outgoing image installation is the follower worker described under
+[Retained enrolled follower acquisition](#retained-enrolled-follower-acquisition);
+the public commands a follower forwards are the ones listed above.
 
 The output deadline also respects the original command expiration. Failed writes,
 flush errors, lost original admission and callback failures abort the HTTP stream
 rather than allowing handler-return buffering to emit protected bytes. After a
 command dispatch, an absent acknowledgment leaves the client's outcome unknown;
 it never triggers automatic replay. Generic early refusals carry no current or
-stale authority headers. Actual enrolled HTTP/1 and HTTP/2 tests cover the mount;
-operator/join routes, production domain policies and complete HA startup remain
-open.
+stale authority headers. Actual enrolled HTTP/1 and HTTP/2 tests cover the mount.
+The operator and join routes, the root domain executors and enrolled startup
+are described in the sections that follow.
 
 `replica.NewMemberClient` connects those identities to image and command
 exchanges. It requires the original resolver's exact member CA, rejects a local
@@ -1148,9 +1165,10 @@ window; it supplies no authority term, accepted image or success receipt. A fail
 connection without that verified handshake remains network-loss evidence.
 
 The existing `NewClient` is the shared-credential transport primitive used by
-legacy tests; it does not establish independent member identity. Root enrolled
-assembly must select `NewMemberClient` and supply the current membership owner
-and final membership/output exclusions. Those production mounts remain pending.
+legacy tests; it does not establish independent member identity. The production
+enrolled paths (follower acquisition, command forwarding, initial join and peer
+authority observation) select `NewMemberClient` and supply the current
+membership owner and final membership/output exclusions.
 
 Peer-image acquisition captures its finite lifetime, local member and detached
 token vector before resolving a peer. All body validation retains that original
@@ -1182,7 +1200,8 @@ success also requires that check. Expiry, revocation or cancellation rolls back
 the transition without publishing a new authority or watch lineage. This is
 commit admission: SQLite synchronization can outlast the proof's wall deadline.
 The callback cannot perform I/O, acquire locks, read Store or adopt a successor.
-These seams do not supply enrollment or a production operator route.
+Enrollment and the production operator route are separate mounts
+([Reviewed operator promotion](#reviewed-operator-promotion)).
 
 ```mermaid
 sequenceDiagram
@@ -1221,7 +1240,7 @@ and private documents. The receiver requires the complete registered-kind
 manifest and all owned sections, verifies the digest and bounded strict JSON,
 and validates copies without defaulting the source data. Node-local audit,
 secondary/stub copies, query logs and response caches remain local. Cluster
-settings have one designated future owner, `Kudurru/default`; the image carries
+settings have one designated owner, `Kudurru/default`; the image carries
 an owner reference, not a second settings map.
 
 Complete-image owner validators run after the generic envelope, row and digest
@@ -1257,14 +1276,16 @@ sequenceDiagram
     participant C as Member C (discarded branch)
     Note over B,C: Isolated promotions at epoch e+1, conflicting writes
     B->>C: Scheduled peer exchange (member mTLS)
-    Note over B,C: Both durably record Conflict; writes refused, DNS-only last-good
+    Note over B,C: Both durably record Conflict#59; writes refused, DNS-only last-good
     Note over B: Operator stops B, runs cluster resolution / resolve --offline
     Note over B: One transaction: quarantine, epoch e+2, audit cluster.resolve
     B->>C: Next scheduled exchange announces e+2
     Note over C: Fenced at e+2
     C->>B: Next pull fetches the complete image
     Note over C: Quarantines its own rows, installs and serves B's branch
-``` SQLite uses `synchronous=FULL` for all writer connections, including
+```
+
+SQLite uses `synchronous=FULL` for all writer connections, including
 reconnections and standalone databases. Restoring a public backup remains an
 apply operation subject to the same writer fence.
 
@@ -1417,7 +1438,10 @@ Clients use a subsequent GET for that observation. Dashboard receipt handling
 invalidates the local observation without replacing it with requested state;
 the CLI reports pending publication. Failed/expired output may follow a real
 commit, so clients must not interpret loss as rollback or automatically retry.
-Other public mutation domains remain closed on followers.
+Canonical object writes, four zone commands and local password login use the
+same member transport with their own typed executors (described with the root
+member-command executor above). Mutation domains outside that set are not
+forwarded.
 
 ```mermaid
 sequenceDiagram
@@ -1425,12 +1449,12 @@ sequenceDiagram
     participant F as Enrolled follower
     participant P as Enrolled primary
     U->>F: Capture complete source and finite attempt before body
-    F->>F: Decode; pin publication, dependencies and original membership
+    F->>F: Decode#59; pin publication, dependencies and original membership
     F->>P: One mutual-TLS command with raw proof and absolute intent
     P->>P: Current authorization, version CAS, effect/audit/dedup commit
-    P-->>F: Authenticated committed receipt; publication pending
+    P-->>F: Authenticated committed receipt#59; publication pending
     F-->>U: Flush HTTP 202 under original exclusions and bounds
-    F->>F: Release; later independent pull and complete publication
+    F->>F: Release#59; later independent pull and complete publication
 ```
 
 Persisted deadlines have whole-second precision. Relative timers round up to the
@@ -1751,15 +1775,21 @@ The SQLite management API now supports explicit create, replace, revoke and
 reseal commands with original-source, current-credential and writer checks in
 one transaction. Its receipt distinguishes confirmed commit from observed
 publication; an uncertain error is not a rollback certificate. File keys stay
-read-only. Kubernetes management and hot rotation remain unavailable. See
+read-only. Kubernetes runs the same commands through exact-version object
+writes, and every node reloads the stored source without a restart
+([zones](zones.md#captured-tsig-keys-and-stored-key-management), D365). See
 [stored TSIG keys](../deploy/tsig-keys.md).
 
 Kubernetes prepares a complete stored source once, asynchronously, under the
 original configured startup bound. It requires the observed cluster UID and a
 successful complete private-carrier read, decrypt and merge. Pending or failed
 preparation never certifies a missing source or permits file-only signing.
-Successful preparation, including a verified empty inventory, supplies immutable
-keys until restart. UID discovery and the later Secret list are separate API
+Successful preparation, including a verified empty inventory, publishes an
+immutable keyring. From then on each node rereads the complete stored source
+every ten seconds and after its own commands: a changed source that prepares
+replaces the keyring, a changed source that does not prepare withdraws stored
+and file signatures until a later source prepares, and a failed read keeps the
+current keyring. UID discovery and the later Secret list are separate API
 observations, not an atomic transaction or current mutation authority.
 
 Native and encrypted requests select that actual immutable keyring once before
@@ -1852,7 +1882,7 @@ sequenceDiagram
     API->>Command: Original HTTP source, lifetime and raw proof
     Command->>Command: Repeat current permission, dormant owner and source checks
     Command->>Disk: Atomic membership, Primary authority and audit commit
-    API-->>Operator: Committed; restart required
+    API-->>Operator: Committed#59; restart required
 ```
 
 
@@ -1929,9 +1959,9 @@ the Puller's original captured admission. An intervening source/authority change
 refuses the old attempt. An accepted 304 also crosses that boundary before
 successful-contact bookkeeping. The publisher independently installs the complete
 serving bundle. The runtime cancels and joins the Coordinator on shutdown; it
-never grants operator promotion. This mounts retained enrolled acquisition, not
-command forwarding or full partition/rejoin HA. Initial joining and explicit
-operator promotion are described below.
+never grants operator promotion. This worker installs images only: typed command
+forwarding is the separate mount described above, and initial joining and
+explicit operator promotion are described below.
 
 ```mermaid
 flowchart LR
@@ -1995,8 +2025,10 @@ permits neither success nor an assumption of rollback. Inspect current state
 before a new operator decision after an unknown/lost response. The public
 committed receipt describes only the durable transition; whole publication and
 peer convergence are separate. Startup acquisition has no operator proof and
-cannot invoke this path. Complete partition/rejoin acceptance remains separate
-work; initial remote joining is described next.
+cannot invoke this path. Separate-process partition, promotion and rejoin
+acceptance is summarized under
+[Enrolled peer authority observation](#enrolled-peer-authority-observation);
+initial remote joining is described next.
 
 
 ### Initial remote join into a pristine receiver
@@ -2044,13 +2076,13 @@ sequenceDiagram
     participant Receiver
     participant Primary
     Operator->>Receiver: Original invitation + reviewed target + shared key configuration
-    Receiver->>Receiver: Create pristine directory/identity; capture cut and commit immutable intent
-    Receiver->>Primary: Invitation-CA TLS; one signed proposal
-    Primary->>Primary: Original source/owner CAS; membership + audit commit
+    Receiver->>Receiver: Create pristine directory/identity#59; capture cut and commit immutable intent
+    Receiver->>Primary: Invitation-CA TLS#59; one signed proposal
+    Primary->>Primary: Original source/owner CAS#59; membership + audit commit
     Primary-->>Receiver: Confirmed primary acceptance
-    Receiver->>Primary: Original member mutual TLS; first complete-image read
+    Receiver->>Primary: Original member mutual TLS#59; first complete-image read
     Primary-->>Receiver: Complete image under membership/output exclusion
-    Receiver->>Receiver: Original local CAS; atomic term + first-image + anchor installation
+    Receiver->>Receiver: Original local CAS#59; atomic term + first-image + anchor installation
     Receiver-->>Operator: Separate primary and installation receipts
 ```
 
@@ -2087,19 +2119,19 @@ sequenceDiagram
     participant Receiver
     participant Primary
     Operator->>Receiver: Explicit join-reconcile with original private inputs
-    Receiver->>Receiver: Open existing data/identity; capture finite cut; match durable intent
-    Receiver->>Primary: Current member mutual TLS; one complete-image GET
+    Receiver->>Receiver: Open existing data/identity#59; capture finite cut#59; match durable intent
+    Receiver->>Primary: Current member mutual TLS#59; one complete-image GET
     Primary-->>Receiver: Image retaining original consumed invitation and member CA
-    Receiver->>Receiver: Validate provenance; original-cut CAS; atomic first installation
-    Receiver-->>Operator: Existing membership observed; separate installed generation
+    Receiver->>Receiver: Validate provenance#59; original-cut CAS#59; atomic first installation
+    Receiver-->>Operator: Existing membership observed#59; separate installed generation
 ```
 
 The result reports observed membership and actual local installation separately;
 it never claims a new primary commit, serving publication or peer convergence.
 An unaccepted member fails current-roster TLS without sending another proposal.
 The initial operation's deadline is not refreshed; the operator deliberately
-starts a distinct bounded observation. Full partition/rejoin qualification is
-still separate from this recovery path.
+starts a distinct bounded observation. This recovery path is independent of
+the partition and rejoin behavior described next.
 
 
 ### Enrolled peer authority observation
@@ -2133,5 +2165,11 @@ sequenceDiagram
 ```
 
 Separate-process acceptance covers public join, partition, promotion, old-primary
-restart and automatic rejoin with original private identities. Three-process
-conflicting promotions and explicit branch recovery remain separate requirements.
+restart and automatic rejoin with original private identities
+(`TestEnrolledClusterProcessesPartitionCatchupAndRestart`,
+`TestEnrolledClusterProcessesPromoteAndRejoin`). A three-process test
+(`TestEnrolledProcessConflictResolution`) covers conflicting promotions of two
+isolated followers, the durable conflict recorded by scheduled peer exchanges,
+DNS-only last-good serving, and offline branch resolution as described under
+[SQLite replication foundation](#sqlite-replication-foundation). Acceptance on
+independent virtual machines behind a VIP has not been run.
