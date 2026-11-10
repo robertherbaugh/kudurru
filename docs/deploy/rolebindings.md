@@ -44,6 +44,9 @@ The corresponding paths are `GET /api/v1/iam/rolebindings/{namespace}/{name}`,
 Current cluster `rolebindings.read`, `rolebindings.write` or
 `rolebindings.delete` authority applies, with CSRF protection for cookies.
 Legacy and Kubernetes mutation runtimes return 503 after permission admission.
+The list and the item read work on both drivers: on Kubernetes
+`kudurru iam rolebindings get` returns the RoleBinding object with its UID and
+resource version, and you change it with `kubectl` or your GitOps tool.
 Generic object aliases remain unavailable for these IAM mutations.
 
 SQLite file and inline RoleBindings use the same durable grant-floor updates.

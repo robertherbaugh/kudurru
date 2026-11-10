@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/validation"
+
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
@@ -271,6 +274,26 @@ func (s *Stack) handleIAMRoleBindings(w http.ResponseWriter, r *http.Request) {
 			ManagedBy: store.ManagedBy(o)})
 	}
 	writeList(w, r, items, s.bindings.Diagnoses())
+}
+
+// handleIAMRoleBinding reads one RoleBinding object for operator review: the
+// stored object with its exact UID and resourceVersion, as the complete SQLite
+// runtime's item route returns it. Config-file bindings are not objects and
+// appear only in the list. The stack has no RoleBinding write routes.
+func (s *Stack) handleIAMRoleBinding(w http.ResponseWriter, r *http.Request) {
+	key := store.Key{Kind: internalv1.KindRoleBinding, Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
+	if r.URL.RawQuery != "" || len(validation.IsDNS1123Label(key.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(key.Name)) != 0 {
+		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "invalid", Message: "invalid RoleBinding target"})
+		return
+	}
+	binding, ok := s.roleBindings.Get(key)
+	if !ok {
+		writeErr(w, r, &auth.Error{Status: http.StatusNotFound, Key: "not_found", Message: "RoleBinding " + key.Namespace + "/" + key.Name + " not found"})
+		return
+	}
+	out := binding.DeepCopy()
+	out.APIVersion, out.Kind = publicv1.GroupVersion.String(), internalv1.KindRoleBinding
+	writeJSON(w, http.StatusOK, out)
 }
 
 // IdentityProviderInfo is a configured provider as listed (no secrets).

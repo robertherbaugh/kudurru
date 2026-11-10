@@ -1082,11 +1082,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	catalogSource := catalogueAPI(catalogs, catRefreshers)
 	if sql == nil {
 		logger.Warn("background integration execution is unavailable for the Kubernetes store; atomic source publication is required")
-		authMux := http.NewServeMux()
-		ids.Register(authMux)
-		registerUnavailableTOTP(authMux)
-		registerUnavailableLocalUsers(authMux)
-		authHandler = authMux
+		authHandler = legacyAuthHandler(ids)
 	}
 	if sql != nil {
 		complete, err = newServingRuntime(ctx, servingRuntimeOptions{

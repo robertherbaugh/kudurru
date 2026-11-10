@@ -1263,6 +1263,25 @@ the original verified ID token, with no RP enrollment, refresh-token storage or
 new durable credential issuer. Explicit `--device` does not consume an ambient
 API bearer or silently switch to local-password login.
 
+### Routes the Kubernetes authentication stack does not implement
+
+On the Kubernetes driver the API forwards `/auth` and `/iam` requests to the
+legacy authentication stack. Public CLI login and provider logout continuation
+need the captured provider resources of the complete SQLite runtime, so that
+stack refuses them explicitly instead of leaving them unregistered:
+
+| Route | Answer on Kubernetes |
+| --- | --- |
+| `GET /auth/cli/providers`, `POST /auth/cli/{idp}/prepare`, `POST /auth/cli/{idp}/verify` | `503 cli_login_unavailable` with a hint to use an API token or a local account |
+| `GET /auth/oidc/{idp}/logout`, `GET /auth/oidc/{idp}/logout/callback` | `503 provider_logout_unavailable`; `POST /auth/logout/browser` already ended the local session and never returns a continuation path there |
+| `GET /iam/rolebindings/{namespace}/{name}` | the RoleBinding object from the same cache as the list (read only) |
+| any other forwarded route without a handler | `503 unavailable` with the hint "requires the complete SQLite runtime" |
+
+`kudurru login` without `--token` or `--username` reads the provider list first.
+It recognizes `cli_login_unavailable` and prints a fixed message that names the
+two supported modes; it stores nothing. No forwarded route answers with the
+HTTP multiplexer's plain-text 404.
+
 ## Auth control reload
 
 Complete SQLite serving applies five public settings through its original

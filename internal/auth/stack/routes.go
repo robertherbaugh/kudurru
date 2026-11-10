@@ -73,6 +73,7 @@ type Route struct {
 //	GET    /iam/users                      users.read
 //	GET    /iam/serviceaccounts            serviceaccounts.read
 //	GET    /iam/rolebindings               rolebindings.read
+//	GET    /iam/rolebindings/{namespace}/{name}  rolebindings.read
 //	GET    /iam/identityproviders          identityproviders.read
 func (s *Stack) Routes() []Route {
 	return []Route{
@@ -100,6 +101,7 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodGet, Path: "/iam/users", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleIAMUsers)},
 		{Method: http.MethodGet, Path: "/iam/serviceaccounts", Access: AccessPermission, Resource: "serviceaccounts", Verb: "read", Handler: http.HandlerFunc(s.handleIAMServiceAccounts)},
 		{Method: http.MethodGet, Path: "/iam/rolebindings", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBindings)},
+		{Method: http.MethodGet, Path: "/iam/rolebindings/{namespace}/{name}", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBinding)},
 		{Method: http.MethodGet, Path: "/iam/identityproviders", Access: AccessPermission, Resource: "identityproviders", Verb: "read", Handler: http.HandlerFunc(s.handleIAMIdentityProviders)},
 	}
 }

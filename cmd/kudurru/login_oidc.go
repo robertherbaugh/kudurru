@@ -346,6 +346,10 @@ func (o *cliOpts) selectCLILogin(ctx context.Context, r cli.Resolved, options lo
 		return nil, "", loginStageError("configure OIDC API transport", e)
 	}
 	providers, e := c.CLILoginProviders(ctx)
+	if apiclient.IsKey(e, "cli_login_unavailable") {
+		// A fixed client message: no server text is retained (safeAuthError).
+		return nil, "", errors.New("this server does not offer OIDC login for the command line (it needs the complete SQLite runtime); log in with --token or --username")
+	}
 	if e != nil {
 		return nil, "", loginStageError("select OIDC provider", e)
 	}

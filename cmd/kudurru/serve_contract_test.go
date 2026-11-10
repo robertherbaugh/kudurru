@@ -134,6 +134,20 @@ func TestForwardedShapes(t *testing.T) {
 	if rbs.Items[0].Source != "config" || rbs.Items[1].Source != "object" || rbs.Items[1].Subjects[0].Kind != "ServiceAccount" {
 		t.Fatalf("role bindings %+v", rbs)
 	}
+	// The item read answers the documented object with the identity an operator
+	// reviews; routes that need the complete SQLite runtime answer the envelope.
+	var binding api.RoleBindingDocument
+	c.call(http.MethodGet, "/iam/rolebindings/default/ci-viewer", nil, http.StatusOK, &binding)
+	if binding.Kind != "RoleBinding" || binding.APIVersion != "kudurru.io/v1alpha1" || binding.Metadata.UID == "" || binding.Metadata.ResourceVersion == "" ||
+		binding.Spec.Role != "viewer" || len(binding.Spec.Subjects) != 1 || binding.Spec.Subjects[0].Name != "ci" {
+		t.Fatalf("role binding item %+v", binding)
+	}
+	c.call(http.MethodGet, "/iam/rolebindings/default/absent", nil, http.StatusNotFound, nil)
+	c.call(http.MethodGet, "/auth/cli/providers", nil, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodPost, "/auth/cli/corp/prepare", api.CLILoginPrepareBody{Mode: "device"}, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodPost, "/auth/cli/corp/verify", api.CLILoginVerifyBody{Receipt: "unavailable", AccessToken: "unavailable"}, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodGet, "/auth/oidc/corp/logout", nil, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodGet, "/auth/oidc/corp/logout/callback", nil, http.StatusServiceUnavailable, nil)
 	var idps api.AuthList[api.IdentityProviderInfo]
 	c.call(http.MethodGet, "/iam/identityproviders", nil, http.StatusOK, &idps)
 

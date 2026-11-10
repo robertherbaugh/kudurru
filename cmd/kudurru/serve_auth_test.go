@@ -68,13 +68,9 @@ func authAPIWithGate(t *testing.T, mod func(*config.Config), gate *iamgate.Gate)
 	done := make(chan struct{})
 	go func() { _ = ids.Run(ctx); close(done) }() // the "identity" runnable: object caches
 	t.Cleanup(func() { cancel(); <-done })
-	authMux := http.NewServeMux()
-	ids.Register(authMux)
-	registerUnavailableTOTP(authMux)
-	registerUnavailableLocalUsers(authMux)
 	srv, err := api.New(api.Options{
 		Store: st, Validator: authtest.Validator(t), Config: cfg,
-		Authenticate: identityAuthentication(ids, gate), Authorizer: ids.Authorizer(), CSRF: auth.CSRF, AuthHandler: authMux, Roles: ids.Roles,
+		Authenticate: identityAuthentication(ids, gate), Authorizer: ids.Authorizer(), CSRF: auth.CSRF, AuthHandler: legacyAuthHandler(ids), Roles: ids.Roles,
 		Logger: logger, NodeName: "node-a",
 	})
 	if err != nil {
