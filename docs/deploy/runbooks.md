@@ -214,12 +214,16 @@ Symptoms: the query log, top clients and per-client chart show a router
 address for devices configured to use a DNS VIP directly. Per-device
 ClientGroups also apply to that router address.
 
-The version 0.1 listeners identify DNS clients by the packet's source
-address, or by the source in an authenticated PROXYv2 header from dnsdist.
+The DNS listeners take a client's address from the packet's source
+address, or from the source in an authenticated PROXYv2 header from dnsdist.
 Plain DNS has no HTTP `X-Client-IP` or `X-Forwarded-For` header. The
 dashboard's trusted reverse proxies affect API requests, not DNS identity.
-Incoming ECS is not a trusted device identity. DoT/DoH client IDs and
-MAC/hostname discovery are not populated by these listeners.
+Incoming ECS is not a trusted device identity. MAC addresses and hostnames
+come from inventory and DHCP data that kudurru looks up by this same address,
+so they cannot tell apart devices behind a router that replaces the source
+address. An opt-in DoT, DoQ or DoH [client ID](client-identity.md) travels
+with the connection and can still select a client group, but the query log
+keeps recording the address the query arrived from.
 
 1. On two devices with different addresses, send different names to each
    published VIP over both transports, for example:

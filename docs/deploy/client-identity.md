@@ -10,6 +10,22 @@ an older device's policy. SQLite can populate inventory through the background
 remain separate work. Private group contributions retain their original source
 and expiry, while manual public matchers keep their configured behavior.
 
+## Where each identity comes from
+
+A matcher matches only when kudurru has that identity for the query:
+
+| Matcher | Source | What it needs |
+|---|---|---|
+| `ip`, `cidr` | The source address of the query, or the address in an authenticated PROXYv2 header from a trusted edge | Nothing more |
+| `clientID` | The server name of a DoT or DoQ connection, or the path of a DoH or DoH3 request | The listener settings on this page |
+| `mac` | An inventory integration that reports the device with its addresses | A running integration: [integrations.md](integrations.md) says on which deployments integrations run |
+| `hostname`, `nameGlob` | An inventory integration and the lease names of the built-in DHCP server ([dhcp-dns.md](dhcp-dns.md)); when neither has a name for the address, the optional reverse-PTR lookup ([`clientNames.reversePTR`](../../docs-site/content/reference/configuration.md#clientNames.reversePTR.enabled)) | One of these sources for the device |
+
+Inventory, DHCP and reverse-PTR data are looked up by the source address of
+the query. They cannot tell apart devices behind a router that replaces that
+address. A client ID can, because it travels with the encrypted connection.
+The built-in DHCP server supplies names to these matchers, not MAC addresses.
+
 Client IDs are optional, client-selected policy identifiers. They are **not
 passwords or authentication**. Do not use them to grant privileged DNS updates
 or API access. Use one ASCII DNS label of at most 63 characters: letters,

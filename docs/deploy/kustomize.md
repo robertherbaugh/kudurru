@@ -68,9 +68,9 @@ patches:
         value: 3
 ```
 
-Releases up to v0.1.0 keep this tree under `config/`, so a remote overlay
-pinned to one of them uses `config/overlays/<name>`; later releases use
-`deploy/kustomize/overlays/<name>`.
+The release candidates up to `v0.1.0-rc.6` keep this tree under `config/`, so
+a remote overlay pinned to one of them uses `config/overlays/<name>`. Every
+later tag, v0.1.0 included, uses `deploy/kustomize/overlays/<name>`.
 
 Changing the node ConfigMap through kustomize does not update the
 `checksum/node-config` annotation the Helm chart maintains; restart the

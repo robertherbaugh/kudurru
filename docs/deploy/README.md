@@ -21,7 +21,7 @@ Sending the query log to ClickHouse, Grafana Loki or log lines next to the local
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
-The optional DHCPv4 server included in v0.1.0: [dhcp.md](dhcp.md).
+The optional DHCPv4 server, included since v0.1.0: [dhcp.md](dhcp.md).
 
 More pages, by task:
 
@@ -52,8 +52,10 @@ Keep IPv6 router and DNS advertisements on your router.
 
 v0.1.0 ("stone"), dated 18 October 2026, is the first release. Its
 [release page](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)
-has binaries, packages and deployment assets. Installation examples in this
-checkout follow `VERSION`; use the tagged checkout for a published release.
+has binaries, packages and deployment assets, and each later release has a
+page of the same kind under its own tag. These pages describe v0.2.0 ("clay
+copies"). Installation examples in this checkout follow `VERSION`; use the
+tagged checkout for a published release.
 
 Releases are cut by merging `main` into `release-candidate` (a
 `v<version>-rc.<N>` pre-release) and `release-candidate` into `release` (the
@@ -97,7 +99,7 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.2.0 \
 | Port | Protocol | Purpose |
 |---|---|---|
 | 53 | udp, tcp | DNS (5353 PROXYv2-only behind the dnsdist edge) |
-| 67 | udp | DHCPv4 (optional, v0.1.0); replies go to client UDP 68 or the relay's authorized UDP source port |
+| 67 | udp | DHCPv4 (optional, since v0.1.0); replies go to client UDP 68 or the relay's authorized UDP source port |
 | 853 | tcp / udp | DNS over TLS / DNS over QUIC |
 | 443 | tcp / udp | DNS over HTTPS / HTTP/3 |
 | 8080 | tcp | API and UI |
