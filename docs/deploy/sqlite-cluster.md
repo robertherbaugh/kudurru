@@ -200,14 +200,45 @@ the primary is unreachable, and it does so again after a restart.
 
 ## 4. Changes through a follower
 
-Send changes to the primary when you can. A follower accepts a number of
-write requests and passes each one to the primary once, without a retry; the
-follower section of [sqlite-join.md](sqlite-join.md) lists them and explains
-the answers. A forwarded change can be refused with
-`503 unavailable` when the follower installs new data while the request
-runs: send it again, or send it to the primary. Everything that is not
-forwarded answers 503 on a follower, and while the primary is unreachable a
-follower refuses every change.
+Send changes to the primary when you can. A follower makes no change itself.
+It passes a number of write requests on to the primary, each one once and
+without a retry, and returns the primary's answer:
+
+- writes of zones, record sets, block lists, client groups and policies from
+  the dashboard, `kudurru delete` and `kudurru apply`;
+- the record commands of a zone, such as `kudurru records add`;
+- turning blocking off and on (`kudurru blocking disable`);
+- a password sign-in in the browser.
+
+Every other change answers 503 on a follower, for example a setting, a
+user, an API token, an authenticator or a stored TSIG key: make it on the
+primary. [Commands through a follower](sqlite-join.md#commands-through-a-follower)
+lists the routes and explains the answers. A follower serves a change that
+it passed on after its next pull, so a read immediately after the write can
+still show the previous state.
+
+| Answer of a follower | Meaning | What to do |
+|---|---|---|
+| `503 unavailable` | The change was not made: the follower does not pass this kind of change on, or its data changed while the request ran ("the follower's source changed"). | Make the change on the primary. |
+| `503 completion_unknown` | The follower did not receive the primary's answer and cannot say whether the change was made. This is also the answer while the follower cannot reach the primary. | Read the object, on the primary when you can, before you decide anything else. |
+
+`kudurru apply` and `kudurru restore` send all their documents in one
+request and report a result for each document. With one document they work
+through a follower like any other object write. In this version one request
+does not apply every document of a larger file:
+
+- Through a follower, a request applies documents until the follower's data
+  changes, for example when its next pull brings the request's own first
+  changes. It refuses every later document with `unavailable`, and the
+  documents before stay applied. Repeating the command through the follower
+  does not reliably apply the rest.
+- On the primary, a request applies its first new or changed document and
+  refuses every later document with `unavailable` ("current writable
+  serving generation unavailable").
+
+Run such a file against the primary, and run the same command again until
+it reports no error. A run applies one more document at most, and it reports
+the documents that are already applied as `unchanged`.
 
 RFC 2136 updates are not passed on: send them to the primary
 ([dynamic-updates.md](dynamic-updates.md#enrolled-sqlite-cluster)).
