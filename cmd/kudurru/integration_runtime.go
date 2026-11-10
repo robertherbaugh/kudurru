@@ -78,7 +78,7 @@ func newIntegrationRuntime(s *servingRuntime, schema *servingbuild.Schema, pin c
 		default:
 			return nil, ih.ErrUnsupported
 		}
-	}, ValidateSource: r.validateSource, BeforeObserve: r.beforeObserve, CommitSource: r.commitSource, Status: r.status, Now: s.opts.Now})
+	}, ValidateSource: r.validateSource, BeforeObserve: r.beforeObserve, CommitSource: r.commitSource, Status: r.status, Purge: r.purge, Finalize: r.finalize, Now: s.opts.Now})
 	return r, err
 }
 
@@ -159,9 +159,11 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 		return ih.Input{}, ih.ErrInvalid
 	}
 	in.BundleID = kinds.Digest(raw)
+	// A suspended or terminating publisher selects no sources.
 	needsSources := false
 	for _, i := range instances {
-		needsSources = needsSources || i.Definition().Spec.Cloudflare != nil && !i.Definition().Spec.Suspend
+		definition := i.Definition()
+		needsSources = needsSources || definition.Spec.Cloudflare != nil && !definition.Spec.Suspend && definition.DeletionTimestamp.IsZero()
 	}
 	var primary *pr.PreparedImage
 	if needsSources {
@@ -226,7 +228,12 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	in.AuthorityDigests = map[ih.InstanceID]string{}
 	for _, i := range instances {
 		var dependencies []any
-		if u := i.Definition().Spec.UniFi; u != nil {
+		if !i.Definition().DeletionTimestamp.IsZero() {
+			// A terminating instance observes and publishes nothing (D367):
+			// sources, targets and groups are not its authority, and their
+			// changes must neither wake nor fence its cleanup.
+			in.ReconcileDigests[i.Owner()] = kinds.Digest([]byte("terminating"))
+		} else if u := i.Definition().Spec.UniFi; u != nil {
 			if u.Inventory != nil {
 				if z, ok := snap.Objects.Zone(u.Inventory.ZoneRef.Name); ok {
 					dependencies = append(dependencies, struct {
@@ -285,23 +292,55 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 
 func (r *integrationRuntime) current(g ih.ExecutionGuard) (*integrationCut, error) {
 	c := r.cut
-	if c == nil || !c.input.Term.Same(g.Ledger.Term) || !c.license.Current() || !c.license.Status().Allows(license.FeatureIntegrations) || !c.keysCurrent() {
+	if c == nil || !c.input.Term.Same(g.Ledger.Term) || !c.license.Current() || !c.keysCurrent() {
+		return nil, ih.ErrFenced
+	}
+	// Only a release runs without the license: it removes the finalizer of a
+	// terminating object and makes no provider call (D367).
+	if g.Mode != ih.GuardRelease && !c.license.Status().Allows(license.FeatureIntegrations) {
 		return nil, ih.ErrFenced
 	}
 	i := c.instances[g.Ledger.Owner]
-	// Delete requires a separate original-authority cleanup/finalizer command.
-	// Never silently execute a configuration whose deletion promise is absent.
-	if i != nil && i.Definition().Spec.DeletionPolicy == "Delete" {
-		return nil, ih.ErrUnsupported
-	}
-	if i == nil || i.BundleID() != g.BundleID {
+	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) {
 		return nil, ih.ErrFenced
 	}
-	expected, err := i.Guard(g.Ledger.LeaseID)
+	guard := i.Guard
+	if g.Mode != ih.GuardNormal {
+		guard = i.TerminatingGuard
+	}
+	expected, err := guard(g.Ledger.LeaseID)
 	if err != nil || expected != g.Ledger {
 		return nil, ih.ErrFenced
 	}
 	return c, nil
+}
+
+// integrationGuardAdmits reports whether an Integration, as captured or as
+// read inside the transaction of an effect, is what the guard's mode claims
+// (D367). A guard never widens what its object allows:
+//
+//   - GuardNormal needs a live, unsuspended object, and one whose policy is
+//     Delete must carry the reserved cleanup finalizer. Admission arms it in
+//     the same write as the spec, but an object can be stored unarmed (a
+//     database written before admission armed it, or a live finalizer
+//     removal); such an instance gets no intent, budget charge or source
+//     commit, so it never owns external state it has not promised to remove.
+//   - GuardCleanup needs an object that is being deleted, still carries the
+//     finalizer, has policy Delete and is not suspended.
+//   - GuardRelease needs an object that is being deleted and still carries
+//     the finalizer under any other policy.
+func integrationGuardAdmits(d *public.Integration, g ih.ExecutionGuard) bool {
+	mode, ok := ih.InstanceMode(d)
+	if !ok || mode != g.Mode {
+		return false
+	}
+	switch mode {
+	case ih.GuardNormal:
+		return !d.Spec.Suspend && !store.ReservedFinalizerUnarmed(d)
+	case ih.GuardCleanup:
+		return !d.Spec.Suspend
+	}
+	return true
 }
 
 // original checks current authority only to reject the retained original cut.
@@ -363,7 +402,7 @@ func (r *integrationRuntime) fence(ctx context.Context, g ih.ExecutionGuard) err
 		if err = r.s.opts.Store.Get(ctx, store.KeyOf(obj), &current); err != nil {
 			return ih.ErrFenced
 		}
-		if current.UID != obj.GetUID() || current.ResourceVersion != obj.GetResourceVersion() || current.Spec.Suspend || !current.DeletionTimestamp.IsZero() {
+		if current.UID != obj.GetUID() || current.ResourceVersion != obj.GetResourceVersion() || !integrationGuardAdmits(&current, g) {
 			return ih.ErrFenced
 		}
 	}
@@ -440,18 +479,22 @@ func (r *integrationRuntime) command(ctx context.Context, g ih.ExecutionGuard, f
 
 // integrationInputsCurrent compares desired objects in the actual transaction
 // to retained original versions. A private budget/receipt write changes no
-// reviewed input and never supplies a successor frame or credential.
+// reviewed input and never supplies a successor frame or credential. The
+// Integration read here must still be what the guard's mode claims, so every
+// intent, budget charge, receipt, source commit, forget, purge and
+// finalization is refused once the object left that state.
 func integrationInputsCurrent(ctx context.Context, tx *sqlite.CommandTx, c *integrationCut, g ih.ExecutionGuard) error {
 	var definition public.Integration
 	if err := tx.Get(ctx, store.Key{Kind: "Integration", Namespace: g.Ledger.Owner.Namespace, Name: g.Ledger.Owner.Name}, &definition); err != nil {
 		return err
 	}
 	digest, _ := json.Marshal(definition.Spec)
-	if string(definition.UID) != g.Ledger.Owner.UID || definition.ResourceVersion != g.Ledger.IntegrationResourceVersion || kinds.Digest(digest) != g.Ledger.ConfigDigest || definition.Spec.Suspend || !definition.DeletionTimestamp.IsZero() {
+	if string(definition.UID) != g.Ledger.Owner.UID || definition.ResourceVersion != g.Ledger.IntegrationResourceVersion || kinds.Digest(digest) != g.Ledger.ConfigDigest || !integrationGuardAdmits(&definition, g) {
 		return ih.ErrFenced
 	}
+	// A terminating instance selects no sources; only a live publisher pins them.
 	var selected []plan.Source
-	if c.instances[g.Ledger.Owner].Definition().Spec.Cloudflare != nil {
+	if g.Mode == ih.GuardNormal && c.instances[g.Ledger.Owner].Definition().Spec.Cloudflare != nil {
 		selected = c.input.Sources
 	}
 	for _, source := range selected {
@@ -578,6 +621,13 @@ func stageIntegrationStatus(ctx context.Context, tx *sqlite.CommandTx, c *integr
 	if status.Phase == "Ready" {
 		condition.Status = metav1.ConditionTrue
 		condition.Message = "Background integration is synchronized."
+	}
+	if status.Phase == ih.PhaseTerminating {
+		// While the object waits for its cleanup the counts say what is left:
+		// records not yet forgotten, record sets the cleanup must leave in
+		// place, and provider writes with an unresolved outcome (D367).
+		d.Status.Records = public.IntegrationRecordCounts{Managed: int64(status.Result.Remaining), Conflicts: int64(status.Result.Conflicts), Drift: int64(status.Result.Pending)}
+		condition.Message = "The integration is being deleted; its cleanup has not finished."
 	}
 	meta.SetStatusCondition(&d.Status.Conditions, condition)
 	if !status.LastSync.IsZero() {

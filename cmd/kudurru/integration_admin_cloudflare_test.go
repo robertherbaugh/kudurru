@@ -36,6 +36,10 @@ type integrationCloudflarePeer struct {
 	rows         map[string]map[string]any
 	next, writes int
 	ambiguous    bool
+	// requests counts every request the peer served; deleted lists the IDs
+	// named by delete effects, in order.
+	requests int
+	deleted  []string
 }
 
 const integrationCloudflareZone = "11111111111111111111111111111111"
@@ -52,6 +56,7 @@ func integrationCloudflareTLS(t *testing.T) *integrationCloudflarePeer {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
+		peer.requests++
 		w.Header().Set("Content-Type", "application/json")
 		success := func(result any) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "errors": []any{}, "messages": []any{}, "result": result})
@@ -97,6 +102,7 @@ func integrationCloudflareTLS(t *testing.T) *integrationCloudflarePeer {
 				for _, body := range batch[kind] {
 					id, _ := body["id"].(string)
 					if kind == "deletes" {
+						peer.deleted = append(peer.deleted, id)
 						delete(peer.rows, id)
 						list = append(list, map[string]any{"id": id})
 						continue

@@ -342,8 +342,13 @@ func TestIntegrationRuntimeActualUniFiHTTPSDesiredAndManualGroups(t *testing.T) 
 	}
 }
 
-func TestIntegrationRuntimeRefusesDeleteAndUnlicensedExecution(t *testing.T) {
-	for _, mode := range []string{"delete", "unlicensed"} {
+// A Delete instance runs once its object carries the reserved cleanup
+// finalizer, which SQLite admission sets in the same write as the spec
+// (D367). An object stored with Delete but without the finalizer, and any
+// instance without a license, gets no provider call, no source and no budget
+// charge.
+func TestIntegrationRuntimeDeleteRunsArmedAndRefusesUnarmedOrUnlicensed(t *testing.T) {
+	for _, mode := range []string{"delete", "unarmed", "unlicensed"} {
 		t.Run(mode, func(t *testing.T) {
 			var polls atomic.Int32
 			s, path := integrationFixture(t, func(o *servingRuntimeOptions) {
@@ -355,33 +360,113 @@ func TestIntegrationRuntimeRefusesDeleteAndUnlicensedExecution(t *testing.T) {
 					}
 				}
 			}, func(string) (integration.Integration, error) {
-				return &integrationProbe{observe: func(context.Context, ih.OwnerHost) (ih.SourceSnapshot, error) {
+				return &integrationProbe{observe: func(_ context.Context, h ih.OwnerHost) (ih.SourceSnapshot, error) {
 					polls.Add(1)
-					return ih.SourceSnapshot{Complete: true}, nil
+					return ih.SourceSnapshot{Complete: true, Clients: []inventory.Client{integrationClient(h.IntegrationOwner())}}, nil
 				}}, nil
 			})
-			definition := integrationDefinition("refused", path)
-			if mode == "delete" {
-				definition.Spec.DeletionPolicy = "Delete"
+			definition := integrationDefinition("policy", path)
+			if mode != "unlicensed" {
+				definition.Spec.DeletionPolicy = public.IntegrationDeletionDelete
 			}
 			d := integrationApply(t, s, definition)
+			if armed := store.HasFinalizer(d, store.IntegrationCleanupFinalizer); armed != (mode != "unlicensed") {
+				t.Fatal("admission did not decide the cleanup finalizer from the policy", armed)
+			}
+			if mode == "unarmed" {
+				// What a database written before admission armed it holds.
+				out, err := s.opts.Store.UpdateFinalizer(t.Context(), store.KeyOf(d), store.FinalizerOptions{Finalizer: store.IntegrationCleanupFinalizer, Remove: true, ExpectedUID: string(d.UID), ExpectedResourceVersion: d.ResourceVersion})
+				if err != nil {
+					t.Fatal(err)
+				}
+				d = out.(*public.Integration)
+			}
 			integrationRun(t, s)
+			owner := integrationOwner(s, d)
+			if mode == "delete" {
+				awaitServingRuntime(t, s, func() bool {
+					snapshot := integrationInventory(t, s)
+					return snapshot != nil && snapshot.Lookup(netip.MustParseAddr("192.0.2.19"), time.Now()) != nil
+				})
+				var head kinds.IntegrationSourceHead
+				if err := s.opts.Store.Get(t.Context(), store.Key{Kind: kinds.KindIntegrationSourceHead, Name: kinds.SourceHeadName(owner)}, &head); err != nil || polls.Load() != 1 {
+					t.Fatal("armed Delete instance did not commit its source", err != nil, polls.Load())
+				}
+				var current public.Integration
+				if err := s.opts.Store.Get(t.Context(), store.KeyOf(d), &current); err != nil || !store.HasFinalizer(&current, store.IntegrationCleanupFinalizer) || current.DeletionTimestamp != nil {
+					t.Fatal("running a Delete instance changed its cleanup obligation")
+				}
+				return
+			}
+			reason := map[string]string{"unlicensed": "LicenseUnavailable", "unarmed": ih.ReasonFinalizerMissing}[mode]
 			awaitServingRuntime(t, s, func() bool {
 				for _, status := range s.integrations.host.Statuses() {
-					if mode == "unlicensed" && status.Reason == "LicenseUnavailable" || mode == "delete" && status.Reason == "ProvisionFailed" {
+					if status.Owner == owner && status.Phase == "Paused" && status.Reason == reason {
 						return true
 					}
 				}
 				return false
 			})
+			time.Sleep(200 * time.Millisecond)
 			if polls.Load() != 0 {
-				t.Fatal("unsupported/unlicensed instance acquired source authority")
+				t.Fatal("unarmed or unlicensed instance acquired source authority")
 			}
-			integrationNoSource(t, s, integrationOwner(s, d))
+			integrationNoSource(t, s, owner)
 			rows, err := s.opts.Store.List(t.Context(), kinds.KindIntegrationBudget, store.ListOptions{})
 			if err != nil || len(rows.Items) != 0 {
 				t.Fatal("refused instance performed provider request", err != nil)
 			}
+			if mode != "unarmed" {
+				return
+			}
+			// One write of the declared object arms it; the instance then runs.
+			var current public.Integration
+			if err := s.opts.Store.Get(t.Context(), store.KeyOf(d), &current); err != nil {
+				t.Fatal(err)
+			}
+			current.Spec.Resync = metav1.Duration{Duration: 20 * time.Minute}
+			if armed := integrationApply(t, s, &current); !store.HasFinalizer(armed, store.IntegrationCleanupFinalizer) {
+				t.Fatal("an apply of the Delete object did not arm it")
+			}
+			awaitServingRuntime(t, s, func() bool { return polls.Load() == 1 })
 		})
+	}
+}
+
+// integrationGuardAdmits is the commit-boundary rule every effect of an
+// Integration passes: the object read in the transaction must be what the
+// guard's mode claims.
+func TestIntegrationGuardAdmitsOnlyTheObjectItsModeClaims(t *testing.T) {
+	at := metav1.NewTime(time.Unix(1700000000, 0))
+	object := func(policy string, finalizer, terminating, suspended bool) *public.Integration {
+		d := &public.Integration{Spec: public.IntegrationSpec{DeletionPolicy: policy, Suspend: suspended}}
+		if finalizer {
+			d.Finalizers = []string{store.IntegrationCleanupFinalizer}
+		}
+		if terminating {
+			d.DeletionTimestamp = &at
+		}
+		return d
+	}
+	for _, tc := range []struct {
+		name   string
+		d      *public.Integration
+		admits map[ih.GuardMode]bool
+	}{
+		{"live retain", object("Retain", false, false, false), map[ih.GuardMode]bool{ih.GuardNormal: true}},
+		{"live delete armed", object("Delete", true, false, false), map[ih.GuardMode]bool{ih.GuardNormal: true}},
+		{"live delete unarmed", object("Delete", false, false, false), nil},
+		{"live suspended", object("Retain", false, false, true), nil},
+		{"terminating delete armed", object("Delete", true, true, false), map[ih.GuardMode]bool{ih.GuardCleanup: true}},
+		{"terminating delete suspended", object("Delete", true, true, true), nil},
+		{"terminating retain with finalizer", object("Retain", true, true, true), map[ih.GuardMode]bool{ih.GuardRelease: true}},
+		{"terminating default with finalizer", object("", true, true, false), map[ih.GuardMode]bool{ih.GuardRelease: true}},
+		{"terminating without the finalizer", object("Delete", false, true, false), nil},
+	} {
+		for _, mode := range []ih.GuardMode{ih.GuardNormal, ih.GuardCleanup, ih.GuardRelease} {
+			if got := integrationGuardAdmits(tc.d, ih.ExecutionGuard{Mode: mode}); got != tc.admits[mode] {
+				t.Errorf("%s under mode %q: admitted=%v", tc.name, mode, got)
+			}
+		}
 	}
 }
