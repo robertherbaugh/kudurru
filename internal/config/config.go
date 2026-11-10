@@ -373,6 +373,9 @@ type QuerylogSink struct {
 	// RetryBackoff is the wait before the second attempt; it doubles up to
 	// 30 s.
 	RetryBackoff Duration `koanf:"retryBackoff" json:"retryBackoff,omitempty"`
+	// ClickHouse and Loki are the settings of those types (querylog_sinks.go).
+	ClickHouse *QuerylogClickHouse `koanf:"clickhouse" json:"clickhouse,omitempty"`
+	Loki       *QuerylogLoki       `koanf:"loki" json:"loki,omitempty"`
 }
 
 // querylogSinkName is a lowercase DNS label of at most 32 characters: the
@@ -415,6 +418,7 @@ func (q *Querylog) validateSinks() []error {
 		if s.BatchSize > queue {
 			errs = append(errs, fmt.Errorf("%s.batchSize: %d is larger than the queue of %d", at, s.BatchSize, queue))
 		}
+		errs = append(errs, s.validateType(at)...)
 		for _, d := range []struct {
 			field    string
 			value    Duration
@@ -895,6 +899,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.Branding.Validate())
 	errs = append(errs, c.validateUnblockRequests()...)
 	errs = append(errs, c.Querylog.validate()...)
+	errs = append(errs, c.validateSinkSecrets()...)
 	errs = append(errs, c.validateAudit()...)
 	errs = append(errs, c.Database.validate()...)
 	errs = append(errs, c.validateDHCP()...)

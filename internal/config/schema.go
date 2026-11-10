@@ -179,6 +179,19 @@ func listenerAddress(port string) Field {
 	}
 }
 
+// credentialRef is a field that names a credential without holding it
+// (CredentialRef): help says what the credential is for.
+func credentialRef(name, label, help string) Field {
+	return Field{Name: name, Label: label, Help: help + " Set exactly one of secretRef, file or env; the value itself never enters the settings.", Shape: Shape{Type: TypeObject, Fields: []Field{
+		{Name: "secretRef", Label: "Secret key", Help: "Kubernetes only: one key of a Secret in the namespace kudurru runs in, as {name, key}, e.g. {name: query-log-export, key: password}. The Secret must carry the label kudurru.io/query-log-sink: \"true\".", Shape: Shape{Type: TypeObject, Fields: []Field{
+			{Name: "name", Label: "Secret", Help: "Name of the Secret, e.g. query-log-export.", Required: true, Shape: Shape{Type: TypeString}},
+			{Name: "key", Label: "Key", Help: "Key inside the Secret, e.g. password.", Required: true, Shape: Shape{Type: TypeString}},
+		}}},
+		{Name: "file", Label: "File", Help: "Absolute path of a file that holds only the value, e.g. /run/secrets/query-log-export. It is read only on nodes that list this exact path in credentials.allowedFiles.", Shape: Shape{Type: TypeString}},
+		{Name: "env", Label: "Environment variable", Help: "Name of an environment variable that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD. It is read only on nodes that list it in credentials.allowedEnvironment.", Shape: Shape{Type: TypeString}},
+	}}}
+}
+
 // Shapes of the list and map keys.
 var (
 	tlsFilesShape = Shape{Type: TypeObject, Fields: []Field{
@@ -248,7 +261,33 @@ var (
 	}}
 	querylogSinkTypes = []Option{
 		{Value: QuerylogSinkSlog, Label: "Log lines", Help: "One structured log line per query on the server's log output, next to the database; at most one, and not together with querylog.sink slog."},
+		{Value: QuerylogSinkClickHouse, Label: "ClickHouse", Help: "Batches inserted into a ClickHouse table over its HTTP interface; set the clickhouse object. docs/deploy/query-log-sinks.md has the table definition."},
+		{Value: QuerylogSinkLoki, Label: "Loki", Help: "Batches pushed to Grafana Loki, one JSON line per query; set the loki object."},
 	}
+	sinkCompression = Field{Name: "compression", Label: "Compression", Help: "gzip (default) compresses each batch before it is sent; none sends it as it is, for a proxy that cannot pass compressed requests.", Shape: Shape{Type: TypeString, Default: QuerylogCompressionGzip, Enum: []Option{
+		{Value: QuerylogCompressionGzip, Label: "gzip", Help: "Compress every batch; about a tenth of the size."},
+		{Value: QuerylogCompressionNone, Label: "None", Help: "Send batches uncompressed."},
+	}}}
+	querylogClickHouseShape = Shape{Type: TypeObject, Fields: []Field{
+		{Name: "url", Label: "URL", Help: "Base URL of the ClickHouse HTTP interface, e.g. https://clickhouse.example:8443 or http://clickhouse:8123. No user name, password or query in the URL. Over http the password and the queries cross the network unencrypted.", Required: true, Shape: Shape{Type: TypeString}},
+		{Name: "database", Label: "Database", Help: "Database of the table (default kudurru): letters, digits and underscores.", Shape: Shape{Type: TypeString, Default: DefaultQuerylogClickHouseDatabase}},
+		{Name: "table", Label: "Table", Help: "Table the queries are inserted into (default queries): letters, digits and underscores. Create it first; kudurru does not.", Shape: Shape{Type: TypeString, Default: DefaultQuerylogClickHouseTable}},
+		{Name: "username", Label: "User name", Help: "ClickHouse user that may insert into the table, e.g. kudurru; empty sends no credentials.", Shape: Shape{Type: TypeString}},
+		credentialRef("passwordRef", "Password", "Where the password of username is read from."),
+		credentialRef("caRef", "CA certificates", "Where the CA certificates (PEM) that sign the server's certificate are read from, for a private CA; empty trusts the system's certificate authorities."),
+		sinkCompression,
+	}}
+	querylogLokiShape = Shape{Type: TypeObject, Fields: []Field{
+		{Name: "url", Label: "URL", Help: "Base URL of Loki or its gateway, e.g. https://loki.example:3100; /loki/api/v1/push is added. No user name, password or query in the URL. Over http the credentials and the queries cross the network unencrypted.", Required: true, Shape: Shape{Type: TypeString}},
+		{Name: "tenant", Label: "Tenant", Help: "Tenant ID sent as X-Scope-OrgID, e.g. home; empty for a single-tenant Loki.", Shape: Shape{Type: TypeString}},
+		{Name: "username", Label: "User name", Help: "User name for HTTP basic authentication, e.g. the instance ID of Grafana Cloud; needs passwordRef.", Shape: Shape{Type: TypeString}},
+		credentialRef("passwordRef", "Password", "Where the password of username is read from."),
+		credentialRef("bearerTokenRef", "Bearer token", "Where a bearer token is read from, instead of username and passwordRef."),
+		credentialRef("caRef", "CA certificates", "Where the CA certificates (PEM) that sign the server's certificate are read from, for a private CA; empty trusts the system's certificate authorities."),
+		{Name: "labels", Label: "Labels", Help: "Fixed labels on every stream, e.g. {job: kudurru, site: home}; empty means job=kudurru, at most 16. The sink adds node and status_class itself. Keep labels few and constant: per-query values such as the client and the domain travel as structured metadata.", Shape: Shape{Type: TypeMap, Values: &Shape{Type: TypeString, Help: "Value of the label, 1 to 128 characters."}}},
+		{Name: "structuredMetadata", Label: "Structured metadata", Help: "Attach client, client_name, domain, qtype, status and trace_id to each line as structured metadata (default true; needs Loki 3.0 or newer with it allowed). false sends them in the JSON line only.", Shape: Shape{Type: TypeBool, Default: true}},
+		sinkCompression,
+	}}
 	querylogSinkShape = &Shape{Type: TypeObject, Help: "One additional destination and its queue, batch and retry limits.", Fields: []Field{
 		{Name: "name", Label: "Name", Help: "Short name of this sink, e.g. log-lines: lowercase letters, digits and hyphens, at most 32 characters, unique in the list. It labels the sink's metrics and log messages; sqlite and slog are taken by querylog.sink.", Required: true, Shape: Shape{Type: TypeString}},
 		{Name: "type", Label: "Type", Help: "What kind of destination this is.", Required: true, Shape: Shape{Type: TypeString, Enum: querylogSinkTypes}},
@@ -258,6 +297,8 @@ var (
 		{Name: "timeout", Label: "Timeout", Help: "How long opening the destination and each write may take before the attempt is abandoned, 1s to 2m (default 10s).", Shape: Shape{Type: TypeDuration, Presets: []string{"5s", "10s", "30s"}, Default: "10s"}},
 		{Name: "attempts", Label: "Attempts", Help: "How many times one batch is sent when the destination reports that it was not stored and may be sent again, 1 to 10 (default 3); 1 never retries. A batch whose outcome is unknown is never sent twice; after the last attempt the batch is dropped and counted.", Shape: Shape{Type: TypeInt, Min: new(1), Max: new(10), Default: DefaultQuerylogSinkAttempts}},
 		{Name: "retryBackoff", Label: "Retry backoff", Help: "Wait before the second attempt, 100ms to 1m (default 1s); it doubles with every further attempt up to 30s.", Shape: Shape{Type: TypeDuration, Presets: []string{"500ms", "1s", "5s"}, Default: "1s"}},
+		{Name: QuerylogSinkClickHouse, Label: "ClickHouse", Help: "Destination of a sink of type clickhouse; required for that type and refused for any other.", Shape: querylogClickHouseShape},
+		{Name: QuerylogSinkLoki, Label: "Loki", Help: "Destination of a sink of type loki; required for that type and refused for any other.", Shape: querylogLokiShape},
 	}}
 	rateLevelValue = &Shape{Type: TypeInt, Help: "Queries per minute for this prefix length; 0 disables this limit.", Min: new(0)}
 )
@@ -438,7 +479,7 @@ var Schema = []Key{
 	{Path: "querylog.exclude.domains", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Names that are never logged, e.g. *.home.arpa or connectivitycheck.gstatic.com: exact names, *.suffix for a domain and everything below it, or /regex/.", Label: "Domains never logged", Group: GroupQuerylog, Items: &Shape{Type: TypeString}},
 	{Path: "querylog.exclude.clients", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Clients whose queries are never logged, e.g. 192.168.1.20, 10.0.0.0/8 or a client name such as nas: IP addresses, CIDR prefixes or client names.", Label: "Clients never logged", Group: GroupQuerylog, Items: &Shape{Type: TypeString}},
 	{Path: "querylog.exclude.sudn", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Leave out names that never leave the local network, which keeps local discovery noise out of the log: localhost, .local, .home.arpa and private and link-local reverse zones (special-use names, RFC 6761).", Label: "Skip special-use names", Group: GroupQuerylog},
-	{Path: "querylog.sinks", Type: TypeList, Scope: ScopeCluster, Default: []map[string]any{}, Help: "Additional destinations that receive every recorded query next to querylog.sink, e.g. log lines for a log pipeline while the dashboard keeps its database; at most 8. Each has its own bounded queue: a slow or failing destination loses only its own queries, which are counted, and never delays DNS answers, the local database or the live view. Queries arrive with the privacy mode and exclusions already applied, nothing under the nothing mode, and nothing while querylog.enabled is off. Changes apply without a restart: an unchanged entry keeps running, a removed one finishes what it holds, and a new one starts with new queries only.", Label: "Additional query log sinks", Group: GroupQuerylog, Items: querylogSinkShape},
+	{Path: "querylog.sinks", Type: TypeList, Scope: ScopeCluster, Default: []map[string]any{}, Help: "Additional destinations that receive every recorded query next to querylog.sink, e.g. a ClickHouse table, Grafana Loki or log lines for a log pipeline while the dashboard keeps its database; at most 8. Each has its own bounded queue: a slow or failing destination loses only its own queries, which are counted, and never delays DNS answers, the local database or the live view. Queries arrive with the privacy mode and exclusions already applied, nothing under the nothing mode, and nothing while querylog.enabled is off. Changes apply without a restart: an unchanged entry keeps running, a removed one finishes what it holds, and a new one starts with new queries only.", Label: "Additional query log sinks", Group: GroupQuerylog, Items: querylogSinkShape},
 	{Path: "database.dsn", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Optional PostgreSQL 16 or newer database that keeps the audit events, query log and statistics of every node in one place, so every node shows the same history and it outlives the nodes; empty (default) keeps them on each node. A connection string, e.g. postgres://kudurru@db.example:5432/kudurru?sslmode=verify-full; it may hold a password, so set it in the file or with KUDURRU_DATABASE__DSN_FILE. DNS never depends on it: nodes keep their own copy and send it when the database is reachable. docs/deploy/postgres.md.", HostOnly: true, RestartRequired: true, WriteOnly: true, Label: "Database connection", Group: GroupDatabase},
 	{Path: "database.maxConns", Type: TypeInt, Scope: ScopeNode, Default: 4, Help: "Most connections each node opens to the central database, e.g. 4.", HostOnly: true, RestartRequired: true, Label: "Database connections per node", Group: GroupDatabase, Min: new(1), Max: new(32)},
 	{Path: "database.querylog.ship", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "With database.dsn set, every node copies its query log and statistics into the central database, so the dashboard's All nodes view shows every node's queries and totals whichever node serves it. Each node keeps its own querylog.db too. Needs querylog.sink sqlite.", RestartRequired: true, Label: "Send the query log to the database", Group: GroupDatabase},
