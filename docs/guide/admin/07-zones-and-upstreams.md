@@ -283,6 +283,19 @@ The page has these functions:
 
 CAUTION: Check the result in the table of records after the import.
 
+### Let a program change records
+
+A program can add and remove records in a primary zone with the DNS UPDATE
+protocol (RFC 2136). Examples are the tool `nsupdate`, a DHCP server and an
+ACME client. Updates are off by default.
+
+You set this function in the YAML of the zone, not in the dashboard. A TSIG
+key identifies the program. For each key, you give the names and the record
+types that the program can change.
+
+[Dynamic DNS updates](../../deploy/dynamic-updates.md) has the procedure and
+the limits.
+
 ### Zones that you cannot change
 
 A zone with the owner **managed by file** or **managed by Kubernetes** is

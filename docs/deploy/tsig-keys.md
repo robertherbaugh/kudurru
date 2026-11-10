@@ -18,7 +18,21 @@ All paths below are relative to `/api/v1`.
 | `POST /tsigkeys/{keyName}/revoke` | `uid`, `resourceVersion` | `tsigkeys.delete` |
 | `POST /tsigkeys/{keyName}/reseal` | `uid`, `resourceVersion` | `tsigkeys.write` |
 
-Names are canonical DNS names. Algorithms are HMAC-SHA256 or HMAC-SHA512.
+The CLI has no dedicated command for these routes. Use `kudurru api`, with the
+request in a private file so that the secret is not a command argument:
+
+```sh
+# key.json: {"keyName": "transfer-key", "algorithm": "hmac-sha256", "secret": "<base64 secret>"}
+kudurru api POST /tsigkeys --data @key.json
+kudurru api /tsigkeys
+```
+
+A zone names the key in `spec.policy.transferTSIGKeyRefs`,
+`spec.policy.notifyTSIGKeyRef` or, for [dynamic updates](dynamic-updates.md),
+`spec.policy.updatePolicies`.
+
+Names are canonical DNS names; a name without the final dot is stored with it.
+Algorithms are HMAC-SHA256 or HMAC-SHA512.
 `secret` is canonical standard base64 encoding of at most 512 decoded bytes.
 Creation requires an absent stored name. Other commands require the exact UID
 and resourceVersion from reviewed metadata; stale bindings return a conflict.
@@ -54,17 +68,16 @@ implied by this procedure.
 
 Safe backups exclude stored credentials. Full backups preserve ciphertext and
 need the matching encryption keys and cluster identity. Protect those keys
-separately; ciphertext alone cannot restore signing capability. Full
-supported-driver rotation qualification remains separate from this SQLite
-management surface.
+separately; ciphertext alone cannot restore signing capability.
 
-## Kubernetes startup
+## Kubernetes
 
-Kubernetes nodes load existing correctly provisioned encrypted TSIG records once
-at startup, alongside file keys. The actual cluster identity, complete private
-inventory and every encrypted owner must validate within `store.kube.startupTimeout`.
-Duplicate file/store names, malformed records, unavailable keys or API access
-failure leave signed DNS, signed transfers and signed NOTIFY unavailable. A file
+Kubernetes nodes load the stored encrypted TSIG records at startup, alongside
+file keys, and read them again every ten seconds while they run. At startup the
+actual cluster identity, complete private inventory and every encrypted owner
+must validate within `store.kube.startupTimeout`. Duplicate file/store names,
+malformed records, unavailable keys or API access failure leave signed DNS,
+signed transfers and signed NOTIFY unavailable. A file
 key does not bypass an unknown stored source. Unsigned DNS from a valid saved
 snapshot remains available independently.
 

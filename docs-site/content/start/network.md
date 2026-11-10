@@ -57,6 +57,11 @@ In `ha-static` every host computes its own serial, so the serials of the
 twins are close but not identical: let external secondaries transfer from
 one named host.
 
+A primary zone can also accept RFC 2136 updates (`nsupdate`, DHCP servers,
+ACME clients). They are off by default and need a TSIG key with a grant for
+the names and record types it may change:
+[dynamic DNS updates](/deploy/dynamic-updates/).
+
 ## Resolver
 
 - **Upstream groups** with the strategies `parallel_best`, `strict`,
