@@ -345,10 +345,34 @@ flowchart TD
 Compiler/runtime/schema acceptance includes native BIND transfers and policy
 comparisons, TSIG/TLS rejection, IXFR, outage/restart, expiry, identity changes
 and persistence faults. Adapter tests cover policy order, all actions, raw-cache
-isolation, bounded CNAME resolution, expiry and response cleanup. Production
-capture/publication, node diagnostics, transport observation, edge isolation
-and dashboard integration remain in progress. The adapter is not yet wired
-into the server.
+isolation, bounded CNAME resolution, expiry and response cleanup.
+
+The complete SQLite runtime mounts this path. `serve` creates the feed manager
+and runs it on every node; `servingbuild.TransferredRuntime` composes its
+installation cut into each complete serving candidate; and `BindDNS` gives the
+blocking stage a selector that reads the feeds of the request's own
+publication, never a live manager. A hit is answered and logged with status
+`blocked_rpz`, the list and the rule (`<owner> <action>`), and the HTTP dig
+explanation shows the same fields. Policy list reads add the feed's rule count.
+The shared dnsdist packet cache is eligible only while every feed of the
+publication is available and has no client-IP rule, and never beyond the
+earliest feed expiry.
+
+```mermaid
+flowchart LR
+    Manager["rpz.Manager<br/>(every SQLite node)"] --> Cut["Installation cut"]
+    Cut --> Candidate["TransferredRuntime:<br/>complete serving candidate"]
+    Candidate --> Bundle["Published serving bundle"]
+    Bundle --> Select["Blocking stage selector<br/>(BindDNS, per request)"]
+    Select --> Hit["blocked_rpz + list + rule"]
+    Bundle --> Reads["Policy list reads, dig explanation"]
+    Bundle --> Edge["Shared edge-cache eligibility"]
+```
+
+On the Kubernetes store the manager is not created and the blocking stage has
+no selector, so RPZ sources are neither transferred nor evaluated there.
+Per-feed transfer status (`rpz.Manager.Statuses`: serial, primary, expiry,
+errors) is not exposed through the API, the CLI, metrics or the dashboard.
 
 ### Regex impact inspection
 

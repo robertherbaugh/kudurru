@@ -77,14 +77,17 @@ This authentication does not issue native UPDATE/NOTIFY capabilities: encrypted
 mutation requests still receive signed REFUSED. SQLite listeners capture the
 original complete serving publication before verification and retain its
 immutable keys through response emission; later messages capture independently.
-Kubernetes captures its complete startup stored/file keyring before verification,
-without inventing a complete serving lease. Until that source is prepared,
-signed requests receive empty unsigned SERVFAIL while unrelated unsigned DNS
-continues. A failed source remains unavailable until restart. Explicit fixed-key
-mode retains its configured startup keyring. Opaque
+Kubernetes captures the currently published stored/file keyring once before
+verification, without inventing a complete serving lease. Until the startup
+source is prepared, signed requests receive empty unsigned SERVFAIL while
+unrelated unsigned DNS continues; a failed startup preparation remains
+unavailable until restart. After a successful one, each node replaces the
+published keyring when the stored source changes
+([stored-key management](zones.md#captured-tsig-keys-and-stored-key-management)).
+Explicit fixed-key mode retains its configured startup keyring. Opaque
 mutable lookup providers fail closed on these transports because they cannot
-pin an installed credential generation. Stored-key administration remains
-separate from this transport mount.
+pin an installed credential generation. Stored-key administration is the
+separate `/api/v1/tsigkeys` command path, not part of this transport mount.
 
 SQLite composition also captures a private root component from that same complete
 publication before signature verification and query work. Each response consumes
@@ -252,9 +255,9 @@ NOTAUTH by the transport, also before the pipeline.
 | 1 | `ingress` | Is this query sane, and is the client within its rate? | TC=1 or silence over the UDP rate limit; NOTIMP for opcodes other than QUERY, NOTIFY and UPDATE; FORMERR; BADVERS; REFUSED for `ANY`; CHAOS `id.server`/`version.bind`; the `health.kudurru.internal.` TXT | `blocked_rate_limit`, `dropped`, `refused_acl`, `special_domain` |
 | 2 | `identify` | Which client groups, which policy? | never answers; attaches `Client.GroupIDs` and the policy decision | none |
 | 3 | `control` | Is the message malformed, the client outside allowed networks, or the query type blocked? | silence for malformed messages; REFUSED with EDNS EDE 18 for global admission rules | `dropped`, `refused_acl` |
-| 4 | `postprocess` | What may this client receive? | captures response settings; on response unwinding, checks rebinding and finalizes AD/CD/DO on a private copy | preserves the answering status |
-| 5 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced` |
-| 6 | `blocking` | Is the name blocked for this client? | a block answer, a safe-search CNAME; after the next stages return, it checks CNAME targets and IPs in the answer | `blocked_list`, `blocked_exact`, `blocked_regex`, `blocked_cname`, `blocked_safesearch` |
+| 4 | `postprocess` | What may this client receive? | captures response settings; on response unwinding, checks rebinding and finalizes AD/CD/DO on a private copy | `blocked_upstream` when rebinding protection refuses the answer; otherwise preserves the answering status |
+| 5 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced, a DHCP lease record; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced`, `local_record` (DHCP lease records) |
+| 6 | `blocking` | Is the name blocked for this client? | a block answer, a `$dnsrewrite` answer, a safe-search CNAME, a transferred RPZ action (complete SQLite runtime); after the next stages return, it checks CNAME targets and IPs in the answer | `blocked_list`, `blocked_exact`, `blocked_regex`, `blocked_cname`, `blocked_safesearch`, `blocked_rpz`, `local_record` (`$dnsrewrite`) |
 | 7 | `rewrite` | What response does this client need? | configured rewrites, DNS64, AAAA filtering and NXDOMAIN handling; synthesis clears AD and obsolete proofs | `local_record` for configured rewrites; otherwise preserves source status |
 | 8 | `cache` | Is the answer already known? | a cached, stale or prefetching answer | `cached`, `cached_stale`, `prefetch_refresh` |
 | 9 | `dnssec` | Is the raw forwarded answer authentic? | validates proofs when enabled; SERVFAIL and EDE for bogus or indeterminate data | `dnssec_bogus` |
@@ -427,14 +430,19 @@ send nothing:
 
 Statuses below 16 mean the query was answered normally; 16 to 23 mean it
 was blocked; 24 and above mean an error. The query log, the
-`kudurru_dns_responses_total{status}` metric and the dashboard colours all
+`kudurru_dns_responses_total{status}` metric and the dashboard colors all
 use this list (`internal/pipeline/status.go`).
 
 | Class | Values produced today | Reserved, not produced yet |
 |---|---|---|
-| answered | `forwarded`, `cached`, `cached_stale`, `authoritative`, `prefetch_refresh`, `special_domain` | `local_record`, `retried`, `in_progress` |
-| blocked | `blocked_list`, `blocked_regex`, `blocked_exact`, `blocked_cname`, `blocked_safesearch`, `blocked_rate_limit` | `blocked_upstream`, `blocked_rpz` |
+| answered | `forwarded`, `cached`, `cached_stale`, `authoritative`, `local_record`, `prefetch_refresh`, `special_domain` | `retried`, `in_progress` |
+| blocked | `blocked_list`, `blocked_regex`, `blocked_exact`, `blocked_cname`, `blocked_upstream`, `blocked_rpz`, `blocked_safesearch`, `blocked_rate_limit` | — |
 | error | `refused_acl`, `dropped`, `servfail_upstream`, `timeout_upstream`, `servfail_unsynced`, `dnssec_bogus` | — |
+
+`local_record` marks a configured policy rewrite, a `$dnsrewrite` rule or a
+DHCP lease record. `blocked_upstream` marks an answer refused by rebinding
+protection. `blocked_rpz` marks a transferred RPZ action; only the complete
+SQLite runtime evaluates RPZ feeds ([block lists](block-lists.md#transferred-rpz-foundation)).
 
 ## What the stages read
 

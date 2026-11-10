@@ -16,9 +16,10 @@ erDiagram
     ClientMatcher {
         string ip
         string cidr
-        string mac "not filled in yet"
-        string hostname "not filled in yet"
-        string clientID "not filled in yet"
+        string mac "from the client inventory"
+        string hostname "inventory, DHCP lease or reverse-PTR name"
+        string nameGlob "pattern over the same names"
+        string clientID "DoT/DoQ SNI, DoH path or PROXYv2 TLV"
     }
     Policy {
         int priority
@@ -62,13 +63,14 @@ flowchart TD
     CID -- "no" --> CATCH{"a group with<br/>0.0.0.0/0 or ::/0?"}
     CATCH -- "yes" --> G
     CATCH -- "no" --> DEF["group default<br/>(if it exists)"]
-    classDef dead fill:#e6e9e8,stroke:#5b6664,color:#5b6664
-    class MAC,HN,CID dead
 ```
 
-The grey tiers exist in the index, but nothing feeds them yet: no transport
-sets a MAC or a DoT/DoH client ID, and no hostname resolver is wired. Today
-clients are matched by exact IP, by CIDR, or fall through to the catch-all.
+The MAC, hostname and client-ID tiers match only when something supplies that
+identity for the client: the captured inventory (MAC addresses and names),
+DHCP lease names, the optional reverse-PTR lookup, or an opt-in encrypted
+transport client ID. [Captured client identity](#captured-client-identity)
+describes each source. Without one, a client is matched by exact IP, by CIDR,
+or falls through to the catch-all.
 The bootstrap `ClientGroup default` lists `0.0.0.0/0` and `::/0`, which is
 how "default matches everybody" works.
 
@@ -97,8 +99,10 @@ crosses midnight and belongs to the start day; `start == end` means 24 hours;
 no weekdays means every day. A schedule that does not parse makes the policy
 **always active** (it fails closed) and raises a diagnosis.
 
-`queryLog` is merged into the decision but nothing reads it yet, and
-`rewrites` is ignored (planned for v0.2).
+`queryLog` is merged into the decision but nothing reads it yet. `rewrites`
+are compiled into the decision in policy priority order and answered by the
+`rewrite` stage with status `local_record`
+([response processing](../deploy/response-processing.md)).
 
 ## 3. Is this name blocked?
 
@@ -106,7 +110,8 @@ The diagram below describes ordinary list evaluation. The transferred RPZ
 adapter inserts ordered feed evaluation after explicit allow/allow-only and
 before ordinary denies, rewrites and safe search. It uses one resolved response
 for both RPZ and ordinary answer inspection; required unavailable feeds fail
-closed. Production wiring remains open. See
+closed. The complete SQLite runtime mounts the adapter; the Kubernetes store
+does not evaluate RPZ sources. See
 [transferred RPZ](block-lists.md#transferred-rpz-foundation) for that flow and
 its current implementation boundary.
 
@@ -262,7 +267,7 @@ sequenceDiagram
     BP->>S: Apply UnblockRequest ur-<HMAC(client, domain)> (Pending)
     A->>S: approve under original current proof and writer (scope, match, duration)
     S->>S: one SQLite transaction: entry, policy references, request decision
-    Note over A,S: decide permission delegates only these derived effects; final credential and license checks
+    Note over A,S: decide permission delegates only these derived effects#59; final credential and license checks
     Note over S,D: every node: list recompiles → new snapshot → allow list wins
     A->>D: the API flushes the name from this node's cache
     U->>D: A ads.example (after the old block TTL)
