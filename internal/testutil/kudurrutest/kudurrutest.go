@@ -86,24 +86,14 @@ func Build(dir string) (string, error) {
 	if p := os.Getenv(EnvBinary); p != "" {
 		return filepath.Abs(p)
 	}
-	root, err := ModuleRoot()
-	if err != nil {
-		return "", err
-	}
-	out := filepath.Join(dir, "kudurru")
-	cmd := exec.Command("go", "build", "-trimpath", "-o", out, "./cmd/kudurru") //nolint:gosec // fixed arguments
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("kudurrutest: go build: %w\n%s", err, b)
-	}
-	return out, nil
+	return goBuild(filepath.Join(dir, "kudurru"))
 }
 
 // MainBuild is the TestMain helper of the end-to-end packages: when
 // KUDURRU_E2E is set it builds the binary into a temporary directory and
 // stores its path in *bin; it then runs the tests and removes the
-// directory.
+// directory. It prints what Describe says about the binary, built or
+// prebuilt, so the log of a run names the artifact.
 func MainBuild(m *testing.M, bin *string) int {
 	if !Enabled() {
 		return m.Run()
@@ -120,7 +110,17 @@ func MainBuild(m *testing.M, bin *string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Fprintf(os.Stderr, "kudurrutest: built %s in %s\n", p, time.Since(start).Round(time.Millisecond))
+	if os.Getenv(EnvBinary) != "" {
+		fmt.Fprintf(os.Stderr, "kudurrutest: %s names the prebuilt %s\n", EnvBinary, p)
+	} else {
+		fmt.Fprintf(os.Stderr, "kudurrutest: built %s in %s\n", p, time.Since(start).Round(time.Millisecond))
+	}
+	id, err := Describe(p)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "kudurrutest: binary %s\n", id)
 	*bin = p
 	return m.Run()
 }

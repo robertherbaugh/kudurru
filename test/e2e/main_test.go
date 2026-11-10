@@ -17,7 +17,11 @@ import (
 
 var kudurruBin string
 
-func TestMain(m *testing.M) { os.Exit(kudurrutest.MainBuild(m, &kudurruBin)) }
+func TestMain(m *testing.M) {
+	code := kudurrutest.MainBuild(m, &kudurruBin)
+	removeLicensedBuild()
+	os.Exit(code)
+}
 
 // exchange sends one question over UDP (TCP when tcp is set).
 func exchange(addr, name string, qtype uint16, tcp bool) (*dns.Msg, error) {
