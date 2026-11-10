@@ -206,6 +206,16 @@ type WebhookIntegration struct {
 	Policy string `json:"policy,omitempty"`
 }
 
+// Integration spec.deletionPolicy values.
+const (
+	// IntegrationDeletionRetain leaves records the instance published in place
+	// when the Integration is deleted.
+	IntegrationDeletionRetain = "Retain"
+	// IntegrationDeletionDelete removes records proven owned by the instance
+	// before the Integration object is removed.
+	IntegrationDeletionDelete = "Delete"
+)
+
 // IntegrationSpec is one independently elected background integration.
 // +kubebuilder:validation:XValidation:rule="has(self.cloudflare) == (self.type == 'cloudflare')",message="cloudflare settings must match type"
 // +kubebuilder:validation:XValidation:rule="has(self.unifi) == (self.type == 'unifi')",message="unifi settings must match type"

@@ -163,6 +163,15 @@ func (s *Store) list(ctx context.Context, kind store.Kind, opts store.ListOption
 //   - The managedBy check and the write are made atomic by sending the
 //     observed resourceVersion as an SSA precondition; if the object changed
 //     in between, the check is repeated.
+//   - Reserved finalizers are not decided by the caller's document
+//     (store.ReconcileReservedFinalizers, D367). This driver has no
+//     admission of its own and never arms one. It carries
+//     store.IntegrationCleanupFinalizer in the body while the stored
+//     Integration has it and the spec still says Delete, so a Force takeover
+//     cannot strip the cleanup obligation the elected host armed with
+//     UpdateFinalizer. A body whose spec says Retain stops asserting it:
+//     Force then removes it, and without Force the host's own field
+//     ownership keeps it until the host clears it.
 func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
 	if opts.Manager == "" {
 		return nil, errors.New("store: ApplyOptions.Manager is required")
@@ -196,6 +205,13 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		if err != nil {
 			return nil, err
 		}
+		// Rebuilt from every observation: a retry may see another object.
+		desired := obj.DeepCopyObject().(store.Object)
+		if cur != nil {
+			store.ReconcileReservedFinalizers(desired, cur, false)
+		} else {
+			store.ReconcileReservedFinalizers(desired, nil, false)
+		}
 		precondition := ""
 		switch {
 		case cur != nil:
@@ -210,7 +226,7 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 			}
 			precondition = cur.ResourceVersion
 			if opts.Force {
-				rv, err := s.takeOver(ctx, ki, key, cur, obj, opts.Manager)
+				rv, err := s.takeOver(ctx, ki, key, cur, desired, opts.Manager)
 				if err != nil {
 					if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
 						return nil, fmt.Errorf("store/kube: take over %s: %w", key, err)
@@ -225,7 +241,7 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		case opts.ExpectedResourceVersion != "":
 			return nil, fmt.Errorf("%w: %s does not exist, expected %s", store.ErrConflict, key, opts.ExpectedResourceVersion)
 		}
-		u, err := applyPayload(ki, obj, opts.Manager, precondition)
+		u, err := applyPayload(ki, desired, opts.Manager, precondition)
 		if err != nil {
 			return nil, err
 		}
@@ -325,6 +341,77 @@ func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 		default:
 			return fmt.Errorf("store/kube: delete %s: %w", key, err)
 		}
+	}
+}
+
+// finalizerFieldManager owns the finalizers UpdateFinalizer writes. It is
+// distinct from every object manager, so a manager's ordinary apply, which
+// does not list the finalizer, leaves it in place.
+const finalizerFieldManager = "kudurru-finalizer"
+
+// UpdateFinalizer implements store.FinalizerWriter with a merge patch of
+// metadata.finalizers alone under finalizerFieldManager. The object is read
+// once; a UID or resourceVersion other than the caller's is
+// store.ErrConflict, and the observed resourceVersion travels in the patch
+// as the apiserver's optimistic lock, so a change in between is
+// store.ErrConflict too and nothing is retried on a newer object (a
+// resourceVersion identifies one incarnation, so the UID check holds
+// through the write). Spec, status, labels, annotations and generation are
+// not in the patch. The apiserver removes an object that is being deleted
+// when its last finalizer goes; the returned object is then the removed
+// one (store.Terminated). The runtime kinds this driver carries inside
+// other objects have no finalizers.
+func (s *Store) UpdateFinalizer(ctx context.Context, key store.Key, opts store.FinalizerOptions) (store.Object, error) {
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+	if s.isClosed() {
+		return nil, store.ErrClosed
+	}
+	if _, ok := s.internal.get(key.Kind); ok {
+		return nil, fmt.Errorf("store/kube: UpdateFinalizer %s: runtime kinds have no finalizers", key)
+	}
+	ki, err := s.kinds.get(key.Kind)
+	if err != nil {
+		return nil, err
+	}
+	if ok, err := s.scopeMatches(ki, key.Namespace); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+	}
+	cur := ki.newObject()
+	if err := s.c.Get(ctx, client.ObjectKey{Namespace: key.Namespace, Name: key.Name}, cur); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+		}
+		return nil, fmt.Errorf("store/kube: get %s: %w", key, err)
+	}
+	finalizers, changed, err := store.PlanFinalizer(cur, opts)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", err, key)
+	}
+	if !changed {
+		normalize(ki, cur)
+		return cur, nil
+	}
+	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{
+		"resourceVersion": cur.GetResourceVersion(), "finalizers": finalizers,
+	}})
+	if err != nil {
+		return nil, err
+	}
+	err = s.c.Patch(ctx, cur, client.RawPatch(types.MergePatchType, patch), client.FieldOwner(finalizerFieldManager))
+	switch {
+	case err == nil:
+		normalize(ki, cur)
+		return cur, nil
+	case apierrors.IsNotFound(err):
+		return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+	case apierrors.IsConflict(err):
+		return nil, fmt.Errorf("%w: %s changed during the finalizer update", store.ErrConflict, key)
+	default:
+		return nil, writeError("update finalizer", key, err)
 	}
 }
 

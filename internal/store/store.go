@@ -15,10 +15,13 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 )
@@ -145,6 +148,145 @@ func CheckDeletePreconditions(obj metav1.Object, opts DeleteOptions) error {
 		return ErrConflict
 	}
 	return nil
+}
+
+// IntegrationCleanupFinalizer is the reserved finalizer of an Integration
+// whose spec.deletionPolicy is Delete (D367). While it is present, deleting the
+// object only sets its deletionTimestamp: the object stays readable with its
+// spec, credential references, UID and status until the elected cleanup owner
+// has removed what the instance provably owns and clears the finalizer. No
+// writer's document decides it; see ReconcileReservedFinalizers.
+const IntegrationCleanupFinalizer = "kudurru.io/integration-cleanup"
+
+// HasFinalizer reports whether obj carries the finalizer name.
+func HasFinalizer(obj metav1.Object, name string) bool {
+	return slices.Contains(obj.GetFinalizers(), name)
+}
+
+// Terminated reports whether obj is the removed form of an object: it was
+// being deleted and no finalizer remains. Apply and UpdateFinalizer return
+// that form when their write removed the object.
+func Terminated(obj metav1.Object) bool {
+	return obj.GetDeletionTimestamp() != nil && len(obj.GetFinalizers()) == 0
+}
+
+// IntegrationCleanupArmed is the pure rule for IntegrationCleanupFinalizer
+// after an Apply whose spec carries policy (D367). stored is the object the
+// apply replaces, nil on create.
+//
+//   - A policy other than Delete never carries it. On a driver that admits
+//     writes itself (sqlite), changing a live object to Retain disarms it and
+//     changing an object that is being deleted to Retain releases it, which
+//     removes the object once no other finalizer remains. A driver without
+//     admission (kube) stops asserting it: a Force takeover removes it, and
+//     otherwise the host that armed it clears it.
+//   - An object that is being deleted keeps it exactly while it still has it:
+//     only the cleanup owner (UpdateFinalizer) or the change to Retain removes
+//     it, and nothing adds it back.
+//   - A live object with Delete keeps it when it has it. When it does not,
+//     admits decides: sqlite arms it in the same write as the spec, so no
+//     instance can own external state unarmed; kube only carries an
+//     obligation the elected host armed with UpdateFinalizer, and never
+//     invents one that nothing would clear.
+func IntegrationCleanupArmed(policy string, stored metav1.Object, admits bool) bool {
+	if policy != v1alpha1.IntegrationDeletionDelete {
+		return false
+	}
+	if stored == nil {
+		return admits
+	}
+	had := HasFinalizer(stored, IntegrationCleanupFinalizer)
+	if stored.GetDeletionTimestamp() != nil {
+		return had
+	}
+	return had || admits
+}
+
+// ReconcileReservedFinalizers rewrites the reserved finalizers of next, the
+// object an Apply is about to write, from its defaulted spec and the stored
+// object it replaces (nil on create). The caller's document cannot add or
+// remove a reserved finalizer; its other finalizers are kept in order, and a
+// reserved one that the rule requires is stored last. Kinds without a
+// reserved finalizer are not touched.
+func ReconcileReservedFinalizers(next Object, stored metav1.Object, admits bool) {
+	i, ok := next.(*v1alpha1.Integration)
+	if !ok || i == nil {
+		return
+	}
+	finalizers := slices.DeleteFunc(slices.Clone(i.Finalizers), func(name string) bool { return name == IntegrationCleanupFinalizer })
+	if IntegrationCleanupArmed(i.Spec.DeletionPolicy, stored, admits) {
+		finalizers = append(finalizers, IntegrationCleanupFinalizer)
+	}
+	if len(finalizers) == 0 {
+		finalizers = nil
+	}
+	i.Finalizers = finalizers
+}
+
+// FinalizerOptions selects one metadata-only finalizer change.
+type FinalizerOptions struct {
+	// Finalizer is the qualified name to add, or to remove when Remove is set.
+	Finalizer string
+	Remove    bool
+	// ExpectedUID and ExpectedResourceVersion are both required and bind the
+	// change to the exact object the caller observed. Either mismatch is
+	// ErrConflict; the driver never re-reads and retries on a newer object.
+	ExpectedUID             string
+	ExpectedResourceVersion string
+}
+
+// Validate checks that the change names one finalizer and its exact target.
+func (o FinalizerOptions) Validate() error {
+	if o.ExpectedUID == "" || o.ExpectedResourceVersion == "" {
+		return errors.New("store: FinalizerOptions requires ExpectedUID and ExpectedResourceVersion")
+	}
+	if !strings.Contains(o.Finalizer, "/") || len(validation.IsQualifiedName(o.Finalizer)) != 0 {
+		return fmt.Errorf("store: %q is not a qualified finalizer name", o.Finalizer)
+	}
+	return nil
+}
+
+// PlanFinalizer applies opts to the finalizers of the stored object obj. It
+// returns the next list and whether it differs. A mismatched UID or
+// resourceVersion is ErrConflict, and adding to an object that is already
+// being deleted is ErrTerminating (the apiserver forbids it too).
+func PlanFinalizer(obj metav1.Object, opts FinalizerOptions) (next []string, changed bool, err error) {
+	if err := opts.Validate(); err != nil {
+		return nil, false, err
+	}
+	if opts.ExpectedUID != string(obj.GetUID()) || opts.ExpectedResourceVersion != obj.GetResourceVersion() {
+		return nil, false, ErrConflict
+	}
+	current := obj.GetFinalizers()
+	has := slices.Contains(current, opts.Finalizer)
+	switch {
+	case opts.Remove && !has, !opts.Remove && has:
+		return slices.Clone(current), false, nil
+	case opts.Remove:
+		next = slices.DeleteFunc(slices.Clone(current), func(name string) bool { return name == opts.Finalizer })
+		if len(next) == 0 {
+			next = nil
+		}
+		return next, true, nil
+	case obj.GetDeletionTimestamp() != nil:
+		return nil, false, ErrTerminating
+	default:
+		return append(slices.Clone(current), opts.Finalizer), true, nil
+	}
+}
+
+// FinalizerWriter is implemented by drivers that can change one entry of
+// metadata.finalizers without replacing the object (sqlite, kube). The write
+// keeps the manager, labels, annotations, spec, status and generation, and
+// changes nothing when the finalizer is already in the requested state.
+// Removing the last finalizer of an object that is being deleted removes the
+// object. UpdateFinalizer returns the stored object, or the removed object
+// (see Terminated) when its write removed it.
+//
+// It is the only way the cleanup owner clears IntegrationCleanupFinalizer,
+// and how a host arms it on a driver without admission (D367).
+type FinalizerWriter interface {
+	UpdateFinalizer(ctx context.Context, key Key, opts FinalizerOptions) (Object, error)
 }
 
 // DeleteRequest is one delete of a cascade (DeleteAll, MultiDeleter).
@@ -294,6 +436,9 @@ var (
 	ErrNotFound = errors.New("store: not found")
 	ErrConflict = errors.New("store: resource version conflict")
 	ErrClosed   = errors.New("store: closed")
+	// ErrTerminating: the object is being deleted, so the write cannot add an
+	// obligation to it (a finalizer on an object with a deletionTimestamp).
+	ErrTerminating = errors.New("store: object is being deleted")
 	// ErrAuditIntegrity identifies changed audit contents or broken chain links,
 	// as distinct from an unavailable backend or a canceled verification.
 	ErrAuditIntegrity = errors.New("audit: integrity check failed")

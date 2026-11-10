@@ -490,6 +490,13 @@ func compactFeed(ctx context.Context, tx txQueryer, seq uint64) error {
 //     re-apply writes nothing and returns the stored object.
 //   - An object being deleted (deletionTimestamp set) whose finalizers the
 //     apply clears is removed.
+//   - Reserved finalizers are decided here, not by the caller's document
+//     (store.ReconcileReservedFinalizers, D367): an Integration whose
+//     defaulted spec.deletionPolicy is Delete is armed with
+//     store.IntegrationCleanupFinalizer in the same write, keeps it through
+//     any manager's whole-object apply, Force included, and through an apply
+//     while it is being deleted; only a change to Retain or UpdateFinalizer
+//     removes it.
 //
 // obj is not modified.
 func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (_ store.Object, err error) {
@@ -572,6 +579,13 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 	}
 	if err := s.validate(ctx, next, old); err != nil {
 		return nil, err
+	}
+	// Admission decides reserved finalizers from the defaulted spec in the
+	// same write, before the no-op comparison and the finalize check below.
+	if prev != nil {
+		store.ReconcileReservedFinalizers(next, prev.obj, true)
+	} else {
+		store.ReconcileReservedFinalizers(next, nil, true)
 	}
 	// Apply writes the main resource only (D70).
 	if prev != nil {
@@ -682,6 +696,67 @@ func (s *Store) planDelete(ki *kindInfo, key store.Key, prev *stored, opts store
 		return m, nil
 	}
 	m.typ, m.obj = store.Deleted, next
+	return m, nil
+}
+
+// UpdateFinalizer implements store.FinalizerWriter: one finalizer is added
+// to or removed from the exact object named by the required UID and
+// resourceVersion (a mismatch, or a change between the read and the commit,
+// is store.ErrConflict; nothing is retried on a newer object). Manager,
+// labels, annotations, spec, status and generation are kept. Removing the
+// last finalizer of an object that is being deleted removes it (a Deleted
+// event, audited as <kind>.finalize); any other change is a Modified event
+// audited as <kind>.finalizer. A finalizer already in the requested state
+// writes nothing.
+func (s *Store) UpdateFinalizer(ctx context.Context, key store.Key, opts store.FinalizerOptions) (_ store.Object, err error) {
+	defer s.observe(opApply, time.Now(), &err)
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+	if s.isClosed() {
+		return nil, store.ErrClosed
+	}
+	ki, err := s.kinds.get(key.Kind)
+	if err != nil {
+		return nil, err
+	}
+	return s.mutate(ctx, true, func(q queryer) (*mutation, error) {
+		prev, err := s.load(ctx, q, ki, key)
+		if err != nil {
+			return nil, err
+		}
+		if prev == nil {
+			return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+		}
+		return s.planFinalizer(ki, key, prev, opts)
+	})
+}
+
+// planFinalizer prepares the metadata-only finalizer change of prev.
+func (s *Store) planFinalizer(ki *kindInfo, key store.Key, prev *stored, opts store.FinalizerOptions) (*mutation, error) {
+	finalizers, changed, err := store.PlanFinalizer(prev.obj, opts)
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			return nil, fmt.Errorf("%w: %s is uid %s at %s, expected uid %s at %s", store.ErrConflict, key,
+				prev.obj.GetUID(), prev.obj.GetResourceVersion(), opts.ExpectedUID, opts.ExpectedResourceVersion)
+		}
+		return nil, fmt.Errorf("%w: %s", err, key)
+	}
+	m := &mutation{ki: ki, key: key, prev: prev, manager: store.ManagedBy(prev.obj), typ: store.Modified, action: "finalizer"}
+	if !changed {
+		m.noop = true
+		return m, nil
+	}
+	next := prev.obj.DeepCopyObject().(store.Object)
+	next.SetFinalizers(finalizers)
+	m.obj = next
+	m.reason = "added " + opts.Finalizer
+	if opts.Remove {
+		m.reason = "removed " + opts.Finalizer
+	}
+	if store.Terminated(next) {
+		m.typ, m.action = store.Deleted, "finalize"
+	}
 	return m, nil
 }
 

@@ -437,6 +437,36 @@ func (t *CommandTx) Delete(ctx context.Context, key store.Key, opt store.DeleteO
 	return err
 }
 
+// UpdateFinalizer stages the metadata-only finalizer change of
+// Store.UpdateFinalizer in this tx: exact UID and resourceVersion, nothing
+// but metadata.finalizers written, and the object removed when the last
+// finalizer of an object that is being deleted goes. It returns the staged
+// object, or the removed one (store.Terminated).
+func (t *CommandTx) UpdateFinalizer(ctx context.Context, key store.Key, opt store.FinalizerOptions) (store.Object, error) {
+	if err := t.valid(ctx); err != nil {
+		return nil, err
+	}
+	if err := opt.Validate(); err != nil {
+		return nil, t.poison(err)
+	}
+	ki, err := t.s.kinds.get(key.Kind)
+	if err != nil {
+		return nil, t.poison(err)
+	}
+	prev, err := t.s.load(ctx, t.tx, ki, key)
+	if err != nil {
+		return nil, t.poison(err)
+	}
+	if prev == nil {
+		return nil, t.poison(fmt.Errorf("%w: %s", store.ErrNotFound, key))
+	}
+	m, err := t.s.planFinalizer(ki, key, prev, opt)
+	if err != nil {
+		return nil, t.poison(err)
+	}
+	return t.write(ctx, m)
+}
+
 // UpdateStatus stages a validated status-only mutation in this tx.
 func (t *CommandTx) UpdateStatus(ctx context.Context, obj store.Object) error {
 	if err := t.valid(ctx); err != nil {

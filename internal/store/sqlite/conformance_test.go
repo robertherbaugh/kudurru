@@ -13,6 +13,12 @@ func TestConformance(t *testing.T) {
 	conformance.Run(t, func(t *testing.T) store.Store { return openTemp(t) })
 }
 
+// TestReservedFinalizerConformance: this driver admits writes itself, so it
+// arms the Integration cleanup finalizer in Apply (D367).
+func TestReservedFinalizerConformance(t *testing.T) {
+	conformance.RunReservedFinalizer(t, func(t *testing.T) store.Store { return openTemp(t) }, true)
+}
+
 func TestRejectionConformance(t *testing.T) {
 	conformance.RunRejections(t, func(t *testing.T) store.Store { return openTemp(t) }, func(t *testing.T, st store.Store, _ store.Key) any {
 		s := st.(*Store)

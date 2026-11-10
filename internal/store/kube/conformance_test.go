@@ -23,6 +23,17 @@ func TestConformance(t *testing.T) {
 	})
 }
 
+// TestReservedFinalizerConformance: the apiserver has no kudurru admission,
+// so this driver carries the Integration cleanup finalizer its host armed
+// instead of arming it in Apply (D367).
+func TestReservedFinalizerConformance(t *testing.T) {
+	requireEnv(t)
+	conformance.RunReservedFinalizer(t, func(t *testing.T) store.Store {
+		purge(t, shared.admin)
+		return newTestStore(t, Options{})
+	}, false)
+}
+
 func TestRejectionConformance(t *testing.T) {
 	requireEnv(t)
 	conformance.RunRejections(t, func(t *testing.T) store.Store {

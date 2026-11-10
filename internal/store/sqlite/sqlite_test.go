@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -529,6 +530,388 @@ func TestFinalizers(t *testing.T) {
 	if got := strings.Join(actions, ","); got != "dnszone.create,dnszone.delete,dnszone.update,dnszone.finalize" {
 		t.Fatalf("audit actions = %s", got)
 	}
+}
+
+func cleanupIntegration(name, policy string) *v1alpha1.Integration {
+	return &v1alpha1.Integration{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "apps"},
+		Spec: v1alpha1.IntegrationSpec{
+			Type:           "unifi",
+			Credentials:    map[string]v1alpha1.CredentialReference{"apiKey": {SecretRef: &v1alpha1.CredentialSecretRef{Name: "unifi", Key: "token"}}},
+			UniFi:          &v1alpha1.UniFiIntegration{Endpoint: "https://network.example"},
+			DeletionPolicy: policy,
+		},
+	}
+}
+
+// TestFinalizersReservedIntegrationCleanup: admission decides the cleanup
+// finalizer of an Integration from its spec (D367). The caller's document
+// can neither set nor strip it, so a Delete policy cannot silently become
+// Retain through an edited or re-declared document.
+func TestFinalizersReservedIntegrationCleanup(t *testing.T) {
+	ctx := context.Background()
+	const reserved = store.IntegrationCleanupFinalizer
+	file := store.ManagerFile("integrations.yaml")
+	key := store.Key{Kind: "Integration", Namespace: "apps", Name: "cleanup"}
+	get := func(t *testing.T, s *Store) *v1alpha1.Integration {
+		t.Helper()
+		var got v1alpha1.Integration
+		if err := s.Get(ctx, key, &got); err != nil {
+			t.Fatal(err)
+		}
+		return &got
+	}
+	// objectEvent is the next object event of a watch resumed at a
+	// resourceVersion, past its bookmark.
+	objectEvent := func(t *testing.T, w store.Watcher) store.Event {
+		t.Helper()
+		for {
+			if ev := next(t, w); ev.Type != store.Bookmark {
+				return ev
+			}
+		}
+	}
+
+	t.Run("ArmedInTheSameWrite", func(t *testing.T) {
+		s := openTemp(t)
+		before := s.ResourceVersion()
+		out := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		if !reflect.DeepEqual(out.GetFinalizers(), []string{reserved}) {
+			t.Fatalf("finalizers = %v", out.GetFinalizers())
+		}
+		was, _ := strconv.ParseUint(before, 10, 64)
+		if now, _ := strconv.ParseUint(s.ResourceVersion(), 10, 64); now != was+1 || out.GetResourceVersion() != s.ResourceVersion() {
+			t.Fatalf("arming took %d writes", now-was)
+		}
+		entries, err := s.ReadAudit(ctx, AuditQuery{Kind: "Integration", Name: "cleanup"})
+		if err != nil || len(entries) != 1 || entries[0].Action != "integration.create" || !strings.Contains(string(entries[0].After), reserved) {
+			t.Fatalf("the create audit row must carry the armed object: %+v %v", entries, err)
+		}
+		// The default policy and an explicit Retain are never armed, even when
+		// the document lists the reserved name itself.
+		for name, policy := range map[string]string{"defaulted": "", "retained": "Retain"} {
+			claimed := cleanupIntegration(name, policy)
+			claimed.Finalizers = []string{reserved}
+			if got := mustApply(t, s, claimed, file); len(got.GetFinalizers()) != 0 || got.(*v1alpha1.Integration).Spec.DeletionPolicy != "Retain" {
+				t.Fatalf("%s: finalizers=%v policy=%q", name, got.GetFinalizers(), got.(*v1alpha1.Integration).Spec.DeletionPolicy)
+			}
+		}
+		// Other kinds keep ordinary caller-owned finalizers under that name.
+		z := zone("home", "home.example.")
+		z.Finalizers = []string{reserved}
+		if got := mustApply(t, s, z, file); !reflect.DeepEqual(got.GetFinalizers(), []string{reserved}) {
+			t.Fatalf("zone finalizers = %v", got.GetFinalizers())
+		}
+	})
+
+	t.Run("NoApplyStripsIt", func(t *testing.T) {
+		s := openTemp(t)
+		armed := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		// Identical document without finalizers: nothing is written.
+		same := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		if same.GetResourceVersion() != armed.GetResourceVersion() || !store.HasFinalizer(same, reserved) {
+			t.Fatalf("identical re-apply wrote: rv %s then %s, finalizers %v", armed.GetResourceVersion(), same.GetResourceVersion(), same.GetFinalizers())
+		}
+		// The document's own finalizers are kept, the reserved one stays last.
+		own := cleanupIntegration("cleanup", "Delete")
+		own.Finalizers = []string{reserved, "kudurru.io/operator-hold"}
+		if got := mustApply(t, s, own, file); !reflect.DeepEqual(got.GetFinalizers(), []string{"kudurru.io/operator-hold", reserved}) {
+			t.Fatalf("finalizers = %v", got.GetFinalizers())
+		}
+		edited := cleanupIntegration("cleanup", "Delete")
+		edited.Spec.Suspend = true
+		if got := mustApply(t, s, edited, file); !reflect.DeepEqual(got.GetFinalizers(), []string{reserved}) || got.GetGeneration() != 2 {
+			t.Fatalf("edited apply: finalizers=%v generation=%d", got.GetFinalizers(), got.GetGeneration())
+		}
+		forced, err := s.Apply(ctx, cleanupIntegration("cleanup", "Delete"), store.ApplyOptions{Manager: store.ManagerAPI, Force: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !store.HasFinalizer(forced, reserved) || store.ManagedBy(forced) != store.ManagerAPI {
+			t.Fatalf("Force takeover: finalizers=%v managedBy=%q", forced.GetFinalizers(), store.ManagedBy(forced))
+		}
+
+		if err := s.Delete(ctx, key, store.DeleteOptions{Manager: store.ManagerAPI}); err != nil {
+			t.Fatal(err)
+		}
+		deleting := get(t, s)
+		if deleting.DeletionTimestamp == nil || !store.HasFinalizer(deleting, reserved) {
+			t.Fatalf("delete of an armed Integration: deletionTimestamp=%v finalizers=%v", deleting.DeletionTimestamp, deleting.Finalizers)
+		}
+		// Applies during termination, Force included, neither finalize nor
+		// clear the deletion.
+		for _, force := range []bool{false, true} {
+			redeclared := cleanupIntegration("cleanup", "Delete")
+			redeclared.Spec.Suspend = !force
+			out, err := s.Apply(ctx, redeclared, store.ApplyOptions{Manager: store.ManagerAPI, Force: force})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.GetDeletionTimestamp() == nil || !store.HasFinalizer(out, reserved) {
+				t.Fatalf("apply during termination (force=%v): deletionTimestamp=%v finalizers=%v", force, out.GetDeletionTimestamp(), out.GetFinalizers())
+			}
+		}
+		if got := get(t, s); got.UID != armed.GetUID() || got.DeletionTimestamp == nil {
+			t.Fatal("the terminating object was replaced or revived")
+		}
+	})
+
+	t.Run("RetainDisarmsAndReleases", func(t *testing.T) {
+		s := openTemp(t)
+		mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		// Live: the change to Retain removes the obligation with the spec.
+		retained := mustApply(t, s, cleanupIntegration("cleanup", "Retain"), file)
+		if len(retained.GetFinalizers()) != 0 || retained.GetGeneration() != 2 {
+			t.Fatalf("Retain on a live object: finalizers=%v generation=%d", retained.GetFinalizers(), retained.GetGeneration())
+		}
+		// And back: armed again in the write that changes the spec.
+		rearmed := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		if !store.HasFinalizer(rearmed, reserved) || rearmed.GetGeneration() != 3 {
+			t.Fatalf("re-arming: finalizers=%v generation=%d", rearmed.GetFinalizers(), rearmed.GetGeneration())
+		}
+		w, err := s.Watch(ctx, "Integration", store.WatchOptions{ResourceVersion: s.ResourceVersion()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer w.Stop()
+		if err := s.Delete(ctx, key, store.DeleteOptions{Manager: file}); err != nil {
+			t.Fatal(err)
+		}
+		if ev := objectEvent(t, w); ev.Type != store.Modified || ev.Object.GetDeletionTimestamp() == nil {
+			t.Fatalf("expected Modified with deletionTimestamp, got %v", ev.Type)
+		}
+		// Terminating: the change to Retain is the release.
+		released := mustApply(t, s, cleanupIntegration("cleanup", "Retain"), file)
+		if !store.Terminated(released) {
+			t.Fatalf("release did not report the removed object: %+v", released)
+		}
+		if ev := objectEvent(t, w); ev.Type != store.Deleted || ev.Object.GetUID() != rearmed.GetUID() {
+			t.Fatalf("expected Deleted, got %v", ev.Type)
+		}
+		var gone v1alpha1.Integration
+		if err := s.Get(ctx, key, &gone); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("released object: %v", err)
+		}
+		entries, err := s.ReadAudit(ctx, AuditQuery{Kind: "Integration", Name: "cleanup"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actions []string
+		for _, e := range entries {
+			actions = append(actions, e.Action)
+		}
+		if got := strings.Join(actions, ","); got != "integration.create,integration.update,integration.update,integration.delete,integration.finalize" {
+			t.Fatalf("audit actions = %s", got)
+		}
+
+		// With another finalizer left the object stays, and a later Delete
+		// policy cannot arm an object that is already being deleted.
+		held := cleanupIntegration("held", "Delete")
+		held.Finalizers = []string{"kudurru.io/operator-hold"}
+		mustApply(t, s, held, file)
+		heldKey := store.Key{Kind: "Integration", Namespace: "apps", Name: "held"}
+		if err := s.Delete(ctx, heldKey, store.DeleteOptions{Manager: file}); err != nil {
+			t.Fatal(err)
+		}
+		toRetain := cleanupIntegration("held", "Retain")
+		toRetain.Finalizers = []string{"kudurru.io/operator-hold"}
+		if got := mustApply(t, s, toRetain, file); !reflect.DeepEqual(got.GetFinalizers(), []string{"kudurru.io/operator-hold"}) || got.GetDeletionTimestamp() == nil {
+			t.Fatalf("release with another finalizer: %v", got.GetFinalizers())
+		}
+		if got := mustApply(t, s, held, file); !reflect.DeepEqual(got.GetFinalizers(), []string{"kudurru.io/operator-hold"}) {
+			t.Fatalf("an object being deleted was armed again: %v", got.GetFinalizers())
+		}
+	})
+
+	t.Run("MetadataOnlyRemoval", func(t *testing.T) {
+		s := openTemp(t)
+		created := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file).(*v1alpha1.Integration)
+		created.Status.Clients = 7
+		created.ResourceVersion = ""
+		if err := s.UpdateStatus(ctx, created); err != nil {
+			t.Fatal(err)
+		}
+		live := get(t, s)
+		opts := func(uid, rv string, remove bool, name string) store.FinalizerOptions {
+			return store.FinalizerOptions{Finalizer: name, Remove: remove, ExpectedUID: uid, ExpectedResourceVersion: rv}
+		}
+		for name, o := range map[string]store.FinalizerOptions{
+			"stale resourceVersion": opts(string(live.UID), created.ResourceVersion+"0", true, reserved),
+			"wrong UID":             opts("another-incarnation", live.ResourceVersion, true, reserved),
+		} {
+			if _, err := s.UpdateFinalizer(ctx, key, o); !errors.Is(err, store.ErrConflict) {
+				t.Fatalf("%s: got %v, want ErrConflict", name, err)
+			}
+		}
+		for name, o := range map[string]store.FinalizerOptions{
+			"no UID":             opts("", live.ResourceVersion, true, reserved),
+			"no resourceVersion": opts(string(live.UID), "", true, reserved),
+			"unqualified name":   opts(string(live.UID), live.ResourceVersion, false, "cleanup"),
+		} {
+			if _, err := s.UpdateFinalizer(ctx, key, o); err == nil || errors.Is(err, store.ErrConflict) {
+				t.Fatalf("%s: got %v, want a validation error", name, err)
+			}
+		}
+		if _, err := s.UpdateFinalizer(ctx, store.Key{Kind: "Integration", Namespace: "apps", Name: "absent"}, opts("uid", "1", true, reserved)); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("missing object: %v", err)
+		}
+		if got := get(t, s); got.ResourceVersion != live.ResourceVersion {
+			t.Fatal("a refused finalizer change wrote")
+		}
+		// Adding another name writes metadata.finalizers and nothing else.
+		added, err := s.UpdateFinalizer(ctx, key, opts(string(live.UID), live.ResourceVersion, false, "kudurru.io/operator-hold"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := live.DeepCopy()
+		want.Finalizers = []string{reserved, "kudurru.io/operator-hold"}
+		want.ResourceVersion = added.GetResourceVersion()
+		if !reflect.DeepEqual(get(t, s), want) || added.GetResourceVersion() == live.ResourceVersion {
+			t.Fatalf("the finalizer write changed more than metadata.finalizers:\n got %+v\nwant %+v", get(t, s), want)
+		}
+		// Already present: nothing is written.
+		if again, err := s.UpdateFinalizer(ctx, key, opts(string(live.UID), added.GetResourceVersion(), false, reserved)); err != nil || again.GetResourceVersion() != added.GetResourceVersion() {
+			t.Fatalf("no-op add: %v", err)
+		}
+		// Removing the reserved name from a live object leaves it live. (The
+		// cleanup owner only does this for an object being deleted; the next
+		// apply of the unchanged Delete policy arms it again.)
+		disarmed, err := s.UpdateFinalizer(ctx, key, opts(string(live.UID), added.GetResourceVersion(), true, reserved))
+		if err != nil || store.HasFinalizer(disarmed, reserved) || disarmed.GetDeletionTimestamp() != nil {
+			t.Fatalf("live removal: %v %v", err, disarmed)
+		}
+		if got := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file); !store.HasFinalizer(got, reserved) {
+			t.Fatalf("the next apply did not arm the Delete policy again: %v", got.GetFinalizers())
+		}
+
+		w, err := s.Watch(ctx, "Integration", store.WatchOptions{ResourceVersion: s.ResourceVersion()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer w.Stop()
+		if err := s.Delete(ctx, key, store.DeleteOptions{Manager: file}); err != nil {
+			t.Fatal(err)
+		}
+		if ev := objectEvent(t, w); ev.Type != store.Modified {
+			t.Fatalf("got %v", ev.Type)
+		}
+		deleting := get(t, s)
+		if _, err := s.UpdateFinalizer(ctx, key, opts(string(deleting.UID), deleting.ResourceVersion, false, "kudurru.io/late")); !errors.Is(err, store.ErrTerminating) {
+			t.Fatalf("adding during termination: got %v, want ErrTerminating", err)
+		}
+		if _, err := s.UpdateFinalizer(ctx, key, opts(string(deleting.UID), live.ResourceVersion, true, reserved)); !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("stale release: got %v, want ErrConflict", err)
+		}
+		removed, err := s.UpdateFinalizer(ctx, key, opts(string(deleting.UID), deleting.ResourceVersion, true, reserved))
+		if err != nil || !store.Terminated(removed) {
+			t.Fatalf("release: %v %+v", err, removed)
+		}
+		if ev := objectEvent(t, w); ev.Type != store.Deleted || ev.Object.GetUID() != live.UID || ev.Object.(*v1alpha1.Integration).Status.Clients != 7 {
+			t.Fatalf("expected Deleted with the last stored object, got %v", ev.Type)
+		}
+		var gone v1alpha1.Integration
+		if err := s.Get(ctx, key, &gone); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("released object: %v", err)
+		}
+		entries, err := s.ReadAudit(ctx, AuditQuery{Kind: "Integration", Name: "cleanup"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		last := entries[len(entries)-1]
+		if last.Action != "integration.finalize" || last.Reason != "removed "+reserved || last.Manager != file || len(last.After) != 0 {
+			t.Fatalf("finalize audit row = %+v", last)
+		}
+	})
+
+	t.Run("CommandTransaction", func(t *testing.T) {
+		s := openTemp(t)
+		armed := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		if err := s.Delete(ctx, key, store.DeleteOptions{Manager: file}); err != nil {
+			t.Fatal(err)
+		}
+		deleting := get(t, s)
+		release := store.FinalizerOptions{Finalizer: reserved, Remove: true, ExpectedUID: string(armed.GetUID()), ExpectedResourceVersion: deleting.ResourceVersion}
+		refused := errors.New("later step refused")
+		// The release shares the command's fate: a later failure keeps the
+		// obligation, and a stale identity fails the whole command.
+		err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error {
+			out, err := tx.UpdateFinalizer(ctx, key, release)
+			if err != nil || !store.Terminated(out) {
+				t.Errorf("staged release: %v", err)
+			}
+			if err := tx.Get(ctx, key, &v1alpha1.Integration{}); !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("the transaction still reads the released object: %v", err)
+			}
+			return refused
+		})
+		if !errors.Is(err, refused) {
+			t.Fatal(err)
+		}
+		if got := get(t, s); got.ResourceVersion != deleting.ResourceVersion || !store.HasFinalizer(got, reserved) {
+			t.Fatal("a rolled-back command released the object")
+		}
+		stale := release
+		stale.ExpectedResourceVersion = armed.GetResourceVersion()
+		err = s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error {
+			_, err := tx.UpdateFinalizer(ctx, key, stale)
+			if !errors.Is(err, store.ErrConflict) {
+				t.Errorf("stale release in a command: %v", err)
+			}
+			return nil // an ignored refusal still fails the command
+		})
+		if !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("command with a refused release: %v", err)
+		}
+		marker := zone("released", "released.example.")
+		err = s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error {
+			if _, err := tx.UpdateFinalizer(ctx, key, release); err != nil {
+				return err
+			}
+			_, err := tx.Apply(ctx, marker, store.ApplyOptions{Manager: store.ManagerSystem})
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var gone v1alpha1.Integration
+		if err := s.Get(ctx, key, &gone); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("released object: %v", err)
+		}
+		if err := s.Get(ctx, store.Key{Kind: "DNSZone", Name: "released"}, &v1alpha1.DNSZone{}); err != nil {
+			t.Fatalf("the command's other write: %v", err)
+		}
+	})
+
+	t.Run("SurvivesReopenAndRestore", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), FileName)
+		s := openAt(t, path)
+		armed := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		if err := s.Delete(ctx, key, store.DeleteOptions{Manager: file}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		s = openAt(t, path)
+		got := get(t, s)
+		if got.UID != armed.GetUID() || got.DeletionTimestamp == nil || !store.HasFinalizer(got, reserved) {
+			t.Fatalf("the terminating object did not survive a restart: %+v", got.ObjectMeta)
+		}
+		// A safe export carries no finalizers; importing it arms the policy.
+		fresh := openTemp(t)
+		exported := cleanupIntegration("cleanup", "Delete")
+		exported.TypeMeta = metav1.TypeMeta{APIVersion: "kudurru.io/v1alpha1", Kind: "Integration"}
+		raw, err := json.Marshal(exported)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fresh.Restore(ctx, strings.NewReader(string(raw))); err != nil {
+			t.Fatal(err)
+		}
+		if got := get(t, fresh); !store.HasFinalizer(got, reserved) {
+			t.Fatalf("restore did not arm the Delete policy: %v", got.Finalizers)
+		}
+	})
 }
 
 func TestErrorsAndClosedStore(t *testing.T) {

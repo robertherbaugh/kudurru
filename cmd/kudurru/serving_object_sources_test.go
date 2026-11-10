@@ -500,6 +500,124 @@ func TestSQLiteObjectSourceOwnershipAndFinalizers(t *testing.T) {
 	}
 }
 
+// TestSQLiteObjectSourceIntegrationCleanupFinalizer: on SQLite an Integration
+// exists only as a file-declared object, so removing its document is the
+// delete request and re-declaring it is the only edit. With deletionPolicy
+// Delete the object must stay visible for cleanup (D367): the document never
+// lists the reserved finalizer, and neither its removal nor its return may
+// drop the obligation. Only a declared change to Retain releases the object.
+func TestSQLiteObjectSourceIntegrationCleanupFinalizer(t *testing.T) {
+	s := newServingRuntimeFixture(t)
+	st := s.opts.Store
+	ctx := sourceWriter(t, st)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "integration.yaml")
+	declare := func(policy string, suspend bool) {
+		t.Helper()
+		doc := "apiVersion: kudurru.io/v1alpha1\nkind: Integration\nmetadata:\n  name: cleanup\n  namespace: apps\nspec:\n  type: unifi\n" +
+			"  credentials:\n    apiKey:\n      file: /run/secrets/unifi-api-key\n  unifi:\n    endpoint: https://controller.invalid\n"
+		if policy != "" {
+			doc += "  deletionPolicy: " + policy + "\n"
+		}
+		if suspend {
+			doc += "  suspend: true\n"
+		}
+		if policy == "absent" {
+			doc = ""
+		}
+		if err := os.WriteFile(file, []byte(doc), 0o600); err != nil {
+			t.Fatal("integration source write")
+		}
+	}
+	key := store.Key{Kind: "Integration", Namespace: "apps", Name: "cleanup"}
+	stored := func() *public.Integration {
+		t.Helper()
+		var got public.Integration
+		err := st.Get(t.Context(), key, &got)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			t.Fatal("integration read")
+		}
+		return &got
+	}
+	l := sourceLoader(t, st, newSQLiteObjectSources(st), dir)
+	load := func(what string) objects.Report {
+		t.Helper()
+		rep := l.Load(ctx)
+		if rep.Count(objects.SeverityError) != 0 {
+			t.Fatal(what, rep.Diagnoses)
+		}
+		return rep
+	}
+
+	declare("Delete", false)
+	if rep := load("armed declaration"); rep.Created != 1 {
+		t.Fatal("integration document was not created")
+	}
+	armed := stored()
+	if armed == nil || !reflect.DeepEqual(armed.Finalizers, []string{store.IntegrationCleanupFinalizer}) || armed.DeletionTimestamp != nil {
+		t.Fatal("a declared Delete policy was stored without its cleanup finalizer")
+	}
+	// An unchanged and an edited document keep it without ever naming it.
+	if rep := load("unchanged declaration"); rep.Unchanged != 1 {
+		t.Fatal("unchanged document was rewritten")
+	}
+	declare("Delete", true)
+	if rep := load("edited declaration"); rep.Updated != 1 {
+		t.Fatal("edited document was not applied")
+	}
+	if got := stored(); got == nil || !store.HasFinalizer(got, store.IntegrationCleanupFinalizer) || !got.Spec.Suspend || got.UID != armed.UID {
+		t.Fatal("editing the document stripped the cleanup finalizer")
+	}
+
+	// Removing the document is the delete request: the object stays, with
+	// everything cleanup needs.
+	declare("absent", false)
+	if rep := load("document removal"); rep.Deleted != 1 {
+		t.Fatal("document removal did not request deletion")
+	}
+	deleting := stored()
+	if deleting == nil || deleting.DeletionTimestamp == nil || !store.HasFinalizer(deleting, store.IntegrationCleanupFinalizer) || deleting.UID != armed.UID ||
+		deleting.Spec.DeletionPolicy != public.IntegrationDeletionDelete || deleting.Spec.Credentials["apiKey"].File == "" {
+		t.Fatal("removing an armed Integration document did not leave a visible terminating object")
+	}
+	// Later passes without the document change nothing.
+	load("repeated removal pass")
+	if got := stored(); got == nil || got.ResourceVersion != deleting.ResourceVersion {
+		t.Fatal("a repeated removal pass changed the terminating object")
+	}
+	// Re-adding the document, unchanged or edited, neither finalizes the
+	// object nor revives it.
+	declare("Delete", true)
+	load("re-declared unchanged")
+	if got := stored(); got == nil || got.ResourceVersion != deleting.ResourceVersion || got.DeletionTimestamp == nil {
+		t.Fatal("re-adding the unchanged document finalized or rewrote the terminating object")
+	}
+	declare("Delete", false)
+	if rep := load("re-declared edited"); rep.Updated != 1 {
+		t.Fatal("edited re-declaration was not applied")
+	}
+	held := stored()
+	if held == nil || held.DeletionTimestamp == nil || !store.HasFinalizer(held, store.IntegrationCleanupFinalizer) || held.UID != armed.UID || held.Spec.Suspend {
+		t.Fatal("re-adding an edited document finalized or revived the terminating object")
+	}
+	// Declaring Retain is the release: the terminating incarnation goes with
+	// nothing cleaned, and the still-declared document then creates a new one.
+	declare("Retain", false)
+	load("release by declared Retain")
+	if stored() != nil {
+		t.Fatal("declared Retain did not release the terminating object")
+	}
+	if rep := load("declaration after release"); rep.Created != 1 {
+		t.Fatal("released document was not created again")
+	}
+	if next := stored(); next == nil || next.UID == armed.UID || len(next.Finalizers) != 0 || next.DeletionTimestamp != nil || next.Spec.DeletionPolicy != public.IntegrationDeletionRetain {
+		t.Fatal("the new Retain incarnation inherited cleanup state")
+	}
+}
+
 func TestSQLiteObjectSourceAcceptedCutAndFutureDiskInput(t *testing.T) {
 	s := newServingRuntimeFixture(t)
 	st := s.opts.Store
