@@ -386,7 +386,11 @@ Three cases need attention:
   `SERVFAIL` instead of trusting that key again. It recovers on its own after the
   primary's next root-anchor check records the same revocation, which follows the
   primary's refresh schedule (at the real root, within about a day). Check that
-  the primary can reach the configured root servers on TCP 53.
+  the primary can reach the configured root servers on TCP 53. If the primary
+  can no longer observe that revocation, for example because the root has
+  stopped publishing the revoked key, the member stays in this state: the
+  cluster's trust-anchor state and this member's knowledge disagree, and that
+  needs your decision, not an automatic one.
 - **The two disagree about `anchors recover` history.** The returning member
   holds a recovery record that the current primary does not have, or the primary
   recovered after the split while the returning member's own trust-anchor state
