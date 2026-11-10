@@ -177,17 +177,23 @@ func Terminated(obj metav1.Object) bool {
 //   - A policy other than Delete never carries it. On a driver that admits
 //     writes itself (sqlite), changing a live object to Retain disarms it and
 //     changing an object that is being deleted to Retain releases it, which
-//     removes the object once no other finalizer remains. A driver without
-//     admission (kube) stops asserting it: a Force takeover removes it, and
-//     otherwise the host that armed it clears it.
+//     removes the object once no other finalizer remains. The rule sees the
+//     defaulted policy, so a document that omits deletionPolicy is a change
+//     to Retain like an explicit one; ReservedFinalizerDropReason is the
+//     audit reason of either. A driver without admission (kube) stops
+//     asserting it: a Force takeover removes it, and otherwise the host
+//     that armed it clears it.
 //   - An object that is being deleted keeps it exactly while it still has it:
 //     only the cleanup owner (UpdateFinalizer) or the change to Retain removes
 //     it, and nothing adds it back.
 //   - A live object with Delete keeps it when it has it. When it does not,
-//     admits decides: sqlite arms it in the same write as the spec, so no
-//     instance can own external state unarmed; kube only carries an
-//     obligation the elected host armed with UpdateFinalizer, and never
-//     invents one that nothing would clear.
+//     admits decides: sqlite arms it in that write, so every Integration it
+//     writes with Delete is armed in the same write as its spec; kube only
+//     carries an obligation the elected host armed with UpdateFinalizer, and
+//     never invents one that nothing would clear. Admission acts on writes
+//     only: an object stored unarmed before the rule existed, or disarmed by
+//     a live UpdateFinalizer removal, stays unarmed until its next Apply
+//     (ReservedFinalizerUnarmed).
 func IntegrationCleanupArmed(policy string, stored metav1.Object, admits bool) bool {
 	if policy != v1alpha1.IntegrationDeletionDelete {
 		return false
@@ -221,6 +227,42 @@ func ReconcileReservedFinalizers(next Object, stored metav1.Object, admits bool)
 		finalizers = nil
 	}
 	i.Finalizers = finalizers
+}
+
+// ReservedFinalizerUnarmed reports whether the stored object is one that a
+// driver with admission would arm on its next Apply: a live Integration whose
+// spec.deletionPolicy is Delete without IntegrationCleanupFinalizer. Admission
+// acts on writes, so such an object exists when it was stored before the
+// rule did or after a live UpdateFinalizer removal. Applying its unchanged
+// document writes the finalizer and nothing else, so a declarative writer
+// that skips unchanged documents must not skip this one. On a driver without
+// admission the same apply writes nothing.
+func ReservedFinalizerUnarmed(stored Object) bool {
+	i, ok := stored.(*v1alpha1.Integration)
+	return ok && i != nil && i.DeletionTimestamp == nil && !HasFinalizer(i, IntegrationCleanupFinalizer) &&
+		IntegrationCleanupArmed(i.Spec.DeletionPolicy, i, true)
+}
+
+// ReservedFinalizerDropReason is the audit reason of an Apply that removes
+// IntegrationCleanupFinalizer from the stored object: the policy the apply
+// carries ended the cleanup obligation, not a finished cleanup (D239, D367).
+// next is the object about to be written, after defaulting and
+// ReconcileReservedFinalizers; a document that omitted deletionPolicy reads
+// Retain there, and writers that default before they apply (the file
+// reconciler) never show the omission to a driver, so the reason names the
+// effective policy only. On an object that is being deleted the drop is the
+// release, and whatever the instance published stays at the provider. The
+// result is "" when the apply drops nothing.
+func ReservedFinalizerDropReason(stored metav1.Object, next Object) string {
+	i, ok := next.(*v1alpha1.Integration)
+	if !ok || i == nil || stored == nil || !HasFinalizer(stored, IntegrationCleanupFinalizer) || HasFinalizer(i, IntegrationCleanupFinalizer) {
+		return ""
+	}
+	verb := "disarmed"
+	if stored.GetDeletionTimestamp() != nil {
+		verb = "released without cleanup"
+	}
+	return verb + ": deletionPolicy is " + i.Spec.DeletionPolicy + "; dropped " + IntegrationCleanupFinalizer
 }
 
 // FinalizerOptions selects one metadata-only finalizer change.

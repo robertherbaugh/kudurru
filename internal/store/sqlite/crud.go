@@ -496,7 +496,9 @@ func compactFeed(ctx context.Context, tx txQueryer, seq uint64) error {
 //     store.IntegrationCleanupFinalizer in the same write, keeps it through
 //     any manager's whole-object apply, Force included, and through an apply
 //     while it is being deleted; only a change to Retain or UpdateFinalizer
-//     removes it.
+//     removes it. A document that omits deletionPolicy is a change to
+//     Retain. The audit row of an apply that removes it carries the reason
+//     (store.ReservedFinalizerDropReason).
 //
 // obj is not modified.
 func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (_ store.Object, err error) {
@@ -584,6 +586,11 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 	// same write, before the no-op comparison and the finalize check below.
 	if prev != nil {
 		store.ReconcileReservedFinalizers(next, prev.obj, true)
+		// The audit row of a write that drops the cleanup obligation says so
+		// and why: no cleanup ran, the applied policy ended it (D239).
+		if dropped := store.ReservedFinalizerDropReason(prev.obj, next); dropped != "" {
+			m.reason = strings.TrimPrefix(m.reason+"; "+dropped, "; ")
+		}
 	} else {
 		store.ReconcileReservedFinalizers(next, nil, true)
 	}

@@ -82,6 +82,88 @@ func TestIntegrationCleanupArmedRule(t *testing.T) {
 	ReconcileReservedFinalizers(absent, nil, true) // must not panic
 }
 
+// An apply that removes the reserved finalizer names, for the audit trail,
+// what ended the obligation; an apply that keeps or never had it names nothing.
+func TestReservedFinalizerDropReason(t *testing.T) {
+	const reserved = IntegrationCleanupFinalizer
+	doc := func(policy string, finalizers ...string) *v1alpha1.Integration {
+		return &v1alpha1.Integration{ObjectMeta: metav1.ObjectMeta{Finalizers: finalizers}, Spec: v1alpha1.IntegrationSpec{DeletionPolicy: policy}}
+	}
+	for _, tc := range []struct {
+		name    string
+		stored  *v1alpha1.Integration
+		applied string // the document's policy before defaulting ("" is omitted)
+		want    string
+	}{
+		{"live, explicit Retain", storedIntegration(false, reserved), "Retain", "disarmed: deletionPolicy is Retain; dropped " + reserved},
+		{"live, omitted", storedIntegration(false, reserved), "", "disarmed: deletionPolicy is Retain; dropped " + reserved},
+		{"deleting, explicit Retain", storedIntegration(true, reserved), "Retain", "released without cleanup: deletionPolicy is Retain; dropped " + reserved},
+		{"deleting, omitted, another finalizer left", storedIntegration(true, reserved, "kudurru.io/operator-hold"), "", "released without cleanup: deletionPolicy is Retain; dropped " + reserved},
+		{"live, stays Delete", storedIntegration(false, reserved), "Delete", ""},
+		{"deleting, stays Delete", storedIntegration(true, reserved), "Delete", ""},
+		{"never armed", storedIntegration(false), "Retain", ""},
+		{"already cleared", storedIntegration(true, "kudurru.io/operator-hold"), "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			applied := doc(tc.applied, reserved) // listing the name decides nothing
+			next := applied.DeepCopy()
+			if next.Spec.DeletionPolicy == "" {
+				next.Spec.DeletionPolicy = v1alpha1.IntegrationDeletionRetain // the validator's default
+			}
+			ReconcileReservedFinalizers(next, tc.stored, true)
+			if got := ReservedFinalizerDropReason(tc.stored, next); got != tc.want {
+				t.Fatalf("reason = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	// Only Integrations have a reserved finalizer, and a create drops nothing.
+	zone := &v1alpha1.DNSZone{}
+	held := &v1alpha1.DNSZone{ObjectMeta: metav1.ObjectMeta{Finalizers: []string{reserved}}}
+	if got := ReservedFinalizerDropReason(held, zone); got != "" {
+		t.Fatalf("another kind: %q", got)
+	}
+	if got := ReservedFinalizerDropReason(nil, doc("Retain")); got != "" {
+		t.Fatalf("create: %q", got)
+	}
+}
+
+// ReservedFinalizerUnarmed is true exactly for a stored object that an
+// admitting driver would arm on its next apply.
+func TestReservedFinalizerUnarmed(t *testing.T) {
+	const reserved = IntegrationCleanupFinalizer
+	with := func(i *v1alpha1.Integration, policy string) *v1alpha1.Integration {
+		i.Spec.DeletionPolicy = policy
+		return i
+	}
+	for name, tc := range map[string]struct {
+		stored Object
+		want   bool
+	}{
+		"live Delete without the finalizer":     {with(storedIntegration(false), "Delete"), true},
+		"live Delete with another finalizer":    {with(storedIntegration(false, "kudurru.io/operator-hold"), "Delete"), true},
+		"live Delete, armed":                    {with(storedIntegration(false, reserved), "Delete"), false},
+		"live Retain":                           {with(storedIntegration(false), "Retain"), false},
+		"live, no policy stored":                {storedIntegration(false), false},
+		"deleting Delete, cleared by its owner": {with(storedIntegration(true, "kudurru.io/operator-hold"), "Delete"), false},
+		"deleting Delete, armed":                {with(storedIntegration(true, reserved), "Delete"), false},
+		"another kind":                          {&v1alpha1.DNSZone{}, false},
+		"a nil Integration":                     {(*v1alpha1.Integration)(nil), false},
+	} {
+		if got := ReservedFinalizerUnarmed(tc.stored); got != tc.want {
+			t.Fatalf("%s: unarmed=%v, want %v", name, got, tc.want)
+		}
+		// The predicate and the admission rule agree: an apply of the stored
+		// spec changes the reserved finalizer exactly when it is true.
+		if i, ok := tc.stored.(*v1alpha1.Integration); ok && i != nil {
+			next := i.DeepCopy()
+			ReconcileReservedFinalizers(next, i, true)
+			if armed := !HasFinalizer(i, reserved) && HasFinalizer(next, reserved); armed != tc.want {
+				t.Fatalf("%s: admission arms=%v, predicate=%v", name, armed, tc.want)
+			}
+		}
+	}
+}
+
 func TestPlanFinalizerExactIdentityAndTermination(t *testing.T) {
 	const reserved = IntegrationCleanupFinalizer
 	exact := func(name string, remove bool) FinalizerOptions {

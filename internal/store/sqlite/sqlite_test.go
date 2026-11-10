@@ -703,6 +703,13 @@ func TestFinalizersReservedIntegrationCleanup(t *testing.T) {
 		if got := strings.Join(actions, ","); got != "integration.create,integration.update,integration.update,integration.delete,integration.finalize" {
 			t.Fatalf("audit actions = %s", got)
 		}
+		// Dropping the obligation is never silent in the audit trail: the
+		// row names the policy that ended it, and that nothing was cleaned.
+		for i, want := range []string{"", "disarmed: deletionPolicy is Retain; dropped " + reserved, "", "waiting for finalizers", "released without cleanup: deletionPolicy is Retain; dropped " + reserved} {
+			if entries[i].Reason != want {
+				t.Fatalf("audit reason of %s = %q, want %q", entries[i].Action, entries[i].Reason, want)
+			}
+		}
 
 		// With another finalizer left the object stays, and a later Delete
 		// policy cannot arm an object that is already being deleted.
@@ -720,6 +727,60 @@ func TestFinalizersReservedIntegrationCleanup(t *testing.T) {
 		}
 		if got := mustApply(t, s, held, file); !reflect.DeepEqual(got.GetFinalizers(), []string{"kudurru.io/operator-hold"}) {
 			t.Fatalf("an object being deleted was armed again: %v", got.GetFinalizers())
+		}
+		heldRows, err := s.ReadAudit(ctx, AuditQuery{Kind: "Integration", Name: "held"})
+		if err != nil || len(heldRows) != 4 {
+			t.Fatalf("audit rows of the held object: %d %v", len(heldRows), err)
+		}
+		// The release is recorded even when another finalizer keeps the object,
+		// and the later apply that cannot arm it again drops nothing.
+		if got := heldRows[2]; got.Action != "integration.update" || got.Reason != "released without cleanup: deletionPolicy is Retain; dropped "+reserved {
+			t.Fatalf("release with another finalizer: audit row %s %q", got.Action, got.Reason)
+		}
+		if got := heldRows[3]; got.Action != "integration.update" || got.Reason != "" {
+			t.Fatalf("apply after the release: audit row %s %q", got.Action, got.Reason)
+		}
+	})
+
+	// A document that omits deletionPolicy is defaulted to Retain, so it
+	// disarms and releases like an explicit Retain, and is audited like one,
+	// also next to the reason of a Force takeover.
+	t.Run("OmittedPolicyDropIsAudited", func(t *testing.T) {
+		s := openTemp(t)
+		last := func(t *testing.T) AuditEntry {
+			t.Helper()
+			entries, err := s.ReadAudit(ctx, AuditQuery{Kind: "Integration", Name: "cleanup"})
+			if err != nil || len(entries) == 0 {
+				t.Fatalf("audit rows: %d %v", len(entries), err)
+			}
+			return entries[len(entries)-1]
+		}
+		const omitted = ": deletionPolicy is Retain; dropped " + reserved
+		mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		if got := mustApply(t, s, cleanupIntegration("cleanup", ""), file); len(got.GetFinalizers()) != 0 {
+			t.Fatalf("omitted policy on a live object: finalizers=%v", got.GetFinalizers())
+		}
+		if got := last(t); got.Action != "integration.update" || got.Reason != "disarmed"+omitted {
+			t.Fatalf("disarm by an omitted policy: audit row %s %q", got.Action, got.Reason)
+		}
+		armed := mustApply(t, s, cleanupIntegration("cleanup", "Delete"), file)
+		if err := s.Delete(ctx, key, store.DeleteOptions{Manager: file}); err != nil {
+			t.Fatal(err)
+		}
+		// An apply that keeps Delete during termination drops nothing.
+		edited := cleanupIntegration("cleanup", "Delete")
+		edited.Spec.Suspend = true
+		mustApply(t, s, edited, file)
+		if got := last(t); got.Action != "integration.update" || got.Reason != "" {
+			t.Fatalf("apply that keeps the obligation: audit row %s %q", got.Action, got.Reason)
+		}
+		released, err := s.Apply(ctx, cleanupIntegration("cleanup", ""), store.ApplyOptions{Manager: store.ManagerAPI, Force: true})
+		if err != nil || !store.Terminated(released) || released.GetUID() != armed.GetUID() {
+			t.Fatalf("release by an omitted policy: %v %+v", err, released)
+		}
+		want := "force: took over from " + strconv.Quote(file) + "; released without cleanup" + omitted
+		if got := last(t); got.Action != "integration.finalize" || got.Reason != want || got.Manager != store.ManagerAPI || len(got.After) != 0 {
+			t.Fatalf("release by an omitted policy: audit row %s by %s %q, want %q", got.Action, got.Manager, got.Reason, want)
 		}
 	})
 
@@ -774,8 +835,11 @@ func TestFinalizersReservedIntegrationCleanup(t *testing.T) {
 			t.Fatalf("no-op add: %v", err)
 		}
 		// Removing the reserved name from a live object leaves it live. (The
-		// cleanup owner only does this for an object being deleted; the next
-		// apply of the unchanged Delete policy arms it again.)
+		// cleanup owner only does this for an object being deleted.) Admission
+		// acts on writes, so the object stays unarmed until its next apply;
+		// an apply of the unchanged Delete policy arms it again. The file
+		// reconciler makes that apply on its next pass even though the
+		// document did not change (store.ReservedFinalizerUnarmed).
 		disarmed, err := s.UpdateFinalizer(ctx, key, opts(string(live.UID), added.GetResourceVersion(), true, reserved))
 		if err != nil || store.HasFinalizer(disarmed, reserved) || disarmed.GetDeletionTimestamp() != nil {
 			t.Fatalf("live removal: %v %v", err, disarmed)
