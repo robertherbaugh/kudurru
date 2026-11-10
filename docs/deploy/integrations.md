@@ -18,7 +18,8 @@ remain separate. The external-dns webhook listener is a separate inbound feature
 
 An Integration declared with `deletionPolicy: Delete` is stored with the
 reserved finalizer `kudurru.io/integration-cleanup`. You do not list it in the
-document and cannot remove it by editing the document. Removing the document
+document, and no `metadata.finalizers` entry adds or removes it: only the
+declared policy decides it. Removing the document
 then leaves the object in place with a deletion timestamp instead of deleting
 it, and declaring it again with `deletionPolicy: Delete` does not cancel the
 deletion. The delete is requested once: while the object waits, later loads
