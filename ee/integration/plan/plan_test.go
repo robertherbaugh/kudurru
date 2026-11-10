@@ -543,6 +543,46 @@ func TestCleanupOverridesRetainedPolicyOnlyInCleanupMode(t *testing.T) {
 	}
 }
 
+// The cleanup flag itself is part of the plan digest (D367). The observations
+// here make both modes plan the very same operation: one marker-and-ledger
+// proven row under policy sync with nothing desired, nothing retained. Only
+// the flag differs, so a digest or operation ID shared between the two would
+// let an ordinary preview, or its stored intent, stand in for a cleanup.
+func TestCleanupFlagAloneChangesDigestAndOperationIDs(t *testing.T) {
+	in := fixture()
+	in.Policy = PolicySync
+	e := endpoint("only.example.com.", "A", "192.0.2.1")
+	in.Current = []RemoteRecord{owned(in, e, "id-only")}
+	in.Ledger = []*kinds.IntegrationLedger{ledgerRow(in, e, "sync", "id-only")}
+	ordinary := build(t, in)
+	in.Cleanup = true
+	cleanup := build(t, in)
+	if !cleanup.Cleanup || ordinary.Cleanup || len(cleanup.Retained) != 0 || len(cleanup.Conflicts) != 0 {
+		t.Fatalf("fixture: ordinary=%+v cleanup=%+v", ordinary, cleanup)
+	}
+	// Apart from the flag, the digest and the operation ID derived from it,
+	// the two plans are the same plan.
+	if len(ordinary.Operations) != 1 || len(cleanup.Operations) != 1 {
+		t.Fatalf("fixture: %d ordinary and %d cleanup operations, want one delete each", len(ordinary.Operations), len(cleanup.Operations))
+	}
+	same := *cleanup
+	same.Cleanup, same.Digest = false, ordinary.Digest
+	same.Operations = slices.Clone(cleanup.Operations)
+	same.Operations[0].ID = ordinary.Operations[0].ID
+	if ordinary.Operations[0].Action != "delete" || !reflect.DeepEqual(&same, ordinary) {
+		t.Fatalf("fixture: the two modes plan different work:\nordinary %+v\n cleanup %+v", ordinary, cleanup)
+	}
+	if ordinary.Digest == cleanup.Digest {
+		t.Fatalf("the cleanup flag is not part of the plan digest: both %s", ordinary.Digest)
+	}
+	if ordinary.Operations[0].ID == cleanup.Operations[0].ID {
+		t.Fatalf("cleanup and ordinary plans share operation ID %s", cleanup.Operations[0].ID)
+	}
+	if ordinary.Intent(0, time.Unix(1, 0)).Name == cleanup.Intent(0, time.Unix(1, 0)).Name {
+		t.Fatal("cleanup and ordinary intents of the same delete share a durable name")
+	}
+}
+
 func TestCleanupConflictsMixedSetsAndAdoption(t *testing.T) {
 	in := fixture()
 	in.Cleanup = true
