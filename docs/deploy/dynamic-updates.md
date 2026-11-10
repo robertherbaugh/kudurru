@@ -151,11 +151,16 @@ nothing is deleted.
 | `NOERROR` | The update is accepted, or it changed nothing. |
 | `NOTAUTH` | The node does not serve this zone as a primary zone. |
 | `NOTAUTH` with the TSIG error `BADKEY`, `BADSIG` or `BADTIME` | The signature was not accepted: the node does not have the key, the secret differs, or the clocks differ. |
-| `REFUSED` | The message is not signed or arrived over an unsupported transport, the key has no grant for the name and type, the record belongs to another source, or (on Kubernetes) the zone does not allow updates. |
+| `REFUSED` | The message is not signed or arrived over an unsupported transport, a grant of the zone names the key but no grant covers the name and type, or the record belongs to another source. On Kubernetes also: the zone does not allow updates, or no grant of the zone names the key. |
 | `YXDOMAIN`, `NXDOMAIN`, `YXRRSET`, `NXRRSET` | A prerequisite of the update did not hold. Nothing changed. |
 | `NOTZONE` | A record of the update is outside the zone. |
 | `FORMERR` | The message is malformed or too large. |
-| `SERVFAIL` | The node could not store or publish the change. On SQLite, a signed update for a zone that does not allow updates is also answered `SERVFAIL`, and an update that was stored can answer `SERVFAIL` when its publication failed: query the name before you send the update again. |
+| `SERVFAIL` | The node could not store or publish the change. On SQLite, a signed update is also answered `SERVFAIL` when the zone does not allow updates, or when the node has the key but no grant of the zone names it (also `allow` without a grant). An update that was stored can answer `SERVFAIL` when its publication failed: query the name before you send the update again. |
+
+On SQLite, when every update of a client is answered `SERVFAIL`, compare the
+key name that the client uses with `tsigKeyRef` in the zone's grants before
+you look for a storage problem. An update with a key that no grant names
+stores nothing.
 
 With BIND's `nsupdate`, a wrong key name or a wrong secret looks like a clock
 problem. It prints `TSIG error with server: clocks are unsynchronized` before
