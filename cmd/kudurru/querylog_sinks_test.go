@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -172,6 +173,23 @@ func (d *exportDoubles) builds(name string) int {
 	return d.built[name]
 }
 
+// logRecords decodes the JSON log lines written so far and returns the
+// records with the given message.
+func logRecords(t *testing.T, logs *syncBuffer, msg string) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for line := range strings.Lines(logs.String()) {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line %q: %v", line, err)
+		}
+		if rec["msg"] == msg {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
 // TestQuerylogRuntimeChangedSinkEntryCountsQueriesInFlight drives the reload
 // subscriber of the Kubernetes driver while queries keep arriving. Every
 // change of the entry replaces the sink, and a query that read the replaced
@@ -315,7 +333,8 @@ func TestQuerylogRuntimeSinksLegacyReload(t *testing.T) {
 	cfg.Node.DataDir = t.TempDir()
 	cfg.Querylog.Exclude.SUDN = false
 	reg := prometheus.NewRegistry()
-	logger := slog.New(slog.DiscardHandler)
+	logs := &syncBuffer{}
+	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	r, err := newQuerylogRuntime(t.Context(), cfg, reg, logger, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -455,13 +474,28 @@ func TestQuerylogRuntimeSinksLegacyReload(t *testing.T) {
 		t.Error("a removed sink keeps its series")
 	}
 	// The stalled sink is still inside its write. Shutdown is bounded, does
-	// not close it under that write, and still closes the database.
+	// not close it under that write, and still closes the database. The
+	// collector and the database flushed completely, so close reports no
+	// local loss; the exporter that did not drain is reported on its own.
 	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
-	if err := r.close(ctx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("close with a stalled sink: %v", err)
+	start := time.Now()
+	if err := r.close(ctx); err != nil {
+		t.Fatalf("close reported an incomplete local flush although only an exporter did not drain: %v", err)
 	}
 	closed = true
+	if took := time.Since(start); took < 250*time.Millisecond || took > 5*time.Second {
+		t.Errorf("close with a stalled sink took %s: it must give the sinks the caller's bound and no more", took)
+	}
+	undrained := logRecords(t, logs, "additional query-log sink did not drain")
+	if len(undrained) != 1 {
+		t.Fatalf("shutdown reported %d undrained sinks, want the stalled one:\n%s", len(undrained), logs.String())
+	}
+	// 100 events were still queued behind the pending write; the overflow
+	// had been counted while the sink ran.
+	if rec := undrained[0]; rec["sink"] != "stalled" || rec["queued"] != float64(100) || rec["dropped"] != float64(overflow) || rec["level"] != "WARN" {
+		t.Errorf("undrained sink report: %v", rec)
+	}
 	if _, closes, _ := stalled.counts(); closes != 0 {
 		t.Fatal("a sink was closed under its pending write")
 	}

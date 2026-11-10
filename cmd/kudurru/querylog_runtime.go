@@ -261,25 +261,51 @@ func (r *querylogRuntime) Purge(ctx context.Context, before time.Time) (int64, e
 	return 0, nil
 }
 
+// close flushes the collector and closes the local database. Its error is
+// about those two only: the caller reports it as an incomplete local flush.
+// The additional sinks stop within the same bound, and the ones that did
+// not drain are reported on their own (closeSinks).
 func (r *querylogRuntime) close(ctx context.Context) error {
 	if err := r.async.Close(ctx); err != nil {
 		// Never close or reuse a writer while its batch is pending. The
 		// additional sinks still stop within the same bound.
-		_ = r.sinks.Close(ctx)
+		r.closeSinks(ctx)
 		return err
 	}
 	// The collector has offered everything it accepted, so the database has
 	// no batch pending. The additional sinks drain beside its close: an
 	// exporter that does not finish in time cannot keep it open or use up
 	// its share of the shutdown bound.
-	sinks := make(chan error, 1)
-	go func() { sinks <- r.sinks.Close(ctx) }()
+	sinks := make(chan struct{})
+	go func() {
+		defer close(sinks)
+		r.closeSinks(ctx)
+	}()
 	var err error
 	if w := r.writer.Load(); w != nil {
 		err = w.CloseContext(ctx)
 	}
-	if sinkErr := <-sinks; err == nil {
-		err = sinkErr
-	}
+	<-sinks
 	return err
+}
+
+// closeSinks stops the additional sinks within ctx. A destination that is
+// slow, stalled or unreachable when the server stops loses what its sink had
+// not written. That is a loss at the exporter, not in the local query log,
+// so it is logged per sink, apart from the collector's flush.
+func (r *querylogRuntime) closeSinks(ctx context.Context) {
+	err := r.sinks.Close(ctx)
+	if err == nil {
+		return
+	}
+	var undrained *querylog.SinkDrainError
+	if !errors.As(err, &undrained) {
+		r.logger.Warn("additional query-log sinks did not stop", "err", err)
+		return
+	}
+	for _, st := range undrained.Sinks {
+		// queued were still waiting and are lost with the pending write;
+		// dropped is what the sink had already lost while it ran.
+		r.logger.Warn("additional query-log sink did not drain", "sink", st.Name, "type", st.Type, "queued", st.Queued, "dropped", st.Dropped, "err", undrained.Err)
+	}
 }

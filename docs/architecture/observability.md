@@ -219,8 +219,14 @@ removed, no sink was to receive it and nothing is counted. In both cases the
 primary sink and the live tail have the query.
 
 Shutdown drains the collector first, then closes `querylog.db` while the
-additional sinks drain beside it under the same deadline. A sink that ignores
-cancellation keeps its goroutine and is never closed under its own write.
+additional sinks drain beside it under the same deadline of five seconds. A
+destination that is stalled or unreachable at that moment therefore holds the
+process for the rest of that deadline, and no longer. Its sink loses what it
+had not written and is named in the warning `additional query-log sink did
+not drain`, with the number of events still queued. The warning `query log
+flush incomplete` is about the collector and `querylog.db` only. A sink that
+ignores cancellation keeps its goroutine and is never closed under its own
+write.
 
 The only type today is `slog` (one structured log line per query next to the
 database, at most one, and not together with `querylog.sink: slog`). The

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -35,6 +36,27 @@ const (
 
 // ErrSinkHostClosed is returned by Prepare after Close.
 var ErrSinkHostClosed = errors.New("querylog: sink host closed")
+
+// SinkDrainError is returned by SinkHost.Close when its context ended before
+// every sink had written what it held. It concerns the additional sinks
+// only: the collector, the primary sink and the live tail are not involved.
+type SinkDrainError struct {
+	// Sinks are the sinks that had not finished, as they were when the
+	// context ended: Queued events were still waiting then.
+	Sinks []SinkStatus
+	// Err is the context's error.
+	Err error
+}
+
+func (e *SinkDrainError) Error() string {
+	names := make([]string, len(e.Sinks))
+	for i, st := range e.Sinks {
+		names[i] = st.Name
+	}
+	return fmt.Sprintf("querylog: additional sinks did not drain (%s): %v", strings.Join(names, ", "), e.Err)
+}
+
+func (e *SinkDrainError) Unwrap() error { return e.Err }
 
 // SinkSpec is one additional sink: an entry of querylog.sinks with its
 // defaults applied. Two specs that differ in any field are different sinks.
@@ -440,9 +462,10 @@ func (h *SinkHost) Collect(ch chan<- prometheus.Metric) {
 
 // Close retires every sink and waits for the drains. Close the collector
 // first so everything it accepted has been offered. When ctx ends first the
-// pending writes are canceled and Close returns ctx's error; a sink that
-// ignores cancellation keeps its goroutine and is never closed under its
-// own write. Close may be called again to join.
+// pending writes are canceled and Close returns a *SinkDrainError that names
+// the sinks still running and wraps ctx's error; a sink that ignores
+// cancellation keeps its goroutine and is never closed under its own write.
+// Close may be called again to join.
 func (h *SinkHost) Close(ctx context.Context) error {
 	h.stopping.Store(true)
 	h.mu.Lock()
@@ -460,10 +483,16 @@ func (h *SinkHost) Close(ctx context.Context) error {
 		select {
 		case <-w.done:
 		case <-ctx.Done():
+			// Read before the cancellation moves queued events to the
+			// dropped counter.
+			undrained := h.Status()
 			for _, pending := range workers {
 				pending.cancel()
 			}
-			return ctx.Err()
+			if len(undrained) == 0 {
+				return nil // the last sink closed as the context ended
+			}
+			return &SinkDrainError{Sinks: undrained, Err: ctx.Err()}
 		}
 	}
 	return nil

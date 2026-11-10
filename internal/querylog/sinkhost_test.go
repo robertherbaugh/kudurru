@@ -759,11 +759,26 @@ func TestSinkHostCloseIsBounded(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	if err := f.host.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+	err := f.host.Close(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("close with blocked sinks: %v", err)
 	}
 	if took := time.Since(start); took > 2*time.Second {
 		t.Fatalf("close took %s", took)
+	}
+	// The error names the sinks that had not drained and what they held, so
+	// the caller can report an exporter's loss apart from the local flush.
+	var undrained *SinkDrainError
+	if !errors.As(err, &undrained) || len(undrained.Sinks) != 2 {
+		t.Fatalf("close error does not list the sinks that did not drain: %#v", err)
+	}
+	for i, name := range []string{"deaf", "polite"} {
+		if st := undrained.Sinks[i]; st.Name != name || st.Queued != 2 || st.Sent != 0 {
+			t.Errorf("undrained sink %d: %+v, want %s with 2 queued behind its pending write", i, st, name)
+		}
+	}
+	if msg := err.Error(); !strings.Contains(msg, "deaf, polite") {
+		t.Errorf("close error %q does not name the sinks", msg)
 	}
 	waitFor(t, "the canceled sink to close", func() bool { _, closes, _ := polite.state(); return closes == 1 })
 	if st := f.status("polite"); st.Name != "" {

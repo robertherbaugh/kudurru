@@ -114,7 +114,12 @@ The series of a sink disappear when it is removed from the settings.
   to five seconds, counts what remains as dropped, and closes once requests
   that began before the change have finished (an open live view can delay
   the close and keep the sink's metrics visible until it ends).
-- On shutdown the sinks drain inside the server's normal shutdown time; the
-  local database does not wait for them.
+- On shutdown the sinks get up to five seconds to write what they hold; the
+  local database does not wait for them. A destination that is stalled or
+  unreachable at that moment can add up to five seconds to the shutdown. Its
+  sink loses what it still held, and the server names it in the warning
+  `additional query-log sink did not drain` with the number of queries that
+  were waiting. The warning `query log flush incomplete` is about the local
+  query log only.
 
 How this is built: [the query log pipeline](../architecture/observability.md#additional-sinks).
