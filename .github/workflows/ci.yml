@@ -73,6 +73,9 @@ jobs:
     env:
       KUDURRU_TEST_POSTGRES_DSN: postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable
       KUDURRU_REQUIRE_POSTGRES: "1"
+      # `make test` hands the installed envtest binaries to the kube suites
+      # and, with this, fails instead of skipping them when there are none.
+      KUDURRU_REQUIRE_ENVTEST: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

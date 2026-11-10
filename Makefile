@@ -76,13 +76,27 @@ run: build
 ## when `make envtest` has installed the control-plane binaries and skip
 ## otherwise. TEST_PKGS narrows the run (ci.yml passes one shard of
 ## hack/go-test-shard.sh).
+## Some kube suites (internal/api, internal/auth/k8s, internal/cluster,
+## internal/controller, internal/zonecache) read only KUBEBUILDER_ASSETS and
+## never look in bin/k8s, so the recipe exports the newest installed version
+## for them; a value from the environment wins. With
+## KUDURRU_REQUIRE_ENVTEST=1 (CI) the run fails before it starts when there
+## is no kube-apiserver, instead of skipping those suites.
 # The command package is split by its actual compiled test inventory. Every
 # test/example/fuzz seed still runs once with race detection and original fixture
 # bounds; each bounded batch retains the same 30-minute process deadline.
 TEST_PKGS ?= ./...
 TEST_TIMEOUT ?= 30m
+ENVTEST_ASSETS ?= $(lastword $(sort $(wildcard $(CURDIR)/bin/k8s/*-$(shell go env GOOS)-$(shell go env GOARCH))))
 test:
-	python3 hack/go-test.py --timeout=$(TEST_TIMEOUT) $(TEST_PKGS)
+	@assets="$${KUBEBUILDER_ASSETS:-$(ENVTEST_ASSETS)}"; \
+	if [ -n "$${KUDURRU_REQUIRE_ENVTEST:-}" ] && [ ! -x "$$assets/kube-apiserver" ]; then \
+		echo "error: KUDURRU_REQUIRE_ENVTEST is set but there is no kube-apiserver in '$$assets' (run make envtest)" >&2; \
+		exit 1; \
+	fi; \
+	if [ -n "$$assets" ]; then export KUBEBUILDER_ASSETS="$$assets"; fi; \
+	echo "envtest assets: $${assets:-none, the kube suites skip}"; \
+	set -x; python3 hack/go-test.py --timeout=$(TEST_TIMEOUT) $(TEST_PKGS)
 
 ## test-short: no race detector, no cgo; what `go test` gives on a plain checkout
 test-short:

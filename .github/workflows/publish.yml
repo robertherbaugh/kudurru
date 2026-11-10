@@ -52,7 +52,13 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v4.3.0
+      # kube-apiserver and etcd: the kube suites of `make test` need them
+      # (internal/primaryruntime fails without them, others would skip).
+      - name: Install envtest control-plane binaries
+        run: make envtest
       - name: Test before publishing
+        env:
+          KUDURRU_REQUIRE_ENVTEST: "1"
         run: make test
       - name: Chart render matrix and kubeconform
         run: make helm-check
