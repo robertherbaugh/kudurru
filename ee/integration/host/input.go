@@ -208,6 +208,28 @@ func providerSpec(s public.IntegrationSpec) (json.RawMessage, error) {
 	return b, nil
 }
 
+// InstanceMode derives the guard mode an Integration object admits (D367).
+// A live object admits GuardNormal. An object that is being deleted admits
+// GuardCleanup while it carries the reserved cleanup finalizer and its policy
+// is Delete, and GuardRelease while it carries the finalizer under any other
+// policy. ok is false for an object that is being deleted without the
+// reserved finalizer: no job may act for it.
+func InstanceMode(d *public.Integration) (mode GuardMode, ok bool) {
+	if d == nil {
+		return GuardNormal, false
+	}
+	if d.DeletionTimestamp.IsZero() {
+		return GuardNormal, true
+	}
+	if !store.HasFinalizer(d, store.IntegrationCleanupFinalizer) {
+		return GuardNormal, false
+	}
+	if d.Spec.DeletionPolicy == public.IntegrationDeletionDelete {
+		return GuardCleanup, true
+	}
+	return GuardRelease, true
+}
+
 // Owner identifies the captured instance, including its immutable object UID.
 func (i *Instance) Owner() kinds.Owner { return i.owner }
 
@@ -236,6 +258,15 @@ func (i *Instance) Guard(leaseID string) (ledger.Guard, error) {
 	if i.credentialError {
 		return ledger.Guard{}, ErrCredentials
 	}
+	return i.TerminatingGuard(leaseID)
+}
+
+// TerminatingGuard binds a lease of an instance that is being deleted
+// (D367). Unlike Guard it does not need the credentials to resolve: a
+// release and the cleanup of an instance without a publisher make no
+// provider call, and a publisher's cleanup checks the credentials itself
+// before it provisions. The guard carries no secret either way.
+func (i *Instance) TerminatingGuard(leaseID string) (ledger.Guard, error) {
 	g := ledger.Guard{Owner: i.owner, ConfigDigest: i.configDigest, CredentialDigest: i.credentialDigest, IntegrationResourceVersion: i.definition.ResourceVersion, LeaseID: leaseID, Term: i.term}
 	if err := g.Validate(); err != nil {
 		return ledger.Guard{}, err

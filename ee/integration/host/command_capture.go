@@ -44,7 +44,9 @@ func (h *Host) CaptureCommand(ctx context.Context, id InstanceID, revision strin
 	if j == nil || j.frame.instance == nil || j.frame.instance.owner != id || !j.active || j.ctx.Err() != nil || j.leaseCtx == nil || j.leaseCtx.Err() != nil || !h.opts.Allowed() {
 		return nil, ErrUnavailable
 	}
-	if j.frame.instance.definition.ResourceVersion != revision || j.guard.IntegrationResourceVersion != revision {
+	// A terminating job takes no operator command: what it may still do is
+	// decided by the deletion policy, not by a review (D367).
+	if j.mode != GuardNormal || j.frame.instance.definition.ResourceVersion != revision || j.guard.IntegrationResourceVersion != revision {
 		return nil, ErrFenced
 	}
 	return &CommandCapture{host: h, job: j, frame: j.frame, guard: ExecutionGuard{Ledger: j.guard, BundleID: j.frame.input.BundleID}, lease: j.leaseCtx, origin: ctx}, nil

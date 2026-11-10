@@ -1,0 +1,674 @@
+package host
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"slices"
+	"strings"
+	"time"
+
+	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/integration"
+	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
+	"github.com/robertherbaugh/kudurru/ee/integration/plan"
+	"github.com/robertherbaugh/kudurru/internal/store"
+)
+
+// PhaseTerminating is the phase of an Integration that is being deleted and
+// still carries the reserved cleanup finalizer (D367). Its reason says what
+// the elected job is doing or what keeps it from finishing.
+const PhaseTerminating = "Terminating"
+
+// Reasons of the terminating job. A blocked reason never finalizes: the
+// object stays until the cause is gone or the operator releases it by
+// changing its deletion policy to Retain.
+const (
+	// ReasonFinalizerMissing pauses a live instance whose policy is Delete
+	// but which is stored without the reserved finalizer.
+	ReasonFinalizerMissing = "CleanupFinalizerMissing"
+	// ReasonCleanup: the job deleted or forgot records and has more to do, or
+	// is about to purge and finalize.
+	ReasonCleanup = "CleanupInProgress"
+	// ReasonReleaseFailed: the release could not remove the finalizer yet.
+	ReasonReleaseFailed = "ReleaseFailed"
+	// ReasonAuthorityChanged: the captured frame was replaced or root refused
+	// the guard; the next run captures a fresh frame.
+	ReasonAuthorityChanged = "AuthorityChanged"
+	// ReasonCredentials: a publisher's cleanup needs its credential.
+	ReasonCredentials = "CredentialsUnavailable"
+	// ReasonProviderUnavailable: no provider of this type can be built.
+	ReasonProviderUnavailable = "ProviderUnavailable"
+	// ReasonProvisionFailed: the provider refused its configuration or
+	// credential, or could not be reached.
+	ReasonProvisionFailed = "ProvisionFailed"
+	// ReasonSnapshotIncomplete: a destination could not be read completely.
+	ReasonSnapshotIncomplete = "SnapshotIncomplete"
+	// ReasonPendingRecovery: an earlier provider write has an uncertain
+	// outcome that a complete reread did not resolve.
+	ReasonPendingRecovery = "PendingRecovery"
+	// ReasonDestinationRemoved: the ledger holds records of a destination the
+	// spec no longer names, so they can be neither read nor deleted.
+	ReasonDestinationRemoved = "DestinationRemoved"
+	// ReasonRecordsConflict: records of the instance share a name or a record
+	// set with rows of another owner and are left in place.
+	ReasonRecordsConflict = "RecordsConflict"
+	// ReasonOwnershipUnproven: a row carries the instance's marker without
+	// ledger evidence, or the ledger lists provider IDs that still exist
+	// without the marker.
+	ReasonOwnershipUnproven = "OwnershipUnproven"
+	// ReasonBudgetExhausted: the shared request budget has no room.
+	ReasonBudgetExhausted = "BudgetExhausted"
+	// ReasonRateLimited: the provider, or the budget behind an adapter that
+	// reports it that way, asked the host to wait.
+	ReasonRateLimited = "RateLimited"
+	// ReasonProviderFailed: a provider request failed.
+	ReasonProviderFailed = "ProviderFailed"
+	// ReasonLocalStateRemains: root still finds local or private state.
+	ReasonLocalStateRemains = "LocalStateRemains"
+	// ReasonCleanupFailed: a local read or write failed.
+	ReasonCleanupFailed = "CleanupFailed"
+)
+
+// PurgeResult counts what one Purge removed. All zero means nothing was left.
+type PurgeResult struct {
+	// Objects are source-owned public objects (record sets and zones).
+	Objects int
+	// SourceRows are the source head and its chunks.
+	SourceRows  int
+	Allocations int
+	Deliveries  int
+	// Clients are inventory clients withdrawn with the source.
+	Clients int
+}
+
+// CleanupSummary is what the finalizing lease did itself (D367). Work an
+// earlier lease or process finished is not in it; each of those steps wrote
+// its own audit rows when it committed. Root records the summary with the
+// finalizer removal.
+type CleanupSummary struct {
+	// Released: the finalizer goes without cleanup because the policy is no
+	// longer Delete. Everything the instance published stays.
+	Released bool
+	// RecordSetsDeleted are provider record sets confirmed deleted.
+	RecordSetsDeleted int
+	// RecordsForgotten are ledger rows removed, OperationsForgotten the
+	// operations removed with them or as leftovers.
+	RecordsForgotten    int
+	OperationsForgotten int
+	Purged              PurgeResult
+	// Runs is the number of bounded runs the lease needed.
+	Runs int
+}
+
+// cleanupSource is the source digest of every cleanup plan: a terminating
+// instance selects nothing, so there is no source selection to bind.
+var cleanupSource = kinds.Digest([]byte("integration-cleanup"))
+
+// terminatingLease is the state of one terminating lease.
+type terminatingLease struct {
+	inspected bool
+	publisher bool
+	provider  integration.Integration
+	summary   CleanupSummary
+	// progress: the current run confirmed a delete or forgot a record.
+	progress bool
+}
+
+type terminatingOutcome struct {
+	done bool
+	// stop ends the lease without finalizing: nothing can change until the
+	// instance itself does, and a changed instance replaces the job.
+	stop bool
+	// again: the run made progress and more work is known to remain.
+	again  bool
+	reason string
+	result Result
+	err    error
+}
+
+// runTerminating is the lease of a terminating instance (D367). It repeats
+// bounded runs until the finalizer is gone: each run takes one concurrency
+// slot and one operation timeout, captures a fresh frame, and leaves all
+// durable state where the next run, lease or process resumes from it.
+func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
+	ctx, cancel := context.WithCancel(leaseCtx)
+	stopJob := context.AfterFunc(j.ctx, cancel)
+	defer stopJob()
+	defer cancel()
+	h.mu.Lock()
+	if h.jobs[j.key] != j || j.active || j.ctx.Err() != nil || leaseCtx.Err() != nil {
+		h.mu.Unlock()
+		return
+	}
+	definition := j.frame.instance.definition
+	g, err := j.frame.instance.TerminatingGuard(h.leaseID(j))
+	if err != nil {
+		h.mu.Unlock()
+		return
+	}
+	j.active = true
+	j.guard = g
+	j.leaseCtx = ctx
+	h.mu.Unlock()
+	st := &terminatingLease{}
+	defer func() { h.mu.Lock(); j.active = false; j.provider = nil; h.mu.Unlock() }()
+	defer func() {
+		cancel()
+		if st.provider == nil {
+			return
+		}
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), h.opts.StopTimeout)
+		defer stopCancel()
+		if err := st.provider.Stop(stopCtx); err != nil {
+			h.opts.Logger.Warn("integration provider stop failed", "integration", j.key)
+		}
+	}()
+	// A blocked cleanup is re-evaluated at the instance's resync interval,
+	// at least every ten minutes: nothing local changes when an operator
+	// resolves a conflict at the provider. A change of the object itself
+	// replaces the job and runs at once.
+	interval := definition.Spec.Resync.Duration
+	if interval <= 0 || interval > 10*time.Minute {
+		interval = 10 * time.Minute
+	}
+	interval = max(interval, time.Second)
+	var failures, fenced uint32
+	last := ""
+	for {
+		select {
+		case h.slots <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+		runCtx, runCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
+		st.summary.Runs++
+		st.progress = false
+		out, f, g := h.terminate(runCtx, j, st)
+		bounded := runCtx.Err() != nil && ctx.Err() == nil
+		runCancel()
+		<-h.slots
+		if bounded && !out.done {
+			// The run reached its bound. With progress that is the ordinary
+			// way a long cleanup continues; without, a provider that hangs.
+			if st.progress {
+				out.again, out.reason = true, ReasonCleanup
+			} else {
+				out.err = &Failure{Kind: FailureTemporary}
+				if st.publisher {
+					out.reason = ReasonProviderFailed
+				}
+			}
+		}
+		if out.done {
+			h.opts.Logger.Info("integration finalized", "integration", j.key, "released", st.summary.Released, "recordSetsDeleted", st.summary.RecordSetsDeleted, "recordsForgotten", st.summary.RecordsForgotten, "runs", st.summary.Runs)
+			h.Wake()
+			return
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		h.setLocal(j, PhaseTerminating, out.reason, out.result, true)
+		if out.reason != last {
+			h.opts.Logger.Info("integration terminating", "integration", j.key, "reason", out.reason, "remaining", out.result.Remaining, "blocked", out.result.Conflicts, "pending", out.result.Pending)
+			last = out.reason
+		}
+		if f.instance != nil && !errors.Is(out.err, ErrFenced) {
+			statusCtx, statusCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
+			if scoped, err := h.scopedOriginal(statusCtx, j, f, g); err == nil {
+				h.publishStatus(scoped, j, g)
+			}
+			statusCancel()
+			// A changed status is a new resource version of the object; the
+			// next run needs the frame that carries it.
+			h.Wake()
+		}
+		if out.stop {
+			return
+		}
+		delay := interval
+		switch {
+		case out.again:
+			failures, fenced = 0, 0
+			delay = h.opts.PollInterval
+		case errors.Is(out.err, ErrFenced), errors.Is(out.err, ErrStalePreview), errors.Is(out.err, store.ErrConflict):
+			// The frame or a ledger version moved under this run. The next
+			// run reads both again; back off so a lasting refusal stays cheap.
+			if fenced < 16 {
+				fenced++
+			}
+			delay = min(interval, h.opts.PollInterval<<min(fenced-1, 10))
+		case errors.Is(out.err, ledger.ErrBudget):
+			if failures < 32 {
+				failures++
+			}
+			delay = min(5*time.Minute, time.Second<<min(failures, 9))
+		default:
+			if failures < 32 {
+				failures++
+			}
+			if retry, ok := h.retryDelay(out.err, failures); ok {
+				delay = retry
+			}
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-j.reconcile:
+			timer.Stop()
+			failures, fenced = 0, 0
+		case <-timer.C:
+		}
+	}
+}
+
+// terminate is one bounded run. It returns the frame and guard it captured
+// so the caller can publish the outcome under the same authority.
+func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (terminatingOutcome, frame, ExecutionGuard) {
+	f, g, err := h.captured(j)
+	if err != nil {
+		return terminatingOutcome{reason: ReasonAuthorityChanged, err: ErrFenced}, frame{}, ExecutionGuard{}
+	}
+	ctx, err = h.scopedOriginal(ctx, j, f, g)
+	if err != nil {
+		return terminatingOutcome{reason: ReasonAuthorityChanged, err: ErrFenced}, frame{}, ExecutionGuard{}
+	}
+	if err := h.fence(ctx, j, g); err != nil {
+		return terminatingOutcome{reason: ReasonAuthorityChanged, err: ErrFenced}, f, g
+	}
+	if g.Mode == GuardRelease {
+		st.summary.Released = true
+		if err := h.opts.Finalize(ctx, g, st.summary); err != nil {
+			return failed(ctx, ReasonReleaseFailed, Result{}, err), f, g
+		}
+		return terminatingOutcome{done: true}, f, g
+	}
+	if !st.inspected {
+		provider, err := h.opts.Factory(f.instance.definition.Spec.Type)
+		if err != nil || provider == nil {
+			return terminatingOutcome{reason: ReasonProviderUnavailable, err: ErrUnsupported}, f, g
+		}
+		_, st.publisher = provider.(Publisher)
+		st.inspected = true
+	}
+	result := Result{}
+	if st.publisher {
+		// Only a publisher can own provider-side records, and only its
+		// cleanup needs a credential and a reachable provider.
+		if f.instance.credentialError {
+			return terminatingOutcome{reason: ReasonCredentials, stop: true, err: ErrCredentials}, f, g
+		}
+		if st.provider == nil {
+			if err := h.provisionCleanup(ctx, j, f, st); err != nil {
+				return failed(ctx, ReasonProvisionFailed, result, err), f, g
+			}
+		}
+		clean, out := h.cleanupRecords(ctx, j, f, g, st)
+		if !clean {
+			return out, f, g
+		}
+		result = out.result
+	} else {
+		// No publisher ever wrote for this instance, so a ledger row of it has
+		// no destination this job could read.
+		rows, err := h.ownerLedgers(ctx, f.instance.owner)
+		if err != nil {
+			return failed(ctx, ReasonCleanupFailed, result, err), f, g
+		}
+		if len(rows) > 0 {
+			result.Remaining = len(rows)
+			return terminatingOutcome{reason: ReasonDestinationRemoved, result: result}, f, g
+		}
+	}
+	if out, ok := h.forgetLeftovers(ctx, f, g, st, result); !ok {
+		return out, f, g
+	}
+	if err := h.fence(ctx, j, g); err != nil {
+		return terminatingOutcome{reason: ReasonAuthorityChanged, result: result, err: ErrFenced}, f, g
+	}
+	purged, err := h.opts.Purge(ctx, g)
+	st.summary.Purged.Objects += purged.Objects
+	st.summary.Purged.SourceRows += purged.SourceRows
+	st.summary.Purged.Allocations += purged.Allocations
+	st.summary.Purged.Deliveries += purged.Deliveries
+	st.summary.Purged.Clients += purged.Clients
+	if err != nil {
+		return failed(ctx, ReasonCleanupFailed, result, err), f, g
+	}
+	if err := h.fence(ctx, j, g); err != nil {
+		return terminatingOutcome{reason: ReasonAuthorityChanged, result: result, err: ErrFenced}, f, g
+	}
+	if err := h.opts.Finalize(ctx, g, st.summary); err != nil {
+		return failed(ctx, ReasonCleanupFailed, result, err), f, g
+	}
+	return terminatingOutcome{done: true}, f, g
+}
+
+// failed classifies an error of a terminating run. The reason given is used
+// only when the error itself does not say more.
+func failed(ctx context.Context, reason string, result Result, err error) terminatingOutcome {
+	out := terminatingOutcome{reason: reason, result: result, err: err}
+	switch {
+	case errors.Is(err, ErrFenced):
+		out.reason, out.err = ReasonAuthorityChanged, ErrFenced
+	case errors.Is(err, ErrRemains):
+		out.reason = ReasonLocalStateRemains
+	case errors.Is(err, ledger.ErrBudget):
+		out.reason, out.err = ReasonBudgetExhausted, ledger.ErrBudget
+	case errors.Is(err, ledger.ErrPending):
+		out.reason = ReasonPendingRecovery
+	case errors.Is(err, plan.ErrIncomplete):
+		out.reason = ReasonSnapshotIncomplete
+	case ctx.Err() != nil:
+		// The run ended at its bound or with its lease; the caller decides.
+	default:
+		if f := retryFailure(err); f != nil {
+			out.err = f
+			if f.Kind == FailureRateLimited {
+				out.reason = ReasonRateLimited
+			} else if reason != ReasonProvisionFailed {
+				out.reason = ReasonProviderFailed
+			}
+		} else if errors.Is(err, ErrProvider) && reason != ReasonProvisionFailed {
+			out.reason = ReasonProviderFailed
+		}
+	}
+	return out
+}
+
+// provisionCleanup builds and checks the publisher of a cleanup lease with
+// the captured named credentials, like an ordinary lease, but never starts
+// it: a terminating instance observes and delivers nothing.
+func (h *Host) provisionCleanup(ctx context.Context, j *job, f frame, st *terminatingLease) error {
+	provider, err := h.opts.Factory(f.instance.definition.Spec.Type)
+	if err != nil || provider == nil {
+		return ErrUnsupported
+	}
+	err = provider.Provision(ctx, providerHost{h: h, j: j}, f.instance.ProviderSpec(), f.instance.Secrets())
+	if err == nil {
+		err = provider.Validate(ctx)
+	}
+	if err == nil {
+		var checked integration.Status
+		checked, err = provider.Check(ctx)
+		if err == nil && (!checked.Authenticated || !checked.Reachable) {
+			err = ErrProvider
+		}
+	}
+	if err != nil {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), h.opts.StopTimeout)
+		defer stopCancel()
+		if stopErr := provider.Stop(stopCtx); stopErr != nil {
+			h.opts.Logger.Warn("integration provider stop failed", "integration", j.key)
+		}
+		return terminatingError(ctx, err)
+	}
+	st.provider = provider
+	h.mu.Lock()
+	j.provider = provider
+	h.mu.Unlock()
+	return nil
+}
+
+// terminatingError keeps the two sentinels the terminating loop schedules
+// on and sanitizes everything else like an ordinary provider error.
+func terminatingError(ctx context.Context, err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ledger.ErrBudget):
+		return ledger.ErrBudget
+	case errors.Is(err, ErrFenced):
+		return ErrFenced
+	}
+	return safeError(ctx, err)
+}
+
+// cleanupPublications reads every destination the terminating instance's
+// configuration still names: its complete remote snapshot and the instance's
+// ledger rows there, bound into a cleanup plan input with nothing desired.
+func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g ExecutionGuard) ([]publicationInput, error) {
+	publisher, ok := j.provider.(Publisher)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	pubs, err := publisher.Destinations(ctx)
+	if err != nil {
+		return nil, terminatingError(ctx, err)
+	}
+	if len(pubs) > 256 {
+		return nil, ErrCapacity
+	}
+	seen := map[kinds.Destination]bool{}
+	out := make([]publicationInput, 0, len(pubs))
+	for _, pub := range pubs {
+		if pub.Destination.Validate() != nil || seen[pub.Destination] {
+			return nil, ErrInvalid
+		}
+		seen[pub.Destination] = true
+		remote, err := publisher.Records(ctx, pub.Destination)
+		if err != nil {
+			return nil, terminatingError(ctx, err)
+		}
+		if !remote.Complete {
+			return nil, plan.ErrIncomplete
+		}
+		ledgers, err := h.ledgers(ctx, f.instance.owner, pub.Destination)
+		if err != nil {
+			return nil, err
+		}
+		in := publicationInput{pub, remote, plan.Input{Owner: f.instance.owner, Destination: pub.Destination, ConfigDigest: g.Ledger.ConfigDigest, CredentialDigest: g.Ledger.CredentialDigest, SourceDigest: cleanupSource, Policy: pub.Policy, Current: remote.Records, Ledger: ledgers, DesiredComplete: true, CurrentComplete: true, AdoptUnowned: pub.AdoptUnowned, AdoptExternalDNSOwner: pub.AdoptExternalDNSOwner, Cleanup: true}}
+		if _, err := validatePendingObservation(in.planInput); err != nil {
+			return nil, err
+		}
+		out = append(out, in)
+	}
+	slices.SortFunc(out, func(a, b publicationInput) int {
+		x, _ := json.Marshal(a.publication.Destination)
+		y, _ := json.Marshal(b.publication.Destination)
+		return strings.Compare(string(x), string(y))
+	})
+	if err := h.fence(ctx, j, g); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// cleanupRecords removes what the instance provably owns at its provider and
+// then its ledger: pending intents are resolved from a complete reread
+// first, proven record sets are deleted through the ordinary intent, fence,
+// provider, receipt and confirm sequence, and a ledger row is forgotten once
+// a fresh complete reread shows its record absent. It reports clean only
+// when no record, ledger row or uncertain operation of the instance is left.
+// Anything it cannot remove is counted and named, never skipped.
+func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionGuard, st *terminatingLease) (bool, terminatingOutcome) {
+	result := Result{}
+	owner := f.instance.owner
+	inputs, err := h.cleanupPublications(ctx, j, f, g)
+	if err != nil {
+		return false, failed(ctx, ReasonCleanupFailed, result, err)
+	}
+	recovered := false
+	for _, in := range inputs {
+		for _, l := range in.planInput.Ledger {
+			if l.Spec.Pending == nil {
+				continue
+			}
+			recovered = true
+			if err := h.recover(ctx, j, g, in, l); err != nil {
+				result.Pending++
+				return false, failed(ctx, ReasonCleanupFailed, result, err)
+			}
+		}
+	}
+	if recovered {
+		// Recovery changed ledger versions; rebuild complete observations.
+		if inputs, err = h.cleanupPublications(ctx, j, f, g); err != nil {
+			return false, failed(ctx, ReasonCleanupFailed, result, err)
+		}
+	}
+	applied := Result{}
+	var applyErr error
+	for _, in := range inputs {
+		var p *plan.Plan
+		if p, applyErr = plan.Build(in.planInput); applyErr != nil {
+			break
+		}
+		if applyErr = h.applyPlan(ctx, j, g, inputs, p, &applied); applyErr != nil {
+			break
+		}
+	}
+	result.Applied, result.Pending = applied.Applied, applied.Pending
+	st.summary.RecordSetsDeleted += applied.Applied
+	st.progress = st.progress || applied.Applied > 0
+	if applyErr != nil {
+		return false, failed(ctx, ReasonCleanupFailed, result, applyErr)
+	}
+	if result.Applied > 0 {
+		// Judge the destinations from what they hold now, not from receipts.
+		if inputs, err = h.cleanupPublications(ctx, j, f, g); err != nil {
+			return false, failed(ctx, ReasonCleanupFailed, result, err)
+		}
+	}
+	observed := h.opts.Now()
+	published := make([]kinds.Destination, 0, len(inputs))
+	remaining, conflicts, unproven := 0, 0, 0
+	// Rows that carry the owner's marker, and every provider ID a destination
+	// holds: a ledger row is forgotten only when neither still shows it.
+	marked := map[kinds.RecordIdentity]bool{}
+	present := map[kinds.Destination]map[string]bool{}
+	for _, in := range inputs {
+		published = append(published, in.publication.Destination)
+		p, err := plan.Build(in.planInput)
+		if err != nil {
+			return false, failed(ctx, ReasonCleanupFailed, result, err)
+		}
+		remaining += len(p.Operations)
+		for _, kept := range p.Retained {
+			if kept.Reason == plan.RetainedUnproven {
+				unproven++
+			} else {
+				conflicts++
+			}
+		}
+		ids := map[string]bool{}
+		for _, row := range in.remote.Records {
+			for _, id := range row.IDs {
+				ids[id] = true
+			}
+			if row.Owner.ClusterID == owner.ClusterID && row.Owner.IntegrationUID == owner.UID {
+				if n, err := plan.Normalize(row.Endpoint); err == nil {
+					marked[kinds.RecordIdentity{Owner: owner, Destination: in.publication.Destination, Key: kinds.RecordKey{Name: n.DNSName, Type: n.RecordType, SetIdentifier: n.SetIdentifier}}] = true
+				}
+			}
+		}
+		present[in.publication.Destination] = ids
+	}
+	rows, err := h.ownerLedgers(ctx, owner)
+	if err != nil {
+		return false, failed(ctx, ReasonCleanupFailed, result, err)
+	}
+	operations, err := h.ownerOperations(ctx, owner)
+	if err != nil {
+		return false, failed(ctx, ReasonCleanupFailed, result, err)
+	}
+	history := map[kinds.RecordIdentity][]*kinds.IntegrationOperation{}
+	for _, op := range operations {
+		history[op.Spec.Record] = append(history[op.Spec.Record], op)
+	}
+	stranded := strandedLedgers(rows, published)
+	left := len(rows)
+	for _, l := range rows {
+		ids, reachable := present[l.Spec.Record.Destination]
+		if !reachable {
+			continue
+		}
+		if l.Spec.Pending != nil {
+			result.Pending++
+			continue
+		}
+		// Nothing is forgotten at a key that still shows the owner's marker:
+		// the plan above deletes that record set or names why it stays.
+		if marked[l.Spec.Record] {
+			continue
+		}
+		proof := ledger.Observation{}
+		if l.Spec.ContentHash != "" || len(l.Spec.ProviderIDs) != 0 {
+			// The baseline still lists provider content, so no delete of this
+			// job confirmed its absence. It may go only when this fresh
+			// complete snapshot holds none of its provider IDs any more.
+			survives := false
+			for _, id := range l.Spec.ProviderIDs {
+				survives = survives || ids[id]
+			}
+			if survives {
+				unproven++
+				continue
+			}
+			proof = ledger.Observation{ObservedAt: observed}
+		}
+		ops := history[l.Spec.Record]
+		first := ops[:min(len(ops), ledger.MaxForgetOperations)]
+		if err := h.opts.Ledger.Forget(ctx, g.Ledger, l, first, proof); err != nil {
+			result.Remaining, result.Conflicts = left, conflicts+unproven
+			if errors.Is(err, ledger.ErrBaseline) {
+				// The observation aged past its bound; the next run rereads.
+				return false, terminatingOutcome{reason: ReasonCleanup, result: result, again: st.progress}
+			}
+			return false, failed(ctx, ReasonCleanupFailed, result, err)
+		}
+		left--
+		st.progress = true
+		st.summary.RecordsForgotten++
+		st.summary.OperationsForgotten += len(first)
+	}
+	result.Remaining = left
+	result.Conflicts = conflicts + unproven
+	switch {
+	case result.Pending > 0:
+		return false, terminatingOutcome{reason: ReasonPendingRecovery, result: result}
+	case len(stranded) > 0:
+		return false, terminatingOutcome{reason: ReasonDestinationRemoved, result: result}
+	case conflicts > 0:
+		return false, terminatingOutcome{reason: ReasonRecordsConflict, result: result}
+	case unproven > 0:
+		return false, terminatingOutcome{reason: ReasonOwnershipUnproven, result: result}
+	case left > 0 || remaining > 0:
+		// Record sets appeared or changed between the plan and the reread.
+		return false, terminatingOutcome{reason: ReasonCleanup, result: result, again: st.progress}
+	}
+	return true, terminatingOutcome{result: result}
+}
+
+// forgetLeftovers removes operations of the instance whose record has no
+// ledger row: intents whose reservation failed, and history beyond one
+// commit's bound. It runs only once no ledger row of the instance is left.
+func (h *Host) forgetLeftovers(ctx context.Context, f frame, g ExecutionGuard, st *terminatingLease, result Result) (terminatingOutcome, bool) {
+	operations, err := h.ownerOperations(ctx, f.instance.owner)
+	if err != nil {
+		return failed(ctx, ReasonCleanupFailed, result, err), false
+	}
+	history := map[kinds.RecordIdentity][]*kinds.IntegrationOperation{}
+	var records []kinds.RecordIdentity
+	for _, op := range operations {
+		if _, seen := history[op.Spec.Record]; !seen {
+			records = append(records, op.Spec.Record)
+		}
+		history[op.Spec.Record] = append(history[op.Spec.Record], op)
+	}
+	result.Remaining = len(records)
+	for _, record := range records {
+		for ops := history[record]; len(ops) > 0; {
+			chunk := ops[:min(len(ops), ledger.MaxForgetOperations)]
+			if err := h.opts.Ledger.Forget(ctx, g.Ledger, nil, chunk, ledger.Observation{}); err != nil {
+				return failed(ctx, ReasonCleanupFailed, result, err), false
+			}
+			st.summary.OperationsForgotten += len(chunk)
+			ops = ops[len(chunk):]
+		}
+		result.Remaining--
+	}
+	return terminatingOutcome{}, true
+}

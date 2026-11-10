@@ -30,7 +30,7 @@ func scoped(ctx context.Context, j *job, g ExecutionGuard) context.Context {
 func (h *Host) scopedOriginal(ctx context.Context, j *job, f frame, g ExecutionGuard) (context.Context, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	if h.jobs[j.key] != j || !j.active || j.guard != g.Ledger || j.frame.instance != f.instance || j.frame.input.BundleID != g.BundleID || j.ctx.Err() != nil || j.leaseCtx == nil || j.leaseCtx.Err() != nil {
+	if h.jobs[j.key] != j || !j.active || j.guard != g.Ledger || j.mode != g.Mode || j.frame.instance != f.instance || j.frame.input.BundleID != g.BundleID || j.ctx.Err() != nil || j.leaseCtx == nil || j.leaseCtx.Err() != nil {
 		return nil, ErrFenced
 	}
 	return context.WithValue(ctx, scopeKey{}, requestScope{j: j, g: g, original: &requestOrigin{instance: f.instance, lease: j.leaseCtx, input: f.input}}), nil
@@ -98,7 +98,7 @@ func (h *Host) RequestGuard(ctx context.Context, expected ledger.Guard) (Executi
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	j := s.j
-	if h.jobs[j.key] != j || !j.active || j.ctx.Err() != nil || j.leaseCtx.Err() != nil || !h.opts.Allowed() || j.guard != expected || j.frame.input.BundleID != s.g.BundleID {
+	if h.jobs[j.key] != j || !j.active || j.ctx.Err() != nil || j.leaseCtx.Err() != nil || !h.allowed(j) || j.guard != expected || j.frame.input.BundleID != s.g.BundleID || j.mode != s.g.Mode {
 		return ExecutionGuard{}, nil, ErrFenced
 	}
 	lease := j.leaseCtx // setup scope was constructed directly from this lease

@@ -447,83 +447,98 @@ func (h *Host) sync(ctx context.Context, j *job, f frame, g ExecutionGuard, expe
 	if expected != "" && expected != preview.Digest {
 		return result, ErrStalePreview
 	}
-	publisher := j.provider.(Publisher)
 	for _, p := range preview.Plans {
-		result.Conflicts += len(p.Conflicts)
-		result.Unchanged += p.Unchanged
-		ledgers, err := h.ledgers(ctx, f.instance.owner, p.Destination)
-		if err != nil {
+		if err := h.applyPlan(ctx, j, g, inputs, p, result); err != nil {
 			return result, err
-		}
-		tokens := map[kinds.RecordKey]string{}
-		for _, l := range ledgers {
-			tokens[l.Spec.Record.Key] = l.ResourceVersion
-		}
-		// Refuse to silently substitute fresh CAS tokens under this plan. The
-		// planner bound exactly these ledgers; fresh changes require another Sync.
-		original := map[kinds.RecordKey]string{}
-		for _, in := range inputs {
-			if in.planInput.Destination == p.Destination {
-				for _, l := range in.planInput.Ledger {
-					original[l.Spec.Record.Key] = l.ResourceVersion
-				}
-			}
-		}
-		if len(tokens) != len(original) {
-			return result, ErrStalePreview
-		}
-		for key, rv := range tokens {
-			if original[key] != rv {
-				return result, ErrStalePreview
-			}
-		}
-		for i := range p.Operations {
-			if err := h.fence(ctx, j, g); err != nil {
-				return result, err
-			}
-			intent := p.Intent(i, h.opts.Now())
-			res, err := h.opts.Ledger.Begin(ctx, g.Ledger, intent, tokens[intent.Spec.Record.Key])
-			if err != nil {
-				return result, err
-			}
-			if res.Operation.Spec.Receipt != nil || !res.Operation.Spec.AbandonedAt.IsZero() {
-				result.Pending++
-				return result, ledger.ErrPending
-			}
-			if err := h.fence(ctx, j, g); err != nil {
-				result.Pending++
-				return result, err
-			}
-			receipt, applyErr := publisher.Apply(ctx, res.Operation.DeepCopy())
-			if !receipt.ObservedAt.IsZero() {
-				saved, saveErr := h.opts.Ledger.RecordReceipt(ctx, g.Ledger, res.Operation, receipt)
-				if saveErr != nil {
-					result.Pending++
-					return result, saveErr
-				}
-				res.Operation = saved
-			}
-			if res.Operation.Spec.Receipt != nil && res.Operation.Spec.Receipt.Complete {
-				confirmed, err := h.opts.Ledger.Confirm(ctx, g.Ledger, res)
-				if err != nil {
-					result.Pending++
-					return result, err
-				}
-				tokens[intent.Spec.Record.Key] = confirmed.ResourceVersion
-				result.Applied++
-			} else {
-				result.Pending++
-				if applyErr != nil {
-					return result, safeError(ctx, applyErr)
-				}
-				return result, ledger.ErrPending
-			}
-			if applyErr != nil {
-				return result, safeError(ctx, applyErr)
-			}
 		}
 	}
 	return result, nil
+}
+
+// applyPlan executes the operations of one destination plan through the
+// durable intent, fence, provider, receipt and confirm sequence, and adds the
+// outcome to result. It refuses to run under ledger versions other than the
+// ones the plan was built from. Ordinary sync and cleanup (D367) share it:
+// a cleanup plan differs only in what it contains.
+func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs []publicationInput, p *plan.Plan, result *Result) error {
+	publisher, ok := j.provider.(Publisher)
+	if !ok {
+		return ErrUnsupported
+	}
+	result.Conflicts += len(p.Conflicts)
+	result.Unchanged += p.Unchanged
+	ledgers, err := h.ledgers(ctx, p.Owner, p.Destination)
+	if err != nil {
+		return err
+	}
+	tokens := map[kinds.RecordKey]string{}
+	for _, l := range ledgers {
+		tokens[l.Spec.Record.Key] = l.ResourceVersion
+	}
+	// Refuse to silently substitute fresh CAS tokens under this plan. The
+	// planner bound exactly these ledgers; fresh changes require another Sync.
+	original := map[kinds.RecordKey]string{}
+	for _, in := range inputs {
+		if in.planInput.Destination == p.Destination {
+			for _, l := range in.planInput.Ledger {
+				original[l.Spec.Record.Key] = l.ResourceVersion
+			}
+		}
+	}
+	if len(tokens) != len(original) {
+		return ErrStalePreview
+	}
+	for key, rv := range tokens {
+		if original[key] != rv {
+			return ErrStalePreview
+		}
+	}
+	for i := range p.Operations {
+		if err := h.fence(ctx, j, g); err != nil {
+			return err
+		}
+		intent := p.Intent(i, h.opts.Now())
+		res, err := h.opts.Ledger.Begin(ctx, g.Ledger, intent, tokens[intent.Spec.Record.Key])
+		if err != nil {
+			return err
+		}
+		if res.Operation.Spec.Receipt != nil || !res.Operation.Spec.AbandonedAt.IsZero() {
+			result.Pending++
+			return ledger.ErrPending
+		}
+		if err := h.fence(ctx, j, g); err != nil {
+			result.Pending++
+			return err
+		}
+		receipt, applyErr := publisher.Apply(ctx, res.Operation.DeepCopy())
+		if !receipt.ObservedAt.IsZero() {
+			saved, saveErr := h.opts.Ledger.RecordReceipt(ctx, g.Ledger, res.Operation, receipt)
+			if saveErr != nil {
+				result.Pending++
+				return saveErr
+			}
+			res.Operation = saved
+		}
+		if res.Operation.Spec.Receipt != nil && res.Operation.Spec.Receipt.Complete {
+			confirmed, err := h.opts.Ledger.Confirm(ctx, g.Ledger, res)
+			if err != nil {
+				result.Pending++
+				return err
+			}
+			tokens[intent.Spec.Record.Key] = confirmed.ResourceVersion
+			result.Applied++
+		} else {
+			result.Pending++
+			if applyErr != nil {
+				return safeError(ctx, applyErr)
+			}
+			return ledger.ErrPending
+		}
+		if applyErr != nil {
+			return safeError(ctx, applyErr)
+		}
+	}
+	return nil
 }
 
 func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publicationInput, l *kinds.IntegrationLedger) error {
@@ -591,7 +606,17 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 		return err
 	}
 	resume, ok := j.provider.(RecoveryPublisher)
-	if !ok || !state.resumable || op.Spec.ConfigDigest != g.Ledger.ConfigDigest || op.Spec.CredentialDigest != g.Ledger.CredentialDigest || !recoveryDesired(in.planInput, op) {
+	// An intent is resumed only while the captured configuration and
+	// credential still authorize it. Cleanup (D367) relaxes that for a delete
+	// alone: its authority is the instance's proven ownership of the rows
+	// plus the terminating guard, so a credential rotated or a zone policy
+	// changed after the partial delete does not strand it. Any other partial
+	// intent stays pending in cleanup, where nothing is desired any more.
+	authorized := op.Spec.ConfigDigest == g.Ledger.ConfigDigest && op.Spec.CredentialDigest == g.Ledger.CredentialDigest
+	if in.planInput.Cleanup && g.Mode == GuardCleanup && op.Spec.Action == "delete" {
+		authorized = true
+	}
+	if !ok || !state.resumable || !authorized || !recoveryDesired(in.planInput, op) {
 		return ledger.ErrPending
 	}
 	if err := h.fence(ctx, j, g); err != nil {
@@ -645,7 +670,8 @@ func recoveryDesired(in plan.Input, op *kinds.IntegrationOperation) bool {
 			policy = p.Policy
 		}
 	}
-	if policy == "" {
+	// Cleanup plans under sync whatever the destination retains (D367).
+	if policy == "" || in.Cleanup {
 		policy = plan.PolicySync
 	}
 	if policy == plan.PolicyCreateOnly && op.Spec.Action != "create" || policy == plan.PolicyUpsertOnly && op.Spec.Action == "delete" {

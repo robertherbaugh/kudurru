@@ -30,15 +30,40 @@ var (
 	ErrUnsupported  = errors.New("integration host: capability unsupported")
 	ErrBusy         = errors.New("integration host: command capacity exceeded")
 	ErrFenced       = errors.New("integration host: incarnation fenced")
+	// ErrRemains is root's answer when a terminating instance still has
+	// local or private state, so its finalizer must stay.
+	ErrRemains = errors.New("integration host: instance state remains")
 )
 
 // InstanceID requires one exact captured Integration incarnation.
 type InstanceID = kinds.Owner
 
-// ExecutionGuard adds the captured publication/config bundle to the write guard.
+// GuardMode names what an elected job may do with its Integration (D367).
+// Root must check the mode against the object it reads in each transaction:
+// a mode is the job's claim about the object, never a way to widen authority.
+type GuardMode string
+
+// Guard modes.
+const (
+	// GuardNormal is a live instance: no deletion timestamp, and the reserved
+	// cleanup finalizer present whenever the deletion policy is Delete.
+	GuardNormal GuardMode = ""
+	// GuardCleanup is a terminating instance whose policy is Delete and which
+	// still carries the reserved finalizer. It may delete what the instance
+	// provably owns, forget its ledger, purge its local state and finalize.
+	GuardCleanup GuardMode = "cleanup"
+	// GuardRelease is a terminating instance that still carries the reserved
+	// finalizer although its policy is no longer Delete. It may only remove
+	// the finalizer; it makes no provider call and needs no license.
+	GuardRelease GuardMode = "release"
+)
+
+// ExecutionGuard adds the captured publication/config bundle and the job's
+// mode to the write guard.
 type ExecutionGuard struct {
 	Ledger   ledger.Guard
 	BundleID string
+	Mode     GuardMode
 }
 
 // Publication describes a verified remote destination and its desired filters.
@@ -90,10 +115,15 @@ type Preview struct {
 }
 
 // Result reports only durable confirmed outcomes; ambiguity remains Degraded.
+// A cleanup run (D367) reports the record sets it deleted as Applied, the
+// uncertain ones as Pending, the ones it must leave in place as Conflicts,
+// and in Remaining the ledger rows of the instance it has not forgotten yet.
+// Remaining is zero for an ordinary sync.
 type Result struct {
 	PreviewDigest                          string
 	Applied, Pending, Conflicts, Unchanged int
 	Clients                                int
+	Remaining                              int
 	Source                                 *SourceOutcome
 }
 
@@ -146,7 +176,18 @@ type Options struct {
 	CommitSource   func(context.Context, ExecutionGuard, SourceSnapshot) (*Result, error)
 	BeforeObserve  func(requestCtx, originalLeaseCtx context.Context, guard ExecutionGuard) (boundCtx context.Context, release func(), err error)
 	Status         func(context.Context, ExecutionGuard, InstanceStatus) error
-	Resolve        func(context.Context, dns.Question) (*dns.Msg, error)
+	// Purge and Finalize end a terminating instance (D367); set both or
+	// neither. Without them a terminating instance is only paused, as before.
+	// Purge removes, in one commit where the carrier has transactions, every
+	// local object the instance's source owns, and returns once the published
+	// serving state no longer shows them; it is idempotent. Finalize verifies
+	// that nothing of the instance remains, records the summary and removes
+	// the reserved finalizer by the exact UID and resource version of the
+	// guard, which removes the object. Under GuardRelease it only removes the
+	// finalizer. ErrRemains from either means the instance is not clean yet.
+	Purge    func(context.Context, ExecutionGuard) (PurgeResult, error)
+	Finalize func(context.Context, ExecutionGuard, CleanupSummary) error
+	Resolve  func(context.Context, dns.Question) (*dns.Msg, error)
 	// In preferred source mode Allowed must be a concurrency-safe, lock-free
 	// memory/clock predicate: it is also invoked by the actual final check.
 	// Root separately excludes original license/resource replacement.
@@ -178,6 +219,7 @@ type frame struct {
 }
 type job struct {
 	key          string
+	mode         GuardMode
 	frame        frame
 	sourceDigest string
 	ctx          context.Context
@@ -213,6 +255,9 @@ func New(o Options) (*Host, error) {
 		return nil, ErrInvalid
 	}
 	if (o.ValidateSource == nil) != (o.CommitSource == nil) || o.CommitSource != nil && o.BeforeObserve == nil {
+		return nil, ErrInvalid
+	}
+	if (o.Purge == nil) != (o.Finalize == nil) {
 		return nil, ErrInvalid
 	}
 	if o.Factory == nil {

@@ -47,10 +47,15 @@ func (h *Host) submit(ctx context.Context, id InstanceID, c command) answer {
 	h.mu.RLock()
 	j := h.jobs[instanceKey(id)]
 	valid := j != nil && j.active && j.frame.instance.owner == id && j.ctx.Err() == nil
+	// Nothing reads the command queue of a terminating job (D367).
+	terminating := valid && j.mode != GuardNormal
 	if c.original != nil {
 		valid = valid && c.original.host == h && c.original.job == j && c.original.currentLocked() == nil
 	}
 	h.mu.RUnlock()
+	if terminating {
+		return answer{err: ErrFenced}
+	}
 	if !valid {
 		return answer{err: ErrUnavailable}
 	}

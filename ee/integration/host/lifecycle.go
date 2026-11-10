@@ -13,6 +13,7 @@ import (
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/ee/integration/plan"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 // Wake coalesces root's background change notifications into one level trigger.
@@ -108,7 +109,13 @@ func (h *Host) refresh(ctx context.Context) {
 		default:
 		}
 		i, exists := desired[key]
-		if !h.opts.Allowed() || !exists || !sameInstance(j.frame.instance, i) || i.definition.Spec.Suspend || !i.definition.DeletionTimestamp.IsZero() || i.credentialError {
+		var next disposition
+		if exists {
+			next = h.disposition(i)
+		}
+		// A job is its instance in one mode. A delete request, a release and
+		// the end of either replace the job like any other change of authority.
+		if !exists || !sameInstance(j.frame.instance, i) || !next.run || next.mode != j.mode {
 			j.cancel()
 			// Never replace a name while an old provider may still be quiescing.
 			select {
@@ -139,6 +146,14 @@ func (h *Host) refresh(ctx context.Context) {
 				nextInput := input
 				nextInput.BundleID = i.BundleID()
 				j.frame = frame{i, nextInput}
+				// A terminating job reports why its instance still exists and
+				// may wait long between runs. Its own status write is a new
+				// resource version of the same instance in the same mode, so
+				// the report follows the frame instead of going stale.
+				if s, ok := h.statuses[key]; ok && j.mode != GuardNormal && s.Owner == i.owner {
+					s.Revision = i.definition.ResourceVersion
+					h.statuses[key] = s
+				}
 			} else {
 				// Equal authority may refresh FUTURE request resources. Current
 				// requests retain their original immutable input in requestOrigin.
@@ -167,18 +182,9 @@ func (h *Host) refresh(ctx context.Context) {
 		if _, exists := h.jobs[key]; exists {
 			continue
 		}
-		if !h.opts.Allowed() || i.definition.Spec.Suspend || !i.definition.DeletionTimestamp.IsZero() || i.credentialError {
-			reason := "Suspended"
-			if !h.opts.Allowed() {
-				reason = "LicenseUnavailable"
-			}
-			if i.credentialError {
-				reason = "CredentialsUnavailable"
-			}
-			if !i.definition.DeletionTimestamp.IsZero() {
-				reason = "Deleting"
-			}
-			h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: "Paused", Reason: reason, CredentialFingerprints: i.CredentialFingerprints()}
+		next := h.disposition(i)
+		if !next.run {
+			h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: next.phase, Reason: next.reason, CredentialFingerprints: i.CredentialFingerprints()}
 			continue
 		}
 		jobCtx, cancel := context.WithCancel(ctx)
@@ -188,11 +194,76 @@ func (h *Host) refresh(ctx context.Context) {
 		}
 		nextInput := input
 		nextInput.BundleID = i.BundleID()
-		j := &job{key: key, frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
+		j := &job{key: key, mode: next.mode, frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
 		h.jobs[key] = j
-		h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: "Waiting", Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
+		phase := "Waiting"
+		if next.mode != GuardNormal {
+			phase = PhaseTerminating
+		}
+		h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: phase, Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
 		go h.elect(j)
 	}
+}
+
+// disposition is what the host does with one captured instance: run a job in
+// a mode, or only report why it does not.
+type disposition struct {
+	mode          GuardMode
+	run           bool
+	phase, reason string
+}
+
+// disposition decides from the captured object alone. A terminating instance
+// is the host's to end only when root mounted the terminating callbacks and
+// the object carries the reserved cleanup finalizer (D367); otherwise it is
+// paused as before. A release runs without a license, a credential or regard
+// to suspension, because it makes no provider call. Cleanup pauses, with no
+// provider call, while the license does not allow integrations or the
+// instance is suspended; a missing credential is decided inside the job,
+// because only a publisher's cleanup needs one.
+func (h *Host) disposition(i *Instance) disposition {
+	d := i.definition
+	allowed := h.opts.Allowed()
+	terminating := !d.DeletionTimestamp.IsZero()
+	if terminating && h.opts.Finalize != nil {
+		mode, ok := InstanceMode(d)
+		switch {
+		case !ok:
+			return disposition{phase: "Paused", reason: "Deleting"}
+		case mode == GuardRelease:
+			return disposition{mode: GuardRelease, run: true}
+		case !allowed:
+			return disposition{mode: mode, phase: PhaseTerminating, reason: "LicenseUnavailable"}
+		case d.Spec.Suspend:
+			return disposition{mode: mode, phase: PhaseTerminating, reason: "Suspended"}
+		}
+		return disposition{mode: GuardCleanup, run: true}
+	}
+	reason := ""
+	switch {
+	case terminating:
+		reason = "Deleting"
+	case i.credentialError:
+		reason = "CredentialsUnavailable"
+	case !allowed:
+		reason = "LicenseUnavailable"
+	case d.Spec.Suspend:
+		reason = "Suspended"
+	case h.opts.Finalize != nil && store.ReservedFinalizerUnarmed(d):
+		// The policy promises cleanup, but the object does not carry the
+		// finalizer that keeps the promise through a delete. Root refuses
+		// every effect of such an instance; say why instead of failing setup.
+		reason = ReasonFinalizerMissing
+	}
+	if reason != "" {
+		return disposition{phase: "Paused", reason: reason}
+	}
+	return disposition{run: true}
+}
+
+// allowed is the license gate of one job. Only a release runs without it.
+func (h *Host) allowed(j *job) bool {
+	return j.mode == GuardRelease || h.opts.Allowed()
 }
 func (h *Host) elect(j *job) {
 	defer close(j.done)
@@ -227,6 +298,12 @@ func (h *Host) elect(j *job) {
 			gate.Unlock()
 			callbacks.Done()
 		}()
+		if j.mode != GuardNormal {
+			// A terminating job takes a slot for each bounded run, not for
+			// the lease: a blocked cleanup waits without starving others.
+			h.runTerminating(leaseCtx, j)
+			return
+		}
 		select {
 		case h.slots <- struct{}{}:
 		case <-leaseCtx.Done():
@@ -258,7 +335,7 @@ func (h *Host) WithLease(ctx context.Context, g ledger.Guard, fn func(context.Co
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	j := h.jobs[instanceKey(g.Owner)]
-	if j == nil || !j.active || j.ctx.Err() != nil || j.leaseCtx.Err() != nil || j.guard != g || !h.opts.Allowed() {
+	if j == nil || !j.active || j.ctx.Err() != nil || j.leaseCtx.Err() != nil || j.guard != g || !h.allowed(j) {
 		return ErrFenced
 	}
 	if request, ok := ctx.Value(scopeKey{}).(requestScope); ok && request.original != nil {
@@ -280,10 +357,10 @@ func (h *Host) WithLease(ctx context.Context, g ledger.Guard, fn func(context.Co
 func (h *Host) captured(j *job) (frame, ExecutionGuard, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	if h.jobs[j.key] != j || !j.active || j.ctx.Err() != nil || j.leaseCtx.Err() != nil || !h.opts.Allowed() {
+	if h.jobs[j.key] != j || !j.active || j.ctx.Err() != nil || j.leaseCtx.Err() != nil || !h.allowed(j) {
 		return frame{}, ExecutionGuard{}, ErrFenced
 	}
-	return j.frame, ExecutionGuard{Ledger: j.guard, BundleID: j.frame.input.BundleID}, nil
+	return j.frame, ExecutionGuard{Ledger: j.guard, BundleID: j.frame.input.BundleID, Mode: j.mode}, nil
 }
 func (h *Host) fence(ctx context.Context, j *job, g ExecutionGuard) error {
 	if original, ok := ctx.Value(commandCaptureKey{}).(*CommandCapture); ok {
