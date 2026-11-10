@@ -60,7 +60,7 @@ func offlineAcceptanceHarness(t *testing.T, source string, f *servingCommandFixt
 	t.Helper()
 	adoptionWait(t, f)
 	var calls atomic.Int32
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); servingMutationRoutes(s).ServeHTTP(w, r) }))
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); s.ServeHTTP(w, r) }))
 	t.Cleanup(target.Close)
 	h := newHarness(t)
 	h.env[cli.EnvServer] = target.URL

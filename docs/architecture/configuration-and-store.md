@@ -708,7 +708,10 @@ These local fields come from the original node document or schema defaults;
 even a malformed stale shared section cannot erase or replace them.
 
 On the v0.2 complete SQLite runtime, canonical settings commands replace this
-legacy ownership manager. Adoption/release and legacy YAML export return 503;
+legacy ownership manager. Adoption/release and legacy YAML export return 503
+`unavailable` with a hint that names `kudurru settings set` and
+`kudurru settings get` (`PATCH` and `GET /api/v1/settings`), because there is
+no ownership to transfer;
 canonical reads and writes never change the legacy settings file or reload
 pointer. Kubernetes retains the ownership flow described here.
 

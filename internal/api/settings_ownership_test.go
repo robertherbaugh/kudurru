@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -120,8 +121,23 @@ func TestCanonicalSettingsExcludeLegacyOwnership(t *testing.T) {
 	if len(body.Sections) != 0 || body.Settings["cache"].(map[string]any)["maxEntries"] != float64(12345) {
 		t.Fatal("legacy ownership replaced canonical settings")
 	}
-	h.do(http.MethodPost, "/api/v1/settings/sections/upstreams/ownership/adopt", "admin", map[string]string{"revision": before.Sections["upstreams"].Revision}).want(http.StatusServiceUnavailable)
-	h.do(http.MethodPost, "/api/v1/settings/sections/upstreams/yaml", "admin", map[string]any{}).want(http.StatusServiceUnavailable)
+	// The refusal names the commands that do work on this runtime.
+	for path, command := range map[string]string{
+		"/api/v1/settings/sections/upstreams/ownership/adopt":   "kudurru settings set",
+		"/api/v1/settings/sections/upstreams/ownership/release": "kudurru settings set",
+		"/api/v1/settings/sections/upstreams/yaml":              "kudurru settings get",
+	} {
+		body := map[string]string{}
+		if strings.Contains(path, "/ownership/") {
+			body["revision"] = before.Sections["upstreams"].Revision
+		}
+		r := h.do(http.MethodPost, path, "admin", body).want(http.StatusServiceUnavailable)
+		failure, _ := r.m()["error"].(map[string]any)
+		hint, _ := failure["hint"].(string)
+		if r.errKey() != KeyUnavailable || !strings.Contains(hint, command) {
+			t.Fatalf("%s: key %q hint %q", path, r.errKey(), hint)
+		}
+	}
 	if !reflect.DeepEqual(before, m.Status()) {
 		t.Fatal("canonical API mutated legacy ownership")
 	}

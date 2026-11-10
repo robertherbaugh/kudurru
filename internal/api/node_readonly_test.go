@@ -33,6 +33,15 @@ func TestNodeConfigWithoutDurableCommandReadOnly(t *testing.T) {
 					if r.errKey() != KeyReadOnly {
 						t.Fatal("missing explicit read-only refusal", r.errKey())
 					}
+					if failure, _ := r.m()["error"].(map[string]any); failure["hint"] == nil || failure["hint"] == "" {
+						t.Fatal("read-only refusal has no hint")
+					}
+				}
+			}
+			// Both routes that can answer it declare the 501 in the contract.
+			for _, path := range []string{"/node/config", "/settings"} {
+				if op := h.srv.OpenAPI().Paths[path].Patch; op == nil || op.Responses["501"] == nil {
+					t.Fatal("PATCH " + path + " answers an undeclared 501")
 				}
 			}
 			_, err := h.srv.patchSettings(t.Context(), config.ScopeNode, map[string]any{"log": map[string]any{"level": nil}})

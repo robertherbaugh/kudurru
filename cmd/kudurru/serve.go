@@ -1128,9 +1128,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 		httpAuth.opts.ProviderHandler = httpAuth.CapturedBrowserHandler()
-		authenticate = func(next http.Handler) http.Handler {
-			return httpAuth.Middleware(servingMutationRoutes(next))
-		}
+		authenticate = httpAuth.Middleware
 		authorizer, roles = httpAuth.Authorizer(), httpAuth.Roles
 		authHandler = httpAuth.Handler()
 		dnsQueryCapture = func(req *pipeline.Request) (pipeline.ServingLease, error) {

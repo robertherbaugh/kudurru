@@ -200,7 +200,7 @@ func adoptionUnchangedImage(t *testing.T, st *sqlite.Store, before *replication.
 func TestServingAdoptionActualHTTPPreservesDataRestartAndCutover(t *testing.T) {
 	f := newServingCommandFixture(t)
 	s := migrationServingAPI(t, f, nil)
-	server := httptest.NewServer(servingMutationRoutes(s))
+	server := httptest.NewServer(s)
 	defer server.Close()
 	// Create the historical import using the public API, as an older converter
 	// would have done before MigrationRun journals existed.
@@ -304,7 +304,7 @@ func TestServingAdoptionActualHTTPPreservesDataRestartAndCutover(t *testing.T) {
 	}
 	restartedFixture := &servingCommandFixture{s: runtime, http: httpAuth, token: f.token}
 	restartedAPI := migrationServingAPI(t, restartedFixture, nil)
-	restartedHTTP := httptest.NewServer(servingMutationRoutes(restartedAPI))
+	restartedHTTP := httptest.NewServer(restartedAPI)
 	defer restartedHTTP.Close()
 	reloaded := adoptionJSON[api.MigrationRun](t, adoptionHTTP(t, restartedFixture, restartedHTTP, http.MethodGet, path, nil, http.StatusOK))
 	if !reflect.DeepEqual(journal, reloaded) {
@@ -336,7 +336,7 @@ func TestServingAdoptionActualHTTPLargeSelectionAndConcurrentAdoption(t *testing
 	}
 	adoptionSeed(t, f, names...)
 	s := migrationServingAPI(t, f, nil)
-	server := httptest.NewServer(servingMutationRoutes(s))
+	server := httptest.NewServer(s)
 	defer server.Close()
 	reviewed := adoptionSelection(t, f, server)
 	result := adoptionJSON[api.MigrationResult](t, adoptionHTTP(t, f, server, http.MethodPost, "/imports/adopt", map[string]any{"zones": reviewed}, http.StatusOK))
@@ -383,7 +383,7 @@ func TestServingAdoptionActualHTTPFinalExpiryRollsBackAllZones(t *testing.T) {
 		}, nil
 	}
 	s := migrationServingAPI(t, f, command)
-	server := httptest.NewServer(servingMutationRoutes(s))
+	server := httptest.NewServer(s)
 	defer server.Close()
 	reviewed := adoptionSelection(t, f, server)
 	adoptionWait(t, f)
@@ -442,7 +442,7 @@ func TestServingAdoptionActualHTTPOriginalWriterProofAndLease(t *testing.T) {
 				}, nil
 			}
 			s := migrationServingAPI(t, f, command)
-			server := httptest.NewServer(servingMutationRoutes(s))
+			server := httptest.NewServer(s)
 			defer server.Close()
 			reviewed := adoptionSelection(t, f, server)
 			adoptionHTTP(t, f, server, http.MethodPost, "/imports/adopt", map[string]any{"zones": reviewed}, http.StatusServiceUnavailable)
@@ -460,7 +460,7 @@ func TestServingAdoptionActualHTTPRequiresSettingsAndEveryZone(t *testing.T) {
 			f := newServingCommandFixture(t)
 			adoptionSeed(t, f, "first", "last")
 			s := migrationServingAPI(t, f, nil)
-			server := httptest.NewServer(servingMutationRoutes(s))
+			server := httptest.NewServer(s)
 			defer server.Close()
 			reviewed := adoptionSelection(t, f, server)
 			input, err := loadProviderStatic(t.Context(), providerStaticOptions{Config: f.s.opts.Config, Keys: f.s.opts.AuthKeys, Namespace: "default"})
@@ -508,7 +508,7 @@ func TestServingAdoptionActualHTTPConcurrentRequestsHaveOneOutcome(t *testing.T)
 	f := newServingCommandFixture(t)
 	adoptionSeed(t, f, "competing")
 	s := migrationServingAPI(t, f, nil)
-	server := httptest.NewServer(servingMutationRoutes(s))
+	server := httptest.NewServer(s)
 	defer server.Close()
 	reviewed := adoptionSelection(t, f, server)
 	raw, err := json.Marshal(map[string]any{"zones": reviewed})
@@ -579,7 +579,7 @@ func TestServingAdoptionActualHTTPInvalidLastCandidateCreatesNoJournal(t *testin
 			f := newServingCommandFixture(t)
 			adoptionSeed(t, f, "first", "last")
 			s := migrationServingAPI(t, f, nil)
-			server := httptest.NewServer(servingMutationRoutes(s))
+			server := httptest.NewServer(s)
 			defer server.Close()
 			reviewed := adoptionSelection(t, f, server)
 			want := http.StatusConflict
@@ -648,7 +648,7 @@ func TestServingAdoptionActualHTTPFinalOriginalLicenseDeadline(t *testing.T) {
 				}, nil
 			}
 			s := migrationServingAPI(t, f, command)
-			server := httptest.NewServer(servingMutationRoutes(s))
+			server := httptest.NewServer(s)
 			defer server.Close()
 			reviewed := adoptionSelection(t, f, server)
 			adoptionWait(t, f)

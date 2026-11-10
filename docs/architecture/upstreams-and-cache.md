@@ -935,7 +935,10 @@ generation changes, and no publication acknowledgment is required.
 The legacy Kubernetes route retains its existing common-type name invalidation.
 Zone deletion and settings changes have their own cache invalidation paths, and
 an unblock-request approval or denial flushes the decided name from the
-answering node's cache.
+answering node's cache. Every registered unblock-request mutation (approve, deny
+and delete) is a complete current command, so SQLite no longer refuses that
+route family with `503 current_command_unavailable`; a path that is not a route
+answers the router's `404`.
 
 ## When the answer is an error
 

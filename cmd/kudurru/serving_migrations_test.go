@@ -45,8 +45,6 @@ func migrationServingAPI(t *testing.T, f *servingCommandFixture, command api.Mig
 func migrationServingRequest(t *testing.T, f *servingCommandFixture, s *api.Server, method, path string, body any, want int) *httptest.ResponseRecorder {
 	t.Helper()
 	var out *httptest.ResponseRecorder
-	// Apply the actual production compound-route gate, too.
-	handler := servingMutationRoutes(s)
 	until := time.Now().Add(10 * time.Second)
 	for {
 		awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
@@ -58,7 +56,7 @@ func migrationServingRequest(t *testing.T, f *servingCommandFixture, s *api.Serv
 		request.Header.Set("Authorization", "Bearer "+f.token)
 		request.Header.Set("Content-Type", "application/json")
 		out = httptest.NewRecorder()
-		handler.ServeHTTP(out, request)
+		s.ServeHTTP(out, request)
 		if out.Code != http.StatusServiceUnavailable || time.Now().After(until) {
 			break
 		}

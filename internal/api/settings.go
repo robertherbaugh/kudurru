@@ -175,7 +175,11 @@ func (s *Server) registerSettings() {
 			}
 			return s.settingsBody(cfg, config.ScopeCluster, nil, nil), nil
 		})
-	register(s, operation(http.MethodPatch, "/settings", "patchSettings", "Change cluster-scope settings (JSON merge patch)", "settings"),
+	// Both PATCH routes answer 501 read_only for a node-scope change on a server
+	// without a durable node configuration writer (the Kubernetes driver).
+	patchSettings := operation(http.MethodPatch, "/settings", "patchSettings", "Change cluster-scope settings (JSON merge patch)", "settings")
+	addErrorResponses(&patchSettings, http.StatusNotImplemented)
+	register(s, patchSettings,
 		perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *patchSettingsInput) (*settingsOutput, error) {
 			switch in.Scope {
 			case "", string(config.ScopeCluster):
@@ -193,7 +197,9 @@ func (s *Server) registerSettings() {
 		perm{resource: "settings", verb: "read"}, func(context.Context, *struct{}) (*settingsOutput, error) {
 			return s.settingsBody(s.config(), config.ScopeNode, nil, nil), nil
 		})
-	register(s, operation(http.MethodPatch, "/node/config", "patchNodeConfig", "Change this node's settings (hostOnly keys refused)", "settings"),
+	patchNodeConfig := operation(http.MethodPatch, "/node/config", "patchNodeConfig", "Change this node's settings (hostOnly keys refused)", "settings")
+	addErrorResponses(&patchNodeConfig, http.StatusNotImplemented)
+	register(s, patchNodeConfig,
 		perm{resource: "node", verb: "config"}, func(ctx context.Context, in *patchNodeConfigInput) (*settingsOutput, error) {
 			return s.patchSettings(ctx, config.ScopeNode, in.Body)
 		})

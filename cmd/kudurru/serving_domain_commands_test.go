@@ -22,7 +22,7 @@ func servingDomainAPI(t *testing.T, f *servingCommandFixture, command api.Domain
 	if command == nil {
 		command = f.s.DomainCommand
 	}
-	srv, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config, ObjectCommand: f.s.ObjectCommand, DomainCommand: command, Now: f.s.opts.Now, Authorizer: f.http, Authenticate: func(next http.Handler) http.Handler { return f.http.Middleware(servingMutationRoutes(next)) }})
+	srv, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config, ObjectCommand: f.s.ObjectCommand, DomainCommand: command, Now: f.s.opts.Now, Authorizer: f.http, Authenticate: f.http.Middleware})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,7 +22,7 @@ func TestServingCutoverLastFinalExpiryPreservesEarlierOutcome(t *testing.T) {
 		t.Run(map[bool]string{false: "VIP", true: "unchanged"}[noOp], func(t *testing.T) {
 			f := newServingCommandFixture(t)
 			migrationShortCredential(t, f)
-			normal := httptest.NewServer(servingMutationRoutes(migrationServingAPI(t, f, nil)))
+			normal := httptest.NewServer(migrationServingAPI(t, f, nil))
 			defer normal.Close()
 			// Seed through the existing atomic adoption path to isolate this
 			// test from independent multi-step import completion/publication.
@@ -64,7 +64,7 @@ func TestServingCutoverLastFinalExpiryPreservesEarlierOutcome(t *testing.T) {
 					return next(ctx)
 				}, nil
 			}
-			failing := httptest.NewServer(servingMutationRoutes(migrationServingAPI(t, f, command)))
+			failing := httptest.NewServer(migrationServingAPI(t, f, command))
 			defer failing.Close()
 			// Exactly one HTTP mutation; a refused command is never replayed.
 			outcome := adoptionJSON[api.MigrationResult](t, adoptionHTTP(t, f, failing, http.MethodPost, path, preview, http.StatusOK))

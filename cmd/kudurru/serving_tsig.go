@@ -305,8 +305,12 @@ func (s *servingRuntime) tsigKeyPublication(ctx context.Context, lease *serving.
 	return true, nil
 }
 
+// tsigKeyUnsupported answers a runtime that was constructed without its stored
+// TSIG source. Both storage drivers mount stored-key management in runServe, so
+// no production request reaches it; it keeps a miswired runtime from serving
+// an unchecked command.
 func tsigKeyUnsupported() error {
-	return &api.Error{Status: http.StatusNotImplemented, Body: api.ErrorBody{Key: api.KeyNotImplemented, Message: "durable stored TSIG key management is unavailable for this storage driver"}}
+	return &api.Error{Status: http.StatusNotImplemented, Body: api.ErrorBody{Key: api.KeyNotImplemented, Message: "durable stored TSIG key management is not available on this node"}}
 }
 
 // No raw SQL/provider/credential errors or retry advice cross this boundary.
