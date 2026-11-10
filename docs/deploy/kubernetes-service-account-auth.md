@@ -32,6 +32,12 @@ does not remove permissions granted by Kubernetes RBAC. Review both paths when
 revoking Kubernetes access. This documented compatibility contract does not
 provide provider-isolated subjects or immediate Kubernetes token revocation.
 
+A ServiceAccount token is matched against the current bindings on every
+request. Browser sessions and personal API tokens carry the roles they had
+when they were issued; [role bindings on Kubernetes](rolebindings.md#kubernetes)
+explains what a removed binding means for them and what the
+`kudurru-grant-floors` Secret records.
+
 ## Projecting and rotating short-lived tokens
 
 Incoming tokens must have an original lifetime of **at most ten minutes**. This

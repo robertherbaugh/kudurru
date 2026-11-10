@@ -530,6 +530,10 @@ RoleBinding deletion delete Secrets) and `configmaps`
 generated from `internal/rbac/permissions.yaml` by `make rbac-manifests`
 into `templates/rbac-aggregated.yaml`.
 
+The server keeps one Secret of its own in the release namespace that the chart
+does not create or remove: `kudurru-grant-floors`, the record of removed role
+binding grants ([role bindings on Kubernetes](rolebindings.md#kubernetes)).
+
 ## Values
 
 See `deploy/helm/kudurru/values.yaml`; every value carries a comment. Values that
