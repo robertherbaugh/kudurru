@@ -71,12 +71,13 @@ flowchart LR
         api["api + dashboard :8080"]
         ops["health :8081, metrics :9153"]
         internal["node-to-node :8082"]
-        more["settings reload, objects loader,<br/>query log writer, cache sweep and<br/>persist, block page, admin socket,<br/>external-dns webhook, audit shipper,<br/>query-log shipper, central database,<br/>optional DHCPv4"]
+        more["settings reload, objects loader (kube),<br/>query log writer, cache sweep and<br/>persist, block page, admin socket,<br/>external-dns webhook, audit shipper,<br/>query-log shipper, central database,<br/>optional DHCPv4"]
     end
     subgraph leader["leader only"]
         direction TB
         ctrl["controller<br/>(status, serials)"]
         notifier["NOTIFY out<br/>(kube: notifier loop,<br/>sqlite: serving writer)"]
+        ol["objects loader<br/>(sqlite)"]
         lf["list fetcher<br/>(downloads)"]
         jan["unblock janitor"]
         dl["allow/deny list sync"]
@@ -95,6 +96,10 @@ With the SQLite store the election follows durable write authority
 (`internal/store/sqlite`, `Elector`): a standalone node and a static twin each
 lead themselves, and in an enrolled cluster only the primary leads. An enrolled
 follower, and a fenced or conflicted node, run no leader-only loop.
+
+The objects loader, which applies `objects:` and the `objectsDir` files, is in
+both groups: every replica runs it on Kubernetes, and it is leader-only on
+SQLite, so an enrolled follower never applies its local files.
 
 ## Ports
 

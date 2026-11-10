@@ -453,11 +453,11 @@ apart.
 
 | | `kube` | `sqlite` |
 |---|---|---|
-| Used by | Kubernetes, any replica count | Docker, systemd, the chart's `standalone` mode, each compose HA twin |
+| Used by | Kubernetes, any replica count | Docker, systemd, the chart's `standalone` mode, each compose HA twin, enrolled primaries and followers |
 | Backing | the apiserver: CRDs for public kinds, Secrets (`kudurru.io/kind=<Kind>`) for internal kinds; server-side apply with the manager as field owner | `state.db`: an `objects` table (JSON), a change feed, an audit table (hash-chained, same transaction), a `flock` |
 | Watch | initial list/watch uses informers; explicit resourceVersion resumes retained server history directly | the current objects, a bookmark, then an in-process broadcaster fed by the change feed |
 | Validation | the apiserver (CRD schema + CEL) | the embedded validator, inside `Apply` |
-| Leader | Lease `kudurru-controller` (15 s / 10 s / 2 s), identity = pod name | always this node |
+| Leader | Lease `kudurru-controller` (15 s / 10 s / 2 s), identity = pod name | the node with durable write authority: a standalone node, each static twin, or the enrolled primary ([the leader](#the-leader)) |
 | Last-good copy | `local.db` on each node | not needed: `state.db` is local |
 
 Kubernetes watches with a nonempty resourceVersion resume the API server's
@@ -559,6 +559,10 @@ The file loader takes the same path with manager `file:<path>`: it reads
 `objects:` in `kudurru.yaml` and every `objects.d/*.yaml`, applies them,
 deletes the objects that its files no longer declare, and re-applies on a
 file change (fsnotify, 500 ms debounce) and every 60 s to repair drift.
+On Kubernetes every replica runs the loader. On SQLite it is a leader-only
+loop: a standalone node and a static twin load their own files, and an enrolled
+follower never applies its local files, because its objects arrive in the
+primary's image.
 The node configuration is read once per load, capped at 64 MiB, with one YAML
 mapping and no duplicate keys. Its entire `objects` section is decoded and
 schema-validated before reconciliation (4 MiB per flattened object). Missing,
