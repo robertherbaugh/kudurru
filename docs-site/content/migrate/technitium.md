@@ -6,9 +6,9 @@ weight: 30
 ---
 
 Technitium combines authoritative DNS, recursive resolution, blocking, DHCP,
-clustering and DNS Apps. kudurru v0.1.0 covers primary zones, forwarding,
-validating recursion, filtering and a dashboard, with native Kubernetes
-objects. Start by deciding
+clustering and DNS Apps. kudurru v0.2.0 covers primary, secondary and stub
+zones, RFC 2136 updates, forwarding, validating recursion, filtering and a
+dashboard, with native Kubernetes objects. Start by deciding
 which Technitium responsibilities can move and which need to stay elsewhere.
 
 ## Import directly through the API
@@ -58,9 +58,11 @@ effective query access policy cannot be read or converted; local defaults
 are never substituted for an unreadable inherited policy. Catalog zones
 themselves remain unsupported. Blank lines and comments beginning with `#`
 in list subscriptions are ignored, including those following an allow-list
-`!` prefix. Zone transfers, NOTIFY, DNS Apps,
+`!` prefix. Zone transfers, NOTIFY, dynamic updates, DNS Apps,
 Advanced Blocking profiles, outbound proxies and conditional forwarders require separate
-review. Keep those services on Technitium until their replacements are ready.
+review: the importer does not move them, even where kudurru has an equivalent
+feature.
+Keep those services on Technitium until their replacements are ready.
 
 The CLI supports previews and direct imports too. Save the token in a
 protected file, or set `TECHNITIUM_API_TOKEN`:
@@ -93,27 +95,28 @@ interchange format.
 
 ## Compare the features you use
 
-| Technitium | kudurru v0.1.0 | Migration action |
+| Technitium | kudurru v0.2.0 | Migration action |
 |---|---|---|
 | Primary zones and standard DNS records | Primary `DNSZone` and `DNSRecordSet` | Export zone files, import and compare records |
 | Conditional Forwarder zones / `FWD` behavior | Forward `DNSZone` or suffix-to-upstream-group rule | Recreate forwarding explicitly; `FWD` is not a portable record |
 | Full recursive resolution | Upstream group with `mode: recursive` (QNAME minimization) | Set `default` (or a Policy's group) to recursive; allow outbound UDP/TCP 53 |
-| DNSSEC validation and signing | Validation in recursive groups; no signing | Retain a signing service for signed zones; forwarded answers are not validated |
-| Secondary, stub and catalog zones | Deferred | Keep the existing service; do not apply schema-only zone types |
-| Zone transfer and NOTIFY | Outbound AXFR/IXFR, TSIG and NOTIFY | Recreate ACLs, keys and destinations; inbound secondary service is deferred |
-| RFC 2136 dynamic updates | Deferred | Keep the updater's DNS target or change automation to kudurru's API/external-dns webhook |
+| DNSSEC validation and signing | Validation in recursive groups; validation of forwarded answers when you turn it on; no signing | Retain a signing service for signed zones; turn on [`dnssec.enabled`](/deploy/dnssec-validation/) if forwarded answers must be validated |
+| Secondary and stub zones | Secondary `DNSZone` (AXFR/IXFR in over TCP or TLS, TSIG, NOTIFY in) and stub `DNSZone`; every node transfers or discovers for itself | Create them by hand, as in [section 3](#3-recreate-secondary-and-stub-zones): the importer skips them. Allow every kudurru node in the primary's transfer ACL |
+| Catalog zones | Not served | Keep the existing service for catalog distribution. The `catalog` and `secondaryCatalog` types are in the schema only: [do not apply them](/migrate/#feature-comparison) |
+| Zone transfer and NOTIFY from a primary | Outbound AXFR with ACLs and TSIG, and NOTIFY; an IXFR request for an older serial gets the full zone | Recreate ACLs, keys and destinations |
+| RFC 2136 dynamic updates | Primary zones accept TSIG-signed updates over UDP, TCP and DoT, under grants by key, name and record type | Create a key and an update policy, then point the updater at kudurru: [dynamic updates](/deploy/dynamic-updates/). Technitium's update ACLs do not transfer |
 | Allowed/blocked zones and URL lists | Allow/block `BlockList` objects and policies | Convert entries and attach lists explicitly |
 | Advanced Blocking DNS App | Client groups, policy lists, schedules, service blocking and safe search | Rebuild supported behavior; app configuration is not imported |
-| `APP`, `ANAME`, split-horizon or other app-specific behavior | No Technitium app runtime; no general per-client answer rewrites | Replace each dependency explicitly before moving affected zones |
+| `APP`, `ANAME`, split-horizon or other app-specific behavior | No Technitium app runtime. A policy can rewrite forwarded answers for its client groups ([response processing](/deploy/response-processing/#per-policy-choices-and-rewrites)); answers from kudurru's own zones are the same for every client | Replace each dependency explicitly before moving affected zones |
 | DHCP | Opt-in DHCPv4 on Linux with the SQLite or Kubernetes store; no DHCPv6 | Configure scopes and reservations, preserve active leases and review lease DNS behavior separately |
-| Clustering | Kubernetes shared store, or file-managed Compose HA | Choose a kudurru deployment; Technitium cluster membership does not transfer |
+| Clustering | Kubernetes shared store, an enrolled SQLite cluster (one primary and its followers), or file-managed Compose HA | Choose a kudurru deployment; Technitium cluster membership does not transfer |
 | OIDC, LDAP, local users and permissions | Local users, OIDC and scoped roles; no native LDAP | Recreate credentials and grants; OIDC/scoped roles require a key |
 
 Technitium already offers clustering, OIDC and advanced authoritative DNS.
 Moving to kudurru trades some of that breadth for its object model,
 Kubernetes integration and operating workflow. Compare against your actual
-dependencies; the presence of a field in a CRD does not make a deferred
-feature operational. See the [full comparison](/migrate/#feature-comparison)
+dependencies; the presence of a field in a CRD does not make a feature
+operational. See the [full comparison](/migrate/#feature-comparison)
 and [Technitium's feature list](https://technitium.com/dns/).
 
 ## 1. Back up and classify the workload
@@ -174,7 +177,9 @@ kudurru query nas.home.arpa A
 kudurru query files.home.arpa A
 ```
 
-Read the import summary and every warning. The
+Read the import summary and every warning. If a command directly after the
+import answers `unavailable`, run it again
+([apply results](/migrate/cutover/#apply-results)). The
 [Technitium export API](https://github.com/TechnitiumSoftware/DnsServer/blob/master/APIDOCS.md#export-zone)
 documents the standard zone-file export format. Compare the exported result
 against your source by owner name, type, targets, TTL, apex SOA and NS;
@@ -195,16 +200,57 @@ its real apex. A local A/AAAA record does not automatically create a PTR.
 
 ### Signed and public zones
 
-kudurru v0.1.0 cannot sign a zone or maintain a DNSSEC key lifecycle.
+kudurru cannot sign a zone or maintain a DNSSEC key lifecycle.
 Zone import skips DNSSEC records with warnings; it does not migrate
 signing state. Keep signed
 authority on a signer, or plan a separate DNSSEC transition that accounts
 for parent DS records and cached signatures before changing authority.
+kudurru can serve a signed zone as a [secondary](#3-recreate-secondary-and-stub-zones)
+of that signer: it serves the transferred signatures and does not sign.
 A public move also requires reachable UDP/TCP port 53, correct NS/glue,
 delegation and tested transfers; a LAN DHCP change alone does not move a
 public authoritative zone.
 
-## 3. Recreate conditional forwarding
+## 3. Recreate secondary and stub zones
+
+The importer skips Technitium's secondary and stub zones. Create each one in
+**DNS** > **Zones** > **New zone**, or apply a manifest. Save this as
+`technitium-secondary.yaml`, with the apex and the address of the server that
+stays primary for the zone:
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata: {name: partner-example}
+spec:
+  zoneName: partner.example.
+  type: secondary
+  secondary:
+    primaries: ["192.0.2.53"]
+```
+
+```sh
+kudurru apply -f technitium-secondary.yaml
+kudurru zones get partner-example
+kudurru query www.partner.example A
+```
+
+Every kudurru node transfers the zone for itself, so allow the address of
+each node in the primary's transfer ACL, and send NOTIFY to the nodes if you
+want changes to arrive before the next SOA refresh. Add
+`tsigKeyRef: <key name>` when the primary requires a TSIG key that the nodes
+know, and `transferProtocol: tls` for a transfer over TLS. A node answers
+SERVFAIL for the zone until its first transfer succeeds. Later it keeps its
+last copy until the zone's SOA expiry and then answers SERVFAIL again until
+a transfer succeeds. Records of a secondary are read-only in kudurru.
+
+A stub zone has `type: stub` and `stub: {nameservers: ["192.0.2.53"]}`
+instead: each node discovers the zone's name servers from those bootstrap
+servers and sends queries for the zone directly to them. See
+[zones and upstreams](/guide/admin/07-zones-and-upstreams/#create-a-secondary-zone)
+for both types.
+
+## 4. Recreate conditional forwarding
 
 Create the upstream group first. For file configuration, merge this into
 the installed `kudurru.yaml` before startup, retaining its other settings;
@@ -266,7 +312,7 @@ with special proxy, DNSSEC or app behavior needs separate evaluation;
 a forward zone only recreates the supported forwarding path. Avoid loops
 through the old server. See [upstreams](/guide/admin/07-zones-and-upstreams/).
 
-## 4. Move allowed and blocked names
+## 5. Move allowed and blocked names
 
 Allowed/blocked zones are filtering rules, not authoritative DNS zone
 exports. Recreate them as list entries. The wildcard form below covers the
@@ -313,7 +359,12 @@ kudurru query tracker.example A --client 192.0.2.10
 kudurru query needed.tracker.example A --client 192.0.2.10
 ```
 
-The first query must block; the second must show an allow-list decision.
+If `kudurru apply` refuses a document with `unavailable`, run it again until
+it reports no error ([apply results](/migrate/cutover/#apply-results)).
+
+The first query must block: its `kudurru status` line names the list and the
+rule. The second must not: the allow list wins, so the status is `forwarded`
+or `cached` and names no list.
 Its upstream can still return NXDOMAIN because `.example` names have no
 public records. Check real allowed names too. Match Technitium's configured
 block response deliberately instead of assuming the default is identical.
@@ -332,7 +383,7 @@ Translate regular expressions to RE2 and inspect skipped rules. Rebuild
 service blocks and safe search with the
 [policy catalog](/deploy/blocked-services/); do not copy DNS App configuration.
 
-## 5. Rebuild operating dependencies
+## 6. Rebuild operating dependencies
 
 - **DHCP:** move service, active leases, reservations and dynamic local-name
   behavior using the [DHCP handoff](/migrate/pihole/#dhcp-handoff). Keep DNS
@@ -343,14 +394,18 @@ service blocks and safe search with the
 - **Encrypted clients:** configure listeners and certificates using
   [encrypted transports](/deploy/docker/#encrypted-transports), then test
   the actual client hostname, path, trust and protocol.
-- **Multiple servers:** choose [Helm](/deploy/helm/) for shared CRDs or
-  [Compose HA](/deploy/compose-ha/) for file-managed independent nodes.
-  Do not expect automatic synchronization between independent SQLite nodes.
+- **Multiple servers:** choose [Helm](/deploy/helm/) for shared CRDs, an
+  [enrolled SQLite cluster](/deploy/sqlite-cluster/) for one primary with
+  followers that copy it, or [Compose HA](/deploy/compose-ha/) for
+  file-managed independent nodes. SQLite nodes that are neither enrolled nor
+  managed from the same files do not synchronize.
 - **Automation:** replace Technitium-specific API calls with the
-  [kudurru API/CLI](/start/api-cli/). Retain existing services for deferred
-  dynamic-update, app and secondary-zone responsibilities.
+  [kudurru API/CLI](/start/api-cli/). An updater that speaks RFC 2136 can keep
+  the protocol with a TSIG key and a grant in the zone
+  ([dynamic updates](/deploy/dynamic-updates/)). Retain existing services for
+  DNS App and catalog-zone responsibilities.
 
-## 6. Validate and switch
+## 7. Validate and switch
 
 Complete the [validation checklist](/migrate/cutover/#validate). In addition,
 compare SOA/NS, every record type in use, wildcard answers, negative answers,

@@ -6,12 +6,13 @@ weight: 20
 ---
 
 Bring your DNS filters and client settings into kudurru's lists, groups,
-policies and zones. kudurru understands common DNS adblock rules, but
-v0.1.0 does not implement AdGuard Home's full filtering language. Treat this
+policies and zones. kudurru understands DNS adblock rules and the DNS
+modifiers listed [below](#2-audit-filtering-rules-before-moving-them), but it
+does not implement AdGuard Home's full filtering language. Treat this
 as a configuration migration with explicit behavior checks.
 
 **Before you start:** complete [preparation and CLI setup](/migrate/cutover/#prepare).
-Keep AdGuard Home serving the network. In v0.2,
+Keep AdGuard Home serving the network.
 `kudurru import adguard --file AdGuardHome.yaml` previews a supported subset
 of the YAML configuration offline. Review the [offline conversion guide](/migrate/offline-config/)
 for selection, application, and explicit losses. The manual steps below remain
@@ -19,13 +20,13 @@ useful for unsupported semantics; the working directory is never imported.
 
 ## Compare the features you use
 
-| AdGuard Home | kudurru v0.1.0 | Migration action |
+| AdGuard Home | kudurru v0.2.0 | Migration action |
 |---|---|---|
 | DNS blocklists and allowlists | `BlockList` with `mode: block` or `mode: allow` | Copy URLs; attach the lists to policies |
 | Custom filtering rules | Inline sources or structured entries | Check modifiers and exception scope before copying rules |
 | Persistent clients and per-client settings | IP/CIDR `ClientGroup` plus `Policy` | Reserve addresses; additional policies need a key |
-| ClientID, MAC and hostname identification | No production source for these matchers | Use real IPv4/IPv6 addresses or subnets |
-| DNS rewrites | Primary zones and records | Recreate supported local records; general per-policy rewrites are deferred |
+| ClientID, MAC and hostname identification | A ClientID from the DoT or DoQ server name or the DoH path, on listeners that turn it on. MAC and hostname matchers need a source that tells kudurru which device has an address ([client identity](/deploy/client-identity/)) | Turn on client IDs for encrypted clients as in [section 5](#5-recreate-upstreams-local-rewrites-and-encryption); otherwise use real IPv4/IPv6 addresses or subnets |
+| DNS rewrites | Primary zones and records; `Policy.spec.rewrites` for forwarded names; `$dnsrewrite` rules in block lists | Recreate local records as a zone, or as policy rewrites when only some clients get the answer |
 | Blocked services and safe search | Policy service/category blocking and safe search | Match catalog IDs and supported engines explicitly |
 | Upstreams and bootstrap servers | Named groups, strategies, bootstrap and suffix rules | Recreate configuration; retest private reverse DNS |
 | DoT, DoH and DoQ | Native listeners; also DoH3 | Configure listener certificates and client endpoints separately |
@@ -55,21 +56,23 @@ The source backup is for recovery and inventory; do not rename it to
 
 ## 2. Audit filtering rules before moving them
 
-| Source rule | kudurru v0.1.0 behavior | Migration action |
+| Source rule | kudurru v0.2.0 behavior | Migration action |
 |---|---|---|
 | `\|\|tracker.example^` | Domain and all subdomains | Supported |
 | `@@\|\|cdn.example^` | Exception within its own block-list object | Use a separate allow-mode list when it must override other lists |
 | `0.0.0.0 tracker.example` or plain `tracker.example` | Exact-name match by default | Use a wildcard/suffix entry if you need subdomains |
 | `*.tracker.example` | Matches the apex as well as subdomains | Check that this matches your intent |
 | `/^ads[0-9]+\./` | RE2 regular expression, up to 1,000 per list | Check regex compatibility |
-| `$important`, `$badfilter`, `$dnstype`, `$client`, `$ctag`, `$denyallow`, `$dnsrewrite` | Rule is counted as unsupported and skipped | Rebuild supported behavior as groups, policies or zone records |
+| `$important`, `$badfilter`, `$dnstype`, `$client`, `$ctag`, `$denyallow`, `$dnsrewrite` | Applied. `$client` matches an address, a prefix, a client ID or a client name that kudurru knows; `$ctag` matches tags that an inventory source reports | Test each rule against a real client; `$badfilter` and `@@` act inside their own block-list object |
+| An unknown modifier, or a known modifier with a value that kudurru cannot read | The whole rule is skipped and counted in `status.invalid` | Rebuild the behavior as groups, policies or zone records |
 | Hosts lines returning a non-blocking address | Counted as unsupported rewrites | Create explicit zone records where appropriate |
 | Cosmetic filters and URL/path rules | Invalid for DNS filtering and skipped | Use a DNS-specific list instead |
 
 **Exception scope changes.** AdGuard Home merges filtering rules; a custom
 exception can cancel a block from a downloaded filter. In kudurru, `@@`
 in one block-list object only cancels matches from that object, including
-its other sources. To make an exception win across the selected lists,
+its other sources. `$badfilter` has the same scope: it cancels a rule of its
+own block-list object. To make an exception win across the selected lists,
 put a positive domain rule in a `mode: allow` list and reference it from
 `allowListRefs`.
 
@@ -128,7 +131,12 @@ kudurru query tracker.example A --client 192.0.2.10
 kudurru query needed.tracker.example A --client 192.0.2.10
 ```
 
-The first name must block; the second must show an allow-list decision.
+If `kudurru apply` refuses a document with `unavailable`, run it again until
+it reports no error ([apply results](/migrate/cutover/#apply-results)).
+
+The first name must block: its `kudurru status` line names the list and the
+rule. The second must not: the allow list wins, so the status is `forwarded`
+or `cached` and names no list.
 The allowed `.example` name can still get NXDOMAIN from the upstream because
 it has no public DNS record. Repeat the test with real exceptions.
 
@@ -222,14 +230,25 @@ For a local rewrite such as `nas.home.arpa → 192.168.1.10`, create a primary
 [local zone creation](/migrate/pihole/#4-move-local-names-and-upstreams).
 Recreate CNAME and AAAA records too. A primary zone owns the entire suffix
 and answers before filtering: it does not preserve arbitrary wildcard,
-record-type-specific or per-client AdGuard rewrite behavior. General
-`$dnsrewrite` and `Policy.spec.rewrites` processing is deferred in v0.1.0.
+record-type-specific or per-client AdGuard rewrite behavior. For those, use
+`Policy.spec.rewrites`, which answers an exact name or `*.suffix` for the
+client groups of one policy, or a `$dnsrewrite` rule in a block list. Both
+apply to names that kudurru forwards or resolves, not to names in its own
+zones; see [response processing](/deploy/response-processing/#per-policy-choices-and-rewrites).
 
 Encrypted **upstream** URLs do not enable encrypted **client listeners**.
 Configure DoT/DoH/DoQ/DoH3 listeners, certificates and firewall rules using
 [encrypted transports](/deploy/docker/#encrypted-transports). Test a client
-with its real hostname/path and certificate trust. Do not rely on AdGuard
-ClientID paths or SNI values for client matching in this release.
+with its real hostname/path and certificate trust.
+
+AdGuard ClientIDs can move with those clients. Set `clientIDDomain` on a DoT
+or DoQ listener and `clientIDs: true` on a DoH or DoH3 listener, then add a
+`clientID` matcher to a client group: `phone.dot.example.com` and
+`https://dns.example.com/dns-query/phone` both select `phone`. The DoT and DoQ
+certificate must cover the client names, usually with a wildcard. A client ID
+selects a policy and is not authentication. kudurru reads it on listeners that
+it terminates itself; [client identity](/deploy/client-identity/) has the
+settings and the limits behind a TLS-terminating edge.
 
 ## 6. Validate and switch
 

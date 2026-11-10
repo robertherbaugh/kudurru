@@ -8,7 +8,7 @@ weight: 10
 Move Pi-hole's adlists, domain rules and local DNS into explicit kudurru
 objects. The dashboard provides query explanations and allow/deny actions;
 configuration uses the same object format in standalone and Kubernetes
-installations. This guide targets Pi-hole v6 concepts and kudurru v0.1.0.
+installations. This guide targets Pi-hole v6 concepts and kudurru v0.2.0.
 
 **Before you start:** complete [preparation and CLI setup](/migrate/cutover/#prepare).
 Keep Pi-hole serving the network. Use the built-in API importer below to
@@ -48,7 +48,9 @@ upstreams and local A/AAAA/CNAME records under the selected local suffixes.
 It uses Pi-hole's configured local domain by default; add other local
 suffixes in the wizard if needed. These suffixes become authoritative, so
 missing names beneath them stop forwarding upstream. MAC/hostname clients,
-Pi-hole regex extensions, DHCP and custom dnsmasq behavior require review.
+Pi-hole regex extensions, DHCP and custom dnsmasq behavior require review:
+the importer skips a client that Pi-hole knows by MAC address, hostname or
+interface and names it in a warning.
 
 Pi-hole v6 uses an application password to create a temporary API session,
 rather than a permanent v5 API key. kudurru closes that session afterward
@@ -79,19 +81,19 @@ survive a restart. Complete the validation and cutover checklist afterward.
 
 ## Compare the features you use
 
-| Pi-hole | kudurru v0.1.0 | Migration action |
+| Pi-hole | kudurru v0.2.0 | Migration action |
 |---|---|---|
 | Adlists and group assignments | `BlockList` objects referenced by `Policy` objects | Copy enabled source URLs and record which groups use each list |
 | Default group | Seeded `ClientGroup/default` and `Policy/default` | Update the existing policy in its namespace |
 | Custom groups | `ClientGroup` plus `Policy` | Reference all baseline lists explicitly; additional policies require a key |
-| Clients by IP, network, MAC or hostname | Production matching by IP/CIDR | Reserve addresses and add IPv6 prefixes where needed |
+| Clients by IP, network, MAC or hostname | IP and CIDR matchers work everywhere. A MAC or hostname matcher works only when a source tells kudurru which device has an address: an inventory integration, or for hostnames kudurru's own DHCP leases ([client identity](/deploy/client-identity/)) | The importer moves IP and CIDR clients only. Reserve addresses and add IPv6 prefixes where needed, or add MAC and hostname matchers once such a source reports the devices |
 | Exact, wildcard and regex allow/deny | Structured list entries or **Filtering** > **Allowlist** / **Denylist** | Translate regex syntax and extensions before applying |
 | Local DNS and CNAME records | Primary zones and records | Create the containing zone, then copy records |
 | Conditional forwarding | Named upstream groups and suffix rules, or forward zones | Recreate both local-domain and reverse-DNS routes |
-| Temporary blocking pause | Dashboard toggle or `kudurru blocking disable 5m` | Pause is node-local in v0.1.0; check the node you manage |
+| Temporary blocking pause | Dashboard toggle or `kudurru blocking disable 5m` | The pause covers every node of a Kubernetes installation and of an enrolled SQLite cluster. Compose HA static twins pause one node at a time; the API's blocking state then has `scope: node` |
 | DHCP | Opt-in DHCPv4 on Linux with the SQLite or Kubernetes store; no DHCPv6 | Configure kudurru or another DHCP server and preserve leases and reservations before retiring Pi-hole |
-| DNSSEC validation | No local validation | Retain a validating upstream if required; this does not add validation to kudurru |
-| Pi-hole-specific API integrations | kudurru REST API and CLI | Rewrite integrations; no Pi-hole API compatibility layer in v0.1.0 |
+| DNSSEC validation | Recursive upstream groups validate. Forwarded answers are validated only when you turn on `dnssec.enabled`, which is off by default | Turn on [forwarded validation](/deploy/dnssec-validation/) or use a recursive group if Pi-hole validated; otherwise only your upstream's own validation applies |
+| Pi-hole-specific API integrations | kudurru REST API and CLI | Rewrite integrations; there is no Pi-hole API compatibility layer |
 | Teleporter and historical query database | kudurru object backup and separate logs | Keep the source backup/history separately; neither is directly importable |
 
 See the [four-product comparison](/migrate/#feature-comparison) for resolution,
@@ -168,8 +170,13 @@ kudurru query tracker.example A --client 192.0.2.10
 kudurru query needed.tracker.example A --client 192.0.2.10
 ```
 
-The first test must block. The second must show an allow-list decision;
-since `.example` has no public records, an upstream NXDOMAIN is expected
+If `kudurru apply` refuses a document with `unavailable`, run it again until
+it reports no error ([apply results](/migrate/cutover/#apply-results)).
+
+The first test must block: its `kudurru status` line names the list and the
+rule. The second must not: the allow list wins, so the status is `forwarded`
+or `cached` and names no list. Since `.example` has no public records, an
+upstream NXDOMAIN is expected
 unless you replace it with a real exception. An allow decision does not
 create a DNS record.
 
@@ -281,7 +288,7 @@ query-log privacy and retention in **Settings** before moving real traffic.
 
 ## DHCP handoff
 
-kudurru v0.1.0 includes an opt-in DHCPv4 server on Linux with either store,
+kudurru includes an opt-in DHCPv4 server on Linux with either store,
 with dashboard setup, durable leases and reservations, trusted relays and
 optional three-node quorum failover on SQLite. On Kubernetes, one elected
 replica serves clients that your router relays to it. Follow the [DHCPv4 deployment guide](/deploy/dhcp/)
