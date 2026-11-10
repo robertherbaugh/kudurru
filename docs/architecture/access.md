@@ -141,9 +141,12 @@ still occurs outside locks before shared admission.
 
 SQLite browser starts, callbacks and CLI preparation use the shared request
 budgets below. Kubernetes browser starts and callbacks share the D310 Secret
-budget. Enrolled-replica request forwarding remains unmounted. Two adapters sharing one
-Store and physical follower install/restart tests do not prove production
-multi-node forwarding.
+budget. An enrolled follower forwards local password login to its primary, so
+the password counters above are charged there
+([local sign-in on an enrolled follower](#local-sign-in-on-an-enrolled-follower-d363)).
+OIDC starts, callbacks and CLI preparation are not forwarded: their request
+budget is charged under the local elected writer, which a follower does not
+have, so a follower refuses them.
 
 ## Shared SQLite browser request budgets (D309)
 
@@ -250,7 +253,9 @@ no-ops. Removing and regranting a file-managed binding cannot revive the origina
 frozen cookie or token. Installed inline/environment maps are detached once;
 watched configuration files are captured on each pass. Broken sources retain
 their objects. The input pin protects accepted loader passes, not concurrent
-native filesystem writes. Kubernetes durable revocation remains open.
+native filesystem writes. Kubernetes has no such transaction; it persists the
+revocation times of removed binding grants separately, in the
+`kudurru-grant-floors` Secret ([Authorization](#authorization), D364).
 
 `internal/servingauth` prepares an immutable auth view from one complete SQLite
 replication image. Its input includes public ServiceAccount, RoleBinding and
@@ -636,9 +641,11 @@ rotation through the actual commit; a time check alone is not that exclusion.
 These owners and commands are tested with real signed JWTs, concurrent concrete
 transactions, rollback, restart, replica installation and promotion. SQLite
 browser login now composes bounded discovery/exchange, durable pending-attempt
-consumption and external enrollment. CLI OIDC login and migration of the legacy
-Kubernetes OIDC adapter remain separate work; that adapter rejects expression
-policies until it adopts this owner.
+consumption and external enrollment. SQLite CLI sign-in verifies the raw ID
+token against the same captured provider
+([browser](#public-cli-browser-login-d286) and
+[device](#public-cli-device-login-d287) flows). The legacy Kubernetes OIDC
+adapter has not adopted this owner and rejects expression policies.
 
 ## Principals
 
@@ -745,6 +752,53 @@ Local passwords are Argon2id (19 MiB, t=2, p=1). Failed sign-ins lock an
 address for 5 minutes after 5 failures, and an account for 15 minutes after
 10.
 
+### Local sign-in on an enrolled follower (D363)
+
+An enrolled SQLite follower cannot commit a session or a failed-attempt
+counter itself, so `POST /auth/login` on a follower runs on its primary. The
+follower prepares the session identifier and CSRF secret, keeps the secret,
+and sends one version-1 `auth.login` member command over member mutual TLS:
+the normalized username, the password, the factor code, the client key, the
+session identifier, the CSRF hash and a random nonce. The command carries no
+prior credential and no preconditions.
+
+```mermaid
+sequenceDiagram
+    actor B as browser or CLI
+    participant F as follower API
+    participant P as primary member executor
+    B->>F: POST /auth/login (username, password, factor code)
+    F->>F: Capture source (30 s bound), prepare session ID and CSRF secret
+    F->>P: auth.login (member mTLS): credentials, session ID, CSRF hash, nonce
+    P->>P: Shared counters, password, factor and login policy in one command
+    alt refused or locked out
+        P-->>F: Retained refusal (counters committed)
+        F-->>B: The primary's status, key and Retry-After
+    else admitted
+        P->>P: Enroll exactly that session and record last login
+        P-->>F: Committed, session ID
+        F->>F: Pull, then wait until the published view contains the session
+        F-->>B: Set-Cookie sealed with the follower's CSRF secret
+    end
+```
+
+The primary runs the same admission as its own login route
+(`IssueForwardedLocalWithAdmission`): shared lockout counters, password,
+factor and local-login policy, then enrollment of exactly the forwarded
+session identifier and CSRF hash. A credential refusal or lockout is a retained
+result whose counters commit on the primary. The dedup record keeps only a
+fingerprint whose input includes the nonce, which is stored nowhere, so it
+cannot be used to test passwords offline.
+
+The follower answers only after its own pull has installed the session and a
+published authentication view contains it; the cookie then works on every
+member. If the primary cannot be reached, the login is not attempted and the
+follower answers `503 unavailable`. If the exchange is lost after sending, it
+answers `503 completion_unknown` and never repeats the command. Static twins
+and standalone nodes sign in locally. See
+[the member-command executor](configuration-and-store.md#sqlite-replication-foundation)
+for the transport.
+
 ### OIDC in the browser
 
 kudurru is a confidential client: the browser receives a sealed session cookie,
@@ -760,7 +814,7 @@ sequenceDiagram
     participant K as kudurru API
     participant I as identity provider
     B->>K: GET /api/v1/auth/oidc/{idp}/start?next=/zones
-    K->>K: capture provider; generate state, nonce and PKCE verifier
+    K->>K: capture provider#59; generate state, nonce and PKCE verifier
     K->>K: current command commits pending attempt
     K->>K: published view seals exact pending row
     K-->>B: 302 to IdP + sealed pre-auth cookie (10 min, single use)
@@ -819,7 +873,7 @@ sequenceDiagram
     participant K as Kudurru API
     participant I as identity provider
     B->>K: POST /auth/logout/browser with original CSRF
-    K->>K: Commit exact session revocation; clear cookies
+    K->>K: Commit exact session revocation#59; clear cookies
     K-->>B: Optional same-origin continuation path
     B->>B: Clear session/cache/CSRF
     B->>K: GET continuation with encrypted logout cookie
@@ -828,7 +882,7 @@ sequenceDiagram
     B->>I: Original ID-token hint and fixed callback/state
     I-->>B: Logout callback
     B->>K: GET callback with authenticated state
-    K-->>B: Configured local app prefix; no session issuance
+    K-->>B: Configured local app prefix#59; no session issuance
 ```
 
 Register an additional OP return URI derived from the configured login callback:
@@ -846,8 +900,18 @@ do the same. If the OP becomes unavailable after navigation, local revocation
 and cookie clearing have already committed.
 
 SQLite stores independent external identity and enrollment records. Grants are
-frozen at sign-in and intersected with current authority on every request. The
-legacy Kubernetes stack does not store OIDC users. Session defaults remain twelve
+frozen at sign-in and intersected with current authority on every request.
+That re-evaluation never contacts the identity provider (D212): each request
+reopens the sealed login evidence stored with the session, applies the
+provider's current claim policy to it, recomputes the grants the current
+bindings give and keeps only those the session already held, and checks the
+account's disabled state and revocation floors. kudurru keeps no refresh token
+and never asks the provider about a signed-in user again, so a change made at
+the provider (a removed group, a disabled user) takes effect at the next
+sign-in, when the session expires, or when an administrator disables or signs
+out the account
+([external account administration](#external-account-administration-d289)).
+The legacy Kubernetes stack does not store OIDC users. Session defaults remain twelve
 hours absolute and thirty minutes idle; current settings and durable revocation
 floors govern SQLite enrollments. Startup provider resets can revoke old sessions
 and pending browser attempts even when the configuration bytes are unchanged.
@@ -932,8 +996,10 @@ The provider schema also distinguishes scalar claim rules from bounded CEL
 expressions. A rule selects exactly one claim or expression; mappings may keep
 their existing defaults or select one form. Scalar comparison defaults to an
 empty required value. Each expression is limited to 4 KiB, with at most 64
-validation rules. The captured offline provider compiler is being implemented;
-the existing live provider adapter rejects expressions before resolving a
+validation rules. The captured offline provider compiles them
+([claim policy](#offline-provider-verification-and-claim-policy)); the legacy
+live provider adapter, which the Kubernetes store still uses, rejects
+expressions before resolving a
 credential, so a stored restriction cannot be silently ignored.
 
 SQLite schema 5 converts the old file/Secret references in the migration
@@ -968,8 +1034,9 @@ it does not permanently disable user or token bootstrap. Explicitly disabled
 bootstrap stays disabled. DNS snapshots exclude management IAM kinds and DNS queries never call
 this gate. These reads do not provide a multi-object Kubernetes transaction:
 migration still requires all readers and writers to remain stopped. Complete
-immutable authentication publication and durable session state remain separate
-v0.2 work. Ordinary object backups do not yet carry raw migration journals and
+immutable authentication publication and durable session state exist only on
+the complete SQLite runtime; Kubernetes keeps sealed-cookie sessions.
+Ordinary object backups do not yet carry raw migration journals and
 archives; protect them with the Kubernetes backup described in the runbook.
 
 ```mermaid
@@ -1115,7 +1182,7 @@ sequenceDiagram
     A->>H: Confirm disable, enable or logout
     H->>C: Original raw proof, reviewed UID and revision
     C->>C: Reauthorize, compare revision, stage account/token/session changes
-    C->>C: Append local audit; final credential and writer checks
+    C->>C: Append local audit#59; final credential and writer checks
     C-->>H: Commit or roll back all changes
     H-->>A: 204 or explicit refusal
     C->>P: Publish committed account state

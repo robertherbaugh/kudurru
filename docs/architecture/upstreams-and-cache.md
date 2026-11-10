@@ -933,8 +933,9 @@ were removed. Audit records retain that count. No configuration or durable
 generation changes, and no publication acknowledgment is required.
 
 The legacy Kubernetes route retains its existing common-type name invalidation.
-Zone deletion and settings changes have their own cache invalidation paths;
-unconverted SQLite unblock-request mutations remain unavailable.
+Zone deletion and settings changes have their own cache invalidation paths, and
+an unblock-request approval or denial flushes the decided name from the
+answering node's cache.
 
 ## When the answer is an error
 

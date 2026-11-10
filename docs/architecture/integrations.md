@@ -372,8 +372,15 @@ owner references. DNS serving does not depend on a live license check.
 
 This follows Kubernetes controller convergence: source, zone and child are separate
 API objects, so their checks and writes are not one atomic transaction. Cancellation
-prevents undispatched work; an already accepted write may still commit. Partition,
-lease-loss and complete distributed fencing qualification remain separate gates.
+prevents undispatched work; an already accepted write may still commit.
+
+A mounted two-replica test against a real API server
+(`TestRunServeDirectDNSEndpointLeaseLossAndPartition`) covers partition and
+lease loss: the partitioned leader loses the `kudurru-controller` Lease, the
+other replica alone reconciles later source changes, the partitioned replica
+keeps answering from its last valid data, and after healing the former leader
+neither reclaims the Lease nor duplicates children. This qualifies controller
+convergence; it is not a distributed fence around individual writes.
 
 ## external-dns webhook transport authentication
 

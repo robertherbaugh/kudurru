@@ -38,8 +38,8 @@ erDiagram
 ```
 
 Primary, forward, secondary, and stub zones are served. The other
-types in the schema (`external`, `catalog`) are accepted but get
-`Ready=False, reason Unsupported`.
+types in the schema (`external`, `catalog`, `secondaryCatalog`) are accepted
+but get `Ready=False, reason Unsupported`.
 
 Use one DNSZone per canonical apex. If different objects claim the same
 apex, the serving builder logs the conflict and installs unavailable coverage
@@ -254,13 +254,15 @@ an external secondary. Missing keys, bind failures, stale authority and
 unsigned or malformed replies fail without selecting another credential or
 source.
 
-The Kubernetes listener also mounts this diagnostic using its complete immutable
-startup TSIG inventory. The original verified packet identity must match that
-same stored/file key inventory, within the packet's original deadline; pending,
-failed, wrong-owner and closed sources refuse. This read-only response attests to
+The Kubernetes listener also mounts this diagnostic using its currently
+published stored/file TSIG keyring. The original verified packet identity must
+match that keyring, within the packet's original deadline; pending, failed,
+wrong-owner and closed sources refuse, and so does a keyring replaced while the
+request is checked. This read-only response attests to
 the packet's observed source only. It supplies no Kubernetes writer, leader or
-zone-readiness authority, and does not enable hot TSIG management. The startup
-inventory and restart requirements remain the same as ordinary signed DNS.
+zone-readiness authority. The keyring follows the same startup preparation and
+reload rules as ordinary signed DNS
+([stored-key management](#captured-tsig-keys-and-stored-key-management)).
 Actual API-server acceptance covers stored/file keys, restart, unknown startup
 inventory, wrong encrypted owner, unsigned/wrong-key/TCP/malformed refusals.
 
@@ -274,7 +276,9 @@ inventory, wrong encrypted owner, unsigned/wrong-key/TCP/malformed refusals.
 
 A transfer needs `zoneTransfer` to allow the client address and, when
 `transferTSIGKeyRefs` is set, a request signed with one of those keys. TSIG
-keys are node settings (`tsigKeys`, write-only), not store objects. While
+keys are either node settings (`tsigKeys`: host-only, each secret in a file,
+changed by restart) or encrypted stored keys managed through `/api/v1/tsigkeys`
+([stored-key management](#captured-tsig-keys-and-stored-key-management)). While
 the snapshot is not open, transfers answer SERVFAIL. Every message of a
 signed transfer is signed.
 
@@ -421,7 +425,7 @@ sequenceDiagram
     participant A as discovered authority
     C->>M: current stub identity
     M->>B: SOA, apex NS/glue, confirming SOA
-    M->>M: resolve endpoints; bound TTL and SOA expiry
+    M->>M: resolve endpoints#59; bound TTL and SOA expiry
     M->>D: persist before publishing
     M->>Q: immutable route
     alt client RD=0
@@ -689,10 +693,15 @@ complete publication and acknowledges by exact head CAS; pending intent survives
 restart. Response targets list configured literal addresses, while name-server
 recipient resolution remains background work outside command locks.
 
-Authenticated HA forwarding remains in progress. The Kubernetes test
-adapter exercises exact-object CAS without claiming a multi-object transaction;
-production Kubernetes UPDATE and durable NOTIFY require their own admission
-barriers. Receipt capacity remains finite with no automatic eviction.
+A native UPDATE is not forwarded between enrolled SQLite members. The ingress
+issues its writable proof only on the node whose authority is writable
+(`primaryUpdateIngress.capture`), so a client must send the update to the
+primary. Kubernetes does not use this committed history: it serves UPDATE
+through the single-object path under
+[RFC 2136 on Kubernetes](#rfc-2136-on-kubernetes) and sends NOTIFY from its
+elected notifier loop. Receipt capacity remains finite with no automatic eviction.
+
+### Captured TSIG keys and stored-key management
 
 The transport layer also offers explicit captured TSIG mode (D292). Before
 verification it acquires the original complete serving lease and selects that
@@ -709,16 +718,18 @@ file baseline cannot authorize complete serving or acquisition until a complete
 stored source has been prepared. An unavailable first source or uninitialized
 follower retains listeners but refuses complete serving.
 
-Kubernetes selects one complete stored/file keyring prepared asynchronously at
+Kubernetes prepares one complete stored/file keyring asynchronously at
 startup (D314). Its transport hook captures only immutable credentials and does
 not claim a complete serving lease. Unknown or failed private-source preparation
 refuses signed requests even when a file key is present; unsigned saved-state DNS
-remains independent. Successful keys stay fixed until restart. Secondary jobs
+remains independent. A failed startup preparation stays unavailable until
+restart; after a successful one, the published keyring is replaced when the
+stored source changes (D365, below). Secondary jobs
 capture the actual keyring, preserving stored credential epochs in cache
 provenance; unavailable signed jobs cannot renew old data. Unsigned jobs need no
 private-source evidence. The notifier waits for the one startup result, then
-captures its immutable provider before target resolution and all attempts.
-Kubernetes current-command authority and stored-key management remain separate.
+captures the published keyring for each round, before target resolution and all
+attempts.
 
 The coordinator prepares complete encrypted sources outside request handling and
 installs them only under the original encryption and keyring owners. A failed
@@ -879,10 +890,12 @@ and child boundaries survive the static replacement.
 
 ## Remaining work
 
-Catalog zones and DNSSEC signing remain planned. SQLite mounts the atomic
-RFC 2136 handler and durable primary history described above; On Kubernetes, RFC 2136
-uses one UPDATE-owned DNSRecordSet per zone (described below). Unknown DNS
-opcodes remain NOTIMP.
+Catalog zones and DNSSEC signing remain planned, and `external` zones are not
+built. SQLite mounts the atomic
+RFC 2136 handler and durable primary history described above; on Kubernetes, RFC 2136
+uses one UPDATE-owned DNSRecordSet per zone (described below). An enrolled
+SQLite follower does not forward an UPDATE to its primary. IXFR out has no
+journal and answers in AXFR form. Unknown DNS opcodes remain NOTIMP.
 
 ### RFC 2136 on Kubernetes
 
