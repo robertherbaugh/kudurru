@@ -152,6 +152,11 @@ func RetryableAfter(err error, after time.Duration) error {
 	return &retryableError{err: err, after: after}
 }
 
+// RetryableWait reports whether err carries the Retryable mark, and the
+// wait the destination asked for. It is what the host reads after a failed
+// write; sink tests use it to check how an error would be treated.
+func RetryableWait(err error) (time.Duration, bool) { return retryable(err) }
+
 // retryable reports whether err is marked retryable and the wait it carries.
 func retryable(err error) (time.Duration, bool) {
 	var r *retryableError

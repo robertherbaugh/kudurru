@@ -4,7 +4,8 @@
 // (dev-docs/design-record.md §11.2) and the host that runs the additional
 // sinks of querylog.sinks, each behind its own bounded queue (SinkHost,
 // D371). The SQLite writer, rollups and the read API live in
-// internal/querylog/sqlitelog.
+// internal/querylog/sqlitelog; the ClickHouse and Loki sinks in
+// internal/querylog/sinks.
 package querylog
 
 import (

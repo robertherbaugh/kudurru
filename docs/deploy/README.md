@@ -17,7 +17,7 @@ Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md
 External filtering data: [require HTTPS for list and catalog downloads](download-policy.md).
 For scripts and CLI clients: [apply results, settings and live-event contracts](api-contracts.md).
 The optional central database for the audit log, query log and statistics of every node: [postgres.md](postgres.md).
-Sending the query log to further destinations next to the local database: [query-log-sinks.md](query-log-sinks.md).
+Sending the query log to ClickHouse, Grafana Loki or log lines next to the local database: [query-log-sinks.md](query-log-sinks.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
