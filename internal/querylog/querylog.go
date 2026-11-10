@@ -1,8 +1,10 @@
 // Package querylog defines the query event, the non-blocking collector the
 // log observer writes to, the privacy transform applied once at ingest, the
-// live tail, the querylog metrics and the Sink contract every sink
-// implements (dev-docs/design-record.md §11.2). The SQLite writer, rollups and
-// the read API live in internal/querylog/sqlitelog.
+// live tail, the querylog metrics, the Sink contract every sink implements
+// (dev-docs/design-record.md §11.2) and the host that runs the additional
+// sinks of querylog.sinks, each behind its own bounded queue (SinkHost,
+// D371). The SQLite writer, rollups and the read API live in
+// internal/querylog/sqlitelog.
 package querylog
 
 import (
@@ -199,6 +201,8 @@ type Sink interface {
 
 // BatchSink accepts an original captured privacy mode and cancellation for a
 // pending batch. Async never retries a batch after this call was attempted.
+// The additional-sink host (SinkHost) calls it again for the same batch only
+// after an error marked Retryable, within the sink's attempt budget.
 type BatchSink interface {
 	WriteBatch(context.Context, []*Event, Mode) error
 }

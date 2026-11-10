@@ -327,6 +327,109 @@ type Querylog struct {
 	Anonymize string            `koanf:"anonymize" json:"anonymize"`
 	Retention QuerylogRetention `koanf:"retention" json:"retention"`
 	Exclude   QuerylogExclude   `koanf:"exclude" json:"exclude"`
+	// Sinks are additional destinations that receive every recorded query
+	// next to Sink, each through its own bounded queue (D371).
+	Sinks []QuerylogSink `koanf:"sinks" json:"sinks"`
+}
+
+// Defaults and bounds of one querylog.sinks entry (D371).
+const (
+	DefaultQuerylogSinkQueueSize     = 10000
+	DefaultQuerylogSinkBatchSize     = 1000
+	DefaultQuerylogSinkFlushInterval = time.Second
+	DefaultQuerylogSinkTimeout       = 10 * time.Second
+	DefaultQuerylogSinkAttempts      = 3
+	DefaultQuerylogSinkRetryBackoff  = time.Second
+	// MaxQuerylogSinks bounds the list: every sink holds a queue in memory
+	// and names a metric series.
+	MaxQuerylogSinks = 8
+)
+
+// QuerylogSinkSlog is the querylog.sinks type that writes one structured
+// log line per query.
+const QuerylogSinkSlog = "slog"
+
+// QuerylogSink is one entry of querylog.sinks: an additional destination
+// with its own bounded queue, batch policy and attempt budget. Zero values
+// mean the defaults. A sink type keeps its own settings in a field named
+// after the type; the sink receives that object unchanged.
+type QuerylogSink struct {
+	// Name labels the sink in metrics and logs.
+	Name string `koanf:"name" json:"name"`
+	// Type is the kind of destination.
+	Type string `koanf:"type" json:"type"`
+	// QueueSize bounds the events waiting for this sink; overflow is
+	// dropped and counted for this sink only.
+	QueueSize int `koanf:"queueSize" json:"queueSize,omitempty"`
+	// BatchSize and FlushInterval are the batch policy: one write per
+	// BatchSize events or per FlushInterval, whichever comes first.
+	BatchSize     int      `koanf:"batchSize" json:"batchSize,omitempty"`
+	FlushInterval Duration `koanf:"flushInterval" json:"flushInterval,omitempty"`
+	// Timeout bounds opening the sink and each write attempt.
+	Timeout Duration `koanf:"timeout" json:"timeout,omitempty"`
+	// Attempts is how often one batch is written when the destination asks
+	// to try again; 1 never retries.
+	Attempts int `koanf:"attempts" json:"attempts,omitempty"`
+	// RetryBackoff is the wait before the second attempt; it doubles up to
+	// 30 s.
+	RetryBackoff Duration `koanf:"retryBackoff" json:"retryBackoff,omitempty"`
+}
+
+// querylogSinkName is a lowercase DNS label of at most 32 characters: the
+// name is a metric label value.
+var querylogSinkName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`)
+
+// validateSinks checks what the item shape cannot: the list bound, names,
+// duplicates and the durations.
+func (q *Querylog) validateSinks() []error {
+	var errs []error
+	if len(q.Sinks) > MaxQuerylogSinks {
+		errs = append(errs, fmt.Errorf("querylog.sinks: %d sinks, at most %d are supported", len(q.Sinks), MaxQuerylogSinks))
+	}
+	seen := make(map[string]bool, len(q.Sinks))
+	logLines := q.Sink == "slog"
+	for i, s := range q.Sinks {
+		at := fmt.Sprintf("querylog.sinks[%d]", i)
+		switch {
+		case s.Name == "":
+			// The shape reports the missing name.
+		case s.Name == "sqlite" || s.Name == "slog":
+			errs = append(errs, fmt.Errorf("%s.name: %q names the primary sink in metrics; choose another name", at, s.Name))
+		case !querylogSinkName.MatchString(s.Name):
+			errs = append(errs, fmt.Errorf("%s.name: %q is not a lowercase name of letters, digits and hyphens, at most 32 characters", at, s.Name))
+		case seen[s.Name]:
+			errs = append(errs, fmt.Errorf("%s.name: duplicate sink name %q", at, s.Name))
+		}
+		seen[s.Name] = true
+		if s.Type == QuerylogSinkSlog {
+			if logLines {
+				errs = append(errs, fmt.Errorf("%s.type: a second slog sink would write every query twice (querylog.sink or an earlier entry already writes log lines)", at))
+			}
+			logLines = true
+		}
+		// An unset batch size follows a smaller queue; a set one must fit.
+		queue := s.QueueSize
+		if queue == 0 {
+			queue = DefaultQuerylogSinkQueueSize
+		}
+		if s.BatchSize > queue {
+			errs = append(errs, fmt.Errorf("%s.batchSize: %d is larger than the queue of %d", at, s.BatchSize, queue))
+		}
+		for _, d := range []struct {
+			field    string
+			value    Duration
+			min, max time.Duration
+		}{
+			{"flushInterval", s.FlushInterval, 100 * time.Millisecond, time.Minute},
+			{"timeout", s.Timeout, time.Second, 2 * time.Minute},
+			{"retryBackoff", s.RetryBackoff, 100 * time.Millisecond, time.Minute},
+		} {
+			if d.value != 0 && (d.value.Std() < d.min || d.value.Std() > d.max) {
+				errs = append(errs, fmt.Errorf("%s.%s: %s is outside %s-%s", at, d.field, d.value, d.min, d.max))
+			}
+		}
+	}
+	return errs
 }
 
 // QuerylogRetention bounds the raw fact table.
@@ -384,7 +487,7 @@ func (q *Querylog) validate() []error {
 			}
 		}
 	}
-	return errs
+	return append(errs, q.validateSinks()...)
 }
 
 // ByteSize is a byte count that reads and writes as "10GiB" (binary

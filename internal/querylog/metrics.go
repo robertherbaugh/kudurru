@@ -6,7 +6,9 @@ import "github.com/prometheus/client_golang/prometheus"
 const (
 	// DropStageQueue counts events the collector queue refused.
 	DropStageQueue = "queue"
-	// DropStageSink counts events in batches a sink failed to write.
+	// DropStageSink counts events in batches a sink failed to write and,
+	// for an additional sink (querylog.sinks), events its own queue refused.
+	// The sink label names the sink.
 	DropStageSink = "sink"
 	// DropStageTail counts events a slow live-tail subscriber missed.
 	DropStageTail = "tail"
