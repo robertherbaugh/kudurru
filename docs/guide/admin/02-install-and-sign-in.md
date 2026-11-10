@@ -181,7 +181,7 @@ node.
 ## Point the network at kudurru
 
 Make the devices on your network use kudurru as their DNS server. kudurru
-v0.1.0 can also assign IPv4 addresses with its optional DHCPv4 server.
+can also assign IPv4 addresses with its optional DHCPv4 server.
 This function needs Linux and works with both stores. It is off by default.
 For setup in the dashboard, read the [DHCP walkthrough](../dhcp/README.md).
 

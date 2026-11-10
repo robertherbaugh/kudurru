@@ -11,7 +11,7 @@ external DNS servers that kudurru asks.
 
 ## Zones
 
-A zone is a part of the DNS name space. kudurru serves three types of zone.
+A zone is a part of the DNS name space. kudurru serves four types of zone.
 
 | Type | Meaning |
 |---|---|
@@ -25,6 +25,13 @@ zone always get an answer.
 
 The wizard creates primary, forward, secondary and stub zones. Catalog zones
 are reserved for a later release.
+
+CAUTION: Do not apply a zone of the type `external`, `catalog` or
+`secondaryCatalog` from a file or with the API. kudurru does not serve these
+types. On a node with the SQLite store, such a zone stops the answers for your
+own zones and stops all changes. You cannot delete the zone through the API
+then. To recover, stop the node. Then put back a copy of the data directory
+that you made before you applied the zone.
 
 ### See the zones
 
@@ -157,9 +164,11 @@ keep normal primary-zone behavior: missing names answer NXDOMAIN.
 The upstream group must exist. [Create an upstream
 group](#create-an-upstream-group) first if it does not.
 
-Forwarded-answer DNSSEC validation and the per-zone override are implemented
-on the v0.2 development branch. In v0.1.0, recursive upstream groups validate
-DNSSEC using their recursion settings.
+**Default** uses the setting `dnssec.enabled`. This setting is off after
+installation, and then kudurru does not check the signatures of forwarded
+answers. **Validate** and **Do not validate** apply to this zone only. A
+recursive upstream group checks DNSSEC with its own recursion settings. Read
+[DNSSEC validation](../../deploy/dnssec-validation.md) for the trust anchors.
 
 ### Create a secondary zone
 
@@ -501,11 +510,13 @@ dig @<kudurru> example.com A +cd
 
 Usually the owner of the zone made the error, and other resolvers that
 check DNSSEC also fail. Tell the owner of the zone. Do not turn off **DNSSEC
-validation** for one bad zone. kudurru v0.1.0 has no list of exceptions
-(negative trust anchors).
+validation** for one bad zone. Add a temporary exception (a negative trust
+anchor) for the zone instead. An exception has a reason and an end time that
+is 7 days away at most. Read [Temporary exceptions](../../deploy/dnssec-validation.md#temporary-exceptions).
 
-A forwarding group does not check signatures. If its server validates DNSSEC
-and sends SERVFAIL with an EDE from 6 to 12, the status is also
+A forwarding group does not check signatures unless you turn on the setting
+`dnssec.enabled` or set **Validate** on a forward zone. If its server validates
+DNSSEC and sends SERVFAIL with an EDE from 6 to 12, the status is also
 `dnssec_bogus`.
 
 ### Read the health of a group
