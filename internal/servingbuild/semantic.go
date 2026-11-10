@@ -70,6 +70,9 @@ func (s *semanticOwners) release() {
 	if s.upstreams != nil {
 		_ = s.upstreams.Close()
 	}
+	// A candidate that is not published returns its additional-sink
+	// references (D371); nil-safe and idempotent.
+	s.logging.Release()
 }
 
 type integrationOverlay struct {

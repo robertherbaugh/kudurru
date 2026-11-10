@@ -170,7 +170,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("auth", owners.auth, owners.auth.Release),
 		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, tsig: deps.TSIG, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, browser: deps.Browser, cli: deps.CLI}, deps.Release),
 		component("control", owners.control, nil),
-		component("logging", owners.logging, nil),
+		component("logging", owners.logging, owners.logging.Release),
 	}
 	// List content and pure auth policy have exact owner identities in addition
 	// to the captured host dependency revision and canonical image identity.

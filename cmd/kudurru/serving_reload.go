@@ -31,7 +31,7 @@ func (s *servingRuntime) runServingReload(ctx context.Context, targets reloadTar
 			operational := targets
 			operational.completeAuth = s.AuthControlsHotReload()
 			if targets.qlOwner != nil {
-				targets.qlOwner.adopt(logging, next.Querylog)
+				targets.qlOwner.adoptPublished(logging, next.Querylog)
 				operational.qlOwner, operational.qlAsync, operational.qlWriter = nil, nil, nil
 			}
 			paths := config.Changed(previous, next)

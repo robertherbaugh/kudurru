@@ -20,6 +20,9 @@ import (
 // node lifetime. Immutable captured routes borrow these owners through final
 // DNS emission and queue drain; a reload never closes an old writer underneath
 // them. Local history remains readable when admission is disabled or uses slog.
+// The additional sinks of querylog.sinks run on the sink host (D371): every
+// route holds one reference on each of its sinks, and a sink stops when the
+// last route that named it is released.
 type querylogRuntime struct {
 	async       *querylog.Async
 	tail        *querylog.Tail
@@ -35,6 +38,25 @@ type querylogRuntime struct {
 	settings    atomic.Pointer[config.Querylog]
 	available   chan struct{}
 	unavailable atomic.Bool
+	sinks       *querylog.SinkHost
+	// owned is the route whose sink references this runtime itself holds:
+	// the startup route and every route of a legacy reload. Complete
+	// publications own theirs through the bundle's release hook.
+	ownMu sync.Mutex
+	owned *querylog.Captured
+}
+
+// querylogSinkFactories are the types of querylog.sinks (D371). A new type
+// adds its factory here and its option and settings to the schema
+// (internal/config); TestQuerylogSinkTypesHaveFactories keeps them in step.
+// A factory only builds the sink: the host opens it from the sink's own
+// goroutine when the first event arrives.
+var querylogSinkFactories = func(logger *slog.Logger) map[string]querylog.SinkFactory {
+	return map[string]querylog.SinkFactory{
+		config.QuerylogSinkSlog: func(spec querylog.SinkSpec) (querylog.Sink, error) {
+			return &querylog.SlogSink{Logger: logger.With("sink", spec.Name), Level: slog.LevelInfo}, nil
+		},
+	}
 }
 
 // borrowedQuerylogSink leaves the bounded shared sink owned by the runtime,
@@ -60,6 +82,7 @@ func newQuerylogRuntime(ctx context.Context, cfg *config.Config, reg prometheus.
 		return nil, err
 	}
 	r.async = querylog.NewAsyncWith(querylog.AsyncOptions{Sink: borrowedQuerylogSink{r.slog}, Tail: r.tail, Metrics: r.metrics, FirstID: 1, Logger: logger})
+	r.sinks = querylog.NewSinkHost(querylog.SinkHostOptions{Collector: r.async, Factories: querylogSinkFactories(logger), Metrics: r.metrics, Registerer: reg, Logger: logger})
 	route, err := r.prepare(ctx, cfg.Querylog, nil)
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -68,7 +91,20 @@ func newQuerylogRuntime(ctx context.Context, cfg *config.Config, reg prometheus.
 		return nil, err
 	}
 	r.adopt(route, cfg.Querylog)
+	r.own(route)
 	return r, nil
+}
+
+// own makes route the one whose sink references the runtime holds and
+// releases the previous one. Nil hands ownership to the publications.
+func (r *querylogRuntime) own(route *querylog.Captured) {
+	r.ownMu.Lock()
+	previous := r.owned
+	r.owned = route
+	r.ownMu.Unlock()
+	if previous != route {
+		previous.Release()
+	}
 }
 
 func (r *querylogRuntime) ensureWriter(ctx context.Context) (*sqlitelog.Writer, error) {
@@ -96,6 +132,9 @@ func (r *querylogRuntime) ensureWriter(ctx context.Context) (*sqlitelog.Writer, 
 
 // prepare performs bounded local preparation, never operational adoption. The
 // predecessor must be the logging component of the actually served bundle.
+// The returned route holds one reference on each additional sink; the caller
+// releases it (Captured.Release) when the route can admit nothing more, or
+// at once when it is never published. Preparing starts and opens no sink.
 func (r *querylogRuntime) prepare(ctx context.Context, cfg config.Querylog, previous *querylog.Captured) (_ *querylog.Captured, err error) {
 	defer func() { r.unavailable.Store(err != nil) }()
 	if err = ctx.Err(); err != nil {
@@ -105,6 +144,10 @@ func (r *querylogRuntime) prepare(ctx context.Context, cfg config.Querylog, prev
 		return nil, errors.New("querylog: unsupported sink")
 	}
 	p, err := querylog.PrivacyFrom(cfg)
+	if err != nil {
+		return nil, err
+	}
+	specs, err := querylog.SinkSpecsFrom(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -131,12 +174,17 @@ func (r *querylogRuntime) prepare(ctx context.Context, cfg config.Querylog, prev
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return r.async.PrepareCaptured(sink, p, cfg.Enabled, firstID, previous), nil
+	// Last, so that no failure above leaves a reference behind.
+	set, err := r.sinks.Prepare(specs)
+	if err != nil {
+		return nil, err
+	}
+	return r.async.PrepareCapturedSinks(sink, p, cfg.Enabled, firstID, previous, set), nil
 }
 
-func (r *querylogRuntime) adopt(route *querylog.Captured, cfg config.Querylog) {
+func (r *querylogRuntime) adopt(route *querylog.Captured, cfg config.Querylog) bool {
 	if !r.async.AdoptCaptured(route) {
-		return
+		return false
 	}
 	r.current.Store(route)
 	settings := cfg
@@ -146,6 +194,16 @@ func (r *querylogRuntime) adopt(route *querylog.Captured, cfg config.Querylog) {
 		w.SetPrivacy(mode)
 		w.SetRetention(cfg.Retention.Raw.Std(), int64(cfg.Retention.MaxDBBytes))
 	}
+	return true
+}
+
+// adoptPublished adopts the logging owner of a complete publication. The
+// bundle releases that route's sinks itself, so the runtime gives up the
+// reference it held for startup.
+func (r *querylogRuntime) adoptPublished(route *querylog.Captured, cfg config.Querylog) {
+	if r.adopt(route, cfg) {
+		r.own(nil)
+	}
 }
 
 func (r *querylogRuntime) reload(ctx context.Context, cfg config.Querylog) error {
@@ -153,7 +211,13 @@ func (r *querylogRuntime) reload(ctx context.Context, cfg config.Querylog) error
 	if err != nil {
 		return err
 	}
-	r.adopt(route, cfg)
+	if !r.adopt(route, cfg) {
+		route.Release()
+		return errors.New("querylog: prepared route was not adopted")
+	}
+	// The successor holds its references before the predecessor's are
+	// returned, so a sink both name keeps running.
+	r.own(route)
 	return nil
 }
 
@@ -196,10 +260,23 @@ func (r *querylogRuntime) Purge(ctx context.Context, before time.Time) (int64, e
 
 func (r *querylogRuntime) close(ctx context.Context) error {
 	if err := r.async.Close(ctx); err != nil {
-		return err // never close or reuse a writer while its batch is pending
+		// Never close or reuse a writer while its batch is pending. The
+		// additional sinks still stop within the same bound.
+		_ = r.sinks.Close(ctx)
+		return err
 	}
+	// The collector has offered everything it accepted, so the database has
+	// no batch pending. The additional sinks drain beside its close: an
+	// exporter that does not finish in time cannot keep it open or use up
+	// its share of the shutdown bound.
+	sinks := make(chan error, 1)
+	go func() { sinks <- r.sinks.Close(ctx) }()
+	var err error
 	if w := r.writer.Load(); w != nil {
-		return w.CloseContext(ctx)
+		err = w.CloseContext(ctx)
 	}
-	return nil
+	if sinkErr := <-sinks; err == nil {
+		err = sinkErr
+	}
+	return err
 }
