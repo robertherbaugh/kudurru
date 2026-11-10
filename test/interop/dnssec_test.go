@@ -114,11 +114,7 @@ func signedValidationZone(t *testing.T, dir, origin string, nsec3 bool) string {
 	t.Helper()
 	run := func(name string, args ...string) string {
 		t.Helper()
-		bin, err := exec.LookPath(name)
-		if err != nil {
-			t.Skipf("%s required for signed BIND interoperability", name)
-		}
-		cmd := exec.CommandContext(t.Context(), bin, args...) //nolint:gosec // fixed test tool and temporary files
+		cmd := exec.CommandContext(t.Context(), kudurrutest.BINDTool(t, name), args...) //nolint:gosec // fixed test tool and temporary files
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {

@@ -40,7 +40,7 @@ func TestKubeAuditAcrossReplicas(t *testing.T) {
 	}
 	assets := envtestAssets(root)
 	if assets == "" {
-		t.Skip("envtest binaries not found: run `make envtest` or set KUBEBUILDER_ASSETS")
+		kudurrutest.Unavailable(t, kudurrutest.EnvRequireEnvtest, "envtest binaries not found: run `make envtest` or set KUBEBUILDER_ASSETS")
 	}
 	auditBin, nodeEnv := licensedNodeFixture(t)
 	var crds []*apiextensionsv1.CustomResourceDefinition

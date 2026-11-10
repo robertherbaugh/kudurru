@@ -25,6 +25,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
 	"github.com/robertherbaugh/kudurru/internal/stub"
+	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -256,10 +257,7 @@ func TestBINDStubThroughListenersAndDurableOfflineReferral(t *testing.T) {
 
 func bindStubPrimary(t *testing.T) (string, func()) {
 	t.Helper()
-	bin, err := exec.LookPath("named")
-	if err != nil {
-		t.Skip("BIND named unavailable")
-	}
+	bin := kudurrutest.Named(t)
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

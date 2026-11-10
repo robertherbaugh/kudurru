@@ -28,19 +28,11 @@ type named struct {
 	done chan struct{}
 }
 
-// namedBinary returns the named executable or skips the test.
+// namedBinary returns the named executable or skips the test; with
+// KUDURRU_REQUIRE_BIND the test fails instead (kudurrutest.Named).
 func namedBinary(t *testing.T) string {
 	t.Helper()
-	for _, p := range []string{os.Getenv("KUDURRU_NAMED"), "named", "/usr/sbin/named", "/usr/local/sbin/named"} {
-		if p == "" {
-			continue
-		}
-		if path, err := exec.LookPath(p); err == nil {
-			return path
-		}
-	}
-	t.Skip("named (BIND 9) is not installed: dnf install bind / apt-get install bind9")
-	return ""
+	return kudurrutest.Named(t)
 }
 
 // namedOptions is the options block every test instance shares: one

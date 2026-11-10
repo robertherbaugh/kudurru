@@ -23,6 +23,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
+	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 )
 
@@ -244,13 +245,9 @@ func awaitSigned(t *testing.T, f func() bool) {
 }
 func signedTool(t *testing.T, dir, name string, args ...string) string {
 	t.Helper()
-	bin, err := exec.LookPath(name)
-	if err != nil {
-		t.Skipf("%s unavailable", name)
-	}
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // Test fixture executable and generated temporary paths.
+	cmd := exec.CommandContext(ctx, kudurrutest.BINDTool(t, name), args...) //nolint:gosec // Test fixture executable and generated temporary paths.
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -305,10 +302,7 @@ secure IN DS 1234 13 2 00112233445566778899AABBCCDDEEFF00112233445566778899AABBC
 }
 func bindSignedPrimary(t *testing.T, dir, origin string) string {
 	t.Helper()
-	bin, err := exec.LookPath("named")
-	if err != nil {
-		t.Skip("BIND named unavailable")
-	}
+	bin := kudurrutest.Named(t)
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

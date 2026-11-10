@@ -98,13 +98,7 @@ func bindCertificate(t *testing.T, dir string) (string, string, *x509.CertPool) 
 func startRPZBIND(t *testing.T, reference bool) *rpzBIND {
 	t.Helper()
 	kudurrutest.RequireE2E(t)
-	bin, err := exec.LookPath("named")
-	if err != nil {
-		bin, err = exec.LookPath("/usr/sbin/named")
-	}
-	if err != nil {
-		t.Skip("BIND named not installed")
-	}
+	bin := kudurrutest.Named(t)
 	dir := t.TempDir()
 	port, tlsPort := kudurrutest.FreePort(t), kudurrutest.FreePort(t)
 	secret := make([]byte, 32)
