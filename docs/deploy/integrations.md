@@ -12,9 +12,20 @@ This mount does not close every integration capability. Kubernetes execution is
 currently disabled: its per-object CAS cannot atomically admit source objects,
 allocations and global inventory. Native Kubernetes Secrets are not resolved by
 the SQLite host. `Retain` is supported; instances configured with `Delete` are
-refused before provider work pending cleanup/finalizer support. Tier-B hooks and
+refused before provider work until the cleanup job is mounted. Tier-B hooks and
 record publication, optional UniFi mutations and remaining management UI work
 remain separate. The external-dns webhook listener is a separate inbound feature.
+
+An Integration declared with `deletionPolicy: Delete` is stored with the
+reserved finalizer `kudurru.io/integration-cleanup`. You do not list it in the
+document and cannot remove it by editing the document. Removing the document
+then leaves the object in place with a deletion timestamp instead of deleting
+it, and declaring it again does not cancel the deletion. Until the cleanup job
+is mounted, release such an object by declaring it once more with
+`deletionPolicy: Retain`: that removes the terminating object without
+contacting the provider and leaves its remote records where they are. The
+still-declared document then creates a new `Retain` instance, which you can
+remove normally.
 
 ## Credentials and permissions
 

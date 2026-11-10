@@ -11,8 +11,10 @@ suspended so applying an example cannot publish records.
 The schema, credential resolver, publication planner, durable ownership ledger,
 background host, Cloudflare SDK adapter and UniFi polling adapter are implemented.
 The SQLite serving runtime mounts the host, concrete fenced ledger/source commands,
-and complete-image inventory publication. Kubernetes execution, `Delete` cleanup,
-remaining providers and dashboard controls remain parts of the full
+and complete-image inventory publication. Kubernetes execution, the `Delete`
+cleanup job (its finalizer, planner mode and ledger transition exist, see
+[Deletion policy](#deletion-policy-and-the-cleanup-finalizer)), remaining
+providers and dashboard controls remain parts of the full
 [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ```mermaid
@@ -153,12 +155,87 @@ SQLite replica-install/promotion acceptance verifies that a held observation
 cannot commit after its original writer is fenced.
 
 `Retain` is the supported production deletion policy. A configured `Delete`
-instance is refused before provider work until an original-authority cleanup
-and finalizer protocol exists. Kubernetes needs a single fenced atomic admission
+instance is refused before provider work until the original-authority cleanup
+job is mounted; the store, planner and ledger parts of that protocol exist and
+are described under [Deletion policy](#deletion-policy-and-the-cleanup-finalizer).
+Kubernetes needs a single fenced atomic admission
 root binding configuration, desired objects, allocations, source and global
 inventory; ordinary per-object CAS plus a Lease is insufficient. These remain
 explicit dependencies, not completed capabilities. See the
 [operator guide](../deploy/integrations.md).
+
+## Deletion policy and the cleanup finalizer
+
+An Integration whose `spec.deletionPolicy` is `Delete` promises that the
+records it published are removed before the object is. The durable form of
+that promise is the reserved finalizer `kudurru.io/integration-cleanup`
+(D367): while it is present, a delete request only sets the deletion
+timestamp, and the object stays readable with its spec, credential
+references, UID and status for the cleanup owner. No private tombstone kind
+exists, and no writer's document decides the finalizer.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Retained: apply (default Retain)
+    [*] --> Armed: apply with Delete
+    Retained --> Armed: apply Delete
+    Armed --> Retained: apply Retain
+    Retained --> [*]: delete request
+    Armed --> Terminating: delete request
+    Terminating --> Terminating: apply that keeps Delete
+    Terminating --> [*]: cleanup owner clears the finalizer
+    Terminating --> [*]: apply Retain (release, nothing cleaned)
+```
+
+- **SQLite** decides the finalizer at admission, inside `Apply`: the
+  defaulted policy `Delete` arms it in the same write as the spec, so no
+  instance can own external state unarmed. A manager's whole-object apply
+  without finalizers, a `Force` takeover and an apply during termination all
+  keep it. Changing the policy to `Retain` removes it, which on a terminating
+  object is the release. A delete request is the file reconciler's orphan
+  delete, because Integrations are file-declared on SQLite; re-adding the
+  document does not finalize or revive the object.
+- **Kubernetes** has no kudurru admission, so the driver never arms the
+  finalizer on its own (nothing would clear it while no host runs there). It
+  carries a finalizer the elected host armed through server-side apply and
+  through the `Force` takeover, which otherwise removes every field the new
+  manager omits.
+- The only other writer is `store.FinalizerWriter.UpdateFinalizer`, a
+  metadata-only change bound to the exact UID and resource version the
+  caller observed. It keeps manager, spec, status and generation, never
+  retries on a newer object, and removes a terminating object when its last
+  finalizer goes. SQLite offers it inside a command transaction
+  (`CommandTx.UpdateFinalizer`), so finalization can commit together with
+  its checks and audit; Kubernetes uses a merge patch with the observed
+  resource version under the separate field manager `kudurru-finalizer`.
+
+The planner has an explicit cleanup mode (`plan.Input.Cleanup`). It refuses
+desired records and per-record policies and plans deletes only. A record set
+is deleted when every row carries this cluster and Integration UID marker (or
+the ledger-proven legacy marker), every provider ID is listed in the confirmed
+ledger baseline of that record set, and its name has no conflict. For those
+record sets `Delete` overrides the destination's and the ledger's retained
+`upsert-only` or `create-only` policy. A marker alone never authorizes a
+delete, because a marker can be copied with a record. Every record set of the
+owner that the plan leaves in place is listed in `Plan.Retained` with its
+reason (conflict at the name, a record set shared with rows of another owner,
+or a marker without ledger evidence); a destination is clean exactly when a
+cleanup plan from a fresh complete snapshot has neither operations nor
+retained entries. The flag is part of the plan digest, and ordinary plans
+keep the digests and operation IDs they had before.
+
+`ledger.Repository.Forget` is the only transition that deletes private
+publication state. It removes one record's ledger row and its operations by
+exact UID and resource version, row first. It refuses a pending row, a
+partially applied operation, and a baseline that still lists provider content
+unless the host supplies a fresh complete observation that the provider no
+longer holds the record. The SQLite root commits a forget in one fenced
+command under the same lease, configuration and writer checks as every ledger
+write, and can name only ledger and operation rows: the shared request budget
+is out of its reach and survives every instance. The host reads ledger rows
+and operations for a whole Integration incarnation across destinations, so
+rows of a destination that was removed from the spec are found and reported
+instead of being ignored.
 
 Automatic inventory-only polling retains its configured future schedule after an
 original-frame fence while both the job and lease remain active. The refused
