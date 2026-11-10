@@ -17,9 +17,11 @@ advertisements until the replacement passes the validation checks.
    zones. Save a copy of the router configuration before editing it.
 2. Inventory services beyond blocking: DHCP, DNSSEC, recursive resolution,
    secondary zones, dynamic updates, encrypted endpoints and plugin behavior.
-   Choose a replacement for every feature kudurru v0.1.0 does not provide.
+   Choose a replacement for every feature kudurru does not provide, for
+   example DNSSEC signing, catalog zones and DHCPv6.
    Recursion and DNSSEC validation are available in upstream groups set to
-   `mode: recursive`; DNSSEC signing is not.
+   `mode: recursive`, and validation of forwarded answers is a setting that
+   is off by default. Secondary zones and RFC 2136 updates are available.
 3. Give kudurru a fixed address on a separate host or VM. Two servers cannot
    bind the same address and port. If you use one host, configure separate
    bind addresses or publish different test ports explicitly. The examples
@@ -78,6 +80,24 @@ Choose one way to own an object:
 Do not apply the same object through several owners. See the
 [configuration layout](/deploy/docker/#configuration).
 
+### Apply results
+
+`kudurru apply -f` prints one result for each document of a file and exits
+with an error when a document failed. Read every line: documents before a
+failed one stay applied.
+
+In this version a node with the SQLite store applies one new or changed
+document for each run of the command. It refuses the later documents of the
+file with `unavailable: current writable serving generation unavailable`.
+Run the same command again until it reports no error; a document that is
+already applied then shows `unchanged`. An example file with three documents
+in these guides needs three runs.
+
+A command that arrives while the node still publishes the previous change
+can also be refused once. For example, `kudurru records list` directly after
+`kudurru import bind` can answer `unavailable: ... generation pending`. Run it
+again.
+
 ## Recreate the configuration
 
 Follow your product's guide. Before testing, verify these shared details:
@@ -91,9 +111,12 @@ Follow your product's guide. Before testing, verify these shared details:
   prefix takes precedence over a shorter one. Default membership is a
   fallback. A specific group's policy does not inherit the default policy's
   lists. Include every baseline list that group needs.
-- Use IP/CIDR matching in v0.1.0, including IPv6 addresses or prefixes where
-  applicable. MAC, hostname and encrypted-transport client-ID fields do not
-  have production identity sources in this release.
+- IP/CIDR matching works on every installation; include IPv6 addresses or
+  prefixes where applicable. A client-ID, MAC or hostname matcher matches
+  only where a source supplies that identity: a DoT, DoQ or DoH listener that
+  accepts client IDs, an inventory integration, or kudurru's own DHCP leases.
+  Confirm the source on your deployment with
+  [client identity](/deploy/client-identity/) before you depend on one.
 - Preserve source addresses. A router that proxies DNS makes all devices
   look like the router; NAT or a Kubernetes Service can do the same. Send
   clients directly to kudurru, or use a deployment that preserves source
@@ -161,7 +184,7 @@ OS secure DNS deliberately; an external DoH provider bypasses these servers.
    `kudurru backup --out before-cutover.yaml`. Save settings, certificates and
    credentials separately; an object backup is not a full data-volume backup.
 2. If the old DNS server provides DHCP, complete the DHCP handoff described
-   in its migration guide. kudurru v0.1.0 includes opt-in DHCPv4 on
+   in its migration guide. kudurru includes opt-in DHCPv4 on
    Linux with either store; use the [DHCPv4 deployment guide](/deploy/dhcp/) or keep
    your existing DHCP server. Preserve address reservations, active leases,
    lease ranges, gateway and search-domain options.

@@ -5,7 +5,7 @@ description: Preview the supported subset of Blocky YAML, review differences in 
 weight: 22
 ---
 
-In v0.2, preview a saved groups-based Blocky configuration with:
+Preview a saved groups-based Blocky configuration with:
 
 ```sh
 kudurru import blocky --file config.yaml -n default -o json > preview.json

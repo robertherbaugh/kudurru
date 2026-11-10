@@ -7,8 +7,9 @@ weight: 30
 
 Start with the DNS server you run today. These guides describe working
 features, configuration differences and the checks to make before changing
-a network's DNS. The comparison below covers v0.1.0; v0.2 adds the explicitly
-scoped offline configuration converters linked here.
+a network's DNS. The comparison below covers v0.2.0. A few features depend on
+the store a node uses, SQLite or Kubernetes; the comparison and the linked
+pages say where.
 
 | Your current server | What the guide covers |
 |---|---|
@@ -23,7 +24,7 @@ scoped offline configuration converters linked here.
 **Import from DNS server** to connect, preview and import directly, or use
 `kudurru import pihole|technitium --source-url URL --apply`. Supported objects
 and upstreams transfer automatically; the preview reports unsupported features.
-In v0.2, `kudurru import adguard|blocky --file PATH` converts supported YAML
+`kudurru import adguard|blocky --file PATH` converts supported YAML
 settings offline; it is a partial conversion with a loss report. kudurru cannot
 restore a Pi-hole Teleporter archive, a product working directory or a Technitium backup. `kudurru import bind` imports standard DNS zone files.
 Migration time
@@ -33,40 +34,59 @@ DNSSEC or app-specific behavior needs more preparation than a basic blocker.
 ## Feature comparison
 
 Built-in capabilities unless stated otherwise; planned features are labeled
-explicitly. Reviewed October 16, 2026
-against the [Pi-hole documentation](https://docs.pi-hole.net/),
-[AdGuard Home configuration reference](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration),
-[Technitium feature list](https://technitium.com/dns/) and
+explicitly. The Pi-hole, AdGuard Home and Technitium columns were reviewed
+October 16, 2026 against the [Pi-hole documentation](https://docs.pi-hole.net/),
+[AdGuard Home configuration reference](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration)
+and [Technitium feature list](https://technitium.com/dns/). The kudurru column
+was reviewed November 10, 2026 against the v0.2.0 code and the
 [kudurru changelog](/project/changelog/). Other projects evolve independently;
 check the version you run.
 
-| Feature | Pi-hole | AdGuard Home | Technitium | kudurru v0.1.0 |
+| Feature | Pi-hole | AdGuard Home | Technitium | kudurru v0.2.0 |
 |---|---|---|---|---|
-| Filtering | Hosts, domains, regex and groups | Adblock DNS syntax, allowlists and client settings | Allowed/blocked zones and lists; Advanced Blocking app | Hosts, domains, adblock subset and RE2; client-group policies |
-| Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
+| Filtering | Hosts, domains, regex and groups | Adblock DNS syntax, allowlists and client settings | Allowed/blocked zones and lists; Advanced Blocking app | Hosts, domains, adblock rules with DNS modifiers and RE2; client-group policies |
+| Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary, forward, secondary and stub zones; RFC 2136 updates; per-policy answer rewrites; BIND import/export; AXFR out, AXFR/IXFR in |
 | Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding |
-| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | Validation in recursive groups; no signing |
+| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | Validation in recursive groups; opt-in validation of forwarded answers; no signing |
 | DHCP | Built in | Built in | Built in | Opt-in DHCPv4 on Linux; dashboard setup; three-node quorum failover on SQLite or an elected replica behind a relay on Kubernetes; no DHCPv6 |
 | Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
-| Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
+| Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; enrolled SQLite cluster with one primary and its followers; Compose HA uses shared object files |
 | Kubernetes configuration | Container configuration; no native CRDs | Container configuration; no native CRDs | Container configuration; no native CRDs | Native CRDs, Helm, external-dns webhook |
-| Identity | Local dashboard login | Local users | Roles, OIDC, LDAP | Local users; OIDC and scoped roles with a key |
+| Identity | Local dashboard login | Local users | Roles, OIDC, LDAP | Local users, with authenticator codes on the SQLite store; OIDC and scoped roles with a key |
 | License | Open source; component licenses apply | GPL-3.0 | GPL-3.0 | Source available; eligible community use free, commercial production by agreement |
 
 AdGuard Home's DNSSEC option requests DNSSEC records from its upstreams;
-it does not make it a local validating resolver. kudurru v0.1.0 validates
-DNSSEC in upstream groups set to recursive mode, which resolve from the root
-servers instead of forwarding; it does not validate answers from forwarding
-groups (forward to a validating resolver for that) and does not sign zones.
-Forwarding stays the default; see
+it does not make it a local validating resolver. kudurru validates DNSSEC
+in upstream groups set to recursive mode, which resolve from the root servers
+instead of forwarding. It validates answers from forwarding groups only when
+you turn that on: the setting `dnssec.enabled` is off by default, and a
+forward zone can set its own choice ([DNSSEC validation](/deploy/dnssec-validation/)).
+It does not sign zones. Forwarding stays the default; see
 [resolving names yourself](/start/home/#7-resolve-names-yourself-optional).
 A schema field for a future feature does not mean that feature is active.
-In particular, secondary/stub/catalog zones, RFC 2136 updates and general
-per-policy answer rewrites are not implemented in v0.1.0.
+In particular, the zone types `external`, `catalog` and `secondaryCatalog`
+and zone signing (`spec.dnssec`) are in the schema and are not served.
+
+**Do not apply a zone of the type `external`, `catalog` or
+`secondaryCatalog`.** In this version a node with the SQLite store accepts
+the object and then cannot publish its configuration: it stops answering for
+its own zones and refuses every API request, including the deletion of that
+zone. To recover, stop the node and put back a copy of its data directory
+from before the object was applied.
+
+Since v0.2.0, secondary and stub zones, RFC 2136 updates
+([dynamic updates](/deploy/dynamic-updates/)), validation of forwarded answers,
+adblock modifiers and per-policy answer rewrites
+([response processing](/deploy/response-processing/)) are served on both
+stores. Some other features behave differently on the two stores or need one
+of them, for example [background integrations](/deploy/integrations/),
+transferred RPZ feeds and authenticator codes. The architecture overview keeps
+[the table](/architecture/#what-depends-on-the-store-driver); read it for your
+store before you plan around one of these.
 
 ### DHCPv4 support
 
-Built-in DHCPv4 is included in v0.1.0 and disabled by default. It supports
+Built-in DHCPv4 has been included since v0.1.0 and is disabled by default. It supports
 standalone Linux/SQLite nodes or a three-node quorum, the
 [Kubernetes store](/deploy/dhcp/#kubernetes) (`DHCPScope` and `DHCPLease`
 objects, one elected replica serving relayed clients), durable leases and
@@ -83,17 +103,20 @@ keep IPv6 router and DNS advertisements on your router.
 
 Without a key, kudurru runs one node, `Policy/default` and the built-in
 administrator. Additional policies, OIDC, scoped roles, audit storage,
-statistics older than 24 hours and the edge supervisors need the applicable
-entitlements. A free key for eligible community use unlocks these features
+statistics older than 24 hours, integrations and the edge supervisors need
+the applicable entitlements. A free key for eligible community use unlocks these features
 and up to three nodes. Business and government production use requires a
 commercial agreement; see [licensing](/project/licensing/) and
 [request a key](https://kudurru.io/license/).
 
 For multiple nodes, choose [Kubernetes](/deploy/helm/) for a shared
-configuration store, or the [Compose HA layout](/deploy/compose-ha/) for
-independent SQLite nodes managed from the same object files. Independent
-Docker containers do not synchronize their configuration automatically.
-Follower and Raft stores are deferred.
+configuration store, an [enrolled SQLite cluster](/deploy/sqlite-cluster/) in
+which followers copy the data of one primary, or the
+[Compose HA layout](/deploy/compose-ha/) for independent SQLite nodes managed
+from the same object files. In an enrolled cluster nothing is elected: when
+the primary is lost, an operator promotes a follower. Docker containers that
+are neither enrolled nor managed from the same files do not synchronize their
+configuration. There is no Raft store.
 
 ## How to approach the move
 

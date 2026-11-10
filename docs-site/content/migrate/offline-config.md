@@ -5,7 +5,7 @@ description: Convert supported AdGuard Home or Blocky YAML settings locally, rev
 weight: 25
 ---
 
-In v0.2, `kudurru import adguard` and `kudurru import blocky` convert a
+`kudurru import adguard` and `kudurru import blocky` convert a
 supported subset of a saved configuration into a reviewable object/settings
 plan. This does not import a whole product or its working directory losslessly.
 Keep the source serving DNS and retain its backup until cutover tests pass.
