@@ -61,9 +61,10 @@ func TestCentralAuditTwoNodes(t *testing.T) {
 		return resp.StatusCode, b
 	}
 	// seen reports whether GET /audit on n has the event of node pausing
-	// blocking. On SQLite the pause is one write of Kudurru/default
-	// status.blocking (docs/architecture/configuration-and-store.md) and the
-	// audit row committed with it is kudurru.status; there is no separate
+	// (disabled) or enabling blocking. On SQLite either is one write of
+	// Kudurru/default status.blocking
+	// (docs/architecture/configuration-and-store.md) and the audit row
+	// committed with it is kudurru.status; there is no separate
 	// blocking.toggle event (the Kubernetes driver records one,
 	// TestKubeAuditAcrossReplicas).
 	type settings struct {
@@ -74,7 +75,7 @@ func TestCentralAuditTwoNodes(t *testing.T) {
 		} `json:"status"`
 	}
 	var last string
-	seen := func(n *kudurrutest.Node, node string) bool {
+	seen := func(n *kudurrutest.Node, node string, disabled bool) bool {
 		t.Helper()
 		code, b := call(n, http.MethodGet, "/audit?order=desc&limit=200&kind=Kudurru", nil)
 		last = fmt.Sprintf("%d %s", code, b)
@@ -96,7 +97,7 @@ func TestCentralAuditTwoNodes(t *testing.T) {
 			t.Fatalf("decode GET /audit on %s: %v", n.Name, err)
 		}
 		for _, it := range page.Items {
-			if it.Action == "kudurru.status" && it.Node == node && !it.Before.Status.Blocking.Disabled && it.After.Status.Blocking.Disabled {
+			if it.Action == "kudurru.status" && it.Node == node && it.Before.Status.Blocking.Disabled != disabled && it.After.Status.Blocking.Disabled == disabled {
 				return true
 			}
 		}
@@ -104,17 +105,32 @@ func TestCentralAuditTwoNodes(t *testing.T) {
 	}
 	// Each node pauses its own blocking: the two nodes share the database,
 	// not their configuration. (Enabling blocking that is already enabled
-	// changes nothing and records nothing.)
+	// changes nothing and records nothing.) node-a pauses for 30 seconds,
+	// node-b until it is enabled below, so that no timer can enable it first.
+	pauses := map[string]map[string]any{
+		"node-a": {"blocking": false, "timer": 30},
+		"node-b": {"blocking": false},
+	}
 	for _, n := range nodes {
-		if code, b := call(n, http.MethodPost, "/dns/blocking", map[string]any{"blocking": false, "timer": 30}); code != http.StatusOK {
+		if code, b := call(n, http.MethodPost, "/dns/blocking", pauses[n.Name]); code != http.StatusOK {
 			t.Fatalf("pause blocking on %s: %d %s", n.Name, code, b)
 		}
 	}
 	for _, n := range nodes {
 		for _, from := range []string{"node-a", "node-b"} {
-			if !kudurrutest.Eventually(30*time.Second, 200*time.Millisecond, func() bool { return seen(n, from) }) {
+			if !kudurrutest.Eventually(30*time.Second, 200*time.Millisecond, func() bool { return seen(n, from, true) }) {
 				t.Fatalf("GET /audit on %s lacks the blocking pause of %s; last answer: %s", n.Name, from, last)
 			}
+		}
+	}
+	// node-b enables blocking again, now a change of its own: both nodes
+	// show that event as well.
+	if code, b := call(nodes[1], http.MethodPost, "/dns/blocking", map[string]any{"blocking": true}); code != http.StatusOK {
+		t.Fatalf("enable blocking on node-b: %d %s", code, b)
+	}
+	for _, n := range nodes {
+		if !kudurrutest.Eventually(30*time.Second, 200*time.Millisecond, func() bool { return seen(n, "node-b", false) }) {
+			t.Fatalf("GET /audit on %s lacks node-b enabling blocking; last answer: %s", n.Name, last)
 		}
 	}
 
