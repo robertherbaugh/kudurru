@@ -59,6 +59,7 @@ type attempt struct {
 	life     *lifetime
 	snapshot *Snapshot
 	expected Mark
+	rebases  uint64
 }
 
 // ReadAttempt is one original acquisition; copying it shares its consumed cell.
@@ -90,7 +91,9 @@ func (g *Gate) CaptureWrite(ctx context.Context, expected Mark) (*WriteAttempt, 
 	if err != nil {
 		return nil, err
 	}
-	return &WriteAttempt{cell: &attempt{gate: g, life: life, expected: expected}}, nil
+	// The mark alone cannot tell an owner from the same owner adopted again
+	// after a rebase; the count of rebases at capture can.
+	return &WriteAttempt{cell: &attempt{gate: g, life: life, expected: expected, rebases: g.state.Load().rebases}}, nil
 }
 
 type readLease struct {
@@ -255,7 +258,7 @@ func (g *Gate) runWrite(cell *attempt, fn func(*WriteScope) error) (effect Effec
 		if old.closed {
 			return NoEffect, ErrClosed
 		}
-		if old.installed != cell.expected {
+		if old.installed != cell.expected || old.rebases != cell.rebases {
 			return NoEffect, ErrMismatch
 		}
 		if err := lease.life.check(); err != nil {

@@ -65,6 +65,7 @@ type gateState struct {
 	domain    [32]byte
 	installed Mark
 	floor     uint64
+	rebases   uint64 // confirmed StageRebase installations; a write attempt never crosses one
 	current   *Snapshot
 	writer    *writeLease
 	plan      planState
@@ -84,6 +85,8 @@ type planState struct {
 	token    *planToken
 	kind     planKind
 	target   Mark
+	rebase   bool
+	floor    uint64
 	staged   bool
 	applied  bool
 	resolved bool
@@ -230,6 +233,51 @@ func (c *Change) Stage(target Mark) error {
 	}
 }
 
+// StageRebase retains one proposed version that replaces the installed owner
+// of the SAME domain without being its mechanical successor. Generations of two
+// branches of one history are not comparable, so the caller, never this gate,
+// decides that another branch is authoritative (D369: an install under a higher
+// authority term or an explicit resolution) and supplies the floor it commits
+// durably with that owner. The floor must retire every generation below the
+// target; it may also retire the target itself. A confirmed installation sets
+// that exact floor and clears the registration, so nothing issued for the
+// replaced owner can read again. It also ends every write attempt captured
+// before it, because the adopted owner can be one this gate held earlier and
+// such an attempt would otherwise find its expected mark installed again. This
+// is the only transition that can lower the floor. It accepts no durable
+// authority and grants no Snapshot.
+func (c *Change) StageRebase(target Mark, retiredThrough uint64) error {
+	if c == nil {
+		return ErrScope
+	}
+	for {
+		old, err := c.ref.load()
+		if err != nil {
+			return err
+		}
+		if old.closed || old.plan.invalid {
+			return ErrClosed
+		}
+		if old.plan.resolved || old.plan.staged {
+			return c.ref.lease.fail(ErrUsed)
+		}
+		if err := c.ref.lease.life.check(); err != nil {
+			return err
+		}
+		if !validMark(target) || old.installed == (Mark{}) || old.domain != target.DomainID || retiredThrough < target.EnvelopeGeneration-1 || old.rebases == math.MaxUint64 {
+			return c.ref.lease.fail(ErrInvalid)
+		}
+		if target == old.installed {
+			return c.ref.lease.fail(ErrMismatch)
+		}
+		next := *old
+		next.plan.target, next.plan.staged, next.plan.rebase, next.plan.floor = target, true, true, retiredThrough
+		if c.ref.lease.gate.state.CompareAndSwap(old, &next) {
+			return nil
+		}
+	}
+}
+
 // CheckPrepared is side-effect-free memory/actual-time work for a final hook.
 func (c *Change) CheckPrepared() error {
 	if c == nil {
@@ -261,7 +309,10 @@ func (c *Change) Resolve(outcome ChangeOutcome) error {
 				return c.ref.lease.fail(ErrInvalid)
 			}
 			target := old.plan.target
-			if target != old.installed {
+			if old.plan.rebase {
+				next.installed, next.domain, next.current = target, target.DomainID, nil
+				next.floor, next.rebases = old.plan.floor, old.rebases+1
+			} else if target != old.installed {
 				next.installed, next.domain, next.current = target, target.DomainID, nil
 				next.floor = max(old.floor, target.EnvelopeGeneration-1)
 			}

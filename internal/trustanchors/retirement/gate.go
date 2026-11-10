@@ -2,6 +2,9 @@
 // comparisons. It authenticates no source, accepts no durable state, and grants
 // no serving, transport, writer, or recovery authority. A future private owner
 // must supply all independent original-proof, durable, and runtime admission.
+// The one transition that is not monotone, Change.StageRebase, is named and
+// bounded separately: its caller has decided above this package that another
+// branch of the same history is authoritative.
 package retirement
 
 import (
