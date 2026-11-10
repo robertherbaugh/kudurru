@@ -156,14 +156,34 @@ func memberObjectAttributes(in api.ForwardedObject, existing store.Object) (rbac
 	return rbac.Attributes{Resource: resource, Verb: verb, Scope: scope, Namespace: in.Namespace, Name: in.Name}, true
 }
 
+// memberForwardSource returns the follower source that a public mutation began
+// on. forward=false means that this node runs its own command. A request that
+// began on a follower stays a forward after its context has ended: it is
+// refused with that cause and never handed to the local command, whose
+// credential check would report an expired session for a write that only ran
+// out of time.
+func memberForwardSource(ctx context.Context) (sqlite.GenerationToken, bool, error) {
+	token, err := servinghttp.SourceToken(ctx)
+	if err == nil {
+		return token, token.Authority().Mode == replication.Follower, nil
+	}
+	if ctx == nil || ctx.Err() == nil {
+		return sqlite.GenerationToken{}, false, nil
+	}
+	if mode, err := servinghttp.SourceMode(ctx); err != nil || mode != replication.Follower {
+		return sqlite.GenerationToken{}, false, nil
+	}
+	return sqlite.GenerationToken{}, true, memberCaptureError(ctx, ctx.Err())
+}
+
 // ObjectForward sends one normalized public object mutation from an enrolled
 // follower to its original primary over member mTLS. It never retries, never
 // redirects and never falls back to a local command. The receipt is the
 // primary's commit; the follower serves it only after a later pull installs it.
 func (s *servingRuntime) ObjectForward(ctx context.Context, in api.ForwardedObject) (api.ForwardedObjectResult, bool, error) {
-	token, err := servinghttp.SourceToken(ctx)
-	if err != nil || token.Authority().Mode != replication.Follower {
-		return api.ForwardedObjectResult{}, false, nil
+	token, forward, err := memberForwardSource(ctx)
+	if !forward || err != nil {
+		return api.ForwardedObjectResult{}, forward, err
 	}
 	operation := map[string]string{api.ForwardedWrite: memberObjectWrite, api.ForwardedDelete: memberObjectDelete}[in.Operation]
 	var existing store.Object

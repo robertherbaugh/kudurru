@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
@@ -47,4 +48,21 @@ func SourceToken(ctx context.Context) (sqlite.GenerationToken, error) {
 		return sqlite.GenerationToken{}, err
 	}
 	return token, nil
+}
+
+// SourceMode reports the replication mode of the source captured for this
+// request. Unlike SourceToken it also answers after the request's context has
+// ended, for as long as the handler holds its lease, so that a handler can
+// explain a refusal instead of mistaking an ended request for one that began
+// in another role. It returns no token and grants nothing.
+func SourceMode(ctx context.Context) (replication.Mode, error) {
+	if ctx == nil {
+		return "", serving.ErrReleased
+	}
+	original, _ := ctx.Value(leaseKey{}).(*serving.Lease)
+	token, err := original.SourceToken()
+	if err != nil {
+		return "", err
+	}
+	return token.Authority().Mode, nil
 }

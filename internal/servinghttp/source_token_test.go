@@ -59,3 +59,31 @@ func TestSourceTokenRefusesReleasedAndCanceled(t *testing.T) {
 		}
 	}
 }
+
+// The mode of the original source stays readable after the request's context
+// has ended, but not after the lease is released, and it is never a token.
+func TestSourceModeAnswersForAnEndedRequestUntilRelease(t *testing.T) {
+	f := newFixture(t)
+	lease, err := f.publisher.CaptureHTTP(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.WithValue(t.Context(), leaseKey{}, lease))
+	want := f.store.Authority().Mode
+	if mode, err := SourceMode(ctx); err != nil || mode != want || want == "" {
+		t.Fatal("live request did not report its source mode", mode, err)
+	}
+	cancel()
+	if _, err := SourceToken(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatal("ended request supplied a source token", err)
+	}
+	if mode, err := SourceMode(ctx); err != nil || mode != want {
+		t.Fatal("ended request lost its source mode", mode, err)
+	}
+	lease.Release()
+	for _, c := range []context.Context{nil, t.Context(), ctx, context.WithValue(t.Context(), leaseKey{}, &serving.Lease{})} {
+		if mode, err := SourceMode(c); !errors.Is(err, serving.ErrReleased) || mode != "" {
+			t.Fatal("invalid lease supplied a source mode", mode, err)
+		}
+	}
+}

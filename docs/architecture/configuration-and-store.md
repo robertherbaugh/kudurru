@@ -1091,7 +1091,10 @@ request and reports one result for each item. Every item captures the request's
 original source again, so an item is refused, not applied and not replayed once
 the lifetime has ended or the follower has installed a newer image (typically
 its next pull, which carries the request's earlier items); the refusal names
-which. A `zones.command` runs the primary's own zone route
+which. A request that began on a follower stays a forward after its context has
+ended: `ObjectForward` and `ZoneForward` answer that refusal themselves and
+never hand the item to the node's local command, whose credential check would
+report an expired session. A `zones.command` runs the primary's own zone route
 function with its plan executed in the member transaction: the plan's sealed
 requirements are reauthorized exactly as in `ZoneCommand`, and a plan whose
 `Apply` started but did not finish always rolls back rather than being retained

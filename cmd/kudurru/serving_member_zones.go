@@ -14,8 +14,6 @@ import (
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
-	"github.com/robertherbaugh/kudurru/internal/servinghttp"
-	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
@@ -41,9 +39,9 @@ func memberZoneAttributes(in api.ForwardedZone) (rbac.Attributes, bool) {
 // ZoneForward sends one zone convenience command from an enrolled follower to
 // its original primary. Primary, standalone and static nodes run locally.
 func (s *servingRuntime) ZoneForward(ctx context.Context, in api.ForwardedZone) (json.RawMessage, bool, error) {
-	token, err := servinghttp.SourceToken(ctx)
-	if err != nil || token.Authority().Mode != replication.Follower {
-		return nil, false, nil
+	token, forward, err := memberForwardSource(ctx)
+	if !forward || err != nil {
+		return nil, forward, err
 	}
 	attrs, ok := memberZoneAttributes(in)
 	if !ok {
