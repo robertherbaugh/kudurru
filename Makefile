@@ -215,7 +215,17 @@ test-auth-e2e: $(DEX_BIN)
 ## when named is not installed). Recorded bugs are skipped; set
 ## KUDURRU_E2E_KNOWN_BUGS=1 to reproduce them. The dex OIDC end to end
 ## test is `make test-auth-e2e`; CI's e2e job runs both.
-.PHONY: e2e interop fuzz
+## Tests that need a program or a service skip without it: named and the
+## BIND 9 tools, PostgreSQL (KUDURRU_TEST_POSTGRES_DSN, the two-node central
+## audit and query log tests) and the envtest control plane (`make envtest`,
+## the Kubernetes audit test). KUDURRU_REQUIRE_BIND=1,
+## KUDURRU_REQUIRE_POSTGRES=1 and KUDURRU_REQUIRE_ENVTEST=1 turn each skip
+## into a failure; CI's e2e job sets all three.
+## To run on built artifacts instead of building: KUDURRU_E2E_BINARY=<path>
+## (a release build) and KUDURRU_E2E_LICENSED_BINARY=<path> (the same build
+## with -tags licensetest, for the multi-node fixtures that need the test
+## license key). The log names every binary used, built or prebuilt.
+.PHONY: e2e interop interop-internal fuzz
 E2E_FLAGS ?= -race -count=1 -timeout 20m
 e2e:
 	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v ./test/e2e/ ./test/interop/
@@ -223,6 +233,16 @@ e2e:
 ## interop: only the BIND 9 interop (dnf install bind / apt-get install bind9)
 interop:
 	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v ./test/interop/
+
+## interop-internal: the BIND 9 interop tests that live beside the code they
+## qualify instead of in test/interop: response policy zones transferred from
+## BIND (internal/rpz), a BIND-signed secondary zone through the listeners
+## (internal/stages/authoritative) and stub zone discovery
+## (internal/zoneview). `make test` skips them where named is not installed
+## (and the RPZ tests without KUDURRU_E2E); CI's e2e job runs them here.
+INTEROP_INTERNAL_PKGS ?= ./internal/rpz ./internal/stages/authoritative ./internal/zoneview
+interop-internal:
+	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v -run '^TestBIND' $(INTEROP_INTERNAL_PKGS)
 
 ## fuzz: every fuzz target for FUZZTIME each (hack/fuzz.sh --list); FUZZ_JOBS
 ## targets at a time. Without -fuzz, `make test` replays the seed corpora.

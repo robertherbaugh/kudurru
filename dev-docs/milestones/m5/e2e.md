@@ -19,6 +19,18 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
   - `MainBuild` (TestMain) builds `./cmd/kudurru` once per package into a
     temp dir, with `CGO_ENABLED=0` as shipped. `KUDURRU_E2E_BINARY`
     substitutes a prebuilt binary.
+  - The multi-node fixtures of `test/e2e` that need a license key (audit,
+    static and enrolled clusters) use a second binary built with
+    `-tags licensetest`, once per run (`BuildLicensed`).
+    `KUDURRU_E2E_LICENSED_BINARY` substitutes a prebuilt one, for example
+    the release build flags plus the tag; a binary without the tag is
+    refused before any node starts, because it could not trust the test
+    key.
+  - `Describe` puts one line per binary in the log, built or prebuilt: the
+    `kudurru version` output, the SHA-256 of the file, and the build tags,
+    cgo setting and commit recorded by the Go toolchain. `MainBuild` prints
+    it once per package and every licensed test logs it, so a recorded run
+    names the artifact it exercised.
   - `NewNodeSpec` allocates free loopback ports (DNS udp+tcp on one port,
     API, ops, metrics, internal) and a data dir, and writes the base
     config: sqlite, plain-HTTP API, one socket per listener, the admin
@@ -35,7 +47,28 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
   before; it still replays every fuzz seed corpus.
 - **`make e2e`** runs `go test -race -v ./test/e2e/ ./test/interop/`.
   **`make interop`** runs only the BIND tests. Both skip cleanly without
-  `named`; `KUDURRU_NAMED` points at a non-standard binary.
+  `named`; `KUDURRU_NAMED` points at a non-standard binary (a path that is
+  not an executable fails the test).
+- **`make interop-internal`** runs the BIND tests that live beside the code
+  they qualify: `TestBINDRPZ*` (`internal/rpz`),
+  `TestBINDSignedSecondaryThroughListeners` (`internal/stages/authoritative`)
+  and `TestBINDStubThroughListenersAndDurableOfflineReferral`
+  (`internal/zoneview`).
+- **Skips that fail on request.** A test that needs an external program or
+  service skips without it, and fails instead when the matching variable is
+  set (the `KUDURRU_REQUIRE_POSTGRES` rule, D158):
+  - `KUDURRU_REQUIRE_BIND`: `named` and the BIND 9 tools (`dnssec-keygen`,
+    `dnssec-signzone`, `dnssec-verify`, `dnssec-dsfromkey`), in
+    `test/interop` and the three internal packages (`kudurrutest.Named`,
+    `kudurrutest.BINDTool`).
+  - `KUDURRU_REQUIRE_POSTGRES`: the server named by
+    `KUDURRU_TEST_POSTGRES_DSN`, for `TestCentralAuditTwoNodes` and
+    `TestCentralQuerylogTwoNodes`.
+  - `KUDURRU_REQUIRE_ENVTEST`: kube-apiserver and etcd (`make envtest` or
+    `KUBEBUILDER_ASSETS`), for `TestKubeAuditAcrossReplicas`.
+
+  `TestKnotCatalogConsumer` stays opt-in (`hack/test-knot-catalog.sh`, a
+  private Docker daemon).
 - **`make fuzz`** runs `hack/fuzz.sh` (`FUZZTIME` default 60s,
   `FUZZ_JOBS`, `FUZZ_PARALLEL`). The script has four modes:
   - `--list`: the target list (one place, also the CI matrix).
@@ -46,8 +79,11 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
 - **CI**:
   - The `e2e` job installs `bind9` and stops its service. It unloads the
     `usr.sbin.named` AppArmor profile, which would deny a named reading its
-    config from `$TMPDIR`. It then runs `make e2e` and `make
-    test-auth-e2e` (dex, cached under `bin/`).
+    config from `$TMPDIR`. It then runs `make e2e`, `make interop-internal`
+    and `make test-auth-e2e` (dex, cached under `bin/`). The job also has
+    the PostgreSQL service and the envtest binaries of the `go` job and sets
+    the three `KUDURRU_REQUIRE_*` variables, so none of those tests can pass
+    there as a skip.
   - `fuzz-targets` emits `hack/fuzz.sh --list` as JSON.
   - `fuzz` is a `fail-fast: false` matrix that runs each target for 60 s in
     parallel and uploads `testdata/fuzz/` and the logs on failure.

@@ -287,11 +287,30 @@ jobs:
   # End to end (dev-docs/milestones/m5/e2e.md): `kudurru serve` processes on loopback
   # (two nodes, lameduck, restarts, config and port failures), BIND 9 as a
   # secondary and as a forwarding target, and the OIDC login against dex.
+  # This job has every program those tests can skip without: BIND 9,
+  # PostgreSQL (the two-node central audit and query log tests) and the
+  # envtest control plane (the Kubernetes audit test). The KUDURRU_REQUIRE_*
+  # variables make a missing one a failure instead of a skipped test.
   e2e:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-4-ubuntu-2404
     timeout-minutes: 30
+    # The server of the go job.
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: kudurru
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      KUDURRU_TEST_POSTGRES_DSN: postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable
+      KUDURRU_REQUIRE_POSTGRES: "1"
+      KUDURRU_REQUIRE_BIND: "1"
+      KUDURRU_REQUIRE_ENVTEST: "1"
+      KUDURRU_NAMED: /usr/sbin/named
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -307,15 +326,28 @@ jobs:
           sudo systemctl stop named || true
           sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.named || true
           /usr/sbin/named -v
+      # kube-apiserver and etcd for TestKubeAuditAcrossReplicas: the cache of
+      # the go job (same key).
+      - name: Cache envtest control-plane binaries
+        id: envtest-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: bin/k8s
+          key: envtest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+      - name: Install envtest control-plane binaries
+        if: steps.envtest-cache.outputs.cache-hit != 'true'
+        run: make envtest
       - name: Cache dex
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: bin/dex-*
           key: dex-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: kudurru end to end and BIND interop
-        env:
-          KUDURRU_NAMED: /usr/sbin/named
         run: make e2e
+      # The BIND tests that live in internal packages: the go job has no
+      # named, so they only run here.
+      - name: BIND interop of response policy zones, signed secondaries and stub zones
+        run: make interop-internal
       - name: Recursive denial proof reuse against BIND
         env:
           KUDURRU_RECURSOR_BIND: "1"
@@ -441,6 +473,9 @@ jobs:
           key: deploy-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Render matrix, kustomize overlays, kubeconform
         run: make helm-check
+      # hack/sync-version.py: its unit tests, then the script on this tree.
+      - name: Version synchronization unit tests
+        run: python3 -B -m unittest discover -s hack -p test_sync_version.py
       - name: Release version references are current
         run: make version-check
       - name: Generated deployment assets are current
