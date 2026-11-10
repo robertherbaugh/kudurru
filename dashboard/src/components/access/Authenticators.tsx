@@ -26,6 +26,11 @@ function cookieSession(me: Me | null | undefined): me is Me {
 function eligible(me: Me | null | undefined): me is Me { return cookieSession(me) && isLocalUser(me); }
 function sessionKey(me: Me): string { return `${me.principal.id}:${me.csrf ?? ''}:${me.expiresAt ?? ''}`; }
 function Message({ text }: { text: string }) { return text ? <Banner status="warning" title={text} /> : null; }
+/** Fixed copy only: server messages are never displayed. */
+function statusError(err: unknown): string {
+  if (err instanceof ApiError && err.key === 'factor_management_unavailable') return 'Authenticator management is unavailable on this server. No change can be started.';
+  return 'Authenticator status is unavailable. No change can be started.';
+}
 
 /** The server already cleared the cookie. Do not send a second logout mutation. */
 function useSessionCleanup() {
@@ -127,7 +132,7 @@ function LocalAuthenticator({ me }: { me: Me }) {
   const discard = (message: string) => { setFlow(null); setNotice(message); };
   return <VStack gap={3}>
     <Message text={notice} />
-    {q.isPending || q.isFetching ? <Text>Loading authenticator status…</Text> : q.isError ? <><Message text="Authenticator status is unavailable. No change can be started." /><Button label="Refresh authenticator status" onClick={() => { void q.refetch(); }} /></> : <>
+    {q.isPending || q.isFetching ? <Text>Loading authenticator status…</Text> : q.isError ? <><Message text={statusError(q.error)} /><Button label="Refresh authenticator status" onClick={() => { void q.refetch(); }} /></> : <>
       <Text>{q.data.enabled ? 'An authenticator is enabled.' : 'No authenticator is enabled.'}</Text>
       <HStack gap={2} wrap="wrap">
         <Button label={q.data.enabled ? 'Replace authenticator' : 'Set up authenticator'} onClick={() => { setNotice(''); setFlow('enroll'); }} />

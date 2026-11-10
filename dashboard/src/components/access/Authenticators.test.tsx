@@ -171,6 +171,15 @@ describe('Access authenticators', () => {
     expect(screen.queryByRole('button', { name: 'Set up authenticator' })).not.toBeInTheDocument();
   });
 
+  it('explains a server without authenticator management instead of a transient failure', async () => {
+    server.use(http.get(`${API}/auth/totp`, () => HttpResponse.json({ error: { key: 'factor_management_unavailable', message: 'server details must not be displayed' } }, { status: 503 })));
+    renderWithApp(<AuthenticatorPanel />);
+    await screen.findByText('Authenticator management is unavailable on this server. No change can be started.');
+    expect(screen.queryByText('Authenticator status is unavailable. No change can be started.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up authenticator' })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('server details must not be displayed');
+  });
+
   it.each(['external', 'token', 'mustChange', 'noCsrf'])('does not query for %s principals', async (kind) => {
     let calls = 0;
     const me: Me = { principal: { kind: 'User', id: 'local:admin', name: 'admin', provider: 'local', authMethod: 'cookie', groups: [] }, roles: ['admin'], permissions: { users: ['read', 'write'] }, csrf: 'fixture-csrf' };
