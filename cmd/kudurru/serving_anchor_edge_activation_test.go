@@ -9,9 +9,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
+	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
+	"github.com/robertherbaugh/kudurru/internal/servingdns"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
@@ -152,6 +158,9 @@ func TestAnchorEdgeActivationRefusesChangedOriginal(t *testing.T) {
 // was contacted, so it could not restart behind its edges at all. D369 admits
 // that DNS-only cut, but only with the same complete authenticated fleet
 // observation a writable backend needs, adopted under the same original token.
+// This fixture leaves anchorMode at its static default and its owner dormant:
+// it proves the edges admission rule alone. The managed owner behind edges is
+// TestAnchorEdgeActivationManagedDNSOnlyRestartNeedsCompleteFleet below.
 func TestAnchorEdgeActivationAdmitsDNSOnlyCutOnlyWithCompleteFleet(t *testing.T) {
 	for _, role := range []replication.Mode{replication.Fenced, replication.Conflict} {
 		for _, name := range []string{"complete", "unavailable-edge", "missing-member", "authority"} {
@@ -228,6 +237,213 @@ func TestAnchorEdgeActivationAdmitsDNSOnlyCutOnlyWithCompleteFleet(t *testing.T)
 				defer lease.Release()
 				if !lease.Bundle().DNSOnly() || !reflect.DeepEqual(lost, st.Authority()) || calls.Load() != 2 {
 					t.Fatal("edge admission changed the DNS-only disposition, authority or fleet evidence")
+				}
+			})
+		}
+	}
+}
+
+// anchorEdgeManagedBootstrap runs one actual managed backend behind its edge
+// fleet until the elected writer has committed the bootstrap, then stops and
+// joins the writer, the elector and the runtime. It returns the accepted owner
+// version that every later restart must still serve.
+func anchorEdgeManagedBootstrap(t *testing.T, opts servingRuntimeOptions) accepted.Version {
+	t.Helper()
+	startup, finish := context.WithTimeout(t.Context(), 5*time.Second)
+	s, err := newServingRuntime(startup, opts)
+	finish()
+	if err != nil {
+		t.Fatal("writable managed backend did not start behind its edges", err)
+	}
+	t.Cleanup(func() { _ = s.Close(t.Context()) })
+	runCtx, stopRun := context.WithCancel(t.Context())
+	defer stopRun()
+	runDone := make(chan error, 1)
+	go func() { runDone <- s.Run(runCtx) }()
+	life, cancelLife := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancelLife()
+	carried, electorDone := make(chan context.Context, 1), make(chan error, 1)
+	go func() {
+		electorDone <- opts.Store.Elector("edge-managed-dns-only").Run(life, func(ctx context.Context) { carried <- ctx; <-ctx.Done() }, nil)
+	}()
+	var original context.Context
+	select {
+	case original = <-carried:
+	case <-life.Done():
+		t.Fatal("edge writer was not elected")
+	}
+	stopWriter := startDirectAnchorWriter(original, t, s)
+	awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady })
+	owner := anchorOperationOwner(original, t, s)
+	if owner.Inspect().Phase != accepted.Managed {
+		t.Fatal("elected writer did not bootstrap managed trust behind its edges", owner.Inspect().Phase)
+	}
+	stopWriter()
+	cancelLife()
+	if err := <-electorDone; err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	stopRun()
+	if err := <-runDone; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if err := s.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	return owner.Version()
+}
+
+// The same rule with anchorMode managed, which is the mode D369 changed: an
+// actual backend bootstraps managed trust through its elected writer behind a
+// complete two-edge fleet, loses its term durably, and its database is closed
+// and reopened. The restart is admitted only with the complete fleet
+// observation. It then serves the last accepted managed root as DNS-only
+// output, keeps protected HTTP closed and makes exactly one supervision
+// acquisition; a missing, mismatched or changed observation refuses startup
+// after contacting the whole fleet exactly once.
+func TestAnchorEdgeActivationManagedDNSOnlyRestartNeedsCompleteFleet(t *testing.T) {
+	for _, role := range []replication.Mode{replication.Fenced, replication.Conflict} {
+		for _, name := range []string{"complete", "unavailable-edge", "missing-member", "authority"} {
+			t.Run(string(role)+"/"+name, func(t *testing.T) {
+				base := newServingRuntimeFixture(t)
+				var restarting atomic.Bool
+				var bootstrap, calls atomic.Int32
+				var reopened atomic.Pointer[sqlite.Store]
+				observe := func(_ context.Context, id string) (internalapi.EdgeBypassState, error) {
+					state := anchorEdgeState(id)
+					if !restarting.Load() {
+						bootstrap.Add(1)
+						return state, nil
+					}
+					if calls.Add(1) != 2 {
+						return state, nil
+					}
+					switch name {
+					case "unavailable-edge":
+						return state, errors.New("original child unavailable")
+					case "missing-member":
+						state.Backends[0].Name = "other-backend"
+					case "authority":
+						// Another real authority change after the local cut was
+						// captured: the original DNS-only token no longer matches.
+						st := reopened.Load()
+						next := st.Authority().Term
+						next.Epoch = st.Authority().MaxObservedEpoch + 1
+						next.PrimaryID, next.PromotionID = "third", "later"
+						if _, err := st.ObserveAuthority(t.Context(), next); err != nil {
+							return state, err
+						}
+					}
+					return state, nil
+				}
+				first, client := anchorEdgePeer(t, "edge-a", strings.Repeat("a", 64), observe)
+				second, _ := anchorEdgePeer(t, "edge-b", strings.Repeat("b", 64), observe)
+				opts := edgeAnchorOptions(t, base, []anchorEdgeRequirement{first, second}, client)
+				endpoint, seeds, reads := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
+				r := &opts.Config.Upstreams.Recursion
+				r.AnchorMode, r.TrustAnchors, r.RootHints, r.IPv6 = config.RootAnchorsManaged, seeds, []string{endpoint}, "off"
+				opts.Config.EnvLocked = append(opts.Config.EnvLocked, "upstreams.recursion.anchorMode", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints", "upstreams.recursion.ipv6")
+				owner := anchorEdgeManagedBootstrap(t, opts)
+				if reads.Load() != 1 || bootstrap.Load() != 2 {
+					t.Fatal("fixture did not bootstrap once behind one complete fleet observation", reads.Load(), bootstrap.Load())
+				}
+				st := opts.Store
+				term := st.Authority().Term
+				term.PrimaryID, term.PromotionID = "replacement", "new"
+				if role == replication.Fenced {
+					term.Epoch++
+				}
+				if _, err := st.ObserveAuthority(t.Context(), term); err != nil && !errors.Is(err, replication.ErrPromotionConflict) {
+					t.Fatal(err)
+				}
+				if st.Authority().Mode != role {
+					t.Fatal("fixture did not reach the DNS-only role", st.Authority().Mode)
+				}
+				// A physical restart: the original database handle and the unstarted
+				// fixture runtime that borrowed it are closed first.
+				if err := base.Close(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				path := st.Path()
+				if err := st.Close(); err != nil {
+					t.Fatal(err)
+				}
+				scheme, err := runtimekinds.NewScheme()
+				if err != nil {
+					t.Fatal(err)
+				}
+				st, err = sqlite.Open(path, sqlite.Options{Scheme: scheme, Validator: opts.Validator, InternalKinds: privateStoreKinds(), ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = st.Close() })
+				reopened.Store(st)
+				opts.Store = st
+				lost := st.Authority()
+				if lost.Mode != role || lost.Writable() {
+					t.Fatal("reopened database lost its DNS-only role", lost.Mode)
+				}
+				restarting.Store(true)
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				s, err := newServingRuntime(ctx, opts)
+				if name != "complete" {
+					if err == nil {
+						_ = s.Close(t.Context())
+						t.Fatal("partial or changed fleet evidence admitted a managed DNS-only backend")
+					}
+					if calls.Load() != 2 || reads.Load() != 1 {
+						t.Fatal("refused managed DNS-only admission replayed or skipped its fleet, or acquired", calls.Load(), reads.Load())
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal("complete fleet did not admit the managed DNS-only backend", err)
+				}
+				t.Cleanup(func() {
+					closing, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := s.Close(closing); err != nil {
+						t.Error(err)
+					}
+				})
+				if calls.Load() != 2 || !s.anchors.admission.current() || s.anchors.admission.edges == nil {
+					t.Fatal("managed DNS-only backend did not adopt its complete fleet observation", calls.Load())
+				}
+				runServingFixture(t, s)
+				awaitServingRuntime(t, s, func() bool { return s.publisher.Status().Reason == "dns_only" })
+				if _, err := s.publisher.CaptureHTTP(t.Context()); err == nil {
+					t.Fatal("edge admission reopened protected HTTP on a managed DNS-only backend")
+				}
+				lease, err := s.publisher.Capture()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lease.Release()
+				part, _ := lease.Bundle().Component(recursiveRootComponent)
+				seal, _ := part.(*recursiveRootSeal)
+				if seal == nil || seal.managed == nil || seal.static != nil || !seal.current() || !lease.Bundle().DNSOnly() {
+					t.Fatal("DNS-only bundle behind edges did not keep the accepted managed root")
+				}
+				// A managed output needs a finite original lifetime of at most 30 s.
+				query, done := context.WithTimeout(t.Context(), 10*time.Second)
+				defer done()
+				output, err := captureRootAnchorOutput(&pipeline.Request{Ctx: query, Serving: servingdns.Wrap(lease)})
+				if err != nil {
+					t.Fatal("output capture", err)
+				}
+				if err := output.Emit(func() error { return nil }); err != nil {
+					t.Fatal("managed DNS-only backend behind edges refused its last-good output", err)
+				}
+				// Exactly one deny-only supervision acquisition, and nothing more
+				// inside its cooldown; no writer, bootstrap or fleet replay.
+				awaitServingRuntime(t, s, func() bool { return reads.Load() == 2 })
+				time.Sleep(1200 * time.Millisecond)
+				if reads.Load() != 2 || calls.Load() != 2 || bootstrap.Load() != 2 {
+					t.Fatal("managed DNS-only backend reacquired or replayed its fleet", reads.Load(), calls.Load())
+				}
+				if anchorOperationOwner(t.Context(), t, s).Version() != owner || !reflect.DeepEqual(lost, st.Authority()) {
+					t.Fatal("managed DNS-only restart changed accepted trust history or authority")
 				}
 			})
 		}

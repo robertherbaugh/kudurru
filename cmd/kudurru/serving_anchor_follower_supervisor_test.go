@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -12,12 +13,17 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/servingdns"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func startAnchorFollowerFixture(ctx context.Context, t *testing.T, f *anchorFollowerFixture) func() {
@@ -360,5 +366,177 @@ func TestAnchorFollowerSupervisorFencedRoleKeepsDenyOnlyPollingAcrossReopen(t *t
 	}
 	if reads.Load() != 3 {
 		t.Fatal("fenced reopen acquired without a running supervisor", reads.Load())
+	}
+}
+
+// anchorOrdinaryWrite commits one canonical object that has nothing to do with
+// trust anchors under the elected writer's original context and term, as any
+// API write does. It advances the generation a follower installs next and
+// leaves the accepted owner and its checkpoint alone.
+func anchorOrdinaryWrite(original context.Context, t *testing.T, st *sqlite.Store, term replication.Term, name string) {
+	t.Helper()
+	if err := st.Command(original, term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		_, err := tx.Apply(ctx, &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: public.DNSZoneSpec{ZoneName: name + ".test.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns." + name + ".test."}, Policy: public.ZonePolicy{Notify: public.NotifyNone}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	}); err != nil {
+		t.Fatal("ordinary primary write", err)
+	}
+}
+
+// anchorBootstrappedPrimary is an elected managed writer with one committed
+// bootstrap, and its ordinary write.
+func anchorBootstrappedPrimary(t *testing.T, endpoint string, seeds []string) (*servingRuntime, func(name string)) {
+	t.Helper()
+	primary, original, target, host := anchorOperationFixture(t, endpoint, seeds)
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := primary.captureAnchorOperation(original, target, host, clock, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt, err := op.run(); err != nil || receipt.Update.Outcome() != sqlite.AnchorCommitted {
+		t.Fatal("original primary bootstrap", err)
+	}
+	return primary, func(name string) {
+		t.Helper()
+		anchorOrdinaryWrite(original, t, primary.opts.Store, target.Term, name)
+	}
+}
+
+// anchorEnrolledMember is a second actual member database of the same cluster
+// with the primary's current image installed. It runs no serving runtime; the
+// promotion test promotes it for real.
+func anchorEnrolledMember(ctx context.Context, t *testing.T, primary *servingRuntime, identity string) *sqlite.Store {
+	t.Helper()
+	scheme, err := runtimekinds.NewScheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := sqlite.Open(filepath.Join(t.TempDir(), identity+".db"), sqlite.Options{
+		Scheme: scheme, Validator: primary.opts.Validator, InternalKinds: privateStoreKinds(),
+		InitialMode: replication.Follower, Identity: identity,
+		ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.Enroll(ctx, primary.opts.Store.Authority().Term); err != nil {
+		t.Fatal(err)
+	}
+	original := captureServingReplica(t, st)
+	expected := st.Authority().Installed
+	image, err := primary.opts.Store.ReadGeneration(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := st.ValidateImage(original, *image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InstallReplica(original, validated, replication.InstallOptions{ExpectedTerm: image.Term, ExpectedInstalled: expected}); err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+// The path every managed follower takes at each promotion, under the mounted
+// supervisor: follower, then fenced from the moment it observes the promoted
+// successor's term, then follower again by installing that term's image. The
+// second half is a role change inside one term. It must join the fenced role's
+// child and admit exactly one new child, and the member must go from complete
+// publication to DNS-only and back without ever losing its managed root (D369).
+func TestAnchorFollowerSupervisorPromotionFencedThenInstallResumes(t *testing.T) {
+	endpoint, seeds, reads := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
+	primary, _ := anchorBootstrappedPrimary(t, endpoint, seeds)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	t.Cleanup(cancel)
+	f := newAnchorFollowerFixture(ctx, t, primary)
+	successor := anchorEnrolledMember(ctx, t, primary, "root-anchor-successor")
+	owner := anchorOperationOwner(ctx, t, f.s).Version()
+	stop := startAnchorFollowerFixture(ctx, t, f)
+	awaitServingRuntime(t, f.s, func() bool { return reads.Load() == 2 && f.s.publisher.Status().ProtectedReady })
+	// emit drives one answer through the production output guard and checks
+	// which root the published bundle carries.
+	emit := func(stage string, dnsOnly bool) {
+		t.Helper()
+		lease, err := f.s.publisher.Capture()
+		if err != nil {
+			t.Fatal(stage, "capture", err)
+		}
+		defer lease.Release()
+		part, _ := lease.Bundle().Component(recursiveRootComponent)
+		seal, _ := part.(*recursiveRootSeal)
+		if seal == nil || seal.managed == nil || seal.static != nil || !seal.current() || lease.Bundle().DNSOnly() != dnsOnly {
+			t.Fatal(stage, "publication did not carry the accepted managed root with the expected disposition")
+		}
+		// A managed output needs a finite original lifetime of at most 30 s.
+		query, done := context.WithTimeout(ctx, 10*time.Second)
+		defer done()
+		output, err := captureRootAnchorOutput(&pipeline.Request{Ctx: query, Serving: servingdns.Wrap(lease)})
+		if err != nil {
+			t.Fatal(stage, "output capture", err)
+		}
+		if err := output.Emit(func() error { return nil }); err != nil {
+			t.Fatal(stage, "emit", err)
+		}
+	}
+	emit("follower", false)
+	a := successor.Authority()
+	promoted, err := successor.Promote(ctx, replication.PromoteRequest{ExpectedTerm: a.Term, ExpectedInstalled: a.Installed, RequestID: "anchor-supervisor-promotion"})
+	if err != nil || !promoted.Writable() {
+		t.Fatal("successor promotion", err)
+	}
+	if _, err := f.store.ObserveAuthority(ctx, promoted.Term); err != nil {
+		t.Fatal(err)
+	}
+	fenced := f.store.Authority()
+	if fenced.Mode != replication.Fenced || !fenced.Term.Same(promoted.Term) {
+		t.Fatal("follower was not fenced by the promoted successor's term", fenced.Mode)
+	}
+	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().Reason == "dns_only" && reads.Load() == 3 })
+	if _, err := f.s.publisher.CaptureHTTP(ctx); err == nil {
+		t.Fatal("fenced follower admitted protected HTTP")
+	}
+	emit("fenced", true)
+	// Install the promoted successor's image, as the member transport does next.
+	original := captureServingReplica(t, f.store)
+	expected := f.store.Authority().Installed
+	image, err := successor.ReadGeneration(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := f.store.ValidateImage(original, *image)
+	if err != nil {
+		t.Fatal("validate successor image", err)
+	}
+	if _, err := f.store.InstallReplica(original, validated, replication.InstallOptions{ExpectedTerm: image.Term, ExpectedInstalled: expected}); err != nil {
+		t.Fatal("install successor image", err)
+	}
+	rejoined := f.store.Authority()
+	if rejoined.Mode != replication.Follower || !rejoined.Term.Same(fenced.Term) || rejoined.MemberID != fenced.MemberID {
+		t.Fatal("install was not a role change inside the successor's term", rejoined.Mode)
+	}
+	until := time.Now().Add(15 * time.Second)
+	for {
+		status := f.s.publisher.Status()
+		if status.ProtectedReady && !status.DNSOnly && reads.Load() == 4 {
+			break
+		}
+		if time.Now().After(until) {
+			t.Fatalf("rejoined follower did not resume complete publication with one new supervision poll: reason=%q dnsOnly=%v protected=%v reads=%d", status.Reason, status.DNSOnly, status.ProtectedReady, reads.Load())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	emit("rejoined follower", false)
+	time.Sleep(1500 * time.Millisecond)
+	if reads.Load() != 4 {
+		t.Fatal("rejoined follower reacquired inside its cooldown", reads.Load())
+	}
+	stop()
+	if !anchorFollowerSameImage(image, anchorFollowerImage(ctx, t, f.store)) || anchorOperationOwner(ctx, t, f.s).Version() != owner || !reflect.DeepEqual(rejoined, f.store.Authority()) {
+		t.Fatal("supervision across the promotion changed canonical data, accepted trust history or authority")
 	}
 }
