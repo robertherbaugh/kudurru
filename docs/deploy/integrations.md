@@ -11,34 +11,97 @@ a promoted writer must acquire its own authority before observing or publishing.
 This mount does not close every integration capability. Kubernetes execution is
 currently disabled: its per-object CAS cannot atomically admit source objects,
 allocations and global inventory. Native Kubernetes Secrets are not resolved by
-the SQLite host. `Retain` is supported; instances configured with `Delete` are
-refused before provider work until the cleanup job is mounted. Tier-B hooks and
+the SQLite host. Both deletion policies are supported on SQLite; see
+[Deleting an integration](#deleting-an-integration). Tier-B hooks and
 record publication, optional UniFi mutations and remaining management UI work
 remain separate. The external-dns webhook listener is a separate inbound feature.
 
-An Integration declared with `deletionPolicy: Delete` is stored with the
-reserved finalizer `kudurru.io/integration-cleanup`. You do not list it in the
-document, and no `metadata.finalizers` entry adds or removes it: only the
-declared policy decides it. Removing the document
-then leaves the object in place with a deletion timestamp instead of deleting
-it, and declaring it again with `deletionPolicy: Delete` does not cancel the
-deletion. The delete is requested once: while the object waits, later loads
-of the objects directory report no further deletion. Until the cleanup job
-is mounted, release such an object by declaring it once more with
-`deletionPolicy: Retain`: that removes the terminating object without
-contacting the provider and leaves its remote records where they are. The
-still-declared document then creates a new `Retain` instance, which you can
-remove normally.
+## Deleting an integration
 
+`spec.deletionPolicy` decides what happens to what an Integration published
+when its object is deleted. On SQLite an Integration is declared in the
+objects directory, so removing its document is the delete request.
+
+With `Retain`, the default, the object is removed at once. Its records stay
+at the provider, and the private ledger rows that describe them stay in the
+store. A new Integration of the same name is a different incarnation: it
+cannot adopt the old records and reports them as conflicts.
+
+With `Delete`, the object is stored with the reserved finalizer
+`kudurru.io/integration-cleanup`. You do not list it in the document, and no
+`metadata.finalizers` entry adds or removes it: only the declared policy
+decides it. Removing the document then leaves the object in place with a
+deletion timestamp, and the elected writer cleans up before the object goes:
+
+1. It reads every configured destination completely and deletes the record
+   sets this incarnation provably owns: every row carries its marker and the
+   ledger lists every provider ID. `Delete` overrides a zone's `upsert-only`
+   or `create-only` policy for those record sets. Records of other owners,
+   hand-made records, and anything that only looks like the instance's are
+   never touched.
+2. It forgets the ledger rows of records that are gone.
+3. It removes, in one commit, the local state of the instance's source: the
+   record sets and zones it generated, its inventory clients, its name
+   reservations and its stored observations. Records you declared yourself
+   and members you added to a group by hand stay.
+4. It removes the finalizer, which removes the object, and records an
+   `integration.cleanup` row in the audit log.
+
+A UniFi or webhook instance publishes nothing at its provider, so its cleanup
+is steps 3 and 4 only: it makes no provider call and does not need the
+credential or a reachable controller.
+
+While this runs the Integration is shown with phase `Terminating`. Check,
+preview, sync and actions are refused for it. The cleanup is resumable: it
+works in bounded runs, shares the Cloudflare request budget with every other
+instance, and continues after a restart or a failover from what is stored.
+A large zone can take several budget windows.
+
+The object stays `Terminating` with a reason, and nothing is finalized, while
+any of these holds:
+
+| Reason | Meaning | What to do |
+| --- | --- | --- |
+| `LicenseUnavailable` | The license does not allow integrations. | Install a valid license, or release. |
+| `Suspended` | `spec.suspend` is set. | Clear it, or release. |
+| `CredentialsUnavailable` | The credential reference does not resolve. | Restore the file or variable, or release. |
+| `ProvisionFailed`, `ProviderFailed`, `RateLimited`, `BudgetExhausted` | The provider or the request budget refused; retried with backoff. | Usually nothing. |
+| `SnapshotIncomplete` | A zone could not be read completely, so nothing was decided. | Usually nothing. |
+| `RecordsConflict` | A record of the instance shares its name or record set with a record of another owner. | Remove or move the other record, or release. |
+| `OwnershipUnproven` | A row carries the instance's marker without ledger evidence, or a record the ledger lists still exists without the marker. | Decide what the row is; delete it or release. |
+| `PendingRecovery` | An earlier write has an uncertain outcome that a reread did not resolve. | Release, then check the record at the provider. |
+| `DestinationRemoved` | The ledger has records of a zone the spec no longer names. | Name the zone again, or release. |
+| `LocalStateRemains` | A record set or zone the instance generated could not be removed. | Check that object's own finalizers. |
+
+`CleanupInProgress` and `AuthorityChanged` are passing states of a cleanup
+that is working. A blocked cleanup is checked again at the instance's resync
+interval, at most every ten minutes, and immediately when you change the
+declared object.
+
+To release an Integration that is `Terminating`, declare it once more with
+`deletionPolicy: Retain`. That removes the terminating object without
+contacting the provider, needs neither the license nor the credential, and
+leaves its remote records and ledger rows where they are. The still-declared
+document then creates a new `Retain` instance, which you can remove normally.
 `Retain` is the default, so a document without a `deletionPolicy` line
 releases a terminating object in the same way. Keep the `deletionPolicy:
 Delete` line when you re-add a document, or restore an older copy of it, for
 an Integration that is still waiting for cleanup; otherwise its records stay
-at the provider. A release is logged as `objects: finalized` and recorded in
-the audit log as `integration.finalize` with the reason `released without
-cleanup: deletionPolicy is Retain; dropped kudurru.io/integration-cleanup`.
-Changing a live Integration from `Delete` to `Retain`, or dropping the line,
-is recorded as an update with the reason `disarmed: ...`.
+at the provider. Re-adding the document with `deletionPolicy: Delete` does
+not cancel the deletion. A release is logged as `objects: finalized` and
+recorded in the audit log as `integration.finalize` with the reason `released
+without cleanup: deletionPolicy is Retain; dropped
+kudurru.io/integration-cleanup`. Changing a live Integration from `Delete` to
+`Retain`, or dropping the line, is recorded as an update with the reason
+`disarmed: ...`.
+
+A live `Delete` Integration that is stored without the finalizer, which a
+database written by an earlier build can hold, is shown as `Paused` with
+reason `CleanupFinalizerMissing` and makes no provider call. The next load of
+its unchanged document adds the finalizer and it runs.
+
+On Kubernetes no Integration executes yet, so `deletionPolicy` has no effect
+there: deleting the object removes it and cleans nothing.
 
 ## Credentials and permissions
 

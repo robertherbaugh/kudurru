@@ -11,10 +11,9 @@ suspended so applying an example cannot publish records.
 The schema, credential resolver, publication planner, durable ownership ledger,
 background host, Cloudflare SDK adapter and UniFi polling adapter are implemented.
 The SQLite serving runtime mounts the host, concrete fenced ledger/source commands,
-and complete-image inventory publication. Kubernetes execution, the `Delete`
-cleanup job (its finalizer, planner mode and ledger transition exist, see
-[Deletion policy](#deletion-policy-and-the-cleanup-finalizer)), remaining
-providers and dashboard controls remain parts of the full
+complete-image inventory publication and the `Delete` cleanup job (see
+[Deletion policy](#deletion-policy-and-the-cleanup-finalizer)). Kubernetes
+execution, remaining providers and dashboard controls remain parts of the full
 [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ```mermaid
@@ -154,10 +153,11 @@ before commit, including no-ops. Provider I/O occurs outside those gates. Actual
 SQLite replica-install/promotion acceptance verifies that a held observation
 cannot commit after its original writer is fenced.
 
-`Retain` is the supported production deletion policy. A configured `Delete`
-instance is refused before provider work until the original-authority cleanup
-job is mounted; the store, planner and ledger parts of that protocol exist and
-are described under [Deletion policy](#deletion-policy-and-the-cleanup-finalizer).
+`Retain` is the default deletion policy. On SQLite a `Delete` instance runs
+like any other while its object is live, and an elected cleanup job ends it
+after a delete request; both are described under
+[Deletion policy](#deletion-policy-and-the-cleanup-finalizer). On Kubernetes
+no Integration executes yet, so the policy has no effect there.
 Kubernetes needs a single fenced atomic admission
 root binding configuration, desired objects, allocations, source and global
 inventory; ordinary per-object CAS plus a Lease is insufficient. These remain
@@ -182,8 +182,18 @@ stateDiagram-v2
     Armed --> Retained: apply Retain
     Retained --> [*]: delete request
     Armed --> Terminating: delete request
+    state Terminating {
+        [*] --> Cleanup: ordinary job joined, cleanup job elected
+        Cleanup --> Cleanup: bounded run (recover, delete proven records, forget)
+        Cleanup --> Blocked: conflict, unproven ownership, uncertain receipt, removed destination
+        Cleanup --> Paused: no license, suspended, credential missing
+        Blocked --> Cleanup: cause gone (re-checked each resync interval, at most 10 minutes)
+        Paused --> Cleanup: cause gone
+        Cleanup --> Purge: nothing left at the provider or in the ledger
+        Purge --> Finalize: published state shows no source-owned object
+    }
     Terminating --> Terminating: apply that keeps Delete
-    Terminating --> [*]: cleanup owner clears the finalizer
+    Terminating --> [*]: Finalize removes the finalizer (cleanup finished)
     Terminating --> [*]: apply Retain, declared or defaulted (release, nothing cleaned)
 ```
 
@@ -204,10 +214,10 @@ stateDiagram-v2
   closes that gap for declared objects: it applies the document of such an
   object on its next pass even though the document is unchanged, which arms
   the object and changes nothing else. Until that pass the object is unarmed,
-  so the cleanup job's root must still check the finalizer inside every
-  intent and source commit before it lets a `Delete` instance own external
-  state; that check lands with the job, and `Delete` instances are refused
-  until then.
+  so the SQLite root checks the finalizer inside every transaction of a
+  `Delete` instance (fence, intent, budget charge, receipt, source commit and
+  status): an unarmed one gets no provider call and owns no external state.
+  The host reports it as `Paused` with reason `CleanupFinalizerMissing`.
 - A delete request is the file reconciler's orphan delete, because
   Integrations are file-declared on SQLite. It is made and counted once:
   while the object waits with its deletion timestamp, later passes leave it
@@ -260,6 +270,119 @@ is out of its reach and survives every instance. The host reads ledger rows
 and operations for a whole Integration incarnation across destinations, so
 rows of a destination that was removed from the spec are found and reported
 instead of being ignored.
+
+### The terminating job
+
+The host decides from each captured object what it runs, and every job holds
+one mode for its lifetime (`ExecutionGuard.Mode`). A change of mode replaces
+the job like any other change of authority: the old job is canceled and
+joined before the next one may be elected on the same per-instance key.
+
+| Captured object | Job | Mode |
+| --- | --- | --- |
+| live, armed or policy `Retain` | ordinary lease | normal |
+| live, policy `Delete`, finalizer missing | none: `Paused/CleanupFinalizerMissing` | none |
+| deleting, cleanup finalizer, policy `Delete` | cleanup | `cleanup` |
+| deleting, cleanup finalizer, any other policy | release | `release` |
+| deleting, no cleanup finalizer | none: `Paused/Deleting` | none |
+
+The SQLite root repeats that rule at every effect, against the object it
+reads in the transaction (`integrationGuardAdmits`): the same UID and
+resource version, and a state that is what the guard's mode claims. A guard
+never widens what its object allows. Operator commands are refused for a
+terminating job, and its lease takes a concurrency slot for each bounded run
+only, so a blocked cleanup waits without holding one.
+
+A cleanup lease repeats runs, each bounded by the operation timeout and each
+on a freshly captured frame (the job's own status write is a new resource
+version of the object), until the finalizer is gone:
+
+```mermaid
+flowchart TD
+    Frame["Fresh frame, cleanup guard, root fence"] --> Kind{"Provider publishes?"}
+    Kind -- "no (UniFi, webhook)" --> Rows{"Ledger rows of this UID?"}
+    Kind -- yes --> Credential{"Credential resolves?"}
+    Credential -- no --> PausedC["Terminating/CredentialsUnavailable, no provider call"]
+    Credential -- yes --> Provision["Provision, Validate, Check (never Start)"]
+    Provision --> Read["Complete reread of every configured destination + ledger rows"]
+    Read --> Recover["Resolve pending intents from the reread"]
+    Recover --> Plan["Cleanup plan: delete only marker- and ledger-proven record sets"]
+    Plan --> Apply["Intent, fence, budgeted request, receipt, confirm"]
+    Apply --> Reread["Fresh complete reread"]
+    Reread --> Forget["Forget ledger rows whose record is absent"]
+    Forget --> Clean{"Anything of this UID left or uncertain?"}
+    Rows -- yes --> Blocked
+    Clean -- yes --> Blocked["Terminating with a reason and counts; never finalizes"]
+    Clean -- no --> Leftovers["Forget operations without a ledger row"]
+    Rows -- no --> Leftovers
+    Leftovers --> Purge["Root purge: one command, then wait for publication"]
+    Purge --> Finalize["Root finalize: verify nothing remains, audit, remove finalizer"]
+```
+
+- **Recovery.** A pending intent is settled before anything is planned, by
+  the unchanged rules: an observed complete outcome is confirmed, an untouched
+  one abandoned, a partial one resumed only while it is still authorized. In
+  the cleanup mode a partially applied delete is resumed even if the
+  credential or the configuration changed since it was recorded, because its
+  authority is the proven ownership of the rows plus the terminating guard.
+  Any other partial intent stays pending: nothing is desired any more, so
+  finishing a create or an update is not authorized, and the instance stays
+  `Terminating/PendingRecovery` until the operator releases it. A run that
+  cannot settle a pending intent stops there, before any delete.
+- **Deletes.** Cleanup plans carry nothing desired and are executed by the
+  same code as an ordinary sync. Proven record sets are deleted even when
+  other record sets block finalization; nothing is ever deleted on a marker
+  or on a ledger row alone.
+- **Forget.** After a fresh complete reread, a ledger row goes when its
+  baseline is absent (a confirmed delete) or when the snapshot holds none of
+  its provider IDs and no row with the owner's marker at its key (a record
+  someone else removed). A row whose provider IDs still exist without the
+  marker is kept and reported.
+- **Blocked.** `RecordsConflict` (a conflict at the name, or a record set
+  shared with another owner's rows), `OwnershipUnproven` (a marker without
+  ledger evidence, or ledger provider IDs that still exist without the
+  marker), `PendingRecovery`, `DestinationRemoved` (ledger rows of a
+  destination the spec no longer names, or of an instance whose provider does
+  not publish), `SnapshotIncomplete` and `LocalStateRemains` never finalize.
+  The reason and the counts (records not yet forgotten, record sets left in
+  place, uncertain writes) are in the host status, and the job that holds the
+  lease also writes them to the object's `Ready` condition and
+  `status.records`. A blocked cleanup is re-evaluated at the instance's
+  resync interval, at most every ten minutes, and at once when the object
+  changes.
+- **Paused.** `LicenseUnavailable` and `Suspended` start no job, so only the
+  host status shows them; `CredentialsUnavailable` ends the lease before any
+  provider call. All three resume by themselves when the cause is gone. `BudgetExhausted`,
+  `RateLimited`, `ProviderFailed` and `ProvisionFailed` back off and retry;
+  the shared request budget row is charged like any other request and is
+  never removed.
+- **Purge.** `integrationRuntime.purge` removes, in one SQLite command, the
+  record sets and zones the instance's source owns (each must still be the
+  UID and resource version of the captured cut), its source head and chunks,
+  its name allocations and its deliveries, and withdraws its clients from the
+  global inventory. Every delete names the exact UID and resource version
+  read in that transaction. It then waits until the published bundle shows
+  none of it, so a finalized instance leaves no record answering. A complete
+  image never holds a head without its chunks or allocation evidence without
+  its allocation, which is why this is one command.
+- **Finalize.** `integrationRuntime.finalize` verifies in its transaction
+  that no ledger row, operation, source head or chunk, name allocation,
+  delivery or source-owned object of the incarnation is left, removes the
+  finalizer with `CommandTx.UpdateFinalizer` by the guard's exact UID and
+  resource version, and records an `integration.cleanup` audit row with what
+  the finalizing lease deleted, forgot and purged. Earlier leases wrote their
+  own audit rows when they committed. Anything left is `LocalStateRemains`.
+- **Release.** A terminating object that carries the finalizer under any
+  policy other than `Delete` is finalized by the release job: no provider is
+  built, nothing is cleaned, and neither the license, the credential nor
+  suspension matters. Its audit row is `integration.release` and lists what
+  stays behind. SQLite admission already releases such an object in the
+  apply that changes the policy, so on SQLite this job only meets state that
+  no apply stored; it is the path a Kubernetes host needs.
+
+Failover needs no extra state: the finalizer, the ledger and the operations
+are durable, a fenced writer can neither record a receipt nor finalize, and
+the next lease starts from a complete reread.
 
 Automatic inventory-only polling retains its configured future schedule after an
 original-frame fence while both the job and lease remain active. The refused
