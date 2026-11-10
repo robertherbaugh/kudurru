@@ -10,13 +10,13 @@ links:
   - {page: /reference/crds, text: "`DNSZone`, `DNSRecordSet`, `BlockList`, `ClientGroup` and `Policy`, field by field."}
   - {page: /reference/api, label: REST API reference, text: "The OpenAPI document, the endpoint index with permissions, and an API explorer."}
   - {page: /reference/cli, text: "Every `kudurru` command and flag."}
-  - {page: /migrate, label: Migration guides, text: "Compare and migrate from Pi-hole, AdGuard Home or Technitium."}
+  - {page: /migrate, label: Migration guides, text: "Compare and migrate from Pi-hole, AdGuard Home, Technitium or Blocky."}
   - {page: /architecture, label: Architecture, text: "How kudurru works inside, with a diagram for every flow: queries, policies, upstreams, the store, deployment shapes."}
 ---
 
 ## Version and access
 
-These guides describe **v0.1.0 ("stone")**. See the
+These guides describe **v0.2.0 ("clay copies")**. See the
 [changelog](/project/changelog/) for release details and known limitations.
 Screenshots use demo data; your names and addresses are different.
 
