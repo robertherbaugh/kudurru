@@ -37,11 +37,38 @@ func TestQuerylogSinkTypesHaveFactories(t *testing.T) {
 		}
 	}
 	var built []string
-	for name, factory := range querylogSinkFactories(slog.New(slog.DiscardHandler)) {
+	// The smallest entry of each type the settings validator admits.
+	minimal := map[string]config.QuerylogSink{
+		config.QuerylogSinkSlog:       {},
+		config.QuerylogSinkClickHouse: {ClickHouse: &config.QuerylogClickHouse{URL: "https://clickhouse.invalid:8443"}},
+		config.QuerylogSinkLoki:       {Loki: &config.QuerylogLoki{URL: "https://loki.invalid"}},
+	}
+	for name, factory := range querylogSinkFactories(querylogSinkInputs{Logger: slog.New(slog.DiscardHandler)}) {
 		built = append(built, name)
-		sink, err := factory(querylog.SinkSpec{Name: "probe", Type: name})
+		entry, known := minimal[name]
+		if !known {
+			t.Errorf("%s: add the smallest valid entry of this type to the test", name)
+			continue
+		}
+		entry.Name, entry.Type = "probe", name
+		cfg, err := config.Load("", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.Querylog.Sinks = []config.QuerylogSink{entry}
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("%s: the settings validator refuses the smallest entry: %v", name, err)
+			continue
+		}
+		specs, err := querylog.SinkSpecsFrom(cfg.Querylog)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// What the validator admits, the factory builds: without I/O (the
+		// hosts above do not resolve) and with the defaults of the type.
+		sink, err := factory(specs[0])
 		if err != nil || sink == nil {
-			t.Errorf("%s: a factory must build its sink from the defaults without I/O: %v", name, err)
+			t.Errorf("%s: a factory must build an admitted entry without I/O: %v", name, err)
 		}
 	}
 	sort.Strings(accepted)
@@ -145,7 +172,7 @@ func useExportDoubles(t *testing.T) *exportDoubles {
 	t.Helper()
 	d := &exportDoubles{sinks: map[string]*exportSink{}, built: map[string]int{}}
 	previous := querylogSinkFactories
-	querylogSinkFactories = func(*slog.Logger) map[string]querylog.SinkFactory {
+	querylogSinkFactories = func(querylogSinkInputs) map[string]querylog.SinkFactory {
 		return map[string]querylog.SinkFactory{config.QuerylogSinkSlog: func(spec querylog.SinkSpec) (querylog.Sink, error) {
 			d.mu.Lock()
 			defer d.mu.Unlock()

@@ -13,7 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
+	"github.com/robertherbaugh/kudurru/internal/querylog/sinks"
+	"github.com/robertherbaugh/kudurru/internal/querylog/sinks/httpbatch"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
+	"github.com/robertherbaugh/kudurru/internal/version"
 )
 
 // querylogRuntime owns one queue/tail and at most one local database for the
@@ -46,17 +49,26 @@ type querylogRuntime struct {
 	owned *querylog.Captured
 }
 
-// querylogSinkFactories are the types of querylog.sinks (D371). A new type
-// adds its factory here and its option and settings to the schema
-// (internal/config); TestQuerylogSinkTypesHaveFactories keeps them in step.
-// A factory only builds the sink: the host opens it from the sink's own
-// goroutine when the first event arrives.
-var querylogSinkFactories = func(logger *slog.Logger) map[string]querylog.SinkFactory {
-	return map[string]querylog.SinkFactory{
-		config.QuerylogSinkSlog: func(spec querylog.SinkSpec) (querylog.Sink, error) {
-			return &querylog.SlogSink{Logger: logger.With("sink", spec.Name), Level: slog.LevelInfo}, nil
-		},
+// querylogSinkInputs are the node's own inputs to the sink types.
+type querylogSinkInputs struct {
+	Logger *slog.Logger
+	// Credentials reads the credential references of an entry with what
+	// this node's operator delegated (querylogSinkCredentials).
+	Credentials httpbatch.Resolver
+}
+
+// querylogSinkFactories are the types of querylog.sinks (D371): log lines,
+// and the HTTP batch sinks for ClickHouse and Loki. A new type adds its
+// factory here and its option and settings to the schema (internal/config);
+// TestQuerylogSinkTypesHaveFactories keeps them in step. A factory only
+// builds the sink: the host opens it from the sink's own goroutine when the
+// first event arrives.
+var querylogSinkFactories = func(in querylogSinkInputs) map[string]querylog.SinkFactory {
+	factories := sinks.Factories(sinks.Options{Resolve: in.Credentials, Logger: in.Logger, UserAgent: "kudurru/" + version.Get().Version})
+	factories[config.QuerylogSinkSlog] = func(spec querylog.SinkSpec) (querylog.Sink, error) {
+		return &querylog.SlogSink{Logger: in.Logger.With("sink", spec.Name), Level: slog.LevelInfo}, nil
 	}
+	return factories
 }
 
 // borrowedQuerylogSink leaves the bounded shared sink owned by the runtime,
@@ -71,7 +83,19 @@ func (s borrowedQuerylogSink) WriteBatch(ctx context.Context, events []*querylog
 	return s.Write(events)
 }
 
+// newQuerylogRuntime builds the runtime of a node that reads no Secrets:
+// every driver but Kubernetes, and tests.
 func newQuerylogRuntime(ctx context.Context, cfg *config.Config, reg prometheus.Registerer, logger *slog.Logger, domains func() int64) (*querylogRuntime, error) {
+	return newQuerylogRuntimeWithSecrets(ctx, cfg, reg, logger, domains, nil)
+}
+
+// newQuerylogRuntimeWithSecrets also lets the sinks of querylog.sinks read
+// the Secrets their settings reference; secrets is nil where there are none.
+func newQuerylogRuntimeWithSecrets(ctx context.Context, cfg *config.Config, reg prometheus.Registerer, logger *slog.Logger, domains func() int64, secrets *querylogSecrets) (*querylogRuntime, error) {
+	credentials, err := querylogSinkCredentials(cfg, secrets)
+	if err != nil {
+		return nil, err
+	}
 	r := &querylogRuntime{dir: cfg.QuerylogDataDir(), node: cfg.Node.Name, logger: logger, domains: domains, available: make(chan struct{})}
 	initial := cfg.Querylog
 	r.settings.Store(&initial)
@@ -82,7 +106,7 @@ func newQuerylogRuntime(ctx context.Context, cfg *config.Config, reg prometheus.
 		return nil, err
 	}
 	r.async = querylog.NewAsyncWith(querylog.AsyncOptions{Sink: borrowedQuerylogSink{r.slog}, Tail: r.tail, Metrics: r.metrics, FirstID: 1, Logger: logger})
-	r.sinks = querylog.NewSinkHost(querylog.SinkHostOptions{Collector: r.async, Factories: querylogSinkFactories(logger), Metrics: r.metrics, Registerer: reg, Logger: logger})
+	r.sinks = querylog.NewSinkHost(querylog.SinkHostOptions{Collector: r.async, Factories: querylogSinkFactories(querylogSinkInputs{Logger: logger, Credentials: credentials}), Metrics: r.metrics, Registerer: reg, Logger: logger})
 	route, err := r.prepare(ctx, cfg.Querylog, nil)
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), time.Second)

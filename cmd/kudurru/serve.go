@@ -793,7 +793,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		return 0
 	}
-	qlLogs, err = newQuerylogRuntime(ctx, cfg, reg, logger, listedDomains)
+	// On Kubernetes the sinks of querylog.sinks may reference Secrets of
+	// the release namespace for their credentials (D371).
+	sinkSecrets, err := querylogKubeSecrets(restCfg, releaseNamespace)
+	if err != nil {
+		return err
+	}
+	qlLogs, err = newQuerylogRuntimeWithSecrets(ctx, cfg, reg, logger, listedDomains, sinkSecrets)
 	if err != nil {
 		if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
 			return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
