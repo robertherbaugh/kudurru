@@ -230,6 +230,9 @@ kudurru removes the authenticator of the account and signs out its browser
 sessions. The person signs in with the password only. Then the person can
 set up a new authenticator.
 
+NOTE: The column **Actions** is at the right end of the table. In a window
+that is not wide, scroll the table to the right to see it.
+
 If you lost the authenticator of the only administrator, use a token from
 the host. Chapter 11 has the procedure:
 [Recover a lost authenticator](11-maintenance.md#recover-a-lost-authenticator).
@@ -264,6 +267,9 @@ To end a session:
 
 For the session of this browser, the button is **Revoke this session**.
 After you click it, the browser shows the sign-in page.
+
+NOTE: The column **Actions** is at the right end of the table. In a window
+that is not wide, scroll the table to the right to see it.
 
 A change of your password also ends the other sessions of the account.
 
