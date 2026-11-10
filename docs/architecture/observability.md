@@ -103,7 +103,7 @@ flowchart LR
     COL -->|"non-blocking offer,<br/>after privacy"| SQ[["one bounded queue per<br/>querylog.sinks entry<br/>10 000 events"]]
     SQ -->|"full: drop and count"| SDROP["kudurru_querylog_dropped_total<br/>{stage=sink, sink=name}"]
     SQ --> SW["one goroutine per sink<br/>batch, timeout, bounded attempts"]
-    SW --> EXT["additional sink<br/>(log lines today)"]
+    SW --> EXT["additional sink<br/>log lines, ClickHouse or Loki<br/>(one HTTP POST per batch)"]
     TAIL --> API["dashboard: live tail,<br/>block page reasons"]
     DB --> API2["dashboard: query log,<br/>stats, top lists,<br/>bounded JSON export"]
 ```
@@ -229,11 +229,73 @@ flush incomplete` is about the collector and `querylog.db` only. A sink that
 ignores cancellation keeps its goroutine and is never closed under its own
 write.
 
-The only type today is `slog` (one structured log line per query next to the
-database, at most one, and not together with `querylog.sink: slog`). The
-settings schema accepts exactly the types the server can build.
+The settings schema accepts exactly the types the server can build:
+
+| Type | What one batch is | Code |
+|---|---|---|
+| `slog` | one structured log line per query next to the database (at most one, and not together with `querylog.sink: slog`) | `internal/querylog/slog_sink.go` |
+| `clickhouse` | one `INSERT ... FORMAT JSONEachRow` request to the ClickHouse HTTP interface | `internal/querylog/sinks/clickhouse` |
+| `loki` | one push to `/loki/api/v1/push` in Loki's JSON format | `internal/querylog/sinks/loki` |
+
+#### The HTTP sinks
+
+`clickhouse` and `loki` are direct sinks: the server sends the batches
+itself, with the standard library HTTP client
+(`internal/querylog/sinks/httpbatch`) and no vendor SDK (D371, with the
+binary budget of D138 and D260 in mind). D371 keeps dnstap with a collector
+such as DNS-collector as the route to other destinations and to consumers of
+the DNS messages themselves; that output is separate work and not part of
+these sinks.
+
+```mermaid
+flowchart LR
+    SW["sink goroutine<br/>one batch"] --> REC["record.From(event)<br/>flat JSON object per query"]
+    REC -->|"clickhouse"| CHB["rows, one per line<br/>INSERT ... FORMAT JSONEachRow"]
+    REC -->|"loki"| LKB["streams by fixed labels,<br/>node and status_class;<br/>line = the record;<br/>client, domain, ... as<br/>structured metadata"]
+    CHB --> POST["httpbatch: one POST,<br/>own connection, gzip,<br/>no redirect followed"]
+    LKB --> POST
+    CRED["credential reference<br/>file / env: node grants<br/>secretRef: labeled Secret in<br/>the server's namespace"] -.->|"read at open and<br/>after a 401 or 403"| POST
+    POST -->|"2xx"| OK["stored: kudurru_sink_sent_total"]
+    POST -->|"no connection, or<br/>408, 429, 5xx"| RETRY["not stored: querylog.Retryable<br/>(Retry-After honored)"]
+    POST -->|"any other answer, or<br/>sent without an answer"| DROPPED["dropped and counted,<br/>never sent twice"]
+    RETRY -->|"within attempts"| POST
+```
+
+Both types export the same record (`internal/querylog/sinks/record`): the
+ClickHouse row and the Loki log line are one flat JSON object per query,
+whose field names are a contract with the table and the queries on the
+operator page. It is built from the event after the privacy transform, so a
+destination holds exactly what the local query log keeps. Loki streams
+carry only labels with few values (the fixed labels of the settings, the
+node and the status class); the values that differ per query are structured
+metadata.
+
+Each batch uses its own connection. That makes the two failure classes
+exact: an error before the connection exists means nothing was sent, and
+every later error without an answer means the outcome is unknown. Only the
+first is repeated. An answer of 408, 429 or 5xx is the destination saying
+"not stored" and is repeated within the attempt budget; every other answer
+drops the batch. Errors name the destination, the status and, for
+ClickHouse, the numeric exception code. They never repeat a response body,
+which can quote rows.
+
+A sink holds no credential in its settings, only a reference. The reference
+is resolved by the node's credential resolver (`internal/credentials`,
+`cmd/kudurru/querylog_sink_credentials.go`) with the rule stored provider
+objects follow: a file or an environment variable must be listed in the
+node's own `credentials.allowedFiles` or `credentials.allowedEnvironment`.
+A Secret is read only in the namespace the server runs in, and only when it
+carries the label `kudurru.io/query-log-sink: "true"`: the server's
+ServiceAccount can read every Secret there, its own keys included. A
+settings change alone can therefore not make a node send a file or a Secret
+to a destination. A reference that cannot be read keeps that sink from
+opening;
+the host retries the open with backoff. A sink reads the reference again
+when the destination answers 401 or 403, and repeats the refused batch when
+the value changed, which is how a rotated credential is picked up.
+
 [Additional query-log sinks](../deploy/query-log-sinks.md) is the operator
-guide.
+guide, with the ClickHouse table definition and the Loki mapping.
 
 **Privacy is applied once, at the collector**, before anything is stored or
 shown: `full`, `anonymize_client` (a /24 or /48 prefix, or a daily
