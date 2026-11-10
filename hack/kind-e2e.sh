@@ -33,7 +33,11 @@
 # IMAGE=<reference> tests an image that is already in the local Docker
 # daemon instead of building one (as hack/compose-e2e.sh does); it has to be
 # a -tags licensetest build, because the cluster installs the test license
-# key. The log names the image and the binary inside it either way.
+# key. IMAGE is always repository:tag, because the chart takes the two
+# separately: a digest reference or one without a tag is refused (tag the
+# image first). A prebuilt image that the daemon does not have, or that does
+# not accept the test license key, is refused before a cluster is created.
+# The log names the image and the binary inside it either way.
 # The jq filters are single-quoted on purpose: $name is a jq variable.
 # shellcheck disable=SC2016
 set -euo pipefail
@@ -46,8 +50,26 @@ REPLICAS=${REPLICAS:-3}
 FORWARD_CHECK=${FORWARD_CHECK:-1}
 DATABASE=${DATABASE:-1}
 BUILD=${BUILD:-1}
+# The chart is given ${IMAGE%:*} as image.repository and ${IMAGE##*:} as
+# image.tag (install_kudurru), which is only right for repository:tag. The
+# last path component decides: a registry may carry a port.
+case "${IMAGE##*/}" in
+*@*)
+  echo "IMAGE=$IMAGE is a digest reference; tag the image (docker tag) and pass repository:tag" >&2
+  exit 2
+  ;;
+*:?*) ;;
+*)
+  echo "IMAGE=$IMAGE has no tag; pass repository:tag" >&2
+  exit 2
+  ;;
+esac
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK=$(mktemp -d)
+# Set when this run starts creating the kind cluster: a run that stops
+# earlier (a refused image, a failed build) has no cluster to describe or
+# delete.
+CREATED=0
 # The pods of the Deployment (chart label helpers kudurru.selectorLabels).
 SELECTOR=app.kubernetes.io/name=kudurru,app.kubernetes.io/instance=kudurru,app.kubernetes.io/component=dns
 # DNS names asked through the LoadBalancer to put rows in the query log.
@@ -59,6 +81,10 @@ cleanup() {
   status=$?
   # Port-forwards of a request that was interrupted.
   jobs -p | xargs -r kill 2>/dev/null || true
+  if [ "$CREATED" != 1 ]; then
+    rm -rf "$WORK"
+    exit "$status"
+  fi
   if [ "$status" -ne 0 ]; then
     log "failure: cluster state"
     kubectl get nodes,pods,svc,endpointslices -A -o wide || true
@@ -323,12 +349,28 @@ if [ "$BUILD" = 1 ]; then
   docker build -q -t "$IMAGE" --build-arg VERSION=kind-e2e --build-arg COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)" --build-arg GOTAGS=licensetest "$ROOT"
 else
   log "prebuilt $IMAGE (BUILD=0)"
+  # docker run would try to pull a reference the daemon does not have.
+  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    echo "BUILD=0: the local Docker daemon has no image $IMAGE (docker pull or docker load it first)" >&2
+    exit 2
+  fi
 fi
 # The artifact under test, for the record of the run.
 docker run --rm --network none "$IMAGE" version
 docker image inspect --format 'image {{.Id}}' "$IMAGE"
+# The replicas get the test license key (install_kudurru). Only a
+# -tags licensetest build accepts it; any other image would start three
+# replicas that refuse the key, found minutes later. `license verify` is
+# offline and prints what the key grants, nothing secret.
+if ! docker run --rm -i --network none "$IMAGE" license verify - \
+  <"$ROOT/internal/license/testdata/e2e-license.key" >"$WORK/license.out" 2>&1; then
+  echo "$IMAGE does not accept the test license key; it has to be a -tags licensetest build:" >&2
+  sed 's/^/    /' "$WORK/license.out" >&2
+  exit 2
+fi
 
 log "kind cluster $CLUSTER (control-plane and three workers)"
+CREATED=1
 kind create cluster --name "$CLUSTER" --config "$ROOT/hack/kind/cluster.yaml" --wait 180s
 # kind's workers carry no label that keeps MetalLB's speaker away, but the
 # control-plane node does; remove it everywhere so the address can be
