@@ -207,6 +207,29 @@ MAC/hostname discovery are not populated by these listeners.
    policy. Old rollups still include the gateway's historical queries;
    use a time window beginning after the change.
 
+## The primary of an enrolled SQLite cluster is lost
+
+Symptoms: the API and the dashboard of the primary do not answer. The
+followers answer DNS as before, but a change through a follower and a
+password sign-in on a follower answer 503.
+
+DNS is not affected: every follower keeps answering from the last state it
+installed, also after a restart. Nothing is promoted automatically.
+
+1. Decide whether the primary comes back soon. If it does, wait: the
+   followers catch up by themselves when it returns.
+2. Otherwise make sure that the old primary is stopped or isolated, choose
+   one follower and promote it with a CLI context that uses a token:
+   [Promote a follower](sqlite-cluster.md#5-promote-a-follower).
+3. Point the dashboard, the CLI, your automation and RFC 2136 update clients
+   at the new primary.
+4. When the old primary is repaired, start it with its own data directory.
+   It becomes a follower by itself
+   ([When the old primary returns](sqlite-cluster.md#6-when-the-old-primary-returns)).
+
+If two followers were promoted, see
+[Recover from conflicting promotions](sqlite-join.md#recover-from-conflicting-promotions).
+
 ## Rotating the encryption key
 
 The cluster encryption key (`KUDURRU_ENCRYPTION_KEY_FILE`) seals sessions
