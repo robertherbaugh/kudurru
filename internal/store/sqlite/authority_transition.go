@@ -195,7 +195,9 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 			return a, err
 		}
 	}
-	if err := operation.prepareInstall(image); err != nil {
+	// The kept branch becomes the base of the new term allocated below in this
+	// same transaction, so its managed owner is adopted by term (D369).
+	if err := operation.prepareInstall(image, true); err != nil {
 		return a, err
 	}
 	if err := s.replaceReplicaRows(ctx, tx, image); err != nil {

@@ -301,6 +301,72 @@ func anchorLocalForOwner(old *anchorLocal, next *anchorCursor, member string) (*
 	return advanceAnchorLocal(old, r)
 }
 
+// anchorLocalForAdoption is the carrier of a member that replaces its managed
+// owner with the authoritative branch's owner (D369). It is a bounded pure
+// postimage computation like anchorLocalForOwner; the caller supplies the
+// original local CAS and has already run anchorAdoption.
+//
+// The floor is rebased onto the adopted owner, because the abandoned branch
+// counted its own generations and its floor may lie at or above the adopted
+// one. Nothing this member knows to be revoked is dropped: every key its
+// abandoned owner revoked and every key it denied locally stays in the denial.
+// While one of them is not revoked by the adopted owner, the adopted generation
+// itself stays retired, exactly as after a local denial, so the member
+// publishes nothing under that owner until a canonical successor carries the
+// tombstone (anchorLocalForOwner then reopens it). A terminal carrier stays
+// terminal.
+func anchorLocalForAdoption(old *anchorLocal, before, next *anchorCursor, member string) (*anchorLocal, error) {
+	if old == nil || !anchorAdopts(before, next) || old.record.Phase != "managed" {
+		return nil, ErrAnchorUnavailable
+	}
+	root := next.owner.Inspect()
+	r := old.record
+	if root.Phase != accepted.Managed || r.Member != member || r.Cluster != root.ClusterID || r.History != root.HistoryID || r.Domain != hex.EncodeToString(next.mark.DomainID[:]) || r.Owner != before.owner.Version() {
+		return nil, accepted.ErrCAS
+	}
+	known, err := anchorRevoked(before)
+	if err != nil {
+		return nil, err
+	}
+	revoked, err := anchorRevoked(next)
+	if err != nil {
+		return nil, err
+	}
+	r.Owner = next.owner.Version()
+	r.Denied = slices.Clone(r.Denied)
+	for i := range r.Denied {
+		// A receipt cannot name a generation above its carrier's owner. The
+		// abandoned branch's later receipts are restated at the adopted owner.
+		if r.Denied[i].FirstOwner.Generation > r.Owner.Generation {
+			r.Denied[i].FirstOwner = r.Owner
+		}
+	}
+	saturated := false
+	for _, id := range slices.Concat(known, revoked) {
+		if slices.ContainsFunc(r.Denied, func(d anchorLocalRevocation) bool { return d.ID == id }) {
+			continue
+		}
+		if len(r.Denied) == anchorLocalMaxRevocations {
+			saturated = true
+			break
+		}
+		r.Denied = append(r.Denied, anchorLocalRevocation{ID: id, FirstOwner: r.Owner})
+	}
+	slices.SortFunc(r.Denied, func(a, b anchorLocalRevocation) int { return strings.Compare(a.ID, b.ID) })
+	if saturated || r.Terminal {
+		r.Terminal, r.RetiredThrough = true, math.MaxUint64
+		return advanceAnchorLocal(old, r)
+	}
+	r.RetiredThrough = r.Owner.Generation - 1
+	for _, d := range r.Denied {
+		if !slices.Contains(revoked, d.ID) {
+			r.RetiredThrough = r.Owner.Generation
+			break
+		}
+	}
+	return advanceAnchorLocal(old, r)
+}
+
 func advanceAnchorLocal(old *anchorLocal, r anchorLocalRecord) (*anchorLocal, error) {
 	if old.record.Revision == math.MaxUint64 {
 		return nil, ErrAnchorUnavailable

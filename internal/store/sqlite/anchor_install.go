@@ -279,7 +279,13 @@ func (o *anchorOperation) enterInstall(ctx context.Context, s *Store, tx queryer
 	return nil
 }
 
-func (o *anchorOperation) prepareInstall(image replication.Image) error {
+// prepareInstall stages the image's owner. byTerm is true only when the caller
+// has verified, in this transaction, that the image belongs to a strictly
+// higher authority term than the installed generation, or is the branch an
+// explicit resolution keeps while it allocates a new term. Then a different
+// managed owner is adopted by term (D369); every other install keeps the strict
+// successor rule.
+func (o *anchorOperation) prepareInstall(image replication.Image, byTerm bool) error {
 	next, err := decodeAnchorCursor(image.Payload.Runtime, image.Term.ClusterID)
 	if err != nil {
 		return err
@@ -290,7 +296,12 @@ func (o *anchorOperation) prepareInstall(image replication.Image) error {
 		}
 	}
 	if o.before.local != nil {
-		if err := anchorSuccessor(o.before, next, true); err != nil {
+		if byTerm && anchorAdopts(o.before, next) {
+			if err := anchorAdoption(o.before, next); err != nil {
+				return err
+			}
+			o.adoption = true
+		} else if err := anchorSuccessor(o.before, next, true); err != nil {
 			return err
 		}
 	}

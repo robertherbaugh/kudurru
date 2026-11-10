@@ -347,12 +347,16 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 	if a.InstallSequence == math.MaxUint64 || a.Incarnation == math.MaxUint64 {
 		return replication.Generation{}, replication.ErrInvalid
 	}
-	if current.Term.ClusterID != "" && !current.Term.Same(image.Term) {
+	// The image term equals the authority term checked above, which only ever
+	// moves to a higher epoch, so a different installed term is an older one.
+	// The explicit epoch comparison keeps that an invariant of this line.
+	crossTerm := current.Term.ClusterID != "" && !current.Term.Same(image.Term)
+	if crossTerm {
 		if err := s.quarantine(ctx, tx); err != nil {
 			return replication.Generation{}, err
 		}
 	}
-	if err := operation.prepareInstall(image); err != nil {
+	if err := operation.prepareInstall(image, crossTerm && image.Term.Epoch > current.Term.Epoch); err != nil {
 		return replication.Generation{}, err
 	}
 	if err := s.replaceReplicaRows(ctx, tx, image); err != nil {

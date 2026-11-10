@@ -552,6 +552,70 @@ every step. A larger gap remains a terminal clock refusal for that authority
 epoch or writer term. Hold-down credit is unaffected: it still comes only from
 checkpointed monotonic progress inside one process session.
 
+#### Divergent owner history across promotion, rejoin and resolution (D369)
+
+Every authenticated observation by an elected writer adds one generation to the
+accepted owner. Two writers of one history therefore count separately: an old
+primary that polled after its follower's last pull, a promoted follower that
+polled after its promotion, and both sides of a promotion conflict. Their
+generations and update times do not order their branches. The authority term
+does.
+
+| Install | Rule for a different managed owner |
+|---|---|
+| Same term as the installed image | Strict successor: greater envelope and pure generation, update time not earlier, recovery records retained, every installed revocation retained |
+| Higher term than the installed image (`InstallReplica` after a promotion or a resolution) | Adopted by term, whatever its generation or update time |
+| The branch a resolution keeps (`ResolveConflict`, `ResolveAudited`) | Adopted by term, in the transaction that allocates the new term |
+
+An unchanged owner, the first install on a joined receiver and the first
+managed owner over a dormant one are not adoptions and keep their existing rules.
+A managed owner is never replaced by a dormant one.
+
+Adoption still requires the same cluster, history, initialization time, policy,
+seed digest and resolver domain, and the incoming state must retain every
+recovery record the member accepted. Without that the install is refused, the
+member stays fenced and keeps serving its own branch as DNS-only data.
+
+```mermaid
+flowchart TD
+  I[Complete image from the authoritative primary] --> T{Higher term than the installed image, or kept by a resolution?}
+  T -- no --> S[Strict successor rule]
+  T -- yes --> D{Different managed owner?}
+  D -- no --> S
+  D -- yes --> H{Same history, policy, seeds and domain, with recovery records retained?}
+  H -- no --> R[Refuse. The member stays fenced on its own branch]
+  H -- yes --> C[Carry every key this member revoked or denied into the local denial]
+  C --> P{Does the adopted owner revoke all of them?}
+  P -- yes --> O[Local floor one below the adopted generation. Publish]
+  P -- no --> N[Local floor at the adopted generation. Publish nothing]
+  N --> W[Canonical writer observes the signed REVOKE] --> X[Same-term successor carries the tombstone. Publish]
+```
+
+No revocation is lost by adopting a branch that has not seen it. The member's
+node-local denial keeps every key its abandoned owner revoked and every key its
+own supervisor denied. While the adopted owner does not revoke one of them, the
+adopted generation itself stays retired: the member installs the image, follows
+the new term and publishes no resolver input, as after a local denial. A later
+image in that term that still omits the tombstone is refused by the unchanged
+same-term rule. The member publishes again when the canonical writer has
+recorded the same revocation. A denial that no longer fits its bounded list, or
+a carrier that was already terminal, stays terminal.
+
+The node-local floor and the in-memory retirement gate are rebased onto the
+adopted owner in the same transaction as the owner rows, the image and the
+quarantine of the abandoned branch, because that branch's floor can lie at or
+above the adopted generation. `Change.StageRebase` is the only gate transition
+that can lower the floor. It needs an installed owner of the same domain and a
+floor that retires every generation below the adopted one, and it clears the
+registration, so nothing issued for the replaced owner can read again. The
+adopted owner can be one the member held before (an old primary returns to the
+owner its promoted follower never left), so the gate also counts rebases and
+refuses every write attempt captured before one, even when its expected mark is
+installed again; the source's exact cursor identity refuses such an attempt
+independently. A restart restores exactly the same gate from the committed
+carrier. A denial receipt that named a generation above the adopted owner is
+restated at the adopted owner.
+
 The `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit
 states with no fallback keys. Detached domain and owner identities bind history,

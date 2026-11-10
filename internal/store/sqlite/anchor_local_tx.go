@@ -260,7 +260,13 @@ func (o *anchorOperation) stageLocal(next *anchorCursor) error {
 	if o.localTx == nil {
 		return ErrAnchorUnavailable
 	}
-	local, err := anchorLocalForOwner(old, next, o.member)
+	var local *anchorLocal
+	var err error
+	if o.adoption {
+		local, err = anchorLocalForAdoption(old, o.before, next, o.member)
+	} else {
+		local, err = anchorLocalForOwner(old, next, o.member)
+	}
 	if err != nil {
 		return err
 	}

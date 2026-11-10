@@ -139,6 +139,7 @@ type anchorOperation struct {
 	expectedInstalled *replication.Generation
 	originalLife      *anchorOriginalLifetime
 	awaitingInstall   bool                   // explicitly captured pre-owner lane, never a managed permit
+	adoption          bool                   // D369: this install replaces a managed owner by authority term, not by generation
 	installed         replication.Generation // original installation baseline, zero for commands/static legacy
 	change            *retirement.Change
 	scope             *retirement.WriteScope
@@ -208,7 +209,16 @@ func (o *anchorOperation) prepare(next *anchorCursor) error {
 		next = o.before
 	}
 	if o.change != nil && next.mark != (retirement.Mark{}) {
-		if err := o.change.Stage(next.mark); err != nil {
+		if o.adoption {
+			// The gate takes the exact floor committed with the adopted owner
+			// in this transaction; a restart restores the same value.
+			if next.local == nil {
+				return ErrAnchorUnavailable
+			}
+			if err := o.change.StageRebase(next.mark, next.local.record.RetiredThrough); err != nil {
+				return err
+			}
+		} else if err := o.change.Stage(next.mark); err != nil {
 			return err
 		}
 	}
@@ -531,6 +541,48 @@ func anchorSuccessor(old, next *anchorCursor, install bool) error {
 				return accepted.ErrCAS
 			}
 		}
+	}
+	return nil
+}
+
+// anchorAdopts reports whether an install that may adopt by authority term
+// replaces one managed owner with a different managed owner. Every other
+// install, including the first one, an unchanged owner and any change of phase,
+// stays on anchorSuccessor.
+func anchorAdopts(old, next *anchorCursor) bool {
+	return old != nil && next != nil && !old.awaiting && !next.awaiting && old.mark != (retirement.Mark{}) && next.mark != (retirement.Mark{}) && !sameAnchorCursor(old, next)
+}
+
+// anchorAdoption admits the authoritative branch's managed owner for an
+// install performed under a higher authority term or an explicit resolution
+// (D369). Two writers of one history each count their own generations and
+// stamp their own clocks, so neither generation nor UpdatedAt orders their
+// branches; the term that the caller already verified does. What identifies the
+// history still binds: cluster, history, initialization, policy, seeds and
+// domain, and the recovery records this member accepted. Revocations are not
+// compared here because none may be lost: anchorLocalForAdoption carries every
+// key this member revoked or denied into the adopted owner's local carrier.
+func anchorAdoption(old, next *anchorCursor) error {
+	if !anchorAdopts(old, next) {
+		return accepted.ErrCAS
+	}
+	before, after := old.owner.Inspect(), next.owner.Inspect()
+	if before.ClusterID != after.ClusterID || before.HistoryID != after.HistoryID || !before.InitializedAt.Equal(after.InitializedAt) {
+		return accepted.ErrCAS
+	}
+	if before.Phase != accepted.Managed || after.Phase != accepted.Managed || old.mark.DomainID != next.mark.DomainID || after.PolicyID != before.PolicyID || after.SeedDigest != before.SeedDigest {
+		return accepted.ErrCAS
+	}
+	oldState, err := old.owner.State()
+	if err != nil {
+		return err
+	}
+	newState, err := next.owner.State()
+	if err != nil {
+		return err
+	}
+	if !newState.RetainsRecoveryHistory(oldState) {
+		return accepted.ErrCAS
 	}
 	return nil
 }

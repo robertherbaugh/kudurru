@@ -369,3 +369,37 @@ behind the primary waits for its own clock and logs
 anchor checks (a follower, fenced or conflicted member) or its trust-anchor
 updates (a newly promoted primary) with `invalid clock continuity` until the
 clock is fixed and kudurru is restarted, or until the primary changes again.
+
+### A member returns with different trust-anchor state
+
+The old primary and the promoted primary can each have updated the trust-anchor
+state on their own, and so can both sides of a promotion conflict. The member
+that returns, or that lost the resolution, takes the current primary's
+trust-anchor state with the rest of that primary's data on its next scheduled
+pull. Its own state is kept with its other discarded rows as private quarantine.
+You do not need to do anything.
+
+Three cases need attention:
+
+- **The returning member saw a key revocation that the current primary has not
+  recorded yet.** The member installs the primary's data and then answers
+  `SERVFAIL` instead of trusting that key again. It recovers on its own after the
+  primary's next root-anchor check records the same revocation, which follows the
+  primary's refresh schedule (at the real root, within about a day). Check that
+  the primary can reach the configured root servers on TCP 53.
+- **The two disagree about `anchors recover` history.** The returning member
+  holds a recovery record that the current primary does not have, or the primary
+  recovered after the split while the returning member's own trust-anchor state
+  had already moved at least as far. The member refuses the primary's data,
+  stays fenced and keeps serving its own last-good DNS. That database cannot
+  follow the current primary. Replace the member with a newly joined receiver
+  (a new invitation and a new data directory, as described at the top of this
+  page).
+- **The returning member had managed trust anchors and the current primary never
+  started them.** The member refuses in the same way and stays fenced until
+  the primary has bootstrapped managed trust anchors with the same seeds, or
+  until you replace the member with a newly joined receiver.
+
+In the last two cases the member stays fenced after the other members have
+followed the current primary, and it keeps answering DNS from its own last-good
+data in the meantime.
