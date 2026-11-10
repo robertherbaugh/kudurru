@@ -1,5 +1,9 @@
 # Join a new SQLite receiver
 
+This page is the detail of one step of the
+[enrolled SQLite cluster](sqlite-cluster.md) guide, which starts with the
+activation of the first primary and also covers promotion.
+
 This path requires an activated SQLite primary running the enrolled internal
 listener and a private invitation issued for the receiver's exact name and
 internal address. It is separate from static twins and Kubernetes storage.

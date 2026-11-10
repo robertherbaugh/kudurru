@@ -13,6 +13,7 @@ If kudurru already runs, go to [Sign in](/guide/first-steps/sign-in/).
 |---|---|---|
 | One container or a Linux package | SQLite on a persistent volume | [Docker and packages](/deploy/docker/) |
 | Three hosts with a virtual IP | Identical file-managed configuration on each host | [Compose HA](/deploy/compose-ha/) |
+| Several SQLite nodes that replicate | The SQLite database of one primary; followers copy it and an operator promotes one when the primary is lost | [Enrolled SQLite cluster](/deploy/sqlite-cluster/) |
 | Kubernetes, several replicas | CRDs in the apiserver | [Helm](/deploy/helm/), [kustomize](/deploy/kustomize/) |
 | Kubernetes, one standalone node | SQLite on a PersistentVolumeClaim | [Helm standalone mode](/deploy/helm/#modestandalone) |
 

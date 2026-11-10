@@ -25,6 +25,9 @@ entitlement; eligible personal users can request a free key. Each node is
 an independent SQLite instance. `cluster.role: static` mounts the configured
 `cluster.peers` for authenticated peer status and refuses API object and
 cluster-setting writes, including API-owned objects. Distribute the same files
-to every node; blocking toggles and cache controls remain local. Follower
-replication and enrollment are separate work. The guide is
+to every node; blocking toggles and cache controls remain local. These files
+do not set up replication: SQLite nodes that replicate from one primary are
+the separate enrolled cluster shape
+([docs/deploy/sqlite-cluster.md](../../../docs/deploy/sqlite-cluster.md)),
+which `cluster.role: static` excludes. The guide for this directory is
 [docs/deploy/compose-ha.md](../../../docs/deploy/compose-ha.md).

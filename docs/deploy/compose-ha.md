@@ -27,6 +27,14 @@ kudurru, dnsdist and keepalived from `deploy/compose/ha/node-{a,b,c}`.
 The `kudurru-dnsdist` and `kudurru-keepalived` images (supervisors
 `kudurru edge run` and `kudurru vip run`) are milestone M4 deliverables.
 
+Static twins do not replicate: you distribute the files, and the API accepts
+no object changes. For SQLite nodes that take changes through the API and the
+dashboard and copy them to the other nodes, see the
+[enrolled SQLite cluster](sqlite-cluster.md). It is a different shape: a
+database that is enrolled does not start with `cluster.role: static`. The
+compose files of this page are not set up for it, and its acceptance behind
+a keepalived VIP on separate machines has not been run.
+
 ## Prepare every host
 
 The dnsdist and keepalived containers need a license key that includes the
