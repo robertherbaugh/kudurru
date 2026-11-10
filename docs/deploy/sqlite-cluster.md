@@ -60,10 +60,15 @@ stateDiagram-v2
   an API token on the primary and save one CLI context for each member with
   it, for example
   `kudurru login --server https://node-b.example:8080 --name node-b --token-stdin`.
-  A follower accepts a new token after its next pull. Do not rely on a
-  password for a follower: a password sign-in on a follower is checked by
-  the primary, so it fails in the very situation in which you want to
-  promote. A token is checked by the follower itself.
+  A follower accepts a new token after its next pull, and it checks a token
+  itself, also while the primary is away. Do not plan to sign in to a
+  follower with a password. In this version `kudurru login --username` does
+  not work against a follower, whether or not the primary is up: a follower
+  cannot create the API token that the CLI saves, and the command ends with
+  `mint a CLI token: ... request failed`. A password sign-in in the browser
+  is checked by the primary, so on a follower it works only while the
+  primary is reachable, and it fails in the very situation in which you want
+  to promote.
 - **Synchronized clocks.** An invitation is valid for at most ten minutes, and
   the members authenticate each other with certificates.
 
