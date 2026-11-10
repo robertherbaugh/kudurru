@@ -264,12 +264,153 @@ func TestQuerylogRuntimeSlogSinkWritesQueryLines(t *testing.T) {
 	}
 }
 
+// TestQuerylogRuntimeQueryInFlightAtSinkChangeIsCounted is the exact form of
+// the race on the reload subscriber of the Kubernetes driver. A query reads
+// the collector's adopted route and is then queued (Async.Enqueue). A reload
+// that changes the sink's entry between those two steps returns the route's
+// references, so the query finds its sink retired. The test stands where
+// that query is: it holds the route the query read and queues through it
+// after the reload. The query is recorded in querylog.db, it is not handed
+// to the entry's new sink, and it is counted as dropped for the name. Once
+// the entry is removed, a late query counts nothing and brings no series
+// back.
+func TestQuerylogRuntimeQueryInFlightAtSinkChangeIsCounted(t *testing.T) {
+	doubles := useExportDoubles(t)
+	first := doubles.add("export", &exportSink{})
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Node.DataDir = t.TempDir()
+	cfg.Querylog.Exclude.SUDN = false
+	cfg.Querylog.Sinks = []config.QuerylogSink{{Name: "export", Type: config.QuerylogSinkSlog, BatchSize: 1}}
+	reg := prometheus.NewRegistry()
+	logger := slog.New(slog.DiscardHandler)
+	r, err := newQuerylogRuntime(t.Context(), cfg, reg, logger, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.close(context.Background()) })
+	reload := config.NewReloadable(cfg)
+	subscribeReload(t.Context(), reload, reloadTargets{logger: logger, qlOwner: r})
+	current := cfg
+	apply := func(sinks []config.QuerylogSink) {
+		t.Helper()
+		next := *current
+		next.Querylog.Sinks = sinks
+		reload.Set(&next)
+		current = &next
+		if ok, why := r.ready(); !ok {
+			t.Fatal("reload was not applied:", why)
+		}
+	}
+	event := func(name string) *querylog.Event {
+		return &querylog.Event{Time: time.Now(), Name: name, Client: netip.MustParseAddr("192.0.2.8"), QType: 1, QClass: 1}
+	}
+	wait := func(what string, cond func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for !cond() {
+			if time.Now().After(deadline) {
+				t.Fatal("timed out waiting for", what)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	rows := func() int64 {
+		t.Helper()
+		page, err := r.reader().Queries(t.Context(), sqlitelog.QueryFilter{Limit: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return page.RecordsTotal
+	}
+	dropped := func() (float64, bool) {
+		t.Helper()
+		return gatherSinkMetric(t, reg, "kudurru_querylog_dropped_total", map[string]string{"stage": "sink", "sink": "export"})
+	}
+	sent := func() (float64, bool) {
+		t.Helper()
+		return gatherSinkMetric(t, reg, "kudurru_sink_sent_total", map[string]string{"sink": "export"})
+	}
+
+	// The route Async.Enqueue loads before it queues.
+	read := r.current.Load()
+	if !r.async.Enqueue(event("before.example.")) {
+		t.Fatal("the collector refused the first query")
+	}
+	wait("the first sink to write", func() bool { return len(first.names()) == 1 })
+
+	// The reload lands: the same name with one field changed is a new sink.
+	second := doubles.add("export", &exportSink{})
+	apply([]config.QuerylogSink{{Name: "export", Type: config.QuerylogSinkSlog, BatchSize: 1, QueueSize: 500}})
+	wait("the replaced sink to close", func() bool { _, closes, _ := first.counts(); return closes == 1 })
+	// Only now does the query that had read the replaced route reach the
+	// queue. The collector is first in, first out, so it has dealt with this
+	// query before the new sink receives the next one.
+	if !read.Enqueue(event("in-flight.example.")) {
+		t.Fatal("the collector refused the query in flight")
+	}
+	if !r.async.Enqueue(event("after.example.")) {
+		t.Fatal("the collector refused a query after the reload")
+	}
+	wait("the new sink to write", func() bool { return len(second.names()) == 1 })
+	wait("querylog.db to hold all three queries", func() bool { return rows() == 3 })
+	if got := first.names(); !reflect.DeepEqual(got, []string{"before.example."}) {
+		t.Errorf("the replaced sink wrote %v", got)
+	}
+	if got := second.names(); !reflect.DeepEqual(got, []string{"after.example."}) {
+		t.Errorf("the new sink wrote %v: a query of the replaced route must not move to it", got)
+	}
+	if got, _ := dropped(); got != 1 {
+		t.Errorf("kudurru_querylog_dropped_total{stage=sink,sink=export} = %v, want 1: the query in flight reached no sink and must be counted", got)
+	}
+	if got, _ := sent(); got != 2 {
+		t.Errorf("kudurru_sink_sent_total{sink=export} = %v, want 2", got)
+	}
+	if got, _ := gatherSinkMetric(t, reg, "kudurru_querylog_dropped_total", map[string]string{"stage": "queue"}); got != 0 {
+		t.Errorf("the collector queue dropped %v queries", got)
+	}
+
+	// Remove the entry. A query that read the route before the removal is
+	// owed to no sink: nothing is counted and the removed series stay gone.
+	read = r.current.Load()
+	apply(nil)
+	wait("the removed sink to close", func() bool { _, closes, _ := second.counts(); return closes == 1 })
+	wait("the removed sink's series to go", func() bool { _, found := sent(); return !found })
+	if _, found := dropped(); found {
+		t.Error("a removed sink keeps its drop series")
+	}
+	if !read.Enqueue(event("after-removal.example.")) {
+		t.Fatal("the collector refused the late query")
+	}
+	wait("querylog.db to hold the late query", func() bool { return rows() == 4 })
+	if _, found := dropped(); found {
+		t.Error("a late query brought back the drop series of a removed sink")
+	}
+	if _, found := sent(); found {
+		t.Error("a late query brought back the removed sink")
+	}
+	if got := len(second.names()); got != 1 {
+		t.Errorf("the removed sink wrote %d queries, want the one before its removal", got)
+	}
+}
+
 // TestQuerylogRuntimeChangedSinkEntryCountsQueriesInFlight drives the reload
 // subscriber of the Kubernetes driver while queries keep arriving. Every
 // change of the entry replaces the sink, and a query that read the replaced
 // route just before the swap can find its sink retired. Each query the
 // collector accepted is then written once by an instance of the sink or
-// counted as dropped for its name; none disappears.
+// counted as dropped for its name; none disappears and none is written
+// twice.
+//
+// The primary sink is the log-line sink with a discarding logger, so that
+// the collector keeps up with the queries. With the SQLite writer under the
+// race detector the collector spends most of a second inside each batch, the
+// queue stays full, a sink retires only behind that full queue, and no query
+// can be caught in flight: the test then passes whether or not such a query
+// is counted. Whether a run catches a query is still a matter of timing; the
+// exact case is TestQuerylogRuntimeQueryInFlightAtSinkChangeIsCounted.
 func TestQuerylogRuntimeChangedSinkEntryCountsQueriesInFlight(t *testing.T) {
 	doubles := useExportDoubles(t)
 	export := doubles.add("export", &exportSink{})
@@ -279,6 +420,7 @@ func TestQuerylogRuntimeChangedSinkEntryCountsQueriesInFlight(t *testing.T) {
 	}
 	cfg.Node.DataDir = t.TempDir()
 	cfg.Querylog.Exclude.SUDN = false
+	cfg.Querylog.Sink = "slog"
 	entry := func(batch int) []config.QuerylogSink {
 		return []config.QuerylogSink{{Name: "export", Type: config.QuerylogSinkSlog, BatchSize: batch}}
 	}
