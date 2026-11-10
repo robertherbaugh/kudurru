@@ -47,6 +47,9 @@ type anchorFollowerPoller struct {
 	// final original-authority check succeeded. It cannot represent an error,
 	// local denial, incomplete transport or a merely staged observation.
 	normalCompleted bool
+	// wall reads this node's wall clock for the checkpoint comparison only; nil
+	// means time.Now. Samples, receipts and stored state never use it.
+	wall func() time.Time
 }
 
 type anchorFollowerStep struct {
@@ -55,6 +58,26 @@ type anchorFollowerStep struct {
 	retired          bool
 	result           anchorFollowerCompletion
 	acquisitionError error
+	// clockWait is how far this node's wall clock trails the installed
+	// checkpoint when the step deferred its acquisition for that reason.
+	clockWait time.Duration
+}
+
+// anchorCheckpointWait compares this node's wall clock with the wall time of
+// the committed checkpoint it is about to observe against (D369). A member
+// whose clock trails the writer of that checkpoint by no more than the pure
+// state machine's ClockTolerance waits until its own clock reaches it; the
+// wait starts no acquisition and creates no sample, receipt or state. A larger
+// gap is not skew between healthy members and stays a terminal ErrClock.
+func anchorCheckpointWait(now, checkpoint time.Time) (time.Duration, error) {
+	behind := checkpoint.Sub(now)
+	if behind <= 0 {
+		return 0, nil
+	}
+	if behind > trustanchors.ClockTolerance {
+		return 0, trustanchors.ErrClock
+	}
+	return behind, nil
 }
 
 func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerStep, err error) {
@@ -89,8 +112,19 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 		return step, err
 	}
 	now := time.Now()
-	if now.Before(state.Inspect().Checkpoint.Wall) {
-		return step, trustanchors.ErrClock
+	if u.wall != nil {
+		now = u.wall()
+	}
+	checkpoint := state.Inspect().Checkpoint.Wall
+	step.clockWait, err = anchorCheckpointWait(now, checkpoint)
+	if err != nil {
+		return step, err
+	}
+	if step.clockWait > 0 {
+		// Nothing was acquired. A later step captures a fresh operation once
+		// this node's own clock has reached the installed checkpoint.
+		step.next = checkpoint
+		return step, nil
 	}
 	step.next = now
 	if u.nextFor == op.identity && u.nextAt.After(now) {
@@ -172,6 +206,9 @@ func (s *servingRuntime) runAnchorFollowerEpoch(ctx context.Context, epoch ancho
 		}
 		if step.acquisitionError != nil {
 			slog.Warn("follower root anchor acquisition failed; new attempt scheduled", "next", step.next)
+		}
+		if step.clockWait > 0 {
+			slog.Warn("root anchor supervision waits for this node's clock to reach the installed checkpoint; check time synchronization", "behind", step.clockWait.Round(time.Millisecond))
 		}
 		timer := time.NewTimer(min(time.Minute, max(time.Second, time.Until(step.next))))
 		woke := false

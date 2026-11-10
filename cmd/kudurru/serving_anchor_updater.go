@@ -49,6 +49,9 @@ type anchorUpdater struct {
 	retryFor anchorRetrySource
 	retryAt  time.Time
 	stopped  error
+	// wall reads this node's wall clock for the checkpoint comparison only; nil
+	// means time.Now. Samples, receipts and stored state never use it.
+	wall func() time.Time
 }
 
 type anchorPollStep struct {
@@ -56,6 +59,9 @@ type anchorPollStep struct {
 	attempted        bool
 	completion       anchorCompletion
 	acquisitionError error
+	// clockWait is how far this node's wall clock trails the committed
+	// checkpoint when the step could not be due for that reason.
+	clockWait time.Duration
 }
 
 // step creates and cancels one finite original attempt before returning any
@@ -77,6 +83,9 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 		return step, err
 	}
 	now := time.Now()
+	if u.wall != nil {
+		now = u.wall()
+	}
 	if op == nil {
 		step.next = now.Add(time.Minute)
 		return step, nil
@@ -90,10 +99,17 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 			return step, err
 		}
 		view := state.Inspect()
-		if now.Before(view.Checkpoint.Wall) {
-			return step, trustanchors.ErrClock
+		// A newly elected writer whose clock trails the previous writer's last
+		// checkpoint by a small skew must not lose the updater for its whole
+		// term (D369). Within the tolerance it is simply not due yet.
+		step.clockWait, err = anchorCheckpointWait(now, view.Checkpoint.Wall)
+		if err != nil {
+			return step, err
 		}
 		step.next = view.Schedule.NextRefresh
+		if step.clockWait > 0 && step.next.Before(view.Checkpoint.Wall) {
+			step.next = view.Checkpoint.Wall
+		}
 	}
 	identity := anchorRetryIdentity(op)
 	if u.retryFor == identity && u.retryAt.After(step.next) {
@@ -168,6 +184,9 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 		}
 		if step.acquisitionError != nil {
 			slog.Warn("root anchor transport acquisition failed; new attempt scheduled", "next", step.next)
+		}
+		if step.clockWait > 0 {
+			slog.Warn("root anchor updater waits for this node's clock to reach the committed checkpoint; check time synchronization", "behind", step.clockWait.Round(time.Millisecond))
 		}
 		// Periodic rechecks bound reaction to clock or canonical policy changes.
 		// A source wake cannot turn into an unbounded acquisition/read loop.

@@ -212,3 +212,10 @@ revocation of a trusted key, it retires its current trust-anchor state
 immediately and answers `SERVFAIL` until it installs a newer state from the
 primary. These members therefore still need outbound TCP 53 to the configured
 root servers.
+
+Keep member clocks synchronized. A member whose clock is up to five minutes
+behind the primary waits for its own clock and logs
+`check time synchronization`. A member that is further behind stops its root
+anchor checks (a follower, fenced or conflicted member) or its trust-anchor
+updates (a newly promoted primary) with `invalid clock continuity` until the
+clock is fixed and kudurru is restarted, or until the primary changes again.

@@ -505,7 +505,7 @@ refused operation. A completed normal operation may be followed by a new capture
 source; an unchanged owner/settings identity retains its existing cooldown. Full automatic HA enrollment, forwarding and partition/rejoin
 qualification remain separate.
 
-#### Fenced and conflicted members (D369)
+#### Fenced and conflicted members, and member clock skew (D369)
 
 Managed admission is split in two. Serving admission lets a member publish and
 answer from its last accepted managed owner in every role that can hold one.
@@ -533,6 +533,16 @@ child per member, term and role. A role change inside a term (fenced to follower
 by install, or to conflict or divergence) is a durable authority transition, so
 it joins the old child and admits one new child; ordinary installs still cannot
 rearm a terminal result.
+
+The poller and the updater compare this node's wall clock with the wall time of
+the committed checkpoint before acquiring. A node whose clock trails that
+checkpoint by at most five minutes (`trustanchors.ClockTolerance`) waits until
+its own clock reaches it and then continues: the follower or DNS-only poller
+acquires once, and the updater returns to the accepted refresh schedule. The
+wait acquires nothing, writes nothing and logs a time-synchronization warning.
+A larger gap remains a terminal clock refusal for that authority epoch or
+writer term. Hold-down credit is unaffected: it still comes only from
+checkpointed monotonic progress inside one process session.
 
 The `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit

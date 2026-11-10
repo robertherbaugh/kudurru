@@ -168,3 +168,55 @@ func TestAnchorUpdaterRunJoinsOriginalWait(t *testing.T) {
 		t.Fatal("canceled updater failed to join")
 	}
 }
+
+// A newly elected writer starts a new session clock. If its wall clock trails
+// the previous writer's committed checkpoint by a small skew, the first step
+// used to return ErrClock and the writer adapter kept that terminal result for
+// the whole elected term. Within the tolerance it is only not due yet: no
+// acquisition, no state change and no credit. Beyond it the refusal stays.
+func TestAnchorUpdaterCheckpointSkewWaitsWithinToleranceAndRefusesBeyond(t *testing.T) {
+	endpoint, seeds, reads := anchorOperationServer(t, 2, nil)
+	s, ctx, target, host := anchorOperationFixture(t, endpoint, seeds)
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := &anchorUpdater{runtime: s, target: target, host: host, clock: clock}
+	if first, err := original.step(ctx); err != nil || !first.attempted || first.clockWait != 0 || reads.Load() != 1 {
+		t.Fatal("fixture did not commit one original bootstrap checkpoint", err, reads.Load())
+	}
+	owner := anchorOperationOwner(ctx, t, s)
+	state, err := owner.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := state.Inspect()
+	successor, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skewed := &anchorUpdater{runtime: s, target: target, host: host, clock: successor, wall: anchorTrailingWall(view.Checkpoint.Wall, 2*time.Second)}
+	for range 2 {
+		step, err := skewed.step(ctx)
+		if err != nil || step.attempted || step.clockWait <= 0 || step.clockWait > 2*time.Second || !step.next.Equal(view.Schedule.NextRefresh) || skewed.stopped != nil || skewed.offset != 0 || !skewed.retryAt.IsZero() {
+			t.Fatal("small checkpoint skew stopped or advanced the successor updater", step, err)
+		}
+	}
+	if reads.Load() != 1 || anchorOperationOwner(ctx, t, s).Version() != owner.Version() {
+		t.Fatal("waiting updater acquired or changed accepted history", reads.Load())
+	}
+	time.Sleep(view.Checkpoint.Wall.Sub(skewed.wall()) + 50*time.Millisecond)
+	due, err := skewed.step(ctx)
+	if err != nil || due.attempted || due.clockWait != 0 || !due.next.Equal(view.Schedule.NextRefresh) || reads.Load() != 1 {
+		t.Fatal("updater did not return to the exact accepted refresh after the wait", due, err)
+	}
+	far := &anchorUpdater{runtime: s, target: target, host: host, clock: successor, wall: anchorTrailingWall(view.Checkpoint.Wall, trustanchors.ClockTolerance+time.Second)}
+	refused, err := far.step(ctx)
+	if !errors.Is(err, trustanchors.ErrClock) || refused.attempted || far.stopped == nil || reads.Load() != 1 {
+		t.Fatal("checkpoint beyond the clock tolerance was not terminal", refused, err)
+	}
+	far.wall = nil
+	if _, next := far.step(ctx); next != err || reads.Load() != 1 || anchorOperationOwner(ctx, t, s).Version() != owner.Version() {
+		t.Fatal("terminal clock refusal was recaptured", next)
+	}
+}
